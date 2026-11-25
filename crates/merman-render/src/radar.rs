@@ -8,23 +8,17 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use merman_model::OperationPhase;
-use merman_model::families::radar::{RadarCurve, RadarDiagramModel};
+use merman_model::families::radar::RadarDiagramModel;
 
-mod axis_paint;
 mod config;
 mod css_binding;
-mod paint;
+mod native_theme;
 pub(crate) mod point_list;
-mod text_paint;
 mod theme;
 
-pub(crate) use axis_paint::{RadarAxisPaintPlan, RadarAxisPaintReceipt};
 pub(crate) use config::RadarConfigView;
 pub(crate) use css_binding::RadarCssBinding;
-pub(crate) use text_paint::{RadarTextPaintPlan, RadarTextPaintReceipt};
-pub(crate) use theme::{
-    RadarSeriesPaintPlan, RadarTitleThemePlan, RadarTypographyCssEmission, RadarTypographyThemePlan,
-};
+pub(crate) use theme::{RadarSeriesPaintPlan, RadarTypographyThemePlan};
 
 pub(crate) fn effective_title<'a>(
     model: &'a RadarDiagramModel,
@@ -40,14 +34,6 @@ pub(crate) fn effective_title<'a>(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         })
-}
-
-fn drawable_curves(model: &RadarDiagramModel) -> impl Iterator<Item = (usize, &RadarCurve)> {
-    model
-        .curves
-        .iter()
-        .enumerate()
-        .filter(move |(_, curve)| curve.entries.len() == model.axes.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

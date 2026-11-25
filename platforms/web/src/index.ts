@@ -92,7 +92,6 @@ export {
 export {
   createBrowserTextMeasurementSession,
   prepareSource,
-  describeThemeSupport,
   exportThemePreset,
   edgeGeometryJson,
   edgeGeometryJsonWithTextMeasurer,
@@ -100,7 +99,6 @@ export {
   layoutJson,
   layoutJsonWithTextMeasurer,
   layoutObject,
-  materializeTheme,
   parseJson,
   parseObject,
   renderSvg,
@@ -109,6 +107,7 @@ export {
   renderSvgElement,
   renderSvgToElement,
   renderSvgWithTextMeasurer,
+  resolveTheme,
   svgPlanJson,
 } from "./runtime-render.js";
 export {

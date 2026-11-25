@@ -1,7 +1,5 @@
 use super::super::path_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use super::super::*;
-use super::ClassSvgRelation;
-use std::collections::BTreeSet;
 
 const CLASS_DIAMOND_MARKER_PATH: &str = "M 18,7 L9,13 L1,7 L9,1 Z";
 const CLASS_EXTENSION_START_MARKER_PATH: &str = "M 1,7 L18,13 V 1 Z";
@@ -238,6 +236,7 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
+#[cfg(test)]
 const CLASS_RELATION_MARKER_ORDER: [&str; 20] = [
     "aggregationStart",
     "aggregationEnd",
@@ -261,57 +260,17 @@ const CLASS_RELATION_MARKER_ORDER: [&str; 20] = [
     "lollipopEnd-margin",
 ];
 
-fn class_marker_fill_follows_stroke(marker_name: &str) -> bool {
-    marker_name.starts_with("composition") || marker_name.starts_with("dependency")
-}
-
-fn class_marker_has_transparent_terminal_fill(marker_name: &str) -> bool {
-    matches!(
-        marker_name.strip_suffix("-margin").unwrap_or(marker_name),
-        "aggregationStart" | "aggregationEnd" | "extensionStart" | "extensionEnd"
-    )
-}
-
-pub(super) fn class_marker_paint_bindings<'a>(
-    relations: impl Iterator<Item = ClassSvgRelation<'a>>,
-    include_margin_markers: bool,
-) -> Vec<crate::class::ClassMarkerPaintBinding> {
-    let referenced = relations
-        .flat_map(|relation| {
-            [
-                class_marker_name(relation.relation.type1, true),
-                class_marker_name(relation.relation.type2, false),
-            ]
-            .into_iter()
-            .flatten()
-        })
-        .collect::<BTreeSet<_>>();
-    CLASS_RELATION_MARKER_ORDER
-        .into_iter()
-        .filter(|name| {
-            let ordinary = name.strip_suffix("-margin");
-            (ordinary.is_none() || include_margin_markers)
-                && referenced.contains(ordinary.unwrap_or(name))
-        })
-        .map(crate::class::ClassMarkerPaintBinding::new)
-        .collect()
-}
-
 pub(super) fn class_markers<I: SvgDiagramIdValue>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     diagram_marker_class: &str,
     include_margin_markers: bool,
-    relation_theme: &crate::class::ClassRelationThemePlan,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a, O: SvgOutput, I: SvgDiagramIdValue> {
         out: &'a mut O,
         diagram_id: I,
         diagram_marker_class: &'a str,
-        relation_theme: &'a crate::class::ClassRelationThemePlan,
-        theme_receipt: &'a mut crate::class::ClassThemeOutcomes,
     }
 
     enum MarkerShape<'a> {
@@ -345,21 +304,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
         ctx: &mut MarkerContext<'_, O, I>,
         spec: MarkerSpec<'_>,
     ) -> Result<()> {
-        let typed_stroke = if ctx.theme_receipt.themes_marker(spec.name) {
-            ctx.relation_theme.typed_stroke()
-        } else {
-            None
-        };
-        let fill_follows_stroke = class_marker_fill_follows_stroke(spec.name);
-        let terminal_style = typed_stroke.map(|(_, css)| {
-            if fill_follows_stroke {
-                format!("stroke:{css} !important;fill:{css} !important")
-            } else if class_marker_has_transparent_terminal_fill(spec.name) {
-                format!("stroke:{css} !important;fill:transparent !important")
-            } else {
-                format!("stroke:{css} !important")
-            }
-        });
         if spec.wrap_defs {
             ctx.out.push_str("<defs>");
             ctx.out.checkpoint()?;
@@ -396,12 +340,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                         let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
                     }
                     let _ = write!(ctx.out, r#" style="stroke-width: {};"#, stroke_width);
-                    if let Some(style) = terminal_style.as_deref() {
-                        let _ = write!(ctx.out, "{}", escape_xml_display(style));
-                    }
                     ctx.out.push('"');
-                } else if let Some(style) = terminal_style.as_deref() {
-                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
                 }
                 ctx.out.push_str("/></marker>");
             }
@@ -432,9 +371,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 );
                 ctx.out
                     .push_str(r#" style="stroke-width: 2; stroke-dasharray: 0;"#);
-                if let Some(style) = terminal_style.as_deref() {
-                    let _ = write!(ctx.out, "{}", escape_xml_display(style));
-                }
                 ctx.out.push('"');
                 ctx.out.push_str("/></marker>");
             }
@@ -469,9 +405,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 if let Some(stroke_width) = stroke_width {
                     let _ = write!(ctx.out, r#" stroke-width="{}""#, stroke_width);
                 }
-                if let Some(style) = terminal_style.as_deref() {
-                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
-                }
                 ctx.out.push_str("/></marker>");
             }
         }
@@ -486,8 +419,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
         out,
         diagram_id,
         diagram_marker_class,
-        relation_theme,
-        theme_receipt,
     };
 
     marker(
@@ -852,19 +783,9 @@ mod tests {
 
     #[test]
     fn relation_marker_paint_specs_match_the_emitted_coordinate_contract() {
-        let relation_theme = crate::class::ClassRelationThemePlan::default();
         {
             let mut svg = String::new();
-            let mut receipt = relation_theme.begin_outcomes(Vec::new());
-            class_markers(
-                &mut svg,
-                "diagram",
-                "class",
-                true,
-                &relation_theme,
-                &mut receipt,
-            )
-            .expect("render Class markers");
+            class_markers(&mut svg, "diagram", "class", true).expect("render Class markers");
 
             let mut previous_marker = None;
             for name in CLASS_RELATION_MARKER_ORDER {
@@ -969,18 +890,9 @@ mod tests {
     #[test]
     fn class_markers_stop_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
-        let relation_theme = crate::class::ClassRelationThemePlan::default();
-        let mut receipt = relation_theme.begin_outcomes(Vec::new());
 
-        let error = class_markers(
-            &mut out,
-            "class-sink-failure",
-            "classDiagram",
-            true,
-            &relation_theme,
-            &mut receipt,
-        )
-        .expect_err("the rejecting sink must stop Class marker rendering");
+        let error = class_markers(&mut out, "class-sink-failure", "classDiagram", true)
+            .expect_err("the rejecting sink must stop Class marker rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(

@@ -482,16 +482,18 @@ jobs:
           du -sh target
           df -h .
 
-      - name: Test theme authoring and font resource boundaries
+      - name: Test native theme rendering and export boundaries
         shell: bash
         run: |
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke
           cargo nextest run --locked -p merman-render --no-default-features \
-            --features diagram-flowchart,diagram-swimlane,layout-dagre \
-            --test theme_font_capability --test flowchart_node_effects --cargo-quiet
+            --features diagram-pie,diagram-info \
+            --test native_theme_canvas --cargo-quiet
+          cargo nextest run --locked -p merman-render --no-default-features \
+            --features diagram-flowchart,layout-dagre --test flowchart_node_effects --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg,diagram-flowchart,layout-dagre --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
+            --features svg,diagram-flowchart,layout-dagre --lib -E 'test(theme) | test(resource_free_font_stack)' --cargo-quiet
           cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart,layout-dagre \
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \
@@ -540,10 +542,6 @@ jobs:
           cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
           cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,layout-dagre,rustdoc \
             --test rustdoc_cli --cargo-quiet
-
-      - name: Verify published theme acceptance boundary
-        if: matrix.parity
-        run: python3 scripts/verify_theme_acceptance_boundary.py
 
       - name: Report macOS build disk usage
         if: always() && runner.os == 'macOS'
@@ -766,34 +764,16 @@ jobs:
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
 
-      - name: Test preset qualification and family terminal behavior
+      - name: Verify native theme preset colors
         run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked \
-            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
-            --lib --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams,layout-dagre \
-              --test preset_qualification \
-            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
-            --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
+          python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
+          cargo nextest run --locked -p merman-theme-contract --test theme_v2 --test theme_v2_decoding --features presets --cargo-quiet
 
-      - name: Test optimized theme evidence and qualification rejection
+      - name: Test native theme consumers
         run: |
-          cargo test --release --locked -p merman-render --no-default-features \
-            --lib family::evidence_support::tests
-          python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape,layout-dagre \
-            --lib preset_qualification::
-
-      - name: Test theme authoring and Flowchart paint across SVG and PNG
-        run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,layout-dagre,system-fonts,compat-json --test theme_authoring \
-            --test theme_flowchart_markers --test theme_flowchart_geometry \
-            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
-            --test render_operation --test theme_composed_effects --cargo-quiet
+          cargo nextest run --locked -p merman \
+            --no-default-features --features all-diagrams,svg,ascii,png,pdf,layout-cytoscape,layout-dagre,system-fonts,compat-json \
+            --test native_theme --test render_operation --test prepared_source --cargo-quiet
 
   svg-parity:
     name: svg-parity

@@ -1,596 +1,127 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-import type { ThemeCatalog } from "@mermanjs/web";
 
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { freezeRenderOperation } from "../runtime/merman-operation-input.ts";
 import type { RenderCoordinatorState } from "../runtime/render-coordinator.ts";
-import {
-  captureProjectHandoff,
-  generateProjectHandoff,
-  projectHandoffMatchesWorkspace,
-  ProjectHandoffError,
-} from "./project-handoff.ts";
-import { themeCatalogFixture } from "./theme-appearance.test-fixture.ts";
-import { explorationThemeChoice } from "../components/theme-panel/theme-selection.ts";
-import { themeChoiceFields } from "./diagram-appearance.ts";
+import { captureProjectHandoff, generateProjectHandoff, projectHandoffMatchesWorkspace, ProjectHandoffError } from "./project-handoff.ts";
+import { themeCatalogFixture, themeResolutionFixture } from "./theme-appearance.test-fixture.ts";
 
-const versions = { merman: "0.10.0-alpha.1", mermaid: "12.3.0" };
-const presets = [{ id: "one-dark", available: true }];
-const recipe = '{\n  "schema_version": 1, "kind": "design",\n  "design": {"tokens":{"ink":{"type":"paint","value":"#123456"}},"styles":{"text":{"fill":{"ref":"ink"}}}}\n}';
+const versions = { merman: "0.11.0", mermaid: "12.3.0" };
+const catalog = themeCatalogFixture();
+const raw = '{\n  "schema_version": 2, "extends": "studio",\n  "seed": { "accent": "#123456" }\n}\n';
 const workspace: WorkspaceSnapshot = {
   ...DEFAULT_WORKSPACE_SNAPSHOT,
   code: '---\nconfig:\n  theme: dark\n---\n%%{init: {"theme":"neutral"}}%%\nflowchart LR\nA --> B',
-  mermaidConfig: '{ "theme":"forest", "flowchart":{"htmlLabels":false,"look":"neo"}, "fontFamily":"Authored font" }',
-  diagramTheme: "default",
+  mermaidConfig: '{ "theme":"forest", "flowchart":{"htmlLabels":false}, "fontFamily":"Authored font" }',
   diagramFont: "trebuchet",
-  textMeasurementMode: "browser",
-  themeRecipeJson: recipe,
-  themeRecipeLabel: { name: "Atlas", source: "exploration" },
+  themeDocumentJson: raw,
+  themeAppearance: "dark",
   svgPipeline: "resvg-safe",
 };
+const targets = ["rust", "cli", "web"] as const;
 
-function completed(value: WorkspaceSnapshot, extra = {}): RenderCoordinatorState {
+function completed(value: WorkspaceSnapshot): RenderCoordinatorState {
   const operation = freezeRenderOperation({
-    workspace: value,
+    workspace: value, themeCatalog: catalog, versions, viewport: null,
     asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,
     layoutEnvironment: { containerWidth: 923, containerHeight: 611, screenAvailableWidth: 1440 },
-    versions, viewport: null, themePresets: presets,
-    ...extra,
+    runtimeSnapshot: { unixMillis: 1_794_633_825_678, localOffsetMinutes: 345 },
   });
-  // Only the coordinator's completion and operation fields are read by the handoff.
   return { status: "success", merman: { status: "success" }, snapshot: { operation, publicationId: 7 } } as RenderCoordinatorState;
 }
 
 function capture(value = workspace, state = completed(value)) {
   return captureProjectHandoff({
-    workspace: value, renderState: state, presets, versions, capturedAt: "2026-11-05T00:00:00.000Z",
-    // Fixture recipes are already accepted; rejection cases supply their own compiler result.
-    validateThemeRecipe: () => undefined,
+    workspace: value, renderState: state, themeCatalog: catalog, versions, capturedAt: "2026-11-05T00:00:00.000Z",
+    resolveTheme: themeResolutionFixture,
   });
 }
 
-test("current-diagram handoff preserves the exact frozen source, options and configuration owners", () => {
-  const state = completed(workspace);
-  const snapshot = capture(workspace, state);
-  assert.equal(snapshot.publicationId, 7);
-  for (const target of ["rust", "cli", "web"] as const) {
+test("diagram handoff preserves configured source, runtime clock and the authored Theme v2 bytes", () => {
+  const snapshot = capture();
+  for (const target of targets) {
     const bundle = generateProjectHandoff(snapshot, { scope: "diagram", target });
     const options = JSON.parse(bundle.files["options.json"]);
     assert.equal(bundle.files["source.mmd"], workspace.code);
     assert.equal(bundle.files["playground-config.json"], workspace.mermaidConfig);
     assert.equal(bundle.files["diagram.mmd"], snapshot.operation!.configuredSource);
     assert.match(bundle.files["diagram.mmd"], /---\n%%\{init: \{"theme":"forest"/);
-    assert.ok(bundle.files["diagram.mmd"].indexOf('"theme":"forest"') < bundle.files["diagram.mmd"].indexOf('"theme":"neutral"'));
-    assert.equal(options.site_config.theme, "forest");
+    assert.deepEqual(JSON.parse(bundle.files["site-config.json"]), options.site_config);
     assert.equal(options.site_config.flowchart, undefined);
     assert.notEqual(options.site_config.fontFamily, "Authored font");
-    assert.deepEqual(JSON.parse(bundle.files["site-config.json"]), options.site_config);
     assert.deepEqual(options.layout, { container_width: 923, container_height: 611, screen_available_width: 1440 });
-    assert.deepEqual(JSON.parse(bundle.files["handoff.json"]).versions, versions);
-  }
-});
-
-for (const clock of [
-  { name: "native theme", unixMillis: 1_794_633_825_678, localOffsetMinutes: 345, themeRecipeJson: null },
-  {
-    name: "raw theme recipe", unixMillis: 0, localOffsetMinutes: -210,
-    themeRecipeJson: `${recipe.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1')}\n\n`,
-  },
-] as const) {
-  test(`${clock.name} consumers replay the captured operation clock after time advances`, (t) => {
-    t.mock.timers.enable({ apis: ["Date"], now: clock.unixMillis });
-    t.mock.method(Date.prototype, "getTimezoneOffset", () => -clock.localOffsetMinutes);
-    const value = { ...workspace, themeRecipeJson: clock.themeRecipeJson };
-    const state = completed(value);
-    t.mock.timers.tick(86_400_000);
-    const snapshot = capture(value, state);
-
-    for (const consumer of [
-      { target: "rust", rustAssets: "files" },
-      { target: "rust", rustAssets: "inline" },
-      { target: "cli" },
-      { target: "web" },
-    ] as const) {
-      const bundle = generateProjectHandoff(snapshot, { scope: "diagram", ...consumer });
-      t.mock.timers.tick(86_400_000);
-      assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", ...consumer }), bundle);
-      const options = JSON.parse(bundle.files["options.json"]);
-      assert.equal(options.fixed_unix_millis, clock.unixMillis);
-      assert.equal(options.fixed_local_offset_minutes, clock.localOffsetMinutes);
-      assert.equal(options.fixed_today, undefined);
-      if (clock.themeRecipeJson !== null) {
-        assert.equal(bundle.files["theme.json"], clock.themeRecipeJson);
-        assert.ok(bundle.files["options.json"].includes(`"theme":${clock.themeRecipeJson}`));
-      }
-
-      if (consumer.target === "rust") {
-        assert.match(bundle.code, /use merman::model::runtime::RuntimePolicy;/);
-        assert.ok(bundle.code.includes(`RuntimePolicy::deterministic()\n        .with_fixed_unix_millis(${clock.unixMillis})\n        .try_with_fixed_local_offset_minutes(${clock.localOffsetMinutes})?;`));
-        assert.match(bundle.code, /Renderer::new\(\)\s*\.with_presentation_engine\(engine\)\s*\.with_runtime_policy\(runtime_policy\)\s*\.render\(request\)\?/);
-      } else if (consumer.target === "cli") {
-        assert.ok(bundle.code.includes(`--fixed-unix-millis ${clock.unixMillis} --fixed-local-offset-minutes ${clock.localOffsetMinutes}`));
-        assert.ok(bundle.files["render.py"].includes(`"--fixed-unix-millis","${clock.unixMillis}","--fixed-local-offset-minutes","${clock.localOffsetMinutes}"`));
-      } else {
-        assert.match(bundle.code, /readText\(new URL\("\.\/options\.json", import\.meta\.url\)\)/);
-      }
-    }
-  });
-}
-
-test("independent recipes remain authored bytes and never turn exploration names into preset IDs", () => {
-  const snapshot = capture();
-  for (const target of ["rust", "cli", "web"] as const) {
-    const bundle = generateProjectHandoff(snapshot, { scope: "diagram", target });
-    assert.equal(bundle.files["theme.json"], recipe);
-    assert.ok(bundle.files["options.json"].includes(`"theme":${recipe}`));
-    assert.deepEqual(JSON.parse(bundle.files["options.json"]).theme, JSON.parse(recipe));
-    assert.doesNotMatch(bundle.code, /(?:preset[^\n]*atlas|from_id\("atlas"\))/i);
-    assert.doesNotMatch(bundle.files["options.json"], /"recipe"\s*:/);
+    assert.equal(options.fixed_unix_millis, 1_794_633_825_678);
+    assert.equal(options.fixed_local_offset_minutes, 345);
+    assert.equal(bundle.files["theme.json"], raw);
+    assert.ok(bundle.files["options.json"].includes(`"document":${raw}`));
+    assert.deepEqual(options.theme, { document: JSON.parse(raw), appearance: "dark" });
+    assert.equal(JSON.parse(bundle.files["handoff.json"]).publication_id, 7);
   }
   const rust = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" });
-  assert.match(rust.code, /compile_document/);
-  assert.match(rust.files["Cargo.toml"], /path = "\.\.\/merman\/crates\/merman"/);
-  const web = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
-  assert.equal(JSON.parse(web.files["package.json"]).dependencies["@mermanjs/web"], "file:../merman/platforms/web/packages/full");
-  assert.match(web.code, /renderSvgResultWithTextMeasurer/);
-  assert.match(web.code, /createBrowserTextMeasurementSession/);
-});
-
-test("theme-only handoffs keep deterministic example clocks across repeated generation", (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-14T05:23:45.678Z") });
-  const snapshot = capture();
-  for (const target of ["rust", "cli", "web"] as const) {
-    const first = generateProjectHandoff(snapshot, { scope: "theme", target });
-    t.mock.timers.tick(86_400_000);
-    const second = generateProjectHandoff(snapshot, { scope: "theme", target });
-    assert.deepEqual(second, first);
-    const options = JSON.parse(first.files["options.json"]);
-    assert.equal(options.fixed_unix_millis, 0);
-    assert.equal(options.fixed_local_offset_minutes, 0);
-  }
-});
-
-test("Rust asset files remain the default with paths relative to src/main.rs", (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: 1_794_633_825_678 });
-  const snapshot = capture();
-  for (const scope of ["diagram", "theme"] as const) {
-    const bundle = generateProjectHandoff(snapshot, { scope, target: "rust" });
-    assert.deepEqual(generateProjectHandoff(snapshot, { scope, target: "rust", rustAssets: "files" }), bundle);
-    assert.match(bundle.code, /include_str!\("\.\.\/theme\.json"\)/);
-    assert.match(bundle.code, /include_str!\("\.\.\/diagram\.mmd"\)/);
-    assert.match(bundle.code, /include_str!\("\.\.\/site-config\.json"\)/);
-    const readme = bundle.files["README.txt"];
-    assert.match(readme, /include_str! paths are relative to src\/main\.rs/);
-    assert.match(readme, /project root beside Cargo\.toml/);
-    assert.ok(readme.includes("project/\n  Cargo.toml\n  README.txt\n  diagram.mmd\n"));
-    assert.ok(readme.includes("\n  src/\n    main.rs\n  theme.json\n"));
-  }
-});
-
-test("inline Rust embeds the untouched recipe, configured source and frozen site config", () => {
-  // Keep duplicate fields intact so the typed Rust deserializer can reject them.
-  const rawRecipe = `${recipe.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1')}\n\n`;
-  const value = { ...workspace, themeRecipeJson: rawRecipe, code: `${workspace.code}\n%% Keep "##, \\n and café ✓\n` };
-  const snapshot = capture(value);
-  const operation = snapshot.operation;
-  const files = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" });
-  const inline = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust", rustAssets: "inline" });
-  assert.ok(inline.code.includes(`const THEME_JSON: &str = r##"${rawRecipe}"##;`));
-  assert.ok(inline.code.includes(`const DIAGRAM_SOURCE: &str = r###"${operation!.configuredSource}"###;`));
-  assert.ok(inline.code.includes(`const SITE_CONFIG_JSON: &str = r#"${files.files["site-config.json"]}"#;`));
-  assert.match(inline.code, /let recipe: ThemeRecipeV1 = serde_json::from_str\(THEME_JSON\)/);
-  assert.ok(inline.code.indexOf("compile_document") < inline.code.indexOf("const THEME_JSON"));
-  assert.match(inline.code, /DiagramThemeCompiler::new\(\)\.compile_document\(recipe, None\)/);
-  assert.doesNotMatch(inline.code, /include_str!|serde_json::json!/);
-  for (const [filename, content] of Object.entries(files.files)) {
-    if (filename !== "src/main.rs" && filename !== "README.txt") assert.equal(inline.files[filename], content, filename);
-  }
-  assert.equal(inline.files["theme.json"], rawRecipe);
-  assert.equal(inline.files["src/main.rs"], inline.code);
-  assert.deepEqual(inline.notices, files.notices);
-  assert.equal(snapshot.operation, operation);
-  assert.equal(snapshot.publicationId, 7);
-  assert.match(inline.files["README.txt"], /All rendering inputs are embedded in src\/main\.rs/);
-  assert.match(inline.files["README.txt"], /serde_json Cargo dependencies are still required/);
-  assert.doesNotMatch(inline.files["README.txt"], /include_str! paths/);
-});
-
-test("inline Rust raw strings escape terminator collisions and preserve CRLF bytes", () => {
-  const cases = [
-    { source: 'flowchart LR\nA --> B\n%% "# "## "### \\path ✓', literal: 'r####"flowchart LR\nA --> B\n%% "# "## "### \\path ✓"####' },
-    { source: "flowchart LR\r\nA --> B\r", literal: 'concat!(r#"flowchart LR"#, "\\r", r#"\nA --> B"#, "\\r", r#""#)' },
-    { source: `flowchart LR\nA --> B\n%% "${"#".repeat(254)} end`, literal: `r${"#".repeat(255)}"flowchart LR\nA --> B\n%% "${"#".repeat(254)} end"${"#".repeat(255)}` },
-    { source: `flowchart LR\nA --> B\n%% "${"#".repeat(300)} end`, literal: `concat!(r#"flowchart LR\nA --> B\n%% "#, "\\\"", r#"${"#".repeat(300)} end"#)` },
-    { source: "", literal: 'r#""#' },
-  ];
-  for (const { source, literal } of cases) {
-    const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, code: source };
-    const bundle = generateProjectHandoff(capture(value), { scope: "diagram", target: "rust", rustAssets: "inline" });
-    assert.ok(bundle.code.includes(`const DIAGRAM_SOURCE: &str = ${literal};`), literal);
-    assert.equal(bundle.files["diagram.mmd"], source);
-    assert.doesNotMatch(bundle.code, /\r/);
-  }
-  const crlfRecipe = '{"schema_version":1,\r\n"kind":"design","design":{}}';
-  const bundle = generateProjectHandoff(capture({ ...workspace, themeRecipeJson: crlfRecipe }), {
-    scope: "theme", target: "rust", rustAssets: "inline",
-  });
-  assert.ok(bundle.code.includes('const THEME_JSON: &str = concat!(r#"{"schema_version":1,"#, "\\r", r#"\n"kind":"design","design":{}}"#);'));
-  assert.equal(bundle.files["theme.json"], crlfRecipe);
-});
-
-test("Rust optional inputs are emitted only when present, for either asset mode", () => {
-  const snapshot = capture({ ...DEFAULT_WORKSPACE_SNAPSHOT, code: "flowchart LR\nA --> B" });
-  for (const rustAssets of ["files", "inline"] as const) {
-    const bundle = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust", rustAssets });
-    assert.equal(bundle.files["theme.json"], undefined);
-    assert.equal(bundle.files["site-config.json"], undefined);
-    assert.match(bundle.code, /let engine = MermaidEngine::new\(\);/);
-    assert.doesNotMatch(bundle.code, /ThemeRecipeV1|SourcePresentationConfig|\.with_theme\(/);
-    assert.doesNotMatch(bundle.files["README.txt"], /\.\.\/(?:theme|site-config)\.json loads/);
-    assert.ok(bundle.files["README.txt"].includes("\n  src/\n    main.rs\n"));
-    assert.doesNotMatch(bundle.files["README.txt"], /\n {2}(?:theme|site-config)\.json\n/);
-  }
-});
-
-test("CLI and Web handoffs ignore the Rust asset selection", (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: 1_794_633_825_678 });
-  const snapshot = capture();
-  for (const target of ["cli", "web"] as const) {
-    for (const scope of ["diagram", "theme"] as const) {
-      const bundle = generateProjectHandoff(snapshot, { target, scope });
-      for (const rustAssets of ["files", "inline"] as const) {
-        assert.deepEqual(generateProjectHandoff(snapshot, { target, scope, rustAssets }), bundle);
-      }
-      assert.match(bundle.files["README.txt"], /No extra sample-config step is needed/);
-      assert.match(bundle.files["README.txt"], /theme\.json, when selected, is the authored standalone visual style recipe/);
-      assert.match(bundle.files["README.txt"], /no second manual theme\.json load or configuration merge is needed/);
-      assert.doesNotMatch(bundle.files["README.txt"], /Rust input placement/);
-    }
-  }
-});
-
-test("runtime catalog presets use the actual preset APIs", () => {
-  const value = { ...workspace, themeRecipeJson: null, themePresetId: "one-dark" };
-  const snapshot = capture(value);
-  for (const rustAssets of ["files", "inline"] as const) {
-    const rust = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust", rustAssets });
-    assert.match(rust.code, /compile_preset_selection\("one-dark", None\)/);
-    assert.equal(rust.files["theme.json"], undefined);
-  }
+  assert.match(rust.code, /ThemeCompiler::new\(\)\.compile_json\(include_str!\("\.\.\/theme\.json"\)\.as_bytes\(\), Some\(Appearance::Dark\)\)/);
+  assert.match(rust.code, /\.with_native_theme\(theme\)/);
+  assert.match(rust.code, /\.with_fixed_unix_millis\(1794633825678\)/);
+  assert.match(rust.files["Cargo.toml"], /features = \["math"\]/);
   const cli = generateProjectHandoff(snapshot, { scope: "diagram", target: "cli" });
-  assert.match(cli.code, /--theme-preset one-dark/);
+  assert.match(cli.code, /--theme theme\.json --appearance dark/);
+  assert.match(cli.code, /--fixed-unix-millis 1794633825678 --fixed-local-offset-minutes 345/);
   const web = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
-  assert.deepEqual(JSON.parse(web.files["options.json"]).theme, { preset: "one-dark" });
+  assert.match(web.code, /renderSvgResultWithTextMeasurer\(source, measurement.measure, optionsJson\)/);
+  assert.ok(web.code.indexOf("assertNavigableSvgForDom(result.svg)") < web.code.indexOf("shadow.replaceChildren(root)"));
 });
 
-function curatedCatalog(id: string): ThemeCatalog {
-  const catalog = themeCatalogFixture();
-  const preset = catalog.presets[0];
-  return { ...catalog, presets: [{ ...preset, id, display_name: id,
-    supported_appearances: ["light"], default_appearance: "light",
-    appearances: [{ ...preset.appearances[0], concrete_preset_id: id }],
-  }] };
-}
-
-for (const [id, variant] of [["paper-cut", "PaperCut"], ["carbon-copy", "CarbonCopy"], ["pop-art", "PopArt"]]) {
-  test(`${id} showcase adoption uses catalog presets in all consumers without a redundant theme file`, () => {
-    const catalog = curatedCatalog(id);
-    const raw = readFileSync(new URL(`../../../crates/merman-render/assets/themes/${id}.theme.json`, import.meta.url), "utf8");
-    const choice = explorationThemeChoice({ presetId: id, name: id, recipeJson: raw }, catalog, "follow");
-    assert.ok(choice);
-    const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, ...themeChoiceFields(choice) };
-    for (const scope of ["theme", "diagram"] as const) {
-      const snapshot = captureProjectHandoff({
-        workspace: value, renderState: scope === "diagram" ? completed(value, { themeCatalog: catalog }) : { status: "empty" },
-        themeCatalog: catalog, versions, capturedAt: "2026-11-10T00:00:00.000Z",
-        validateThemeRecipe() { assert.fail("Preset adoption must not materialize or validate a recipe copy"); },
-      });
-      for (const rustAssets of ["inline", "files"] as const) {
-        const rust = generateProjectHandoff(snapshot, { scope, target: "rust", rustAssets });
-        assert.ok(rust.code.includes(`compile_preset(ThemePreset::${variant})`));
-        assert.match(rust.code, /use merman::diagram_theme::\{DiagramThemeCompiler, ThemePreset\}/u);
-        assert.doesNotMatch(rust.code, /compile_preset_selection|ThemeRecipeV1|THEME_JSON|ThemeAppearance/u);
-        assert.equal(rust.files["theme.json"], undefined);
-        assert.deepEqual(JSON.parse(rust.files["options.json"]).theme, { preset: id, appearance: "light" });
-      }
-      const cli = generateProjectHandoff(snapshot, { scope, target: "cli" });
-      assert.ok(cli.code.includes(`--theme-preset ${id}`));
-      assert.doesNotMatch(cli.code, /--theme-file/u);
-      const web = generateProjectHandoff(snapshot, { scope, target: "web" });
-      assert.deepEqual(JSON.parse(web.files["options.json"]).theme, { preset: id, appearance: "light" });
-      for (const bundle of [cli, web]) {
-        assert.equal(bundle.files["theme.json"], undefined);
-        const record = JSON.parse(bundle.files["handoff.json"]);
-        assert.equal(record.theme.preset_id, id);
-        assert.equal(record.theme.recipe_file, null);
-      }
-    }
-  });
-
-  test(`${id} recipe snapshots stay authored recipes regardless of matching name or content`, () => {
-    const raw = readFileSync(new URL(`../../../crates/merman-render/assets/themes/${id}.theme.json`, import.meta.url), "utf8");
-    for (const source of ["imported", "exploration"] as const) {
-      const snapshot = captureProjectHandoff({
-        workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: raw, themeRecipeLabel: { name: id, source } },
-        themeCatalog: curatedCatalog(id), renderState: { status: "empty" }, versions,
-        validateThemeRecipe: (received) => { assert.equal(received, raw); }, capturedAt: "2026-11-10T00:00:00.000Z",
-      });
-      for (const target of ["rust", "cli", "web"] as const) {
-        const bundle = generateProjectHandoff(snapshot, { scope: "theme", target });
-        assert.equal(bundle.files["theme.json"], raw);
-        assert.deepEqual(JSON.parse(bundle.files["options.json"]).theme, JSON.parse(raw));
-        assert.doesNotMatch(bundle.code, /compile_preset\(|--theme-preset/u);
-      }
-    }
-  });
-}
-
-test("a completed preset render cannot override an unavailable or missing authoritative catalog entry", () => {
-  const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "paper-cut" };
-  const catalog = curatedCatalog("paper-cut");
-  const state = completed(value, { themeCatalog: catalog });
-  for (const presets of [[], [{ ...catalog.presets[0], available: false }]]) {
-    const snapshot = captureProjectHandoff({
-      workspace: value, renderState: state, themeCatalog: { ...catalog, presets }, versions,
-      capturedAt: "2026-11-10T00:00:00.000Z",
-    });
-    assert.notEqual(snapshot.operation, null);
-    assert.equal(snapshot.presetAvailable, false);
-    for (const scope of ["theme", "diagram"] as const) {
-      for (const target of ["rust", "cli", "web"] as const) {
-        assert.throws(() => generateProjectHandoff(snapshot, { scope, target }),
-          (error) => error instanceof ProjectHandoffError && error.code === "preset-unavailable");
-      }
-    }
-  }
-});
-
-test("Rust selection preserves explicit appearances for paired IDs and non-equivalent concrete defaults", () => {
-  const curated = curatedCatalog("paper-cut");
-  const paired = themeCatalogFixture();
-  const changedDefault: ThemeCatalog = { ...curated, presets: [{ ...curated.presets[0],
-    supported_appearances: ["dark"], default_appearance: "dark",
-    appearances: [{ ...curated.presets[0].appearances[0], appearance: "dark" }],
-  }] };
-  // Metadata from a different runtime must not reduce a requested dark appearance to the enum's light default.
-  for (const [id, catalog] of [["editor", paired], ["editor-dark", paired], ["paper-cut", changedDefault]] as const) {
-    const snapshot = captureProjectHandoff({
-      workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: id, themeAppearance: "dark" },
-      renderState: { status: "empty" }, themeCatalog: catalog, hostAppearance: "dark", versions,
-      capturedAt: "2026-11-10T00:00:00.000Z",
-    });
-    const rust = generateProjectHandoff(snapshot, { scope: "theme", target: "rust" });
-    assert.ok(rust.code.includes(`compile_preset_selection("${id}", Some(ThemeAppearance::Dark))`));
-    assert.doesNotMatch(rust.code, /compile_preset\(ThemePreset::/u);
-    assert.deepEqual(JSON.parse(rust.files["options.json"]).theme, { preset: id, appearance: "dark" });
-  }
-});
-
-test("generated Rust consumers include mathematical labels available in the Web runtime", () => {
-  const math = { ...workspace, themeRecipeJson: null, code: 'flowchart TD\nA["$$x^2$$"] --> B' };
-  const bundle = generateProjectHandoff(capture(math), { scope: "diagram", target: "rust" });
-  assert.match(bundle.files["Cargo.toml"], /features = \["math"\]/);
-  assert.match(bundle.files["diagram.mmd"], /\$\$x\^2\$\$/);
-  const cli = generateProjectHandoff(capture(math), { scope: "diagram", target: "cli" });
-  assert.match(cli.files["README.txt"], /cargo build --locked -p merman-cli --features math/);
-  assert.match(cli.files["README.txt"], /merman-cli capabilities/);
-});
-
-test("theme-only handoff validates the original recipe even when diagram rendering failed", () => {
-  const invalid = { ...workspace, themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{"not_a_theme_field":true}}' };
-  const failure = { status: "failed", merman: { status: "failure" } } as RenderCoordinatorState;
-  let received = "";
-  const rejected = captureProjectHandoff({
-    workspace: invalid, renderState: failure, versions, capturedAt: "2026-11-05T00:00:00.000Z",
-    validateThemeRecipe: (raw) => { received = raw; throw { message: "unknown field not_a_theme_field", code_name: "INVALID_THEME" }; },
-  });
-  assert.equal(received, invalid.themeRecipeJson);
-  for (const target of ["rust", "cli", "web"] as const) {
-    assert.throws(() => generateProjectHandoff(rejected, { scope: "theme", target }),
-      (error) => error instanceof ProjectHandoffError && error.code === "invalid-configuration" && error.message.includes("not_a_theme_field"));
-  }
-  const unavailable = captureProjectHandoff({ workspace, renderState: failure, capturedAt: "2026-11-05T00:00:00.000Z" });
-  assert.throws(() => generateProjectHandoff(unavailable, { scope: "theme", target: "web" }),
-    (error) => error instanceof ProjectHandoffError && error.code === "recipe-unverified");
-  const accepted = captureProjectHandoff({
-    workspace: { ...workspace, code: "flowchart LR\nA -->" }, renderState: failure, versions,
-    capturedAt: "2026-11-05T00:00:00.000Z", validateThemeRecipe: (raw) => { assert.equal(raw, recipe); },
-  });
-  assert.equal(generateProjectHandoff(accepted, { scope: "theme", target: "rust" }).files["theme.json"], recipe);
-  assert.throws(() => generateProjectHandoff(accepted, { scope: "diagram", target: "rust" }),
-    (error) => error instanceof ProjectHandoffError && error.code === "render-not-current");
-});
-
-test("unknown or unavailable preset fallback never generates equivalent-looking adoption code", () => {
-  for (const id of ["atlas", "missing-preset"]) {
-    const value = { ...workspace, themeRecipeJson: null, themePresetId: id };
-    const snapshot = capture(value);
-    assert.equal(snapshot.operation!.unavailableThemePresetId, id);
-    for (const scope of ["theme", "diagram"] as const) {
-      assert.throws(() => generateProjectHandoff(snapshot, { scope, target: "web" }),
-        (error) => error instanceof ProjectHandoffError && error.code === "preset-unavailable");
-    }
-  }
-});
-
-test("only a completed successful operation matching every rendering input is current", () => {
-  const state = completed(workspace);
-  for (const change of [
-    { code: "flowchart LR\nB --> C" }, { mermaidConfig: "{}" }, { diagramTheme: "dark" as const },
-    { themeRecipeJson: `${recipe}\n` }, { themePresetId: "one-dark", themeRecipeJson: null }, { diagramFont: "arial" as const },
-    { svgPipeline: "parity" as const }, { textMeasurementMode: "headless" as const },
-  ]) {
-    const snapshot = capture({ ...workspace, ...change }, state);
-    assert.equal(snapshot.operation, null);
-    assert.throws(() => generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" }),
-      (error) => error instanceof ProjectHandoffError && error.code === "render-not-current");
-  }
-  for (const unavailable of [
-    { status: "empty" }, { status: "pending", snapshot: { publicationId: 8 } },
-    { status: "updating", previous: state, snapshot: { publicationId: 8 } },
-    { ...state, status: "failed", merman: { status: "failure" } },
-  ] as RenderCoordinatorState[]) assert.equal(capture(workspace, unavailable).operation, null);
-  assert.equal(captureProjectHandoff({ workspace, renderState: state, capturedAt: "2026-11-05T00:00:00.000Z", versions: { ...versions, merman: "different" } }).operation, null);
-});
-
-test("a handoff stays frozen when the workspace changes and labels do not invalidate a render", () => {
-  const mutable = { ...workspace, themeRecipeLabel: { name: "Atlas", source: "exploration" as const } };
-  const snapshot = capture(mutable);
-  const before = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" });
-  mutable.code = "flowchart LR\nChanged --> Later";
-  mutable.themeRecipeLabel.name = "Changed";
-  assert.equal(projectHandoffMatchesWorkspace(snapshot, mutable), false);
-  assert.equal(snapshot.workspace.themeRecipeLabel!.name, "Atlas");
-  assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" }), before);
-  assert.notEqual(capture({ ...workspace, themeRecipeLabel: { name: "Imported", source: "imported" } }, completed(workspace)).operation, null);
-});
-
-test("theme-only uses a separate example without the current diagram config, font, pipeline or layout", () => {
-  const snapshot = capture(workspace, { status: "empty" });
-  for (const target of ["rust", "cli", "web"] as const) {
+test("theme-only handoff uses an independent source and validates the document without a diagram render", () => {
+  const input = { workspace, renderState: { status: "empty" } as const, capturedAt: "2026-11-05T00:00:00.000Z" };
+  const snapshot = captureProjectHandoff({ ...input, resolveTheme: (received, appearance) => {
+    assert.equal(received, raw);
+    assert.equal(appearance, "dark");
+    return themeResolutionFixture();
+  } });
+  for (const target of targets) {
     const bundle = generateProjectHandoff(snapshot, { scope: "theme", target });
     const options = JSON.parse(bundle.files["options.json"]);
     assert.equal(bundle.files["diagram.mmd"], "flowchart LR\nA[Theme] --> B[Your project]");
-    assert.equal(bundle.files["theme.json"], recipe);
-    assert.equal(options.site_config.theme, "default");
-    assert.equal(options.site_config.fontFamily, undefined);
-    assert.deepEqual(options.layout, { container_width: 800, container_height: 600 });
-    assert.equal(options.svg, undefined);
-    assert.equal(bundle.files["playground-config.json"], undefined);
-    assert.doesNotMatch(bundle.files["diagram.mmd"], /forest|neutral|Authored font/);
-    if (target === "web") assert.match(bundle.code, /renderSvgResult\(source, optionsJson\)/);
+    assert.equal(bundle.files["theme.json"], raw);
+    assert.deepEqual(options.theme, { document: JSON.parse(raw), appearance: "dark" });
+    assert.equal(options.fixed_unix_millis, 0);
+    assert.equal(bundle.files["site-config.json"], undefined);
+    assert.equal(bundle.files["source.mmd"], undefined);
   }
-  assert.throws(() => generateProjectHandoff(capture({ ...DEFAULT_WORKSPACE_SNAPSHOT }), { scope: "theme", target: "web" }),
-    (error) => error instanceof ProjectHandoffError && error.code === "no-theme");
+  const invalid = captureProjectHandoff({ ...input, resolveTheme: () => ({ ok: false, line: null, column: null, path: "seed.accent", message: "Invalid color" }) });
+  assert.throws(() => generateProjectHandoff(invalid, { scope: "theme", target: "web" }),
+    (error) => error instanceof ProjectHandoffError && error.code === "invalid-configuration" && error.message === "Invalid color");
 });
 
-for (const themeExample of [
-  {
-    source: "sequenceDiagram\nClient->>Server: Request\nServer-->>Client: Response",
-    configJson: '{ "theme":"dark", "sequence":{"mirrorActors":false,"actorMargin":72}, "fontFamily":"Example font" }',
-  },
-  {
-    source: "classDiagram\nclass Project {\n  +String name\n}\nProject --> Theme",
-    configJson: '{ "theme":"neutral", "class":{"hideEmptyMembersBox":true,"padding":24}, "fontFamily":"Example font" }',
-  },
-] as const) {
-  test(`theme adoption preserves a custom ${themeExample.source.split("\n")[0]} source and config for every target without render proof`, () => {
-    const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: recipe };
-    let validatedRecipe: string | null = null;
-    const snapshot = captureProjectHandoff({
-      workspace: value, renderState: { status: "empty" }, versions, capturedAt: "2026-11-05T00:00:00.000Z",
-      validateThemeRecipe: (raw) => { validatedRecipe = raw; },
-    });
-    assert.equal(validatedRecipe, recipe);
-    assert.equal(snapshot.operation, null);
-    assert.equal(snapshot.publicationId, null);
-    const config = JSON.parse(themeExample.configJson);
-    for (const target of ["rust", "cli", "web"] as const) {
-      const bundle = generateProjectHandoff(snapshot, { scope: "theme", target, themeExample });
-      const options = JSON.parse(bundle.files["options.json"]);
-      const metadata = JSON.parse(bundle.files["handoff.json"]);
-      const directive = `%%{init: ${JSON.stringify(config)}}%%`;
-      assert.equal(bundle.files["diagram.mmd"], `${directive}\n${themeExample.source}`);
-      assert.equal(bundle.files["theme.json"], recipe);
-      assert.deepEqual(options.theme, JSON.parse(recipe));
-      assert.deepEqual(options.site_config, { theme: config.theme });
-      assert.deepEqual(JSON.parse(bundle.files["site-config.json"]), options.site_config);
-      assert.deepEqual(options.layout, { container_width: 800, container_height: 600 });
-      assert.equal(bundle.files["source.mmd"], undefined);
-      assert.equal(bundle.files["playground-config.json"], undefined);
-      assert.equal(metadata.scope, "theme");
-      assert.equal(metadata.publication_id, null);
-      assert.deepEqual(metadata.versions, versions);
-      assert.equal(metadata.configuration.original_source_file, null);
-      assert.equal(metadata.configuration.authored_config_file, null);
-      assert.equal(metadata.configuration.authored_config_location, null);
-      assert.deepEqual(metadata.configuration.injected_config_span, { start: 0, end: new TextEncoder().encode(directive).byteLength });
-      assert.equal(metadata.environment.layout, null);
-      assert.equal(metadata.environment.text_measurement, "headless");
-      assert.equal(metadata.environment.consumer_text_measurement, "deterministic");
-      assert.match(bundle.files["README.txt"], /Theme adoption with a separate example diagram/);
-      assert.match(bundle.files["README.txt"], /Render publication: not applicable/);
-      assert.throws(() => generateProjectHandoff(snapshot, { scope: "diagram", target, themeExample }),
-        (error) => error instanceof ProjectHandoffError && error.code === "render-not-current");
-    }
-    assert.equal(snapshot.operation, null);
-    assert.equal(snapshot.publicationId, null);
-    assert.deepEqual(snapshot.workspace, value);
-  });
-}
-
-test("diagram scope ignores theme examples and keeps the captured operation and publication", () => {
-  const snapshot = capture();
-  const operation = snapshot.operation;
-  const themeExample = { source: "sequenceDiagram\nA->>B: Theme example", configJson: "not JSON" };
-  for (const target of ["rust", "cli", "web"] as const) {
-    const before = generateProjectHandoff(snapshot, { scope: "diagram", target });
-    assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target, themeExample }), before);
-    assert.equal(JSON.parse(before.files["handoff.json"]).publication_id, 7);
-    const theme = generateProjectHandoff(snapshot, { scope: "theme", target, themeExample: { ...themeExample, configJson: "{}" } });
-    assert.equal(theme.files["diagram.mmd"], themeExample.source);
-    assert.equal(JSON.parse(theme.files["handoff.json"]).publication_id, null);
-    assert.equal(JSON.parse(theme.files["handoff.json"]).environment.layout, null);
-    assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target }), before);
-  }
-  assert.equal(snapshot.operation, operation);
-  assert.equal(snapshot.publicationId, 7);
-});
-
-test("invalid theme example configuration is rejected through the frozen operation", () => {
-  const snapshot = capture({ ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: recipe }, { status: "empty" });
-  const themeExample = { source: "classDiagram\nProject --> Theme", configJson: "not JSON" };
-  for (const target of ["rust", "cli", "web"] as const) {
-    assert.throws(() => generateProjectHandoff(snapshot, { scope: "theme", target, themeExample }),
-      (error) => error instanceof ProjectHandoffError && error.code === "invalid-configuration");
-  }
-});
-
-test("headless and browser host differences are explicit, including CLI's screen-width fallback", () => {
-  const snapshot = capture();
+test("preset handoff uses catalog IDs and no extra theme file", () => {
+  const selected = { ...workspace, themeDocumentJson: null, themePresetId: "studio" };
+  const snapshot = capture(selected);
   const rust = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" });
-  assert.ok(rust.notices.includes("native-measurement"));
-  assert.match(rust.code, /screen_available_width = Some\(1440\.0\)/);
-  const cli = generateProjectHandoff(snapshot, { scope: "diagram", target: "cli" });
-  assert.ok(cli.notices.includes("cli-screen-width"));
-  assert.match(cli.code, /--width 923 --height 611/);
-  assert.match(cli.code, /--font-measurement deterministic --font-system off/);
-  assert.doesNotMatch(cli.code, /--config-file playground-config/);
-  const headless = { ...workspace, textMeasurementMode: "headless" as const };
-  const web = generateProjectHandoff(capture(headless), { scope: "diagram", target: "web" });
-  assert.doesNotMatch(web.code, /createBrowserTextMeasurementSession/);
-  assert.match(web.code, /renderSvgResult\(source, optionsJson\)/);
+  assert.match(rust.code, /BuiltinPreset::from_id\("studio"\)/);
+  assert.match(rust.code, /ThemeSelection::preset\(preset, Some\(Appearance::Dark\)\)/);
+  assert.equal(rust.files["theme.json"], undefined);
+  const cli = generateProjectHandoff(snapshot, { scope: "theme", target: "cli" });
+  assert.match(cli.code, /--theme studio --appearance dark/);
+  const web = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
+  assert.deepEqual(JSON.parse(web.files["options.json"]).theme, { preset: "studio", appearance: "dark" });
+  const unavailable = capture({ ...selected, themePresetId: "retired-preset" });
+  assert.throws(() => generateProjectHandoff(unavailable, { scope: "theme", target: "web" }),
+    (error) => error instanceof ProjectHandoffError && error.code === "preset-unavailable");
 });
 
-test("invalid configured inputs block current-diagram handoff without blocking independent theme use", () => {
-  const invalid = { ...workspace, mermaidConfig: "not JSON" };
-  const snapshot = capture(invalid);
-  assert.throws(() => generateProjectHandoff(snapshot, { scope: "diagram", target: "web" }),
-    (error) => error instanceof ProjectHandoffError && error.code === "invalid-configuration");
-  assert.equal(generateProjectHandoff(snapshot, { scope: "theme", target: "web" }).files["theme.json"], recipe);
-});
-
-test("Web code admits and hardens the parsed SVG before DOM publication", () => {
-  const bundle = generateProjectHandoff(capture(), { scope: "diagram", target: "web" });
-  assert.doesNotMatch(bundle.code, /innerHTML/);
-  const admission = bundle.code.indexOf("assertNavigableSvgForDom(result.svg)");
-  const hardening = bundle.code.indexOf("prepareNavigableSvgForDomMount(admission, root, document)");
-  const publication = bundle.code.indexOf("replaceChildren(root)");
-  assert.ok(admission > 0 && hardening > admission && publication > hardening);
-});
-
-test("checkout identity is frozen as source provenance and never claimed as an artifact hash", () => {
-  const buildIdentity = { channel: "local" as const, commit: "1234567890abcdef", ref: "workbench", dirty: true, repository: "Latias94/merman" };
-  const snapshot = captureProjectHandoff({ workspace, renderState: completed(workspace), buildIdentity, presets, versions, capturedAt: "2026-11-05T00:00:00.000Z" });
-  buildIdentity.commit = "changed-later";
-  const bundle = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
-  assert.deepEqual(JSON.parse(bundle.files["handoff.json"]).playground_checkout, {
-    channel: "local", commit: "1234567890abcdef", ref: "workbench", dirty: true, repository: "Latias94/merman",
-  });
-  assert.match(bundle.files["README.txt"], /1234567890abcdef/);
-  assert.match(bundle.files["README.txt"], /Dirty: true/);
-  assert.match(bundle.files["README.txt"], /not a WASM or binary hash/);
-  assert.equal(JSON.parse(generateProjectHandoff(capture(), { scope: "diagram", target: "web" }).files["handoff.json"]).playground_checkout, null);
+test("diagram handoff requires the current render and freezes its capture against later workspace changes", () => {
+  const current = completed(workspace);
+  const snapshot = capture(workspace, current);
+  const original = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
+  for (const edit of [
+    { code: "flowchart LR\nC --> D" }, { mermaidConfig: "{}" }, { themeAppearance: "light" as const },
+    { themeDocumentJson: `${raw}\n` }, { svgPipeline: "parity" as const },
+  ]) {
+    const next = { ...workspace, ...edit };
+    assert.equal(projectHandoffMatchesWorkspace(snapshot, next), false);
+    const stale = capture(next, current);
+    assert.throws(() => generateProjectHandoff(stale, { scope: "diagram", target: "web" }),
+      (error) => error instanceof ProjectHandoffError && error.code === "render-not-current");
+  }
+  assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target: "web" }), original);
 });

@@ -168,7 +168,7 @@ callbacks and single-call encoders can only be checked before and after invocati
 process isolation for hard preemption.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
-`ResourceOptionsBuilder` emits Options JSON schema `3`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
+`ResourceOptionsBuilder` emits Options JSON schema `4`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
@@ -189,7 +189,7 @@ actual output. Capability records expose `graph_presentations`; the plan records
 `requested_graph_presentation` alongside the native layout selection evidence. Follow
 [ASCII options](OPTIONS_JSON.md#ascii-options) for admitted policy combinations. Regenerate the
 package and matching native library together when replacing `binding_api_version_v7()` with
-`binding_api_version_v8()`; Options JSON schema `3` and outer operation metadata schema `1` are
+`binding_api_version_v8()`; Options JSON schema `4` and outer operation metadata schema `1` are
 unchanged.
 
 ## Text Measurement

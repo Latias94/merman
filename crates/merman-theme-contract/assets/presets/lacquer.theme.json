@@ -1,0 +1,72 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "lacquer",
+  "name": "Lacquer",
+  "description": "Deep oxblood and obsidian lacquer surfaces with antique gold rim inlay and editorial serif lettering.",
+  "category": "art",
+  "typography": {
+    "sans": ["Source Sans 3", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Cormorant Garamond", "Georgia", "Times New Roman", "Noto Serif SC", "serif"],
+    "body_family": "serif",
+    "title_family": "serif",
+    "code_family": "mono",
+    "base_size_px": 15,
+    "title_weight": 600,
+    "label_weight": 500
+  },
+  "form": {
+    "density": "airy",
+    "radius": 2,
+    "container_radius": 2,
+    "stroke_width": 1.1,
+    "connector_width": 1.3,
+    "edge_style": "curved",
+    "marker_style": "stealth",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 1,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 0.92
+    }
+  },
+  "appearances": {
+    "dark": {
+      "seed": {
+        "canvas": "#110E12",
+        "surface": "#3D1824",
+        "ink": "#F5ECD9",
+        "accent": "#DFC285",
+        "callout": "#2B2219"
+      },
+      "roles": {
+        "surface.container": "#1C151B",
+        "surface.emphasis": "#4E1F2E",
+        "stroke.border": "#B89A60",
+        "stroke.connector": "#D8BC82",
+        "text.muted": "#C9BA9F",
+        "text.title": "#DFC285",
+        "text.callout": "#F5ECD9"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "radial_wash", "color": "#5C2236", "opacity": 0.18, "cx": 0.15, "cy": 0.12, "radius": 0.85 }
+        ]
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": -2, "dy": 2, "blur": 0, "color": "#B89A60", "opacity": 0.78 }
+        ]
+      },
+      "data": {
+        "ink":  ["#DFC285", "#E88B84", "#8AC6B8", "#C89CE0", "#E3A76E", "#8FAFD8"],
+        "fill": ["#5C2334", "#543F1C", "#1E4B45", "#442857", "#5A331C", "#243957"],
+        "fill_ink": "#F7F0E2"
+      }
+    }
+  }
+}

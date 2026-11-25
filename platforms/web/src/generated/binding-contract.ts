@@ -2,8 +2,8 @@
 // Sources: typed registries in merman-bindings-core. Do not edit directly.
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1 as const;
-export const WEB_TRANSPORT_API_VERSION = 11 as const;
-export const BINDING_OPTIONS_SCHEMA_VERSION = 3 as const;
+export const WEB_TRANSPORT_API_VERSION = 12 as const;
+export const BINDING_OPTIONS_SCHEMA_VERSION = 4 as const;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$" as const;
@@ -172,10 +172,26 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
+    "id": "background",
+    "always_available": false,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
+  },
+  {
     "id": "environment",
     "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true
+  },
+  {
+    "id": "export_matte",
+    "always_available": false,
+    "any_capability_ids": [
+      "jpeg",
+      "pdf",
+      "png"
+    ],
+    "requires_svg_pipeline": false
   },
   {
     "id": "fixed_local_offset_minutes",
@@ -267,7 +283,9 @@ export const BINDING_OPTION_GROUP_SPECS = [
   {
     "id": "theme",
     "always_available": false,
-    "any_capability_ids": [],
+    "any_capability_ids": [
+      "ascii"
+    ],
     "requires_svg_pipeline": true
   },
   {

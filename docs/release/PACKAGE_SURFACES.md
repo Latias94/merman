@@ -40,18 +40,21 @@ for the published maintenance APIs. See the
 [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for required migrations.
 
 Merman `0.10.0` refactors theme recipe and catalog schema `1` to support optional
-paired appearances. It uses Web transport API `10` and CLI contract `7`; Options JSON remains
-schema `3`. These source contracts require matching wrappers and runtimes and do not change the
-immutable alpha.2 artifacts. See the [theme guide](../rendering/custom-diagram-themes.md) for
-the complete-document format and concrete appearance selection.
+paired appearances. It uses Web transport API `10`, CLI contract `7`, and Options JSON schema `3`.
+See the [tagged theme guide](https://github.com/Latias94/merman/blob/v0.10.0/docs/rendering/custom-diagram-themes.md)
+for that release's document format and appearance selection.
+
+The current source uses Theme v2 documents and catalog schema `2`, Web transport API `12`,
+Node transport API `3`, CLI contract `9`, Native C ABI `4`, and Options JSON schema `4`. Build
+wrappers and runtime artifacts from the same revision. [Theme v2 guide](../rendering/custom-diagram-themes.md)
 
 The alpha.2 release requires the independent `roughr-merman 0.12.6` and Tree-sitter Mermaid
 `0.3.3` releases. Both prerequisites were published and independently verified before their
 coupled workspace dependents; the [publication ledger](PUBLISH_ORDER.md#0100-alpha2-publication)
 records their Cargo, grammar npm, and standalone grammar delivery identities. Published alpha.1
-retains Roughr `0.12.5` and grammar `0.3.2`. Typst wrapper `0.6.0` bundles Merman `0.10.0`, and `0.5.0` bundles `0.9.0`;
-wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible
-version requirements and intentional upgrade exceptions.
+retains Roughr `0.12.5` and grammar `0.3.2`. Typst wrappers `0.5.0` and `0.4.0` bundle Merman
+`0.9.0` and `0.8.0`, respectively. See the [dependency policy](../DEPENDENCY_POLICY.md) for
+compatible version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 
@@ -202,7 +205,9 @@ The repository-owned delivery routes are:
    before it is enabled.
 11. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-12. Typst Universe submission for `@preview/merman:0.6.0`, bundling Merman `0.10.0`; wrappers `0.5.0` and `0.4.0` retain Merman `0.9.0` and `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
+12. Typst Universe preparation for `@preview/merman:0.7.0`. Its current source builds with Merman
+    `0.11.0` and Theme v2. Typst wrapper releases are independent of crates.io and workspace tags.
+    [Typst package guide](../../distribution/typst/merman/README.md)
 
 The source-crate route and native-artifact routes must be audited separately. Publishing
 `merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,
@@ -323,7 +328,7 @@ Current source semantics are intentionally explicit:
   defaults must select `all-diagrams` or the required `diagram-*` selectors alongside output leaves
   and layout leaves. Products and release profiles select explicit families
   and capabilities when they need an artifact-specific closure.
-- Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
+- Native C bindings use ABI 4. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.
 - Browser package identity is part of the public API. Migrate old
@@ -363,7 +368,7 @@ differ:
 | --- | --- | --- |
 | Android, Python, Flutter | analysis, ASCII, SVG, math, Dagre, ELK, Cytoscape | Main-line complete SVG products; published maintenance packages retain their own capabilities. |
 | Apple on main | analysis, ASCII, SVG, math, Dagre, ELK, Cytoscape | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
-| Typst | analysis, SVG, Dagre, ELK, Cytoscape | Matches the seven-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
+| Typst | analysis, SVG, Dagre, ELK, Cytoscape | Exposes `theme-catalog`, `export-theme-preset`, and `resolve-theme` through the seven-function Typst ABI. |
 | Node alpha package group | SVG, math, Dagre, ELK, Cytoscape | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` include math; dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
@@ -388,7 +393,7 @@ library-size evidence.
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | Web reports each admitted artifact's size without ceilings; Typst publication checks its own artifact budget. |
-| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
+| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 4, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 | Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, nine packed tarballs, seven native root-package install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix

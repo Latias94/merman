@@ -20,7 +20,7 @@ exclude = [
 [package.metadata.merman]
 artifact-profile-required = true
 fixed-capabilities = ["svg"]
-wasm-inputs = ["assets/zenuml", "assets/themes"]
+wasm-inputs = ["assets/zenuml"]
 
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
@@ -129,7 +129,7 @@ manatee = { workspace = true, optional = true }
 memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
-merman-theme-contract.workspace = true
+merman-theme-contract = { workspace = true, features = ["presets"] }
 pulldown-cmark.workspace = true
 ratex-font = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
@@ -157,6 +157,3 @@ futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["all-diagrams", "presentation", "compat-json", "test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

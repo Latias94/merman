@@ -309,20 +309,6 @@ impl IconRegistry {
             .map(|icon| render::render_resolved_icon(icon, &request))
             .transpose()
     }
-
-    pub(in crate::svg) fn render_icon_with_paint_fact(
-        &self,
-        request: IconRenderRequest<'_>,
-    ) -> crate::Result<Option<RenderedIcon>> {
-        let Some(key) = lookup::resolve_icon_key(request.icon_name, request.fallback_prefix) else {
-            return Ok(None);
-        };
-        self.inner
-            .icons
-            .get(&key)
-            .map(|icon| render::render_resolved_icon_with_paint_fact(icon, &request))
-            .transpose()
-    }
 }
 
 #[cfg(any(
@@ -362,28 +348,6 @@ pub(in crate::svg) fn bpmn_icon_svg(
             crate::number_format::canonical_number(height),
         )
     }))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IconCurrentColorUse {
-    Consumed,
-    NotConsumed,
-    Unverified,
-}
-
-pub(in crate::svg) struct RenderedIcon {
-    svg: String,
-    current_color_use: IconCurrentColorUse,
-}
-
-impl RenderedIcon {
-    pub(in crate::svg) fn into_svg(self) -> String {
-        self.svg
-    }
-
-    pub(in crate::svg) const fn current_color_use(&self) -> IconCurrentColorUse {
-        self.current_color_use
-    }
 }
 
 pub(in crate::svg) struct IconRenderRequest<'a> {

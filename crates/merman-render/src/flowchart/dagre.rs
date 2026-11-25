@@ -1661,10 +1661,6 @@ fn layout_flowchart_with_model(
         || FlowchartConfigView::new(effective_config).layout_settings(),
         |sidecar| sidecar.layout_settings(effective_config),
     );
-    let edge_label_padding = svg_label_sidecar.map_or_else(
-        super::FlowchartEdgeLabelPadding::default,
-        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
-    );
     let look = crate::config::config_diagram_look(effective_config);
     let look_is_neo = look.is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
@@ -1672,10 +1668,6 @@ fn layout_flowchart_with_model(
     } else {
         &text_style
     };
-    let label_typography = svg_label_sidecar.map_or_else(
-        super::FlowchartLabelTypography::default,
-        FlowchartSvgLabelSidecarBuilder::label_typography,
-    );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1816,12 +1808,8 @@ fn layout_flowchart_with_model(
             label_dom.1,
             |units| work_control.charge_adapter(units),
         )?;
-        let node_parent = label_typography.node_source_parent_style(
-            node_label_base_style,
-            &model.class_defs,
-            (&n.classes, &n.styles, true),
-            &structural,
-        );
+        let node_parent =
+            structural.apply_to_parent(std::borrow::Cow::Borrowed(node_label_base_style));
         let (mut node_text_style, rectangle_size) = super::style::flowchart_node_layout_style(
             node_parent.as_ref(),
             &model.class_defs,
@@ -1930,12 +1918,8 @@ fn layout_flowchart_with_model(
             label_dom.1,
             |units| work_control.charge_adapter(units),
         )?;
-        let parent_style = label_typography.node_source_parent_style(
-            cluster_label_base_style,
-            &model.class_defs,
-            (classes, styles, false),
-            &structural,
-        );
+        let parent_style =
+            structural.apply_to_parent(std::borrow::Cow::Borrowed(cluster_label_base_style));
         let mut sg_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             parent_style.as_ref(),
             &model.class_defs,
@@ -2034,12 +2018,7 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
-        let base_style = label_typography.node_source_parent_style(
-            base_style,
-            &model.class_defs,
-            (classes, styles, false),
-            &structural,
-        );
+        let base_style = structural.apply_to_parent(std::borrow::Cow::Borrowed(base_style));
         let mut text_style_for_label = flowchart_effective_text_style_for_classes(
             base_style.as_ref(),
             &model.class_defs,
@@ -2308,12 +2287,6 @@ fn layout_flowchart_with_model(
                     .unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
             let edge_key_identity = crate::flowchart::FlowchartEdgeKey::new(*edge_owner_index);
-            let edge_parent = edge_style_plan.label_parent_style_for(
-                edge_key_identity,
-                edge_label_base_style,
-                &label_typography,
-            )?;
-            let edge_label_base_style = edge_parent.as_ref();
             let edge_text_style = edge_style_plan
                 .edge_label_text_style_for(edge_key_identity, edge_label_base_style)?;
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
@@ -2376,8 +2349,6 @@ fn layout_flowchart_with_model(
                     (metrics.height + 4.0).max(1.0),
                 )
             };
-            let (label_width, label_height) =
-                edge_label_padding.padded_size(label_width, label_height);
 
             let minlen = e.length.max(1);
             let mut el = EdgeLabel {

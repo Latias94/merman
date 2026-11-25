@@ -1,5 +1,6 @@
-use crate::environment::RenderEnvironment;
+use crate::environment::{RenderEnvironment, RenderSession};
 use crate::model::{C4DiagramLayout, LayoutPoint};
+use crate::theme::{NativeTheme, ThemeCompiler};
 use crate::{LayoutAdaptation, LayoutOptions, family};
 use base64::Engine as _;
 use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Point};
@@ -15,14 +16,15 @@ fn render(source: &str, options: &LayoutOptions) -> (C4DiagramLayout, family::Re
         .unwrap()
         .unwrap()
         .into_presentation();
-    render_model(&parsed, options)
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    render_model(&parsed, options, session)
 }
 
 fn render_model(
     parsed: &PresentationDiagram,
     options: &LayoutOptions,
+    session: RenderSession,
 ) -> (C4DiagramLayout, family::RenderedFamilySvg) {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, options, session).unwrap();
     let layout =
         serde_json::from_value(artifact.layout_json().unwrap()["layout"]["C4Diagram"].clone())
@@ -90,7 +92,11 @@ fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool)
             .find(|node| node.attribute("id") == Some(id))
             .unwrap();
         assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
-        end + normal * (number(marker, "refX") - marker_tip_x).abs()
+        let stroke_outset = marker
+            .first_element_child()
+            .filter(|path| path.attribute("stroke-linejoin") == Some("round"))
+            .map_or(0.0, |path| number(path, "stroke-width") / 2.0);
+        end + normal * ((number(marker, "refX") - marker_tip_x).abs() + stroke_outset)
     } else {
         end
     };
@@ -251,7 +257,8 @@ fn c4_shoal_keeps_typed_parallel_occurrences_and_dynamic_numbering() {
     )
     .unwrap()
     .unwrap();
-    let (layout, svg) = render_model(&parsed, &LayoutOptions::headless_svg_defaults());
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let (layout, svg) = render_model(&parsed, &LayoutOptions::headless_svg_defaults(), session);
     assert_eq!(layout.rels[0].label.text, "1: Request");
     assert_eq!(layout.rels[1].label.text, "2: Acknowledgment");
     let doc = Document::parse(svg.svg()).unwrap();
@@ -263,4 +270,66 @@ fn c4_shoal_keeps_typed_parallel_occurrences_and_dynamic_numbering() {
     assert!(first.attribute("marker-end").is_some());
     assert!(second.attribute("marker-start").is_some());
     assert!(second.attribute("marker-end").is_none());
+}
+
+#[test]
+fn c4_shoal_paints_native_theme_on_canonical_routes() {
+    let source = r#"---
+config:
+  layout: shoal
+---
+C4Context
+System(a, "First")
+System(b, "Second")
+BiRel(a, b, "Requests", "TLS")
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version": 2,
+                "extends": "paper",
+                "roles": {"stroke.connector": "#123456"},
+                "form": {"radius": 18, "connector_width": 3, "edge_style": "orthogonal", "marker_style": "open"}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let options = LayoutOptions::headless_svg_defaults().with_shoal_layout_frame(None);
+    let (_, svg) = render_model(parsed.presentation(), &options, session);
+    assert!(svg.shoal_layout_frame().is_some());
+
+    let doc = Document::parse(svg.svg()).unwrap();
+    let node = element(&doc, "node", "a");
+    let outline = node
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("rx").is_some())
+        .unwrap();
+    assert_eq!(number(outline, "rx"), 18.0);
+    let edge = element(&doc, "edge", "c4-rel-0");
+    assert_eq!(edge.attribute("stroke"), Some("#123456"));
+    assert_eq!(number(edge, "stroke-width"), 3.0);
+    let knots = points(edge);
+    check_terminal(edge, knots[0], true, true);
+    check_terminal(edge, *knots.last().unwrap(), false, true);
+    let marker_url = edge.attribute("marker-end").unwrap();
+    let marker_id = marker_url
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    let marker_path = doc
+        .descendants()
+        .find(|node| node.attribute("id") == Some(marker_id))
+        .unwrap()
+        .first_element_child()
+        .unwrap();
+    assert_eq!(marker_path.attribute("d"), Some("M 0 0 L 10 5 L 0 10"));
+    assert_eq!(marker_path.attribute("fill"), Some("none"));
 }

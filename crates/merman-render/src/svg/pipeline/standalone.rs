@@ -1,8 +1,8 @@
 use merman_model::OperationPhase;
 
 use crate::Result;
-use crate::diagram_theme::ThemePortabilityRequirement;
 use crate::environment::RenderSession;
+use crate::theme::ThemePortabilityRequirement;
 
 use super::{
     ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelinePreset,

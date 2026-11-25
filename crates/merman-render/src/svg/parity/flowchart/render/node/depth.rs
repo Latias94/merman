@@ -1,7 +1,58 @@
-//! Compiled body depth reuses the admitted shape terminals, without labels or interactive IDs.
+//! Native node elevation reuses the prepared shape geometry.
 
 use super::*;
 use crate::flowchart::FlowchartShape;
+use kurbo::Shape;
+
+pub(in crate::svg::parity::flowchart) fn native_silhouette(
+    ctx: &FlowchartRenderCtx<'_>,
+    node: &LayoutNode,
+) -> Option<kurbo::BezPath> {
+    let native = ctx.native?;
+    if matches!(native.elevation, merman_theme_contract::v2::Elevation::Flat)
+        || ctx.compatibility.look.is_hand_drawn()
+    {
+        return None;
+    }
+    let info = helpers::resolve_node_render_info(ctx, &node.id)?;
+    let prepared = ctx.prepared_nodes.node(&node.id)?;
+    if prepared.source.has_source_filter() {
+        return None;
+    }
+    let width = node.width;
+    let height = node.height;
+    if width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+    match FlowchartShape::resolve(info.shape).ok()? {
+        FlowchartShape::Process | FlowchartShape::RoundedRectangle => {
+            let rect = ctx.rectangle_geometry(node).shape;
+            let radius = prepared.selection.source_radii[0]
+                .or_else(|| prepared.selection.native_radius.map(f64::from))
+                .unwrap_or(0.0);
+            Some(rect.to_rounded_rect(radius).to_path(0.05))
+        }
+        FlowchartShape::Stadium => Some(
+            kurbo::Rect::from_center_size((0.0, 0.0), (width, height))
+                .to_rounded_rect(height / 2.0)
+                .to_path(0.05),
+        ),
+        FlowchartShape::Circle | FlowchartShape::DoubleCircle => {
+            Some(kurbo::Circle::new((0.0, 0.0), width.min(height) / 2.0).to_path(0.05))
+        }
+        FlowchartShape::Diamond => {
+            let (dx, dy) = (width / 2.0, height / 2.0);
+            let mut path = kurbo::BezPath::new();
+            path.move_to((0.5, -dy));
+            path.line_to((0.5 + dx, 0.0));
+            path.line_to((0.5, dy));
+            path.line_to((0.5 - dx, 0.0));
+            path.close_path();
+            Some(path)
+        }
+        _ => None,
+    }
+}
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node_depth(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -9,111 +60,22 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node_depth(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
-    timing: RenderTiming,
-    details: &mut FlowchartRenderDetails,
 ) -> crate::Result<()> {
-    let Some(materialized) = ctx
-        .node_effects
-        .get()
-        .and_then(|plan| plan.node(node_id))
-        .and_then(|prepared| prepared.shadow())
-    else {
+    let Some(native) = ctx.native else {
         return Ok(());
     };
-    ctx.work_meter.charge(1)?;
-    let prepared = ctx
-        .prepared_nodes
-        .node(node_id)
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("missing prepared Flowchart depth style for `{node_id}`"),
-        })?;
-    let effect = prepared
-        .style
-        .effect()
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("missing prepared Flowchart depth effect for `{node_id}`"),
-        })?;
-    let resolved = helpers::resolve_node_render_info(ctx, node_id).ok_or_else(|| {
-        crate::Error::InvalidModel {
-            message: format!("missing prepared Flowchart depth node `{node_id}`"),
-        }
-    })?;
-    let geometry = prepare_node_geometry(ctx, node_id, &resolved)?;
-    let dom_id = ctx
-        .document_ids()
-        .node(node_id)
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("missing Flowchart depth owner ID for `{node_id}`"),
-        })?;
-    let id = format!("{dom_id}-theme-effect-{}", effect.id());
-    let reference = crate::svg::parity::shadow::write_theme_shadow_depth_application(
-        out,
-        &id,
-        effect,
-        materialized.region(),
-    );
-    let filter_attr = format!(r#" filter="{}""#, escape_attr(&reference));
-    let filter_style = format!(";filter:{} !important", escape_attr(&reference));
-    let selection = &prepared.selection;
-    let style = selection
-        .inline_style
-        .as_deref()
-        .unwrap_or(&prepared.source.node_style);
-    let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
-        resolved.node_classes,
-        prepared.source_text_style.as_ref(),
-        &prepared.source,
-        &prepared.terminal_sources,
-        selection.typed_label_fill.as_deref(),
-    );
-    let common = FlowchartNodeRenderCommon {
-        geometry,
-        label_emission: &label_emission,
-        style,
-        junction_style: selection.junction_style.as_deref().unwrap_or(style),
-        effect_filter_attr: &filter_attr,
-        effect_filter_style: &filter_style,
-        effect_selected: true,
-        suppress_child_filters: true,
-        theme_style: &selection.theme_style,
-        rough_group_style: &prepared.rough_group_style,
-        fill_color: &selection.fill,
-        stroke_color: &selection.stroke,
-        wrapped_in_a: false,
-        timing,
-    };
-    out.push_str(r#"<g class=""#);
-    helpers::write_class_attr(
-        out,
-        helpers::NodeWrapperClasses::new(resolved.class_attr_base, resolved.node_classes),
-    );
-    let _ = write!(
-        out,
-        r#"" data-merman-theme-depth="node" aria-hidden="true" pointer-events="none" data-look="{}" transform="translate({},{})">"#,
-        escape_attr(common.look),
-        fmt(common.layout_node.x + ctx.tx - origin_x),
-        fmt(common.layout_node.y + ctx.ty - origin_y),
-    );
-    let receipt = match FlowchartShape::resolve(common.shape)? {
-        FlowchartShape::Process => shapes::render_process_rectangle(out, ctx, &common, details),
-        FlowchartShape::RoundedRectangle => shapes::render_rounded_rect(out, ctx, &common, details),
-        FlowchartShape::Diamond => shapes::render_diamond(out, &common, details),
-        FlowchartShape::Circle => shapes::render_circle(out, ctx, &common, details)?,
-        FlowchartShape::DoubleCircle => shapes::render_double_circle(out, ctx, &common, details)?,
-        _ => {
-            return Err(crate::Error::InvalidModel {
-                message: format!("unsupported prepared Flowchart depth silhouette for `{node_id}`"),
-            });
-        }
-    };
-    out.push_str("</g>");
-    out.checkpoint()?;
-    if !receipt.typed_effect_verified() {
-        return Err(crate::Error::InvalidModel {
-            message: format!("Flowchart depth did not reach its silhouette for `{node_id}`"),
-        });
+    if let Some(node) = ctx.layout_nodes_by_id.get(node_id)
+        && let Some(silhouette) = native_silhouette(ctx, node)
+        && let Some(id) = ctx.document_ids().node(node_id)
+    {
+        ctx.work_meter.charge(silhouette.elements().len())?;
+        let _ = crate::theme::elevation_svg::write_depth(
+            out,
+            &native.elevation,
+            &id.to_string(),
+            &silhouette,
+            (node.x + ctx.tx - origin_x, node.y + ctx.ty - origin_y),
+        );
     }
-    ctx.effect_evidence
-        .record_depth_application(effect, &id, materialized.region());
-    Ok(())
+    out.checkpoint()
 }

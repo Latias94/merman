@@ -28,7 +28,7 @@ import {
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
 import { useAppStore, type PreviewBacking } from "@/src/store";
-import { currentThemeRender } from "@/src/lib/theme-discovery";
+import { currentWorkspaceRender } from "@/src/runtime/render-coordinator";
 import { ThemeRenderStatus } from "./ThemeRenderStatus";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
@@ -138,7 +138,7 @@ export function Preview({ active = true, className }: PreviewProps) {
   );
   const { hasCode, currentRenderFresh } = useAppStore(useShallow((state) => ({
     hasCode: Boolean(state.code.trim()),
-    currentRenderFresh: currentBatch !== null && currentThemeRender(currentBatch, state, state.resolvedTheme).status !== "waiting",
+    currentRenderFresh: currentBatch !== null && currentWorkspaceRender(currentBatch, state, state.resolvedTheme) !== null,
   })));
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
@@ -186,8 +186,6 @@ export function Preview({ active = true, className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
-  const canvasBatch = visibleBatch;
-  const canvasOperation = canvasBatch?.snapshot.operation;
   const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 
@@ -507,7 +505,7 @@ export function Preview({ active = true, className }: PreviewProps) {
       {canvasMode && <ThemeRenderStatus />}
       {previewMode === "compare" && <p data-testid="compare-input-description"
         className="shrink-0 border-b bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-        {t(!canvasOperation?.unavailableThemePresetId && (canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson)
+        {t(visibleBatch?.merman.status === "success" && visibleBatch.merman.metadata?.theme_outcome?.mode === "merman_native"
           ? "workbench.tools.compareStyled" : "workbench.tools.compareInput")}
       </p>}
 

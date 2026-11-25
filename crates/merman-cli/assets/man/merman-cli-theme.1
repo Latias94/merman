@@ -2,11 +2,11 @@
 .el .ds Aq '
 .TH MERMAN-CLI-THEME 1 2026-08-15 "Merman 0.11.0" "Merman CLI Manual"
 .SH NAME
-merman\-cli\-theme \- Inspect portable theme recipe documents
+merman\-cli\-theme \- List, export, or check native theme documents
 .SH SYNOPSIS
 \fBmerman\-cli theme\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-Inspect portable theme recipe documents
+List, export, or check native theme documents
 .SH OPTIONS
 .TP
 \fB\-h\fR, \fB\-\-help\fR
@@ -16,7 +16,13 @@ Print help
 Print version
 .SH SUBCOMMANDS
 .TP
-merman\-cli\-theme\-inspect(1)
-Validate the complete portable recipe and print schema\-1 inspection JSON
+merman\-cli\-theme\-list(1)
+List native presets and their default\-appearance swatches
+.TP
+merman\-cli\-theme\-export(1)
+Export an editable v2 document for a native preset
+.TP
+merman\-cli\-theme\-check(1)
+Validate a v2 document and show its contrast results
 .SH VERSION
 v0.11.0

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "prism",
+  "name": "Prism",
+  "description": "High-discrimination 10-hue data visualization and architecture theme engineered for color-blind accessibility.",
+  "category": "reading",
+  "default_appearance": "light",
+  "typography": {
+    "sans": ["IBM Plex Sans", "Inter", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["IBM Plex Mono", "JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["IBM Plex Serif", "Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 700,
+    "label_weight": 500
+  },
+  "form": {
+    "density": "compact",
+    "radius": 4,
+    "container_radius": 6,
+    "stroke_width": 1.25,
+    "connector_width": 1.5,
+    "edge_style": "orthogonal",
+    "marker_style": "filled",
+    "edge_label_bg": "auto",
+    "elevation": "flat",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 3,
+      "line_markers": true,
+      "pie_gap_px": 2,
+      "pie_opacity": 0.94
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#FAFAFA",
+        "surface": "#F1F3F5",
+        "ink": "#18181B",
+        "accent": "#0F766E",
+        "callout": "#FFF4DB"
+      },
+      "roles": {
+        "surface.container": "#E7ECEB",
+        "stroke.border": "#94A3A0",
+        "stroke.connector": "#334140",
+        "text.muted": "#4B5563",
+        "text.callout": "#6B4200"
+      },
+      "data": {
+        "ink":  ["#0072B2", "#D55E00", "#008A64", "#CC3377", "#6A4C93", "#9C6B14", "#0284C7", "#5E7300", "#B91C1C", "#374151"],
+        "fill": ["#99CEEE", "#F7B588", "#8ADBC2", "#F1A6C7", "#C6B6E0", "#E8CC88", "#9DD9F3", "#CBD97F", "#F2A5A5", "#CBD5E1"],
+        "fill_ink": "#111827"
+      }
+    },
+    "dark": {
+      "seed": {
+        "canvas": "#101214",
+        "surface": "#1B1E21",
+        "ink": "#F4F4F5",
+        "accent": "#2DD4BF",
+        "callout": "#2F2510"
+      },
+      "roles": {
+        "surface.container": "#16191C",
+        "stroke.border": "#4B525A",
+        "stroke.connector": "#D4D4D8",
+        "text.muted": "#A1A8B0",
+        "text.callout": "#FCD34D"
+      },
+      "data": {
+        "ink":  ["#56B4E9", "#FF8A3D", "#2DD4A8", "#F472B6", "#B794F4", "#F2C94C", "#38BDF8", "#B5D955", "#F87171", "#CBD5E1"],
+        "fill": ["#0F3E5C", "#5E2A0B", "#0C4A3B", "#5E183D", "#39255E", "#523F0D", "#0C4261", "#33450D", "#5C1B1B", "#334155"],
+        "fill_ink": "#F8FAFC"
+      }
+    }
+  }
+}

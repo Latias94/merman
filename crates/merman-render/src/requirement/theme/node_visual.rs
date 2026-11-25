@@ -11,13 +11,10 @@ pub(crate) struct RequirementNodeVisual {
     pub(crate) source_text_color: Option<String>,
     pub(crate) source_owns_fill: bool,
     pub(crate) source_owns_stroke: bool,
-    pub(crate) typed_fill: Option<(usize, String)>,
-    pub(crate) typed_stroke: Option<(usize, String)>,
     pub(crate) fill: String,
     pub(crate) stroke: String,
     pub(crate) stroke_width: f64,
     pub(crate) fill_style_attr: String,
-    pub(crate) stroke_style_declaration: Option<String>,
     pub(crate) stroke_style_attr: String,
 }
 
@@ -166,19 +163,14 @@ impl RequirementPaintThemePlan {
             let source = parse_node_style_overrides(styles, html);
             let source_owns_fill = source.fill.is_some();
             let source_owns_stroke = source.stroke.is_some();
-            let index = self.index_for_node_id(id);
-            let typed_fill = index.and_then(|index| self.typed_fill(index, source_owns_fill));
-            let typed_stroke = index.and_then(|index| self.typed_stroke(index, source_owns_stroke));
             let fill = source
                 .fill
                 .as_deref()
-                .or_else(|| typed_fill.map(|(_, css)| css))
                 .unwrap_or(&self.css.default_fill)
                 .to_owned();
             let stroke = source
                 .stroke
                 .as_deref()
-                .or_else(|| typed_stroke.map(|(_, css)| css))
                 .unwrap_or(&self.css.default_stroke)
                 .to_owned();
             let path_style = if !hand_drawn && self.css.source_path_style_active {
@@ -187,7 +179,7 @@ impl RequirementPaintThemePlan {
                 ""
             };
             let mut fill_style = path_style.to_owned();
-            if source_owns_fill || typed_fill.is_some() {
+            if source_owns_fill {
                 if !fill_style.is_empty() {
                     fill_style.push(';');
                 }
@@ -199,20 +191,18 @@ impl RequirementPaintThemePlan {
                 format!(r#" style="{}""#, crate::svg::escape_xml(&fill_style))
             };
             let mut stroke_style = path_style.to_owned();
-            if source_owns_stroke || typed_stroke.is_some() {
+            if source_owns_stroke {
                 if !stroke_style.is_empty() {
                     stroke_style.push(';');
                 }
                 write!(stroke_style, "stroke:{stroke} !important").unwrap();
             }
-            let stroke_style_declaration = (!stroke_style.is_empty()).then_some(stroke_style);
-            let stroke_style_attr = stroke_style_declaration
-                .as_deref()
-                .map(|style| format!(r#" style="{}""#, crate::svg::escape_xml(style)))
-                .unwrap_or_default();
+            let stroke_style_attr = if stroke_style.is_empty() {
+                String::new()
+            } else {
+                format!(r#" style="{}""#, crate::svg::escape_xml(&stroke_style))
+            };
             let visual = RequirementNodeVisual {
-                typed_fill: typed_fill.map(|(rule, css)| (rule, css.to_owned())),
-                typed_stroke: typed_stroke.map(|(rule, css)| (rule, css.to_owned())),
                 label_styles: source.label_styles,
                 label_div_style_prefix: source.label_div_style_prefix,
                 svg_text_styles: source.svg_text_styles,
@@ -222,9 +212,13 @@ impl RequirementPaintThemePlan {
                 source_owns_stroke,
                 fill,
                 stroke,
-                stroke_width: source.stroke_width.unwrap_or(1.3),
+                stroke_width: source.stroke_width.unwrap_or_else(|| {
+                    self.css
+                        .native
+                        .as_ref()
+                        .map_or(1.3, |native| native.border_width)
+                }),
                 fill_style_attr,
-                stroke_style_declaration,
                 stroke_style_attr,
             };
             let bytes = [
@@ -240,14 +234,7 @@ impl RequirementPaintThemePlan {
             .into_iter()
             .fold(0usize, |bytes, value| bytes.saturating_add(value.len()));
             work.charge(
-                bytes
-                    .saturating_add(
-                        visual
-                            .stroke_style_declaration
-                            .as_deref()
-                            .map_or(0, str::len),
-                    )
-                    .saturating_add(visual.source_text_color.as_deref().map_or(0, str::len)),
+                bytes.saturating_add(visual.source_text_color.as_deref().map_or(0, str::len)),
             )?;
             self.node_visuals.insert(id.to_owned(), visual);
         }
@@ -274,9 +261,7 @@ mod tests {
         for html in [false, true] {
             let config =
                 crate::test_support::presentation_config(serde_json::json!({"htmlLabels": html}));
-            let plan =
-                RequirementPaintThemePlan::resolve_with_title(None, &config, &model, None, &work)
-                    .unwrap();
+            let plan = RequirementPaintThemePlan::resolve(None, &config, &model, &work).unwrap();
             let visual = plan.node_visual("same").unwrap();
             assert_eq!(visual.fill, "#778899");
             assert_eq!(visual.stroke, "#445566");
@@ -285,66 +270,11 @@ mod tests {
                 "fill:#778899 !important;stroke:#445566 !important"
             );
             assert!(visual.source_owns_fill && visual.source_owns_stroke);
-            assert!(visual.typed_fill.is_none() && visual.typed_stroke.is_none());
             assert_eq!(visual.label_styles, "color:#abcdef !important");
             assert_eq!(
                 visual.svg_text_styles,
                 if html { "" } else { "fill:#abcdef !important" }
             );
         }
-    }
-
-    #[test]
-    fn same_value_source_paint_keeps_independent_typed_property() {
-        use crate::diagram_theme::{
-            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-            ThemeStylePatch,
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Requirement,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap())
-                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
-                    )),
-                ),
-            )
-            .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::REQUIREMENT);
-        let model: RequirementDiagramModel = serde_json::from_value(serde_json::json!({
-            "requirements": [{"name": "a", "type": "Requirement", "cssStyles": ["fill:#123456"]}]
-        }))
-        .unwrap();
-        let config = PresentationConfig::empty_object();
-        let work = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let plan = RequirementPaintThemePlan::resolve_with_title(
-            Some(&resolved),
-            &config,
-            &model,
-            None,
-            &work,
-        )
-        .unwrap();
-        let visual = plan.node_visual("a").unwrap();
-        assert!(visual.source_owns_fill);
-        assert!(visual.typed_fill.is_none());
-        assert!(!visual.source_owns_stroke);
-        assert_eq!(
-            visual
-                .typed_stroke
-                .as_ref()
-                .map(|(_, value)| value.as_str()),
-            Some("#654321")
-        );
-        assert_eq!(visual.fill, "#123456");
-        assert_eq!(visual.stroke, "#654321");
-        assert!(
-            plan.terminal_receipt.get().is_none(),
-            "preparation must not prove successful emission"
-        );
     }
 }

@@ -137,6 +137,37 @@ test("the Playground selects Shoal from frontmatter or the workspace configurati
   errors.assertNone();
 });
 
+test("the Shoal fit-width dialog validates and applies a width in Chinese", async ({ page }) => {
+  const provenance = await fullWebPackageProvenance();
+  test.skip(!provenance.runtime_capability_ids.includes("layout-shoal"), "Requires the Shoal WASM build.");
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "---\nconfig:\n  layout: shoal\n---\nflowchart LR\n  A[Shoal] --> B");
+  await expect.poll(() => previewSvgText(page)).toContain("Shoal");
+
+  await page.getByRole("button", { name: "App settings", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: /中文/u }).click();
+  const tools = page.getByRole("button", { name: "工具", exact: true });
+  await tools.click();
+  await page.getByRole("menuitem", { name: "适配预览宽度", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "适配预览宽度", exact: true });
+  await dialog.getByRole("checkbox", { name: /启用宽度适配/u }).check();
+  const width = dialog.getByRole("spinbutton", { name: "目标宽度（CSS px）", exact: true });
+  const apply = dialog.getByRole("button", { name: "应用", exact: true });
+  await width.fill("0");
+  await expect(dialog.getByText("请输入大于 0 的宽度。", { exact: true })).toBeVisible();
+  await expect(apply).toBeDisabled();
+  await width.fill("480");
+  await apply.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(tools).toBeFocused();
+
+  await tools.click();
+  await expect(page.getByRole("menuitem", { name: /适配预览宽度.*480 px/u })).toBeVisible();
+  errors.assertNone();
+});
+
 test("canonical detection clears invalid and stale diagram types", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
@@ -286,19 +317,16 @@ test("automatic and explicit default themes remain distinct in the presentation 
 
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   const panel = page.locator("#theme-panel");
-  await panel.getByTestId("theme-advanced").locator("summary").first().click();
-  const compatibility = panel.getByLabel("Mermaid base theme", { exact: true });
-  const status = page.locator("footer");
-  await expect(compatibility).toHaveValue("auto");
-  await compatibility.selectOption("default");
-  await waitForPreviewSvg(page);
-  await expect(compatibility).toHaveValue("default");
-  await expect(status).toContainText("Theme: Default");
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
-
-  await compatibility.selectOption("auto");
-  await expect(compatibility).toHaveValue("auto");
-  await expect(status).toContainText("Theme: Source / default");
+  await panel.getByRole("tab", { name: "Themes", exact: true }).click();
+  const classic = panel.getByTestId("mermaid-classic-themes");
+  await classic.locator("summary").click();
+  const automatic = classic.locator('[data-mermaid-theme="auto"]');
+  const defaultTheme = classic.locator('[data-mermaid-theme="default"]');
+  await expect(automatic).toHaveAttribute("aria-pressed", "true");
+  await defaultTheme.click();
+  await expect(page.locator("footer")).toContainText("Theme: Default");
+  await automatic.click();
+  await expect(page.locator("footer")).toContainText("Theme: Source / default");
   errors.assertNone();
 });
 

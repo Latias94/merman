@@ -77,21 +77,19 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "analysis")]
             $crate::OperationKey::DocumentAnalysisJson,
             #[cfg(feature = "svg")]
-            $crate::OperationKey::DescribeThemeSupportJson,
-            #[cfg(feature = "svg")]
-            $crate::OperationKey::ExportThemePresetJson,
+            $crate::OperationKey::ExportThemePreset,
             #[cfg(feature = "svg")]
             $crate::OperationKey::EdgeGeometryJson,
             #[cfg(feature = "jpeg")]
             $crate::OperationKey::Jpeg,
             #[cfg(feature = "svg")]
             $crate::OperationKey::LayoutJson,
-            #[cfg(feature = "svg")]
-            $crate::OperationKey::MaterializeThemeJson,
             #[cfg(feature = "pdf")]
             $crate::OperationKey::Pdf,
             #[cfg(feature = "png")]
             $crate::OperationKey::Png,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::ResolveTheme,
             $crate::OperationKey::SemanticJson,
             #[cfg(feature = "svg")]
             $crate::OperationKey::Svg,

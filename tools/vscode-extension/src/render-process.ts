@@ -21,6 +21,12 @@ export interface RenderProcessResult {
   invocation: BinaryInvocation;
 }
 
+export class RenderProcessExitError extends Error {
+  constructor(message: string, readonly stdout: Buffer) {
+    super(message);
+  }
+}
+
 const DEFAULT_MAX_STDOUT_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_STDERR_BYTES = 1024 * 1024;
 
@@ -204,7 +210,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       }
       if (code !== 0) {
         return rejectOnce(
-          new Error(stderr.trim() || `merman-cli exited with status ${code ?? "unknown"}`),
+          new RenderProcessExitError(stderr.trim() || `merman-cli exited with status ${code ?? "unknown"}`, stdout),
         );
       }
       if (stdinError) {

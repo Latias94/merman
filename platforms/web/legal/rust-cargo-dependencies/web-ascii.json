@@ -73,13 +73,13 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "c4ca1fdb09d3f1556fdc925fdaf11efa7d1107892c499906e346b09b1134d76e",
+    "cargo_lock_sha256": "43628cbf831681d38be6f76684af5bc382490d27180f36361989205685e13173",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "3516aad35b96690b3939031993682cb520d5d5083e1eef3ca45bfd991eeedca8"
   },
   "dependency_closure": {
-    "package_count": 97,
-    "packages_sha256": "087c5872c2a42e0004c8e0c10d97767c41e442f9526b63228a96b3b65232486b"
+    "package_count": 98,
+    "packages_sha256": "ba55f872d91420d9b35aa41cc79e5fda23e76a852faef74fd839d9f42eb2ba03"
   },
   "licenses": [
     {
@@ -232,6 +232,16 @@
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/serde-rs/json"
+        },
+        {
+          "name": "serde_path_to_error",
+          "version": "0.1.20",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "David Tolnay <dtolnay@gmail.com>"
+          ],
+          "repository": "https://github.com/dtolnay/path-to-error"
         },
         {
           "name": "syn",

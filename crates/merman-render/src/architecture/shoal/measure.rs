@@ -1,7 +1,6 @@
 use super::super::labels::{
-    ArchitectureTextAnchor, ArchitectureTextBaseline, SvgLine,
-    architecture_svg_text_terminal_bounds, svg_lines_have_visible_text, svg_service_title_bounds,
-    wrap_svg_words_to_lines,
+    SvgLine, architecture_svg_text_terminal_bounds, svg_lines_have_visible_text,
+    svg_service_title_bounds, wrap_svg_words_to_lines,
 };
 use crate::Result;
 use crate::graph_layout::ir::{Point, Size, SolvedEdge};
@@ -38,17 +37,8 @@ impl ArchitectureShoalText {
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Option<Self>> {
         Self::measure(source, wrap, measurer, style, work, |lines| {
-            svg_lines_have_visible_text(lines, style.font_size).then(|| {
-                architecture_svg_text_terminal_bounds(
-                    lines,
-                    0.0,
-                    0.0,
-                    ArchitectureTextAnchor::Start,
-                    ArchitectureTextBaseline::Start,
-                    measurer,
-                    style,
-                )
-            })
+            svg_lines_have_visible_text(lines, style.font_size)
+                .then(|| architecture_svg_text_terminal_bounds(lines, 0.0, 0.0, measurer, style))
         })
     }
 

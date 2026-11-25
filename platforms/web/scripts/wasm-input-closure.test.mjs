@@ -53,6 +53,7 @@ const expectedCrateDirectories = {
     "merman-core",
     "merman-markup",
     "merman-model",
+    "merman-theme-contract",
     "merman-wasm",
   ],
   editor: [

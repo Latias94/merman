@@ -61,6 +61,40 @@ pub(super) struct SwimlaneTerminalGeometry {
     pub title_label: LayoutLabel,
 }
 
+impl SwimlaneTerminalGeometry {
+    pub(super) fn frame_parts(
+        &self,
+        center: (f64, f64),
+        direction: crate::model::SwimlaneDirection,
+        canonical: bool,
+    ) -> (kurbo::Rect, kurbo::Rect) {
+        use crate::model::SwimlaneDirection::{Bt, Lr, Rl};
+
+        let frame = kurbo::Rect::from_center_size(center, (self.width, self.height));
+        let mut body = frame;
+        let mut title = frame;
+        match direction {
+            Lr => {
+                title.x1 = frame.x0 + self.title_band_width;
+                body.x0 = title.x1;
+            }
+            Rl if canonical => {
+                title.x0 = frame.x1 - self.title_band_width;
+                body.x1 = title.x0;
+            }
+            Bt if canonical => {
+                title.y0 = frame.y1 - self.title_band_height;
+                body.y1 = title.y0;
+            }
+            _ => {
+                title.y1 = frame.y0 + self.title_band_height;
+                body.y0 = title.y1;
+            }
+        }
+        (body, title)
+    }
+}
+
 pub(super) fn swimlane_terminal_geometry(
     lane: &crate::model::SwimlaneLaneLayout,
     direction: crate::model::SwimlaneDirection,
@@ -172,11 +206,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
-            theme_evidence: artifact.theme_evidence(),
-            effect_evidence: artifact.effect_evidence(),
-            expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
-            edge_theme: artifact.edge_theme(),
             prepared_theme: artifact.prepared_theme(),
             prepared_nodes: artifact.prepared_nodes()?,
             render_config: artifact.render_config(),
@@ -204,11 +234,7 @@ pub(in crate::svg::parity) fn swimlane_edge_geometry(
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
-            theme_evidence: artifact.theme_evidence(),
-            effect_evidence: artifact.effect_evidence(),
-            expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
-            edge_theme: artifact.edge_theme(),
             prepared_theme: artifact.prepared_theme(),
             prepared_nodes: artifact.prepared_nodes()?,
             render_config: artifact.render_config(),
@@ -444,14 +470,32 @@ pub(super) fn write_swimlane_css<DiagramId>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: DiagramId,
     cluster_border: &str,
+    native: Option<&crate::flowchart::native_theme::FlowchartNativeStyle>,
 ) where
     DiagramId: crate::svg::parity::SvgDiagramIdValue,
 {
     let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
     let _ = write!(
         out,
-        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"#,
+        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
     );
+    if let Some(native) = native {
+        let _ = write!(
+            out,
+            "#{id} .swimlane.cluster rect.swimlane-body{{fill:{};stroke:{}}}#{id} .swimlane.cluster rect.swimlane-title{{fill:{};stroke:{}}}#{id} .swimlane-label text{{fill:{}}}#{id} .swimlane-label span{{color:{}}}",
+            native.container,
+            native.guide,
+            native.emphasis,
+            native.guide,
+            native.on_emphasis,
+            native.on_emphasis,
+        );
+    } else {
+        let _ = write!(
+            out,
+            "#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -462,7 +506,7 @@ mod tests {
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
         let mut css = String::new();
-        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33");
+        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33", None);
 
         assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
         assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));

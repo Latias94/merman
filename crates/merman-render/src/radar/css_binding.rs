@@ -1,80 +1,24 @@
-use merman_model::presentation::PresentationConfig;
-
-#[cfg(test)]
-use crate::config::config_css_number_or_string;
 use crate::config::{config_f64, config_string, value_at};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RadarTextVisibility {
-    Hidden,
-    Visible,
-    Unknown,
-}
-
-impl RadarTextVisibility {
-    fn measured(size: f64) -> Self {
-        if size == 0.0 {
-            Self::Hidden
-        } else if size > 0.0 && (size as f32).is_normal() {
-            Self::Visible
-        } else {
-            Self::Unknown
-        }
-    }
-
-    pub(super) fn root(css: &str) -> Self {
-        if crate::mermaid_style::css_font_size_is_zero(css) {
-            return Self::Hidden;
-        }
-        let Some(size) = crate::mermaid_style::parse_style_declaration(&format!("font-size:{css}"))
-            .and_then(|declaration| declaration.analysis().context_free_font_size_px())
-        else {
-            return Self::Unknown;
-        };
-        let mut parser = cssparser::Parser::new(crate::mermaid_style::strip_css_important(css));
-        if matches!(parser.next(), Ok(cssparser::Token::Dimension { value, .. })
-            if *value <= 0.0 || !value.is_normal())
-        {
-            return Self::Unknown;
-        }
-        Self::measured(size)
-    }
-}
-
-/// Final role CSS and its inherited visibility share the prepared root context.
 #[derive(Debug)]
-pub(crate) struct RadarRoleFontSize {
-    css: String,
-    inherits_root: bool,
-    visibility: RadarTextVisibility,
-}
+pub(crate) struct RadarRoleFontSize(String);
 
 impl RadarRoleFontSize {
-    pub(super) fn resolve(css_px: f64, root_size_css: &str) -> Self {
-        let inherits_root = css_px < 0.0;
+    pub(super) fn resolve(css_px: f64) -> Self {
+        let negative = css_px < 0.0;
         let css_px = crate::number_format::canonicalize_number(css_px);
-        Self::with_css(
-            if inherits_root && css_px == 0.0 {
-                "inherit".to_owned()
-            } else {
-                format!("{}px", crate::number_format::canonical_number(css_px))
-            },
-            inherits_root,
-            RadarTextVisibility::measured(css_px),
-            root_size_css,
-        )
+        Self(if negative && css_px == 0.0 {
+            "inherit".to_owned()
+        } else {
+            format!("{}px", crate::number_format::canonical_number(css_px))
+        })
     }
 
-    fn configured(
-        config: &serde_json::Value,
-        key: &str,
-        default: f64,
-        root_size_css: &str,
-    ) -> Self {
+    fn configured(config: &serde_json::Value, key: &str, default: f64) -> Self {
         let configured = value_at(config, &["radar", key])
             .or_else(|| value_at(config, &["themeVariables", "radar", key]));
         let Some(value) = configured else {
-            return Self::resolve(default, root_size_css);
+            return Self::resolve(default);
         };
         // Template interpolation preserves string whitespace and joins singleton arrays.
         // Multiple items or objects cannot form this one numeric dimension; no JS evaluator
@@ -82,12 +26,7 @@ impl RadarRoleFontSize {
         let mut scalar = value;
         while let serde_json::Value::Array(items) = scalar {
             let [item] = items.as_slice() else {
-                return Self::with_css(
-                    "inherit".to_owned(),
-                    true,
-                    RadarTextVisibility::Hidden,
-                    root_size_css,
-                );
+                return Self("inherit".to_owned());
             };
             scalar = item;
         }
@@ -95,16 +34,11 @@ impl RadarRoleFontSize {
             serde_json::Value::String(value) => format!("{value}px"),
             serde_json::Value::Number(value) => format!("{value}px"),
             _ => {
-                return Self::with_css(
-                    "inherit".to_owned(),
-                    true,
-                    RadarTextVisibility::Hidden,
-                    root_size_css,
-                );
+                return Self("inherit".to_owned());
             }
         };
         if let Some(size) = crate::config::json_f64(scalar).filter(|size| *size < 0.0) {
-            return Self::resolve(size, root_size_css);
+            return Self::resolve(size);
         }
         // These roles append one px unit; general declaration ownership is deliberately
         // conservative about malformed multi-token values such as `24 px`.
@@ -115,17 +49,12 @@ impl RadarRoleFontSize {
             px_dimension && parser.is_exhausted()
         };
         if !px_dimension {
-            return Self::with_css(
-                "inherit".to_owned(),
-                true,
-                RadarTextVisibility::Hidden,
-                root_size_css,
-            );
+            return Self("inherit".to_owned());
         }
         if let Some(size) =
             crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(&interpolated)
         {
-            return Self::resolve(size, root_size_css);
+            return Self::resolve(size);
         }
         // A safe but unrepresentable dimension must retain its actual CSS. Substituting
         // inheritance could change browser-zero text into the positive root size.
@@ -134,45 +63,15 @@ impl RadarRoleFontSize {
         } else {
             "inherit".to_owned()
         };
-        Self::with_css(css, false, RadarTextVisibility::Unknown, root_size_css)
-    }
-
-    fn with_css(
-        css: String,
-        inherits_root: bool,
-        own_visibility: RadarTextVisibility,
-        root_size_css: &str,
-    ) -> Self {
-        let visibility = if inherits_root {
-            RadarTextVisibility::root(root_size_css)
-        } else {
-            own_visibility
-        };
-        Self {
-            css,
-            inherits_root,
-            visibility,
-        }
+        Self(css)
     }
 
     pub(crate) fn css(&self) -> &str {
-        &self.css
-    }
-
-    pub(super) fn inherits_root(&self) -> bool {
-        self.inherits_root
-    }
-
-    pub(super) fn has_visible_ink(&self) -> bool {
-        self.visibility == RadarTextVisibility::Visible
-    }
-
-    pub(super) fn is_unknown(&self) -> bool {
-        self.visibility == RadarTextVisibility::Unknown
+        &self.0
     }
 }
 
-/// Mermaid CSS inputs frozen before Radar's typed paint winners are lowered.
+/// Radar CSS inputs resolved before SVG rendering.
 /// Raw browser colors remain strings; numeric geometry follows the existing coercion.
 #[derive(Debug)]
 pub(crate) struct RadarCssBinding {
@@ -182,6 +81,7 @@ pub(crate) struct RadarCssBinding {
     pub(crate) error_text_color: String,
     pub(crate) title_color: String,
     pub(crate) axis_color: String,
+    pub(crate) native_axis_label_color: Option<String>,
     pub(crate) axis_stroke_width: f64,
     pub(crate) axis_label_font_size: RadarRoleFontSize,
     pub(crate) graticule_color: String,
@@ -200,11 +100,6 @@ impl RadarCssBinding {
         value_at(config, &["themeVariables", key]).and_then(serde_json::Value::as_str)
     }
 
-    pub(super) fn config_owns_color(config: &PresentationConfig, key: &str) -> bool {
-        Self::configured_color(config.as_value(), key).is_some()
-            && config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
-    }
-
     fn configured_axis_color(config: &serde_json::Value) -> Option<(&str, &'static str)> {
         value_at(config, &["radar", "axisColor"])
             .and_then(serde_json::Value::as_str)
@@ -216,25 +111,16 @@ impl RadarCssBinding {
             })
     }
 
-    pub(super) fn config_owns_axis_color(config: &PresentationConfig) -> bool {
-        Self::configured_axis_color(config.as_value())
-            .is_some_and(|(_, path)| config.config_paint_overrides_typed_default(path))
-    }
-
     #[cfg(test)]
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
-        let root_size_css = Self::font_size_css_or_default(config_css_number_or_string(
-            config,
-            &["themeVariables", "fontSize"],
-        ));
-        Self::resolve_with_font_size(config, &root_size_css)
+        Self::resolve_styles(config)
     }
 
     pub(super) fn font_size_css_or_default(configured: Option<String>) -> String {
         configured.unwrap_or_else(|| "16px".to_owned())
     }
 
-    pub(super) fn resolve_with_font_size(config: &serde_json::Value, root_size_css: &str) -> Self {
+    pub(super) fn resolve_styles(config: &serde_json::Value) -> Self {
         let color = |key: &str, fallback: &str| {
             Self::configured_color(config, key)
                 .unwrap_or(fallback)
@@ -259,22 +145,13 @@ impl RadarCssBinding {
             axis_color: Self::configured_axis_color(config)
                 .map_or("#333333", |(color, _)| color)
                 .to_owned(),
+            native_axis_label_color: None,
             axis_stroke_width: scoped_number("axisStrokeWidth", 2.0),
-            axis_label_font_size: RadarRoleFontSize::configured(
-                config,
-                "axisLabelFontSize",
-                12.0,
-                root_size_css,
-            ),
+            axis_label_font_size: RadarRoleFontSize::configured(config, "axisLabelFontSize", 12.0),
             graticule_color: scoped_string("graticuleColor", "#DEDEDE"),
             graticule_opacity: scoped_number("graticuleOpacity", 0.3),
             graticule_stroke_width: scoped_number("graticuleStrokeWidth", 1.0),
-            legend_font_size: RadarRoleFontSize::configured(
-                config,
-                "legendFontSize",
-                12.0,
-                root_size_css,
-            ),
+            legend_font_size: RadarRoleFontSize::configured(config, "legendFontSize", 12.0),
             curve_opacity: scoped_number("curveOpacity", 0.5),
             curve_stroke_width: scoped_number("curveStrokeWidth", 2.0),
         }

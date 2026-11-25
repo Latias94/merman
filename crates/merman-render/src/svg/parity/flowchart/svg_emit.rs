@@ -29,11 +29,7 @@ pub(super) fn flowchart_request<'a>(
         diagram_type: metadata.diagram_type.as_str(),
         diagram_title: metadata.title.as_deref(),
         svg_label_sidecar: artifact.svg_label_sidecar(),
-        theme_evidence: artifact.theme_evidence(),
-        effect_evidence: artifact.effect_evidence(),
-        expected_effect_applications: artifact.expected_effect_applications(),
         edge_style_plan: artifact.edge_style_plan(),
-        edge_theme: artifact.edge_theme(),
         prepared_theme: artifact.prepared_theme(),
         prepared_nodes: artifact.prepared_nodes()?,
         render_config: artifact.render_config(),
@@ -61,11 +57,8 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
-    pub(super) effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
-    pub(super) expected_effect_applications: &'a std::cell::Cell<usize>,
-    pub(super) theme_evidence: &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
+
     pub(super) edge_style_plan: &'a FlowchartEdgeStylePlan,
-    pub(super) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
 }
 
 pub(super) fn render_flowchart_svg_model(
@@ -83,12 +76,8 @@ pub(super) fn render_flowchart_svg_model(
         effective_config,
         diagram_type,
         diagram_title,
-        svg_label_sidecar,
-        theme_evidence,
-        effect_evidence: _,
-        expected_effect_applications,
+        svg_label_sidecar: _,
         edge_style_plan: _,
-        edge_theme: _,
     } = request;
     super::paint::with_flowchart_paint_context(
         request,
@@ -104,20 +93,7 @@ pub(super) fn render_flowchart_svg_model(
             let diagram_padding = render_config.diagram_padding;
             let use_max_width = render_config.use_max_width;
             let title_top_margin = render_config.title_top_margin;
-            let text_surface_paint = &prepared_theme.text_surface;
-            text_surface_paint.begin_terminal_emission(ctx.work_meter)?;
             let marker_plan = FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan)?;
-            let theme_resource_policy = options.theme_resource_policy();
-            let node_effects = node_effect::FlowchartNodeEffects::prepare(
-                ctx,
-                hierarchy_plan,
-                &theme_resource_policy,
-            )?;
-            expected_effect_applications.set(node_effects.expected_applications());
-            ctx.node_effects
-                .set(node_effects)
-                .expect("node effects are prepared once");
-
             let mut edge_path_cache: FxHashMap<
                 crate::flowchart::FlowchartEdgeKey,
                 FlowchartEdgePathCacheEntry,
@@ -156,26 +132,12 @@ pub(super) fn render_flowchart_svg_model(
                     font_family,
                     title_top_margin,
                     timing: render_timing,
-                    theme_resource_policy: &theme_resource_policy,
-                    marker_plan: &marker_plan,
                     viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
                     detail: &mut detail,
                     edge_path_cache: &mut edge_path_cache,
                 },
                 hierarchy_plan,
             )?;
-
-            expected_effect_applications.set(
-                expected_effect_applications.get()
-                    + ctx
-                        .label_effects
-                        .get()
-                        .map_or(0, |effects| effects.expected_applications())
-                    + ctx
-                        .edge_effects
-                        .get()
-                        .map_or(0, |effects| effects.expected_applications()),
-            );
 
             if !ctx.hand_drawn_seed.seed().may_use_math_random() {
                 super::paint::prepare_rough_edge_paths(
@@ -199,13 +161,7 @@ pub(super) fn render_flowchart_svg_model(
                 &mut bbox_max_y,
             );
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
-                family_id: if swimlane_layout.is_some() {
-                    crate::DiagramFamilyId::SWIMLANE
-                } else if diagram_type == "agentflow" {
-                    crate::DiagramFamilyId::AGENTFLOW
-                } else {
-                    crate::DiagramFamilyId::FLOWCHART
-                },
+                root_viewport: options.root_viewport(options.family_id(), diagram_id),
                 diagram_id,
                 diagram_type,
                 model,
@@ -223,13 +179,6 @@ pub(super) fn render_flowchart_svg_model(
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
             let mut out = BoundedSvgOutput::new(options.work_meter());
-
-            if let Some(base_typography) = svg_label_sidecar
-                .base_typography()
-                .filter(|plan| plan.requires_terminal_evidence())
-            {
-                base_typography.begin_terminal_emission();
-            }
 
             let root_document = document.push_root_open(&mut out)?;
             document.push_accessibility_metadata(&mut out);
@@ -249,11 +198,11 @@ pub(super) fn render_flowchart_svg_model(
                     document_ids.drop_shadow_small(),
                     document_ids.root_gradient(),
                     compatibility,
+                    ctx.native.is_some(),
                     &ctx.palette,
                     font_family,
                     font_size,
                     &model.class_defs,
-                    Some(text_surface_paint),
                     defer_palette,
                 )?;
                 let palette_offset = if diagram_type == "agentflow" {
@@ -266,13 +215,12 @@ pub(super) fn render_flowchart_svg_model(
                 } else {
                     flowchart_palette_offset
                 };
-                text_surface_paint.generic_text.record_stylesheet_emission();
-                text_surface_paint.background.record_stylesheet();
                 if swimlane_layout.is_some() {
                     super::swimlane::write_swimlane_css(
                         &mut css_out,
                         diagram_id,
-                        &prepared_theme.compatibility.cluster_border,
+                        &compatibility.cluster_border,
+                        ctx.native,
                     );
                 }
                 palette_offset
@@ -280,13 +228,6 @@ pub(super) fn render_flowchart_svg_model(
             out.push_str("</style>");
             out.checkpoint()?;
             let body_start = out.len();
-            if let Some(base_typography) = svg_label_sidecar
-                .base_typography()
-                .filter(|plan| plan.requires_terminal_evidence())
-            {
-                base_typography.record_stylesheet_emission(font_family, font_size);
-            }
-
             let defs = prepare_flowchart_defs(
                 document_ids.marker_scope(),
                 diagram_type,
@@ -351,12 +292,6 @@ pub(super) fn render_flowchart_svg_model(
                     title_css_class(diagram_type),
                     escape_xml(title)
                 );
-                text_surface_paint.record_document_title(title, ctx.work_meter)?;
-                if !title.trim().is_empty() {
-                    ctx.record_base_typography_label_emission(
-                        crate::flowchart::FlowchartBaseTypographyLabelEmission::diagram_title(),
-                    );
-                }
             }
             ctx.steps.write_style(&mut out, diagram_id);
             out.push_str("</svg>\n");
@@ -435,13 +370,7 @@ pub(super) fn render_flowchart_svg_model(
                     detail.nested_roots,
                 );
             }
-            let rooted = root_document.complete(out.finish()?)?;
-            if let Some(evidence) =
-                marker_plan.finish_theme_evidence(ctx.resolved_theme, ctx.work_meter)?
-            {
-                theme_evidence.record_marker_evidence(evidence);
-            }
-            Ok(rooted)
+            root_document.complete(out.finish()?)
         },
     )
 }
@@ -719,21 +648,16 @@ mod integration_tests {
         .expect("SVG execution");
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
             &metadata.effective_config,
-            super::render_config::flowchart_node_label_fill_config_override(
-                &metadata.effective_config,
-            ),
-            execution.work_meter(),
-        )
-        .expect("prepared theme");
+            None,
+            None,
+        );
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
             layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
-            sidecar.edge_label_padding(),
         );
         let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
             &model,
@@ -744,8 +668,6 @@ mod integration_tests {
         .expect("edge style plan")
         .with_resolved_stroke_widths(
             &model,
-            &Default::default(),
-            &metadata.effective_config,
             &prepared_theme.compatibility,
             execution.work_meter(),
         )
@@ -760,7 +682,6 @@ mod integration_tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &metadata.effective_config,
             &prepared_theme,
             &render_config,
@@ -781,10 +702,6 @@ mod integration_tests {
                 effective_config: &metadata.effective_config,
                 diagram_type: metadata.diagram_type.as_str(),
                 diagram_title: metadata.title.as_deref(),
-                theme_evidence: &Default::default(),
-                effect_evidence: &Default::default(),
-                expected_effect_applications: &Default::default(),
-                edge_theme: &Default::default(),
                 edge_style_plan: &edge_style_plan,
                 svg_label_sidecar: &sidecar,
             },
@@ -894,21 +811,16 @@ mod integration_tests {
             .unwrap();
             let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
             let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-                None,
                 &metadata.effective_config,
-                super::render_config::flowchart_node_label_fill_config_override(
-                    &metadata.effective_config,
-                ),
-                execution.work_meter(),
-            )
-            .expect("prepared theme");
+                None,
+                None,
+            );
             let render_config = super::render_config::prepare_flowchart_render_config(
                 &model,
                 &metadata.effective_config,
                 &prepared_theme.compatibility,
                 layout.route_contract.is_elk_parity(),
                 sidecar.base_typography(),
-                sidecar.edge_label_padding(),
             );
             let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
                 &model,
@@ -919,8 +831,6 @@ mod integration_tests {
             .expect("edge style plan")
             .with_resolved_stroke_widths(
                 &model,
-                &Default::default(),
-                &metadata.effective_config,
                 &prepared_theme.compatibility,
                 execution.work_meter(),
             )
@@ -935,7 +845,6 @@ mod integration_tests {
                 &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
                 super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
                 &sidecar,
-                None,
                 &metadata.effective_config,
                 &prepared_theme,
                 &render_config,
@@ -955,10 +864,6 @@ mod integration_tests {
                     effective_config: &metadata.effective_config,
                     diagram_type: metadata.diagram_type.as_str(),
                     diagram_title: None,
-                    theme_evidence: &Default::default(),
-                    effect_evidence: &Default::default(),
-                    expected_effect_applications: &Default::default(),
-                    edge_theme: &Default::default(),
                     edge_style_plan: &edge_style_plan,
                     svg_label_sidecar: &sidecar,
                 },

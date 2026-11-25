@@ -31,6 +31,7 @@ def valid_catalog():
         ],
         "option_group_ids": [
             "ascii",
+            "background",
             "environment",
             "fixed_local_offset_minutes",
             "fixed_today",
@@ -217,6 +218,7 @@ class RuntimeCatalogTest(unittest.TestCase):
             "resources",
             "runtime_policy",
             "site_config",
+            "theme",
             "version",
         ]
         catalog["output_contracts"] = [
@@ -276,7 +278,9 @@ class RuntimeCatalogTest(unittest.TestCase):
             "theme-catalog",
         ]
         catalog["option_group_ids"] = [
+            "background",
             "environment",
+            "export_matte",
             "fixed_local_offset_minutes",
             "fixed_today",
             "fixed_unix_millis",
@@ -381,6 +385,27 @@ class RuntimeCatalogTest(unittest.TestCase):
                 with self.assertRaisesRegex(
                     merman.MermanRuntimeCatalogError,
                     "runtime operation svg is missing",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_theme_operations_require_svg_capability(self):
+        for operation in ("export-theme-preset", "resolve-theme"):
+            with self.subTest(operation=operation):
+                catalog = valid_catalog()
+                capabilities = catalog["capabilities"]
+                capabilities["operation_ids"] = sorted([
+                    *capabilities["operation_ids"], operation,
+                ])
+                parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+                self.assertIn(operation, parsed["capabilities"]["operation_ids"])
+
+                capabilities["capability_ids"].remove("svg")
+                capabilities["output_ids"].remove("svg")
+                capabilities["operation_ids"].remove("svg")
+                capabilities["text_measurement"] = None
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    f"runtime operation {operation} is missing capability svg",
                 ):
                     merman.get_runtime_catalog(FakeEngine(catalog))
 

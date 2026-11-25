@@ -3,13 +3,11 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
-
-Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade the loader and platform package together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+The package remains experimental. The current source targets Mermaid `12.3.0` and uses Node transport API `3` and Options JSON schema `4`. Keep the loader and native platform package at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ## Quick start
 
-Install the loader package, not a platform package:
+Install the published `0.11.0` loader, which selects a matching native package using transport API `2`.
 
 ```sh
 npm install --save-exact @mermanjs/node@0.11.0
@@ -32,63 +30,47 @@ Create an engine once, reuse it for related work, and dispose it during teardown
 
 ## Compiled themes
 
-The catalog groups 11 designs with 14 concrete presets, including `paper-cut`, `carbon-copy`, and
-`pop-art`. Editor, Gruvbox, and Ayu provide both Light and Dark; other designs declare their own modes.
+Theme v2 is available in builds from the current source tree. Discover preset IDs and appearances
+with `engine.themeCatalog()`. The schema 2 catalog includes each preset's default appearance and six
+swatches, along with Mermaid classic theme IDs and native capabilities by diagram family.
 
-Select a preset through the top-level `theme` group in Options JSON schema `3`. Discover preset
-IDs through the initialized engine's theme catalog:
+The `theme` field in Options JSON schema `4` accepts these selections.
 
-```js
-const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
-const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
-  optionsJson: JSON.stringify({ version: 3, theme: { preset: "editor", appearance: "dark" } }),
-});
-```
+| Selection | Options JSON value |
+| --- | --- |
+| Use a preset's default appearance | `"studio"` |
+| Select a preset or document with an appearance or precedence | `{ "preset": "studio", "appearance": "dark" }` |
+| Apply an inline document | `{ "schema_version": 2, "extends": "studio", "seed": { "accent": "#0052CC" } }` |
+| Clear the constructor selection for this request | `"none"` |
 
-Each catalog preset represents one design. `supported_appearances`, `default_appearance`,
-and `appearances` describe its modes; each mode contains the exact `concrete_preset_id`,
-swatches, family scope, and application notes. Catalog `available` admits every appearance
-under the current resource policy. All built-in presets remain `alpha` with empty appearance-specific
-`qualified_cells`; availability and unknown
-profile/admission IDs never establish portable output. Flowchart glow and shadow effects support
-documented shapes in Classic and Neo; other families retain their own look and output restrictions.
-SVG fonts resolve on the viewing host; exported recipes
-do not embed them.
-
-The async authoring helpers use the same queue, cancellation, and JSON operations as rendering:
+A selector takes exactly one of `preset` or `document`. Precedence defaults to `"host"`. Use
+`"source"` to follow a Mermaid theme explicitly declared by the diagram. If the request omits
+`theme`, it inherits the constructor selection. Omit `appearance` to use the theme's default.
+Set top-level `background` to a hex color or `"transparent"` to override the SVG canvas base.
 
 ```js
-const recipe = await engine.exportThemePreset("editor");
-const editableJson = JSON.stringify(recipe, null, 2);
-const importedRecipe = JSON.parse(editableJson);
-const inspection = await engine.materializeTheme({
-  schema_version: 1, action: "inspect", recipe: importedRecipe,
+const preset = await engine.exportThemePreset("studio");
+const document = { ...preset, seed: { ...preset.seed, accent: "#0052CC" } };
+const resolution = await engine.resolveTheme(document, { appearance: "dark" });
+if (!resolution.ok) throw new Error(resolution.message);
+
+const result = await engine.executeOperation({
+  operationId: "svg",
+  source: "flowchart LR\nA[Review] --> B[Publish]",
+  optionsJson: JSON.stringify({ theme: { document, appearance: "dark" } }),
 });
-const snapshot = await engine.materializeTheme({
-  schema_version: 1, action: "materialize", recipe: importedRecipe, appearance: "dark",
-});
-const svg = await engine.renderSvg("flowchart LR\nA[Review] --> B[Publish]", {
-  optionsJson: JSON.stringify({ theme: { recipe: importedRecipe, appearance: "dark" } }),
-});
+const { theme_outcome } = JSON.parse(result.metadata_json);
 ```
 
-Save `editableJson`, edit its `design` values, and reload the edited JSON in place of the
-round-trip string above. Keep `schema_version`, `kind`, and the complete recipe for customization
-and exchange. Shared values live in `recipe.design`;
-local exceptions live in `recipe.design.appearances`. `snapshot.spec` is a concrete snapshot,
-while inspect reports every declared mode and reference provenance. Omitted appearance uses
-the declared default; an explicit unsupported value fails. Resolve Follow-app/editor in the
-host before submitting `light` or `dark`. A supplied `theme` replaces the complete previous
-selection; `null` clears it.
+Save the authored document with `JSON.stringify(document, null, 2)`. To check JSON loaded from disk,
+pass the text to `resolveTheme()` for document-relative `line`, `column`, and `path` diagnostics.
+Set `auto_fix_contrast: true` to preview adjusted foreground colors in the resolved result. Edit
+the document to carry those adjustments into later renders. [Theme document schema](https://github.com/Latias94/merman/blob/main/schemas/theme-v2.schema.json)
 
-`materializeTheme()` also accepts raw design JSON or raw request text, preserving duplicate-key
-admission in Rust. `describeThemeSupport()` queries renderer mechanisms. Generic and synchronous
-callers can continue using `executeOperation()` or `executeOperationSync()` with the same three
-operation IDs; no additional native entry point is required. See the
-[theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
-for authoring and portability, and the
-[current Node changelog](https://github.com/Latias94/merman/blob/main/platforms/node/CHANGELOG.md)
-for upgrade actions.
+For SVG, `theme_outcome` reports `mode` (`merman_native` or `mermaid_parity`), optional `preset_id`
+and `appearance`, and `notices`. Both async theme helpers use the engine queue and accept `signal`
+and `timeoutMs`. Synchronous callers can use `executeOperationSync()` with `export-theme-preset`
+(preset ID as `source`) or `resolve-theme` (`{ document, appearance?, auto_fix_contrast? }` as JSON `source`).
 
 ## SVG output pipelines
 

@@ -4,8 +4,6 @@ use merman_markup::theme_color::{darken, lighten};
 use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
-use super::KanbanTaskTheme;
-
 #[derive(Debug)]
 pub(crate) struct KanbanSectionCssBinding {
     pub(crate) section_fill: String,
@@ -45,33 +43,18 @@ pub(super) fn dark_mode(config: &PresentationConfig) -> bool {
 }
 
 impl KanbanCssBinding {
-    pub(super) fn resolve(
-        config: &Value,
-        tasks: &KanbanTaskTheme,
-        resolved_text_color: Option<&str>,
-        dark_mode: bool,
+    pub(super) fn mermaid(
+        config: &PresentationConfig,
+        common: PreparedCommonCss,
     ) -> crate::Result<Self> {
-        let common = match tasks.resolved_typography_for_css() {
-            Some((family, size)) => PreparedCommonCss::with_resolved_typography(
-                config,
-                family.to_owned(),
-                size.to_owned(),
-            ),
-            None => PreparedCommonCss::new(config, Some(tasks.font_family_css()))
-                .with_configured_root_font_family(config),
-        };
-        Self::from_common(config, common, resolved_text_color, dark_mode)
+        Self::from_common(config.as_value(), common, dark_mode(config))
     }
 
     fn from_common(
         config: &Value,
-        mut common: PreparedCommonCss,
-        resolved_text_color: Option<&str>,
+        common: PreparedCommonCss,
         dark_mode: bool,
     ) -> crate::Result<Self> {
-        if let Some(color) = resolved_text_color {
-            common = common.with_text_color(color);
-        }
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_string())
         };
@@ -119,7 +102,6 @@ impl KanbanCssBinding {
         Self::from_common(
             config,
             common,
-            None,
             dark_mode(&crate::test_support::presentation_config(config.clone())),
         )
     }

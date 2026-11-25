@@ -1,6 +1,6 @@
 use super::{
-    ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, ClassTextThemePlan,
-    class_namespace_label, measured::measure_for_shoal,
+    ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, class_namespace_label,
+    measured::measure_for_shoal,
 };
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::ir::Endpoint;
@@ -17,7 +17,6 @@ pub(crate) fn layout(
     model: &ClassDiagramModel,
     config: &PresentationConfig,
     execution: &LayoutExecution<'_>,
-    typography: &ClassTextThemePlan,
     render: &ClassRenderConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels, CanonicalRoutes)> {
@@ -27,7 +26,6 @@ pub(crate) fn layout(
         config,
         execution.text_measurer(),
         execution.math_renderer(),
-        typography,
         render,
         work,
     )?;

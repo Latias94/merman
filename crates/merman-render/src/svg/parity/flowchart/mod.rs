@@ -8,13 +8,10 @@ mod defs;
 mod document;
 mod document_ids;
 mod edge;
-mod edge_effect;
 mod edge_geom;
 mod edge_style_plan;
 mod hierarchy;
 mod label;
-mod label_effect;
-mod node_effect;
 mod node_inventory;
 mod node_style;
 mod paint;
@@ -38,10 +35,7 @@ pub(in crate::svg::parity::flowchart) use edge_geom::{
 pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
-pub(crate) use render_config::{
-    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
-    prepare_flowchart_render_config,
-};
+pub(crate) use render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub(super) use style::*;
 
 /// Measure the same marker descriptors used by SVG emission in drawing units.
@@ -107,14 +101,4 @@ fn title_css_class(diagram_type: &str) -> &'static str {
     } else {
         "flowchartTitleText"
     }
-}
-
-/// Agentflow projects into the same body, edge, and glyph terminals as Flowchart.
-fn supports_neo_effects(ctx: &FlowchartRenderCtx<'_>) -> bool {
-    ctx.compatibility.look.is_neo()
-        && ctx.swimlane_direction.is_none()
-        && matches!(
-            merman_model::family::diagram_type_family_id(ctx.diagram_type),
-            Some(crate::DiagramFamilyId::FLOWCHART | crate::DiagramFamilyId::AGENTFLOW)
-        )
 }

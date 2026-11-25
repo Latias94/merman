@@ -222,7 +222,6 @@ fn insert_self_loop(
 
     let [first, middle, last] = [0, 1, 2].map(|part| format!("{node}-cyclic-special-{part}"));
     let outer_segment = |rendered_id, marker_start, marker_end| RequirementEdgeLabelPlan {
-        relationship_index: edge.plan.relationship_index,
         relationship_type: edge.plan.relationship_type.clone(),
         display_text: String::new(),
         rendered_id,

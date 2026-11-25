@@ -11,8 +11,9 @@ of outputs; custom source subsets must be validated against the actual consumer 
 Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`,
 `layout-dagre`, and `layout-elk` features. The ordinary SVG recipe also selects `math`. These
 leaves forward to `merman-bindings-core`; both transports share `BindingEngine` execution.
-Node transport API `2` passes source and optional Options JSON separately to the N-API SVG
-methods. The generic operation and Node-WASM paths retain their bounded JSON request documents.
+Node transport API `3` exposes the Theme v2 operation IDs and SVG theme metadata. The N-API SVG
+methods pass source and optional Options JSON separately. The generic operation and Node-WASM
+paths retain their bounded JSON request documents.
 These static-SVG artifacts therefore have explicit EPL-2.0 ELK and RaTeX notice/provenance
 obligations. Expert source builds retain
 additive feature selection; `math` is advertised only when this crate selects it. Neither

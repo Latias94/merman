@@ -1,7 +1,7 @@
 # Theme reference assets and live scenes
 
 This directory preserves licensed design-reference material from the theme architecture
-investigation and hosts the fixed scenes consumed by current preset qualification.
+investigation and representative scenes used by renderer tests and benchmarks.
 
 ## Historical design references
 
@@ -11,11 +11,9 @@ mechanisms and value-level facets, Mermaid precedence evidence, and font provena
 `evidence/`, `inputs/`, `sources/`, `expectations/`, and `acceptance/` directories preserve
 reviewed source facts, reference fixtures, golden records, and historical C6 acceptance records.
 
-These historical records are not an executable support registry, a current acceptance gate,
-or a catalog of 24 public Merman presets. Historical portability classifications describe
-intended semantics. Current supported and residual capabilities belong to the public theme
-support API and the emitted-artifact qualification tests. The private Rust catalog and its
-alternate CSS/directive parser and lineage checker have been retired.
+Historical portability classifications describe the intended semantics of the reference designs.
+The installed Theme v2 catalog reports native capabilities by family. Family and export tests
+exercise the emitted artifacts. [Native theme coverage](../../docs/rendering/diagram-theme-coverage.md)
 
 `licenses/` contains MIT and SIL OFL license mirrors and font attribution notices. The retained
 Excalifont and Xiaolai WOFF2 assets, their hashes, and declared ranges remain reference resources;
@@ -29,8 +27,6 @@ for provenance, licensing and production font boundaries.
 
 `public-cyberpunk/` contains byte-preserved Flowchart, Sequence, and XY Chart Mermaid inputs
 plus their original source/provenance README. They are shared by renderer/facade tests,
-native qualification and benchmarks, browser and language smoke tests, and debug tooling.
-Selecting a preset or successfully parsing a scene does not qualify its visual output.
+benchmarks, browser and language smoke tests, and debug tooling.
 
-See [preset qualification](../../docs/rendering/preset-qualification.md) and
-[theme coverage](../../docs/rendering/diagram-theme-coverage.md) for current product claims.
+See [theme coverage](../../docs/rendering/diagram-theme-coverage.md) for current product claims.

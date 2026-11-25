@@ -3,35 +3,29 @@ use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_model::presentation::PresentationConfig;
-#[cfg(test)]
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 mod config;
+mod css_binding;
 mod edge_geometry;
-mod edge_paint;
-mod marker_paint;
+mod native_theme;
 mod node_binding;
 #[cfg(feature = "layout-shoal")]
 mod orthogonal;
-mod typography;
-pub(crate) use edge_geometry::block_render_edge_points;
-pub(crate) use edge_paint::BlockEdgePaintPlan;
-pub(crate) use marker_paint::BlockMarkerPaintPlan;
-pub(crate) use typography::BlockTextParticipation;
 mod source;
 mod theme;
+mod typography;
+
+pub(crate) use css_binding::BlockCssThemeBinding;
+pub(crate) use edge_geometry::{BlockEdgeRoutes, block_render_edge_points};
+pub(crate) use native_theme::BlockNativeStyle;
+pub(crate) use node_binding::BlockNodeBindings;
 
 pub(crate) use config::BlockShapeSettings;
 pub(crate) use source::resolve_block_node_sources;
 
-#[cfg(test)]
-use config::{BlockConfigView, BlockLayoutSettings};
-pub(crate) use theme::{
-    BlockCssThemeBinding, BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan,
-    BlockNodePaintThemePlan, BlockTypographyThemePlan,
-};
+pub(crate) use theme::BlockTypographyThemePlan;
 
 mod geometry;
 
@@ -131,7 +125,6 @@ impl BlockPreparedLabels {
                 &model.class_defs,
                 text_style,
                 html.as_ref().map(|html| html.xhtml.as_str()),
-                text,
                 node.id.len(),
                 work_meter,
             )?;
@@ -156,7 +149,6 @@ impl BlockPreparedLabels {
                 &model.class_defs,
                 text_style,
                 label.as_ref().map(|label| label.xhtml.as_str()),
-                &edge.label,
                 0,
                 work_meter,
             )?;
@@ -1121,32 +1113,6 @@ fn collect_nodes(root: usize, records: &[SizedBlock], out: &mut Vec<LayoutNode>)
         }
         stack.extend(block.children.iter().rev().copied());
     }
-}
-
-#[cfg(test)]
-pub(crate) fn layout_block_diagram_typed(
-    model: &merman_model::families::block::BlockDiagramRenderModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<BlockDiagramLayout> {
-    let BlockLayoutSettings {
-        padding,
-        text_style,
-    } = BlockConfigView::new(effective_config).layout_settings();
-    let html_labels = crate::config::config_effective_html_labels(effective_config);
-    layout_block_diagram_typed_with_text_style(
-        model,
-        padding,
-        BlockShapeSettings::resolve(effective_config),
-        html_labels,
-        text_style,
-        measurer,
-        &crate::test_support::presentation_config(effective_config.clone()),
-        &Arc::new(OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )),
-    )
-    .map(|(layout, _prepared_labels)| layout)
 }
 
 #[allow(

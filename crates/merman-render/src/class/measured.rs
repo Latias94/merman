@@ -6,25 +6,25 @@ use super::EdgeTerminalMetrics;
 use super::class_arrow_type_for_relation_end;
 use super::{
     ClassBoxMeasureCtx, ClassDiagramModel, ClassNodeLabelPlan, ClassPreparedLabels,
-    ClassPreparedSvgEdgeLabel, ClassRenderConfig, ClassTextThemePlan, class_box_dimensions,
+    ClassPreparedSvgEdgeLabel, ClassRenderConfig, class_box_dimensions,
     class_cardinality_text_style, class_layout_parent, class_namespace_ids_in_decl_order,
     class_namespace_label, class_requires_math, note_dimensions, plain_label_metrics,
     prepare_edge_title, validate_class_namespace_hierarchy,
 };
+use crate::Result;
 use crate::entities::decode_entities_minimal;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, WrapMode};
-use crate::{Error, Result};
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use indexmap::IndexMap;
 use merman_model::families::class::ClassRelation;
 use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(feature = "layout-shoal")]
@@ -85,7 +85,6 @@ pub(super) fn measure_class_diagram(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render: &ClassRenderConfig,
     uses_elk_adapter: bool,
-    typography: &ClassTextThemePlan,
     work: Option<&OperationLayoutWorkControl>,
 ) -> Result<MeasuredClassDiagram> {
     let settings = render.layout_settings();
@@ -107,7 +106,6 @@ pub(super) fn measure_class_diagram(
         math_renderer,
         render,
         uses_elk_adapter,
-        typography,
         work,
         &mut target,
     )?;
@@ -131,7 +129,6 @@ fn measure_into<'a>(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render_config: &ClassRenderConfig,
     uses_elk_adapter: bool,
-    typography_theme: &ClassTextThemePlan,
     work_control: Option<&OperationLayoutWorkControl>,
     target: &mut impl MeasurementTarget<'a>,
 ) -> Result<MeasuredLabels> {
@@ -147,21 +144,23 @@ fn measure_into<'a>(
     let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike) || contains_math;
     let note_html_config = capture_note_label_metrics.then_some(mermaid_config);
     let mut labels = MeasuredLabels::default();
-    let mut class_node_style_facts_by_id = BTreeMap::new();
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
         mermaid_config,
         math_renderer,
         text_style,
-        inherited_font_size: typography_theme.visible_font_size_px(),
+        code_text_style: render_config.code_text_style(),
+        native_title_style: render_config
+            .native_style
+            .as_ref()
+            .map(|native| &native.title_style),
         html_calc_text_style: render_config.html_calc_text_style(),
         wrap_probe_font_size: settings.wrap_probe_font_size,
         wrap_mode: wrap_mode_node,
         padding: settings.class_padding,
         hide_empty_members_box: settings.hide_empty_members_box,
         capture_row_metrics,
-        capture_style_facts: typography_theme.requires_node_style_facts(),
     };
 
     // Mermaid's ClassDB.getData() emits namespaces before classes, notes, and interfaces.
@@ -191,8 +190,7 @@ fn measure_into<'a>(
         if let Some(work_control) = work_control {
             work_control.checked_add(0, 0)?;
         }
-        let (w, h, label_plan, style_facts, svg_title) =
-            class_box_dimensions(c.node, &class_box_measure_ctx);
+        let (w, h, label_plan, svg_title) = class_box_dimensions(c.node, &class_box_measure_ctx);
         if let Some(mut label_plan) = label_plan {
             let id = c.id.clone();
             if let Some(work_control) = work_control {
@@ -211,23 +209,12 @@ fn measure_into<'a>(
                 .titles_by_id
                 .insert(c.id.clone(), prepared);
         }
-        if class_box_measure_ctx.capture_style_facts {
-            class_node_style_facts_by_id.insert(c.id.as_str().into(), style_facts);
-        }
         target.node(
             c.node.id.as_str(),
             class_layout_parent(model, c.parent),
             (w, h),
         )?;
     }
-    if typography_theme.requires_node_style_facts()
-        && !typography_theme.seal_node_style_facts(class_node_style_facts_by_id)
-    {
-        return Err(Error::InvalidModel {
-            message: "Class label style facts changed after layout preparation".to_string(),
-        });
-    }
-
     for note in model.notes() {
         let (w, h, metrics) = note_dimensions(
             &note.text,

@@ -11,15 +11,17 @@ fn write_packet_css(
     let id = crate::svg::escape_css_identifier(diagram_id);
     let font = typography_theme.font_family_css();
     let style = typography_theme.css_binding();
-    let byte_start_role = crate::packet::PacketTextRole::ByteStart;
-    let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
-    let label_role = crate::packet::PacketTextRole::Label;
-    let title_role = crate::packet::PacketTextRole::Title;
     let start_byte_fill = style.start_byte_color.as_ref();
     let end_byte_fill = style.end_byte_color.as_ref();
     let label_fill = style.label_color.as_ref();
     let title_fill = style.title_color.as_ref();
     let font_size_css = format!("{}px", typography_theme.root_font_size_px());
+    let native_typography = typography_theme.native_typography();
+    let block_id = if native_typography.is_some() {
+        id.as_ref()
+    } else {
+        diagram_id
+    };
     write_mermaid_base_css_prefix(
         out,
         &id,
@@ -35,29 +37,37 @@ fn write_packet_css(
     )?;
     let _ = write!(
         out,
-        r#"#{} .packetByte{{font-size:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};font-size:{};}}#{} {}{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
+        r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
         id,
         style.byte_font_size,
         id,
-        byte_start_role.css_selector(),
         start_byte_fill,
         id,
-        byte_end_role.css_selector(),
         end_byte_fill,
         id,
-        label_role.css_selector(),
         label_fill,
         style.label_font_size,
         id,
-        title_role.css_selector(),
         title_fill,
         style.title_font_size,
-        diagram_id,
+        block_id,
         style.block_stroke_color,
         style.block_stroke_width,
         style.block_fill_color
     );
     out.checkpoint()?;
+    if let Some(native) = native_typography {
+        let byte_font = native.byte_font_family.as_deref().unwrap_or(font);
+        let title_font = native.title_font_family.as_deref().unwrap_or(font);
+        let _ = write!(
+            out,
+            "#{id} .packetByte{{font-family:{byte_font};}}\
+             #{id} .packetLabel{{font-weight:{};}}\
+             #{id} .packetTitle{{font-family:{title_font};font-weight:{};}}",
+            native.label_weight, native.title_weight,
+        );
+        out.checkpoint()?;
+    }
     let _ = write!(out, r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
     out.checkpoint()?;
 
@@ -71,10 +81,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<(
-    root_svg::RootedSvg,
-    Option<crate::packet::PacketThemeOutcome>,
-)> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
     let title_from_semantic = model
         .title
@@ -85,10 +92,6 @@ pub(crate) fn render_packet_diagram_svg_model(
         .map(str::trim)
         .filter(|title| !title.is_empty());
     let terminal_title = title_from_semantic.or(title_from_meta);
-    let label_role = crate::packet::PacketTextRole::Label;
-    let byte_start_role = crate::packet::PacketTextRole::ByteStart;
-    let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
-    let title_role = crate::packet::PacketTextRole::Title;
     let config = crate::packet::PacketConfigView::new(effective_config);
     let bit_order = config.bit_order();
 
@@ -119,12 +122,9 @@ pub(crate) fn render_packet_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document = root_svg::RootViewportContext::new(
-        crate::DiagramFamilyId::PACKET,
-        diagram_id,
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
-    let mut text_output = typography_theme.begin_text_output();
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::PACKET, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -155,12 +155,10 @@ pub(crate) fn render_packet_diagram_svg_model(
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
 
-    let mut emitted_blocks = 0usize;
     for word in &layout.words {
         out.push_str("<g>");
         out.checkpoint()?;
         for b in &word.blocks {
-            emitted_blocks = emitted_blocks.saturating_add(1);
             let _ = write!(
                 &mut out,
                 r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" class="packetBlock"/>"#,
@@ -171,18 +169,14 @@ pub(crate) fn render_packet_diagram_svg_model(
             );
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="middle" text-anchor="middle">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" class="packetLabel" dominant-baseline="middle" text-anchor="middle">{text}</text>"#,
                 x = fmt(b.x + b.width / 2.0),
                 y = fmt(b.y + b.height / 2.0),
-                class = label_role.class_attribute(),
                 text = escape_xml(&b.label)
             );
 
             if !layout.show_bits {
                 out.checkpoint()?;
-                if let Some(output) = text_output.as_mut() {
-                    output.record_non_empty_text(label_role, &b.label, options.work_meter())?;
-                }
                 continue;
             }
             let (leading_bit, trailing_bit) = match bit_order {
@@ -199,31 +193,22 @@ pub(crate) fn render_packet_diagram_svg_model(
             let start_anchor = if is_single_block { "middle" } else { "start" };
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="auto" text-anchor="{anchor}">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" class="packetByte start" dominant-baseline="auto" text-anchor="{anchor}">{text}</text>"#,
                 x = fmt(start_x),
                 y = fmt(bit_number_y),
-                class = byte_start_role.class_attribute(),
                 anchor = start_anchor,
                 text = ryu_js::Buffer::new().format(leading_bit)
             );
             if !is_single_block {
                 let _ = write!(
                     &mut out,
-                    r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="auto" text-anchor="end">{text}</text>"#,
+                    r#"<text x="{x}" y="{y}" class="packetByte end" dominant-baseline="auto" text-anchor="end">{text}</text>"#,
                     x = fmt(b.x + b.width),
                     y = fmt(bit_number_y),
-                    class = byte_end_role.class_attribute(),
                     text = ryu_js::Buffer::new().format(trailing_bit)
                 );
             }
             out.checkpoint()?;
-            if let Some(output) = text_output.as_mut() {
-                output.record_non_empty_text(label_role, &b.label, options.work_meter())?;
-                output.record_text(byte_start_role, options.work_meter())?;
-                if !is_single_block {
-                    output.record_text(byte_end_role, options.work_meter())?;
-                }
-            }
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -235,37 +220,24 @@ pub(crate) fn render_packet_diagram_svg_model(
         Some(title) => {
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="{class}">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="packetTitle">{text}</text>"#,
                 x = fmt(layout.width / 2.0),
                 y = fmt(title_y),
-                class = title_role.class_attribute(),
                 text = escape_xml(title)
             );
         }
         None => {
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="{class}"/>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="packetTitle"/>"#,
                 x = fmt(layout.width / 2.0),
                 y = fmt(title_y),
-                class = title_role.class_attribute(),
             );
         }
     }
     out.checkpoint()?;
-    if terminal_title.is_some()
-        && let Some(output) = text_output.as_mut()
-    {
-        output.record_text(title_role, options.work_meter())?;
-    }
-
     out.push_str("</svg>\n");
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    let mut theme_output = text_output.map(crate::packet::PacketTextOutput::finish);
-    if let Some(output) = theme_output.as_mut() {
-        typography_theme.finish_blocks(output, emitted_blocks, options.work_meter())?;
-    }
-    Ok((rooted_svg, theme_output))
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -289,12 +261,7 @@ mod tests {
                 "blockFillColor": "#666666"
             } }
         }));
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let typography_theme =
-            crate::packet::PacketTypographyThemePlan::resolve(None, &config, &work_meter)
-                .expect("resolve baseline Packet typography");
+        let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(None, &config);
         let mut css = String::new();
         write_packet_css(&mut css, "pkt", &typography_theme).expect("write Packet CSS");
 

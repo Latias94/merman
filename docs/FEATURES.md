@@ -1,8 +1,8 @@
 # Choosing Merman capabilities
 
-This page targets `0.10.0`, including experimental compiled themes and Mermaid `12.3.0`.
-Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and
-the [stable changelog](../CHANGELOG.md#0100---2026-11-12) for upgrade actions. Workspace
+This guide describes the current source, including [Theme v2](rendering/custom-diagram-themes.md)
+and Mermaid `12.3.0` compatibility. Use the [host guide](release/PREBUILT_PRODUCTS.md) for
+published channel versions and the [upgrade index](release/README.md) for migration steps. Workspace
 path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md)
 for host integration.
 
@@ -118,7 +118,7 @@ flowchart LR
     A[Review] -->|approved| B[Publish]
 ```
 
-Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding.
+Run `target/debug/merman-cli render diagram.mmd --theme studio --appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding.
 
 Set `{"layout":"shoal"}` in the Playground's **Config** tab to select Shoal for the workspace. A `layout` value in **Config** takes precedence over frontmatter. To make Shoal the CLI default for supported diagrams, save the same JSON to a file and pass `--config-file path/to/mermaid.json`. A diagram's frontmatter can override the CLI default. Rust hosts can set the same site configuration on `MermaidEngine`. [Rust embedding guide](rendering/RUST_EMBEDDING.md#replace-the-previous-renderer)
 
@@ -734,8 +734,8 @@ flowchart TD
 ```)
 ````
 
-The `0.6.0` wrapper bundles Merman `0.10.0` with Mermaid `12.3.0` compatibility, SVG,
-analysis, Cytoscape, ELK, compiled themes, and editable theme recipes. It uses deterministic
+The source build of wrapper `0.7.0` bundles Merman `0.11.0` with Mermaid `12.3.0` compatibility,
+SVG, analysis, Cytoscape, Dagre, ELK, and Theme v2 preset selection and authoring. It uses deterministic
 text measurement; Typst's actual glyph metrics are not measured automatically, and math
 rendering is unavailable. The package ships ELK's EPL-2.0 notices and defaults to
 14,100,000 layout work units while retaining the other constrained ceilings. Explicit finite

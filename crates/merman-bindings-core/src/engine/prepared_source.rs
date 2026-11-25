@@ -11,14 +11,15 @@ use std::sync::Arc;
 
 /// An immutable parsed source and its output defaults, bound to the preparing artifact.
 ///
-/// Output options can change resources, measurement, layout and SVG emission. Parse configuration,
-/// runtime selection and the compiled theme are frozen; prepare again to change those facts.
+/// Each output can select a theme and set resources, measurement, layout and SVG options.
+/// Parse configuration and runtime policy are fixed during preparation.
 pub struct BindingPreparedSource {
     source: merman::PreparedSource,
     artifact: Arc<crate::ValidatedArtifactContract>,
     runtime_policy_id: &'static str,
     runtime_policy: merman::model::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
+    base_theme: Option<merman::theme::ThemeSelection>,
     defaults: RenderOperationConfig,
     default_options: common::BindingOptions,
 }
@@ -45,8 +46,7 @@ impl BindingEngine {
             &options,
             runtime_policy.clone(),
             self.artifact_contract.render_capability_policy(),
-            None,
-            base_options.theme_resource_policy().clone(),
+            self.base_theme.clone(),
         )?;
         control
             .checkpoint_at(OperationPhase::Postprocess)
@@ -57,6 +57,7 @@ impl BindingEngine {
             runtime_policy_id: self.runtime_policy_id,
             runtime_policy,
             base_options,
+            base_theme: self.base_theme.clone(),
             defaults,
             default_options: options,
         })
@@ -126,7 +127,6 @@ impl BindingPreparedSource {
             options,
             operation.resource_scope(),
             &self.artifact,
-            self.base_options.theme_resource_policy(),
         )?;
         overlay.validate_prepared_output()?;
         let config = match overlay {
@@ -136,14 +136,14 @@ impl BindingPreparedSource {
                 self.defaults.clone()
             }
             overlay => {
+                let theme = overlay.select_theme(self.base_theme.as_ref());
                 let options = self.base_options.apply_overlay(overlay, &self.artifact)?;
                 services.validate_options(&options)?;
                 RenderOperationConfig::compile(
                     &options,
                     self.runtime_policy.clone(),
                     self.artifact.render_capability_policy(),
-                    None,
-                    self.base_options.theme_resource_policy().clone(),
+                    theme,
                 )?
             }
         };

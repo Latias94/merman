@@ -234,7 +234,6 @@ fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
         &config,
         &DeterministicTextMeasurer::default(),
         None,
-        &typography,
         &render_config,
         &mut work,
     )

@@ -218,7 +218,7 @@ fn measure(
         crate::config::config_f64(effective_config, &["themeVariables", "radius"])
             .map(|radius| (radius.max(0.0), radius.max(0.0)));
     let process_radius = (neo
-        && effective_config.config_path_overrides_typed_default("themeVariables.radius"))
+        && effective_config.explicit_config_owns_path("themeVariables.radius"))
     .then_some(configured_radius)
     .flatten();
     let mut profiles = Vec::with_capacity(node_slots.len());

@@ -2,10 +2,7 @@
 
 use merman_model::presentation::PresentationConfig;
 
-use super::theme::{
-    MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
-    MindmapWriterThemeTokens,
-};
+use super::theme::{mindmap_color_scale_css, mindmap_theme_color_limit};
 
 #[derive(Debug)]
 pub(crate) struct MindmapSectionCss {
@@ -17,6 +14,7 @@ pub(crate) struct MindmapSectionCss {
 #[derive(Debug)]
 pub(crate) struct MindmapCssBinding {
     pub(crate) common: crate::svg::PreparedCommonCss,
+    pub(crate) label_style: crate::text::TextStyle,
     pub(crate) sections: Vec<MindmapSectionCss>,
     pub(crate) neutral_label: String,
     pub(crate) label_background: Option<String>,
@@ -25,7 +23,8 @@ pub(crate) struct MindmapCssBinding {
     pub(crate) look: Box<str>,
     pub(crate) root_fill: String,
     pub(crate) root_label: String,
-    pub(crate) tokens: MindmapWriterThemeTokens,
+    pub(crate) node_border: String,
+    pub(crate) main_background: String,
     pub(crate) stroke_width: String,
     pub(crate) drop_shadow: String,
     pub(crate) use_gradient: bool,
@@ -33,24 +32,10 @@ pub(crate) struct MindmapCssBinding {
     pub(crate) shadow_flood: &'static str,
     pub(crate) cluster_background: Box<str>,
     pub(crate) cluster_border: Box<str>,
-    pub(crate) node_fill_ownership: MindmapNodeFillOwnership,
-    pub(crate) neo_fill_source: MindmapNodeFillSource,
 }
 
 impl MindmapCssBinding {
-    /// Select the border paint and its owner together; the literal fallback has no owner.
-    pub(super) fn node_border_source(config: &PresentationConfig) -> (Option<&'static str>, &str) {
-        crate::config::selected_config_string(
-            config.as_value(),
-            &[
-                "themeVariables.nodeBorder",
-                "themeVariables.gitBranchLabel0",
-            ],
-        )
-        .map_or((None, "#ffffff"), |(path, color)| (Some(path), color))
-    }
-
-    pub(super) fn new(config: &PresentationConfig, plan: &MindmapNodePalettePlan) -> Self {
+    pub(crate) fn new(config: &PresentationConfig) -> Self {
         let raw = config.as_value();
         let token = |key: &str, fallback: &str| {
             config
@@ -73,10 +58,16 @@ impl MindmapCssBinding {
             .flatten();
         let root_fill = token("git0", "hsl(240, 100%, 46.2745098039%)");
         let root_label = token("gitBranchLabel0", "#ffffff");
-        let tokens = plan.writer_theme_tokens(
-            &token("mainBkg", &root_fill),
-            Self::node_border_source(config).1,
-        );
+        let main_background = token("mainBkg", &root_fill);
+        let node_border = crate::config::selected_config_string(
+            raw,
+            &[
+                "themeVariables.nodeBorder",
+                "themeVariables.gitBranchLabel0",
+            ],
+        )
+        .map_or("#ffffff", |(_, color)| color)
+        .to_owned();
         const INVERSE: [&str; 12] = [
             "hsl(60, 100%, 86.2745098039%)",
             "hsl(240, 100%, 83.5294117647%)",
@@ -91,9 +82,9 @@ impl MindmapCssBinding {
             "hsl(0, 100%, 86.2745098039%)",
             "hsl(30, 100%, 86.2745098039%)",
         ];
-        let sections = (0..super::theme::mindmap_theme_color_limit(config))
+        let sections = (0..mindmap_theme_color_limit(config))
             .map(|slot| MindmapSectionCss {
-                fill: super::theme::mindmap_color_scale_css(config, slot),
+                fill: mindmap_color_scale_css(config, slot),
                 inverse: token(&format!("cScaleInv{slot}"), INVERSE[slot % INVERSE.len()]),
                 label: token(
                     &format!("cScaleLabel{slot}"),
@@ -105,9 +96,12 @@ impl MindmapCssBinding {
                 ),
             })
             .collect();
-        let theme_id = merman_model::config::MermaidThemeId::parse(theme).unwrap_or_default();
+        let font_family = crate::config::config_font_family_css(config);
+        let common = crate::svg::PreparedCommonCss::new(raw, Some(&font_family));
+        let label_style = super::mindmap_text_style_with_font_family(raw, font_family);
         Self {
-            common: crate::svg::PreparedCommonCss::new(raw, Some(plan.font_family_css())),
+            common,
+            label_style,
             sections,
             neutral_label: token("cScaleLabel1", "black"),
             label_background: crate::config::config_string(
@@ -124,7 +118,8 @@ impl MindmapCssBinding {
                 .into(),
             root_fill,
             root_label,
-            tokens,
+            node_border,
+            main_background,
             stroke_width: crate::config::config_css_number_or_string(
                 raw,
                 &["themeVariables", "strokeWidth"],
@@ -144,18 +139,6 @@ impl MindmapCssBinding {
             },
             cluster_background: token("clusterBkg", "#ffffde").into(),
             cluster_border: token("clusterBorder", "#aaaa33").into(),
-            node_fill_ownership: MindmapNodeFillOwnership::from_config(config),
-            neo_fill_source: if use_gradient
-                || matches!(
-                    theme_id,
-                    merman_model::config::MermaidThemeId::Redux
-                        | merman_model::config::MermaidThemeId::ReduxDark
-                        | merman_model::config::MermaidThemeId::Neutral
-                ) {
-                MindmapNodeFillSource::MainBackground
-            } else {
-                MindmapNodeFillSource::ColorScale
-            },
         }
     }
 
@@ -166,77 +149,5 @@ impl MindmapCssBinding {
         } else {
             model_look
         }
-    }
-
-    pub(super) fn label_fill_owned(
-        &self,
-        config: &PresentationConfig,
-        node: &merman_model::families::mindmap::MindmapDiagramRenderNode,
-    ) -> bool {
-        let html = crate::config::config_effective_html_labels(config.as_value());
-        let has_class = |class: &str| {
-            node.css_classes
-                .split_whitespace()
-                .any(|value| value == class)
-        };
-        let root = has_class("section-root");
-        let neo = self.model_look(&node.look) == "neo" && has_class("mindmap-node");
-        // The Classic disabled text rule wins over section text, but root/Neo overrides win
-        // after it. HTML span color has its own explicit section rule.
-        if !html && !neo && !root && has_class("disabled") {
-            return true;
-        }
-        if html && !neo && node.icon.is_some() && self.label_text.is_some() {
-            return config
-                .config_paint_overrides_typed_default("themeVariables.mindmap.labelTextColor");
-        }
-        if (neo && matches!(self.theme.as_ref(), "redux" | "redux-dark"))
-            || (root && (html || neo) && self.theme.contains("redux"))
-        {
-            return Self::node_border_source(config)
-                .0
-                .is_some_and(|path| config.config_paint_overrides_typed_default(path));
-        }
-        let role = if root && !neo {
-            "themeVariables.gitBranchLabel0".into()
-        } else if neo && self.theme.as_ref() == "neutral" {
-            "themeVariables.cScaleLabel1".into()
-        } else {
-            let slot = if root && neo {
-                Some(0)
-            } else {
-                node.css_classes
-                    .split_whitespace()
-                    .filter_map(|class| {
-                        let suffix = class.strip_prefix("section-")?;
-                        let section = suffix.parse::<i32>().ok()?;
-                        if suffix != section.to_string() {
-                            return None;
-                        }
-                        usize::try_from(section.checked_add(1)?)
-                            .ok()
-                            .filter(|slot| *slot < self.sections.len())
-                    })
-                    .max()
-            };
-            slot.map(|slot| format!("themeVariables.cScaleLabel{slot}"))
-                .unwrap_or_else(|| "themeVariables.textColor".into())
-        };
-        config.config_paint_overrides_typed_default(&role)
-    }
-
-    pub(super) fn root_fill_owned(
-        &self,
-        config: &PresentationConfig,
-        node: &merman_model::families::mindmap::MindmapDiagramRenderNode,
-    ) -> bool {
-        let role = if self.model_look(&node.look) == "neo"
-            && (self.use_gradient || self.theme.contains("redux"))
-        {
-            "themeVariables.mainBkg"
-        } else {
-            "themeVariables.git0"
-        };
-        config.config_paint_overrides_typed_default(role)
     }
 }

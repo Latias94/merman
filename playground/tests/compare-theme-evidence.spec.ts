@@ -106,7 +106,7 @@ async function openPartialCompare(page: Page, workspace: Partial<WorkspaceSnapsh
     mermaidConfig: "{}",
     diagramTheme: "dark",
     themePresetId: null,
-    themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{"not_a_theme_field":true}}',
+    themeDocumentJson: '{"schema_version":2,"extends":"studio","not_a_theme_field":true}',
     ...workspace,
   })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");

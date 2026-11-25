@@ -1,20 +1,16 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
-use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    OrdinalSelector, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TrustedThemeLane,
-    TrustedThemeLanes, TypographySpec,
-};
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::model::EventModelingDiagramLayout;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::theme::{Color, NativeTheme, ThemeCompiler};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 
 const THEME_TEXT_SOURCE: &str = r#"eventmodeling
@@ -25,557 +21,49 @@ tf 03 evt Done ->> 02
 
 const CORE_PAINT_SOURCE: &str = "eventmodeling\ntf 01 ui View\ntf 02 cmd Run ->> 01\ntf 03 evt Done ->> 02\ntf 04 rmo State ->> 03\ntf 05 pcr Work ->> 04\n";
 
-fn eventmodeling_core_paint_theme(transparent: bool, explicit_default: bool) -> DiagramTheme {
-    let paint = |color| {
-        if transparent {
-            CanvasPaint::Transparent
-        } else {
-            CanvasPaint::solid(color).unwrap()
-        }
-    };
-    let rules = [
-        ThemeRule::new(
-            ThemeTarget::Node,
-            ThemeStylePatch::default()
-                .with_fill(paint("#123456"))
-                .with_stroke(paint("#345678")),
-        ),
-        ThemeRule::new(
-            ThemeTarget::NodeLabel,
-            ThemeStylePatch::default().with_fill(paint("#56789a")),
-        ),
-        ThemeRule::new(
-            ThemeTarget::Edge,
-            ThemeStylePatch::default().with_stroke(paint("#789abc")),
-        ),
-        ThemeRule::new(
-            ThemeTarget::Marker,
-            ThemeStylePatch::default().with_fill(paint("#9abcde")),
-        ),
-        ThemeRule::new(
-            ThemeTarget::Cluster,
-            ThemeStylePatch::default()
-                .with_fill(paint("#abcdef"))
-                .with_stroke(paint("#cdefab")),
-        ),
-        ThemeRule::new(
-            ThemeTarget::ClusterLabel,
-            ThemeStylePatch::default().with_fill(paint("#defabc")),
-        ),
-    ];
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(rules.into_iter().fold(
-                ThemeRuleSet::default(),
-                |rules, rule| {
-                    rules.with_rule(if explicit_default {
-                        rule.with_variant(merman_render::diagram_theme::ThemeVariant::Default)
-                    } else {
-                        rule
-                    })
-                },
-            )),
-        )
-        .unwrap()
-}
-
-#[test]
-fn eventmodeling_core_paints_reach_all_real_frame_kinds_lanes_and_relations() {
-    for transparent in [false, true] {
-        for explicit_default in [false, true] {
-            let theme = eventmodeling_core_paint_theme(transparent, explicit_default);
-            let rendered =
-                render_eventmodeling_with_theme(CORE_PAINT_SOURCE, &theme, MermaidEngine::new())
-                    .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let expected = |solid: &'static str| if transparent { "transparent" } else { solid };
-            let boxes = document
-                .descendants()
-                .filter(|node| node.attribute("class") == Some("em-box"))
-                .collect::<Vec<_>>();
-            assert_eq!(boxes.len(), 5);
-            for box_node in boxes {
-                let rect = box_node
-                    .children()
-                    .find(|node| node.has_tag_name("rect"))
-                    .unwrap();
-                assert_eq!(rect.attribute("fill"), Some(expected("#123456")));
-                assert_eq!(rect.attribute("stroke"), Some(expected("#345678")));
-                assert!(box_node.descendants().any(|node| node.has_tag_name("span")));
-            }
-            let lanes = document
-                .descendants()
-                .filter(|node| node.attribute("class") == Some("em-swimlane"))
-                .collect::<Vec<_>>();
-            assert!(!lanes.is_empty());
-            for lane in lanes {
-                let rect = lane
-                    .children()
-                    .find(|node| node.has_tag_name("rect"))
-                    .unwrap();
-                assert_eq!(rect.attribute("fill"), Some(expected("#abcdef")));
-                assert_eq!(rect.attribute("stroke"), Some(expected("#cdefab")));
-                assert!(lane.children().any(|node| node.has_tag_name("text")));
-            }
-            let relations = document
-                .descendants()
-                .filter(|node| node.attribute("class") == Some("em-relation"))
-                .collect::<Vec<_>>();
-            assert!(!relations.is_empty());
-            for relation in relations {
-                assert_eq!(relation.attribute("stroke"), Some(expected("#789abc")));
-            }
-            assert_eq!(
-                document
-                    .descendants()
-                    .find(|node| node.has_tag_name("polygon"))
-                    .unwrap()
-                    .attribute("fill"),
-                Some(expected("#9abcde"))
-            );
-            let css = eventmodeling_stylesheet(rendered.svg());
-            let node_text = expected("#56789a");
-            let lane_text = expected("#defabc");
-            assert!(css.contains(&format!(
-                ".em-box span {{ fill: {node_text}; color: {node_text}; }}"
-            )));
-            assert!(css.contains(&format!(
-                ".em-swimlane text {{ fill: {lane_text}; color: {lane_text}; }}"
-            )));
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 6);
-            assert_eq!(evidence.applied_count(), 6);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn eventmodeling_svg_preserves_raw_metadata_tokens() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
-    for (title, description, expected_title, expected_description) in [
-        (
-            "Accessible <!--a11y-->",
-            "First\n<!--a11y-->",
-            "accTitle: Accessible ",
-            " accDescr {\nFirst\n}",
-        ),
-        (
-            "<!--a11y-->\u{0085}<!--a11y-->",
-            "<!--a11y-->\u{0085}<!--a11y-->",
-            "accTitle: \u{0085}",
-            " accDescr {\n\u{0085}\n}",
-        ),
-        ("", "", "accTitle: ", " accDescr {\n}"),
-    ] {
-        let source = format!(
-            "eventmodeling accDescr {{\n{description}\n}} accTitle: {title}\ntf 01 event Start\n"
-        );
-        let rendered = render_eventmodeling_with_theme(&source, &theme, MermaidEngine::new())
-            .expect("selected same-line metadata syntax");
-        common::assert_svg_accessibility(
-            rendered.svg(),
-            Some(expected_title),
-            Some(expected_description),
-        );
-    }
-}
-
-#[test]
-fn eventmodeling_config_colors_override_only_the_matching_role_and_property() {
-    let theme = eventmodeling_core_paint_theme(false, false);
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(
-            serde_json::json!({ "themeVariables": {
-                "emCommandFill": "#de3163", "emEventStroke": "#fedcba",
-                "emSwimlaneBackgroundOdd": "#112233", "emRelationStroke": "#bada55"
-            }}),
-        ),
-    );
-    let rendered = render_eventmodeling_with_theme(CORE_PAINT_SOURCE, &theme, engine).unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let boxes = document
-        .descendants()
-        .filter(|node| node.attribute("class") == Some("em-box"))
-        .map(|node| {
-            node.children()
-                .find(|node| node.has_tag_name("rect"))
-                .unwrap()
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(boxes[1].attribute("fill"), Some("#de3163"));
-    assert_eq!(boxes[1].attribute("stroke"), Some("#345678"));
-    assert_eq!(boxes[2].attribute("fill"), Some("#123456"));
-    assert_eq!(boxes[2].attribute("stroke"), Some("#fedcba"));
-    for lane in document
-        .descendants()
-        .filter(|node| node.attribute("class") == Some("em-swimlane"))
-    {
-        let rect = lane
-            .children()
-            .find(|node| node.has_tag_name("rect"))
-            .unwrap();
-        assert_eq!(rect.attribute("fill"), Some("#112233"));
-        assert_eq!(rect.attribute("stroke"), Some("#cdefab"));
-    }
-    assert!(
-        document
-            .descendants()
-            .filter(|node| node.attribute("class") == Some("em-relation"))
-            .all(|node| node.attribute("stroke") == Some("#bada55"))
-    );
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 5);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_empty_compiled_theme_preserves_unthemed_svg_bytes() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
-    let environment = RenderEnvironment::deterministic();
-    let render = |theme: Option<&DiagramTheme>| {
-        let engine = match theme {
-            Some(theme) => common::install_parse_compatibility(theme, MermaidEngine::new()),
-            None => MermaidEngine::new(),
-        };
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(CORE_PAINT_SOURCE, ParseOptions::strict())
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let session = match theme {
-            Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
-            None => environment.begin_session().unwrap(),
-        };
-        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-            .unwrap()
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some("eventmodeling-theme".into()),
-                    ..Default::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .unwrap()
-            .svg()
-            .to_owned()
-    };
-    assert_eq!(render(None).as_bytes(), render(Some(&theme)).as_bytes());
-}
-
-#[test]
-fn eventmodeling_mixed_node_rule_preserves_fill_when_gradient_stroke_is_overridden() {
-    use merman_render::diagram_theme::{GradientStop, LinearGradient};
-    let gradient = CanvasPaint::LinearGradient(
-        LinearGradient::new(
-            90.0,
-            [
-                GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
-                GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
-            ],
-        )
-        .unwrap(),
-    );
-    for owner in ["later-rule", "source", "uncovered"] {
-        let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
-            ThemeTarget::Node,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#b316cd").unwrap())
-                .with_stroke(gradient.clone()),
-        ));
-        if owner == "later-rule" {
-            rules = rules.with_rule(ThemeRule::new(
-                ThemeTarget::Node,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
-            ));
-        }
-        let engine = if owner == "source" {
-            MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "emUiStroke": "#2468ac", "emCommandStroke": "#2468ac", "emEventStroke": "#2468ac" }
-            })))
-        } else {
-            MermaidEngine::new()
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(rules))
-            .unwrap();
-        let rendered = render_eventmodeling_with_theme_requirement(
-            THEME_TEXT_SOURCE,
-            &theme,
-            engine,
-            ThemePortabilityRequirement::BestEffort,
-        )
-        .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        for node in document
-            .descendants()
-            .filter(|node| node.attribute("class") == Some("em-box"))
-        {
-            let rect = node
-                .children()
-                .find(|node| node.has_tag_name("rect"))
-                .unwrap();
-            assert_eq!(rect.attribute("fill"), Some("#b316cd"));
-            if owner != "uncovered" {
-                assert_eq!(rect.attribute("stroke"), Some("#2468ac"));
-            }
-        }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(
-            evidence.applied_count(),
-            match owner {
-                "later-rule" => 2,
-                "source" => 1,
-                _ => 0,
-            },
-            "owner={owner}"
-        );
-        assert_eq!(
-            evidence.theme_residual_count(),
-            usize::from(owner == "uncovered"),
-            "owner={owner}"
-        );
-        assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
-    }
-}
-
-#[test]
-fn eventmodeling_label_and_marker_strokes_remain_residual_on_real_elements() {
-    for target in [
-        ThemeTarget::NodeLabel,
-        ThemeTarget::ClusterLabel,
-        ThemeTarget::Marker,
-    ] {
-        for mixed in [false, true] {
-            let mut style =
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap());
-            if mixed {
-                style = style.with_fill(CanvasPaint::solid("#123456").unwrap());
-            }
-            let theme =
-                DiagramThemeCompiler::new()
-                    .compile(DiagramThemeSpec::new().with_styles(
-                        ThemeRuleSet::default().with_rule(ThemeRule::new(target, style)),
-                    ))
-                    .unwrap();
-            let rendered = render_eventmodeling_with_theme_requirement(
-                THEME_TEXT_SOURCE,
-                &theme,
-                MermaidEngine::new(),
-                ThemePortabilityRequirement::BestEffort,
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            match target {
-                ThemeTarget::NodeLabel => {
-                    assert!(document.descendants().any(|node| node.has_tag_name("span")))
-                }
-                ThemeTarget::ClusterLabel => {
-                    assert!(document.descendants().any(|node| node.has_tag_name("text")))
-                }
-                ThemeTarget::Marker => assert!(
-                    document
-                        .descendants()
-                        .any(|node| node.has_tag_name("polygon"))
-                ),
-                _ => unreachable!(),
-            }
-            if mixed {
-                if target == ThemeTarget::Marker {
-                    assert_eq!(
-                        document
-                            .descendants()
-                            .find(|node| node.has_tag_name("polygon"))
-                            .unwrap()
-                            .attribute("fill"),
-                        Some("#123456")
-                    );
-                } else {
-                    let selector = if target == ThemeTarget::NodeLabel {
-                        ".em-box span"
-                    } else {
-                        ".em-swimlane text"
-                    };
-                    assert!(
-                        eventmodeling_stylesheet(rendered.svg())
-                            .contains(&format!("{selector} {{ fill: #123456; color: #123456; }}"))
-                    );
-                }
-            }
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1);
-            assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), 0);
-            assert_eq!(evidence.theme_residual_count(), 1);
-            let error =
-                render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-                    .err()
-                    .unwrap();
-            assert_eq!(
-                error.unverified_family_theme(),
-                Some((DiagramFamilyId::EVENT_MODELING, 1))
-            );
-        }
-    }
-    // A definition without an attached relation has no visible Marker occurrence.
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Marker,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap()),
-            ))),
-        )
-        .unwrap();
-    let rendered = render_eventmodeling_with_theme(
-        "eventmodeling\ntf 01 ui View\n",
-        &theme,
-        MermaidEngine::new(),
+fn render_eventmodeling_with_session(
+    source: &str,
+    engine: MermaidEngine,
+    session: RenderSession,
+    diagram_id: &str,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Event Modeling")
+        .expect("detect Event Modeling")
+        .into_presentation();
+    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
     )
-    .unwrap();
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
-#[test]
-fn eventmodeling_ordinal_text_fill_is_accounted_at_the_exact_role_occurrence() {
-    use merman_render::diagram_theme::ThemeVariant;
-    let source = "eventmodeling\ntf 01 ui View\n";
-    for role in [ThemeTarget::NodeLabel, ThemeTarget::ClusterLabel] {
-        let covered = if role == ThemeTarget::NodeLabel { 2 } else { 1 };
-        for case in [
-            "covered",
-            "uncovered",
-            "outside",
-            "cycle",
-            "warning",
-            "stroke-sibling",
-        ] {
-            let ordinal = match case {
-                "uncovered" => 3 - covered,
-                "outside" => 3,
-                _ => covered,
-            };
-            let mut text_style =
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff00ff").unwrap());
-            if case == "stroke-sibling" {
-                text_style = text_style.with_stroke(CanvasPaint::solid("#00ffff").unwrap());
-            }
-            let mut text_rule =
-                ThemeRule::new(ThemeTarget::Text, text_style).with_ordinal(if case == "cycle" {
-                    OrdinalSelector::cycle(1, 0).unwrap()
-                } else {
-                    OrdinalSelector::exact(ordinal).unwrap()
-                });
-            if case == "warning" {
-                text_rule = text_rule.with_variant(ThemeVariant::Warning);
-            }
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new().with_styles(
-                        ThemeRuleSet::default()
-                            .with_rule(ThemeRule::new(
-                                role,
-                                ThemeStylePatch::default()
-                                    .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                            ))
-                            .with_rule(text_rule),
-                    ),
-                )
-                .unwrap();
-            let rendered = render_eventmodeling_with_theme_requirement(
-                source,
-                &theme,
-                MermaidEngine::new(),
-                ThemePortabilityRequirement::BestEffort,
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            assert_eq!(
-                document
-                    .descendants()
-                    .filter(|node| node.attribute("class") == Some("em-swimlane"))
-                    .count(),
-                1
-            );
-            assert_eq!(
-                document
-                    .descendants()
-                    .filter(|node| node.attribute("class") == Some("em-box"))
-                    .count(),
-                1
-            );
-            let selector = if role == ThemeTarget::NodeLabel {
-                ".em-box span"
-            } else {
-                ".em-swimlane text"
-            };
-            assert!(
-                eventmodeling_stylesheet(rendered.svg())
-                    .contains(&format!("{selector} {{ fill: #123456; color: #123456; }}"))
-            );
-            let residual = matches!(case, "uncovered" | "cycle" | "stroke-sibling");
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 2, "role={role:?} case={case}");
-            assert_eq!(evidence.applied_count(), 1, "role={role:?} case={case}");
-            assert_eq!(
-                evidence.theme_residual_count(),
-                usize::from(residual),
-                "role={role:?} case={case}"
-            );
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(!residual),
-                "role={role:?} case={case}"
-            );
-            let strict = render_eventmodeling_with_theme(source, &theme, MermaidEngine::new());
-            if residual {
-                assert_eq!(
-                    strict.err().unwrap().unverified_family_theme(),
-                    Some((DiagramFamilyId::EVENT_MODELING, 1)),
-                    "role={role:?} case={case}"
-                );
-            } else {
-                assert!(strict.is_ok(), "role={role:?} case={case}");
-            }
-        }
-    }
+fn render_eventmodeling(
+    source: &str,
+    engine: MermaidEngine,
+    diagram_id: &str,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    render_eventmodeling_with_session(source, engine, session, diagram_id)
 }
 
-fn eventmodeling_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default().with_fill(fill),
-                    )
-                    .for_family(DiagramFamilyId::EVENT_MODELING),
-                ),
-            ),
-        )
-        .expect("compile Event Modeling text fill theme")
-}
-
-fn eventmodeling_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_typography(
-                TypographySpec::default()
-                    .with_family_style(DiagramFamilyId::EVENT_MODELING, typography),
-            ),
-        )
-        .expect("compile Event Modeling typography theme")
+fn render_eventmodeling_with_raw_theme_css(
+    environment: &RenderEnvironment,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        serde_json::json!({
+            "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
+        }),
+    ));
+    render_eventmodeling_with_session(
+        THEME_TEXT_SOURCE,
+        engine,
+        environment.begin_session().unwrap(),
+        "eventmodeling-theme-css",
+    )
 }
 
 fn eventmodeling_stylesheet(svg: &str) -> String {
@@ -588,113 +76,9 @@ fn eventmodeling_stylesheet(svg: &str) -> String {
         .to_string()
 }
 
-fn render_eventmodeling_with_theme(
-    source: &str,
-    theme: &DiagramTheme,
-    engine: MermaidEngine,
-) -> merman_render::Result<family::RenderedFamilySvg> {
-    render_eventmodeling_with_theme_requirement(
-        source,
-        theme,
-        engine,
-        ThemePortabilityRequirement::RequirePortable,
-    )
-}
-
-fn render_eventmodeling_with_theme_requirement(
-    source: &str,
-    theme: &DiagramTheme,
-    engine: MermaidEngine,
-    portability: ThemePortabilityRequirement,
-) -> merman_render::Result<family::RenderedFamilySvg> {
-    render_eventmodeling_with_theme_requirement_and_id(
-        source,
-        theme,
-        engine,
-        portability,
-        "eventmodeling-theme",
-    )
-}
-
-fn render_eventmodeling_with_theme_requirement_and_id(
-    source: &str,
-    theme: &DiagramTheme,
-    engine: MermaidEngine,
-    portability: ThemePortabilityRequirement,
-    diagram_id: &str,
-) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = common::install_parse_compatibility(theme, engine)
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse themed Event Modeling")
-        .expect("detect themed Event Modeling")
-        .into_presentation();
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(portability)
-        .begin_session_with_theme(theme)
-        .expect("begin strict portable Event Modeling session");
-
-    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        },
-        &SvgDebugOptions::default(),
-    )
-}
-
-fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::RenderedFamilySvg {
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
-        })),
-    );
-    let parsed = common::install_parse_compatibility(theme, engine)
-        .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
-        .expect("parse Event Modeling author CSS fixture")
-        .expect("detect Event Modeling author CSS fixture")
-        .into_presentation();
-    let session = RenderEnvironment::deterministic()
-        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
-            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
-        ))
-        .begin_session_with_theme(theme)
-        .expect("begin trusted Event Modeling author CSS session");
-    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare Event Modeling author CSS fixture")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("eventmodeling-theme-css".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render Event Modeling author CSS fixture")
-}
-
-fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Value {
-    let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
-        .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
-        .expect("parse themed Event Modeling layout")
-        .expect("detect themed Event Modeling layout")
-        .into_presentation();
-    let session = RenderEnvironment::deterministic()
-        .begin_session_with_theme(theme)
-        .expect("begin themed Event Modeling layout session");
-    let projection = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed Event Modeling layout")
-        .layout_json()
-        .expect("serialize themed Event Modeling layout");
-    projection
-        .pointer("/layout/EventModelingDiagram")
-        .cloned()
-        .expect("Event Modeling layout projection")
-}
-
 fn render_authored_eventmodeling_title(
     title: &str,
     font_size_css: &str,
-    theme: &DiagramTheme,
-    portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     use merman_model::families::event_modeling::{EventModelingDiagramModel, EventModelingFrame};
     use merman_model::presentation::{
@@ -711,7 +95,6 @@ fn render_authored_eventmodeling_title(
             config: config.clone(),
             effective_config: config,
             title: None,
-            theme_recipe: Some(theme.compatibility_recipe().clone()),
         },
         RenderSemanticModel::EventModeling(EventModelingDiagramModel {
             frames: vec![EventModelingFrame {
@@ -731,10 +114,7 @@ fn render_authored_eventmodeling_title(
     )
     .unwrap()
     .expect("public caller-authored Event Modeling model");
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(portability)
-        .begin_session_with_theme(theme)
-        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(
         &presentation,
         &LayoutOptions::headless_svg_defaults(),
@@ -815,6 +195,260 @@ fn eventmodeling_inherited_text_paint(svg: &str) -> (String, String, usize, usiz
     (fill, color, swimlanes, boxes)
 }
 
+#[test]
+fn eventmodeling_native_palette_reaches_frames_lanes_and_relations() {
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let family = theme.family(DiagramFamilyId::EVENT_MODELING.as_str());
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+        .unwrap()
+        .with_canvas_background(Color::rgb(19, 37, 61));
+    let rendered = render_eventmodeling_with_session(
+        CORE_PAINT_SOURCE,
+        MermaidEngine::new(),
+        session,
+        "eventmodeling-native",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let canvas = document.root_element().first_element_child().unwrap();
+    assert_eq!(canvas.attribute("class"), Some("merman-theme-canvas"));
+    assert_eq!(
+        canvas.first_element_child().unwrap().attribute("fill"),
+        Some("#13253D")
+    );
+
+    let boxes: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("em-box"))
+        .collect();
+    assert_eq!(boxes.len(), 5);
+    let border = family.roles.stroke_border.first_color().to_string();
+    for (node, slot) in boxes[..4].iter().zip([3, 0, 1, 2]) {
+        let rect = node.first_element_child().unwrap();
+        let fill = family.data.fill(slot).to_string();
+        let ink = family.data.fill_ink(slot).to_string();
+        assert_eq!(rect.attribute("fill"), Some(fill.as_str()));
+        assert_eq!(rect.attribute("stroke"), Some(border.as_str()));
+        let label = node
+            .descendants()
+            .find(|node| node.has_tag_name("span"))
+            .unwrap();
+        assert_eq!(
+            style_property(label.attribute("style").unwrap(), "color"),
+            Some(ink.as_str())
+        );
+    }
+    let processor = boxes[4].first_element_child().unwrap();
+    let node_fill = family.roles.surface_node.first_color().to_string();
+    let processor_stroke = family.roles.status_info.to_string();
+    assert_eq!(processor.attribute("fill"), Some(node_fill.as_str()));
+    assert_eq!(
+        processor.attribute("stroke"),
+        Some(processor_stroke.as_str())
+    );
+
+    let lane = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("em-swimlane"))
+        .unwrap()
+        .first_element_child()
+        .unwrap();
+    let lane_fill = family.roles.surface_container.first_color().to_string();
+    assert_eq!(lane.attribute("fill"), Some(lane_fill.as_str()));
+    assert_eq!(lane.attribute("stroke"), Some(border.as_str()));
+    let relation = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("em-relation"))
+        .unwrap();
+    let connector = family.roles.stroke_connector.first_color().to_string();
+    assert_eq!(relation.attribute("stroke"), Some(connector.as_str()));
+    let arrowhead = document
+        .descendants()
+        .find(|node| node.has_tag_name("polygon"))
+        .unwrap();
+    assert_eq!(arrowhead.attribute("fill"), Some(connector.as_str()));
+}
+
+#[test]
+fn eventmodeling_svg_preserves_raw_metadata_tokens() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            "accTitle: Accessible ",
+            " accDescr {\nFirst\n}",
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "accTitle: \u{0085}",
+            " accDescr {\n\u{0085}\n}",
+        ),
+        ("", "", "accTitle: ", " accDescr {\n}"),
+    ] {
+        let source = format!(
+            "eventmodeling accDescr {{\n{description}\n}} accTitle: {title}\ntf 01 event Start\n"
+        );
+        let rendered =
+            render_eventmodeling(&source, MermaidEngine::new(), "eventmodeling-metadata")
+                .expect("selected same-line metadata syntax");
+        common::assert_svg_accessibility(
+            rendered.svg(),
+            Some(expected_title),
+            Some(expected_description),
+        );
+    }
+}
+
+#[test]
+fn eventmodeling_config_colors_override_only_the_matching_role_and_property() {
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "themeVariables": {
+                "emCommandFill": "#de3163", "emEventStroke": "#fedcba",
+                "emSwimlaneBackgroundOdd": "#112233", "emRelationStroke": "#bada55"
+            }}),
+        ),
+    );
+    let rendered = render_eventmodeling(CORE_PAINT_SOURCE, engine, "eventmodeling-config").unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let boxes = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("em-box"))
+        .map(|node| {
+            node.children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(boxes[1].attribute("fill"), Some("#de3163"));
+    assert_eq!(boxes[1].attribute("stroke"), Some("#679ac3"));
+    assert_eq!(boxes[2].attribute("fill"), Some("#ffb778"));
+    assert_eq!(boxes[2].attribute("stroke"), Some("#fedcba"));
+    for lane in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("em-swimlane"))
+    {
+        let rect = lane
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(rect.attribute("fill"), Some("#112233"));
+        assert_eq!(rect.attribute("stroke"), Some("rgb(240,240,240)"));
+    }
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("em-relation"))
+            .all(|node| node.attribute("stroke") == Some("#bada55"))
+    );
+}
+
+#[test]
+fn eventmodeling_classic_text_color_is_inherited_by_svg_and_xhtml() {
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#fedcba" }
+        })),
+    );
+    let rendered = render_eventmodeling(THEME_TEXT_SOURCE, engine, "eventmodeling-text-color")
+        .expect("render site-owned Event Modeling text fill");
+    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
+
+    assert_eq!(fill, "#fedcba");
+    assert_eq!(color, "#fedcba");
+    assert_eq!((swimlanes, boxes), (3, 3));
+}
+
+#[test]
+fn eventmodeling_root_text_paint_allows_author_css_on_both_roles() {
+    let rendered = render_eventmodeling_with_raw_theme_css(
+        &RenderEnvironment::deterministic().with_trusted_theme_css(true),
+    )
+    .expect("render Event Modeling author CSS in a trusted host");
+    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
+    assert_eq!(fill, color);
+    assert_eq!((swimlanes, boxes), (3, 3));
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+    let compact = stylesheet
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    assert!(
+        compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac;}")
+            || compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac}"),
+        "{stylesheet}"
+    );
+    assert!(
+        compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163;}")
+            || compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163}"),
+        "{stylesheet}"
+    );
+    assert!(
+        !compact.contains(".em-swimlanetext{fill:"),
+        "local defaults must not block group inheritance"
+    );
+}
+
+#[test]
+fn eventmodeling_author_css_requires_host_trust() {
+    let result = render_eventmodeling_with_raw_theme_css(&RenderEnvironment::deterministic());
+    assert!(matches!(
+        result,
+        Err(merman_render::Error::UntrustedThemeCss)
+    ));
+}
+
+#[test]
+#[ignore = "requires Node, tools/mermaid-cli dependencies, and Puppeteer's Chrome headless shell"]
+fn eventmodeling_browser_text_cascade() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let baseline = render_eventmodeling(
+        THEME_TEXT_SOURCE,
+        MermaidEngine::new(),
+        "eventmodeling-classic",
+    )
+    .expect("render browser Event Modeling baseline");
+    let author_css = render_eventmodeling_with_raw_theme_css(
+        &RenderEnvironment::deterministic().with_trusted_theme_css(true),
+    )
+    .unwrap();
+    let fixtures = serde_json::json!([
+        { "name": "baseline", "svg": baseline.svg(), "fill": "rgb(51, 51, 51)", "color": "rgb(51, 51, 51)" },
+        { "name": "author-css", "svg": author_css.svg(), "fill": "rgb(36, 104, 172)", "color": "rgb(222, 49, 99)" },
+    ]);
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/debug/eventmodeling_text_cascade.mjs");
+    let mut child = Command::new("node")
+        .arg(script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("launch Event Modeling browser regression");
+    child
+        .stdin
+        .take()
+        .expect("browser fixture stdin")
+        .write_all(serde_json::to_string(&fixtures).unwrap().as_bytes())
+        .expect("send rendered SVG fixtures to browser");
+    let output = child
+        .wait_with_output()
+        .expect("wait for Event Modeling browser regression");
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    println!("{}", String::from_utf8_lossy(&output.stdout));
+}
+
 fn try_render_eventmodeling_svg_with_resource_policy(
     source: &str,
     policy: RenderResourcePolicy,
@@ -880,323 +514,7 @@ fn eventmodeling_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_les
 }
 
 #[test]
-fn eventmodeling_typed_text_fill_reaches_svg_and_xhtml_terminals() {
-    let cases = [
-        (
-            CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
-            "#123456",
-        ),
-        (CanvasPaint::Transparent, "transparent"),
-    ];
-
-    for (fill, expected) in cases {
-        let theme = eventmodeling_text_fill_theme(fill);
-        let rendered =
-            render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-                .expect("render strict portable Event Modeling text fill");
-        let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
-
-        assert_eq!(fill, expected);
-        assert_eq!(color, expected);
-        assert_eq!((swimlanes, boxes), (3, 3));
-
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.not_applicable_count(), 0);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
-    let theme = eventmodeling_text_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
-    );
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "textColor": "#fedcba" }
-        })),
-    );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
-        .expect("render site-owned Event Modeling text fill");
-    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
-
-    assert_eq!(fill, "#fedcba");
-    assert_eq!(color, "#fedcba");
-    assert_eq!((swimlanes, boxes), (3, 3));
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_root_text_paint_allows_author_css_on_both_roles() {
-    let empty_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile baseline Event Modeling theme");
-    let typed_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
-    for theme in [&empty_theme, &typed_theme] {
-        let rendered = render_eventmodeling_with_raw_theme_css(theme);
-        let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
-        assert_eq!(fill, color);
-        assert_eq!((swimlanes, boxes), (3, 3));
-        let stylesheet = eventmodeling_stylesheet(rendered.svg());
-        let compact = stylesheet
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .collect::<String>();
-        assert!(
-            compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac;}")
-                || compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac}"),
-            "{stylesheet}"
-        );
-        assert!(
-            compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163;}")
-                || compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163}"),
-            "{stylesheet}"
-        );
-        assert!(
-            !compact.contains(".em-swimlanetext{fill:"),
-            "local defaults must not block group inheritance"
-        );
-    }
-}
-
-#[test]
-#[ignore = "requires Node, tools/mermaid-cli dependencies, and Puppeteer's Chrome headless shell"]
-fn eventmodeling_browser_text_cascade() {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    let empty_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile baseline Event Modeling theme");
-    let typed_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
-    let baseline =
-        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &empty_theme, MermaidEngine::new())
-            .expect("render browser Event Modeling baseline");
-    let typed =
-        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &typed_theme, MermaidEngine::new())
-            .expect("render browser Event Modeling typed text");
-    let author_css = render_eventmodeling_with_raw_theme_css(&empty_theme);
-    let typed_author_css = render_eventmodeling_with_raw_theme_css(&typed_theme);
-    let fixtures = serde_json::json!([
-        { "name": "baseline", "svg": baseline.svg(), "fill": "rgb(51, 51, 51)", "color": "rgb(51, 51, 51)" },
-        { "name": "typed", "svg": typed.svg(), "fill": "rgb(18, 52, 86)", "color": "rgb(18, 52, 86)" },
-        { "name": "author-css", "svg": author_css.svg(), "fill": "rgb(36, 104, 172)", "color": "rgb(222, 49, 99)" },
-        { "name": "typed-author-css", "svg": typed_author_css.svg(), "fill": "rgb(36, 104, 172)", "color": "rgb(222, 49, 99)" },
-    ]);
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/debug/eventmodeling_text_cascade.mjs");
-    let mut child = Command::new("node")
-        .arg(script)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("launch Event Modeling browser regression");
-    child
-        .stdin
-        .take()
-        .expect("browser fixture stdin")
-        .write_all(serde_json::to_string(&fixtures).unwrap().as_bytes())
-        .expect("send rendered SVG fixtures to browser");
-    let output = child
-        .wait_with_output()
-        .expect("wait for Event Modeling browser regression");
-    assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    println!("{}", String::from_utf8_lossy(&output.stdout));
-}
-
-#[test]
-fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt() {
-    let font_stack = FontStack::new(["EventModelingTyped", "monospace"])
-        .expect("valid Event Modeling typed font stack");
-    let expected_font = font_stack.as_css().to_string();
-    let theme =
-        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-        .expect("render typed Event Modeling font stack");
-    let stylesheet = eventmodeling_stylesheet(rendered.svg());
-
-    assert!(stylesheet.contains(&format!(
-        "#eventmodeling-theme .em-swimlane text,#eventmodeling-theme .em-box span {{ font-family: {expected_font};"
-    )));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_font_stack_requires_visible_consumers_despite_retained_dom() {
-    let font_stack = FontStack::single("EventVisibleFont").unwrap();
-    let expected_font = font_stack.as_css().to_string();
-    let theme =
-        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-    for (size, applied) in [("0px", 0), ("20px", 1)] {
-        let source = format!(
-            "---\nconfig:\n  themeVariables:\n    fontSize: '{size}'\n---\neventmodeling\ntf 01 ui View\n"
-        );
-        let rendered =
-            render_eventmodeling_with_theme(&source, &theme, MermaidEngine::new()).unwrap();
-        let stylesheet = eventmodeling_stylesheet(rendered.svg());
-        assert!(stylesheet.contains(&format!("font-family: {expected_font};")));
-        assert!(stylesheet.contains(&format!("font-size: {size};")));
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        assert!(
-            document
-                .descendants()
-                .any(|node| node.has_tag_name("b") && node.text() == Some("View"))
-        );
-        assert!(
-            document
-                .descendants()
-                .any(|node| node.has_tag_name("text") && node.text() == Some("UI/Automation"))
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1, "{size}");
-        assert_eq!(evidence.applied_count(), applied, "{size}");
-        assert_eq!(evidence.not_applicable_count(), 1 - applied, "{size}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{size}");
-    }
-}
-
-#[test]
-fn eventmodeling_zero_text_paint_does_not_hide_shape_paint_consumers() {
-    for target in [
-        ThemeTarget::Text,
-        ThemeTarget::NodeLabel,
-        ThemeTarget::ClusterLabel,
-    ] {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default()
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Node,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#234567").unwrap()),
-                        ))
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Cluster,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#345678").unwrap()),
-                        ))
-                        .with_rule(ThemeRule::new(
-                            target,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                        )),
-                ),
-            )
-            .unwrap();
-        for (size, visible) in [("0px", false), ("20px", true)] {
-            let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": { "fontSize": size }
-                    }),
-                ),
-            );
-            let rendered =
-                render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
-                    .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            for (class, fill) in [("em-box", "#234567"), ("em-swimlane", "#345678")] {
-                let shape = document
-                    .descendants()
-                    .find(|node| node.attribute("class") == Some(class))
-                    .unwrap();
-                assert_eq!(
-                    shape
-                        .children()
-                        .find(|node| node.has_tag_name("rect"))
-                        .unwrap()
-                        .attribute("fill"),
-                    Some(fill)
-                );
-            }
-            let stylesheet = eventmodeling_stylesheet(rendered.svg());
-            assert_eq!(
-                stylesheet.contains("color: #123456;"),
-                visible,
-                "{target:?} {size}"
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 3, "{target:?} {size}");
-            assert_eq!(
-                evidence.applied_count(),
-                2 + usize::from(visible),
-                "{target:?} {size}"
-            );
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(!visible),
-                "{target:?} {size}"
-            );
-            assert_eq!(evidence.theme_residual_count(), 0, "{target:?} {size}");
-        }
-    }
-}
-
-#[test]
-fn eventmodeling_unknown_final_size_keeps_font_stack_residual() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
-    );
-    let engine = || {
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontSize": "var(--host-size)" }
-            })),
-        )
-    };
-    let source = "eventmodeling\ntf 01 ui View\n";
-    let rendered = render_eventmodeling_with_theme_requirement(
-        source,
-        &theme,
-        engine(),
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .unwrap();
-    assert!(eventmodeling_stylesheet(rendered.svg()).contains("font-size: var(--host-size);"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(
-        render_eventmodeling_with_theme(source, &theme, engine())
-            .err()
-            .unwrap()
-            .unverified_family_theme(),
-        Some((DiagramFamilyId::EVENT_MODELING, 1)),
-    );
-}
-
-#[test]
 fn eventmodeling_prepared_source_data_retains_spans_without_reactivating_attributes() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
-    );
     let source = "eventmodeling\ntf 01 ui View { <br/><span>Data</span><b style=\"font-size:20px\"><span>Nested</span></b> }\n";
     for security in ["strict", "loose"] {
         let engine = MermaidEngine::new().with_site_config(
@@ -1205,7 +523,7 @@ fn eventmodeling_prepared_source_data_retains_spans_without_reactivating_attribu
                 "themeVariables": { "fontSize": "0px" }
             })),
         );
-        let rendered = render_eventmodeling_with_theme(source, &theme, engine).unwrap();
+        let rendered = render_eventmodeling(source, engine, "eventmodeling-source-data").unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let code = document
             .descendants()
@@ -1222,269 +540,77 @@ fn eventmodeling_prepared_source_data_retains_spans_without_reactivating_attribu
             node.attribute("style")
                 .is_some_and(|style| style.contains("font-size"))
         }));
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), 0, "{security}");
-        assert_eq!(evidence.not_applicable_count(), 1, "{security}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{security}");
     }
 }
 
 #[test]
-fn eventmodeling_authored_inline_descendants_use_prepared_span_and_code_rules() {
-    let font_theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
-    );
-    let paint_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
-    for (html, tag, font_applied, paint_applied) in [
-        ("<b style=\"font-size:20px\">View</b><br/>", "b", true, true),
+fn eventmodeling_authored_inline_descendants_retain_local_styles() {
+    for (html, tag, css) in [
         (
-            "<b style=\"font-size:20px\"><span>View</span></b><br/>",
+            r#"<b style="font-size:20px"><span>View</span></b><br/>"#,
             "b",
-            false,
-            false,
+            "font-size:20px",
         ),
         (
-            "<span style=\"font-size:20px\">View</span><br/>",
+            r#"<span style="font-size:20px">View</span><br/>"#,
             "span",
-            true,
-            true,
+            "font-size:20px",
         ),
         (
-            "<code style=\"font-size:20px\">View</code><br/>",
+            r#"<code style="font-size:20px">View</code><br/>"#,
             "code",
-            false,
-            true,
+            "font-size:20px",
         ),
         (
-            "<code><span style=\"font-size:20px\">View</span></code><br/>",
-            "span",
-            true,
-            true,
+            r#"<b style="font-size:var(--host-size)">View</b><br/>"#,
+            "b",
+            "font-size:var(--host-size)",
         ),
     ] {
-        for (theme, applied) in [(&font_theme, font_applied), (&paint_theme, paint_applied)] {
-            let rendered = render_authored_eventmodeling_title(
-                html,
-                "0px",
-                theme,
-                ThemePortabilityRequirement::RequirePortable,
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            assert!(
-                document.descendants().any(|node| node.has_tag_name(tag)
-                    && node.attribute("style") == Some("font-size:20px")),
-                "prepared inline style: {html}"
-            );
-            assert!(
-                document
-                    .descendants()
-                    .any(|node| node.is_text() && node.text() == Some("View")),
-                "prepared DOM content: {html}"
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1, "{html}");
-            assert_eq!(evidence.applied_count(), usize::from(applied), "{html}");
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(!applied),
-                "{html}"
-            );
-            assert_eq!(evidence.theme_residual_count(), 0, "{html}");
-        }
-    }
-}
-
-#[test]
-fn eventmodeling_relative_span_sizes_use_authored_parent_for_label_visibility() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::NodeLabel,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-            ))),
-        )
-        .unwrap();
-    for size_css in ["inherit", "100%", "2em"] {
-        for (parent_size, visible) in [("0px", false), ("20px", true)] {
-            let title = format!("<b style=\"font-size:{parent_size}\"><span>View</span></b><br/>");
-            let rendered = render_authored_eventmodeling_title(
-                &title,
-                size_css,
-                &theme,
-                ThemePortabilityRequirement::RequirePortable,
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let span = document
+        let rendered = render_authored_eventmodeling_title(html, "0px").unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
                 .descendants()
-                .find(|node| node.has_tag_name("span") && node.text() == Some("View"))
-                .unwrap();
-            assert_eq!(span.attribute("style"), None, "{size_css}: {title}");
-            let parent_style = format!("font-size:{parent_size}");
-            assert_eq!(
-                span.parent().unwrap().attribute("style"),
-                Some(parent_style.as_str())
-            );
-            let stylesheet = eventmodeling_stylesheet(rendered.svg());
-            assert!(
-                stylesheet.contains(".em-box span { font-family:"),
-                "{stylesheet}"
-            );
-            assert!(
-                stylesheet.contains(&format!("font-size: {size_css};")),
-                "{stylesheet}"
-            );
-            assert_eq!(
-                stylesheet.contains(".em-box span { fill: #123456; color: #123456; }"),
-                visible,
-                "{size_css}: {title}",
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1, "{size_css}: {title}");
-            assert_eq!(
-                evidence.applied_count(),
-                usize::from(visible),
-                "{size_css}: {title}"
-            );
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(!visible),
-                "{size_css}: {title}"
-            );
-            assert_eq!(evidence.theme_residual_count(), 0, "{size_css}: {title}");
-        }
-    }
-}
-
-#[test]
-fn eventmodeling_authored_unknown_hosts_remain_residual_under_zero_root() {
-    let font_theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
-    );
-    let paint_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
-    for (html, font_residual, paint_residual) in [
-        ("<b class=\"host\"><span>View</span></b><br/>", true, true),
-        (
-            "<b style=\"font-size:var(--host-size)\">View</b><br/>",
-            true,
-            true,
-        ),
-        (
-            "<b style=\"font-size:20px;font-family:var(--host-font)\">View</b><br/>",
-            true,
-            false,
-        ),
-    ] {
-        for (theme, residual) in [(&font_theme, font_residual), (&paint_theme, paint_residual)] {
-            let rendered = render_authored_eventmodeling_title(
-                html,
-                "0px",
-                theme,
-                ThemePortabilityRequirement::BestEffort,
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            assert!(
-                document
-                    .descendants()
-                    .any(|node| node.attribute("class") == Some("host")
-                        || node
-                            .attribute("style")
-                            .is_some_and(|style| style.contains("var(--host-"))),
-                "prepared unknown dependency: {html}"
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1, "{html}");
-            assert_eq!(evidence.applied_count(), usize::from(!residual), "{html}");
-            assert_eq!(evidence.not_applicable_count(), 0, "{html}");
-            assert_eq!(
-                evidence.theme_residual_count(),
-                usize::from(residual),
-                "{html}"
-            );
-        }
+                .any(|node| node.has_tag_name(tag) && node.attribute("style") == Some(css)),
+            "prepared inline style: {html}"
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.is_text() && node.text() == Some("View")),
+            "prepared DOM content: {html}"
+        );
     }
 }
 
 #[test]
 fn eventmodeling_theme_font_family_keeps_precedence_over_root_font_family() {
-    let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
-        FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
-    ));
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "EventRootFont",
             "themeVariables": { "fontFamily": "EventThemeFont" }
         })),
     );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+    let rendered = render_eventmodeling(THEME_TEXT_SOURCE, engine, "eventmodeling-font-family")
         .expect("render config-owned Event Modeling font stack");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
 
     assert!(stylesheet.contains("font-family: EventThemeFont;"));
     assert!(!stylesheet.contains("EventRootFont"));
-    assert!(!stylesheet.contains("EventModelingTyped"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_typed_font_size_reaches_css_and_strict_receipt() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(24.0)
-            .expect("valid Event Modeling font size"),
-    );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-        .expect("render typed Event Modeling font size");
-    let stylesheet = eventmodeling_stylesheet(rendered.svg());
-    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
-
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
 fn eventmodeling_styles_are_scoped_per_inline_svg() {
     let source = "eventmodeling\ntf 01 ui View\n";
-    let theme_a = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(12.0)
-            .expect("valid Event Modeling font size"),
-    );
-    let theme_b = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(24.0)
-            .expect("valid Event Modeling font size"),
-    );
-    let rendered_a = render_eventmodeling_with_theme_requirement_and_id(
-        source,
-        &theme_a,
-        MermaidEngine::new(),
-        ThemePortabilityRequirement::RequirePortable,
-        "event-a",
-    )
-    .expect("render first scoped Event Modeling SVG");
-    let rendered_b = render_eventmodeling_with_theme_requirement_and_id(
-        source,
-        &theme_b,
-        MermaidEngine::new(),
-        ThemePortabilityRequirement::RequirePortable,
-        "event-b",
-    )
-    .expect("render second scoped Event Modeling SVG");
+    let render = |diagram_id, font_size| {
+        let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+            serde_json::json!({"themeVariables": {"fontSize": font_size}}),
+        ));
+        render_eventmodeling(source, engine, diagram_id).expect("render scoped Event Modeling SVG")
+    };
+    let rendered_a = render("event-a", "12px");
+    let rendered_b = render("event-b", "24px");
 
     let stylesheet_a = eventmodeling_stylesheet(rendered_a.svg());
     let stylesheet_b = eventmodeling_stylesheet(rendered_b.svg());
@@ -1504,16 +630,13 @@ fn eventmodeling_styles_are_scoped_per_inline_svg() {
 
 #[test]
 fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
-    let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
-        FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
-    ));
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px",
             "themeVariables": { "fontSize": "22px" }
         })),
     );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+    let rendered = render_eventmodeling(THEME_TEXT_SOURCE, engine, "eventmodeling-font-size")
         .expect("render Event Modeling split font-size configuration");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
 
@@ -1523,362 +646,16 @@ fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
 
 #[test]
 fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_ownership() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile empty Event Modeling theme");
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "redux"
         })),
     );
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+    let rendered = render_eventmodeling(THEME_TEXT_SOURCE, engine, "eventmodeling-font-size")
         .expect("render Redux Event Modeling font size");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
 
     assert!(stylesheet.contains("font-size: 14px;"), "{stylesheet}");
-}
-
-#[test]
-fn eventmodeling_mixed_typography_is_direct_and_portable() {
-    let typography = ThemeTextStyle::default()
-        .with_font_stack(
-            FontStack::single("EventModelingMixed").expect("valid mixed Event Modeling font stack"),
-        )
-        .with_font_size_px(24.0)
-        .expect("valid mixed Event Modeling font size");
-    let theme = eventmodeling_typography_theme(typography);
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-        .expect("render mixed Event Modeling typography");
-    let stylesheet = eventmodeling_stylesheet(rendered.svg());
-    assert!(stylesheet.contains("EventModelingMixed"));
-    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 2);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(24.0)
-            .expect("valid Event Modeling font size"),
-    );
-    let config_owned = render_eventmodeling_with_theme(
-        THEME_TEXT_SOURCE,
-        &theme,
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontSize": "22px" }
-            })),
-        ),
-    )
-    .expect("render config-owned Event Modeling font size");
-    let config_stylesheet = eventmodeling_stylesheet(config_owned.svg());
-    assert!(
-        config_stylesheet.contains("font-size: 22px;"),
-        "{config_stylesheet}"
-    );
-    assert!(!config_stylesheet.contains("font-size: 24px;"));
-    let evidence =
-        merman_render::__private::family_evidence(config_owned.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-
-    let root_owned = render_eventmodeling_with_theme(
-        THEME_TEXT_SOURCE,
-        &theme,
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "fontSize": "31px"
-            })),
-        ),
-    )
-    .expect("render Event Modeling typed size with root layout size");
-    let root_stylesheet = eventmodeling_stylesheet(root_owned.svg());
-    assert!(
-        root_stylesheet.contains("font-size: 24px;"),
-        "{root_stylesheet}"
-    );
-    assert!(!root_stylesheet.contains("font-size: 31px;"));
-    let evidence = merman_render::__private::family_evidence(root_owned.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_property_selection_ignored_font_sizes_keep_typed_css_and_evidence() {
-    let theme =
-        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
-    for size in ["", "   ", "bogus", "-2pt"] {
-        let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "theme": "default", "themeVariables": {"fontSize": size}
-            })),
-        );
-        let rendered =
-            render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
-                .unwrap();
-        assert_eq!(
-            rendered
-                .metadata()
-                .effective_config
-                .get_str("themeVariables.fontSize"),
-            Some(size),
-            "the real parse must retain the tested font size: {size:?}"
-        );
-        let stylesheet = eventmodeling_stylesheet(rendered.svg());
-        assert!(
-            stylesheet.contains("font-size: 24px;"),
-            "{size:?}: {stylesheet}"
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1, "{size:?}");
-        assert_eq!(evidence.applied_count(), 1, "{size:?}");
-        assert_eq!(evidence.not_applicable_count(), 0, "{size:?}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{size:?}");
-    }
-}
-
-#[test]
-fn eventmodeling_property_selection_valid_font_sizes_keep_config_ownership() {
-    let theme =
-        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
-    for size in [serde_json::json!(0), serde_json::json!("24pt")] {
-        let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "theme": "default", "themeVariables": {"fontSize": size.clone()}
-            })),
-        );
-        let rendered =
-            render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
-                .unwrap();
-        assert_eq!(
-            rendered.metadata().effective_config.as_value()["themeVariables"]["fontSize"],
-            size
-        );
-        let css_size = size
-            .as_str()
-            .map_or_else(|| size.to_string(), str::to_owned);
-        assert!(
-            eventmodeling_stylesheet(rendered.svg()).contains(&format!("font-size: {css_size};"))
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1, "{size}");
-        assert_eq!(evidence.applied_count(), 0, "{size}");
-        assert_eq!(evidence.not_applicable_count(), 1, "{size}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{size}");
-    }
-}
-
-#[test]
-fn eventmodeling_property_selection_unresolved_size_keeps_font_stack_residual() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_stack(FontStack::single("monospace").unwrap())
-            .with_font_size_px(24.0)
-            .unwrap(),
-    );
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeVariables": {"fontSize": "var(--host-size)"}
-        })),
-    );
-    let rendered = render_eventmodeling_with_theme_requirement(
-        "eventmodeling\ntf 01 ui View\n",
-        &theme,
-        engine,
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .unwrap();
-    assert_eq!(
-        rendered
-            .metadata()
-            .effective_config
-            .get_str("themeVariables.fontSize"),
-        Some("var(--host-size)")
-    );
-    let stylesheet = eventmodeling_stylesheet(rendered.svg());
-    assert!(stylesheet.contains("font-size: var(--host-size);"));
-    assert!(!stylesheet.contains("font-size: 24px;"));
-    let completion = rendered.into_completion();
-    assert!(
-        completion
-            .report()
-            .theme_diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.code() == "unsupported-typography")
-    );
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 1);
-}
-
-#[test]
-fn eventmodeling_typed_font_size_does_not_change_headless_layout() {
-    let small = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(12.0)
-            .expect("valid small Event Modeling font size"),
-    );
-    let large = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(48.0)
-            .expect("valid large Event Modeling font size"),
-    );
-
-    assert_eq!(
-        eventmodeling_layout_json_with_theme(&small),
-        eventmodeling_layout_json_with_theme(&large),
-        "Event Modeling FontSize is a final CSS terminal and must not alter pinned layout metrics"
-    );
-}
-
-#[test]
-fn eventmodeling_font_size_is_not_applicable_without_visible_text_terminals() {
-    let theme = eventmodeling_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(24.0)
-            .expect("valid Event Modeling font size"),
-    );
-    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, MermaidEngine::new())
-        .expect("render empty Event Modeling typography domain");
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_unsupported_typography_sibling_keeps_direct_font_size() {
-    let typography = ThemeTextStyle::default()
-        .with_font_size_px(24.0)
-        .expect("valid Event Modeling font size")
-        .with_font_weight(700)
-        .expect("valid unsupported Event Modeling font weight");
-    let theme = eventmodeling_typography_theme(typography);
-    let rendered = render_eventmodeling_with_theme_requirement(
-        THEME_TEXT_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .expect("BestEffort renders unsupported Event Modeling typography");
-    let stylesheet = eventmodeling_stylesheet(rendered.svg());
-    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 1);
-}
-
-#[test]
-fn eventmodeling_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
-    let palette = OrdinalPalette::new([
-        ThemeColorValue::parse("#abcdef").expect("valid Event Modeling palette color")
-    ])
-    .expect("non-empty Event Modeling text palette");
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Text,
-                            ThemeStylePatch::default().with_fill(
-                                CanvasPaint::solid("#123456")
-                                    .expect("valid Event Modeling text fill"),
-                            ),
-                        )
-                        .for_family(DiagramFamilyId::EVENT_MODELING),
-                    )
-                    .with_ordinal_palette(ThemeTarget::Text, palette),
-            ),
-        )
-        .expect("compile Event Modeling text fill and ordinal palette theme");
-    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
-        .expect("typed Event Modeling text fill must shadow the unsupported palette");
-    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
-
-    assert_eq!(fill, "#123456");
-    assert_eq!(color, "#123456");
-    assert_eq!((swimlanes, boxes), (3, 3));
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_empty_terminal_domain_marks_text_fill_not_applicable() {
-    let theme = eventmodeling_text_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
-    );
-    let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, MermaidEngine::new())
-        .expect("render empty Event Modeling terminal domain");
-    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
-
-    assert_eq!((swimlanes, boxes), (0, 0));
-    assert_eq!(fill, color);
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn eventmodeling_ordinal_text_fill_fails_closed() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default().with_fill(
-                            CanvasPaint::solid("#123456")
-                                .expect("valid Event Modeling ordinal text fill"),
-                        ),
-                    )
-                    .with_ordinal(OrdinalSelector::exact(2).expect("valid text ordinal"))
-                    .for_family(DiagramFamilyId::EVENT_MODELING),
-                ),
-            ),
-        )
-        .expect("compile ordinal Event Modeling text fill theme");
-    let error =
-        match render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()) {
-            Ok(_) => panic!("unsupported Event Modeling ordinal text fill must fail closed"),
-            Err(error) => error,
-        };
-
-    assert_eq!(
-        error.unverified_family_theme(),
-        Some((DiagramFamilyId::EVENT_MODELING, 1))
-    );
 }
 
 #[test]
@@ -2215,90 +992,6 @@ fn eventmodeling_repeated_self_source_uses_the_already_positioned_current_frame(
         "eventmodeling\ntf 01 cmd Start ->> 01 ->> 01\n",
         &[&["01", "01"]],
         &[("01", "01")],
-    );
-}
-
-#[test]
-fn repair_u7_eventmodeling_unmatched_text_variant_is_not_applicable() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
-                    )
-                    .with_variant(merman_render::diagram_theme::ThemeVariant::Warning),
-                ),
-            ),
-        )
-        .unwrap();
-    let rendered =
-        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()).unwrap();
-    assert!(!rendered.svg().contains("#abcdef"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn repair_u7_eventmodeling_source_text_color_owns_palette_fallback() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_ordinal_palette(
-                ThemeTarget::Text,
-                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
-            )),
-        )
-        .unwrap();
-    let rendered = render_eventmodeling_with_theme(
-        THEME_TEXT_SOURCE,
-        &theme,
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(
-                serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
-            ),
-        ),
-    )
-    .unwrap();
-    assert!(eventmodeling_stylesheet(rendered.svg()).contains("#abcdef"));
-    assert!(!rendered.svg().contains("#123456"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn repair_u7_eventmodeling_matched_unsupported_variant_remains_residual() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
-                    )
-                    .with_variant(merman_render::diagram_theme::ThemeVariant::Default),
-                ),
-            ),
-        )
-        .unwrap();
-    let rendered = render_eventmodeling_with_theme_requirement(
-        THEME_TEXT_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .unwrap();
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert!(
-        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new()).is_err()
     );
 }
 

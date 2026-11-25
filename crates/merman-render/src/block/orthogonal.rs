@@ -1,12 +1,14 @@
 //! Route edges over the grid's placed shapes in drawing coordinates.
 
+use super::edge_geometry::BlockOrthogonalRoute;
 use super::{
-    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, block_label_is_effectively_empty,
-    block_render_edge_points, decode_block_label_html, resolve_block_node_sources,
+    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
+    block_label_is_effectively_empty, block_render_edge_points, decode_block_label_html,
+    resolve_block_node_sources,
 };
 use crate::Result;
 use crate::graph_layout::Marker;
-use crate::graph_layout::route_paint::{self, CurveTerminals, PaintedRoute, RouteStyle};
+use crate::graph_layout::route_paint::{self, CurveTerminals, RouteStyle};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{BlockDiagramLayout, LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
@@ -16,13 +18,8 @@ use merman_layout_shoal::{
     OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, Spacing, route_orthogonal_spans,
 };
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
+use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
-
-#[derive(Debug)]
-pub(crate) struct BlockOrthogonalRoute {
-    pub(crate) path: PaintedRoute,
-    pub(crate) marker_refs: [LayoutPoint; 2],
-}
 
 #[derive(Clone, Copy)]
 struct MarkerBox {
@@ -280,7 +277,8 @@ impl Request {
         )
         .ok()?;
         let route = BlockOrthogonalRoute {
-            path,
+            path: path.d,
+            bounds: path.bounds,
             marker_refs: [a.reference, b.reference].map(layout_point),
         };
         Some((
@@ -383,6 +381,7 @@ fn clearance_boxes(
     layout: &BlockDiagramLayout,
     geometries: &HashMap<&str, &BlockShapeGeometry>,
     edge_indices: &HashMap<&str, usize>,
+    edge_style: Option<EdgeStyle>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<Option<Vec<Wall>>> {
     work.charge_adapter(model.blocks_flat.len())?;
@@ -433,7 +432,8 @@ fn clearance_boxes(
         }
         // A fallback edge keeps the marker it had before routing, including diagonal variants.
         if MarkerBox::of(edge, true).is_some() || MarkerBox::of(edge, false).is_some() {
-            let points = block_render_edge_points(edge, edge_layout, geometries).rendered_points;
+            let points =
+                block_render_edge_points(edge, edge_layout, geometries, edge_style).rendered_points;
             for (is_start, first, next) in [
                 (true, points.first(), points.get(1)),
                 (false, points.last(), points.iter().rev().nth(1)),
@@ -463,7 +463,7 @@ fn clearance_boxes(
 pub(super) fn prepare(
     model: &BlockDiagramRenderModel,
     layout: &mut BlockDiagramLayout,
-    stroke_width: Option<f64>,
+    typography: &BlockTypographyThemePlan,
     meter: &Arc<OperationWorkMeter>,
 ) -> Result<Vec<Option<BlockOrthogonalRoute>>> {
     if layout.edges.is_empty() || layout.nodes.len() != layout.shape_geometries.len() {
@@ -492,11 +492,23 @@ pub(super) fn prepare(
     if bodies.len() != layout.nodes.len() || edge_indices.len() != layout.edges.len() {
         return Ok(Vec::new());
     }
-    let Some(mut walls) = clearance_boxes(model, layout, &geometries, &edge_indices, &mut work)?
+    let edge_style = typography.native().map(|style| style.form.edge_style);
+    let Some(mut walls) = clearance_boxes(
+        model,
+        layout,
+        &geometries,
+        &edge_indices,
+        edge_style,
+        &mut work,
+    )?
     else {
         return Ok(Vec::new());
     };
-    let stroke_width = stroke_width.unwrap_or(2.0).max(0.0);
+    let stroke_width = typography
+        .css_binding()
+        .edge_stroke_width_px
+        .unwrap_or(2.0)
+        .max(0.0);
     let edge_sep = Spacing::default().edge.max(stroke_width * 2.0);
     if !edge_sep.is_finite() {
         return Ok(Vec::new());

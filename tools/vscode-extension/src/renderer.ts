@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
-import { previewLayoutFrameCapability, readCliCapabilities, supportsLayoutFitWidth } from "./cli-capabilities.js";
+import { previewLayoutFrameCapability, readCliMetadata, supportsLayoutFitWidth } from "./cli-capabilities.js";
 import { getCliSettings } from "./config.js";
 import { runRenderProcess } from "./render-process.js";
 import { isFitWidth, renderMermanArgs, type DiagramRenderSettings, type RenderFormat } from "./render-options.js";
@@ -55,27 +55,27 @@ export async function renderMermanSource(request: RenderRequest): Promise<Render
   const base = resolveCliInvocation(request.context, []);
   const withArgs = (args: readonly string[]): BinaryInvocation =>
     ({ ...base, args: [...base.args, ...args] });
-  const writeTheme = request.themeFileContent !== undefined &&
-    request.format !== "ascii" && request.format !== "unicode";
+  const { themeFileContent } = request;
   const preview = request.format === "svg" && request.outputPath === undefined && request.inputKind === undefined;
   const fitWidth = preview && isFitWidth(request.previewFitWidth) ? request.previewFitWidth : undefined;
   const capabilities = preview && (request.previewLayoutFrame || fitWidth !== undefined)
-    ? await readCliCapabilities(withArgs(["capabilities", "--json"])).catch(() => undefined)
+    ? await readCliMetadata(withArgs(["capabilities", "--json"])).catch(() => undefined)
     : undefined;
   const frame = preview && request.previewLayoutFrame ? previewLayoutFrameCapability(capabilities) : undefined;
   const previous = request.previewLayoutFrame?.previous;
   const replayFrame = frame && previous && previous.byteLength <= frame.maxBytes ? previous : undefined;
   request.signal?.throwIfAborted();
-  const directory = writeTheme || replayFrame || (frame && !frame.privateOutput)
+  const directory = themeFileContent !== undefined || replayFrame || (frame && !frame.privateOutput)
     ? await fs.mkdtemp(path.join(os.tmpdir(), "merman-render-"))
     : undefined;
   const frameOutput = frame && (directory
     ? path.join(directory, "frame-out.json")
     : path.join(os.tmpdir(), `merman-frame-${randomUUID()}.json`));
   try {
-    const themeFilePath = writeTheme && directory ? path.join(directory, "theme.json") : undefined;
-    if (themeFilePath) {
-      await fs.writeFile(themeFilePath, request.themeFileContent!, { encoding: "utf8", mode: 0o600 });
+    let themeFilePath: string | undefined;
+    if (directory && themeFileContent !== undefined) {
+      themeFilePath = path.join(directory, "theme.json");
+      await fs.writeFile(themeFilePath, themeFileContent, { encoding: "utf8", mode: 0o600 });
     }
     const args = renderMermanArgs({ ...request, themeFilePath });
     if (fitWidth !== undefined && supportsLayoutFitWidth(capabilities)) {

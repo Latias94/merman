@@ -4,11 +4,10 @@ import { getPreviewFitWidth, getPreviewSettings } from "./config.js";
 import { previewCliBackground } from "./preview-background.js";
 import { configuredThemeFileUri } from "./render-settings.js";
 import { resolvedRenderSettings } from "./render-options.js";
-import { discoverThemes, inspectThemeFile } from "./theme-runtime.js";
+import { checkThemeFile, discoverThemes } from "./theme-runtime.js";
 import {
   editorThemeAppearance,
   isThemePreference,
-  themeChoice,
   type ImportedTheme,
   type ThemeAppearancePreference,
   type ThemeDiscovery,
@@ -362,12 +361,18 @@ export class PreviewInstance implements vscode.Disposable {
     }, null, this.panelDisposables);
     this.panelDisposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (this.session.usesConfiguredThemeFile &&
-          event.affectsConfiguration("merman.preview.themeFile", this.configurationResource())) {
+        const resource = this.configurationResource();
+        const reloadTheme = this.session.usesConfiguredThemeFile &&
+          event.affectsConfiguration("merman.preview.themeFile", resource);
+        const backgroundChanged = event.affectsConfiguration("merman.preview.background", resource) &&
+          this.session.setBackground(getPreviewSettings(resource).background);
+        if (reloadTheme) {
           this.configuredThemeReloadRevision += 1;
           this.scheduleRefresh("diagram-theme", true);
+        } else if (backgroundChanged) {
+          this.scheduleRefresh("background", true);
         } else if (this.session.previewDisplayMode === "svg" &&
-          event.affectsConfiguration("merman.preview.fitWidth", this.configurationResource())) {
+          event.affectsConfiguration("merman.preview.fitWidth", resource)) {
           this.scheduleRefresh("fit-width", true);
         }
       }),
@@ -464,7 +469,7 @@ export class PreviewInstance implements vscode.Disposable {
       if (!request || request.key !== configured.key) {
         request = {
           key: configured.key,
-          promise: inspectThemeFile(this.context, configured.uri, this.discovery!),
+          promise: checkThemeFile(this.context, configured.uri, this.discovery!),
         };
         this.configuredThemeRequest = request;
       }
@@ -731,11 +736,7 @@ export class PreviewInstance implements vscode.Disposable {
   }
 
   private setDiagramTheme(theme: PreviewDiagramTheme): void {
-    const choice = this.discovery
-      ? themeChoice(this.discovery, theme) ?? this.session.snapshot?.themeChoices?.find((entry) => entry.id === theme)
-      : undefined;
-    if (!isPreviewDiagramTheme(theme) || !this.discovery ||
-      !choice?.available ||
+    if (!isPreviewDiagramTheme(theme) || !this.discovery?.choices.some((choice) => choice.id === theme) ||
       !this.session.setDiagramTheme(theme)) {
       return;
     }
@@ -753,23 +754,23 @@ export class PreviewInstance implements vscode.Disposable {
 
   private async importTheme(): Promise<void> {
     const discovery = this.discovery;
-    if (!discovery?.inspect) {
-      throw new Error("Importing theme recipe JSON requires an updated CLI with theme inspect support.");
+    if (!discovery?.choices.some((choice) => choice.id === "file")) {
+      throw new Error("Importing v2 theme JSON requires a CLI with `theme check` support.");
     }
     const generation = ++this.themeGeneration;
     const files = await vscode.window.showOpenDialog({
       canSelectMany: false,
       canSelectFolders: false,
-      filters: { "Theme recipe JSON": ["json"] },
-      openLabel: "Import theme recipe",
-      title: "Import a portable theme recipe JSON",
+      filters: { "Theme JSON": ["json"] },
+      openLabel: "Import theme",
+      title: "Import a Merman theme document",
     });
     if (!files?.[0] || this.disposed || generation !== this.themeGeneration) {
       return;
     }
     let imported;
     try {
-      imported = await inspectThemeFile(this.context, files[0], discovery);
+      imported = await checkThemeFile(this.context, files[0], discovery);
     } catch (error) {
       if (this.disposed || generation !== this.themeGeneration) return;
       throw error;

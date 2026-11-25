@@ -1,8 +1,6 @@
 use crate::cli::{MAX_FIXED_UNIX_MILLIS, ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
-#[cfg(feature = "svg")]
-use crate::io::read_named_bytes_file_controlled;
 use crate::io::read_named_text_file;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::io::read_named_text_file_controlled;
@@ -15,8 +13,6 @@ use std::path::Path;
 
 #[cfg(feature = "svg")]
 use crate::cli::MathRendererKind;
-#[cfg(all(test, feature = "svg"))]
-use crate::cli::RenderCliArgs;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -24,53 +20,22 @@ use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
-use merman::svg::{
-    DiagramThemeCompiler, IconRegistry, LayoutAdaptation, LayoutOptions,
-    MAX_THEME_ENCODED_BYTES_HARD_CAP, SvgRenderOptions, ThemeAdmissionPolicy, ThemeAppearance,
-    ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
-};
-#[cfg(feature = "svg")]
-use merman_bindings_core::{
-    compile_theme_design_json_with, compile_theme_selection_json_with_appearance,
-};
-
+use merman::svg::{LayoutOptions, SvgRenderOptions};
 #[cfg(any(feature = "svg", feature = "ascii"))]
+use merman::theme::ThemePrecedence;
+
+#[cfg(feature = "svg")]
 #[derive(Clone)]
 pub(crate) struct ConfiguredRenderer {
     pub(crate) renderer: merman::Renderer,
-    #[cfg(feature = "svg")]
     pub(crate) svg: merman::SvgRequest,
-    #[cfg(feature = "svg")]
-    theme: Option<merman::svg::DiagramTheme>,
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
+#[cfg(all(feature = "svg", any(feature = "icons", feature = "native-fonts")))]
 impl ConfiguredRenderer {
-    #[cfg(feature = "svg")]
-    pub(crate) fn selected_theme_appearance(&self) -> Option<ThemeAppearance> {
-        self.theme
-            .as_ref()
-            .and_then(|theme| theme.selected_appearance())
-    }
-
-    #[cfg(all(feature = "svg", any(feature = "icons", feature = "native-fonts")))]
     pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
         self
-    }
-
-    pub(crate) fn request<'a>(
-        &self,
-        source: &'a str,
-        target: merman::RenderTarget,
-        control: merman::OperationControl,
-    ) -> merman::RenderRequest<'a> {
-        let request = merman::RenderRequest::new(source, target, control);
-        #[cfg(feature = "svg")]
-        if let Some(theme) = self.theme.as_ref() {
-            return request.with_theme(theme.clone());
-        }
-        request
     }
 }
 
@@ -78,7 +43,7 @@ pub(crate) fn engine_for(
     parse: &ParseCliArgs,
     resources: &ResolvedResourcePolicy,
 ) -> Result<MermaidEngine, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
+    let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.source.runtime)?;
     let site_config = site_config_for(parse, resources)?;
     Ok(engine_from_config(runtime, site_config))
 }
@@ -182,7 +147,7 @@ pub(crate) fn resolve_runtime_policy(args: &RuntimeCliArgs) -> Result<RuntimePol
 
 #[cfg(feature = "analysis")]
 pub(crate) fn runtime_policy_for(parse: &ParseCliArgs) -> Result<RuntimePolicy, CliError> {
-    Ok(ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?.runtime_policy)
+    Ok(ResolvedCliRuntimePolicy::from_cli(&parse.source.runtime)?.runtime_policy)
 }
 
 pub(crate) fn site_config_for(
@@ -191,7 +156,7 @@ pub(crate) fn site_config_for(
 ) -> Result<MermaidConfig, CliError> {
     site_config_from_parts(
         parse.theme.as_deref(),
-        parse.config_file.as_deref(),
+        parse.source.config_file.as_deref(),
         resources,
         |path, limit| read_named_text_file(path, "configuration file", limit),
     )
@@ -203,12 +168,51 @@ pub(crate) fn site_config_for_resolved(
     resources: &ResolvedResourcePolicy,
     control: &merman::OperationControl,
 ) -> Result<MermaidConfig, CliError> {
-    site_config_from_parts(
-        parse.theme.as_deref(),
+    let fallback = parse
+        .theme
+        .as_deref()
+        .filter(|_| parse.theme_precedence.is_none());
+    let mut site_config = site_config_from_parts(
+        fallback,
         parse.config_file.as_deref(),
         resources,
         |path, limit| read_named_text_file_controlled(path, "configuration file", limit, control),
-    )
+    )?;
+    if let (Some(theme), Some(precedence)) = (&parse.theme, parse.theme_precedence) {
+        let value = Value::String(theme.clone());
+        site_config.set_value("theme", value.clone());
+        if let Some(root) = site_config.as_value_mut().as_object_mut() {
+            for family in merman::model::family::FAMILY_CATALOG {
+                if let Some(config) = family.config
+                    && let Some(existing) = root
+                        .get_mut(config.namespace)
+                        .and_then(|section| section.get_mut("theme"))
+                {
+                    *existing = value.clone();
+                }
+            }
+        }
+        if precedence == ThemePrecedence::Host {
+            lock_site_theme(&mut site_config);
+        }
+    }
+    Ok(site_config)
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn lock_site_theme(site_config: &mut MermaidConfig) {
+    let defaults = merman::default_site_config();
+    let mut secure = site_config
+        .as_value()
+        .get("secure")
+        .and_then(Value::as_array)
+        .or_else(|| defaults.as_value().get("secure").and_then(Value::as_array))
+        .cloned()
+        .unwrap_or_default();
+    if !secure.iter().any(|value| value.as_str() == Some("theme")) {
+        secure.push(Value::String("theme".to_owned()));
+        site_config.set_value("secure", Value::Array(secure));
+    }
 }
 
 fn site_config_from_parts(
@@ -247,7 +251,7 @@ fn site_config_from_parts(
 }
 
 pub(crate) fn parse_options(parse: &ParseCliArgs) -> ParseOptions {
-    parse_options_from_suppress_errors(parse.suppress_errors)
+    parse_options_from_suppress_errors(parse.source.suppress_errors)
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -259,45 +263,15 @@ fn parse_options_from_suppress_errors(suppress_errors: bool) -> ParseOptions {
     ParseOptions { suppress_errors }
 }
 
-#[cfg(all(test, feature = "svg"))]
-pub(crate) fn renderer_for(
-    parse: &ParseCliArgs,
-    render: &RenderCliArgs,
-    icon_registry: Option<IconRegistry>,
-    resources: &ResolvedResourcePolicy,
-) -> Result<ConfiguredRenderer, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
-    let site_config = site_config_for(parse, resources)?;
-    renderer_from_config(
-        runtime,
-        site_config,
-        parse_options(parse),
-        RendererInputs::from_cli(render)?,
-        icon_registry,
-        resources,
-        &merman::OperationControl::new(),
-    )
-}
-
 #[cfg(feature = "svg")]
 pub(crate) fn renderer_for_resolved(
     parse: &ResolvedParseOptions,
     render: &ResolvedRenderOptions,
-    icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
     control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let site_config = site_config_for_resolved(parse, resources, control)?;
-    renderer_from_config(
-        runtime,
-        site_config,
-        parse_options_for_resolved(parse),
-        RendererInputs::from_resolved(render)?,
-        icon_registry,
-        resources,
-        control,
-    )
+    Ok(renderer_from_config(parse, site_config, render, resources))
 }
 
 #[cfg(feature = "rustdoc")]
@@ -307,210 +281,19 @@ pub(crate) fn rustdoc_renderer_for_resolved(
     resources: &ResolvedResourcePolicy,
     control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let mut site_config = site_config_for_resolved(parse, resources, control)?;
-    let mut secure = merman::default_site_config()
-        .as_value()
-        .get("secure")
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or_else(|| {
-            CliError::Internal(
-                "generated Mermaid site config is missing its secure-key policy".to_string(),
-            )
-        })?;
-    if !secure.iter().any(|value| value.as_str() == Some("theme")) {
-        secure.push(Value::String("theme".to_string()));
-    }
-    site_config.set_value("secure", Value::Array(secure));
-    renderer_from_config(
-        runtime,
-        site_config,
-        parse_options_for_resolved(parse),
-        RendererInputs::from_resolved(render)?,
-        None,
-        resources,
-        control,
-    )
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Clone, Copy)]
-enum ThemeInput<'a> {
-    Preset(&'a str, Option<ThemeAppearance>),
-    SelectionFile(&'a Path, Option<ThemeAppearance>),
-    DesignFile(&'a Path),
-}
-
-#[cfg(feature = "svg")]
-impl<'a> ThemeInput<'a> {
-    fn from_resolved(render: &'a ResolvedRenderOptions) -> Result<Option<Self>, CliError> {
-        Self::resolve(
-            render.theme_preset.as_deref(),
-            render.theme_file.as_deref(),
-            render.theme_design_file.as_deref(),
-            render.theme_appearance,
-        )
-    }
-
-    fn resolve(
-        preset: Option<&'a str>,
-        selection_file: Option<&'a Path>,
-        design_file: Option<&'a Path>,
-        appearance: Option<ThemeAppearance>,
-    ) -> Result<Option<Self>, CliError> {
-        if appearance.is_some() {
-            if design_file.is_some() {
-                return Err(CliError::InvalidInput(
-                    "--theme-appearance requires a portable theme recipe through --theme-file instead of --theme-design-file".to_string(),
-                ));
-            }
-            if preset.is_none() && selection_file.is_none() {
-                return Err(CliError::InvalidInput(
-                    "--theme-appearance requires --theme-preset or --theme-file".to_string(),
-                ));
-            }
-        }
-        match (preset, selection_file, design_file) {
-            (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
-                Err(CliError::InvalidInput(
-                    "--theme-preset, --theme-file, and --theme-design-file are mutually exclusive"
-                        .to_string(),
-                ))
-            }
-            (Some(preset), None, None) => Ok(Some(Self::Preset(preset, appearance))),
-            (None, Some(path), None) => Ok(Some(Self::SelectionFile(path, appearance))),
-            (None, None, Some(path)) => Ok(Some(Self::DesignFile(path))),
-            (None, None, None) => Ok(None),
-        }
-    }
-
-    fn compile(
-        self,
-        compiler: &DiagramThemeCompiler,
-        control: &merman::OperationControl,
-    ) -> Result<merman::svg::DiagramTheme, CliError> {
-        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-        let theme = match self {
-            Self::Preset(preset, appearance) => compiler
-                .compile_preset_selection(preset, appearance)
-                .map_err(|error| CliError::InvalidInput(format!("invalid theme preset: {error}"))),
-            Self::SelectionFile(path, _) | Self::DesignFile(path) => {
-                let design = matches!(self, Self::DesignFile(_));
-                let appearance = match self {
-                    Self::SelectionFile(_, appearance) => appearance,
-                    _ => None,
-                };
-                let input_name = if design {
-                    "theme design file"
-                } else {
-                    "theme selection file"
-                };
-                let max_bytes = compiler
-                    .resource_policy()
-                    .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
-                    .unwrap_or(MAX_THEME_ENCODED_BYTES_HARD_CAP);
-                let bytes = read_named_bytes_file_controlled(
-                    path,
-                    input_name,
-                    InputLimit::new("max_theme_encoded_bytes", Some(max_bytes)),
-                    control,
-                )?;
-                let result = if design {
-                    compile_theme_design_json_with(compiler, &bytes)
-                } else {
-                    compile_theme_selection_json_with_appearance(compiler, &bytes, appearance)
-                };
-                result.map_err(|error| {
-                    CliError::InvalidInput(format!("invalid {input_name}: {}", error.message()))
-                })
-            }
-        };
-        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-        theme
-    }
-}
-
-#[cfg(feature = "markdown")]
-pub(crate) fn validate_empty_batch_theme(
-    render: &ResolvedRenderOptions,
-    resources: &ResolvedResourcePolicy,
-    control: &merman::OperationControl,
-) -> Result<(), CliError> {
-    if let Some(input) = ThemeInput::from_resolved(render)? {
-        let compiler = DiagramThemeCompiler::new()
-            .with_resource_policy(ThemeResourcePolicy::for_profile(resources.profile()));
-        input.compile(&compiler, control)?;
-    }
-    Ok(())
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Clone, Copy)]
-struct RendererInputs<'a> {
-    theme: Option<ThemeInput<'a>>,
-    theme_portability: crate::cli::ThemePortabilityKind,
-    math_renderer: Option<MathRendererKind>,
-    adaptation: LayoutAdaptation,
-    container_width: Option<f64>,
-    container_height: Option<f64>,
-    svg_id: Option<&'a str>,
-    hand_drawn_seed: Option<u64>,
-}
-
-#[cfg(feature = "svg")]
-impl<'a> RendererInputs<'a> {
-    #[cfg(test)]
-    fn from_cli(render: &'a RenderCliArgs) -> Result<Self, CliError> {
-        Ok(Self {
-            theme: ThemeInput::resolve(
-                render.theme_preset.as_deref(),
-                render.theme_file.as_deref(),
-                render.theme_design_file.as_deref(),
-                render.theme_appearance,
-            )?,
-            theme_portability: render.theme_portability,
-            math_renderer: render.math_renderer,
-            adaptation: LayoutAdaptation::None,
-            container_width: render.container_width,
-            container_height: render.container_height,
-            svg_id: render.svg_id.as_deref(),
-            hand_drawn_seed: render.hand_drawn_seed,
-        })
-    }
-
-    fn from_resolved(render: &'a ResolvedRenderOptions) -> Result<Self, CliError> {
-        Ok(Self {
-            theme: ThemeInput::from_resolved(render)?,
-            theme_portability: render.theme_portability,
-            math_renderer: render.math_renderer,
-            adaptation: render.adaptation,
-            container_width: render.container_width,
-            container_height: render.container_height,
-            svg_id: render.svg_id.as_deref(),
-            hand_drawn_seed: render.hand_drawn_seed,
-        })
-    }
+    lock_site_theme(&mut site_config);
+    Ok(renderer_from_config(parse, site_config, render, resources))
 }
 
 #[cfg(feature = "svg")]
 fn renderer_from_config(
-    runtime: ResolvedCliRuntimePolicy,
+    parse: &ResolvedParseOptions,
     mut site_config: MermaidConfig,
-    parse_options: ParseOptions,
-    render: RendererInputs<'_>,
-    icon_registry: Option<IconRegistry>,
+    render: &ResolvedRenderOptions,
     resources: &ResolvedResourcePolicy,
-    control: &merman::OperationControl,
-) -> Result<ConfiguredRenderer, CliError> {
-    let theme_resources = ThemeResourcePolicy::for_profile(resources.profile());
-    let mut environment = SvgEnvironment::deterministic()
-        .with_theme_portability_requirement(render.theme_portability.requirement())
-        .with_resource_policy(resources.render_policy())
-        .with_theme_resource_ceiling(theme_resources.clone())
-        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
-            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
-        ));
+) -> ConfiguredRenderer {
+    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     use merman::svg::{RenderCapability, RenderCapabilityPolicy};
     let mut layout_policy = RenderCapabilityPolicy::unrestricted();
     for (capability, enabled) in [
@@ -532,7 +315,10 @@ fn renderer_from_config(
             layout_policy = layout_policy.with_denied(capability);
         }
     }
-    environment = environment.with_capability_policy(layout_policy);
+    let mut environment = SvgEnvironment::deterministic()
+        .with_resource_policy(resources.render_policy())
+        .with_trusted_theme_css(true)
+        .with_capability_policy(layout_policy);
     #[cfg(not(feature = "math"))]
     {
         environment = environment.without_math_renderer();
@@ -544,11 +330,8 @@ fn renderer_from_config(
             MathRendererKind::Ratex => environment.with_compiled_math_renderer(),
         };
     }
-    if let Some(registry) = icon_registry {
-        environment = environment.with_icon_registry(registry);
-    }
     let svg = SvgRenderOptions {
-        diagram_id: render.svg_id.map(merman::svg::sanitize_svg_id),
+        diagram_id: render.svg_id.as_deref().map(merman::svg::sanitize_svg_id),
         ..SvgRenderOptions::default()
     };
 
@@ -556,11 +339,6 @@ fn renderer_from_config(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let compiler = DiagramThemeCompiler::new().with_resource_policy(theme_resources);
-    let selected_theme = render
-        .theme
-        .map(|input| input.compile(&compiler, control))
-        .transpose()?;
     let renderer = merman::Renderer::new()
         .with_presentation_engine(
             runtime.apply_engine(
@@ -568,7 +346,7 @@ fn renderer_from_config(
                     .with_site_config(SourcePresentationConfig::from_config(site_config)),
             ),
         )
-        .with_parse_options(parse_options)
+        .with_parse_options(parse_options_for_resolved(parse))
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {
         environment,
@@ -582,11 +360,10 @@ fn renderer_from_config(
         debug: Default::default(),
         pipeline: None,
     };
-    Ok(ConfiguredRenderer {
+    ConfiguredRenderer {
         renderer,
         svg: svg_request,
-        theme: selected_theme,
-    })
+    }
 }
 
 #[cfg(feature = "ascii")]
@@ -594,166 +371,46 @@ pub(crate) fn ascii_renderer_for_resolved(
     parse: &ResolvedParseOptions,
     resources: &ResolvedResourcePolicy,
     control: &merman::OperationControl,
-) -> Result<ConfiguredRenderer, CliError> {
+) -> Result<merman::Renderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let site_config = site_config_for_resolved(parse, resources, control)?;
-    let renderer = merman::Renderer::new()
+    Ok(merman::Renderer::new()
         .with_semantic_parser(
             merman::SemanticParser::new()
                 .with_site_config(site_config)
                 .with_runtime_policy(runtime.runtime_policy),
         )
         .with_parse_options(parse_options_for_resolved(parse))
-        .with_resource_policy(*resources.input_policy());
-    Ok(ConfiguredRenderer {
-        renderer,
-        #[cfg(feature = "svg")]
-        svg: merman::SvgRequest::default(),
-        #[cfg(feature = "svg")]
-        theme: None,
-    })
+        .with_resource_policy(*resources.input_policy()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "svg")]
-    #[test]
-    fn cli_rejects_embedded_font_resources() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("theme.json");
-        std::fs::write(&path, r#"{"spec":{"assets":{"fonts":[{"id":"caller","format":"woff2","data_base64":"d09GMg=="}]}}}"#).unwrap();
-        let render = RenderCliArgs {
-            theme_file: Some(path),
-            ..Default::default()
-        };
-        let error = renderer_for(
-            &ParseCliArgs::default(),
-            &render,
-            None,
-            &default_resources(),
-        )
-        .err()
-        .expect("CLI must reject retired theme font resources");
-        assert!(
-            error
-                .to_string()
-                .contains("embedded theme font resources are not supported"),
-            "{error}"
-        );
-    }
-
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn default_resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn default_resolved_parse() -> ResolvedParseOptions {
         ResolvedParseOptions {
             suppress_errors: false,
             config_file: None,
             theme: None,
+            theme_precedence: None,
             runtime: ResolvedRuntimeOptions {
                 runtime_policy: RuntimePolicy::deterministic(),
             },
         }
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
         ResolvedRenderOptions {
-            theme_preset: None,
-            theme_file: None,
-            theme_design_file: None,
-            theme_appearance: None,
-            theme_portability: crate::cli::ThemePortabilityKind::default(),
-            theme_report: None,
-            #[cfg(feature = "layout-shoal")]
-            preview_frame_in: None,
-            #[cfg(feature = "layout-shoal")]
-            preview_frame_out: None,
-            #[cfg(feature = "native-fonts")]
-            fonts: crate::cli::FontCliArgs::default(),
             math_renderer,
-            adaptation: LayoutAdaptation::None,
-            container_width: None,
-            container_height: None,
-            svg_id: None,
-            hand_drawn_seed: None,
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn cli_portability_requirement_is_owned_by_the_renderer_environment() {
-        use crate::cli::ThemePortabilityKind;
-        for (policy, requirement) in [
-            (
-                ThemePortabilityKind::BestEffort,
-                merman::svg::ThemePortabilityRequirement::BestEffort,
-            ),
-            (
-                ThemePortabilityKind::RequirePortable,
-                merman::svg::ThemePortabilityRequirement::RequirePortable,
-            ),
-        ] {
-            let mut render = resolved_render(None);
-            render.theme_portability = policy;
-            let renderer = renderer_for_resolved(
-                &default_resolved_parse(),
-                &render,
-                None,
-                &default_resources(),
-                &merman::OperationControl::new(),
-            )
-            .expect("CLI renderer");
-            assert_eq!(
-                renderer.svg.environment.theme_portability_requirement(),
-                requirement
-            );
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_files_preserve_operation_cancellation_before_json_errors() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("theme.json");
-        std::fs::write(&path, vec![b'x'; crate::input::IO_CHUNK_BYTES * 2]).unwrap();
-        let cancelled = merman::OperationControl::new();
-        cancelled.cancel();
-        let expired = merman::OperationControl::new().with_deadline(std::time::Duration::ZERO);
-
-        for (control, reason) in [
-            (cancelled, merman::CancelReason::Requested),
-            (expired, merman::CancelReason::DeadlineExceeded),
-        ] {
-            for design in [false, true] {
-                let mut render = resolved_render(None);
-                if design {
-                    render.theme_design_file = Some(path.clone());
-                } else {
-                    render.theme_file = Some(path.clone());
-                }
-                let error = renderer_for_resolved(
-                    &default_resolved_parse(),
-                    &render,
-                    None,
-                    &default_resources(),
-                    &control,
-                )
-                .err()
-                .expect("cancelled theme acquisition must fail");
-
-                assert!(
-                    matches!(error, CliError::Render(merman::RenderError::Cancelled(cancelled))
-                        if cancelled.phase == merman::OperationPhase::Admission
-                            && cancelled.reason == reason),
-                    "expected {reason} for theme design={design}, got {error}"
-                );
-            }
+            ..Default::default()
         }
     }
 
@@ -764,14 +421,13 @@ mod tests {
         let renderer = renderer_for_resolved(
             &default_resolved_parse(),
             &resolved_render(Some(MathRendererKind::None)),
-            None,
             &default_resources(),
             &control,
         )
         .expect("CLI renderer");
         let error = renderer
             .renderer
-            .render(renderer.request(
+            .render(merman::RenderRequest::new(
                 "sequenceDiagram\nA->>B: $$x^2$$",
                 merman::RenderTarget::Svg(renderer.svg.clone()),
                 merman::OperationControl::new(),
@@ -794,14 +450,13 @@ mod tests {
         let renderer = renderer_for_resolved(
             &default_resolved_parse(),
             &resolved_render(None),
-            None,
             &default_resources(),
             &control,
         )
         .expect("CLI renderer");
         let output = renderer
             .renderer
-            .render(renderer.request(
+            .render(merman::RenderRequest::new(
                 "sequenceDiagram\nA->>B: $$x^2$$",
                 merman::RenderTarget::Svg(renderer.svg.clone()),
                 merman::OperationControl::new(),
@@ -820,61 +475,6 @@ mod tests {
             !svg.svg().contains("$$x^2$$"),
             "math delimiters must be replaced"
         );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn selected_profile_remains_the_host_ceiling_when_a_theme_is_attached_later() {
-        let resources = ResolvedResourcePolicy::for_profile(
-            merman::model::resources::ResourceProfile::Constrained,
-        );
-        let mut renderer = renderer_for(
-            &ParseCliArgs::default(),
-            &RenderCliArgs::default(),
-            None,
-            &resources,
-        )
-        .expect("CLI renderer without a selected theme");
-        assert!(renderer.theme.is_none());
-
-        let limit = merman::svg::ThemeResourceLimitId::MaxEffectGraphs;
-        let maximum = ThemeResourcePolicy::constrained()
-            .value(limit)
-            .expect("constrained effect-graph ceiling");
-        let mut effects = merman::svg::DiagramEffectSet::default();
-        for ordinal in 0..=maximum {
-            let graph = merman::svg::EffectGraph::new(
-                format!("host-ceiling-{ordinal}"),
-                [merman::svg::EffectPrimitive::GaussianBlur {
-                    input: merman::svg::EffectInput::SourceGraphic,
-                    std_deviation: 1.0,
-                }],
-            )
-            .expect("valid effect graph");
-            effects = effects.with_graph(graph).expect("unique effect graph");
-        }
-        renderer.theme = Some(
-            DiagramThemeCompiler::new()
-                .with_resource_policy(ThemeResourcePolicy::unbounded_for_trusted_input())
-                .compile(merman::svg::DiagramThemeSpec::new().with_effects(effects))
-                .expect("the wider compiler should accept the retained effect graphs"),
-        );
-
-        let error = renderer
-            .renderer
-            .render(renderer.request(
-                "flowchart TD\nA --> B",
-                merman::RenderTarget::Svg(renderer.svg.clone()),
-                merman::OperationControl::new(),
-            ))
-            .expect_err("the selected CLI profile must remain the session host ceiling");
-        let resource = match error {
-            merman::RenderError::ResourceLimitExceeded(resource) => resource,
-            other => panic!("expected the session host ceiling to reject the theme, got {other:?}"),
-        };
-        assert_eq!(resource.id, limit.as_str());
-        assert_eq!(resource.actual, (maximum + 1) as u64);
-        assert_eq!(resource.maximum, maximum as u64);
     }
 
     #[test]

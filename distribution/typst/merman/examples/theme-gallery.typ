@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #set page(width: 600pt, height: auto, margin: 16pt, fill: white)
 #set text(font: "Arial", size: 13pt, fill: rgb("#172033"))
@@ -20,8 +20,8 @@
   #align(center)[
     #mermaid(
       source,
-      theme-preset: preset,
-      theme-appearance: appearance,
+      theme: preset,
+      appearance: appearance,
       width: 100%,
       height: 170pt,
       alt: title + ": Write, Review, Publish, and Revise",
@@ -32,8 +32,8 @@
 #grid(
   columns: (1fr, 1fr),
   gutter: 12pt,
-  sample("Editor · Light", "editor", "light", "#ffffff", "#172033"),
-  sample("Editor · Dark", "editor", "dark", "#0f172a", "#f5f5f5"),
-  sample("Paper Cut", "paper-cut", "light", "#fff8ec", "#3d3127"),
-  sample("Pop Art", "pop-art", "light", "#fff9df", "#161616"),
+  sample("Studio · Light", "studio", "light", "#f8fafc", "#172033"),
+  sample("Studio · Dark", "studio", "dark", "#0f141c", "#f5f5f5"),
+  sample("Paper Cut", "paper-cut", "light", "#fbf8f0", "#3d3127"),
+  sample("Pop Art", "pop-art", "light", "#fff9e8", "#161616"),
 )

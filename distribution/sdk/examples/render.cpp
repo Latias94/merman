@@ -10,7 +10,8 @@
 
 namespace {
 static_assert(MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 2 ||
-              MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 3,
+              MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 3 ||
+              MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 4,
               "Update the example for this binding options schema");
 
 MermanNativeSlice slice(std::string_view text) {
@@ -65,7 +66,7 @@ public:
             api_.struct_size < MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE ||
             !api_.engine_new_with_fonts || !api_.execute_collect || !api_.runtime_catalog ||
             !api_.result_free || !api_.engine_try_close) {
-            throw std::runtime_error("SDK does not provide the required native ABI 3 prefix");
+            throw std::runtime_error("SDK does not provide the native ABI prefix required by this header");
         }
         MermanNativeFontEngineConfig config{};
         config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeFontEngineConfig);

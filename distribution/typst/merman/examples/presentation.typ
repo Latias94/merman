@@ -1,11 +1,11 @@
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 #set page(width: 16cm, height: 9cm, margin: 12mm, fill: rgb("#111827"))
 #set text(fill: rgb("#e5e7eb"))
 
 #let slide-profile = mermaid-profile(
-  theme-preset: "ayu",
-  theme-appearance: "dark",
+  theme: "studio",
+  appearance: "dark",
   background: "#111827",
 )
 

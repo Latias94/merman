@@ -18,7 +18,6 @@ pub use foreign_object::{ForeignObjectFallbackPostprocessor, StripForeignObjectP
 pub(crate) use gitgraph_label::GitGraphBranchLabelBaselinePostprocessor;
 pub(crate) use id_rebase::RebaseSvgIdsPostprocessor;
 pub use root_background::RootBackgroundPostprocessor;
-pub(crate) use root_background::set_root_background_color;
 pub use scoped_css::ScopedCssPostprocessor;
 
 pub use attr_sanitize::SanitizeSvgAttributesPostprocessor;

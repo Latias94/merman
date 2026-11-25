@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
+) {
     let geometry = ctx.rectangle_geometry(common.layout_node);
     let rect = geometry.shape;
     let w = rect.width();
@@ -71,13 +71,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             escape_attr(common.stroke_dasharray),
         );
         out.push_str("</g>");
-        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified()
     } else {
         let numeric_radius = common
-            .typed_corner_radius
+            .native_corner_radius
             .or(ctx.compatibility.rounded_rect_radius_numeric);
         common.write_rectangle_start(out, rect);
-        if common.typed_corner_radius.is_some()
+        if common.native_corner_radius.is_some()
             || common.source_corner_radii.iter().any(Option::is_some)
         {
             common.write_rectangle_radii(out, numeric_radius);
@@ -91,9 +90,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             );
         }
         out.push_str("/>");
-        super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(true)
-            .with_rectangle_dimensions(geometry.resolved_dimensions)
-            .with_effect_reach(common.effect_selected)
     }
 }
 

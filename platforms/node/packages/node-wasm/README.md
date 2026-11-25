@@ -4,11 +4,11 @@ Explicit Node-targeted WebAssembly rendering for Node.js 22+ and static-site bui
 This is a separate opt-in package; `@mermanjs/node` remains the native N-API package and never
 silently falls back to browser or Node WASM.
 
-The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the facade, generated glue, and WASM at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
-
-Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade all package assets together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+The package remains experimental. The current source targets Mermaid `12.3.0` and uses Node transport API `3` and Options JSON schema `4`. Keep the facade, generated glue, and WASM at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ## Quick start
+
+The published `0.11.0` package bundles the Node-targeted WASM artifact for transport API `2`.
 
 ```sh
 npm install --save-exact @mermanjs/node-wasm@0.11.0
@@ -63,45 +63,25 @@ Node.js 22.0.0 is the minimum runtime.
 
 ## Compiled themes
 
-The catalog groups 11 designs with 14 concrete presets, including `paper-cut`, `carbon-copy`, and
-`pop-art`. Editor, Gruvbox, and Ayu provide both Light and Dark; other designs declare their own modes.
-
-Select a preset through the top-level `theme` group in Options JSON schema `3`. Discover preset
-IDs through the initialized engine's theme catalog:
+Theme v2 is available in builds from the current source tree. `engine.themeCatalog()` returns the
+same schema 2 catalog as the native package, with editable presets, appearances, swatches, and
+native capabilities by diagram family. Use a preset ID, a v2 theme document, or a selector in the
+Options JSON `theme` field. Use `theme: "none"` to clear a constructor selection for a request.
 
 ```js
-const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
-const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
-  optionsJson: JSON.stringify({ version: 3, theme: { preset: "editor", appearance: "dark" } }),
+const document = await engine.exportThemePreset("studio");
+const preview = await engine.resolveTheme(document, { appearance: "dark" });
+if (!preview.ok) throw new Error(preview.message);
+const svg = await engine.renderSvg("flowchart LR\nA --> B", {
+  optionsJson: JSON.stringify({ theme: { document, appearance: "dark" } }),
 });
 ```
 
-The catalog groups one design's `supported_appearances`, `default_appearance`, and appearance-specific
-discovery details. `available` means that every declared appearance can compile under the current
-resource policy. All built-in presets remain `alpha` with empty appearance-specific `qualified_cells`; availability and unknown
-profile/admission IDs never establish portable output. Flowchart glow and shadow effects support
-documented shapes in Classic and Neo; other families retain their own look and output restrictions.
-SVG fonts resolve on the viewing host; exported recipes
-do not embed them.
-
-`engine.exportThemePreset("editor")` returns a complete editable V1 recipe with
-`design.appearances` and `design.default_appearance`. Serialize it with `JSON.stringify(recipe, null, 2)`,
-save and edit the JSON, then reload it with `JSON.parse(...)`, retaining `schema_version`, `kind`,
-and the complete `design`. Pass that recipe with a concrete appearance
-through `theme: { recipe, appearance: "dark" }`; omitted appearance uses its declared default.
-`engine.materializeTheme({ schema_version: 1, action: "inspect", recipe })` validates all modes,
-while `action: "materialize"` with an optional `appearance` returns a concrete specification.
-Keep the authored recipe when saving or sharing a theme. Resolve Follow-app/editor in the host.
-
-Both transports share the same async authoring helpers, generic `executeOperation()` and synchronous
-`executeOperationSync()` routes. The original `materialize-theme-json`,
-`describe-theme-support-json`, and `export-theme-preset-json` operation IDs remain unchanged.
-See the [native package examples](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md#compiled-themes)
-and the
-[theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
-for authoring and portability, and the
-[current Node changelog](https://github.com/Latias94/merman/blob/main/platforms/node/CHANGELOG.md)
-for upgrade actions.
+`resolveTheme()` accepts raw JSON text for document-relative errors. Its optional `auto_fix_contrast`
+flag adjusts foreground colors in the resolved preview. SVG callers can read `theme_outcome` from
+the `metadata_json` returned by `executeOperation()` or `executeOperationSync()`. Both transports
+use the same generic `export-theme-preset` and `resolve-theme` operations.
+[Native package examples](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md#compiled-themes)
 
 ## Loaded icon packs
 

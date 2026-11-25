@@ -19,20 +19,6 @@ pub(crate) struct SvgWord {
 
 pub(crate) type SvgLine = Vec<SvgWord>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArchitectureTextAnchor {
-    Start,
-    #[cfg(merman_internal_theme_acceptance)]
-    Middle,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArchitectureTextBaseline {
-    Start,
-    #[cfg(merman_internal_theme_acceptance)]
-    Middle,
-}
-
 pub(crate) fn svg_line_plain_text(line: &[SvgWord]) -> String {
     let mut out = String::new();
     for (idx, w) in line.iter().enumerate() {
@@ -185,8 +171,6 @@ pub(crate) fn architecture_svg_text_terminal_bounds(
     lines: &[SvgLine],
     anchor_x: f64,
     anchor_y: f64,
-    anchor: ArchitectureTextAnchor,
-    baseline: ArchitectureTextBaseline,
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> Bounds {
@@ -198,36 +182,9 @@ pub(crate) fn architecture_svg_text_terminal_bounds(
             max_y: anchor_y,
         };
     }
-    #[cfg(merman_internal_theme_acceptance)]
-    if matches!(anchor, ArchitectureTextAnchor::Middle)
-        && matches!(baseline, ArchitectureTextBaseline::Middle)
-    {
-        let label = svg_service_title_bounds(lines, measurer, style).unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 0.0,
-            max_y: 0.0,
-        });
-        return Bounds {
-            min_x: anchor_x + label.min_x,
-            min_y: anchor_y + label.min_y,
-            max_x: anchor_x + label.max_x,
-            max_y: anchor_y + label.max_y,
-        };
-    }
-    #[cfg(merman_internal_theme_acceptance)]
-    let mut left = 0.0_f64;
-    #[cfg(merman_internal_theme_acceptance)]
-    let mut right = 0.0_f64;
     let mut width = 0.0_f64;
     for line in lines {
-        let (line_left, line_right) = svg_line_formatted_bbox_x_px(line, measurer, style);
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            left = left.max(line_left.max(0.0));
-            right = right.max(line_right.max(0.0));
-        }
-        width = width.max((line_left + line_right).max(0.0));
+        width = width.max(svg_line_formatted_bbox_width_px(line, measurer, style));
     }
 
     let first_line = lines
@@ -239,24 +196,11 @@ pub(crate) fn architecture_svg_text_terminal_bounds(
         .max(0.0);
     let extra_lines = lines.len().max(1).saturating_sub(1) as f64;
     let height = first_line_height + style.font_size * extra_lines * 1.1;
-    let y_offset = match baseline {
-        ArchitectureTextBaseline::Start => {
-            measurer.measure_svg_create_text_bbox_y_offset_px(&first_line, style)
-        }
-        #[cfg(merman_internal_theme_acceptance)]
-        ArchitectureTextBaseline::Middle => {
-            measurer.measure_svg_create_text_middle_bbox_y_offset_px(&first_line, style)
-        }
-    };
-    let (min_x, max_x) = match anchor {
-        ArchitectureTextAnchor::Start => (anchor_x, anchor_x + width),
-        #[cfg(merman_internal_theme_acceptance)]
-        ArchitectureTextAnchor::Middle => (anchor_x - left, anchor_x + right),
-    };
+    let y_offset = measurer.measure_svg_create_text_bbox_y_offset_px(&first_line, style);
     Bounds {
-        min_x,
+        min_x: anchor_x,
         min_y: anchor_y + y_offset,
-        max_x,
+        max_x: anchor_x + width,
         max_y: anchor_y + y_offset + height,
     }
 }
@@ -543,7 +487,7 @@ fn parse_svg_word_lines(text: &str) -> Vec<SvgLine> {
     parsed_lines
 }
 
-pub(crate) fn svg_lines_have_visible_words(lines: &[SvgLine]) -> bool {
+fn svg_lines_have_visible_words(lines: &[SvgLine]) -> bool {
     lines
         .iter()
         .flatten()
@@ -552,12 +496,4 @@ pub(crate) fn svg_lines_have_visible_words(lines: &[SvgLine]) -> bool {
 
 pub(crate) fn svg_lines_have_visible_text(lines: &[SvgLine], font_size_px: f64) -> bool {
     font_size_px > 0.0 && svg_lines_have_visible_words(lines)
-}
-
-pub(crate) fn svg_source_has_visible_text(source: Option<&str>, font_size_px: f64) -> bool {
-    font_size_px > 0.0
-        && source.is_some_and(|source| {
-            !source.trim().is_empty()
-                && svg_lines_have_visible_text(&parse_svg_word_lines(source.trim()), font_size_px)
-        })
 }

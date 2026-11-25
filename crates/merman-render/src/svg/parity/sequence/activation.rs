@@ -1,5 +1,4 @@
 use super::super::*;
-use crate::sequence::SequenceStaticRectThemeReceipt;
 
 #[derive(Debug, Clone)]
 pub(super) struct SequenceActivationPlan<'a> {
@@ -7,12 +6,8 @@ pub(super) struct SequenceActivationPlan<'a> {
     geometry: &'a crate::sequence::SequencePreparedActivationGeometry,
     fill: String,
     stroke: String,
-    typed_fill: bool,
-    typed_stroke: bool,
     stroke_width: Option<f32>,
     radius: Option<f32>,
-    effect: Option<crate::diagram_theme::SvgShadowEffect>,
-    shadows: Vec<Option<(String, crate::diagram_theme::SvgFilterRegion)>>,
     pub(super) bounds: Option<Bounds>,
 }
 
@@ -26,86 +21,33 @@ impl<'a> SequenceActivationPlan<'a> {
             geometry,
             fill: "#EDF2AE".to_owned(),
             stroke: "#666".to_owned(),
-            typed_fill: false,
-            typed_stroke: false,
             stroke_width: None,
             radius: None,
-            effect: None,
-            shadows: Vec::new(),
             bounds: None,
         }
     }
 
-    pub(super) fn effect_count(&self) -> usize {
-        self.shadows.iter().flatten().count()
-    }
-
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-    )]
     pub(super) fn prepare_paint(
         &mut self,
-        typed_fill: bool,
-        typed_stroke: bool,
         stroke_width: Option<f32>,
         radius: Option<f32>,
-        effect: Option<crate::diagram_theme::SvgShadowEffect>,
-        receipt: &mut SequenceStaticRectThemeReceipt,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
-        self.typed_fill = typed_fill;
-        self.typed_stroke = typed_stroke;
         self.stroke_width = stroke_width;
         self.radius = radius;
-        self.effect = effect;
-        if stroke_width.is_none() && self.effect.is_none() {
+        let Some(width) = stroke_width.map(f64::from) else {
             return Ok(());
-        }
-        if self.effect.is_some() {
-            self.shadows.resize(self.geometry.groups.len(), None);
-        }
-        let width = f64::from(stroke_width.unwrap_or(1.0));
-        for (index, group) in self.geometry.groups.iter().enumerate() {
+        };
+        for group in &self.geometry.groups {
             options.work_meter().charge(1)?;
             let Some(group) = group else { continue };
             let rect = &self.layouts[group.layout_index];
-            let mut bounds = Bounds {
+            let bounds = Bounds {
                 min_x: rect.x - width / 2.0,
                 min_y: rect.y - width / 2.0,
                 max_x: rect.x + rect.width + width / 2.0,
                 max_y: rect.y + rect.height + width / 2.0,
             };
-            if let Some(effect) = &self.effect {
-                options
-                    .work_meter()
-                    .charge(effect.stages().len().saturating_mul(3))?;
-                if let Some(shadow) = effect.materialize_rect(
-                    &options.theme_resource_policy(),
-                    rect.width,
-                    rect.height,
-                    width,
-                )? {
-                    let region = shadow.region();
-                    let [x, y, w, h] = region.as_array().map(f64::from);
-                    bounds = Bounds {
-                        min_x: rect.x + x * rect.width,
-                        min_y: rect.y + y * rect.height,
-                        max_x: rect.x + (x + w) * rect.width,
-                        max_y: rect.y + (y + h) * rect.height,
-                    };
-                    self.shadows[index] = Some((
-                        format!(
-                            "{}-activation-{index}-theme-effect-{}",
-                            options.diagram_id_or("merman"),
-                            effect.id()
-                        ),
-                        region,
-                    ));
-                } else {
-                    receipt.effect_unhandled = true;
-                }
-            }
             if let Some(total) = &mut self.bounds {
                 total.min_x = total.min_x.min(bounds.min_x);
                 total.min_y = total.min_y.min(bounds.min_y);
@@ -124,8 +66,6 @@ pub(super) fn render_sequence_activation_group(
     plan: &SequenceActivationPlan,
     message_id: &str,
     compat: &crate::sequence::SequenceCompatBinding,
-    theme_receipt: &mut SequenceStaticRectThemeReceipt,
-    evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
 ) -> Result<()> {
     let Some(group_index) = plan.geometry.group_by_start_id.get(message_id).copied() else {
         return Ok(());
@@ -137,14 +77,6 @@ pub(super) fn render_sequence_activation_group(
     if let Some(Some(a)) = plan.geometry.groups.get(group_index) {
         let layout = &plan.layouts[a.layout_index];
         let is_neo = compat.is_neo;
-        let shadow = plan
-            .shadows
-            .get(group_index)
-            .and_then(Option::as_ref)
-            .zip(plan.effect.as_ref());
-        let filter = shadow.map(|((id, region), effect)| {
-            super::super::shadow::write_theme_shadow_application(out, id, effect, *region)
-        });
         let _ = write!(
             out,
             r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
@@ -157,8 +89,7 @@ pub(super) fn render_sequence_activation_group(
             stroke = escape_xml(&plan.stroke),
             look_attr = if is_neo { r#" data-look="neo""# } else { "" },
         );
-        let style =
-            activation_palette_style(compat, a.actor_index, plan.typed_fill, plan.typed_stroke);
+        let style = activation_palette_style(compat, a.actor_index);
         if !style.is_empty() {
             let _ = write!(out, r#" style="{}""#, escape_attr(&style));
         }
@@ -168,18 +99,8 @@ pub(super) fn render_sequence_activation_group(
         if let Some(radius) = plan.radius {
             let _ = write!(out, r#" rx="{r}" ry="{r}""#, r = fmt(f64::from(radius)));
         }
-        if let Some(filter) = filter {
-            let _ = write!(out, r#" filter="{}""#, escape_attr(&filter));
-        }
         out.push_str("/>");
         out.checkpoint()?;
-        theme_receipt.record_rect_emission();
-        if let Some(((id, region), effect)) = shadow {
-            evidence.record_application(effect, id, *region);
-            theme_receipt.record_effect_emission();
-        } else if theme_receipt.effect_cleared {
-            theme_receipt.record_effect_emission();
-        }
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -188,8 +109,6 @@ pub(super) fn render_sequence_activation_group(
 fn activation_palette_style(
     compat: &crate::sequence::SequenceCompatBinding,
     actor_index: usize,
-    typed_fill: bool,
-    typed_stroke: bool,
 ) -> String {
     if !compat.actor_palette_mode() {
         return String::new();
@@ -197,9 +116,6 @@ fn activation_palette_style(
     let (stroke, fill) = compat.activation_palette(actor_index);
     let mut style = String::new();
     for (property, value) in [("stroke", stroke), ("fill", fill)] {
-        if (property == "fill" && typed_fill) || (property == "stroke" && typed_stroke) {
-            continue;
-        }
         if let Some(color) = value {
             let color = super::super::util::cssom_color_value(color);
             if color.is_empty() {

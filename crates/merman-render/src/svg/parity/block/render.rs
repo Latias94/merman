@@ -1,12 +1,15 @@
 use super::super::*;
 use crate::block::{
-    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan, BlockRectangleKind,
-    BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
-    block_label_is_effectively_empty, block_render_edge_points,
+    BlockEdgeRoutes, BlockNodeBindings, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+    BlockTypographyThemePlan, block_label_is_effectively_empty, block_render_edge_points,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
+use crate::svg::BaseEdgeMarkerKind;
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use crate::svg::parity::roughjs_common::paths::roughjs_paths_for_svg_path;
+use crate::svg::parity::roughjs_common::paths::{
+    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_svg_path,
+};
+use merman_theme_contract::v2::EdgeStyle;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -184,29 +187,6 @@ fn union_block_bounds(bounds: &mut (f64, f64, f64, f64), candidate: (f64, f64, f
     bounds.3 = bounds.3.max(candidate.3);
 }
 
-/// Determine visible edge paint from the same geometry consumed by the SVG writer.
-pub(crate) fn block_edge_is_visible(
-    edge: &merman_model::families::block::BlockEdge,
-    layout_edge: &LayoutEdge,
-    shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
-) -> Option<bool> {
-    let points = block_render_edge_points(edge, layout_edge, shape_geometries_by_id);
-    if points.rendered_points.is_empty()
-        || points
-            .rendered_points
-            .iter()
-            .any(|point| !point.x.is_finite() || !point.y.is_finite())
-    {
-        return None;
-    }
-    Some(
-        points
-            .rendered_points
-            .windows(2)
-            .any(|pair| pair[0].x != pair[1].x || pair[0].y != pair[1].y),
-    )
-}
-
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
     let _ = write!(out, "{key}:{value}!important;");
     out.checkpoint()
@@ -222,18 +202,11 @@ fn write_important_declarations<'a>(
     Ok(())
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
 pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_model::families::block::BlockDiagramRenderModel,
-    node_paint_theme: &BlockNodePaintThemePlan,
-    node_label_paint_theme: &BlockNodeLabelPaintPlan,
-    edge_paint_theme: &crate::block::BlockEdgePaintPlan,
-    marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
-    label_background_theme: &BlockLabelBackgroundPlan,
+    node_bindings: &BlockNodeBindings,
+    edge_routes: &BlockEdgeRoutes,
     typography_theme: &BlockTypographyThemePlan,
     prepared_labels: &crate::block::BlockPreparedLabels,
     options: &SvgExecution<'_>,
@@ -362,11 +335,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    let mut typography_participation = typography_theme
-        .observes_visible_labels()
-        .then(crate::block::BlockTextParticipation::default);
-    let mut label_paint_receipt = node_label_paint_theme.begin_outcomes();
-
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
     }
@@ -432,7 +400,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         typography_theme: &BlockTypographyThemePlan,
-        label_background_theme: &BlockLabelBackgroundPlan,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let theme = typography_theme.css_binding();
@@ -447,9 +414,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let line_color = theme.line_color.as_str();
         let arrowhead_color = theme.arrowhead_color.as_str();
         let stroke_width = theme.stroke_width.as_str();
-        let edge_label_background = label_background_theme.color();
+        let edge_label_background = &theme.edge_label_background;
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
+        let native = typography_theme.native();
+        let connector_width = native.map(|style| style.form.connector_width.to_string());
+        let connector_width = connector_width.as_deref().unwrap_or("2.0");
+        let (cluster_stroke_width, label_opacity) = if native.is_some() {
+            (stroke_width, "1")
+        } else {
+            ("1", "0.5")
+        };
 
         let _ = write!(
             out,
@@ -463,7 +438,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
         out.checkpoint()?;
-        super::palette::write_palette_css(out, diagram_id, theme, options)?;
+        if native.is_none() {
+            super::palette::write_palette_css(out, diagram_id, theme, options)?;
+        }
         let _ = write!(
             out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
@@ -502,7 +479,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+            r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:{connector_width}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
             diagram_id,
             diagram_id,
             arrowhead_color,
@@ -513,9 +490,23 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             line_color
         );
         out.checkpoint()?;
+        if let Some(style) = native {
+            let connector = fmt(style.form.connector_width);
+            let thick = fmt(style.form.connector_width * 2.0);
+            let weight = typography_theme
+                .text_style()
+                .font_weight
+                .as_deref()
+                .unwrap_or_default();
+            let _ = write!(
+                out,
+                r#"#{diagram_id}{{font-weight:{weight};}}#{diagram_id} .flowchart-link{{stroke-width:{connector}px;}}#{diagram_id} .flowchart-link.edge-thickness-thick{{stroke-width:{thick}px;}}"#,
+            );
+            out.checkpoint()?;
+        }
         let _ = write!(
             out,
-            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
+            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:{label_opacity};background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
             diagram_id,
             edge_label_background,
             diagram_id,
@@ -528,7 +519,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:{cluster_stroke_width}px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
             diagram_id,
             cluster_bkg,
             cluster_border,
@@ -551,6 +542,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     }
 
     let diagram_id = options.diagram_id_or("merman");
+    let native = typography_theme.native();
     let palette_size = typography_theme.css_binding().palette.len();
     let look = crate::config::DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
     let hand_drawn_seed = options.rough_randomness(
@@ -566,7 +558,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let node_stroke_color = node_theme.node_border.as_str();
     // RoughJS uses 1.3px as its default node stroke width in Mermaid's handDrawnShapeStyles.
     // Keep this independent from the configured CSS stroke width used by ordinary shapes.
-    let node_stroke_width = 1.3_f32;
+    let node_stroke_width = native.map_or(1.3, |style| style.form.stroke_width as f32);
 
     let layout_bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -602,8 +594,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
-    let root_context =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::BLOCK, diagram_id);
+    let root_context = options.root_viewport(crate::DiagramFamilyId::BLOCK, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -616,32 +607,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
-        label_background_theme,
         options,
     )?;
-    label_background_theme.record_stylesheet();
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
-    node_theme
-        .look_defs
-        .write_shadow_defs(&mut out, diagram_id)?;
-    node_theme.look_defs.write_gradient(&mut out, diagram_id)?;
-    if !marker_paint_theme.definitions().is_empty() {
-        for definition in marker_paint_theme.definitions() {
-            options.checkpoint_emit()?;
-            let mut marker = String::new();
-            super::super::markers::push_base_edge_marker(
-                &mut marker,
-                diagram_id,
-                "block",
-                definition.kind(),
-                definition.suffix(),
-                definition.paint_style(),
-            );
-            out.push_str(&marker);
-            out.checkpoint()?;
-        }
+    if let Some(look_defs) = &node_theme.look_defs {
+        look_defs.write_shadow_defs(&mut out, diagram_id)?;
+        look_defs.write_gradient(&mut out, diagram_id)?;
+    }
+    if let Some(style) = native {
+        super::native::write_markers(&mut out, diagram_id, style.form.marker_style)?;
     } else {
         let mut base_edge_markers = String::new();
         super::super::markers::push_base_edge_markers(&mut base_edge_markers, diagram_id, "block");
@@ -660,13 +636,31 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let mut marker_bounds: Option<(f64, f64, f64, f64)> = None;
     let mut has_rough_path = false;
     let mut has_rendered_edge = false;
+    let mut has_thick_edge = false;
+
+    if let Some(style) = native
+        && !matches!(style.elevation, merman_theme_contract::v2::Elevation::Flat)
+    {
+        for (index, geometry) in layout.shape_geometries.iter().enumerate() {
+            options.checkpoint_emit()?;
+            let id = format!("{diagram_id}-block-depth-{index}");
+            if let Some(bounds) =
+                super::native::write_node_depth(&mut out, style, &id, geometry, options)?
+            {
+                union_block_bounds(
+                    &mut content_bounds,
+                    (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
+                );
+            }
+        }
+    }
 
     for (node_index, n) in layout.nodes.iter().enumerate() {
         let Some(node) = nodes_by_id.get(n.id.as_str()) else {
             continue;
         };
-        let binding = node_paint_theme
-            .terminal_binding(node_index)
+        let binding = node_bindings
+            .get(node_index)
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Block terminal binding for `{}`", n.id),
             })?;
@@ -679,7 +673,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let node_text_style = &binding.text_style;
         let node_svg_text_style = &binding.svg_text_style;
         let node_div_style_prefix = &binding.div_style_prefix;
-        let typed_label_color = binding.html_paragraph_color.as_deref();
 
         let geometry =
             shape_geometries_by_id
@@ -798,20 +791,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             } => {
                 let _ = write!(
                     &mut out,
-                    r#"<path d="M{},{} a{},{} 0,0,0 {} 0 a{},{} 0,0,0 {} 0 l0,{} a{},{} 0,0,0 {} 0 l0,{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
-                    fmt_display(0.0),
-                    fmt_display(*radius_y),
-                    fmt_display(*radius_x),
-                    fmt_display(*radius_y),
-                    fmt_display(*width),
-                    fmt_display(*radius_x),
-                    fmt_display(*radius_y),
-                    fmt_display(-width),
-                    fmt_display(*body_height),
-                    fmt_display(*radius_x),
-                    fmt_display(*radius_y),
-                    fmt_display(*width),
-                    fmt_display(-body_height),
+                    r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
+                    super::native::cylinder_path(*width, *body_height, *radius_x, *radius_y),
                     escape_attr(node_box_style),
                     fmt_display(-width / 2.0),
                     fmt_display(-(body_height / 2.0 + radius_y))
@@ -871,9 +852,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let prepared_label = prepared_labels.node_label(&n.id);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
-        if let Some(participation) = typography_participation.as_mut() {
-            participation.merge(prepared_label.typography.participation);
-        }
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -893,7 +871,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
-        let emitted_label_color;
         if html_labels {
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
@@ -903,20 +880,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let label_markup = prepared_label.xhtml().ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Block HTML label for node `{}`", n.id),
             })?;
-            let label_markup = match typed_label_color {
-                Some(color) if label_markup.starts_with("<p>") => {
-                    emitted_label_color = Some(color);
-                    std::borrow::Cow::Owned(label_markup.replacen(
-                        "<p>",
-                        &format!(r#"<p style="color:{};">"#, escape_attr(color)),
-                        1,
-                    ))
-                }
-                _ => {
-                    emitted_label_color = None;
-                    std::borrow::Cow::Borrowed(label_markup)
-                }
-            };
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
@@ -939,103 +902,108 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
-            let emitted_style = crate::svg::parity::label::write_svg_text_centered_with_style(
+            let _ = crate::svg::parity::label::write_svg_text_centered_with_style(
                 &mut out,
                 &label_text,
                 node_svg_text_style,
             );
-            emitted_label_color = typed_label_color.filter(|color| {
-                emitted_style.is_some_and(|style| style.ends_with(&format!("fill:{color};")))
-            });
             out.push_str("</g>");
         }
 
         out.checkpoint()?;
-        if let Some(receipt) = label_paint_receipt.as_mut() {
-            node_label_paint_theme.record_terminal(receipt, node_index, emitted_label_color);
-        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
 
+    let edge_style = native.map(|style| style.form.edge_style);
     for (edge_index, e) in model.edges.iter().enumerate() {
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
-        let legacy_points;
-        let legacy_d;
+        let fallback_points;
+        let mut fallback_d;
         let (d, points, marker_refs) = 'geometry: {
-            #[cfg(feature = "layout-shoal")]
-            if let Some(route) = edge_paint_theme.orthogonal_route(edge_index) {
-                let b = &route.path.bounds;
+            if let Some(route) = edge_routes.orthogonal_route(edge_index) {
+                let b = &route.bounds;
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
                 break 'geometry (
-                    route.path.d.as_str(),
+                    route.path.as_str(),
                     le.points.as_slice(),
                     [Some(&route.marker_refs[0]), Some(&route.marker_refs[1])],
                 );
             }
-            legacy_points = block_render_edge_points(e, le, &shape_geometries_by_id);
-            let (d, bounds) =
-                super::super::curve::curve_basis_path_d_and_bounds(&legacy_points.rendered_points);
-            legacy_d = d;
+            fallback_points = block_render_edge_points(e, le, &shape_geometries_by_id, edge_style);
+            let (d, bounds) = match edge_style {
+                None | Some(EdgeStyle::Curved) => {
+                    curve::curve_basis_path_d_and_bounds(&fallback_points.rendered_points)
+                }
+                Some(EdgeStyle::Straight | EdgeStyle::Orthogonal | EdgeStyle::Sketch) => {
+                    curve::curve_linear_path_d_and_bounds(&fallback_points.rendered_points)
+                }
+            };
+            fallback_d = d;
+            if edge_style == Some(EdgeStyle::Sketch)
+                && fallback_points.rendered_points.len() >= 2
+                && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &fallback_d,
+                    0.3,
+                    options.work_meter(),
+                    &hand_drawn_seed,
+                )
+            {
+                fallback_d = rough;
+            }
             if let Some(b) = bounds {
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
             }
-            break 'geometry (
-                legacy_d.as_str(),
-                legacy_points.data_points.as_slice(),
+            (
+                fallback_d.as_str(),
+                fallback_points.data_points.as_slice(),
                 [
-                    legacy_points.rendered_points.first(),
-                    legacy_points.rendered_points.last(),
+                    fallback_points.rendered_points.first(),
+                    fallback_points.rendered_points.last(),
                 ],
-            );
+            )
         };
         has_rendered_edge |= !points.is_empty();
         let data_points =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));
         let thickness = e.thickness.as_str();
+        has_thick_edge |= thickness == "thick";
         let pattern = e.pattern.as_str();
         let class_attr = format!(
             "edge-thickness-{thickness} edge-pattern-{pattern} edge-thickness-{thickness} edge-pattern-{pattern} flowchart-link LS-a1 LE-b1"
         );
         let prefixed_edge_id = dom_id(diagram_id, &e.id);
         let path_id = dom_id(diagram_id, &prefixed_edge_id);
-        let edge_style =
-            edge_paint_theme
-                .declaration(edge_index)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: "Block edge declaration plan does not match semantic edges".to_owned(),
-                })?;
         let _ = write!(
             &mut out,
-            r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr(d),
             escape_attr(&path_id),
             escape_attr(&class_attr),
-            escape_attr(edge_style),
             escape_attr(&prefixed_edge_id),
             escape_attr(&data_points)
         );
 
-        if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, true) {
+        if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true) {
             if let Some(point) = marker_refs[0] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
                 &mut out,
                 r#" marker-start="{}""#,
-                escape_attr(&marker_url(diagram_id, suffix))
+                escape_attr(&marker_url(diagram_id, kind.suffix()))
             );
         }
-        if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, false) {
+        if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false) {
             if let Some(point) = marker_refs[1] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
                 &mut out,
                 r#" marker-end="{}""#,
-                escape_attr(&marker_url(diagram_id, suffix))
+                escape_attr(&marker_url(diagram_id, kind.suffix()))
             );
         }
         options.checkpoint_emit()?;
@@ -1051,9 +1019,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             continue;
         };
         let prepared_label = prepared_labels.edge_label(edge_index);
-        if let Some(participation) = typography_participation.as_mut() {
-            participation.merge(prepared_label.typography.participation);
-        }
         union_block_bounds(
             &mut content_bounds,
             (
@@ -1113,11 +1078,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             out.push_str("</g></g>");
         }
         out.checkpoint()?;
-        label_background_theme.record_terminal(
-            lbl.width.is_finite() && lbl.height.is_finite() && lbl.width > 0.0 && lbl.height > 0.0,
-            true,
-            options.work_meter(),
-        )?;
     }
 
     let bounds_scan_end = out.len();
@@ -1147,6 +1107,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     // constant, so custom theme stroke widths remain represented when they are numeric CSS px.
     let node_stroke_outset: f64 = if layout.shape_geometries.is_empty() {
         0.0
+    } else if let Some(style) = native {
+        style.form.stroke_width / 2.0
     } else {
         node_theme.edge_stroke_width_px.map(f64::abs).unwrap_or(1.0) / 2.0
     };
@@ -1155,10 +1117,12 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     } else {
         0.0
     };
-    let edge_stroke_outset = if has_rendered_edge {
-        node_theme.edge_stroke_width_px.map(f64::abs).unwrap_or(1.0) / 2.0
-    } else {
+    let edge_stroke_outset = if !has_rendered_edge {
         0.0
+    } else if let Some(style) = native {
+        style.form.connector_width * if has_thick_edge { 1.0 } else { 0.5 }
+    } else {
+        node_theme.edge_stroke_width_px.map(f64::abs).unwrap_or(1.0) / 2.0
     };
     let stroke_outset = node_stroke_outset
         .max(rough_stroke_outset)
@@ -1183,12 +1147,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
-    let rooted = root_document.complete(out.finish()?)?;
-    node_label_paint_theme.record_outcomes(label_paint_receipt);
-    if let Some(participation) = typography_participation {
-        typography_theme.record_text_participation(participation);
-    }
-    Ok(rooted)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]

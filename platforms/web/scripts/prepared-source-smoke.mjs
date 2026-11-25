@@ -26,7 +26,7 @@ export async function preparedSourceSmoke(api, raw, measurementResult) {
   assert.equal(prepared.renderSvg(), first);
   assert.throws(() => prepared.renderSvg({ resources: { limits: { max_source_bytes: 1 } } }), error => error.code_name === "MERMAN_RESOURCE_LIMIT_EXCEEDED");
   assert.equal(prepared.renderSvg(), first);
-  for (const frozen of [{ parse: { suppress_errors: true } }, { site_config: {} }, { fixed_today: "2030-01-01" }, { fixed_local_offset_minutes: 60 }, { theme: null }]) {
+  for (const frozen of [{ parse: { suppress_errors: true } }, { site_config: {} }, { fixed_today: "2030-01-01" }, { fixed_local_offset_minutes: 60 }, { runtime_policy: "deterministic" }]) {
     assert.throws(() => prepared.renderSvg(frozen), error => error.code_name === "MERMAN_OPTIONS_JSON_ERROR");
   }
   let measured = 0;

@@ -1,28 +1,19 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
-use super::math_label::{
-    record_sequence_katex_terminal_emission, sequence_katex_label,
-    write_sequence_katex_foreign_object,
-};
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
-    SequenceDrawnTextNode, SequenceMathHeightMode, SequenceStaticRectThemeReceipt,
-    SequenceWrappedSideNoteLabelContext, measure_sequence_drawn_line_height,
-    prepare_wrapped_side_note_label, sequence_drawn_text_first_y, sequence_drawn_text_style,
-    sequence_drawn_text_y, sequence_note_final_wrapped_lines, typed_wrapped_side_note_style,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
+    sequence_drawn_text_first_y, sequence_drawn_text_style, sequence_drawn_text_y,
+    sequence_note_final_wrapped_lines,
 };
 use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
-
-use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder};
-use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub(super) struct SequenceNotePaintPlan {
     stroke_width: Option<f32>,
     radius: Option<f32>,
-    effect: Option<SvgShadowEffect>,
-    shadows: BTreeMap<String, (String, SvgFilterRegion)>,
     pub(super) bounds: Option<Bounds>,
 }
 
@@ -33,22 +24,17 @@ impl SequenceNotePaintPlan {
         nodes: &FxHashMap<&str, &LayoutNode>,
         stroke_width: Option<f32>,
         radius: Option<f32>,
-        effect: Option<SvgShadowEffect>,
-        receipt: &mut SequenceStaticRectThemeReceipt,
         options: &SvgExecution<'_>,
     ) -> Result<Self> {
         let mut plan = Self {
             stroke_width,
             radius,
-            effect,
-            ..Self::default()
+            bounds: None,
         };
-        if plan.stroke_width.is_none() && plan.effect.is_none() {
+        let Some(width) = stroke_width.map(f64::from) else {
             return Ok(plan);
-        }
-        // Notes have the SVG 1px default; actor strokeWidth does not apply here.
-        let width = f64::from(stroke_width.unwrap_or(1.0));
-        for (index, message) in model.messages.iter().enumerate() {
+        };
+        for message in &model.messages {
             options.work_meter().charge(1)?;
             if message.semantic_kind() != SequenceMessageKind::Note {
                 continue;
@@ -58,46 +44,12 @@ impl SequenceNotePaintPlan {
                 continue;
             };
             let (left, top) = node_left_top(node);
-            let mut bounds = Bounds {
+            let bounds = Bounds {
                 min_x: left - width / 2.0,
                 min_y: top - width / 2.0,
                 max_x: left + node.width + width / 2.0,
                 max_y: top + node.height + width / 2.0,
             };
-            if let Some(effect) = &plan.effect {
-                options
-                    .work_meter()
-                    .charge(effect.stages().len().saturating_mul(3))?;
-                if let Some(materialized) = effect.materialize_rect(
-                    &options.theme_resource_policy(),
-                    node.width,
-                    node.height,
-                    width,
-                )? {
-                    let region = materialized.region();
-                    let [x, y, w, h] = region.as_array().map(f64::from);
-                    // Use the same outward-rounded region as the filter writer.
-                    bounds = Bounds {
-                        min_x: left + x * node.width,
-                        min_y: top + y * node.height,
-                        max_x: left + (x + w) * node.width,
-                        max_y: top + (y + h) * node.height,
-                    };
-                    plan.shadows.insert(
-                        node_id,
-                        (
-                            format!(
-                                "{}-note-{index}-theme-effect-{}",
-                                options.diagram_id_or("merman"),
-                                effect.id()
-                            ),
-                            region,
-                        ),
-                    );
-                } else {
-                    receipt.effect_unhandled = true;
-                }
-            }
             if let Some(total) = &mut plan.bounds {
                 total.min_x = total.min_x.min(bounds.min_x);
                 total.min_y = total.min_y.min(bounds.min_y);
@@ -109,26 +61,17 @@ impl SequenceNotePaintPlan {
         }
         Ok(plan)
     }
-
-    pub(super) fn len(&self) -> usize {
-        self.shadows.len()
-    }
 }
 
 pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) is_neo: bool,
-    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) paint: &'a SequenceNotePaintPlan,
-    pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) wrapped_note_text: crate::sequence::SequencePreparedNoteLabelView<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) note_wrap_widths: crate::sequence::SequenceNoteWrapWidths,
     pub(super) note_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
@@ -139,7 +82,6 @@ pub(super) fn render_sequence_note(
     message_index: usize,
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
-    theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) -> Result<()> {
     if msg.semantic_kind() != SequenceMessageKind::Note {
         return Ok(());
@@ -150,8 +92,6 @@ pub(super) fn render_sequence_note(
     let raw = msg.message_text();
     let node_id = format!("note-{id}");
     let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-        ctx.typography_receipt
-            .record_missing_text_effect(crate::sequence::SequenceTextSurface::NoteLabel);
         return Ok(());
     };
     let (x, y) = node_left_top(n);
@@ -161,14 +101,6 @@ pub(super) fn render_sequence_note(
         _ => (x + n.width / 2.0, "middle"),
     };
     let text_y = sequence_drawn_text_first_y(y, ctx.note_margin);
-    let shadow = ctx
-        .paint
-        .shadows
-        .get(&node_id)
-        .zip(ctx.paint.effect.as_ref());
-    let filter = shadow.map(|((id, region), effect)| {
-        super::super::shadow::write_theme_shadow_application(out, id, effect, *region)
-    });
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,
@@ -189,23 +121,7 @@ pub(super) fn render_sequence_note(
     if let Some(radius) = ctx.paint.radius {
         let _ = write!(out, r#" rx="{r}" ry="{r}""#, r = fmt(f64::from(radius)));
     }
-    if let Some(filter) = &filter {
-        let _ = write!(
-            out,
-            r#" filter="{filter}" style="filter:{filter};""#,
-            filter = escape_attr(filter)
-        );
-    } else if theme_receipt.effect_cleared {
-        out.push_str(r#" style="filter:none;""#);
-    }
     out.push_str("/>");
-    theme_receipt.record_rect_emission();
-    if let Some(((id, region), effect)) = shadow {
-        ctx.shadow_evidence.record_application(effect, id, *region);
-        theme_receipt.record_effect_emission();
-    } else if theme_receipt.effect_cleared {
-        theme_receipt.record_effect_emission();
-    }
     let prepared_math =
         ctx.math_sidecar
             .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(
@@ -222,54 +138,6 @@ pub(super) fn render_sequence_note(
             (x + n.width / 2.0 - katex.width / 2.0).round(),
             (y + n.height / 2.0 - katex.height / 2.0).round(),
         );
-        record_sequence_katex_terminal_emission(
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::NoteLabel,
-            &katex,
-        );
-        ctx.text_shadow.record_terminal(
-            None,
-            false,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::NoteLabel,
-        );
-    } else if let Some(text) = ctx.wrapped_note_text.get(message_index, msg) {
-        render_sequence_note_lines(
-            out,
-            crate::text::split_mermaid_common_br_lines(text),
-            text_x,
-            text_y,
-            text_anchor,
-            ctx,
-        )?;
-    } else if let Some(terminal_style) =
-        typed_wrapped_side_note_style(msg, ctx.note_typography.non_normal_typed_terminal_style())
-    {
-        // Opaque routes replay the original planner, including its fallible wrapping probes.
-        // The terminal drawing width is deliberately not a wrapping input.
-        let label = prepare_wrapped_side_note_label(
-            raw,
-            msg.placement.expect("wrapped side note placement"),
-            SequenceWrappedSideNoteLabelContext {
-                measurer: ctx.measurer,
-                measurement_style: ctx.note_text_style,
-                terminal_style,
-                config: ctx.sanitize_config,
-                default_width: ctx.note_wrap_widths.default_width,
-                note_margin: ctx.note_wrap_widths.note_margin,
-                wrap_padding: ctx.note_wrap_widths.wrap_padding,
-                checkpoints: ctx.checkpoints.text(),
-            },
-        )?;
-        render_sequence_note_lines(
-            out,
-            crate::text::split_mermaid_common_br_lines(&label.effective_text),
-            text_x,
-            text_y,
-            text_anchor,
-            ctx,
-        )?;
     } else if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
         //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
@@ -327,50 +195,15 @@ fn render_sequence_note_lines<'a>(
         };
         let y = sequence_drawn_text_y(text_y, ctx.note_margin, preceding_height);
         let style = ctx.note_typography.terminal_style("", css.clone());
-        // SVG whitespace and the zero-width placeholder have no painted glyphs.
-        // Keep the line for layout, but do not create an empty native filter group.
-        let paintless = ctx.text_shadow.is_paintless(text);
-        let shadow = (!paintless)
-            .then_some(ctx)
-            .map(|ctx| {
-                ctx.text_shadow.write_definition(
-                    out,
-                    text,
-                    text_x,
-                    y,
-                    match text_anchor {
-                        "start" => super::text_effect::TextShadowBaseline::NoteStart,
-                        "end" => super::text_effect::TextShadowBaseline::NoteEnd,
-                        _ => super::text_effect::TextShadowBaseline::NoteMiddle,
-                    },
-                    ctx.note_typography.terminal_text_style(),
-                    ctx.measurer,
-                )
-            })
-            .transpose()?
-            .flatten();
-        let filter = shadow
-            .as_ref()
-            .map(|shadow| format!(" filter=\"{}\"", escape_attr(&shadow.filter)))
-            .unwrap_or_default();
         let _ = write!(
             &mut *out,
-            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
             x = fmt(text_x),
             y = fmt(y),
             style = escape_attr_display(&style),
             text = super::escape_prepared_text(text)
         );
-        ctx.typography_receipt
-            .record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
         out.checkpoint()?;
-        ctx.text_shadow.record_terminal(
-            shadow.as_ref(),
-            paintless,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::NoteLabel,
-        );
         if ctx.note_margin > 0.0 {
             preceding_height += measure_sequence_drawn_line_height(
                 ctx.measurer,
@@ -393,22 +226,12 @@ mod tests {
         crate::svg::parity::with_test_svg_execution(
             crate::DiagramFamilyId::SEQUENCE,
             &crate::svg::SvgRenderOptions::default(),
-            |execution| {
+            |_execution| {
                 let mut out = String::new();
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
                 let config = merman_model::presentation::PresentationConfig::default();
-                let typography =
-                    crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
-                        .unwrap();
-                let mut receipt =
-                    crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
-                let text_shadow = super::super::text_effect::SequenceTextShadow::from_prepared(
-                    execution,
-                    crate::sequence::SequenceTypographyRole::Note,
-                    typography.note(),
-                    &mut receipt,
-                );
+                let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
                 super::render_sequence_note_lines(
                     &mut out,
                     ["first", "", "last"],
@@ -417,16 +240,11 @@ mod tests {
                     "middle",
                     &super::SequenceNoteRenderContext {
                         is_neo: typography.compat_binding().is_neo,
-                        text_shadow: &text_shadow,
                         paint: &Default::default(),
-                        shadow_evidence: &Default::default(),
                         note_typography: typography.note(),
-                        typography_receipt: &receipt,
                         math_sidecar: &Default::default(),
                         nodes_by_id: &Default::default(),
-                        wrapped_note_text: crate::sequence::SequencePreparedNoteLabelView::empty(),
                         measurer: &crate::text::DeterministicTextMeasurer::default(),
-                        note_wrap_widths: Default::default(),
                         note_margin: 10.0,
                         wrap_padding: 10.0,
                         note_text_style: &crate::text::TextStyle::default(),
@@ -445,7 +263,7 @@ mod tests {
         crate::svg::parity::with_test_svg_execution(
             crate::DiagramFamilyId::SEQUENCE,
             &crate::svg::SvgRenderOptions::default(),
-            |execution| {
+            |_execution| {
                 struct TspanProbe(std::cell::Cell<usize>);
                 impl crate::text::TextMeasurer for TspanProbe {
                     fn measure(
@@ -473,17 +291,7 @@ mod tests {
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
                 let config = merman_model::presentation::PresentationConfig::default();
-                let typography =
-                    crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
-                        .unwrap();
-                let mut receipt =
-                    crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
-                let text_shadow = super::super::text_effect::SequenceTextShadow::from_prepared(
-                    execution,
-                    crate::sequence::SequenceTypographyRole::Note,
-                    typography.note(),
-                    &mut receipt,
-                );
+                let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
                 let settings =
                     super::super::settings::SequenceRenderSettings::from_effective_config(
                         &serde_json::json!({"sequence": {"noteFontWeight": 700}}),
@@ -499,17 +307,11 @@ mod tests {
                         "middle",
                         &super::SequenceNoteRenderContext {
                             is_neo: typography.compat_binding().is_neo,
-                            text_shadow: &text_shadow,
                             paint: &Default::default(),
-                            shadow_evidence: &Default::default(),
                             note_typography: typography.note(),
-                            typography_receipt: &receipt,
                             math_sidecar: &Default::default(),
                             nodes_by_id: &Default::default(),
-                            wrapped_note_text:
-                                crate::sequence::SequencePreparedNoteLabelView::empty(),
                             measurer: &probe,
-                            note_wrap_widths: Default::default(),
                             note_margin: margin,
                             wrap_padding: 10.0,
                             note_text_style: &settings.note_text_style,

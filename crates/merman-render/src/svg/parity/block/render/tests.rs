@@ -117,24 +117,6 @@ fn block_layout_edge_index_preserves_first_match_and_missing_behavior() {
 fn render_block_direct_with_policy(
     policy: RenderResourcePolicy,
 ) -> crate::Result<root_svg::RootedSvg> {
-    render_block_direct_with_layout(policy, &BlockNodePaintThemePlan::baseline(), |_| {})
-}
-
-fn render_block_direct_with_layout(
-    policy: RenderResourcePolicy,
-    node_paint_theme: &BlockNodePaintThemePlan,
-    change_layout: impl FnOnce(&mut crate::model::BlockDiagramLayout),
-) -> crate::Result<root_svg::RootedSvg> {
-    render_block_direct_with_edge_theme(policy, node_paint_theme, None, change_layout)
-}
-
-fn render_block_direct_with_edge_theme(
-    policy: RenderResourcePolicy,
-    node_paint_theme: &BlockNodePaintThemePlan,
-    theme: Option<&crate::diagram_theme::DiagramTheme>,
-    change_layout: impl FnOnce(&mut crate::model::BlockDiagramLayout),
-) -> crate::Result<root_svg::RootedSvg> {
-    let resolved = theme.map(|theme| theme.resolve(crate::DiagramFamilyId::BLOCK));
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
         .expect("parse Block resource-bound fixture")
@@ -144,7 +126,8 @@ fn render_block_direct_with_edge_theme(
         panic!("expected a typed Block render model");
     };
     let effective_config = &parsed.metadata().effective_config;
-    let mut typography_theme = BlockTypographyThemePlan::resolve(None, effective_config).unwrap();
+    let mut typography_theme =
+        BlockTypographyThemePlan::resolve(effective_config.as_value()).unwrap();
     typography_theme.prepare_class_definitions(&model.class_defs);
     // Keep this helper's resource policy targeted at emission, as before.
     let layout_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
@@ -153,14 +136,21 @@ fn render_block_direct_with_edge_theme(
     let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(effective_config.as_value()),
+        crate::block::BlockShapeSettings::resolve(effective_config.as_value(), None),
         typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         &DeterministicTextMeasurer::default(),
         effective_config,
         &layout_meter,
     )?;
-    change_layout(&mut layout);
+    let edge_routes = BlockEdgeRoutes::prepare(
+        model,
+        &mut layout,
+        &typography_theme,
+        #[cfg(feature = "layout-shoal")]
+        crate::layout_backend::GraphLayoutBackend::Native,
+        &layout_meter,
+    )?;
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session()
@@ -170,62 +160,12 @@ fn render_block_direct_with_edge_theme(
     let execution =
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
-    let labels = crate::block::BlockNodeLabelPaintPlan::resolve(
-        None,
-        &parsed.metadata().effective_config,
-        model,
-        &layout,
-        &prepared_labels,
-        execution.work_meter(),
-    )
-    .unwrap();
-    let prepared;
-    let node_paint_theme = if node_paint_theme.has_terminal_bindings() {
-        node_paint_theme
-    } else {
-        prepared = BlockNodePaintThemePlan::resolve(
-            None,
-            &parsed.metadata().effective_config,
-            model,
-            &layout,
-            &labels,
-            execution.work_meter(),
-        )
-        .unwrap();
-        &prepared
-    };
-
-    let edge_paint = crate::block::BlockEdgePaintPlan::resolve(
-        resolved.as_ref(),
-        effective_config,
-        model,
-        &mut layout,
-        #[cfg(feature = "layout-shoal")]
-        crate::layout_backend::GraphLayoutBackend::Native,
-        session.work_meter(),
-    )
-    .expect("edge paint theme");
+    let node_bindings = BlockNodeBindings::prepare(model, &layout, &layout_meter)?;
     render_block_diagram_svg_model_with_theme(
         &layout,
         model,
-        node_paint_theme,
-        &labels,
-        &edge_paint,
-        &crate::block::BlockMarkerPaintPlan::resolve(
-            resolved.as_ref(),
-            effective_config,
-            model,
-            &layout,
-            execution.work_meter(),
-        )
-        .expect("marker paint theme"),
-        &BlockLabelBackgroundPlan::resolve(
-            None,
-            effective_config,
-            &typography_theme.css_binding().edge_label_background,
-            execution.work_meter(),
-        )
-        .expect("background theme"),
+        &node_bindings,
+        &edge_routes,
         &typography_theme,
         &prepared_labels,
         &execution,
@@ -407,7 +347,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     let options =
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
-    let mut layout = BlockDiagramLayout {
+    let layout = BlockDiagramLayout {
         nodes: vec![LayoutNode {
             id: "node".to_string(),
             x: 0.0,
@@ -432,49 +372,12 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     };
 
     let config = &parsed.metadata().effective_config;
-    let typography = BlockTypographyThemePlan::resolve(None, config).unwrap();
-    let labels = BlockNodeLabelPaintPlan::resolve(
-        None,
-        config,
-        model,
-        &layout,
-        &crate::block::BlockPreparedLabels::default(),
-        options.work_meter(),
-    )
-    .unwrap();
-    let edges = crate::block::BlockEdgePaintPlan::resolve(
-        None,
-        config,
-        model,
-        &mut layout,
-        #[cfg(feature = "layout-shoal")]
-        crate::layout_backend::GraphLayoutBackend::Native,
-        session.work_meter(),
-    )
-    .unwrap();
-    let markers = crate::block::BlockMarkerPaintPlan::resolve(
-        None,
-        config,
-        model,
-        &layout,
-        options.work_meter(),
-    )
-    .unwrap();
-    let background = BlockLabelBackgroundPlan::resolve(
-        None,
-        config,
-        &typography.css_binding().edge_label_background,
-        options.work_meter(),
-    )
-    .unwrap();
+    let typography = BlockTypographyThemePlan::resolve(config.as_value()).unwrap();
     let error = render_block_diagram_svg_model_with_theme(
         &layout,
         model,
-        &BlockNodePaintThemePlan::baseline(),
-        &labels,
-        &edges,
-        &markers,
-        &background,
+        &BlockNodeBindings::default(),
+        &BlockEdgeRoutes::default(),
         &typography,
         &crate::block::BlockPreparedLabels::default(),
         &options,

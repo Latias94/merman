@@ -283,13 +283,10 @@ that frame. Keep this boundary explicit when attributing a stage benchmark to a 
 
 ### Theme compilation and discovery
 
-`merman-bindings-core`'s `theme_operations` Criterion bench separates definition compilation,
-materialization, preset compilation/export, the shared support-query corpus, and full catalog
-construction. It uses deterministic engines and the explicit `interactive` resource profile.
-Default means a version-one authoring definition with an empty `tokens` object; light/dark use
-the shared authoring fixtures, and Editor Light/Cyberpunk contrast a simple and a complex
-built-in recipe. Every run checks the shared materialization, support and preset-catalog goldens,
-plus recipe fingerprints, before measuring. No fonts are embedded by the benchmark inputs.
+`merman-bindings-core`'s `theme_operations` Criterion bench measures Theme v2 preset compilation,
+editable document export, JSON resolution, and catalog construction. It uses Studio Dark and
+Cyberpunk with one engine and compiler for the timed iterations. The resolve cases check the
+response before measurement.
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
@@ -299,29 +296,18 @@ CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
 ```
 
-Keep `target/criterion/theme_*` raw samples with the source, lockfile, executable and fixture
-hashes before measuring another feature profile, or set a separate `CRITERION_HOME` per lane.
-A separate advanced build may enable
-`svg,png,jpeg,pdf,embedded-fonts,math,layout-elk,layout-cytoscape`; it is a Cargo feature lane,
-not a packaged-artifact admission receipt. Do not combine its catalog output with the SVG-only
-lane: the advertised capabilities differ.
-
-Times include admission, allocation and destruction of each result. Definition compilation uses
-a reused compiler; materialization, preset export and support use a reused binding engine. The
-support estimate covers the entire shared query batch, with Criterion throughput reported per
-query. Catalog `fresh_engine` includes construction and destruction inside an already running
-process; both catalog lanes have completed preflight, so neither measures process cold start or
-first-touch initialization. These are diagnostic baselines, not alpha.6 regression evidence:
-alpha.6's presentation catalog does not implement the current theme-authoring/discovery contract.
-Latency samples do not establish allocation counts or peak memory.
+Keep `target/criterion/theme_*` raw samples with the source, lockfile, and executable hashes.
+Use a separate `CRITERION_HOME` for another feature profile. Times include admission and result
+allocation and destruction within an already running process. Catalog timings apply to the
+capabilities compiled into that build.
 
 ### Native SVG/PNG/PDF throughput
 
 `merman`'s `native_export` bench measures the public `Renderer` source-to-output path for the
-unchanged public Cyberpunk Flowchart, Sequence and XY Chart fixtures, each with the native default
-theme and the complete Cyberpunk preset. It reuses the renderer and precompiled theme, uses strict
-parsing, native SVG text (`htmlLabels: false`), a resvg-safe pipeline, fixed diagram IDs, system
-fonts and default render/export resource limits. PNG uses the default 1x scale without a fit box.
+unchanged public Cyberpunk Flowchart, Sequence and XY Chart fixtures in Mermaid default and native
+Cyberpunk modes. It reuses the renderer and compiled theme, uses strict parsing, native SVG text
+(`htmlLabels: false`), a resvg-safe pipeline, fixed diagram IDs, and default render/export resource
+limits. PNG uses the default 1x scale without a fit box.
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \

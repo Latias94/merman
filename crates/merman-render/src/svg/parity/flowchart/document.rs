@@ -4,7 +4,7 @@ use super::super::util::escape_xml_into;
 use super::document_ids::FlowchartDocumentIds;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
-    pub family_id: crate::DiagramFamilyId,
+    pub root_viewport: root_svg::RootViewportContext<'a>,
     pub diagram_id: SvgDiagramId<'a>,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
@@ -50,15 +50,13 @@ pub(super) fn prepare_flowchart_svg_document(
     }
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
-    let root_viewport = root_svg::RootViewportContext::new(request.family_id, request.diagram_id);
-
     let acc_title = request.model.acc_title.as_deref().filter(|s| !s.is_empty());
     let acc_descr = request.model.acc_descr.as_deref().filter(|s| !s.is_empty());
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
         diagram_type: request.diagram_type,
         use_max_width: request.use_max_width,
-        root_viewport,
+        root_viewport: request.root_viewport,
         root_spec,
         document_ids: request.document_ids,
         acc_title,

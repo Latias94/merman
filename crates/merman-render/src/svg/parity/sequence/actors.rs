@@ -3,18 +3,14 @@ use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
     ActorLabelContext, ActorLifelineIdentity, actor_placement_class, is_actor_man_variant,
     write_actor_man_lifeline, write_collection_actor_shape, write_database_actor_shape,
-    write_queue_actor_shape, write_rect_actor_depth, write_rect_actor_shape,
+    write_queue_actor_shape, write_rect_actor_shape,
 };
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {
-    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
-    pub(super) shadow_plan: &'a super::actor_effect::SequenceActorShadowPlan,
-    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) rect_style: super::actor_shapes::SequenceActorRectStyle,
-    pub(super) geometry_receipt: &'a crate::sequence::SequenceActorThemeReceipt,
     pub(super) model: &'a SequenceSvgModel,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
@@ -27,11 +23,9 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) actor_text_style: &'a TextStyle,
     pub(super) actor_typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) lifeline_effective_stroke_width: f64,
     pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
-    pub(super) typed_fill: Option<&'a str>,
-    pub(super) typed_stroke: Option<&'a str>,
+    pub(super) native: bool,
     pub(super) security_level_loose: bool,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -56,68 +50,19 @@ impl<'a> SequenceActorRenderContext<'a> {
 
     pub(super) fn label_context(&self) -> ActorLabelContext<'a> {
         ActorLabelContext {
-            shadow: self.text_shadow,
-            shadow_evidence: self.shadow_evidence,
             wrap_width_px: self.actor_wrap_width,
             measurer: self.measurer,
             style: self.actor_text_style,
             typography: self.actor_typography,
-            typography_receipt: self.typography_receipt,
             math_sidecar: self.math_sidecar,
             actor_label_footprints: self.actor_label_footprints,
             actor_index: None,
             compat: self.compat,
             diagram_id: self.diagram_id,
-            typed_fill: self.typed_fill,
-            typed_stroke: self.typed_stroke,
-            translate_y: 0.0,
+            native: self.native,
             checkpoints: self.checkpoints,
         }
     }
-}
-
-pub(super) fn render_sequence_actor_depths(
-    out: &mut impl SvgOutput,
-    ctx: &SequenceActorRenderContext<'_>,
-    mirror: bool,
-    options: &SvgExecution<'_>,
-) -> Result<()> {
-    if ctx.shadow_plan.len() == 0 {
-        return Ok(());
-    }
-    let label_ctx = ctx.label_context();
-    for placement in ["bottom", "top"] {
-        if placement == "bottom" && !mirror {
-            continue;
-        }
-        for (emission_index, (index, actor_id)) in
-            ctx.model.actor_order.iter().enumerate().rev().enumerate()
-        {
-            ctx.checkpoints.checkpoint_loop(emission_index)?;
-            options.work_meter().charge(1)?;
-            let Some(actor) = ctx.model.actors.get(actor_id) else {
-                continue;
-            };
-            let node_id = format!("actor-{placement}-{actor_id}");
-            let Some(node) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-                continue;
-            };
-            let Some(shadow) = ctx.shadow_plan.terminal(node, ctx.shadow_evidence) else {
-                continue;
-            };
-            write_rect_actor_depth(
-                out,
-                node,
-                actor_id,
-                actor,
-                index,
-                &label_ctx.for_actor(index),
-                ctx.rect_style,
-                shadow,
-            )?;
-        }
-    }
-    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn render_sequence_bottom_actors(
@@ -132,23 +77,14 @@ pub(super) fn render_sequence_bottom_actors(
         ctx.model.actor_order.iter().enumerate().rev().enumerate()
     {
         ctx.checkpoints.checkpoint_loop(emission_index)?;
-        ctx.geometry_receipt.record_geometry_candidate();
         let label_ctx = label_ctx.for_actor(actor_index);
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
-        if !super::actor_shapes::actor_rect_geometry_supported(actor) {
-            ctx.geometry_receipt.record_unhandled_geometry();
-        }
         let actor_type = actor.actor_type.as_str();
         let property_icon = ctx.property_icon(actor);
         let node_id = format!("actor-bottom-{actor_id}");
         let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-            if !is_actor_man_variant(actor_type) {
-                ctx.typography_receipt.record_missing_text_effect(
-                    crate::sequence::SequenceTextSurface::ParticipantLabel,
-                );
-            }
             continue;
         };
         match actor_type {
@@ -159,9 +95,7 @@ pub(super) fn render_sequence_bottom_actors(
             }
             "collections" => {
                 out.push_str("<g");
-                if !label_ctx.separate_label_shadow() {
-                    label_ctx.write_shadow_attr(out);
-                }
+                label_ctx.write_shadow_attr(out);
                 out.push('>');
                 write_collection_actor_shape(
                     out,
@@ -208,8 +142,6 @@ pub(super) fn render_sequence_bottom_actors(
                     actor_index,
                     &label_ctx,
                     ctx.rect_style,
-                    ctx.geometry_receipt,
-                    ctx.shadow_plan.terminal(n, ctx.shadow_evidence),
                     property_icon,
                 )?;
                 out.push_str("</g>");
@@ -222,44 +154,28 @@ pub(super) fn render_sequence_bottom_actors(
 pub(super) fn render_sequence_top_actors_and_lifelines(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
-    theme_receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
-    paint: &mut super::actor_effect::SequenceLifelinePaint,
-    options: &SvgExecution<'_>,
+    paint_bounds: Option<&mut Option<Bounds>>,
 ) -> crate::Result<()> {
     let label_ctx = ctx.label_context();
+    let mut paint_bounds = paint_bounds;
 
     ctx.checkpoints.checkpoint()?;
     for (emission_index, (idx, actor_id)) in
         ctx.model.actor_order.iter().enumerate().rev().enumerate()
     {
         ctx.checkpoints.checkpoint_loop(emission_index)?;
-        ctx.geometry_receipt.record_geometry_candidate();
         let label_ctx = label_ctx.for_actor(idx);
-        theme_receipt.record_line_candidate();
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
-        if !super::actor_shapes::actor_rect_geometry_supported(actor) {
-            ctx.geometry_receipt.record_unhandled_geometry();
-        }
         let actor_type = actor.actor_type.as_str();
         let property_icon = ctx.property_icon(actor);
         let node_top_id = format!("actor-top-{actor_id}");
         let node_bottom_id = format!("actor-bottom-{actor_id}");
         let Some(top) = ctx.nodes_by_id.get(node_top_id.as_str()).copied() else {
-            if !is_actor_man_variant(actor_type) {
-                ctx.typography_receipt.record_missing_text_effect(
-                    crate::sequence::SequenceTextSurface::ParticipantLabel,
-                );
-            }
             continue;
         };
         let Some(bottom) = ctx.nodes_by_id.get(node_bottom_id.as_str()).copied() else {
-            if !is_actor_man_variant(actor_type) {
-                ctx.typography_receipt.record_missing_text_effect(
-                    crate::sequence::SequenceTextSurface::ParticipantLabel,
-                );
-            }
             continue;
         };
         let (_, top_y) = node_left_top(top);
@@ -271,25 +187,20 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
             .and_then(|e| Some((e.points.first()?.y, e.points.get(1)?.y)))
             .unwrap_or((top_y + top.height, bottom_y));
 
-        let shadow = paint.write_definition(
-            out,
-            idx,
-            top.x,
-            y1,
-            y2,
-            ctx.lifeline_effective_stroke_width,
-            options,
-            theme_receipt,
-        )?;
-        let filter = shadow
-            .as_ref()
-            .map(|(id, _)| format!(" filter=\"url(#{})\"", escape_attr(id)))
-            .unwrap_or_default();
+        if let Some(bounds) = paint_bounds.as_deref_mut() {
+            super::actor_effect::include_lifeline_paint_bounds(
+                bounds,
+                top.x,
+                y1,
+                y2,
+                ctx.lifeline_effective_stroke_width,
+            );
+            out.checkpoint()?;
+        }
         match actor_type {
             actor_type if is_actor_man_variant(actor_type) => {
-                write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id, &filter);
+                write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
             }
             "collections" => {
                 label_ctx.write_lifeline_root_open(
@@ -299,10 +210,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     y1,
                     y2,
                     ActorLifelineIdentity { actor_id, actor },
-                    &filter,
                 );
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
                 write_collection_actor_shape(
                     out,
                     top,
@@ -323,10 +232,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     y1,
                     y2,
                     ActorLifelineIdentity { actor_id, actor },
-                    &filter,
                 );
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
                 write_queue_actor_shape(out, top, actor, idx, &label_ctx, property_icon)?;
                 out.push_str("</g></g>");
             }
@@ -338,10 +245,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     y1,
                     y2,
                     ActorLifelineIdentity { actor_id, actor },
-                    &filter,
                 );
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
                 write_database_actor_shape(
                     out,
                     top,
@@ -361,10 +266,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     y1,
                     y2,
                     ActorLifelineIdentity { actor_id, actor },
-                    &filter,
                 );
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
                 write_rect_actor_shape(
                     out,
                     top,
@@ -374,15 +277,12 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     idx,
                     &label_ctx,
                     ctx.rect_style,
-                    ctx.geometry_receipt,
-                    ctx.shadow_plan.terminal(top, ctx.shadow_evidence),
                     property_icon,
                 )?;
                 out.push_str("</g></g>");
             }
         }
         out.checkpoint()?;
-        paint.record_emission(shadow.as_ref(), ctx.shadow_evidence, theme_receipt);
     }
     ctx.checkpoints.checkpoint()
 }

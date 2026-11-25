@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { readFileSync } from "node:fs";
-import type { LayoutOptions, SvgPlanResult, SvgRenderMetadata, ThemeExecutionEvidence } from "@mermanjs/web";
+import type { LayoutOptions, SvgPlanResult, SvgRenderMetadata, ThemeOutcome } from "@mermanjs/web";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
 import { captureProjectHandoff, generateProjectHandoff } from "../lib/project-handoff.ts";
-import { themeCatalogFixture, themeInspectionFixture } from "../lib/theme-appearance.test-fixture.ts";
+import { themeCatalogFixture } from "../lib/theme-appearance.test-fixture.ts";
 import { utf8ByteLength } from "../lib/utf8.ts";
 import {
   freezeRenderOperation,
@@ -138,23 +137,22 @@ test("unsupported native appearances reject both Compare engines and recover thr
 test("host-only updates rerender Follow only when its effective appearance changes", async (t) => {
   const operations: FrozenRenderOperation[] = [];
   const base = facade();
-  let inspected = 0;
+  let catalogs = 0;
   const domain: MermanDomainFacade = {
-    ...base, themeCatalog: themeCatalogFixture,
-    materializeTheme: (() => { inspected += 1; return themeInspectionFixture(); }) as MermanDomainFacade["materializeTheme"],
+    ...base, themeCatalog() { catalogs += 1; return themeCatalogFixture(); },
     render(operation) { operations.push(operation as FrozenRenderOperation); return base.render(operation); },
   };
   const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
   t.after(() => coordinator.dispose());
-  const request = input("same recipe source", domain, {
-    themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}', themeAppearance: "follow",
+  const request = input("same document source", domain, {
+    themeDocumentJson: '{"schema_version":2,"extends":"studio"}', themeAppearance: "follow",
   });
   coordinator.setInput({ ...request, hostAppearance: "light" });
   await waitFor(() => operations.length === 1 && coordinator.store.getState().status === "success");
   coordinator.setInput({ ...request, hostAppearance: "dark" });
   await waitFor(() => operations.length === 2 && coordinator.store.getState().status === "success");
   assert.deepEqual(operations.map((operation) => operation.resolvedThemeAppearance), ["light", "dark"]);
-  assert.equal(inspected, 1);
+  assert.equal(catalogs, 1);
   coordinator.setInput({ ...request, workspace: { ...request.workspace, themeAppearance: "light" }, hostAppearance: "dark" });
   await waitFor(() => operations.length === 3 && coordinator.store.getState().status === "success");
   coordinator.setInput({ ...request, workspace: { ...request.workspace, themeAppearance: "light" }, hostAppearance: "light" });
@@ -165,16 +163,14 @@ test("host-only updates rerender Follow only when its effective appearance chang
 test("Follow on a single appearance does not rerender for an unavailable host appearance", async (t) => {
   let rendered = 0;
   const base = facade();
-  const inspection = { ...themeInspectionFixture(), supported_appearances: ["light" as const], default_appearance: "light" as const };
   const domain: MermanDomainFacade = {
     ...base, themeCatalog: themeCatalogFixture,
-    materializeTheme: (() => inspection) as MermanDomainFacade["materializeTheme"],
     render(operation) { rendered += 1; return base.render(operation); },
   };
   const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
   t.after(() => coordinator.dispose());
   const request = input("single source", domain, {
-    themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}', themeAppearance: "follow",
+    themeDocumentJson: '{"schema_version":2,"extends":"paper-cut"}', themeAppearance: "follow",
   });
   coordinator.setInput({ ...request, hostAppearance: "light" });
   await waitFor(() => rendered === 1 && coordinator.store.getState().status === "success");
@@ -191,7 +187,7 @@ test("a host switch cancels an in-flight old appearance and rejects its late pub
   const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
   t.after(() => coordinator.dispose());
   coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
-  const request = input("unchanged source", domain, { themePresetId: "editor", themeAppearance: "follow" });
+  const request = input("unchanged source", domain, { themePresetId: "studio", themeAppearance: "follow" });
   coordinator.setInput({ ...request, hostAppearance: "light" });
   await waitFor(() => compare.calls.length === 1);
   coordinator.setInput({ ...request, hostAppearance: "dark" });
@@ -271,18 +267,13 @@ test("partial batches use the successful Mermaid palette rather than the selecte
   }
 });
 
-test("successful Merman evidence remains authoritative when Mermaid reports a different palette", async (t) => {
+test("successful Merman outcome remains authoritative when Mermaid reports a different palette", async (t) => {
   const compare = fakeCompare([Promise.resolve(mermaidSuccess("different-palette", "dark"))]);
   const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
   t.after(() => coordinator.dispose());
   coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
   const baseFacade = facade();
-  const metadata = renderMetadata("different-palette");
-  metadata.theme_execution_evidence = {
-    ...metadata.theme_execution_evidence,
-    version: 2,
-    materialized_theme: "forest",
-  };
+  const metadata = renderMetadata("different-palette", { mode: "merman_native", appearance: "light", notices: [] });
   coordinator.setInput(input("different-palette", {
     ...baseFacade,
     render(operation) {
@@ -307,9 +298,7 @@ for (const [selected, materialized, selectedAppearance, actualAppearance] of [
       render(operation) {
         const result = base.render(operation);
         return result.status === "success" ? {
-          ...result, metadata: renderMetadata("source-override", {
-            ...renderMetadata("source-override").theme_execution_evidence!, version: 2, materialized_theme: materialized,
-          }),
+          ...result, metadata: renderMetadata("source-override"),
         } : result;
       },
     };
@@ -334,13 +323,10 @@ test("an authored paired canvas keeps its appearance when the native source pale
   const base = facade();
   const domain: MermanDomainFacade = {
     ...base, themeCatalog: themeCatalogFixture,
-    materializeTheme: (() => themeInspectionFixture()) as MermanDomainFacade["materializeTheme"],
     render(operation) {
       const result = base.render(operation);
       return result.status === "success" ? {
-        ...result, metadata: renderMetadata("paired-canvas", {
-          ...renderMetadata("paired-canvas").theme_execution_evidence!, version: 2, materialized_theme: "default",
-        }),
+        ...result, metadata: renderMetadata("paired-canvas", { mode: "merman_native", appearance: "dark", notices: [] }),
       } : result;
     },
   };
@@ -348,7 +334,7 @@ test("an authored paired canvas keeps its appearance when the native source pale
   t.after(() => coordinator.dispose());
   coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
   coordinator.setInput(input("flowchart LR\nA[Authored canvas] --> B", domain, {
-    themeRecipeJson: readFileSync(new URL("../themes/recipes/reading.theme.json", import.meta.url), "utf8"),
+    themeDocumentJson: '{"schema_version":2,"extends":"studio"}',
     themeAppearance: "dark", mermaidConfig: '{"theme":"default"}',
   }));
   await waitFor(() => coordinator.store.getState().status === "success");
@@ -397,7 +383,8 @@ test("rapid switches retain the visible partial palette and discard stale Mermai
 });
 
 test("publishes a frozen metadata snapshot with the exact admitted SVG", async () => {
-  const metadata = renderMetadata("current");
+  const notice = { kind: "low_contrast" as const, foreground: "text.primary", background: "canvas", ratio: 2, minimum: 4.5 };
+  const metadata = renderMetadata("current", { mode: "merman_native", appearance: "light", notices: [notice] });
   const artifact = projectNavigableInlineSvg(
     '<svg xmlns="http://www.w3.org/2000/svg"><text>current</text></svg>',
   );
@@ -423,56 +410,21 @@ test("publishes a frozen metadata snapshot with the exact admitted SVG", async (
   assert.deepEqual(state.merman.metadata, metadata);
   assert.notEqual(state.merman.metadata, metadata);
   assert.equal(Object.isFrozen(state.merman.metadata), true);
-  const evidence = state.merman.metadata?.theme_execution_evidence;
-  assert.equal(Object.isFrozen(evidence), true);
-  assert.equal(Object.isFrozen(evidence?.target_reason_ids), true);
-  assert.equal(Object.isFrozen(evidence?.diagnostics), true);
+  const outcome = state.merman.metadata?.theme_outcome;
+  assert.equal(Object.isFrozen(outcome), true);
+  assert.equal(Object.isFrozen(outcome?.notices), true);
+  assert.equal(Object.isFrozen(outcome?.notices[0]), true);
   assert.equal(selectVisibleMermanRenderMetadata(state), state.merman.metadata);
 
   metadata.execution_label = "mutated";
-  metadata.theme_execution_evidence.theme_status = "mutated";
+  notice.ratio = 1;
   assert.equal(state.merman.metadata?.execution_label, "current");
-  assert.equal(evidence?.theme_status, "residual");
+  assert.deepEqual(outcome?.notices[0], { ...notice, ratio: 2 });
 
   coordinator.markPresented(state.snapshot.publicationId, "merman", 42);
   const presented = coordinator.store.getState();
   assert.equal(selectVisibleMermanRenderMetadata(presented), state.merman.metadata);
   coordinator.dispose();
-});
-
-test("preserves unavailable and unknown execution evidence without certifying it", async () => {
-  const unknownEvidence: ThemeExecutionEvidence = {
-    version: 99,
-    materialized_theme: "dark",
-    future_outcome: { status: "unverified", reasons: ["future-rule"] },
-  };
-  for (const metadata of [null, renderMetadata("future", unknownEvidence)]) {
-    const coordinator = createRenderCoordinator({
-      compare: fakeCompare([]),
-      debounceMs: 0,
-    });
-    coordinator.setInput(input("future", {
-      ...facade(),
-      render(operation) {
-        const result = facade().render(operation);
-        assert.equal(result.status, "success");
-        return { ...result, metadata };
-      },
-    }));
-    await waitFor(() => coordinator.store.getState().status === "success");
-    const state = coordinator.store.getState();
-    assert.equal(state.status, "success");
-    if (state.status !== "success") continue;
-    assert.deepEqual(state.merman.metadata, metadata);
-    assert.equal(selectVisibleCanvasTone(state), "light");
-    if (state.merman.metadata) {
-      const evidence = state.merman.metadata.theme_execution_evidence;
-      assert.deepEqual(evidence, unknownEvidence);
-      assert.ok("future_outcome" in evidence);
-      assert.equal(Object.isFrozen(evidence.future_outcome), true);
-    }
-    coordinator.dispose();
-  }
 });
 
 test("request identity includes the theme selection and SVG pipeline", async (t) => {
@@ -504,10 +456,10 @@ test("request identity includes the theme selection and SVG pipeline", async (t)
       textMeasurementMode: "browser",
     },
     {
-      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+      themeDocumentJson: '{"schema_version":2,"extends":"studio"}',
     },
     {
-      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{}}}',
+      themeDocumentJson: '{"schema_version":2,"extends":"studio","seed":{"canvas":"#FFFFFF"}}',
     },
   ];
   const coordinator = createRenderCoordinator({
@@ -973,7 +925,7 @@ test("a failed preview catalog query retains the strict theme request and its er
   coordinator.setInput(input("source", domain, { themePresetId: "future-preset" }));
   await waitFor(() => coordinator.store.getState().status === "failed");
   assert.equal(rendered.length, 1);
-  assert.deepEqual(rendered[0].bindingOptions.theme, { preset: "future-preset" });
+  assert.equal(rendered[0].bindingOptions.theme, "future-preset");
   assert.equal((rendered[0] as FrozenRenderOperation).unavailableThemePresetId, null);
 });
 
@@ -1723,10 +1675,20 @@ test("Shoal FitWidth supersedes pending widths and keeps the project operation a
   const base = facade();
   const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
   t.after(() => coordinator.dispose());
+  const themeDocumentJson = '{ "schema_version": 2, "extends": "studio", "name": "布局" }';
+  const themeWorkspace = { themeDocumentJson, themeAppearance: "dark" as const };
+  const themeOptions = { document: JSON.parse(themeDocumentJson), appearance: "dark" };
+  const plans: ConfiguredMermanOperationInput[] = [];
+  const renders: ConfiguredMermanOperationInput[] = [];
   const requests: LayoutOptions[] = [];
   const domain = shoalFacade({
-    svgPlan: () => shoalSvgPlan(),
+    themeCatalog: themeCatalogFixture,
+    svgPlan(operation) {
+      plans.push(operation);
+      return shoalSvgPlan();
+    },
     render(operation) {
+      renders.push(operation);
       const layout = operation.bindingOptions.layout!;
       requests.push(layout);
       if (layout.container_width === 320) submit(480);
@@ -1739,7 +1701,7 @@ test("Shoal FitWidth supersedes pending widths and keeps the project operation a
     },
   });
   const submit = (shoalPreviewWidth: number | null, documentRevision = 0, source = "initial") =>
-    coordinator.setInput({ ...input(source, domain), documentRevision, shoalPreviewWidth });
+    coordinator.setInput({ ...input(source, domain, themeWorkspace), documentRevision, shoalPreviewWidth });
 
   submit(null);
   await waitFor(() => coordinator.store.getState().status === "success");
@@ -1756,9 +1718,14 @@ test("Shoal FitWidth supersedes pending widths and keeps the project operation a
     adaptation: "fit-width", container_width: 480, container_height: 600,
     screen_available_width: 800, fold_wide_ranks: true, capture_shoal_frame: true,
   });
+  assert.ok(plans[2].bindingOptionsJson.includes(themeDocumentJson));
+  assert.deepEqual(JSON.parse(plans[2].bindingOptionsJson).theme, themeOptions);
+  assert.ok(renders[2].bindingOptionsJson.includes(themeDocumentJson));
+  assert.deepEqual(JSON.parse(renders[2].bindingOptionsJson).theme, themeOptions);
+  assert.deepEqual(JSON.parse(renders[2].bindingOptionsJson).layout, requests[2]);
   assert.equal(publications[0].snapshot.supportsShoalFitWidth, true);
   const handoff = captureProjectHandoff({
-    workspace: input("initial", domain).workspace,
+    workspace: input("initial", domain, themeWorkspace).workspace,
     renderState: publications[0],
     capturedAt: "2026-11-24T00:00:00Z",
   });
@@ -1766,6 +1733,8 @@ test("Shoal FitWidth supersedes pending widths and keeps the project operation a
   assert.deepEqual(JSON.parse(bundle.files["options.json"]).layout, {
     container_width: 800, container_height: 600, screen_available_width: 800,
   });
+  assert.deepEqual(JSON.parse(bundle.files["options.json"]).theme, themeOptions);
+  assert.equal(bundle.files["theme.json"], themeDocumentJson);
 
   submit(480, 0, "edit");
   await waitFor(() => publications.length === 2);
@@ -1853,7 +1822,7 @@ test("two Shoal edits keep rendering when the previous frame would exceed the UT
 });
 
 test("Shoal preview budgets the exact raw theme request and falls back to the original options", () => {
-  const recipe = '{ "schema_version": 1, "kind": "design", "design": { "name": "布局" } }';
+  const recipe = '{ "schema_version": 2, "extends": "studio", "name": "布局" }';
   const operation = freezeRenderOperation({
     asciiEnabled: false,
     compareEnabled: false,
@@ -1865,9 +1834,8 @@ test("Shoal preview budgets the exact raw theme request and falls back to the or
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: "flowchart TD\nA --> B",
       themePresetId: null,
-      themeRecipeJson: recipe,
+      themeDocumentJson: recipe,
     },
-    themeRecipeInspection: themeInspectionFixture(),
   });
   const frame = { revision: "一" };
   const replay = previewRenderWithShoalFrame(operation, frame, OPTIONS_JSON_LIMIT_BYTES);
@@ -2189,24 +2157,7 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
 function facade(packageVersion = "test-merman"): MermanDomainFacade {
   return {
     packageVersion,
-    diagramFamilyCapabilities: () => [],
-    themeCatalog: () => ({
-      schema_version: 1,
-      recipe_schema_version: 1,
-      authoring_request_schema_version: 1,
-      authoring_result_schema_version: 1,
-      mermaid_theme_designs: [],
-      structured_spec_available: true,
-      supported_output_ids: ["svg"],
-      presets: [],
-      known_capability_ids: [],
-      known_text_capability_ids: [],
-      known_font_container_ids: [],
-      known_font_source_ids: [],
-      known_semantic_target_ids: [],
-      known_variant_ids: [],
-      resource_limits: [],
-    }),
+    themeCatalog: () => ({ ...themeCatalogFixture(), presets: [] }),
     detectDiagram: () => ({
       status: "available",
       validity: "valid",
@@ -2268,22 +2219,7 @@ function shoalFacade(overrides: Partial<MermanDomainFacade>): MermanDomainFacade
 
 function renderMetadata(
   label: string,
-  evidence: ThemeExecutionEvidence = {
-    version: 1,
-    family_id: "flowchart",
-    theme_status: "residual",
-    output_mutated: true,
-    target_kind: "inline_svg",
-    target_status: "unverified",
-    target_reason_ids: ["browser-font"],
-    font_source: "browser",
-    diagnostics: [{
-      code: "conditional-facet",
-      subject: "rule",
-      source_paths: ["/rules/0"],
-      generated: false,
-    }],
-  },
+  outcome: ThemeOutcome = { mode: "mermaid_parity", notices: [] },
 ): SvgRenderMetadata {
   return {
     version: 1,
@@ -2292,7 +2228,7 @@ function renderMetadata(
     runtime_policy: "default",
     byte_length: 0,
     execution_label: label,
-    theme_execution_evidence: evidence,
+    theme_outcome: outcome,
   };
 }
 

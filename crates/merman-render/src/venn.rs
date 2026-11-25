@@ -24,15 +24,16 @@ const SMALL: f64 = 1e-10;
 const REFERENCE_WIDTH: f64 = 1600.0;
 
 mod config;
+mod native_theme;
 mod theme;
 
 use config::VennConfigView;
-pub(crate) use theme::{VennAreaPaintBinding, VennTitleThemePlan, VennTypographyThemePlan};
+pub(crate) use native_theme::native_font_size;
+pub(crate) use theme::{VennAreaPaintBinding, VennTypographyThemePlan};
 
 pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";
 pub(crate) const VENN_CIRCLE_CLASS: &str = "venn-circle";
 pub(crate) const VENN_INTERSECTION_CLASS: &str = "venn-intersection";
-pub(crate) const VENN_AREA_LABEL_CLASS: &str = "label";
 pub(crate) const VENN_TEXT_NODE_CLASS: &str = "venn-text-node";
 
 pub(crate) fn rendered_area_label(area: &VennAreaLayout) -> &str {
@@ -57,13 +58,20 @@ pub(crate) fn layout_venn_diagram_typed(
     resource_limits: RenderResourcePolicy,
 ) -> Result<VennDiagramLayout> {
     let work_meter = OperationWorkMeter::new(resource_limits);
-    layout_venn_diagram_typed_with_work_meter(model, diagram_title, effective_config, &work_meter)
+    layout_venn_diagram_typed_with_work_meter(
+        model,
+        diagram_title,
+        effective_config,
+        None,
+        &work_meter,
+    )
 }
 
 pub(crate) fn layout_venn_diagram_typed_with_work_meter(
     model: &VennDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
+    native_base_size: Option<f64>,
     work_meter: &OperationWorkMeter,
 ) -> Result<VennDiagramLayout> {
     let cfg = VennConfigView::new(effective_config).layout_settings();
@@ -78,7 +86,14 @@ pub(crate) fn layout_venn_diagram_typed_with_work_meter(
                 .filter(|title| !title.is_empty())
         });
     let scale = cfg.width / REFERENCE_WIDTH;
-    let title_height = if title.is_some() { 48.0 * scale } else { 0.0 };
+    let font_sizes = native_theme::VennFontSizes::new(native_base_size, scale);
+    let title_height = if title.is_none() {
+        0.0
+    } else if native_base_size.is_some() {
+        font_sizes.title * 1.5
+    } else {
+        48.0 * scale
+    };
     let diagram_height = (cfg.height - title_height).max(1.0);
 
     let areas = ensure_pairwise_subsets_for_layout(
@@ -135,8 +150,13 @@ pub(crate) fn layout_venn_diagram_typed_with_work_meter(
         .iter()
         .map(|area| (stable_sets_key(&area.data.sets), area))
         .collect::<HashMap<_, _>>();
-    let (text_areas, text_nodes) =
-        layout_text_nodes(model, &layout_by_key, scale, cfg.use_debug_layout);
+    let (text_areas, text_nodes) = layout_text_nodes(
+        model,
+        &layout_by_key,
+        scale,
+        native_base_size,
+        cfg.use_debug_layout,
+    );
 
     Ok(VennDiagramLayout {
         bounds: Some(LayoutBounds {
@@ -163,6 +183,7 @@ fn layout_text_nodes(
     model: &VennDiagramModel,
     layout_by_key: &HashMap<String, &VennLayoutArea>,
     scale: f64,
+    native_base_size: Option<f64>,
     use_debug_layout: bool,
 ) -> (Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>) {
     let mut nodes_by_area: IndexMap<String, Vec<&merman_model::families::venn::VennTextNodeModel>> =
@@ -216,8 +237,14 @@ fn layout_text_nodes(
             .label
             .as_deref()
             .is_some_and(|label| !label.is_empty());
+        let font_sizes = native_theme::VennFontSizes::new(native_base_size, scale);
         let label_offset_base = if has_label {
-            (32.0 * scale).min(inner_radius * 0.25)
+            let label_offset = if native_base_size.is_some() {
+                font_sizes.area * (2.0 / 3.0)
+            } else {
+                32.0 * scale
+            };
+            label_offset.min(inner_radius * 0.25)
         } else {
             0.0
         };
@@ -264,7 +291,7 @@ fn layout_text_nodes(
             center_x,
             center_y,
             inner_radius,
-            font_size: 40.0 * scale,
+            font_size: font_sizes.text_node,
             debug_cells,
         });
     }

@@ -226,7 +226,7 @@ jobs:
           dart format --set-exit-if-changed \
             lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
             example tool hook
-          dart run tool/abi3_contract_test.dart
+          dart run tool/native_abi_contract_test.dart
           dart run tool/native_assets_contract_test.dart
           dart run example/main.dart
           dart run example/smoke.dart

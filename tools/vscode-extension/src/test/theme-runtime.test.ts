@@ -6,56 +6,56 @@ import * as path from "node:path";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
-import type { RenderProcessRequest } from "../render-process.js";
+import { RenderProcessExitError, type RenderProcessRequest } from "../render-process.js";
 import { resolveThemeSelection } from "../theme-selection.js";
 
+const context = {} as vscode.ExtensionContext;
+
+const mermaidThemes = [
+  "default", "dark", "forest", "neutral", "base", "neo", "neo-dark",
+  "redux", "redux-dark", "redux-color", "redux-dark-color",
+];
+
+function v2Catalog() {
+  return {
+    schema_version: 2,
+    presets: [
+      { id: "studio", name: "Studio", description: "Reading", category: "reading",
+        appearances: ["light", "dark"], default_appearance: "light", swatches: [] },
+      { id: "paper-cut", name: "Paper Cut", description: "Layered paper", category: "art",
+        appearances: ["light"], default_appearance: "light", swatches: [] },
+    ],
+    mermaid_themes: mermaidThemes,
+    families: [{ id: "flowchart", capabilities: 255 }],
+  };
+}
+
 describe("runtime theme discovery and import", () => {
-  it("uses the grouped CLI catalog's explicit Mermaid IDs and concrete preset IDs", () => {
+  it("uses the v2 preset IDs and literal Mermaid Classic IDs", () => {
     const { runtime } = loadRuntime();
-    const discovery = runtime.parseThemeCapabilities(groupedCapabilities());
-    const literals = new Set([
-      ...discovery.choices.flatMap((choice) => choice.variants?.map((variant) => variant.themeId) ?? []),
-      ...discovery.legacyChoices.filter((choice) => choice.origin === "mermaid").map((choice) => choice.id),
-    ]);
-    assert.equal(literals.size, 11);
-    assert.equal(discovery.choices.filter((choice) => choice.id === "preset:editor").length, 1);
-    assert.equal(discovery.choices.some((choice) => choice.id === "preset:editor-dark"), false);
-    assert.equal(resolveThemeSelection(discovery, "preset:editor-dark", "follow-editor", "light").effectiveAppearance, "dark");
-    assert.equal(resolveThemeSelection(discovery, "preset:editor-dark", "follow-editor", "light").themePreset, "editor-dark");
-    assert.equal(resolveThemeSelection(discovery, "mermaid:redux-color", "follow-editor", "dark").theme, "redux-dark-color");
-    assert.equal(discovery.choices.some((choice) => choice.id === "default"), true);
-    assert.equal(discovery.choices.some((choice) => choice.id === "dark"), true);
+    const discovery = runtime.parseThemeCatalog(v2Catalog());
+    assert.deepEqual(discovery.choices.filter((choice) => choice.origin === "mermaid").map((choice) => choice.id), mermaidThemes);
+    assert.deepEqual(discovery.choices.filter((choice) => choice.origin === "preset").map((choice) => choice.id), ["studio", "paper-cut"]);
+    assert.deepEqual(discovery.choices.find((choice) => choice.id === "file")?.label, "Custom File");
+    assert.equal(resolveThemeSelection(discovery, "paper-cut", "follow-editor", "dark").effectiveAppearance, "light");
+    assert.equal(resolveThemeSelection(discovery, "redux-dark-color", "follow-editor", "light").theme, "redux-dark-color");
   });
 
-  it("degrades an old CLI to the historical source semantics without fabricating a pair", () => {
-    const { runtime } = loadRuntime();
-    const discovery = runtime.parseThemeCapabilities({
-      cli_contract_version: 6,
-      theme_presets: { schema_version: 1, presets: [] },
-    });
-    assert.equal(discovery.paired, false);
-    assert.equal(discovery.inspect, false);
-    assert.equal(discovery.choices.some((choice) => choice.id === "mermaid:neo"), false);
+  it("leaves Source available without interpreting an unsupported theme catalog", async () => {
+    const { runtime } = loadRuntime(process.execPath, () => ({ schema_version: 1, presets: [] }));
+    const discovery = await runtime.discoverThemes(context);
+    assert.deepEqual(discovery.choices.map((choice) => choice.id), ["source"]);
     assert.equal(resolveThemeSelection(discovery, "source", "follow-editor", "dark").theme, undefined);
-    assert.match(discovery.notice!, /update the CLI/);
-    assert.throws(() => runtime.parseThemeCapabilities({
-      cli_contract_version: 7,
-      theme_presets: { schema_version: 1 },
-    }), /incomplete/);
+    assert.match(discovery.notice!, /update the CLI/i);
+    assert.throws(() => runtime.parseThemeCatalog({ schema_version: 2 }), /incomplete/);
   });
 
-  it("shares discovery for an executable identity and gates import on its actual command inventory", async () => {
+  it("queries theme list once per executable identity", async () => {
     const host = loadRuntime();
-    const context = {} as vscode.ExtensionContext;
-    const [first, second] = await Promise.all([
-      host.runtime.discoverThemes(context),
-      host.runtime.discoverThemes(context),
-    ]);
+    const [first, second] = await Promise.all([host.runtime.discoverThemes(context), host.runtime.discoverThemes(context)]);
     assert.equal(first, second);
     assert.equal(host.requests.length, 1);
-    const payload = groupedCapabilities();
-    payload.commands = ["render"];
-    assert.equal(host.runtime.parseThemeCapabilities(payload).inspect, false);
+    assert.deepEqual(host.requests[0]?.invocation.args, ["theme", "list", "--json"]);
   });
 
   it("refreshes the theme catalog when the CLI changes at the same path", async () => {
@@ -63,119 +63,77 @@ describe("runtime theme discovery and import", () => {
     try {
       const command = path.join(directory, "merman-cli");
       const host = loadRuntime(command, async () =>
-        await fs.readFile(command, "utf8") === "current" ? groupedCapabilities() : {},
+        await fs.readFile(command, "utf8") === "current" ? v2Catalog() : {},
       );
-      const context = {} as vscode.ExtensionContext;
       await fs.writeFile(command, "old");
-      assert.equal((await host.runtime.discoverThemes(context)).paired, false);
+      assert.equal((await host.runtime.discoverThemes(context)).choices.length, 1);
       await fs.writeFile(command, "current");
-      assert.equal((await host.runtime.discoverThemes(context)).paired, true);
+      assert.ok((await host.runtime.discoverThemes(context)).choices.some((choice) => choice.id === "studio"));
       await fs.writeFile(command, "old");
-      assert.equal((await host.runtime.discoverThemes(context)).paired, false);
+      assert.equal((await host.runtime.discoverThemes(context)).choices.length, 1);
       assert.equal(host.requests.length, 3);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
   });
 
-  it("sends the original file bytes to inspect and preserves the complete admitted recipe", async () => {
+  it("sends the original document to check and preserves inherited and authored appearances", async () => {
     const host = loadRuntime();
-    host.content = '{ "schema_version": 1, "kind": "design", "design": { "appearances": {"light": {}, "dark": {}} } }\n';
-    const discovery = host.runtime.parseThemeCapabilities(groupedCapabilities());
-    const imported = await host.runtime.inspectThemeFile({} as vscode.ExtensionContext, fileUri(), discovery);
-    assert.deepEqual(host.requests[0]?.invocation.args, ["theme", "inspect", "-"]);
+    const discovery = host.runtime.parseThemeCatalog(v2Catalog());
+    host.content = '{ "schema_version": 2, "extends": "studio", "default_appearance": "dark" }\n';
+    host.checkAppearance = "dark";
+    const imported = await host.runtime.checkThemeFile(context, fileUri(), discovery);
+    assert.deepEqual(host.requests[0]?.invocation.args, ["theme", "check", "-", "--json"]);
     assert.equal(host.requests[0]?.source, host.content);
     assert.equal(imported.content, host.content);
     assert.deepEqual(imported.supportedAppearances, ["light", "dark"]);
+    assert.equal(imported.defaultAppearance, "dark");
     assert.equal(imported.label, "reading.theme.json");
+
+    host.content = '{ "schema_version": 2, "appearances": { "dark": {} } }';
+    const single = await host.runtime.checkThemeFile(context, fileUri(), discovery);
+    assert.deepEqual(single.supportedAppearances, ["dark"]);
+    assert.equal(resolveThemeSelection(discovery, "file", "follow-editor", "light", single).effectiveAppearance, "dark");
   });
 
-  it("forwards duplicate fields unchanged and surfaces whole-document backend rejection", async () => {
+  it("forwards duplicate fields unchanged and surfaces the CLI's JSON diagnostic on failure", async () => {
     const host = loadRuntime();
-    host.content = '{"schema_version":1,"kind":"design","design":{"appearances":{"light":{},"light":{}}}}';
-    host.inspectError = new Error("duplicate field at /design/appearances/light");
+    host.content = '{"schema_version":2,"appearances":{"light":{},"light":{}}}';
+    host.checkError = new RenderProcessExitError("merman-cli exited with status 2", Buffer.from(JSON.stringify({
+      ok: false, message: "duplicate field", path: "appearances.light", line: 1, column: 48,
+    })));
     await assert.rejects(
-      host.runtime.inspectThemeFile({} as vscode.ExtensionContext, fileUri(), host.runtime.parseThemeCapabilities(groupedCapabilities())),
-      /duplicate field/,
+      host.runtime.checkThemeFile(context, fileUri(), host.runtime.parseThemeCatalog(v2Catalog())),
+      /duplicate field \(appearances\.light, line 1, column 48\)/,
     );
     assert.equal(host.requests[0]?.source, host.content);
-    host.inspectError = new Error("unknown reference in inactive /design/appearances/dark");
-    await assert.rejects(
-      host.runtime.inspectThemeFile({} as vscode.ExtensionContext, fileUri(), host.runtime.parseThemeCapabilities(groupedCapabilities())),
-      /inactive/,
-    );
   });
 
-  it("bounds files before loading and does not read files without inspection capability", async () => {
+  it("bounds files before loading and only reads them with theme check support", async () => {
     const host = loadRuntime();
     host.size = 9 * 1024 * 1024;
     await assert.rejects(
-      host.runtime.inspectThemeFile({} as vscode.ExtensionContext, fileUri(), host.runtime.parseThemeCapabilities(groupedCapabilities())),
+      host.runtime.checkThemeFile(context, fileUri(), host.runtime.parseThemeCatalog(v2Catalog())),
       /8 MiB/,
     );
     assert.equal(host.reads, 0);
-    const unavailable = host.runtime.parseThemeCapabilities({ cli_contract_version: 6 });
-    await assert.rejects(host.runtime.inspectThemeFile({} as vscode.ExtensionContext, fileUri(), unavailable), /requires a CLI/);
+    await assert.rejects(host.runtime.checkThemeFile(context, fileUri(), { choices: [] }), /require a CLI/);
     assert.equal(host.reads, 0);
   });
 });
-
-function groupedCapabilities() {
-  const mermaid = [
-    ["default", "Default", "light"],
-    ["dark", "Dark", "dark"],
-    ["forest", "Forest", "light"],
-    ["neutral", "Neutral", "light"],
-    ["base", "Base", "light"],
-  ].map(([id, name, appearance]) => ({
-    id, display_name: name, default_appearance: appearance,
-    appearances: [{ appearance, theme_id: id }],
-  }));
-  for (const [id, label, dark] of [
-    ["neo", "Neo", "neo-dark"],
-    ["redux", "Redux", "redux-dark"],
-    ["redux-color", "Redux Color", "redux-dark-color"],
-  ]) {
-    mermaid.push({
-      id, display_name: label, default_appearance: "light",
-      appearances: [{ appearance: "light", theme_id: id }, { appearance: "dark", theme_id: dark }],
-    });
-  }
-  return {
-    cli_contract_version: 7,
-    commands: ["render", "theme"],
-    theme_presets: {
-      schema_version: 1,
-      recipe_schema_version: 1,
-      authoring_request_schema_version: 1,
-      authoring_result_schema_version: 1,
-      mermaid_theme_designs: mermaid,
-      presets: [{
-        id: "editor", display_name: "Editor", available: true,
-        supported_appearances: ["light", "dark"], default_appearance: "light",
-        appearances: [
-          { appearance: "light", concrete_preset_id: "editor-light", available: true },
-          { appearance: "dark", concrete_preset_id: "editor-dark", available: true },
-        ],
-      }],
-    },
-  };
-}
 
 function fileUri(): vscode.Uri {
   return { fsPath: "/private/reading.theme.json" } as vscode.Uri;
 }
 
-function loadRuntime(
-  command = process.execPath,
-  capabilities: () => unknown = groupedCapabilities,
-) {
+function loadRuntime(command = process.execPath, catalog: () => unknown = v2Catalog) {
   const host = {
     requests: [] as RenderProcessRequest[],
     content: "{}",
     size: 100,
     reads: 0,
-    inspectError: undefined as Error | undefined,
+    checkAppearance: "light",
+    checkError: undefined as Error | undefined,
   };
   type Loader = (this: unknown, request: string, parent: unknown, isMain: boolean) => unknown;
   const loader = Module as typeof Module & { _load: Loader };
@@ -196,17 +154,14 @@ function loadRuntime(
     }
     if (request === "./render-process.js") {
       return {
+        RenderProcessExitError,
         runRenderProcess: async (request: RenderProcessRequest) => {
           host.requests.push(request);
-          if (request.invocation.args[0] === "theme" && host.inspectError) throw host.inspectError;
-          const result = request.invocation.args[0] === "theme"
-            ? {
-              schema_version: 1,
-              supported_appearances: ["light", "dark"],
-              default_appearance: "light",
-              appearances: [{ appearance: "light", references: [] }, { appearance: "dark", references: [] }],
-            }
-            : await capabilities();
+          const checking = request.invocation.args[1] === "check";
+          if (checking && host.checkError) throw host.checkError;
+          const result = checking
+            ? { ok: true, resolved: { appearance: host.checkAppearance }, notices: [], contrast: [] }
+            : await catalog();
           return { stdout: Buffer.from(JSON.stringify(result)) };
         },
       };
@@ -216,12 +171,7 @@ function loadRuntime(
   try {
     delete require.cache[require.resolve("../cli-capabilities.js")];
     delete require.cache[require.resolve("../theme-runtime.js")];
-    return { ...host, runtime: require("../theme-runtime.js") as typeof import("../theme-runtime.js"),
-      get content() { return host.content; }, set content(value: string) { host.content = value; },
-      get size() { return host.size; }, set size(value: number) { host.size = value; },
-      get reads() { return host.reads; },
-      get inspectError() { return host.inspectError; }, set inspectError(value: Error | undefined) { host.inspectError = value; },
-    };
+    return Object.assign(host, { runtime: require("../theme-runtime.js") as typeof import("../theme-runtime.js") });
   } finally {
     loader._load = original;
   }

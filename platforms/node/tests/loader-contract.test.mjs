@@ -278,13 +278,14 @@ test("the native version preflight accepts bounded catalog text only", () => {
 });
 
 test("candidate identity is a strict transport and contract preflight", async () => {
+  const publishedTransportVersion = {
+    transport_api_version: 2,
+    wire_contract: { ...NODE_WIRE_CONTRACT, transport_api_version: 2 },
+  };
   const invalidIdentities = [
     transportIdentity("napi", { package_version: "0.0.0-stale" }),
     transportIdentity("wasm", {}),
-    transportIdentity("napi", {
-      transport_api_version: 1,
-      wire_contract: { ...NODE_WIRE_CONTRACT, transport_api_version: 1 },
-    }),
+    transportIdentity("napi", publishedTransportVersion),
     transportIdentity("napi", { transport_api_version: 99 }),
     transportIdentity("napi", { binding_result_payload_version: 99 }),
     transportIdentity("napi", { capability_descriptor_digest: "sha256:stale" }),
@@ -316,6 +317,7 @@ test("candidate identity is a strict transport and contract preflight", async ()
     null,
     () => transportIdentity("wasm"),
     () => transportIdentityJson("wasm", { package_version: "0.0.0-stale" }),
+    () => transportIdentityJson("wasm", publishedTransportVersion),
     () => transportIdentityJson("napi"),
   ]) {
     let constructed = false;

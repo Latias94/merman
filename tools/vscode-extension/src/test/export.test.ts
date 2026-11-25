@@ -4,8 +4,8 @@ import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
 import { listPreviewInputsFromText, previewSourceIdentity } from "../preview-source.js";
-import { legacyThemeDiscovery, type ThemeDiscovery } from "../theme-selection.js";
-import { pairedThemeDiscovery } from "./theme-fixtures.js";
+import { SOURCE_THEME, type ThemeDiscovery } from "../theme-selection.js";
+import { v2ThemeDiscovery } from "./theme-fixtures.js";
 
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
@@ -21,7 +21,7 @@ class FakeExportHost {
     format?: string;
     outputPath?: string;
     signalLabel?: string;
-    themePreset?: string;
+    theme?: string;
     themeAppearance?: string;
     background?: string;
     inputKind?: string;
@@ -35,7 +35,7 @@ class FakeExportHost {
   readonly executedCommands: Array<{ command: string; args: unknown[] }> = [];
   readonly progressTitles: string[] = [];
   readonly settings = new Map<string, unknown>();
-  themeDiscovery: ThemeDiscovery = legacyThemeDiscovery();
+  themeDiscovery: ThemeDiscovery = { choices: [SOURCE_THEME] };
   activeColorThemeKind = 1;
   saveDialogDelay: Promise<void> | undefined;
   quickPickLabel: string | undefined;
@@ -216,8 +216,8 @@ describe("export commands", () => {
 
   it("uses configured document selection and freezes Follow before a save dialog", async () => {
     const host = new FakeExportHost();
-    host.themeDiscovery = pairedThemeDiscovery();
-    host.settings.set("preview.diagramTheme", "preset:editor");
+    host.themeDiscovery = v2ThemeDiscovery();
+    host.settings.set("preview.diagramTheme", "studio");
     host.settings.set("preview.background", "dark");
     let releaseDialog: () => void = () => {};
     host.saveDialogDelay = new Promise<void>((resolve) => { releaseDialog = resolve; });
@@ -232,11 +232,11 @@ describe("export commands", () => {
     host.settings.set("preview.diagramTheme", "source");
     releaseDialog();
     await pending;
-    assert.equal(host.renderCalls[0]?.themePreset, "editor");
+    assert.equal(host.renderCalls[0]?.theme, "studio");
     assert.equal(host.renderCalls[0]?.themeAppearance, "light");
     assert.equal(host.renderCalls[0]?.background, "#111827");
     await host.commands.get("merman.copySvg")?.();
-    assert.equal(host.renderCalls.at(-1)?.themePreset, undefined);
+    assert.equal(host.renderCalls.at(-1)?.theme, undefined);
   });
 
   it("registers command-level export and copy workflows", () => {
@@ -530,7 +530,7 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
           format?: string;
           outputPath?: string;
           signalLabel?: string;
-          themePreset?: string;
+          theme?: string;
           themeAppearance?: string;
           background?: string;
           inputKind?: string;
@@ -540,7 +540,7 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
             format: renderRequest.format,
             outputPath: renderRequest.outputPath,
             signalLabel: renderRequest.signalLabel,
-            ...(renderRequest.themePreset ? { themePreset: renderRequest.themePreset } : {}),
+            ...(renderRequest.theme ? { theme: renderRequest.theme } : {}),
             ...(renderRequest.themeAppearance ? { themeAppearance: renderRequest.themeAppearance } : {}),
             ...(renderRequest.background ? { background: renderRequest.background } : {}),
             ...(renderRequest.inputKind ? { inputKind: renderRequest.inputKind } : {}),

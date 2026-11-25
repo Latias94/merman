@@ -1,9 +1,9 @@
 import type { MermanDomainFacade, MermanRuntimeState } from "./merman-core.ts";
-import type { SvgRenderMetadata, ThemeAppearance } from "@mermanjs/web";
+import type { ThemeAppearance } from "@mermanjs/web";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import {
   renderOperationWithSvgPipeline,
-  matchesWorkspaceAppearance,
+  matchesWorkspaceRender,
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import {
@@ -31,7 +31,6 @@ export interface FrozenExportTarget {
   readonly publicationId: RenderPublicationId;
   readonly svgArtifact: NavigableInlineSvg;
   readonly unavailableThemePresetId: string | null;
-  readonly metadata: SvgRenderMetadata | null;
   readonly svgPipeline: FrozenRenderOperation["svgPipeline"] | null;
   readonly appearance: ThemeAppearance | null;
 }
@@ -120,10 +119,8 @@ export function createExportTargetOwner({
         publicationId: command.publicationId,
         svgArtifact,
         unavailableThemePresetId: command.engine === "merman" ? publication.snapshot.operation.unavailableThemePresetId : null,
-        metadata: command.engine === "merman" ? successfulMermanArtifact(publication).metadata : null,
         svgPipeline: command.engine === "merman" ? publication.snapshot.operation.svgPipeline : null,
-        appearance: command.engine === "merman" && publication.snapshot.operation.unavailableThemePresetId === null
-          ? publication.snapshot.operation.resolvedThemeAppearance : null,
+        appearance: command.engine === "merman" ? successfulMermanArtifact(publication).metadata?.theme_outcome?.appearance ?? null : null,
       });
       authorities.set(
         target,
@@ -407,12 +404,7 @@ function actionError(
 
 function assertCurrentWorkspacePublication(publication: CompletedRenderBatch, workspace: WorkspaceSnapshot | undefined, hostAppearance?: ThemeAppearance): void {
   if (!workspace) return;
-  const operation = publication.snapshot.operation;
-  if (operation.source !== workspace.code || operation.configJson !== workspace.mermaidConfig ||
-      operation.theme !== workspace.diagramTheme || operation.diagramFont !== workspace.diagramFont ||
-      operation.themePresetId !== workspace.themePresetId || operation.themeRecipeJson !== workspace.themeRecipeJson ||
-      operation.svgPipeline !== workspace.svgPipeline || operation.textMeasurementMode !== workspace.textMeasurementMode ||
-      !matchesWorkspaceAppearance(operation, workspace, hostAppearance)) {
+  if (!matchesWorkspaceRender(publication.snapshot.operation, workspace, hostAppearance)) {
     throw actionError("publication-not-current", "Wait for the current workspace preview before exporting.");
   }
 }

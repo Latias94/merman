@@ -30,9 +30,6 @@ fn c_consumer_smoke() {
         );
         assert_eq!(result, 0, "C consumer smoke returned {result}");
 
-        #[cfg(feature = "svg")]
-        assert_c_theme_authoring_errors(&library);
-
         let c_layout: libloading::Symbol<unsafe extern "C" fn() -> u64> = library
             .get(b"merman_c_layout_fingerprint")
             .expect("load merman_c_layout_fingerprint symbol");
@@ -45,96 +42,6 @@ fn c_consumer_smoke() {
 
     if matches_native_sdk_artifact_profile() {
         assert_c_abi_native_runtime_catalog();
-    }
-}
-
-#[test]
-fn alpha5_consumer_smoke() {
-    let library_path = compile_c_library(
-        "tests/alpha5_consumer_smoke.c",
-        "merman_alpha5_consumer_smoke",
-        "include",
-    );
-
-    unsafe {
-        let library = Library::new(&library_path).unwrap_or_else(|error| {
-            panic!(
-                "failed to load alpha.5 C consumer smoke library {}: {error}",
-                library_path.display()
-            )
-        });
-        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi) -> i32> = library
-            .get(b"merman_alpha5_consumer_smoke")
-            .expect("load merman_alpha5_consumer_smoke symbol");
-        let result = smoke(merman_ffi::merman_get_native_api);
-        assert_eq!(result, 0, "alpha.5 C consumer smoke returned {result}");
-    }
-}
-
-#[cfg(feature = "svg")]
-fn assert_c_theme_authoring_errors(library: &Library) {
-    type ThemeErrorSmoke = unsafe extern "C" fn(
-        *const merman_ffi::MermanNativeApi,
-        *const u8,
-        usize,
-        *const u8,
-        usize,
-        merman_ffi::MermanNativeStatus,
-        *mut u8,
-        usize,
-        *mut usize,
-    ) -> i32;
-    let smoke: libloading::Symbol<ThemeErrorSmoke> = unsafe {
-        library
-            .get(b"merman_c_theme_authoring_error")
-            .expect("C theme error consumer")
-    };
-    let api = native_api();
-    let vectors: Value = serde_json::from_str(include_str!(
-        "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-    ))
-    .unwrap();
-    for vector in vectors.as_array().unwrap() {
-        let source = vector["source"].as_str().unwrap().as_bytes();
-        let options = vector["options_json"].as_str().unwrap_or("").as_bytes();
-        let expected_status = match vector["native_status_name"].as_str().unwrap() {
-            "invalid-argument" => merman_ffi::MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
-            "resource-limit-exceeded" => merman_ffi::MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
-            other => panic!("unknown golden status: {other}"),
-        };
-        let mut output = [0u8; 8192];
-        let mut output_len = 0;
-        let result = unsafe {
-            smoke(
-                &api,
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-                expected_status,
-                output.as_mut_ptr(),
-                output.len(),
-                &mut output_len,
-            )
-        };
-        assert_eq!(result, 0, "C theme error consumer: {}", vector["id"]);
-        let payload: Value = serde_json::from_slice(&output[..output_len]).unwrap();
-        assert_eq!(payload["status"], expected_status);
-        assert_eq!(payload["status_name"], vector["native_status_name"]);
-        assert_eq!(payload["details"]["resource"], vector["resource"]);
-        let mut authoring = payload["details"]["theme_authoring"].clone();
-        for diagnostic in authoring["diagnostics"]
-            .as_array_mut()
-            .expect("diagnostics")
-        {
-            let message = diagnostic
-                .as_object_mut()
-                .unwrap()
-                .remove("message")
-                .expect("message");
-            assert!(!message.as_str().expect("string message").trim().is_empty());
-        }
-        assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
     }
 }
 

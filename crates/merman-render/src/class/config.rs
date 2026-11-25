@@ -3,6 +3,7 @@ use crate::config::{
     config_f64_explicit_css_absolute_px, config_string,
 };
 use crate::text::{TextStyle, WrapMode};
+use merman_theme_contract::v2::Density;
 use serde_json::Value;
 
 const DEFAULT_CLASS_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
@@ -213,6 +214,7 @@ impl<'a> ClassConfigView<'a> {
 #[derive(Debug)]
 pub(crate) struct ClassRenderConfig {
     layout: ClassLayoutSettings,
+    pub(crate) native_style: Option<super::ClassNativeStyle>,
     pub(crate) diagram_use_html_labels: bool,
     pub(crate) edge_use_html_labels: bool,
     pub(crate) line_height: f64,
@@ -240,6 +242,7 @@ impl ClassRenderConfig {
         let edge_use_html_labels = matches!(layout.wrap_mode_label, WrapMode::HtmlLike);
         Self {
             layout,
+            native_style: None,
             diagram_use_html_labels,
             edge_use_html_labels,
             line_height,
@@ -257,6 +260,42 @@ impl ClassRenderConfig {
                 .get("handDrawnSeed")
                 .and_then(Value::as_f64),
         }
+    }
+
+    pub(crate) fn with_native_style(
+        mut self,
+        native: &crate::theme::FamilyTheme,
+        config: &merman_model::presentation::PresentationConfig,
+    ) -> Self {
+        if !config.explicit_config_owns_path("fontSize")
+            && !config.explicit_config_owns_path("themeVariables.fontSize")
+        {
+            self.layout.text_style.font_size = native.typography.base_size_px;
+            self.layout.html_calc_text_style.font_size = native.typography.base_size_px;
+            self.layout.wrap_probe_font_size = native.typography.base_size_px;
+            self.line_height = native.typography.base_size_px * 1.5;
+        }
+        if !config.explicit_config_owns_path("class.padding") {
+            let scale = match native.form.density {
+                Density::Compact => 0.85,
+                Density::Balanced => 1.0,
+                Density::Airy => 1.25,
+            };
+            self.layout.class_padding *= scale;
+            self.class_padding *= scale;
+        }
+        self.native_style = Some(super::ClassNativeStyle::resolve(
+            native,
+            config,
+            self.text_style(),
+        ));
+        self
+    }
+
+    pub(crate) fn code_text_style(&self) -> &TextStyle {
+        self.native_style
+            .as_ref()
+            .map_or(self.text_style(), |native| &native.code_style)
     }
 
     pub(super) const fn layout_settings(&self) -> &ClassLayoutSettings {
@@ -354,43 +393,6 @@ mod tests {
         assert_eq!(config.interface_wrapping_width, 210.0);
         assert_eq!(config.look, "neo");
         assert!(config.hide_empty_members_box());
-    }
-
-    #[test]
-    fn typed_font_converges_main_styles_without_changing_html_probe_size() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default().with_family_style(
-                        crate::DiagramFamilyId::CLASS,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("monospace").unwrap())
-                            .with_font_size_px(26.0)
-                            .unwrap(),
-                    ),
-                ),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::CLASS);
-        let source = crate::test_support::presentation_config(json!({ "fontSize": "18" }));
-        let typography = super::super::ClassTextThemePlan::resolve(Some(&theme), &source);
-        let config = ClassRenderConfig::resolve(&source, &typography);
-        assert!(typography.typed_font_size_active());
-        assert_eq!(
-            config.text_style().font_family.as_deref(),
-            Some("monospace")
-        );
-        assert_eq!(
-            config.html_calc_text_style().font_family,
-            config.text_style().font_family
-        );
-        assert_eq!(config.text_style().font_size, 26.0);
-        assert_eq!(config.line_height, 39.0);
-        assert_eq!(config.html_calc_text_style().font_size, 18.0);
-        assert_eq!(config.wrap_probe_font_size(), 18.0);
     }
 
     #[test]

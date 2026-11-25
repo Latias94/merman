@@ -9,7 +9,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
+) -> crate::Result<()> {
     // Port of Mermaid `icon.ts` (`icon-shape default`).
     let has_label = !label.text.is_empty();
     let label_padding = if has_label { 8.0 } else { 0.0 };
@@ -83,7 +83,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     } else {
         outer_h / 2.0 - label_bbox_h
     };
-    let label_receipt = common.label_emission.write_special_html_label(
+    common.label_emission.write_special_html_label(
         out,
         ctx,
         common,
@@ -125,5 +125,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(label_receipt)
+    Ok(())
 }

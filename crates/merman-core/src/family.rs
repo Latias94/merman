@@ -820,21 +820,6 @@ pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
     find_variant(diagram_type).is_some()
 }
 
-/// Returns the presentation owner after configuration, without changing language identity.
-///
-/// Flowchart and Swimlane share paint consumers. This projection is used only for theme
-/// contributions; parser admission and public logical identity always use the catalog.
-#[cfg(feature = "presentation")]
-pub(crate) fn operation_family_id(
-    diagram_type: &str,
-    effective_config: &MermaidConfig,
-) -> Option<DiagramFamilyId> {
-    merman_model::family::diagram_type_presentation_family_id(
-        diagram_type,
-        effective_config.get_str("layout"),
-    )
-}
-
 #[cfg(feature = "editor-facts")]
 pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<EditorFamilySemantics> {
     let family = diagram_type_family_id(diagram_type)?;
@@ -1514,7 +1499,6 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
 mod catalog_tests {
     use super::*;
     #[cfg(feature = "presentation")]
-    use crate::MermaidConfig;
     use serde_json::Value;
     use std::collections::{BTreeSet, HashSet};
 
@@ -1645,9 +1629,10 @@ mod catalog_tests {
         }
     }
 
-    #[cfg(feature = "presentation")]
     #[test]
-    fn operation_family_id_uses_effective_layout_for_flowchart_and_swimlane() {
+    fn presentation_family_uses_effective_layout() {
+        use merman_model::family::diagram_type_presentation_family_id;
+
         for (diagram_type, layout, expected) in [
             ("flowchart", None, DiagramFamilyId::FLOWCHART),
             ("flowchart-v2", Some("dagre"), DiagramFamilyId::FLOWCHART),
@@ -1658,61 +1643,61 @@ mod catalog_tests {
             ("swimlane", Some("elk"), DiagramFamilyId::FLOWCHART),
             ("swimlane", Some("shoal"), DiagramFamilyId::SWIMLANE),
             ("swimlane", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("architecture", Some("shoal"), DiagramFamilyId::ARCHITECTURE),
+            ("mindmap", Some("swimlane"), DiagramFamilyId::MINDMAP),
         ] {
-            let mut config = MermaidConfig::empty_object();
-            if let Some(layout) = layout {
-                config.set_value("layout", Value::String(layout.to_string()));
-            }
             assert_eq!(
-                operation_family_id(diagram_type, &config),
+                diagram_type_presentation_family_id(diagram_type, layout),
                 Some(expected),
                 "{diagram_type} with layout {layout:?}"
             );
         }
 
-        #[cfg(feature = "presentation")]
-        {
-            let user_config = MermaidConfig::empty_object();
-            let mut defaulted_swimlane = crate::presentation::SourcePresentationConfig::from_value(
-                serde_json::json!({"layout": "dagre"}),
-            );
-            crate::config::resolve_appearance(
-                "swimlane",
-                &user_config,
-                &MermaidConfig::empty_object(),
-                None,
-                &crate::generated::upstream_default_config(),
-                &mut defaulted_swimlane,
-            );
-            assert_eq!(defaulted_swimlane.get_str("layout"), Some("swimlane"));
-            assert_eq!(
-                operation_family_id("swimlane", defaulted_swimlane.as_config()),
-                Some(DiagramFamilyId::SWIMLANE)
-            );
-
-            let user_config = MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
-            let mut configured_flowchart =
-                crate::presentation::SourcePresentationConfig::from_config(user_config.clone());
-            crate::config::resolve_appearance(
-                "swimlane",
-                &user_config,
-                &MermaidConfig::empty_object(),
-                None,
-                &crate::generated::upstream_default_config(),
-                &mut configured_flowchart,
-            );
-            assert_eq!(
-                operation_family_id("swimlane", configured_flowchart.as_config()),
-                Some(DiagramFamilyId::FLOWCHART)
-            );
-        }
-
-        let config = MermaidConfig::from_value(serde_json::json!({"layout": "swimlane"}));
         assert_eq!(
-            operation_family_id("mindmap", &config),
-            Some(DiagramFamilyId::MINDMAP)
+            diagram_type_presentation_family_id("future-diagram", Some("swimlane")),
+            None
         );
-        assert_eq!(operation_family_id("future-diagram", &config), None);
+    }
+
+    #[cfg(all(feature = "presentation", feature = "diagram-swimlane"))]
+    #[test]
+    fn parsed_swimlane_retains_layout_ownership_and_presentation_family() {
+        let engine = crate::MermaidEngine::new();
+        for (source, layout, explicit, family) in [
+            (
+                "swimlane-beta LR\nA-->B",
+                "swimlane",
+                false,
+                DiagramFamilyId::SWIMLANE,
+            ),
+            (
+                "---\nconfig:\n  layout: shoal\n---\nswimlane-beta LR\nA-->B",
+                "shoal",
+                true,
+                DiagramFamilyId::SWIMLANE,
+            ),
+            (
+                "---\nconfig:\n  layout: elk\n---\nswimlane-beta LR\nA-->B",
+                "elk",
+                true,
+                DiagramFamilyId::FLOWCHART,
+            ),
+        ] {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let metadata = parsed.metadata();
+            assert_eq!(metadata.diagram_type, "swimlane");
+            assert_eq!(metadata.effective_config.get_str("layout"), Some(layout));
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .explicit_config_owns_path("layout"),
+                explicit
+            );
+            assert_eq!(parsed.family_id(), Some(family));
+        }
     }
 
     #[test]

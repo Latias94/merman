@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Versioned authoring and canonical JSON contracts for Merman themes."
+description = "Versioned authoring and compiled contracts for Merman themes."
 documentation = "https://docs.rs/merman-theme-contract"
 readme = "README.md"
 keywords = ["mermaid", "themes", "json", "contracts"]
@@ -14,12 +14,22 @@ categories = ["encoding", "visualization"]
 
 [features]
 default = []
+compile = ["dep:serde_json", "dep:serde_path_to_error"]
+presets = ["compile"]
+
+[package.metadata.merman]
+wasm-inputs = ["assets/presets"]
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-serde_json_canonicalizer.workspace = true
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true, optional = true }
+serde_path_to_error = { workspace = true, optional = true }
 thiserror.workspace = true
 
-[dev-dependencies]
-merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }
+[[test]]
+name = "theme_v2"
+required-features = ["presets"]
+
+[[test]]
+name = "theme_v2_decoding"
+required-features = ["compile"]

@@ -4,7 +4,7 @@ The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-b
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
-Version `0.11.0` uses Web transport API `11`, facts schema `3`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+The current source uses Web transport API `12`, facts schema `3`, Theme v2, and Options JSON schema `4`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
 Use `renderAsciiResult()` to read ASCII schema `4` output metadata. Update report readers for the nullable primary layout and separate emitted overflow. [ASCII report migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
 
@@ -58,11 +58,10 @@ For retained DOM updates and explicit Kanban width adaptation, use
 
 ## Themes
 
-Use `themeCatalog()` to discover preset designs and appearances, `renderSvgResult()` with
-`{ theme: { preset: "paper-cut" } }` to select one, and `exportThemePreset("paper-cut")` to obtain
-its editable JSON recipe. See the [theme workflow](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#choose-a-preset-for-a-diagram)
-and [customization guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
-for shared tokens, paired appearances, JSON import/export, and actual render evidence.
+Use `themeCatalog()` to discover presets and appearances. Pass `{ theme: "paper-cut" }` to
+`renderSvgResult()` to select a preset and read `metadata.theme_outcome`. Use
+`exportThemePreset("paper-cut")` for an editable v2 document and `resolveTheme(document)` to
+check its settings and contrast. See the [browser theme guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#choose-a-preset-for-a-diagram).
 
 ## Runtime boundary
 

@@ -146,10 +146,9 @@ test("candidate runtime outputs follow explicit binding operation ownership", ()
 
   assert.deepEqual(contract.capabilityIds, NODE_WIRE_CONTRACT.artifact.capability_ids);
   assert.deepEqual(contract.operationIds, [
-    "describe-theme-support-json",
-    "export-theme-preset-json",
+    "export-theme-preset",
     "layout-json",
-    "materialize-theme-json",
+    "resolve-theme",
     "semantic-json",
     "svg",
     "svg-plan-json",

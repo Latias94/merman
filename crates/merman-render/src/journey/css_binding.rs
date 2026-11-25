@@ -1,16 +1,8 @@
 use crate::config::config_string;
-use crate::svg::PreparedCommonCss;
-use crate::text::TextStyle;
-
-use super::config::{JourneyConfigView, JourneyLayoutSettings, JourneyRenderSettings};
 
 #[derive(Debug)]
 pub(crate) struct JourneyCssBinding {
-    pub(crate) common: PreparedCommonCss,
-    pub(crate) layout: JourneyLayoutSettings,
-    pub(crate) render: JourneyRenderSettings,
     pub(crate) text_color: String,
-    pub(super) text_color_source_path: Option<&'static str>,
     pub(crate) face_color: String,
     pub(crate) main_bkg: String,
     pub(crate) node_border: String,
@@ -24,29 +16,14 @@ pub(crate) struct JourneyCssBinding {
 }
 
 impl JourneyCssBinding {
-    pub(super) fn new(config: &serde_json::Value, font_family: &str, font_size_css: &str) -> Self {
+    pub(super) fn new(config: &serde_json::Value) -> Self {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
-        // The cluster title fallback uses the Mermaid base text color, before typed Text.fill.
-        let (text_color_source_path, base_text_color) =
-            crate::config::selected_config_string(config, &["themeVariables.textColor"])
-                .map_or((None, "#333"), |(path, color)| (Some(path), color));
-        let title_color = color("titleColor", base_text_color);
-        let text_color = base_text_color.to_owned();
-        let common = PreparedCommonCss::with_resolved_typography(
-            config,
-            font_family.to_owned(),
-            font_size_css.to_owned(),
-        )
-        .with_text_color(&text_color);
-        let config_view = JourneyConfigView::new(config);
+        let text_color = color("textColor", "#333");
+        let title_color = color("titleColor", &text_color);
         Self {
-            common,
-            layout: config_view.layout_settings(),
-            render: config_view.render_settings(),
             text_color,
-            text_color_source_path,
             face_color: color("faceColor", "#FFF8DC"),
             main_bkg: color("mainBkg", "#ECECFF"),
             node_border: color("nodeBorder", "#9370DB"),
@@ -61,23 +38,6 @@ impl JourneyCssBinding {
             actor_colors: (0..6)
                 .map(|index| config_string(config, &["themeVariables", &format!("actor{index}")]))
                 .collect(),
-        }
-    }
-
-    pub(super) fn with_text_paint(mut self, fill: Option<&str>) -> Self {
-        if let Some(fill) = fill {
-            self.common = self.common.with_text_color(fill);
-            self.text_color = fill.to_owned();
-        }
-        self
-    }
-
-    pub(crate) fn legend_text_style(&self, font_size: f64) -> TextStyle {
-        TextStyle {
-            font_family: Some(self.common.font_family().to_owned()),
-            font_size,
-            font_weight: None,
-            font_style: None,
         }
     }
 }
@@ -100,42 +60,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prepared_binding_keeps_layout_and_stylesheet_palettes_distinct() {
+    fn prepared_binding_preserves_mermaid_stylesheet_colors() {
         let config = serde_json::json!({
-            "journey": {
-                "actorColours": ["currentColor"],
-                "sectionFills": ["var(--section-color)"],
-                "taskFontFamily": "Task Font",
-                "taskFontSize": "18",
-                "titleColor": "var(--title-color)"
-            },
             "themeVariables": {
                 "fillType0": "var(--css-section-color)",
                 "actor0": "var(--css-actor-color)",
                 "textColor": "var(--base-text-color)"
             }
         });
-        let binding =
-            JourneyCssBinding::new(&config, "Base Font", "20px").with_text_paint(Some("#123456"));
-        assert_eq!(binding.layout.actor_colours, ["currentColor"]);
-        assert_eq!(binding.layout.section_fills, ["var(--section-color)"]);
+        let binding = JourneyCssBinding::new(&config);
         assert_eq!(binding.fill_types[0], "var(--css-section-color)");
         assert_eq!(
             binding.actor_colors[0].as_deref(),
             Some("var(--css-actor-color)")
         );
         assert_eq!(binding.actor_colors[1], None);
-        assert_eq!(binding.text_color, "#123456");
+        assert_eq!(binding.text_color, "var(--base-text-color)");
         assert_eq!(binding.title_color, "var(--base-text-color)");
-        assert_eq!(binding.render.title_color, "var(--title-color)");
-        assert_eq!(binding.render.task_text_style.font_size, 18.0);
-        assert_eq!(
-            binding.render.task_text_style.font_family.as_deref(),
-            Some("Task Font")
-        );
-        assert_eq!(
-            binding.legend_text_style(20.0).font_family.as_deref(),
-            Some("Base Font")
-        );
     }
 }

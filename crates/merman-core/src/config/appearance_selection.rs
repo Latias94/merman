@@ -8,7 +8,6 @@ pub(super) const APPEARANCE_KEYS: [&str; 3] = ["theme", "look", "layout"];
 pub(super) enum AppearanceOrigin {
     Source,
     Initialize,
-    Compatibility,
     Default,
 }
 
@@ -17,7 +16,6 @@ pub(super) fn select_appearance_value<'a>(
     key: &str,
     source: &'a MermaidConfig,
     initialize: &'a MermaidConfig,
-    compatibility: Option<&'a MermaidConfig>,
     defaults: &'a MermaidConfig,
 ) -> Option<(Cow<'a, Value>, AppearanceOrigin)> {
     [
@@ -27,11 +25,6 @@ pub(super) fn select_appearance_value<'a>(
     .into_iter()
     .find_map(|(layer, origin)| {
         read_appearance(layer, section, key).map(|value| (Cow::Borrowed(value), origin))
-    })
-    .or_else(|| {
-        compatibility
-            .and_then(|layer| read_appearance(layer, section, key))
-            .map(|value| (Cow::Borrowed(value), AppearanceOrigin::Compatibility))
     })
     // Mindmap chooses Cose only in the absence of an authored layout, including null.
     .or_else(|| {
@@ -60,8 +53,7 @@ pub(crate) fn resolve_semantic_appearance(
     let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
     for key in APPEARANCE_KEYS {
         control.checkpoint()?;
-        let Some((value, _)) =
-            select_appearance_value(section, key, source, initialize, None, defaults)
+        let Some((value, _)) = select_appearance_value(section, key, source, initialize, defaults)
         else {
             continue;
         };
@@ -106,4 +98,11 @@ fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Op
         "layout" => true,
         _ => false,
     })
+}
+
+/// Reports whether a source-authored config selects a Mermaid theme for this diagram type.
+/// Pass the parse result's authored `config` rather than its effective config.
+pub fn source_declares_theme(config: &MermaidConfig, diagram_type: &str) -> bool {
+    let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
+    read_appearance(config, section, "theme").is_some()
 }

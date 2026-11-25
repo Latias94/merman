@@ -13,8 +13,7 @@ mod prepared;
 
 pub(crate) use evidence::{
     PREPARED_MATH_NATIVE_CLASS, PreparedMathEvidenceLease, PreparedMathExpectation,
-    PreparedMathOccurrenceId, PreparedMathProjectionFingerprint, PreparedMathStyleAssurance,
-    PreparedMathTerminalReceipt,
+    PreparedMathOccurrenceId, PreparedMathProjectionFingerprint, PreparedMathTerminalReceipt,
 };
 pub(crate) use prepared::{
     BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,
@@ -61,7 +60,7 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     ///
     /// Sequence uses a bare `foreignObject` with `width: fit-content` rather than Flowchart's
     /// HTML-label shell, so math backends may support a slightly different surface here.
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     fn render_sequence_html_label(
         &self,
         text: &str,
@@ -114,11 +113,11 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
 }
 
 /// Explicit no-op math renderer for hosts that want a backend which declines every label.
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(test)]
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct NoopMathRenderer;
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(test)]
 impl MathRenderer for NoopMathRenderer {
     fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
         None
@@ -424,7 +423,7 @@ impl MathRenderer for RatexMathRenderer {
         Self::render_katex_like_label(text)
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     fn render_sequence_html_label(
         &self,
         text: &str,

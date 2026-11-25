@@ -52,12 +52,12 @@ class SdkArchiveTests(unittest.TestCase):
         self.version = "1.2.3"
         self.write("Cargo.toml", '[workspace.package]\nversion = "1.2.3"\n')
         for name, macro, version in (
-            ("merman.h", "MERMAN_NATIVE_ABI_VERSION", 3),
+            ("merman.h", "MERMAN_NATIVE_ABI_VERSION", 4),
             ("merman_text_measurement_abi.h", "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION", 1),
-            ("merman_resource_contract.h", "MERMAN_BINDING_OPTIONS_SCHEMA_VERSION", 3),
+            ("merman_resource_contract.h", "MERMAN_BINDING_OPTIONS_SCHEMA_VERSION", 4),
         ):
             self.write(f"crates/merman-ffi/include/{name}", f"#define {macro} {version}u\n")
-        self.write("contracts/abi/merman-v3.json", '{"abi_version":3}\n')
+        self.write("contracts/abi/merman-v4.json", '{"abi_version":4}\n')
         self.write("crates/merman-wasi/README.md", "# WASI scalar ABI\n")
         self.write("contracts/abi/text-measurement-v1.json", '{"protocol_version":1}\n')
         for name in ("LICENSE-MIT", "LICENSE-APACHE"):
@@ -147,8 +147,8 @@ class SdkArchiveTests(unittest.TestCase):
             "artifacts": {name: sdk_archive.sha256_file(self.artifacts / name)
                           for name in sdk_archive.library_names(self.target).values()},
             "runtime_catalog": {
-                "schema_version": 1, "transport_api_version": 1 if wasi else 3,
-                "package_version": self.version, "options_schema_versions": [3],
+                "schema_version": 1, "transport_api_version": 1 if wasi else 4,
+                "package_version": self.version, "options_schema_versions": [4],
                 "capabilities": {"capability_ids": sorted(caps), "output_ids": ["png", "svg"],
                                  "text_measurement": {"provider_ids": ["native-fonts"]}},
                 "constructor_service_ids": ["native-font-context"],
@@ -192,14 +192,15 @@ class SdkArchiveTests(unittest.TestCase):
         self.assertEqual(manifest["version"], self.version)
         self.assertEqual(manifest["profile"], self.profile)
         self.assertEqual(manifest["source_commit"], self.commit)
-        self.assertEqual(manifest["abi_version"], 3)
+        self.assertEqual(manifest["abi_version"], 4)
+        self.assertEqual(manifest["options_schema_versions"], [4])
         self.assertEqual(manifest["capabilities"], self.expected["runtime_ids"])
         self.assertEqual(set(manifest["files"]), set(members) - {"manifest.json"})
         for name, details in manifest["files"].items():
             self.assertEqual(details["sha256"], hashlib.sha256(members[name]).hexdigest())
             self.assertEqual(details["size"], len(members[name]))
         self.assertNotIn("test_fixture.txt", members)
-        self.assertIn("contracts/abi/merman-v3.json", members)
+        self.assertIn("contracts/abi/merman-v4.json", members)
         self.assertIn("contracts/abi/text-measurement-v1.json", members)
         self.assertIn("include/merman_text_measurement_abi.h", members)
         self.assertIn("examples/render.cpp", members)
@@ -236,7 +237,7 @@ class SdkArchiveTests(unittest.TestCase):
 
     def test_wasi_catalog_version_and_module_digest_are_required(self):
         self.configure(wasi=True)
-        for version in (None, True, 3):
+        for version in (None, True, 4):
             with self.subTest(version=version):
                 self.catalog["runtime_catalog"]["transport_api_version"] = version
                 self.save_catalog()
@@ -411,11 +412,11 @@ class SdkArchiveTests(unittest.TestCase):
             self.package()
 
     def test_abi_contract_and_font_checksums_are_required(self):
-        abi = self.repo / "contracts/abi/merman-v3.json"
+        abi = self.repo / "contracts/abi/merman-v4.json"
         abi.write_text('{"abi_version":99}')
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "ABI contract"):
             self.package()
-        abi.write_text('{"abi_version":3}')
+        abi.write_text('{"abi_version":4}')
         font = self.repo / "crates/merman-export/assets/fonts/Cousine-Regular.ttf"
         font.write_text("changed")
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "font checksum"):
@@ -471,16 +472,22 @@ class SdkArchiveTests(unittest.TestCase):
             with self.subTest(newline=newline):
                 header = newline.join((
                     b"/* Generated header */",
-                    b"#define MERMAN_NATIVE_ABI_VERSION 3u",
+                    b"#define MERMAN_NATIVE_ABI_VERSION 4u",
                     b"",
                 ))
                 self.assertEqual(
-                    sdk_archive._header_version(header, "MERMAN_NATIVE_ABI_VERSION"), 3,
+                    sdk_archive._header_version(header, "MERMAN_NATIVE_ABI_VERSION"), 4,
                 )
 
     def test_header_version_mismatch_is_rejected(self):
-        self.write("crates/merman-ffi/include/merman.h", "#define MERMAN_NATIVE_ABI_VERSION 99u\n")
+        self.write("crates/merman-ffi/include/merman.h", "#define MERMAN_NATIVE_ABI_VERSION 3u\n")
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "header ABI"):
+            self.package()
+
+    def test_native_catalog_rejects_abi3(self):
+        self.catalog["runtime_catalog"]["transport_api_version"] = 3
+        self.save_catalog()
+        with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "transport_api_version"):
             self.package()
 
     def test_font_capability_still_requires_its_provider_and_constructor(self):

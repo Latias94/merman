@@ -4,16 +4,17 @@ import { isThemeName } from "@mermanjs/web";
 import { isMermaidThemeSelection } from "./mermaid-theme-name.ts";
 import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
-import type { ThemeRecipeLabel, WorkspaceSnapshot } from "./workspace-snapshot.ts";
+import type { ThemeDocumentLabel, WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { isMermanSvgPipeline } from "../runtime/merman-core.ts";
 import { isThemeAppearancePreference } from "./theme-appearance.ts";
+import { THEME_DOCUMENT_BYTE_LIMIT } from "../themes/v2.ts";
 
 const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
 const SHARE_JSON_OVERHEAD_BYTES = 16 * 1024;
 const SHARE_THEME_PRESET_ID_BYTES = 16 * 1024;
 const SHARE_V2_ENCODED_BYTES = 512 * 1024;
-export const SHARE_THEME_RECIPE_BYTES = 256 * 1024;
+export const SHARE_THEME_DOCUMENT_BYTES = THEME_DOCUMENT_BYTE_LIMIT;
 const SHARE_DECOMPRESSION_CHUNK_BYTES = 512;
 
 export const SHARE_LIMITS = Object.freeze({
@@ -32,8 +33,8 @@ export const SHARE_V5_PREFIX = "#s5:" as const;
 
 export const SHARE_V3_LIMITS = Object.freeze({
   ...SHARE_LIMITS,
-  encodedBytes: SHARE_LIMITS.encodedBytes + SHARE_THEME_RECIPE_BYTES,
-  jsonBytes: SHARE_LIMITS.jsonBytes + SHARE_THEME_RECIPE_BYTES,
+  encodedBytes: SHARE_LIMITS.encodedBytes + SHARE_THEME_DOCUMENT_BYTES,
+  jsonBytes: SHARE_LIMITS.jsonBytes + SHARE_THEME_DOCUMENT_BYTES,
 });
 
 // This is the complete default snapshot owned by the s2 wire format. Keep it
@@ -49,7 +50,7 @@ export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   mermaidConfig: "{\n}\n",
   diagramTheme: "auto",
   themePresetId: null,
-  themeRecipeJson: null,
+  themeDocumentJson: null,
   svgPipeline: "parity",
   textMeasurementMode: "browser",
   diagramFont: "trebuchet",
@@ -65,13 +66,13 @@ export const WORKSPACE_V3_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   mermaidConfig: "{\n}\n",
   diagramTheme: "auto",
   themePresetId: null,
-  themeRecipeJson: null,
+  themeDocumentJson: null,
   svgPipeline: "parity",
   textMeasurementMode: "browser",
   diagramFont: "trebuchet",
 });
 
-// Named recipes use a new envelope; existing links retain their historical defaults.
+// Named themes use a new envelope; existing links retain their historical defaults.
 export const WORKSPACE_V4_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
   code: `flowchart TD
     A[Start] --> B{Condition?}
@@ -81,7 +82,7 @@ export const WORKSPACE_V4_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   mermaidConfig: "{\n}\n",
   diagramTheme: "auto",
   themePresetId: null,
-  themeRecipeJson: null,
+  themeDocumentJson: null,
   svgPipeline: "parity",
   textMeasurementMode: "browser",
   diagramFont: "inherit",
@@ -102,6 +103,7 @@ const WORKSPACE_V2_KEYS = new Set([
   "textMeasurementMode",
   "diagramFont",
 ]);
+// The share wire keeps the original field names for already-distributed URLs.
 const WORKSPACE_V3_KEYS = new Set([...WORKSPACE_V2_KEYS, "themeRecipeJson"]);
 const WORKSPACE_V4_KEYS = new Set([...WORKSPACE_V3_KEYS, "themeRecipeLabel"]);
 const WORKSPACE_V5_KEYS = new Set([...WORKSPACE_V4_KEYS, "themeAppearance"]);
@@ -113,16 +115,16 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
 
-  const customTheme = data.themeRecipeJson !== null;
-  const namedTheme = data.themeRecipeLabel != null;
+  const customTheme = data.themeDocumentJson !== null;
+  const namedTheme = data.themeDocumentLabel != null;
   const pairedTheme = (data.themeAppearance ?? "default") !== "default" ||
-    data.themeRecipeLabel?.derivedFrom !== undefined;
+    data.themeDocumentLabel?.derivedFrom !== undefined;
   const prefix = pairedTheme ? SHARE_V5_PREFIX : namedTheme ? SHARE_V4_PREFIX : customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
   const limits = customTheme ? SHARE_V3_LIMITS : SHARE_LIMITS;
   const defaults = pairedTheme ? WORKSPACE_V5_DEFAULTS : namedTheme ? WORKSPACE_V4_DEFAULTS : customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
   const payload = encodeWorkspacePayload(data, defaults);
-  if (customTheme) payload.themeRecipeJson = data.themeRecipeJson;
-  if (namedTheme) payload.themeRecipeLabel = data.themeRecipeLabel;
+  if (customTheme) payload.themeRecipeJson = data.themeDocumentJson;
+  if (namedTheme) payload.themeRecipeLabel = data.themeDocumentLabel;
   if (pairedTheme && data.themeAppearance && data.themeAppearance !== "default") payload.themeAppearance = data.themeAppearance;
   const json = JSON.stringify(payload);
   if (utf8ByteLength(json) > limits.jsonBytes) {
@@ -268,13 +270,13 @@ function decodeWorkspaceRecord(
     isDiagramFontValue
   );
   const renderOptions = decodeCurrentRenderOptions(value, defaults);
-  const themeRecipeJson = optionalNullableString(
+  const themeDocumentJson = optionalNullableString(
     value,
     "themeRecipeJson",
-    defaults.themeRecipeJson,
-    SHARE_THEME_RECIPE_BYTES,
+    defaults.themeDocumentJson,
+    SHARE_THEME_DOCUMENT_BYTES,
   );
-  const themeRecipeLabel = value.themeRecipeLabel;
+  const themeDocumentLabel = value.themeRecipeLabel;
   if (
     code === null ||
     diagramTheme === null ||
@@ -282,11 +284,11 @@ function decodeWorkspaceRecord(
     textMeasurementMode === null ||
     diagramFont === null ||
     renderOptions === null ||
-    themeRecipeJson === undefined ||
-    !isThemeRecipeJson(themeRecipeJson) ||
+    themeDocumentJson === undefined ||
+    !isSharedThemeDocument(themeDocumentJson) ||
     (Object.hasOwn(value, "themeAppearance") && !isThemeAppearancePreference(value.themeAppearance)) ||
-    (themeRecipeLabel !== undefined && (!isThemeRecipeLabel(themeRecipeLabel, pairedThemes) || themeRecipeJson === null)) ||
-    (themeRecipeJson !== null && renderOptions.themePresetId !== null)
+    (themeDocumentLabel !== undefined && (!isThemeDocumentLabel(themeDocumentLabel, pairedThemes) || themeDocumentJson === null)) ||
+    (themeDocumentJson !== null && renderOptions.themePresetId !== null)
   ) {
     return null;
   }
@@ -296,8 +298,8 @@ function decodeWorkspaceRecord(
     diagramTheme,
     mermaidConfig,
     ...renderOptions,
-    themeRecipeJson,
-    ...(themeRecipeLabel ? { themeRecipeLabel: themeRecipeLabel as ThemeRecipeLabel } : {}),
+    themeDocumentJson,
+    ...(themeDocumentLabel ? { themeDocumentLabel: themeDocumentLabel as ThemeDocumentLabel } : {}),
     ...(value.themeAppearance !== undefined ? { themeAppearance: value.themeAppearance as WorkspaceSnapshot["themeAppearance"] } : {}),
     textMeasurementMode,
     diagramFont,
@@ -366,7 +368,7 @@ function decodeLegacyWorkspaceHash(
       diagramTheme: value.theme === "default" ? "auto" : value.theme,
       mermaidConfig: config,
       ...renderOptions,
-      themeRecipeJson: null,
+      themeDocumentJson: null,
       textMeasurementMode,
       diagramFont,
     };
@@ -497,32 +499,32 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isBoundedString(value.mermaidConfig, SHARE_LIMITS.configBytes) &&
     isMermaidThemeSelection(value.diagramTheme) &&
     isOptionalId(value.themePresetId) &&
-    isThemeRecipeJson(value.themeRecipeJson) &&
+    isSharedThemeDocument(value.themeDocumentJson) &&
     (value.themeAppearance === undefined || isThemeAppearancePreference(value.themeAppearance)) &&
-    (value.themeRecipeLabel == null || (isThemeRecipeLabel(value.themeRecipeLabel, true) && value.themeRecipeJson !== null)) &&
-    (value.themeRecipeJson === null || value.themePresetId === null) &&
+    (value.themeDocumentLabel == null || (isThemeDocumentLabel(value.themeDocumentLabel, true) && value.themeDocumentJson !== null)) &&
+    (value.themeDocumentJson === null || value.themePresetId === null) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
     isDiagramFontValue(value.diagramFont)
   );
 }
 
-function isThemeRecipeLabel(value: unknown, pairedThemes = false): value is ThemeRecipeLabel {
+function isThemeDocumentLabel(value: unknown, pairedThemes = false): value is ThemeDocumentLabel {
   return isRecord(value) && hasOnlyKeys(value, new Set(pairedThemes ? ["name", "source", "derivedFrom"] : ["name", "source"])) &&
     isBoundedString(value.name, 256) && value.name.trim().length > 0 &&
     (value.derivedFrom === undefined || (isBoundedString(value.derivedFrom, 256) && value.derivedFrom.trim().length > 0)) &&
     (value.source === "exploration" || value.source === "imported");
 }
 
-// Rust owns recipe schema validation. Sharing checks only the bounded envelope.
-function isThemeRecipeJson(value: unknown): value is string | null {
+// Old documents remain recoverable from shared URLs. The runtime admits v2 documents.
+function isSharedThemeDocument(value: unknown): value is string | null {
   if (value === null) return true;
-  if (!isBoundedString(value, SHARE_THEME_RECIPE_BYTES)) return false;
+  if (!isBoundedString(value, SHARE_THEME_DOCUMENT_BYTES)) return false;
   try {
-    const recipe: unknown = JSON.parse(value);
+    const document: unknown = JSON.parse(value);
     return (
-      isRecord(recipe) &&
-      recipe.schema_version === 1 && (recipe.kind === "design" || recipe.kind === "complete_spec")
+      isRecord(document) && (document.schema_version === 2 ||
+        (document.schema_version === 1 && (document.kind === "design" || document.kind === "complete_spec")))
     );
   } catch {
     return false;

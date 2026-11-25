@@ -811,103 +811,75 @@ fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
 }
 
 #[test]
-#[cfg(all(feature = "png", feature = "native-fonts"))]
-fn class_native_label_paint_reaches_usvg_and_png() {
-    use merman::svg::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeTarget,
-    };
+#[cfg(all(feature = "png", feature = "native-fonts", feature = "diagram-class"))]
+fn class_native_title_paint_reaches_usvg_and_png() {
+    use merman::theme::{ThemeCompiler, ThemeSelection};
 
-    let font_context = native_export_fonts();
-    let renderer = Renderer::new();
-    for (body, label, target) in [
-        (
-            "namespace Internal {\nclass A\n}\nstyle A color:#000000\n",
-            "Internal",
-            ThemeTarget::Title,
-        ),
-        (
-            "class A\nstyle A color:#000000\nA --() IService\n",
-            "IService",
-            ThemeTarget::NodeLabel,
-        ),
-    ] {
-        let source = format!(
-            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n  themeVariables:\n    fontFamily: Cousine\n---\nclassDiagram\n{body}"
-        );
-        for (paint, expected_fill) in [
-            (CanvasPaint::solid("#ff0000").unwrap(), Some((255, 0, 0))),
-            (CanvasPaint::Transparent, None),
-        ] {
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                        ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint)),
-                    )),
-                )
-                .unwrap();
-            let RenderOutput::Svg(Some(svg)) = renderer
-                .render(
-                    RenderRequest::svg(&source, OperationControl::new(), SvgRequest::default())
-                        .with_theme(theme.clone()),
-                )
-                .unwrap()
-            else {
-                panic!("Class native label must produce SVG");
-            };
-            assert_eq!(
-                usvg_fallback_text_fill(svg.svg(), label),
-                expected_fill,
-                "native {label} fill"
-            );
-
-            let RenderOutput::Png(Some(png)) = renderer
-                .render(
-                    RenderRequest::png(
-                        &source,
-                        OperationControl::new(),
-                        merman::PngRequest {
-                            svg: SvgRequest::default(),
-                            options: merman::svg::export::RasterOptions::default()
-                                .with_font_context(font_context.clone()),
-                        },
-                    )
-                    .with_theme(theme),
-                )
-                .unwrap()
-            else {
-                panic!("Class native label must produce PNG");
-            };
-            let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
-                .read_info()
-                .unwrap();
-            let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
-            let info = reader.next_frame(&mut pixels).unwrap();
-            assert_eq!(info.color_type, png::ColorType::Rgba);
-            let has_red = pixels[..info.buffer_size()]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .any(|pixel| pixel[3] > 0 && pixel[0] > 128 && pixel[1] < 64 && pixel[2] < 64);
-            assert_eq!(has_red, expected_fill.is_some(), "native {label} pixels");
-        }
+    let source = "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n  themeVariables:\n    fontFamily: Cousine\n---\nclassDiagram\nnamespace Internal {\nclass A\n}\nstyle A color:#000000\n";
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{"schema_version":2,"extends":"studio","roles":{"text.title":"#EF0000"}}"##,
+            None,
+        )
+        .unwrap();
+    let request = SvgRequest {
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        ..Default::default()
     }
+    .with_native_theme(ThemeSelection::compiled(theme));
+    let renderer = Renderer::new();
+    let svg = renderer
+        .render_svg_data(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            request.clone(),
+        ))
+        .unwrap()
+        .unwrap();
+    assert_eq!(usvg_fallback_text_fill(&svg, "Internal"), Some((239, 0, 0)));
+
+    let RenderOutput::Png(Some(png)) = renderer
+        .render(RenderRequest::png(
+            source,
+            OperationControl::new(),
+            merman::PngRequest {
+                svg: request,
+                options: merman::svg::export::RasterOptions::default()
+                    .with_font_context(native_export_fonts()),
+            },
+        ))
+        .unwrap()
+    else {
+        panic!("Class native labels must produce PNG");
+    };
+    let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, png::ColorType::Rgba);
+    assert!(
+        pixels[..info.buffer_size()]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] > 0 && pixel[0] > 128 && pixel[1] < 64 && pixel[2] < 64)
+    );
 }
 
 #[test]
 #[cfg(all(feature = "png", feature = "native-fonts"))]
-fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
+fn filtered_html_fallback_reaches_native_glow_pixels_and_pdf_filter_plan() {
     let font_context = native_export_fonts();
-    let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-theme-effect-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-theme-effect-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
-    for (overflow, source, expected_receipt) in [
-        ("hidden", source.to_string(), false),
+    let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
+    for (overflow, source) in [
+        ("hidden", source.to_string()),
         (
             "visible",
             source.replace(
                 r#"<foreignObject width="120""#,
                 r#"<foreignObject style="overflow:visible" width="120""#,
             ),
-            true,
         ),
     ] {
         let session = merman_render::environment::RenderEnvironment::deterministic()
@@ -934,14 +906,8 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
             merman::svg::export::RasterOptions::default().with_font_context(font_context.clone());
         let (bytes, report) =
             merman::svg::export::svg_to_png_with_report(&sealed, &options).unwrap();
-        let receipt = report.native_filter_receipt();
-        // A clipped source viewport cannot prove the exporter's unclipped-glyph receipt.
-        // Explicit visible overflow keeps the original glow and its stronger evidence.
-        assert_eq!(receipt.is_some(), expected_receipt, "overflow={overflow}");
-        if let Some(receipt) = receipt {
-            assert_eq!(receipt.filter_count(), 1);
-            assert_eq!(receipt.reference_count(), 1);
-        }
+        assert_eq!(report.conversion().filtered_groups, 1);
+        assert!(report.conversion().filter_primitives > 0);
         let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
             .read_info()
             .unwrap();
@@ -957,12 +923,14 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
             "overflow={overflow}: pink glow must reach native pixels"
         );
         #[cfg(feature = "pdf")]
-        if expected_receipt {
+        {
             let options =
                 merman::svg::export::PdfOptions::default().with_font_context(font_context.clone());
-            let (_, pdf_report) =
+            let (bytes, pdf_report) =
                 merman::svg::export::svg_to_pdf_with_report(&sealed, &options).unwrap();
-            assert_eq!(pdf_report.native_filter_receipt(), receipt);
+            assert!(bytes.starts_with(b"%PDF-"));
+            assert_eq!(pdf_report.filters().filtered_groups, 1);
+            assert!(pdf_report.filters().effective_image_pixels > 0);
         }
     }
 }

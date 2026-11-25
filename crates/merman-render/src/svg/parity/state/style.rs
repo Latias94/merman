@@ -153,23 +153,26 @@ where
     let style_plan = ctx.style_plan;
     let compatibility = style_plan.compatibility();
     let transition_color = compatibility.transition_color.as_str();
-    let marker_style_attr = if style_plan.transition_marker_style_attr().is_empty() {
-        String::new()
-    } else {
-        format!(
-            r#" style="{}""#,
-            escape_xml(style_plan.transition_marker_style_attr())
-        )
-    };
-
     let barb = StateBarb::for_look(compatibility.is_neo());
-    let glyph_path = barb.glyph_path();
+    let (glyph_path, glyph_attributes) = if let Some(path) =
+        crate::theme::marker_svg::arrow_path(compatibility.native_marker)
+    {
+        let attributes =
+            if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Open {
+                r#" transform="translate(9 2)" style="fill:none !important;stroke-linecap:round""#
+            } else {
+                r#" transform="translate(9 2)""#
+            };
+        (std::borrow::Cow::Borrowed(path), attributes)
+    } else {
+        (std::borrow::Cow::Owned(barb.glyph_path()), "")
+    };
     let ref_x = barb.ref_x;
 
     if compatibility.is_neo() {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="strokeWidth" orient="auto"><path d="{glyph_path}"{marker_style_attr}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{}"{marker_style_attr}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="strokeWidth" orient="auto"><path d="{glyph_path}"{glyph_attributes}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{}"{glyph_attributes}/></marker></defs>"#,
             escape_attr_display(diagram_id),
             escape_attr_display(diagram_id),
             escape_xml(transition_color)
@@ -177,29 +180,8 @@ where
     } else {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}"{marker_style_attr}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}"{glyph_attributes}/></marker></defs>"#,
             escape_attr_display(diagram_id)
-        );
-    }
-
-    for edge in ctx.edges {
-        let Some(edge_style) = style_plan.edge(edge.id.as_str()) else {
-            continue;
-        };
-        let (Some(ordinal), style) = (edge_style.marker_ordinal(), edge_style.marker_style_attr())
-        else {
-            continue;
-        };
-        if style.is_empty() {
-            continue;
-        }
-        let style = escape_attr(style);
-        let transition_color = escape_attr(transition_color);
-
-        let _ = write!(
-            out,
-            r#"<defs><marker id="{}" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{transition_color}" stroke="{transition_color}" style="{style}"/></marker></defs>"#,
-            escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
         );
     }
 }
@@ -217,15 +199,12 @@ pub(super) fn state_root_defs<I>(
 
 fn write_state_class_declarations(
     out: &mut impl SvgOutput,
-    styles: &[(
-        usize,
-        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
-    )],
+    styles: &[crate::state::StateCssDeclaration],
 ) -> crate::Result<()> {
-    for (_, declaration) in styles {
-        let semantic_key = declaration.property();
-        let key = declaration.property_css();
-        let value = declaration.value().trim();
+    for declaration in styles {
+        let semantic_key = declaration.property.as_str();
+        let key = declaration.source_name.as_str();
+        let value = declaration.value.trim();
         let value = if matches!(
             semantic_key,
             "background"
@@ -252,10 +231,7 @@ fn write_state_class_rule(
     id: impl std::fmt::Display,
     class_id: &str,
     selector: std::fmt::Arguments<'_>,
-    styles: &[(
-        usize,
-        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
-    )],
+    styles: &[crate::state::StateCssDeclaration],
 ) -> crate::Result<()> {
     if write!(out, "#{id} .{class_id}{selector}{{").is_err() {
         return out.checkpoint();
@@ -491,26 +467,33 @@ where
         r#"#{} .stateLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}"#,
         id, main_bkg
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel .label rect{{fill:{};opacity:0.5;}}"#,
-        id, label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
-        id, edge_label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel p{{background-color:{};}}"#,
-        id, edge_label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}"#,
-        id, edge_label_background, edge_label_background
-    );
+    if theme.native_edge_label_paint.is_some() {
+        let _ = write!(
+            &mut css,
+            r#"#{id} .edgeLabel{{text-align:center;}}#{id} .labelBkg{{background-color:transparent;}}"#,
+        );
+    } else {
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel .label rect{{fill:{};opacity:0.5;}}"#,
+            id, label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
+            id, edge_label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel p{{background-color:{};}}"#,
+            id, edge_label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}"#,
+            id, edge_label_background, edge_label_background
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} .edgeLabel .label text{{fill:{};}}"#,
@@ -1096,7 +1079,6 @@ fn state_svg_text_label_lines<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
     use merman_model::families::state::StateStyleClass;
     use serde_json::json;
 
@@ -1126,24 +1108,6 @@ mod tests {
                 expected
             );
         }
-    }
-
-    fn state_theme_effect(std_deviation: f32) -> crate::diagram_theme::SvgShadowEffect {
-        crate::diagram_theme::SvgShadowEffect::from_graph(
-            &EffectGraph::new(
-                "soft-shadow",
-                [EffectPrimitive::DropShadow {
-                    input: EffectInput::SourceGraphic,
-                    offset_x: 0.0,
-                    offset_y: 0.0,
-                    blur_radius: std_deviation,
-                    spread: 0.0,
-                    color: ThemeColorValue::parse("rgba(0, 242, 255, 0.5)").unwrap(),
-                }],
-            )
-            .unwrap(),
-        )
-        .expect("supported State drop shadow")
     }
 
     fn model_with_hot_class() -> StateSvgModel {
@@ -1179,27 +1143,6 @@ mod tests {
         let mut css = String::new();
         write_state_css(&mut css, diagram_id, plan).expect("write State CSS");
         css
-    }
-
-    #[test]
-    fn state_theme_effect_emits_the_authored_std_deviation() {
-        use crate::svg::parity::shadow::write_theme_shadow_application;
-
-        let effect = state_theme_effect(8.0);
-        let region = crate::diagram_theme::SvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
-            .expect("bounded soft-shadow region");
-        let mut svg = String::new();
-
-        let reference = write_theme_shadow_application(
-            &mut svg,
-            "diagram-state-theme-effect-soft-shadow",
-            &effect,
-            region,
-        );
-
-        assert_eq!(reference, "url(#diagram-state-theme-effect-soft-shadow)");
-        assert!(svg.contains(r#"stdDeviation="8""#));
-        assert!(svg.contains(r#"color-interpolation-filters="linearRGB""#));
     }
 
     #[test]

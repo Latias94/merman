@@ -83,14 +83,3 @@ pub fn presentation_config_from_config(
     .unwrap()
     .unwrap()
 }
-
-#[allow(dead_code)]
-pub fn install_parse_compatibility(
-    theme: &merman_render::diagram_theme::DiagramTheme,
-    engine: merman_core::MermaidEngine,
-) -> merman_core::MermaidEngine {
-    let plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
-        theme.compatibility_recipe().clone(),
-    );
-    engine.with_theme_plan(&plan)
-}

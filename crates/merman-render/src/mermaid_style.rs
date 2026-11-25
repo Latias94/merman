@@ -5,7 +5,9 @@ mod typography;
 pub(crate) use html_text::{
     HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty, HtmlTextSpacing,
 };
-pub(crate) use typography::{TextStyleCascade, root_dependent_font_size};
+pub(crate) use typography::{
+    TextStyleCascade, root_dependent_font_size, source_font_size_after_style,
+};
 
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
@@ -199,7 +201,7 @@ pub(crate) fn parse_css_font_family_value(value: &str) -> Option<ParsedCssFontFa
                 if name.eq_ignore_ascii_case("default") {
                     return None;
                 }
-                if crate::diagram_theme::is_css_wide_keyword(name) {
+                if crate::text::is_css_wide_keyword(name) {
                     if family != FamilyName::Missing || family_count != 0 {
                         return None;
                     }
@@ -318,10 +320,6 @@ impl CssFontSizeOverride {
 }
 
 impl CssFontFamilyOverride {
-    pub(crate) const fn important(self) -> bool {
-        self.important
-    }
-
     pub(crate) const fn ownership(self) -> CssFontFamilyOwnership {
         self.ownership
     }
@@ -728,7 +726,7 @@ pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
         } else {
             let mut component_count = 0usize;
             while let Ok(component) = parser.try_parse(|parser| parser.expect_ident_cloned()) {
-                if crate::diagram_theme::is_css_wide_keyword(component.as_ref()) {
+                if crate::text::is_css_wide_keyword(component.as_ref()) {
                     return false;
                 }
                 component_count = component_count.saturating_add(1);
@@ -926,39 +924,6 @@ fn css_font_size_value_is_zero(value: &str, analysis: &CssValueAnalysis) -> bool
     }
 }
 
-/// Recognizes a zero SVG font-size attribute without estimating font or host metrics.
-#[cfg(feature = "diagram-journey")]
-pub(crate) fn svg_font_size_is_zero_at_parent(raw: &str, parent_px: f64) -> bool {
-    let raw = raw.trim();
-    let Some(parsed) = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle) else {
-        return false;
-    };
-    // Presentation attributes do not accept a declaration's priority or trailing semicolon.
-    if parsed.value != raw || !parsed.analysis.is_single_component() {
-        return false;
-    }
-    if css_font_size_is_zero(raw) {
-        return true;
-    }
-    if parent_px != 0.0 || parsed.analysis.depends_on_root_font_size() {
-        return false;
-    }
-    if parsed
-        .analysis
-        .resolve_font_size_px(CssFontSizeContext::uniform(parent_px))
-        == Some(0.0)
-    {
-        return true;
-    }
-    // These units use the parent's font metrics. A zero parent supplies zero metrics even
-    // when the selected font's positive-size x-height or advance is host-dependent.
-    let mut parser = Parser::new(parsed.value);
-    matches!(parser.next(), Ok(Token::Dimension { unit, .. })
-        if parse_css_number_prefix(parsed.value).is_some_and(|value| value >= 0.0)
-            && ["ex", "ch", "cap", "ic"].iter()
-            .any(|candidate| unit.eq_ignore_ascii_case(candidate)))
-}
-
 fn is_css_length_unit(unit: &str) -> bool {
     [
         "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
@@ -1027,65 +992,6 @@ pub(crate) fn is_safe_browser_css_color_value(value: &str) -> bool {
     }
     parse_style_declaration(&format!("color:{value}"))
         .is_some_and(|declaration| declaration.property() == "color" && !declaration.important())
-}
-
-pub(crate) fn is_supported_css_text_decoration_value(value: &str) -> bool {
-    if value.trim().eq_ignore_ascii_case("none") {
-        return true;
-    }
-    let mut count = 0;
-    for token in value.split_ascii_whitespace() {
-        count += 1;
-        if !matches!(
-            token.to_ascii_lowercase().as_str(),
-            "underline" | "overline" | "line-through" | "blink"
-        ) {
-            return false;
-        }
-    }
-    count != 0
-}
-
-pub(crate) fn is_supported_css_text_align_value(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "start" | "end" | "left" | "right" | "center" | "justify" | "match-parent" | "justify-all"
-    )
-}
-
-pub(crate) fn is_supported_css_line_height_value(value: &str) -> bool {
-    let Some(parsed) = parse_css_value(value, CssValuePolicy::MermaidSourceStyle) else {
-        return false;
-    };
-    if !parsed.analysis.is_single_component() {
-        return false;
-    }
-    match parsed.analysis.scalar.as_ref() {
-        Some(CssScalar::Ident(value)) => value == "normal",
-        Some(
-            CssScalar::Number(value)
-            | CssScalar::Percentage(value)
-            | CssScalar::Px(value)
-            | CssScalar::Em(value),
-        ) => value.is_finite() && *value > 0.0,
-        Some(CssScalar::AbsoluteLengthPx(_) | CssScalar::Rem(_)) | None => false,
-    }
-}
-
-pub(crate) fn is_supported_css_spacing_value(value: &str) -> bool {
-    let Some(parsed) = parse_css_value(value, CssValuePolicy::MermaidSourceStyle) else {
-        return false;
-    };
-    if !parsed.analysis.is_single_component() {
-        return false;
-    }
-    match parsed.analysis.scalar.as_ref() {
-        Some(CssScalar::Ident(value)) => value == "normal",
-        Some(CssScalar::Number(value)) => *value == 0.0,
-        Some(CssScalar::Px(value) | CssScalar::Em(value)) => value.is_finite(),
-        Some(CssScalar::AbsoluteLengthPx(_) | CssScalar::Percentage(_) | CssScalar::Rem(_))
-        | None => false,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2400,40 +2306,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "diagram-journey")]
-    #[test]
-    fn zero_parent_only_hides_known_parent_relative_font_sizes() {
-        for value in [
-            "0px", "0rem", "2em", "150%", "4ex", "1ch", "2cap", "1ic", "inherit", "unset",
-            "smaller",
-        ] {
-            assert!(svg_font_size_is_zero_at_parent(value, 0.0), "{value}");
-        }
-        for value in [
-            "16px",
-            "medium",
-            "1rem",
-            "1rex",
-            "1lh",
-            "1vw",
-            "var(--size)",
-            "calc(1em + 2px)",
-            "-1em",
-            "-4ex",
-            "-1e-10000ex",
-            "-5e-324%",
-            "0px !important",
-            "0px;",
-            "4ex !important !important",
-        ] {
-            assert!(!svg_font_size_is_zero_at_parent(value, 0.0), "{value}");
-        }
-        assert!(!svg_font_size_is_zero_at_parent("4ex", 16.0));
-        assert!(!svg_font_size_is_zero_at_parent("1e-10000px", 0.0));
-        assert!(!svg_font_size_is_zero_at_parent("-5e-324%", 16.0));
-        assert!(svg_font_size_is_zero_at_parent("0px", 16.0));
-    }
-
     #[test]
     fn parsed_values_expose_single_pass_scalar_admission() {
         let valid =
@@ -2457,7 +2329,7 @@ mod tests {
     }
 
     #[test]
-    fn supported_typography_values_match_the_native_admission_subset() {
+    fn supported_font_weight_and_style_values() {
         for value in ["normal", "bold", "bolder", "lighter", "1", "700", "1000"] {
             assert!(is_supported_css_font_weight_value(value), "value={value}");
         }
@@ -2469,20 +2341,6 @@ mod tests {
             assert!(is_supported_css_font_style_value(value), "value={value}");
         }
         assert!(!is_supported_css_font_style_value("sideways"));
-
-        for value in ["normal", "1.5", "150%", "24px", "1.2em"] {
-            assert!(is_supported_css_line_height_value(value), "value={value}");
-        }
-        for value in ["banana", "0", "-1", "1rem"] {
-            assert!(!is_supported_css_line_height_value(value), "value={value}");
-        }
-
-        for value in ["normal", "0", "-0.5px", "0.1em"] {
-            assert!(is_supported_css_spacing_value(value), "value={value}");
-        }
-        for value in ["banana", "1", "10%", "1rem"] {
-            assert!(!is_supported_css_spacing_value(value), "value={value}");
-        }
     }
 
     #[test]

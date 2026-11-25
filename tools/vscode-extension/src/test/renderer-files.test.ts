@@ -8,16 +8,18 @@ import { describe, it } from "node:test";
 
 import type { RenderProcessRequest } from "../render-process.js";
 
-describe("frozen theme recipe rendering", () => {
+describe("frozen theme document rendering", () => {
   for (const fail of [false, true]) {
-    it(`passes frozen raw content through a private file and cleans it after ${fail ? "failure" : "success"}`, async () => {
+    const format = fail ? "svg" : "unicode";
+    it(`passes frozen raw content through a private file for ${format} and cleans it up`, async () => {
       let capturedFile = "";
-      const content = '{ "schema_version": 1, "kind": "design", "design": {} }\n';
+      const content = '{ "schema_version": 2, "extends": "studio" }\n';
       const renderer = loadRenderer(async (request) => {
-        const index = request.invocation.args.indexOf("--theme-file");
+        const index = request.invocation.args.indexOf("--theme");
+        assert.notEqual(index, -1);
         capturedFile = request.invocation.args[index + 1]!;
         assert.equal(await fs.readFile(capturedFile, "utf8"), content);
-        assert.deepEqual(request.invocation.args.slice(-2), ["--theme-appearance", "dark"]);
+        assert.deepEqual(request.invocation.args.slice(index + 2, index + 4), ["--appearance", "dark"]);
         if (process.platform !== "win32") {
           assert.equal((await fs.stat(capturedFile)).mode & 0o777, 0o600);
         }
@@ -28,7 +30,7 @@ describe("frozen theme recipe rendering", () => {
         context: { extensionUri: { fsPath: "/extension" } } as vscode.ExtensionContext,
         outputChannel: { info: () => {} } as unknown as vscode.LogOutputChannel,
         source: "flowchart LR\nA-->B",
-        format: "svg",
+        format,
         themeFileContent: content,
         themeAppearance: "dark",
       });

@@ -14,6 +14,7 @@
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
   const appearanceElement = document.querySelector('[data-action="appearance"]');
   const appearanceLabel = document.querySelector("[data-preview-appearance]");
+  const importThemeElement = document.querySelector('[data-action="import-theme"]');
   const themeSummaryElement = document.querySelector("[data-preview-theme-summary]");
   const viewerBackgroundElement = document.querySelector('[data-action="viewer-background"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
@@ -455,13 +456,7 @@
     }
     if (themeElement instanceof HTMLSelectElement && snapshot.diagramTheme) {
       if (Array.isArray(snapshot.themeChoices)) {
-        themeElement.replaceChildren(...snapshot.themeChoices.map((choice) => {
-          const option = document.createElement("option");
-          option.value = choice.id;
-          option.textContent = choice.label;
-          option.disabled = choice.available === false;
-          return option;
-        }));
+        patchThemeChoices(snapshot.themeChoices);
       }
       themeElement.value = snapshot.diagramTheme;
     }
@@ -472,10 +467,14 @@
     if (appearanceElement instanceof HTMLSelectElement) {
       appearanceElement.value = snapshot.appearancePreference || "follow-editor";
     }
-    const appearanceSummary = snapshot.effectiveAppearance
-      ? `${snapshot.appearancePreference === "follow-editor" && appearances.length > 1 ? "Following editor · " : ""}${snapshot.effectiveAppearance}${appearances.length === 1 ? " only" : ""}`
-      : "Source styling remains authoritative";
-    setText(themeSummaryElement, `${snapshot.themeLabel || "Source / default"} · ${appearanceSummary}${snapshot.themeNotice ? ` — ${snapshot.themeNotice}` : ""}`);
+    const followedAppearance = snapshot.appearancePreference === "follow-editor" && appearances.length > 1
+      ? `Following editor · ${snapshot.effectiveAppearance}`
+      : undefined;
+    setText(themeSummaryElement, [
+      snapshot.diagramTheme === "file" ? snapshot.themeLabel : undefined,
+      followedAppearance,
+      snapshot.themeNotice,
+    ].filter(Boolean).join(" · "));
     if (viewerBackgroundElement instanceof HTMLSelectElement) {
       viewerBackgroundElement.value = snapshot.viewerBackground || "auto";
     }
@@ -490,6 +489,40 @@
       patchViewerBacking(snapshot);
     }
     persistState();
+  }
+
+  function patchThemeChoices(choices) {
+    const options = [];
+    for (const [origin, label] of [
+      ["source"],
+      ["preset", "Merman Themes"],
+      ["mermaid", "Mermaid Classic (Parity)"],
+      ["file"],
+    ]) {
+      const entries = choices.filter((choice) => choice.origin === origin).map((choice) => {
+        const option = document.createElement("option");
+        option.value = choice.id;
+        option.textContent = choice.label;
+        if (choice.appearances) {
+          const tags = choice.appearances.supportedAppearances.map((appearance) =>
+            appearance === "light" ? "Light" : "Dark");
+          option.textContent += ` (${tags.join(" / ")}${tags.length === 1 ? " only" : ""})`;
+        }
+        return option;
+      });
+      if (label && entries.length) {
+        const group = document.createElement("optgroup");
+        group.label = label;
+        group.replaceChildren(...entries);
+        options.push(group);
+      } else {
+        options.push(...entries);
+      }
+    }
+    themeElement.replaceChildren(...options);
+    if (importThemeElement) {
+      importThemeElement.hidden = !choices.some((choice) => choice.origin === "file");
+    }
   }
 
   function patchViewerBacking(snapshot) {
@@ -671,7 +704,10 @@
     } else {
       const textPreview = document.createElement("pre");
       textPreview.className = "text-preview";
-      textPreview.textContent = content || "";
+      if (snapshot?.effectiveAppearance) {
+        textPreview.dataset.appearance = snapshot.effectiveAppearance;
+      }
+      paintTerminalText(textPreview, content || "");
       canvas.appendChild(textPreview);
       state.autoFit = false;
       state.zoom = 1;
@@ -689,6 +725,40 @@
       requestAnimationFrame(fitToView);
     }
     hideEmpty();
+  }
+
+  function paintTerminalText(preview, content) {
+    // The CLI's truecolor encoder emits RGB foreground/background runs and SGR reset.
+    const sgr = /\x1b\[(?:0|(38|48);2;(\d{1,3});(\d{1,3});(\d{1,3}))m/g;
+    let start = 0;
+    let foreground;
+    let background;
+    function appendRun(end) {
+      if (start === end) return;
+      const span = document.createElement("span");
+      span.textContent = content.slice(start, end);
+      if (foreground) span.style.setProperty("color", foreground);
+      if (background) span.style.setProperty("background-color", background);
+      preview.appendChild(span);
+    }
+    for (const match of content.matchAll(sgr)) {
+      appendRun(match.index);
+      const [, kind, r, g, b] = match;
+      if (kind === "38") {
+        foreground = `rgb(${r}, ${g}, ${b})`;
+      } else if (kind === "48") {
+        background = `rgb(${r}, ${g}, ${b})`;
+      } else {
+        foreground = undefined;
+        background = undefined;
+      }
+      start = match.index + match[0].length;
+    }
+    if (start === 0) {
+      preview.textContent = content;
+    } else {
+      appendRun(content.length);
+    }
   }
 
   function handleMessage(message) {

@@ -38,12 +38,6 @@ pub(crate) struct SequenceCompatBinding {
     actor_borders: Vec<SequencePaletteEntry>,
     actor_fills: Vec<SequencePaletteEntry>,
     activation_fill_fallback: Option<String>,
-    pub(crate) palette_fill_overridden: bool,
-    pub(crate) palette_stroke_overridden: bool,
-    actor_palette_fill_suppressed: bool,
-    actor_palette_stroke_suppressed: bool,
-    activation_palette_fill_suppressed: bool,
-    activation_palette_stroke_suppressed: bool,
 }
 
 #[derive(Debug)]
@@ -54,75 +48,65 @@ enum SequencePaletteEntry {
 }
 
 impl SequenceCompatBinding {
-    pub(crate) fn resolve_for_theme(
-        config: &merman_model::presentation::PresentationConfig,
-        theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
+    pub(super) fn for_native(
+        config: &serde_json::Value,
+        theme: &crate::theme::FamilyTheme,
+        background: Option<crate::theme::Color>,
     ) -> Self {
-        use crate::diagram_theme::{
-            FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet, ThemeTarget,
-        };
+        use crate::theme::{Color, font_family_css};
 
-        let mut binding = Self::resolve(config.as_value());
-        let Some(theme) = theme else { return binding };
-        (
-            binding.palette_fill_overridden,
-            binding.palette_stroke_overridden,
-        ) = Self::configured_palette_paints(config);
-        // Raw Mermaid keeps its inline categorical defaults ahead of scalar CSS. Only a
-        // compiled paint route needs scalar ownership to reach the actual terminal instead.
-        for route in theme.family_mechanism_routes() {
-            if route.disposition() != FamilyThemeDisposition::TypedAdapter {
-                continue;
-            }
-            let FamilyThemeMechanism::RuleFacet { target, facet, .. } = route.mechanism() else {
-                continue;
-            };
-            let (suppressed, path, palette_owned) = match (target, facet) {
-                (ThemeTarget::Actor, FamilyThemeRuleFacet::Fill(_)) => (
-                    &mut binding.actor_palette_fill_suppressed,
-                    "themeVariables.actorBkg",
-                    binding.palette_fill_overridden,
-                ),
-                (ThemeTarget::Actor, FamilyThemeRuleFacet::Stroke(_)) => (
-                    &mut binding.actor_palette_stroke_suppressed,
-                    "themeVariables.actorBorder",
-                    binding.palette_stroke_overridden,
-                ),
-                (ThemeTarget::Activation, FamilyThemeRuleFacet::Fill(_)) => (
-                    &mut binding.activation_palette_fill_suppressed,
-                    "themeVariables.activationBkgColor",
-                    binding.palette_fill_overridden,
-                ),
-                (ThemeTarget::Activation, FamilyThemeRuleFacet::Stroke(_)) => (
-                    &mut binding.activation_palette_stroke_suppressed,
-                    "themeVariables.activationBorderColor",
-                    binding.palette_stroke_overridden,
-                ),
-                _ => continue,
-            };
-            *suppressed = !palette_owned && config.config_paint_overrides_typed_default(path);
-        }
-        binding
-    }
-
-    pub(crate) fn configured_palette_paints(
-        config: &merman_model::presentation::PresentationConfig,
-    ) -> (bool, bool) {
-        if !matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) {
-            return (false, false);
-        }
-        let owns = |key: &str| {
-            config
-                .as_value()
-                .get("themeVariables")
-                .and_then(|vars| vars.get(key))
-                .is_some_and(serde_json::Value::is_array)
-                && config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
+        let roles = &theme.roles;
+        let typography = &theme.typography;
+        let font_family = font_family_css(typography.stack(typography.body_family));
+        let connector = roles.stroke_connector.first_color();
+        let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
+        let badge = connector.composite(canvas, 1.0);
+        let black = Color::rgb(0, 0, 0);
+        let white = Color::rgb(255, 255, 255);
+        let ink = if badge.contrast(black) >= badge.contrast(white) {
+            black
+        } else {
+            white
         };
-        (owns("bkgColorArray"), owns("borderColorArray"))
+        Self {
+            svg_activation_width: super::config::SequenceConfigView::new(config)
+                .sequence_json_number_min("activationWidth", 10.0, 1.0),
+            root_font_family: font_family.clone(),
+            font_family,
+            font_size_css: format!("{}px", typography.base_size_px),
+            text_color: roles.text_primary.to_string(),
+            line_color: connector.to_string(),
+            error_bkg: roles.status_danger.to_string(),
+            error_text: roles.text_primary.to_string(),
+            actor_border: roles.stroke_border.first_color().to_string(),
+            actor_fill: roles.surface_node.first_color().to_string(),
+            stroke_width: theme.form.stroke_width.to_string(),
+            native_stroke_width: Some(theme.form.stroke_width),
+            drop_shadow: "none".to_owned(),
+            note_border: roles.stroke_border.first_color().to_string(),
+            note_fill: roles.surface_callout.first_color().to_string(),
+            actor_text: roles.text_primary.to_string(),
+            actor_line: roles.stroke_guide.first_color().to_string(),
+            signal_color: connector.to_string(),
+            sequence_number: ink.to_string(),
+            signal_text: roles.text_primary.to_string(),
+            label_box_border: roles.stroke_border.first_color().to_string(),
+            label_box_fill: roles.surface_emphasis.first_color().to_string(),
+            label_text: roles.text_on_emphasis.to_string(),
+            loop_text: roles.text_primary.to_string(),
+            note_text: roles.text_callout.to_string(),
+            activation_fill: roles.surface_emphasis.first_color().to_string(),
+            activation_border: connector.to_string(),
+            node_border: roles.stroke_border.first_color().to_string(),
+            label_box_filter: "none".to_owned(),
+            rect_default_fill: roles.surface_container.first_color().to_string(),
+            is_neo: crate::config::config_diagram_look(config).is_neo(),
+            neo_flood_color: "#000000",
+            redux_palette: false,
+            actor_borders: Vec::new(),
+            actor_fills: Vec::new(),
+            activation_fill_fallback: None,
+        }
     }
 
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
@@ -214,12 +198,6 @@ impl SequenceCompatBinding {
             actor_borders: palette("borderColorArray"),
             actor_fills: palette("bkgColorArray"),
             activation_fill_fallback: config_string(config, &["themeVariables", "mainBkg"]),
-            palette_fill_overridden: false,
-            palette_stroke_overridden: false,
-            actor_palette_fill_suppressed: false,
-            actor_palette_stroke_suppressed: false,
-            activation_palette_fill_suppressed: false,
-            activation_palette_stroke_suppressed: false,
         }
     }
 
@@ -244,15 +222,9 @@ impl SequenceCompatBinding {
 
     pub(crate) fn actor_palette(&self, index: usize) -> (Option<&str>, Option<&str>) {
         (
-            palette_token(&self.actor_borders, index)
-                .filter(|_| !self.actor_palette_stroke_suppressed),
-            palette_token(&self.actor_fills, index).filter(|_| !self.actor_palette_fill_suppressed),
+            palette_token(&self.actor_borders, index),
+            palette_token(&self.actor_fills, index),
         )
-    }
-
-    pub(crate) fn actor_palette_stroke_fallback(&self) -> Option<&str> {
-        self.actor_palette_stroke_suppressed
-            .then_some(self.actor_border.as_str())
     }
 
     pub(crate) fn activation_palette(&self, index: usize) -> (Option<&str>, Option<&str>) {
@@ -264,11 +236,7 @@ impl SequenceCompatBinding {
             Some(SequencePaletteEntry::Token(value)) => Some(value.as_str()),
             Some(SequencePaletteEntry::Other) => None,
         };
-        (
-            palette_token(&self.actor_borders, index)
-                .filter(|_| !self.activation_palette_stroke_suppressed),
-            fill.filter(|_| !self.activation_palette_fill_suppressed),
-        )
+        (palette_token(&self.actor_borders, index), fill)
     }
 }
 

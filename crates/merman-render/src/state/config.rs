@@ -109,14 +109,17 @@ impl<'a> StateConfigView<'a> {
         compatibility: &super::StateCompatibilityPlan,
     ) -> StateLayoutSettings {
         let html_labels = compatibility.html_labels();
+        let [padding_scale, node_scale, rank_scale] = compatibility.native_layout_scale;
         StateLayoutSettings {
             direction: direction_from_rank(direction),
-            node_spacing: self.layout_spacing("nodeSpacing", DEFAULT_STATE_NODE_SPACING),
-            rank_spacing: self.layout_spacing("rankSpacing", DEFAULT_STATE_RANK_SPACING),
+            node_spacing: self.layout_spacing("nodeSpacing", DEFAULT_STATE_NODE_SPACING)
+                * node_scale,
+            rank_spacing: self.layout_spacing("rankSpacing", DEFAULT_STATE_RANK_SPACING)
+                * rank_scale,
             html_labels,
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
-            state_padding: self.state_padding(),
+            state_padding: self.state_padding() * padding_scale,
             label_min_width: self.state_label_min_width(),
         }
     }
@@ -142,7 +145,7 @@ impl<'a> StateConfigView<'a> {
             html_labels,
             html_label_wrapping_width: self.html_label_wrapping_width(),
             label_min_width: self.state_label_min_width(),
-            state_padding: self.state_padding(),
+            state_padding: self.state_padding() * compatibility.native_layout_scale[0],
             security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
         }
     }

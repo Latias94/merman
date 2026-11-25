@@ -41,8 +41,7 @@ impl SankeyTerminalNodeIndex {
 fn write_sankey_nodes(
     out: &mut impl SvgOutput,
     nodes: &[crate::model::SankeyNodeLayout],
-    node_palette: &crate::sankey::SankeyNodePalettePlan,
-    mut receipt: Option<&mut crate::sankey::SankeyNodePaletteReceipt>,
+    node_palette: &crate::sankey::SankeyNodePalette,
     terminal_node_index: &SankeyTerminalNodeIndex,
     scope_generated_ids: bool,
     diagram_id: SvgDiagramId<'_>,
@@ -74,13 +73,9 @@ fn write_sankey_nodes(
                         node_index + 1
                     ),
                 })?;
-        let stroke = node_palette.stroke_for(node_index, &node.id);
-        let stroke_attr = stroke
-            .map(|stroke| format!(r#" stroke="{}""#, escape_attr(stroke)))
-            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"{stroke_attr}/></g>"#,
+            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
             id = escape_attr_display(node_uid),
             x = fmt(x),
             y = fmt(y),
@@ -89,15 +84,6 @@ fn write_sankey_nodes(
             fill = escape_attr(fill),
         );
         out.checkpoint()?;
-        if let Some(receipt) = receipt.as_deref_mut() {
-            receipt.record_node_paints(
-                node_palette,
-                node_index,
-                &node.id,
-                node_index + 1,
-                (Some(fill), stroke),
-            );
-        }
     }
     Ok(())
 }
@@ -105,7 +91,7 @@ fn write_sankey_nodes(
 fn write_sankey_links(
     out: &mut impl SvgOutput,
     layout: &SankeyDiagramLayout,
-    node_palette: &crate::sankey::SankeyNodePalettePlan,
+    node_palette: &crate::sankey::SankeyNodePalette,
     next_generated_id: &mut impl FnMut(&str) -> String,
     diagram_id: Option<SvgDiagramId<'_>>,
 ) -> Result<()> {
@@ -179,26 +165,18 @@ fn write_sankey_links(
 
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
-    node_palette: &crate::sankey::SankeyNodePalettePlan,
-    typography_theme: &crate::sankey::SankeyTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    style: &crate::sankey::SankeyStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let render_settings = crate::sankey::SankeyConfigView::new(effective_config).render_settings();
-    let use_max_width = render_settings.use_max_width;
-    let show_values = render_settings.show_values;
+    let node_palette = &style.palette;
+    let show_values = style.show_values;
     let label_texts = node_palette.labels();
     if label_texts.len() != layout.nodes.len() {
         return Err(Error::InvalidModel {
             message: "Sankey prepared labels do not match the terminal node count".to_string(),
         });
     }
-    let outlined_labels = typography_theme.outlined_labels();
-    let text_fill_attr = typography_theme
-        .text_fill_css()
-        .map(|fill| format!(r#" fill="{}""#, escape_attr(fill)));
-    let mut typography_receipt =
-        typography_theme.begin_terminal_receipt(layout.nodes.len(), outlined_labels);
+    let outlined_labels = style.outlined_labels;
 
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
@@ -207,14 +185,14 @@ pub(crate) fn render_sankey_diagram_svg(
 
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
-    let label_font_size: f64 = 14.0;
+    let label_font_size = style.label_size;
     let label_gap_x: f64 = 6.0;
     let label_hide_values_dy_em: f64 = 0.35;
     let measurer = options.text_measurer();
     let label_style = crate::text::TextStyle {
-        font_family: Some(typography_theme.font_family_css().to_string()),
+        font_family: Some(style.common_css.font_family().to_string()),
         font_size: label_font_size,
-        font_weight: None,
+        font_weight: style.label_weight.map(|weight| weight.to_string()),
         font_style: None,
     };
     let mut max_value = 0.0;
@@ -244,13 +222,12 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_x = layout_width;
     let mut max_y = layout_height;
 
-    for (node_index, (n, label)) in layout.nodes.iter().zip(label_texts).enumerate() {
+    for (n, label) in layout.nodes.iter().zip(label_texts) {
         options.checkpoint_emit()?;
-        let stroke_outset = node_palette.stroke_outset(node_index);
-        min_x = min_x.min(n.x0 - stroke_outset);
-        min_y = min_y.min(n.y0 - stroke_outset);
-        max_x = max_x.max(n.x1 + stroke_outset);
-        max_y = max_y.max(n.y1 + stroke_outset);
+        min_x = min_x.min(n.x0);
+        min_y = min_y.min(n.y0);
+        max_x = max_x.max(n.x1);
+        max_y = max_y.max(n.y1);
 
         let (label_x, anchor) = label_position(n);
         let label_width = measurer.measure_svg_raw_text_bbox_width_px(label.text(), &label_style);
@@ -297,13 +274,14 @@ pub(crate) fn render_sankey_diagram_svg(
 
     let root_spec = root_svg::RootViewportSpec::mermaid(
         root_svg::DiagramBounds::from_view_box(min_x, min_y, vb_w, vb_h),
-        use_max_width,
+        style.use_max_width,
     )
     .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::SANKEY, diagram_id).write_open(
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::SANKEY, diagram_id)
+        .write_open(
             &mut out,
             root_spec,
             root_svg::RootChrome {
@@ -318,15 +296,11 @@ pub(crate) fn render_sankey_diagram_svg(
         )?;
     out.push_str("<style>");
     out.checkpoint()?;
-    let typography_css_emission = super::css::write_sankey_css(
+    super::css::write_sankey_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
-        typography_theme,
-        node_palette.link_blend_mode_css(),
+        style,
     )?;
-    if let Some(receipt) = &mut typography_receipt {
-        receipt.record_css_emission(typography_css_emission);
-    }
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -339,7 +313,11 @@ pub(crate) fn render_sankey_diagram_svg(
     let terminal_node_index = SankeyTerminalNodeIndex::new(&layout.nodes, &mut next_generated_id);
 
     let mut append_links = |out: &mut BoundedSvgOutput<'_>| -> Result<()> {
-        out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
+        let _ = write!(
+            out,
+            r#"<g class="links" fill="none" stroke-opacity="{}">"#,
+            node_palette.link_stroke_opacity()
+        );
         out.checkpoint()?;
         write_sankey_links(
             out,
@@ -358,35 +336,28 @@ pub(crate) fn render_sankey_diagram_svg(
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
-    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     write_sankey_nodes(
         &mut out,
         &layout.nodes,
         node_palette,
-        node_palette_receipt.as_mut(),
         &terminal_node_index,
         scope_generated_ids,
         diagram_id,
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
-    if let Some(receipt) = node_palette_receipt
-        && !node_palette.record_terminal(receipt)
-    {
-        return Err(Error::InvalidModel {
-            message: "Sankey node palette receipt did not match the terminal SVG".to_string(),
-        });
-    }
-
+    let label_weight = style
+        .label_weight
+        .map_or_else(String::new, |weight| format!(r#" font-weight="{weight}""#));
     let _ = write!(
         &mut out,
-        r#"<g class="node-labels" font-size="{font_size}">"#,
+        r#"<g class="node-labels" font-size="{font_size}"{label_weight}>"#,
         font_size = fmt(label_font_size)
     );
     out.checkpoint()?;
 
-    let mut append_labels = |out: &mut BoundedSvgOutput<'_>,
-                             surface: crate::sankey::SankeyLabelSurface|
+    let append_labels = |out: &mut BoundedSvgOutput<'_>,
+                         surface: crate::sankey::SankeyLabelSurface|
      -> Result<()> {
         let class_name = surface.class_name();
         for (n, label) in layout.nodes.iter().zip(label_texts) {
@@ -403,9 +374,8 @@ pub(crate) fn render_sankey_diagram_svg(
                 .unwrap_or_default();
             let _ = write!(
                 out,
-                r#"<text{class_attr}{fill_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">"#,
+                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">"#,
                 class_attr = class_attr,
-                fill_attr = text_fill_attr.as_deref().unwrap_or_default(),
                 x = fmt(x),
                 y = fmt(y),
                 dy = dy,
@@ -414,9 +384,6 @@ pub(crate) fn render_sankey_diagram_svg(
             super::super::util::escape_xml_raw_into(out, label.text());
             out.push_str("</text>");
             out.checkpoint()?;
-            if let Some(receipt) = &mut typography_receipt {
-                receipt.record_label(surface, label.visible());
-            }
         }
         Ok(())
     };
@@ -434,14 +401,6 @@ pub(crate) fn render_sankey_diagram_svg(
     }
     out.push_str("</g>");
     out.checkpoint()?;
-    if let Some(receipt) = typography_receipt
-        && !typography_theme.record_terminal(receipt)
-    {
-        return Err(Error::InvalidModel {
-            message: "Sankey typography receipt did not match the terminal SVG".to_string(),
-        });
-    }
-
     if !node_palette.links_before_nodes() {
         append_links(&mut out)?;
     }
@@ -505,13 +464,12 @@ mod tests {
         }
     }
 
-    fn baseline_node_palette(layout: &SankeyDiagramLayout) -> crate::sankey::SankeyNodePalettePlan {
+    fn baseline_node_palette(layout: &SankeyDiagramLayout) -> crate::sankey::SankeyNodePalette {
         let work_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        crate::sankey::SankeyNodePalettePlan::resolve(
-            None,
-            &merman_model::presentation::PresentationConfig::default(),
+        crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
+            merman_model::presentation::PresentationConfig::default().as_value(),
             layout,
             &work_meter,
         )
@@ -615,9 +573,8 @@ mod tests {
         let work_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
-            None,
-            &merman_model::presentation::PresentationConfig::default(),
+        let node_palette = crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
+            merman_model::presentation::PresentationConfig::default().as_value(),
             &layout,
             &work_meter,
         )
@@ -635,7 +592,6 @@ mod tests {
                     &mut out,
                     &nodes,
                     &node_palette,
-                    None,
                     &terminal_node_index,
                     false,
                     execution.diagram_id_or("sankey"),
@@ -831,9 +787,8 @@ mod tests {
             let config = crate::test_support::presentation_config(serde_json::json!({
                 "sankey": {"nodeColors": {"A": "var(--node)", "B": "currentColor"}}
             }));
-            let mut palette = crate::sankey::SankeyNodePalettePlan::resolve(
-                None,
-                &config,
+            let mut palette = crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
+                config.as_value(),
                 &layout,
                 &std::sync::Arc::new(test_link_work_meter()),
             )

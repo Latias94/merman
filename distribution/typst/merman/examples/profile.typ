@@ -1,20 +1,20 @@
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 = Reusable diagram profile
 
 #let diagram-profile = mermaid-profile(
   background: "#ffffff",
-  theme-name: "base",
+  theme: "base",
   typography: (
     font: ("Source Sans 3", "Arial", "sans-serif"),
     size: "16px",
   ),
-  theme-variables: (
-    primaryColor: "#f8fafc",
-    primaryTextColor: "#111827",
-    primaryBorderColor: "#2563eb",
-    lineColor: "#475569",
-  ),
+  site-config: (themeVariables: (
+      primaryColor: "#f8fafc",
+      primaryTextColor: "#111827",
+      primaryBorderColor: "#2563eb",
+      lineColor: "#475569",
+  )),
 )
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(

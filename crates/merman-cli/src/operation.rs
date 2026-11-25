@@ -28,7 +28,9 @@ impl HostOperation {
             #[cfg(feature = "svg")]
             ResolvedInvocation::Layout(args) => Some(args.operation_timeout),
             #[cfg(feature = "svg")]
-            ResolvedInvocation::ThemeInspect(args) => Some(args.operation_timeout),
+            ResolvedInvocation::ThemeCheck(args) => Some(args.operation_timeout),
+            #[cfg(feature = "svg")]
+            ResolvedInvocation::ThemeExport { .. } => Some(None),
             #[cfg(feature = "rustdoc")]
             ResolvedInvocation::Rustdoc(args) => Some(args.operation_timeout),
             _ => None,

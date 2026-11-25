@@ -1,4 +1,4 @@
-pub(super) fn default_c_scale(index: usize) -> &'static str {
+pub(crate) fn default_c_scale(index: usize) -> &'static str {
     match index {
         0 => "hsl(240, 100%, 76.2745098039%)",
         1 => "hsl(60, 100%, 73.5294117647%)",

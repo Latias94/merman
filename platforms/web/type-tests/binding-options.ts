@@ -1,11 +1,9 @@
-import type { ThemeEffectGraph, ThemePresetApplicationNote, ThemePresetCatalogEntry } from "../src/index.js";
 import { withResourceOptions } from "../src/runtime-core.js";
 import { renderAscii, renderAsciiResult } from "../src/runtime-ascii.js";
 import {
-  describeThemeSupport,
   exportThemePreset,
   layoutJsonWithTextMeasurer,
-  materializeTheme,
+  resolveTheme,
   renderSvgWithTextMeasurer,
   renderSvgResult,
   svgPlanJson,
@@ -22,18 +20,11 @@ import type {
   HostTextMeasurerSvgBindingOptions,
   ResourceOptions,
   SvgBindingOptions,
-  ThemeLinearGradientRepetition,
+  ThemeAppearance,
+  ThemeCatalog,
+  ThemeDocumentV2,
+  ThemeOutcome,
   ThemePaint,
-  ThemeRadialGradientRepetition,
-  ThemeCapabilityDescriptorV1,
-  ThemeAuthoringOptions,
-  ThemeDesignV1,
-  ThemeRecipeV1,
-  ThemeStylePatch,
-  ThemeDiagnostic,
-  ThemeExecutionEvidenceV2,
-  ThemeSupportQueryV1,
-  ThemeSupportUnknownSubjectKindV1,
 } from "../src/public-types.js";
 
 const asciiDiagnostic: BindingDiagnosticErrorDetails = {
@@ -51,7 +42,7 @@ asciiDiagnostic.actual_width;
 const resources: ResourceOptions = { profile: "interactive" };
 
 const hostClock: SvgBindingOptions = {
-  version: 3,
+  version: 4,
   fixed_unix_millis: 1_794_657_600_375,
   fixed_local_offset_minutes: 480,
 };
@@ -60,56 +51,68 @@ renderSvgResult("gantt\ndateFormat x\nTask: task,0,1000ms", {
   analysis: { fixed_today: null, fixed_unix_millis: 375 },
 });
 
-const presetNote: ThemePresetApplicationNote = {
-  id: "future-guidance",
-  family_id: "future-family",
-  message: "Review suggested settings before applying them.",
-  recommended_config: { look: "classic", future: { enabled: true } },
+declare const catalog: ThemeCatalog;
+const preset = catalog.presets[0];
+const schema: 2 = catalog.schema_version;
+const appearance: ThemeAppearance = preset.default_appearance;
+const swatch: string = preset.swatches[5];
+const familyFlags: number = catalog.families[0].capabilities;
+const gradient: ThemePaint = {
+  kind: "linear_gradient",
+  angle_deg: 135,
+  stops: [{ offset: 0, color: "#0F172A" }, { offset: 1, color: "#F8FAFC" }],
 };
-const informationalPresetNote: ThemePresetApplicationNote = { ...presetNote, recommended_config: null };
-const invalidPresetNote: ThemePresetApplicationNote = {
-  ...presetNote,
-  // @ts-expect-error recommendations are JSON objects or null, never arrays.
-  recommended_config: [],
+const themeDocument: ThemeDocumentV2 = {
+  schema_version: 2,
+  extends: preset.id,
+  seed: { accent: "#0052CC" },
+  roles: { canvas: gradient },
+  typography: { body_family: "serif", base_size_px: 16 },
+  form: { marker_style: "open", elevation: "soft" },
+  appearances: { dark: { canvas: { textures: [{ kind: "grid", step_px: 16 }] } } },
+  overrides: [{ families: ["flowchart"], roles: { "text.primary": "#171717" } }],
 };
-declare const discoveredPreset: ThemePresetCatalogEntry;
-const previewColors: string[] = discoveredPreset.appearances[0].preview_colors;
-const applicationNotes: ThemePresetApplicationNote[] = discoveredPreset.appearances[0].application_notes;
-renderSvgResult("flowchart LR\nA --> B", {
-  theme: { preset: discoveredPreset.id },
-  site_config: presetNote.recommended_config ?? {},
-});
-void [previewColors, applicationNotes, informationalPresetNote, invalidPresetNote];
-
-const pairedTheme: ThemeRecipeV1 = {
-  schema_version: 1,
-  kind: "design",
-  design: {
-    tokens: { ink: { type: "color", value: "#111111" } },
-    appearances: {
-      light: {},
-      dark: { tokens: { ink: { type: "color", value: "#eeeeee" } } },
-    },
-    default_appearance: "light",
-  },
-};
-const inspectedPair = materializeTheme({ schema_version: 1, action: "inspect", recipe: pairedTheme });
-const selectedPair = materializeTheme({
-  schema_version: 1, action: "materialize", recipe: pairedTheme, appearance: "dark",
-});
-const inspectedDefault: "light" | "dark" | null = inspectedPair.default_appearance;
-const selectedDefault: "light" | "dark" | null = selectedPair.effective_appearance;
-selectedPair.references.forEach(({ token_path }) => token_path.toUpperCase());
-renderSvgResult("flowchart LR\nA --> B", { theme: { recipe: pairedTheme, appearance: "dark" } });
-// @ts-expect-error Host policies must resolve to a concrete appearance before rendering.
-renderSvgResult("flowchart LR\nA --> B", { theme: { recipe: pairedTheme, appearance: "auto" } });
-// @ts-expect-error Inspection validates every appearance rather than selecting one.
-materializeTheme({ schema_version: 1, action: "inspect", recipe: pairedTheme, appearance: "dark" });
-// @ts-expect-error A concrete complete specification does not declare appearance variants.
-renderSvgResult("flowchart LR\nA --> B", { theme: { spec: {}, appearance: "dark" } });
-// @ts-expect-error Appearance exceptions cannot introduce appearance-local assets.
-const localAssets: import("../src/public-types.js").ThemeAppearanceOverridesV1 = { assets: {} };
-void [inspectedDefault, selectedDefault, localAssets];
+const exportedPreset: ThemeDocumentV2 = exportThemePreset(preset.id);
+const source = "flowchart LR\nA --> B";
+renderSvgResult(source, { theme: preset.id });
+renderSvgResult(source, { theme: "none", background: "transparent" });
+renderSvgResult(source, { theme: exportedPreset });
+renderSvgResult(source, { theme: { document: themeDocument, appearance, precedence: "host" } });
+renderAsciiResult(source, { theme: { preset: preset.id, appearance }, ascii: { color_mode: "truecolor" } });
+const themeOutcome: ThemeOutcome = renderSvgResult(source, { theme: themeDocument }).metadata.theme_outcome;
+for (const notice of themeOutcome.notices) {
+  if (typeof notice !== "string" && notice.kind === "low_contrast") {
+    const ratio: number = notice.ratio;
+    void ratio;
+  }
+}
+const resolution = resolveTheme(themeDocument, { appearance, auto_fix_contrast: true });
+resolveTheme(JSON.stringify(themeDocument));
+if (resolution.ok) {
+  const appearance: ThemeAppearance = resolution.resolved.appearance;
+  const ink: string = resolution.resolved.roles["text.primary"];
+  const color: string = resolution.resolved.data.fill[0];
+  void [appearance, ink, color];
+} else {
+  const line: number | null = resolution.line;
+  const path: string | null = resolution.path;
+  void [line, path];
+}
+// @ts-expect-error The preset export takes one ID.
+exportThemePreset(preset.id, {});
+// @ts-expect-error A selector accepts exactly one of preset and document.
+renderSvgResult(source, { theme: { preset: preset.id, document: themeDocument } });
+// @ts-expect-error Host preferences must resolve to a concrete appearance.
+renderSvgResult(source, { theme: { preset: preset.id, appearance: "auto" } });
+// @ts-expect-error Appearance belongs in the selector around the document.
+renderSvgResult(source, { theme: { ...themeDocument, appearance } });
+// @ts-expect-error Theme documents use schema version 2.
+resolveTheme({ schema_version: 1 });
+// @ts-expect-error Text roles use solid colors.
+resolveTheme({ schema_version: 2, roles: { "text.primary": gradient } });
+// @ts-expect-error SVG output has no theme portability option.
+renderSvgResult(source, { environment: { theme_portability: "require-portable" } });
+void [schema, swatch, familyFlags];
 
 const editorResources: EditorResourceOptions = {
   profile: "constrained",
@@ -227,178 +230,6 @@ renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
   environment: { text_measurement: null },
 });
 
-const themeDesign: ThemeDesignV1 = {
-  tokens: {
-    text: { type: "color", value: "#123456" },
-    accent: { type: "color", value: "#abcdef" },
-    shadow: { type: "effect", value: {
-      kind: "shadow-stack", composition: "independent",
-      shadows: [{ offset_x: 3, offset_y: 3, std_deviation: 0, color: { ref: "text" } }],
-    } },
-  },
-  styles: { node: { fill: { kind: "solid", color: { ref: "accent" } }, effect: { ref: "shadow" } } },
-};
-const materializedTheme = materializeTheme(themeDesign, {
-  resources: { profile: "constrained", limits: { max_theme_encoded_bytes: 1024 } },
-});
-const themeAuthoringOptions: ThemeAuthoringOptions = {
-  resources: { limits: { max_theme_encoded_bytes: 1024 } },
-};
-materializeTheme(themeDesign, themeAuthoringOptions);
-// @ts-expect-error theme-only limits must not leak into ordinary SVG options.
-const invalidSvgOptions: SvgBindingOptions = { resources: { limits: { max_theme_encoded_bytes: 1 } } };
-exportThemePreset("editor-light", themeAuthoringOptions);
-materializeTheme(themeDesign, { analysis: themeAuthoringOptions });
-materializeTheme(themeDesign, { merman: themeAuthoringOptions });
-materializeTheme(themeDesign, {
-  // @ts-expect-error source limits do not apply to authoring operations.
-  resources: { limits: { max_source_bytes: 1024 } },
-});
-exportThemePreset("editor-light", {
-  // @ts-expect-error hard caps are implementation-owned.
-  resources: { limits: { theme_encoded_bytes_hard_cap: 1024 } },
-});
-// @ts-expect-error wrapped resources cannot be combined with direct resources.
-const mixedThemeOptions: ThemeAuthoringOptions = { resources: {}, analysis: { resources: {} } };
-// @ts-expect-error only one analysis wrapper is allowed.
-const ambiguousThemeOptions: ThemeAuthoringOptions = { analysis: {}, merman: {} };
-materializedTheme.spec.styles;
-materializedTheme.references?.forEach(({ token, path, domain }) => {
-  const kind: "color" | "number" | "string" | "length" | "insets" | "line-height" |
-    "font-stack" | "palette" | "paint" | "stroke" | "text-style" | "effect" = domain.value_type;
-  const minimum: number | undefined = domain.min;
-  void [token, path, kind, minimum];
-});
-
-const supportQuery: ThemeSupportQueryV1 = {
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  subject: { kind: "base-typography", property: "font-stack" },
-};
-const supportDescriptor: ThemeCapabilityDescriptorV1 =
-  describeThemeSupport(supportQuery, themeAuthoringOptions);
-supportDescriptor.state;
-
-const futureSubjectKind = "future-subject" as ThemeSupportUnknownSubjectKindV1;
-const futureSupportQuery: ThemeSupportQueryV1 = {
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  subject: { kind: futureSubjectKind, future_option: true },
-};
-
-const incompleteRuleSupportQuery = {
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  // @ts-expect-error known rule subjects require both target and facet.
-  subject: { kind: "rule" },
-} satisfies ThemeSupportQueryV1;
-
-const incompleteOrdinalSupportQuery = {
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  // @ts-expect-error known ordinal-palette subjects require target.
-  subject: { kind: "ordinal-palette" },
-} satisfies ThemeSupportQueryV1;
-
-const incompleteTypographySupportQuery = {
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  // @ts-expect-error known base-typography subjects require property.
-  subject: { kind: "base-typography" },
-} satisfies ThemeSupportQueryV1;
-
-// @ts-expect-error the Rust authoring wire rejects null for the outer stroke patch.
-const nullOuterStroke = { stroke: null } satisfies ThemeStylePatch;
-
-// @ts-expect-error the Rust authoring wire rejects null for the outer typography patch.
-const nullOuterTypography = { typography: null } satisfies ThemeStylePatch;
-
-const invalidDesignStroke = {
-  // @ts-expect-error outer stroke patches remain non-null in authored designs.
-  styles: { node: { stroke: null } },
-} satisfies ThemeDesignV1;
-const invalidDesignToken = {
-  // @ts-expect-error reusable values retain their declared type.
-  tokens: { size: { type: "length", value: "large" } },
-} satisfies ThemeDesignV1;
-
-const srgbEffectGraph: ThemeEffectGraph = {
-  kind: "graph",
-  id: "glow",
-  color_space: "srgb",
-  primitives: [{ kind: "gaussian-blur", std_deviation: 2 }],
-};
-const linearEffectGraph: ThemeEffectGraph = {
-  ...srgbEffectGraph,
-  color_space: "linear-rgb",
-};
-const defaultEffectGraph: ThemeEffectGraph = {
-  kind: "graph",
-  id: "default-glow",
-  primitives: [],
-};
-const invalidEffectColorSpace = {
-  ...srgbEffectGraph,
-  // @ts-expect-error only the Rust wire's interpolation spaces are supported.
-  color_space: "display-p3",
-} satisfies ThemeEffectGraph;
-const nullEffectColorSpace = {
-  ...srgbEffectGraph,
-  // @ts-expect-error omission selects the default, but explicit null is invalid.
-  color_space: null,
-} satisfies ThemeEffectGraph;
-const cyberpunkExport = exportThemePreset("cyberpunk");
-if (cyberpunkExport.kind === "complete_spec") {
-  for (const effect of cyberpunkExport.complete_spec.effects ?? []) {
-    if (effect.kind === "graph") {
-      const colorSpace: "linear-rgb" | "srgb" | undefined = effect.color_space;
-      void colorSpace;
-    }
-  }
-}
-void linearEffectGraph;
-void defaultEffectGraph;
-void invalidEffectColorSpace;
-void nullEffectColorSpace;
-
-const presetExport: ThemeRecipeV1 = exportThemePreset("editor-light");
-const exportedThemeOptions: SvgBindingOptions = { theme: presetExport };
-if (presetExport.kind === "complete_spec") {
-  presetExport.complete_spec;
-}
-const authoredRecipe = {
-  schema_version: 1,
-  kind: "design",
-  design: themeDesign,
-} satisfies ThemeRecipeV1;
-const authoredThemeOptions: SvgBindingOptions = { theme: authoredRecipe };
-const completeRecipe = {
-  schema_version: 1,
-  kind: "complete_spec",
-  complete_spec: { styles: [] },
-} satisfies ThemeRecipeV1;
-const completeThemeOptions: SvgBindingOptions = { theme: completeRecipe };
-const futureRecipe = { ...authoredRecipe, schema_version: 2 } as const;
-// @ts-expect-error unknown recipe versions require runtime migration, not unchecked admission.
-const futureThemeOptions: SvgBindingOptions = { theme: futureRecipe };
-const mixedPresetRecipe = { ...authoredRecipe, preset: "editor-light" };
-// @ts-expect-error recipe and preset selection must not compete for ownership.
-const mixedPresetThemeOptions: SvgBindingOptions = { theme: mixedPresetRecipe };
-const mixedSpecRecipe = { ...completeRecipe, spec: {} };
-// @ts-expect-error recipe and direct spec selection are mutually exclusive.
-const mixedSpecThemeOptions: SvgBindingOptions = { theme: mixedSpecRecipe };
-const ambiguousRecipe = { ...authoredRecipe, complete_spec: {} };
-// @ts-expect-error a recipe has exactly one payload, including structurally assigned values.
-const ambiguousRecipeOptions: SvgBindingOptions = { theme: ambiguousRecipe };
-const unversionedRecipe = { kind: "design", design: themeDesign } as const;
-// @ts-expect-error shared recipes always carry their wire version.
-const unversionedThemeOptions: SvgBindingOptions = { theme: unversionedRecipe };
-
 const tightenedSvgOptions = withResourceOptions(
   {
     analysis: { fixed_today: "2026-08-12" },
@@ -407,41 +238,6 @@ const tightenedSvgOptions = withResourceOptions(
   resources,
 );
 tightenedSvgOptions.svg.diagram_id;
-
-const repeatedLinearCanvas: ThemePaint = {
-  kind: "linear-gradient",
-  angle_degrees: 135,
-  stops: [
-    { offset: 0, color: "#0f172a" },
-    { offset: 1, color: "#f8fafc" },
-  ],
-  repetition: { kind: "repeating", period_px: 16 },
-};
-const tiledRadialCanvas: ThemePaint = {
-  kind: "radial-gradient",
-  center_x: { percent: 50 },
-  center_y: { percent: 50 },
-  radius: { percent: 50 },
-  stops: [
-    { offset: 0, color: "#22d3ee55" },
-    { offset: 1, color: "#22d3ee00" },
-  ],
-  repetition: { kind: "tiled", width_px: 20, height_px: 20 },
-};
-
-// @ts-expect-error repeating linear gradients require one explicit period.
-const implicitLinearRepetition = { kind: "repeating" } satisfies ThemeLinearGradientRepetition;
-
-const ambiguousLinearRepetition = {
-  kind: "repeating",
-  period_px: 16,
-  // @ts-expect-error repetition variants cannot mix period and tile geometry.
-  width_px: 20,
-  height_px: 20,
-} satisfies ThemeLinearGradientRepetition;
-
-// @ts-expect-error radial repetition uses its authored radius and accepts no linear period.
-const radialWithLinearPeriod = { kind: "repeating", period_px: 16 } satisfies ThemeRadialGradientRepetition;
 
 // @ts-expect-error browser editor sessions cannot select a looser native profile.
 const looserEditorProfile = { resources: { profile: "trusted-native" } } satisfies EditorBindingOptions;
@@ -490,17 +286,6 @@ void asciiOptions;
 void svgOptions;
 void explicitNullTextMeasurementOptions;
 void hostMeasuredSvgOptions;
-void themeDesign;
-void materializedTheme;
-void supportQuery;
-void supportDescriptor;
-void futureSupportQuery;
-void incompleteRuleSupportQuery;
-void incompleteOrdinalSupportQuery;
-void incompleteTypographySupportQuery;
-void nullOuterStroke;
-void nullOuterTypography;
-void presetExport;
 void mixedAnalysisRoot;
 void mixedMermanRoot;
 void duplicateWrapperRoot;
@@ -508,68 +293,18 @@ void mixedCommonRoot;
 void mixedSvgRoot;
 void looserEditorProfile;
 void rendererOnlyEditorLimit;
-void repeatedLinearCanvas;
-void tiledRadialCanvas;
-void implicitLinearRepetition;
-void ambiguousLinearRepetition;
-void radialWithLinearPeriod;
-
-
-const strictThemeOptions = {
-  environment: { theme_portability: "require-portable" },
-} satisfies SvgBindingOptions;
-void strictThemeOptions;
-// @ts-expect-error Unknown request policies must not silently weaken admission.
-const unknownThemePolicy = { environment: { theme_portability: "future-policy" } } satisfies SvgBindingOptions;
-void unknownThemePolicy;
-
-// Open diagnostic identifiers must survive newer renderer implementations.
-const themeDiagnostic: ThemeDiagnostic = {
-  code: "future-code",
-  subject: "future-subject",
-  target: "future-target",
-  property: "future-property",
-  source_document: "future-document",
-  source_paths: ["/styles/2"],
-  generated: false,
-};
-const themeOutcome: ThemeExecutionEvidenceV2 = {
-  version: 2,
-  family_id: "class",
-  theme_status: "residual",
-  output_mutated: false,
-  target_kind: "svg",
-  target_status: "rejected",
-  target_reason_ids: ["theme_evidence_incomplete"],
-  font_source: "embedded",
-  materialized_theme: "dark",
-  diagnostics: [themeDiagnostic],
-};
-const legacyThemeOutcome: ThemeExecutionEvidenceV2 = {
-  ...themeOutcome,
-  diagnostics: undefined,
-};
-legacyThemeOutcome.diagnostics?.map((diagnostic) => diagnostic.source_paths);
-const malformedThemeDiagnostic: ThemeDiagnostic = {
-  ...themeDiagnostic,
-  // @ts-expect-error source pointers are strings, not compiled rule indexes.
-  source_paths: [2],
-};
-void malformedThemeDiagnostic;
-
-
-// Prepared redraws cannot mutate frozen parse configuration or the captured theme.
+// Prepared redraws retain parse configuration and can select a theme per output.
 import type { BrowserPreparedSource, PreparedSourceOutputOptions, HostTextMeasurerPreparedSourceOutputOptions } from "../src/public-types.js";
 declare const preparedSource: BrowserPreparedSource;
-preparedSource.renderSvg({ layout: { container_width: 480 }, resources, timeout_ms: 100 });
+preparedSource.renderSvg({ layout: { container_width: 480 }, background: "#F7F3E8", resources, timeout_ms: 100 });
 preparedSource.renderSvgWithTextMeasurer(() => undefined, { svg: { diagram_id: "retained" } });
 const preparedOutput: PreparedSourceOutputOptions = { layout: { container_width: 640 } };
 // @ts-expect-error Parse options require a new preparation.
 preparedSource.renderSvg({ parse: { suppress_errors: true } });
 // @ts-expect-error Configuration requires a new preparation.
 preparedSource.renderSvg({ site_config: {} });
-// @ts-expect-error Themes are frozen by preparation.
 preparedSource.renderSvg({ theme: null });
+preparedSource.renderSvg({ theme: { preset: "studio", appearance: "dark" } });
 // @ts-expect-error Host measurers own the output measurement selection.
 const preparedHostOutput: HostTextMeasurerPreparedSourceOutputOptions = { environment: { text_measurement: "deterministic" } };
 void preparedOutput;

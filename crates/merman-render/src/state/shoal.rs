@@ -7,9 +7,8 @@ use super::measure::{
     title_label_metrics,
 };
 use super::{
-    StateCompatibilityPlan, StateDiagramModel, StateEdgeStylePlan, StateLabelOwner,
-    StateLabelSidecarBuilder, StateNode, StateNodeStylePlan, StateStylePlan,
-    state_value_to_label_text,
+    StateCompatibilityPlan, StateDiagramModel, StateLabelOwner, StateLabelSidecarBuilder,
+    StateNode, StateNodeStylePlan, StateStylePlan, state_value_to_label_text,
 };
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -264,10 +263,7 @@ fn measure<'a>(
                 &edge.id,
                 label,
                 measurer,
-                style_plan
-                    .edge(&edge.id)
-                    .map(StateEdgeStylePlan::resolved_label_typography)
-                    .unwrap_or_else(|| style_plan.transition_label_typography()),
+                style_plan.transition_label_typography(),
                 settings.wrap_mode,
                 sidecar,
             );

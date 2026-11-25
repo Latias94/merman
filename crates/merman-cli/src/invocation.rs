@@ -32,7 +32,9 @@ use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs, ThemeCom
 #[cfg(feature = "analysis")]
 use crate::cli::{LintArgs, LintRulesArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
-use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
+use crate::cli::{
+    NativeRenderOptions, NativeThemeCliArgs, RenderArgs, RenderFormat, SourceCliArgs,
+};
 #[cfg(feature = "rustdoc")]
 use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
@@ -55,18 +57,21 @@ use std::time::Duration;
 pub(crate) struct InvocationFacts {
     pub(crate) cwd: Option<PathBuf>,
     pub(crate) stdin_is_terminal: bool,
-    #[cfg(feature = "ascii")]
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) stdout_is_terminal: bool,
-    #[cfg(feature = "ascii")]
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) color: ColorEnvironment,
 }
 
-#[cfg(feature = "ascii")]
+#[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ColorEnvironment {
     pub(crate) no_color: bool,
+    #[cfg(feature = "ascii")]
     pub(crate) force_color: bool,
+    #[cfg(feature = "ascii")]
     pub(crate) colorterm: Option<String>,
+    #[cfg(feature = "ascii")]
     pub(crate) term: Option<String>,
 }
 
@@ -81,7 +86,18 @@ pub(crate) enum ResolvedInvocation {
     #[cfg(feature = "svg")]
     Layout(ResolvedLayout),
     #[cfg(feature = "svg")]
-    ThemeInspect(ResolvedThemeInspect),
+    ThemeList {
+        json: bool,
+        color: bool,
+    },
+    #[cfg(feature = "svg")]
+    ThemeExport {
+        preset: merman::theme::BuiltinPreset,
+        minimal: bool,
+        output: ResolvedDestination,
+    },
+    #[cfg(feature = "svg")]
+    ThemeCheck(ResolvedThemeCheck),
     #[cfg(feature = "analysis")]
     Lint(ResolvedLint),
     #[cfg(feature = "fixes")]
@@ -195,10 +211,12 @@ pub(crate) struct ResolvedLayout {
 
 #[cfg(feature = "svg")]
 #[derive(Debug)]
-pub(crate) struct ResolvedThemeInspect {
+pub(crate) struct ResolvedThemeCheck {
     pub(crate) input: ResolvedInput,
     pub(crate) operation_timeout: Option<Duration>,
-    pub(crate) resources: ResolvedResourcePolicy,
+    pub(crate) appearance: Option<merman::theme::Appearance>,
+    pub(crate) strict_contrast: bool,
+    pub(crate) json: bool,
 }
 
 #[cfg(feature = "analysis")]
@@ -408,11 +426,12 @@ pub(crate) struct ResolvedRenderCommon {
     pub(crate) cwd: PathBuf,
     pub(crate) operation_timeout: Option<Duration>,
     pub(crate) parse: ResolvedParseOptions,
+    pub(crate) theme: NativeThemeCliArgs,
     #[cfg(feature = "svg")]
     pub(crate) render: ResolvedRenderOptions,
     pub(crate) resources: ResolvedResourcePolicy,
     #[cfg(feature = "svg")]
-    pub(crate) background: Option<String>,
+    pub(crate) mmdc_background: Option<String>,
     #[cfg(feature = "svg")]
     pub(crate) css_file: Option<PathBuf>,
     #[cfg(feature = "svg")]
@@ -427,6 +446,7 @@ pub(crate) struct ResolvedParseOptions {
     pub(crate) suppress_errors: bool,
     pub(crate) config_file: Option<PathBuf>,
     pub(crate) theme: Option<String>,
+    pub(crate) theme_precedence: Option<merman::theme::ThemePrecedence>,
     pub(crate) runtime: ResolvedRuntimeOptions,
 }
 
@@ -437,14 +457,8 @@ pub(crate) struct ResolvedRuntimeOptions {
 }
 
 #[cfg(feature = "svg")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ResolvedRenderOptions {
-    pub(crate) theme_preset: Option<String>,
-    pub(crate) theme_file: Option<PathBuf>,
-    pub(crate) theme_design_file: Option<PathBuf>,
-    pub(crate) theme_appearance: Option<merman::svg::ThemeAppearance>,
-    pub(crate) theme_portability: crate::cli::ThemePortabilityKind,
-    pub(crate) theme_report: Option<PathBuf>,
     #[cfg(feature = "layout-shoal")]
     pub(crate) preview_frame_in: Option<PathBuf>,
     #[cfg(feature = "layout-shoal")]
@@ -523,17 +537,29 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
         RawCommand::Layout(args) => normalize_layout(args, facts).map(ResolvedInvocation::Layout),
         #[cfg(feature = "svg")]
         RawCommand::Theme(args) => match args.command {
-            ThemeCommand::Inspect(args) => {
-                Ok(ResolvedInvocation::ThemeInspect(ResolvedThemeInspect {
-                    input: if args.input == Path::new("-") {
-                        ResolvedInput::Stdin
-                    } else {
-                        ResolvedInput::File(args.input)
-                    },
-                    operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
-                    resources: resolve_resource_policy(args.resources)?,
-                }))
-            }
+            ThemeCommand::List { json } => Ok(ResolvedInvocation::ThemeList {
+                json,
+                color: facts.stdout_is_terminal && !facts.color.no_color,
+            }),
+            ThemeCommand::Export(args) => Ok(ResolvedInvocation::ThemeExport {
+                preset: args.preset,
+                minimal: args.minimal,
+                output: match args.output {
+                    Some(path) if path != Path::new("-") => ResolvedDestination::File(path),
+                    _ => ResolvedDestination::Stdout,
+                },
+            }),
+            ThemeCommand::Check(args) => Ok(ResolvedInvocation::ThemeCheck(ResolvedThemeCheck {
+                input: if args.input == Path::new("-") {
+                    ResolvedInput::Stdin
+                } else {
+                    ResolvedInput::File(args.input)
+                },
+                operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+                appearance: args.appearance,
+                strict_contrast: args.strict_contrast,
+                json: args.json,
+            })),
         },
         #[cfg(feature = "analysis")]
         RawCommand::Lint(args) => normalize_lint(args, facts).map(ResolvedInvocation::Lint),
@@ -573,7 +599,7 @@ fn normalize_rustdoc(args: RustdocArgs) -> Result<ResolvedRustdoc, CliError> {
 }
 
 fn validate_parse_args(args: &ParseCliArgs) -> Result<(), CliError> {
-    validate_runtime_args(&args.runtime)
+    validate_runtime_args(&args.source.runtime)
 }
 
 fn normalize_detect(args: DetectArgs, facts: &InvocationFacts) -> Result<ResolvedDetect, CliError> {
@@ -596,13 +622,13 @@ fn normalize_parse(args: ParseArgs, facts: &InvocationFacts) -> Result<ResolvedP
 
 #[cfg(feature = "svg")]
 fn normalize_layout(args: LayoutArgs, facts: &InvocationFacts) -> Result<ResolvedLayout, CliError> {
-    let runtime_policy = resolve_render_runtime_policy(&args.parse, false)?;
+    let runtime_policy = resolve_render_runtime_policy(&args.parse.source, false)?;
     Ok(ResolvedLayout {
         input: resolve_native_input(args.input, facts.stdin_is_terminal, "layout")?,
         pretty: args.pretty,
         snapshot: args.snapshot,
         operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
-        parse: resolve_parse_options(args.parse, runtime_policy),
+        parse: resolve_parse_options(args.parse.source, args.parse.theme, runtime_policy),
         render: resolve_render_options(args.render.into_render_args()),
         resources: resolve_resource_policy(args.resources)?,
     })
@@ -742,7 +768,7 @@ fn validate_runtime_args(args: &RuntimeCliArgs) -> Result<(), CliError> {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_render_runtime_policy(
-    parse: &ParseCliArgs,
+    parse: &SourceCliArgs,
     quiet: bool,
 ) -> Result<RuntimePolicy, CliError> {
     #[cfg(feature = "system-timing")]
@@ -809,6 +835,7 @@ fn normalize_render(
         resolve_render_runtime_policy(&args.options.graphical.parse, args.options.graphical.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "render")?;
+    validate_theme_stdin(&input, &args.options.graphical.theme)?;
     if input.file().is_some_and(is_native_markdown_path) {
         let message = if cfg!(feature = "markdown") {
             "render accepts one Mermaid diagram. Use `merman-cli batch` for Markdown input."
@@ -912,6 +939,7 @@ fn normalize_batch(
         resolve_render_runtime_policy(&args.options.graphical.parse, args.options.graphical.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "batch")?;
+    validate_theme_stdin(&input, &args.options.graphical.theme)?;
     if let Some(path) = input.file()
         && !is_native_markdown_path(path)
     {
@@ -1001,24 +1029,14 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         args.output.as_deref() == Some(Path::new("-")) && args.output_format.is_none();
     // Preserve mmdc's implicit official `default` theme. Native theme selection is intentionally
     // not part of this compatibility surface.
-    let parse = ParseCliArgs {
+    let parse = SourceCliArgs {
         suppress_errors: false,
         config_file: args.parse.config_file.clone(),
-        theme: args
-            .parse
-            .theme
-            .or(Some(crate::cli::MmdcTheme::Default))
-            .map(|theme| theme.as_str().to_string()),
         runtime: args.parse.runtime.clone(),
     };
+    let theme = args.parse.theme.unwrap_or_default();
     let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
-        theme_preset: None,
-        theme_file: None,
-        theme_design_file: None,
-        theme_appearance: None,
-        theme_portability: crate::cli::ThemePortabilityKind::default(),
-        theme_report: None,
         #[cfg(feature = "native-fonts")]
         fonts: args.render.fonts.clone(),
         math_renderer: args.render.math_renderer,
@@ -1092,10 +1110,11 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let common = ResolvedRenderCommon {
         cwd: working_directory(facts)?.to_path_buf(),
         operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
-        parse: resolve_parse_options(parse, runtime_policy),
+        parse: resolve_parse_options(parse, Some(theme.as_str().to_owned()), runtime_policy),
+        theme: NativeThemeCliArgs::default(),
         render: resolve_render_options(render),
         resources,
-        background: Some(
+        mmdc_background: Some(
             args.background_color
                 .clone()
                 .unwrap_or_else(|| "white".to_string()),
@@ -1617,27 +1636,32 @@ fn resolve_native_common(
 ) -> ResolvedRenderCommon {
     let crate::cli::GraphicalRenderCliArgs {
         #[cfg(feature = "svg")]
-        background_color,
-        #[cfg(feature = "svg")]
         css_file,
         #[cfg(feature = "svg")]
         quiet,
         #[cfg(feature = "icons")]
         icons,
         parse,
+        theme,
         #[cfg(feature = "svg")]
         render,
         ..
     } = options;
+    let mut parse = resolve_parse_options(parse, None, runtime_policy);
+    if let Some(crate::theme::ThemeInput::Mermaid(id)) = &theme.theme {
+        parse.theme = Some((*id).to_owned());
+        parse.theme_precedence = Some(theme.theme_precedence);
+    }
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
         operation_timeout: operation.timeout_ms.map(Duration::from_millis),
-        parse: resolve_parse_options(parse, runtime_policy),
+        parse,
+        theme,
         #[cfg(feature = "svg")]
         render: resolve_render_options(render),
         resources,
         #[cfg(feature = "svg")]
-        background: background_color,
+        mmdc_background: None,
         #[cfg(feature = "svg")]
         css_file,
         #[cfg(feature = "svg")]
@@ -1656,13 +1680,15 @@ fn resolve_native_common(
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_parse_options(
-    args: ParseCliArgs,
+    args: SourceCliArgs,
+    theme: Option<String>,
     runtime_policy: RuntimePolicy,
 ) -> ResolvedParseOptions {
     ResolvedParseOptions {
         suppress_errors: args.suppress_errors,
         config_file: args.config_file,
-        theme: args.theme,
+        theme,
+        theme_precedence: None,
         runtime: ResolvedRuntimeOptions { runtime_policy },
     }
 }
@@ -1670,12 +1696,6 @@ fn resolve_parse_options(
 #[cfg(feature = "svg")]
 fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
-        theme_preset: args.theme_preset,
-        theme_file: args.theme_file,
-        theme_design_file: args.theme_design_file,
-        theme_appearance: args.theme_appearance,
-        theme_portability: args.theme_portability,
-        theme_report: args.theme_report,
         #[cfg(feature = "layout-shoal")]
         preview_frame_in: None,
         #[cfg(feature = "layout-shoal")]
@@ -1874,19 +1894,19 @@ fn validate_graphical_output_options(
     #[cfg(feature = "ascii")]
     if format.is_text() {
         #[cfg(feature = "svg")]
-        if options.background_color.is_some() || options.css_file.is_some() {
+        if options.theme.background.is_some() {
             return Err(CliError::InvalidInput(
-                "--background and --css-file require SVG-based output".to_string(),
+                "--background requires SVG-based output".to_string(),
             ));
         }
         #[cfg(feature = "svg")]
-        if options.render.theme_preset.is_some()
-            || options.render.theme_file.is_some()
-            || options.render.theme_design_file.is_some()
-            || options.render.theme_appearance.is_some()
-            || options.render.theme_report.is_some()
-            || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
-            || options.render.math_renderer.is_some()
+        if options.css_file.is_some() {
+            return Err(CliError::InvalidInput(
+                "--css-file requires SVG-based output".to_string(),
+            ));
+        }
+        #[cfg(feature = "svg")]
+        if options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
             || options.render.svg_id.is_some()
@@ -1923,7 +1943,6 @@ fn validate_graphical_output_options(
 fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Result<(), CliError> {
     if options.parse.suppress_errors
         || options.parse.config_file.is_some()
-        || options.parse.theme.is_some()
         || runtime_options_are_configured(&options.parse.runtime)
     {
         return Err(CliError::InvalidInput(
@@ -1931,12 +1950,9 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
                 .to_string(),
         ));
     }
-    if options.render.theme_preset.is_some()
-        || options.render.theme_file.is_some()
-        || options.render.theme_design_file.is_some()
-        || options.render.theme_appearance.is_some()
-        || options.render.theme_report.is_some()
-        || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
+    if options.theme.theme.is_some()
+        || options.theme.appearance.is_some()
+        || options.theme.theme_precedence != merman::theme::ThemePrecedence::Host
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()
@@ -1963,6 +1979,21 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
     {
         return Err(CliError::InvalidInput(
             "icon packs are not valid with SVG input".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn validate_theme_stdin(input: &ResolvedInput, theme: &NativeThemeCliArgs) -> Result<(), CliError> {
+    if matches!(input, ResolvedInput::Stdin)
+        && matches!(
+            theme.theme,
+            Some(crate::theme::ThemeInput::Document(ResolvedInput::Stdin))
+        )
+    {
+        return Err(CliError::InvalidInput(
+            "--theme - and the diagram or Markdown input cannot both read from stdin".to_owned(),
         ));
     }
     Ok(())
@@ -2145,9 +2176,9 @@ mod tests {
         InvocationFacts {
             cwd: Some(PathBuf::from(".")),
             stdin_is_terminal,
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             stdout_is_terminal: false,
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             color: ColorEnvironment::default(),
         }
     }

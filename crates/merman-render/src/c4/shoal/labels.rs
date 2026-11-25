@@ -1,7 +1,6 @@
 use super::super::layout::C4Measurement;
 use super::super::typography::C4PreparedFont;
 use super::super::{C4_TECHNOLOGY_GAP, c4_relation_offset, c4_text_row_offset};
-use super::STROKE_OUTSET;
 use crate::Result;
 use crate::graph_layout::canonical::CanonicalPaintedEdge;
 use crate::graph_layout::ir::Size;
@@ -55,6 +54,7 @@ impl RelationLabel {
         &self,
         label: &LayoutLabel,
         route: &CanonicalPaintedEdge,
+        stroke_outset: f64,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<LayoutPoint> {
         work.charge_adapter(route.path.d.len())?;
@@ -93,7 +93,7 @@ impl RelationLabel {
             let overlaps = |obstacle: Rect| obstacle.intersect(ink).area() > 0.0;
             !markers.iter().flatten().copied().any(overlaps)
                 && path.segments().all(|segment| {
-                    !overlaps(segment.bounding_box().inflate(STROKE_OUTSET, STROKE_OUTSET))
+                    !overlaps(segment.bounding_box().inflate(stroke_outset, stroke_outset))
                 })
         })
         .unwrap_or(preferred);

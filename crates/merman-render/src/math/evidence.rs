@@ -54,52 +54,6 @@ impl PreparedMathProjectionFingerprint {
     }
 }
 
-/// Style facts the prepared-math backend can independently attest for one browser emission.
-///
-/// The compiled RaTeX backend owns both the wrapper and the default glyph paint, so it can attest
-/// the requested foreground and font size. Compatibility HTML backends return opaque markup and
-/// therefore remain unverified even though Merman still wraps their result in the requested CSS.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreparedMathStyleAssurance {
-    requested_foreground: Arc<str>,
-    requested_font_size_bits: u64,
-    default_foreground_verified: bool,
-    font_size_verified: bool,
-}
-
-impl PreparedMathStyleAssurance {
-    pub(crate) fn compiled_ratex(requested_foreground: &str, requested_font_size_px: f64) -> Self {
-        Self {
-            requested_foreground: Arc::from(requested_foreground),
-            requested_font_size_bits: requested_font_size_px.to_bits(),
-            default_foreground_verified: true,
-            font_size_verified: true,
-        }
-    }
-
-    #[cfg(any(test, merman_internal_theme_acceptance))]
-    pub(crate) fn opaque_html(requested_foreground: &str, requested_font_size_px: f64) -> Self {
-        Self {
-            requested_foreground: Arc::from(requested_foreground),
-            requested_font_size_bits: requested_font_size_px.to_bits(),
-            default_foreground_verified: false,
-            font_size_verified: false,
-        }
-    }
-
-    pub(crate) fn proves_default_foreground(&self, expected: &str) -> bool {
-        self.default_foreground_verified && self.requested_foreground.as_ref() == expected
-    }
-
-    pub(crate) fn proves_font_size_px(&self, expected: f64) -> bool {
-        self.font_size_verified && self.requested_font_size_bits == expected.to_bits()
-    }
-
-    pub(crate) fn retained_heap_bytes(&self) -> usize {
-        self.requested_foreground.len()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PreparedMathExpectation {
     occurrence_id: PreparedMathOccurrenceId,

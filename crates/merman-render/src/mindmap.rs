@@ -13,16 +13,14 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 mod css_binding;
-mod label_paint;
 mod registered;
 pub(crate) use css_binding::MindmapCssBinding;
+mod native_theme;
 mod theme;
 mod tidy_tree;
 
-pub(crate) use theme::{
-    MINDMAP_SECTION_COUNT, MindmapNodeFillSource, MindmapNodePalettePlan,
-    MindmapNodePaletteTerminalDecision, MindmapWriterThemeToken,
-};
+pub(crate) use native_theme::MindmapNativeStyle;
+pub(crate) use theme::MindmapAppearance;
 
 pub(crate) fn mindmap_label_wrapping_width_px(
     node: &MindmapNodeModel,
@@ -64,8 +62,6 @@ type MindmapEdgeModel = merman_model::families::mindmap::MindmapDiagramRenderEdg
 #[derive(Debug, Default)]
 pub(crate) struct MindmapPreparedLabels {
     labels: BTreeMap<String, MindmapPreparedLabel>,
-    visible_styles: Vec<crate::text::VisibleTextStyleFacts>,
-    _visible_style_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
 #[derive(Debug)]
@@ -80,50 +76,23 @@ impl MindmapPreparedLabels {
         config: &PresentationConfig,
         work_meter: &Arc<crate::resources::OperationWorkMeter>,
     ) -> Result<Self> {
-        let reservation = work_meter.reserve_prepared_text_retained_bytes(
-            model
-                .nodes
-                .len()
-                .saturating_mul(std::mem::size_of::<crate::text::VisibleTextStyleFacts>()),
-        )?;
-        let mut prepared = Self {
-            visible_styles: Vec::with_capacity(model.nodes.len()),
-            _visible_style_reservation: Some(reservation),
-            ..Self::default()
-        };
-        let html_labels = crate::config::config_effective_html_labels(config.as_value());
+        let mut prepared = Self::default();
+        if !crate::config::config_effective_html_labels(config.as_value()) {
+            return Ok(prepared);
+        }
         for node in &model.nodes {
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
-            let facts = if html_labels && !crate::math::contains_delimited_math(&node.label) {
+            if !crate::math::contains_delimited_math(&node.label) {
                 let label =
                     MindmapPreparedLabel::prepare(&node.id, &node.label, config, work_meter)?;
-                let facts =
-                    crate::text::VisibleTextStyleFacts::from_mindmap_xhtml_fragment(&label.xhtml);
-                prepared.insert(node.id.clone(), label);
-                facts
-            } else if html_labels {
-                // Math has a separate renderer-owned terminal; source markup cannot prove it.
-                crate::text::VisibleTextStyleFacts::not_requested()
-            } else {
-                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(
-                    mindmap_svg_label_source(&node.label).as_ref(),
-                )
-            };
-            prepared.visible_styles.push(facts);
+                prepared.labels.insert(node.id.clone(), label);
+            }
         }
         Ok(prepared)
     }
 
     pub(crate) fn xhtml_for(&self, node_id: &str) -> Option<&str> {
         self.labels.get(node_id).map(|label| label.xhtml.as_str())
-    }
-
-    pub(crate) fn visible_styles(&self) -> &[crate::text::VisibleTextStyleFacts] {
-        &self.visible_styles
-    }
-
-    fn insert(&mut self, node_id: String, label: MindmapPreparedLabel) {
-        self.labels.insert(node_id, label);
     }
 }
 
@@ -249,20 +218,20 @@ pub(crate) fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     mindmap_text_style_with_font_family(
         effective_config,
-        &crate::config::config_font_family_css(effective_config),
+        crate::config::config_font_family_css(effective_config),
     )
 }
 
-pub(crate) fn mindmap_text_style_with_font_family(
+fn mindmap_text_style_with_font_family(
     effective_config: &Value,
-    font_family_css: &str,
+    font_family_css: String,
 ) -> TextStyle {
     // HTML labels and SVG text inherit the same root CSS font size.
     let font_size =
         crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
             .max(1.0);
     TextStyle {
-        font_family: Some(font_family_css.to_owned()),
+        font_family: Some(font_family_css),
         font_size,
         font_weight: None,
         font_style: None,
@@ -531,7 +500,7 @@ fn mindmap_layout_adapter_work(
 pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
     config: &PresentationConfig,
-    font_family_css: &str,
+    text_style: &TextStyle,
     execution: &LayoutExecution<'_>,
 ) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
     let backend = execution.layout_backend();
@@ -542,7 +511,6 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     work.charge_adapter(adapter_work)?;
 
     let effective_config = config.as_value();
-    let text_style = mindmap_text_style_with_font_family(effective_config, font_family_css);
     let text_measurer = execution.text_measurer();
     let math_renderer = execution.math_renderer();
 
@@ -552,10 +520,11 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     // directly. The typed model already preserves it; re-sorting numeric-looking ids here added
     // O(N log N) work and changed the geometry of manually constructed source-order models.
     for n in &model.nodes {
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         let (label_width, label_height) = mindmap_label_bbox_px_with_math(
             &n.label,
             text_measurer,
-            &text_style,
+            text_style,
             mindmap_label_wrapping_width_px(n, effective_config),
             config,
             math_renderer,
@@ -695,7 +664,6 @@ mod tests {
                 config: config.clone(),
                 effective_config: config,
                 title: None,
-                theme_recipe: None,
             },
             RenderSemanticModel::Mindmap(model),
             PresentationContext::None,
@@ -781,55 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_visible_styles_are_collected_once_and_reused_by_theme_and_writer() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-        };
-
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(
-                    crate::DiagramFamilyId::MINDMAP,
-                    ThemeTextStyle::default().with_font_stack(FontStack::single("Arial").unwrap()),
-                ),
-            ))
-            .unwrap();
-        let plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
-            theme.compatibility_recipe().clone(),
-        );
-        let parsed = merman_core::MermaidEngine::new()
-            .with_theme_plan(&plan)
-            .parse_diagram_for_render_model_sync(
-                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    first[\"**First**\"]\n    second[\"<span style='font-family:monospace'>Second</span>\"]\n",
-                merman_core::ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let (_, collections) = crate::text::VisibleTextStyleFacts::count_collections(|| {
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .begin_session_with_theme(&theme)
-                .unwrap();
-            crate::family::prepare(
-                &parsed,
-                &crate::LayoutOptions::headless_svg_defaults(),
-                session,
-            )
-            .unwrap()
-            .render_svg(
-                &crate::svg::SvgRenderOptions::default(),
-                &crate::svg::SvgDebugOptions::default(),
-            )
-            .unwrap()
-        });
-        assert_eq!(
-            collections, 3,
-            "each final XHTML label is inspected only once"
-        );
-    }
-
-    #[test]
-    fn mindmap_math_source_does_not_supply_visible_terminal_evidence() {
+    fn mindmap_math_source_uses_its_separate_rendering_path() {
         let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "mindmap\n  root[\"$$x^2$$\"]\n",
@@ -850,7 +770,6 @@ mod tests {
             &meter,
         )
         .unwrap();
-        assert!(!labels.visible_styles()[0].parse_valid());
         assert!(labels.xhtml_for(&model.nodes[0].id).is_none());
     }
 
@@ -1217,7 +1136,7 @@ mod tests {
         assert_eq!(style.font_family.as_deref(), Some("Theme font"));
         assert_eq!(style.font_size, 24.0);
         let typed_style =
-            super::mindmap_text_style_with_font_family(&config, "Typed font,monospace");
+            super::mindmap_text_style_with_font_family(&config, "Typed font,monospace".to_owned());
         assert_eq!(
             typed_style.font_family.as_deref(),
             Some("Typed font,monospace")
@@ -1225,7 +1144,7 @@ mod tests {
         assert_eq!(typed_style.font_size, 24.0);
         let html_style = super::mindmap_text_style_with_font_family(
             &serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "24px"}}),
-            "Typed font,monospace",
+            "Typed font,monospace".to_owned(),
         );
         assert_eq!(html_style.font_family, typed_style.font_family);
         assert_eq!(html_style.font_size, 24.0);

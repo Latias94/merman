@@ -911,7 +911,7 @@ mod font_style_tests {
             "themeVariables": {"fontFamily": "Different, sans-serif", "fontSize": "18px"}
         });
         let config = crate::test_support::presentation_config(config);
-        let typography = IshikawaTypographyPlan::resolve(None, &config, 16.0);
+        let typography = IshikawaTypographyPlan::resolve(&config, 16.0);
         let head = typography.text_style("ishikawa-head-label");
         assert_eq!(head.font_family.as_deref(), Some("Different,sans-serif"));
         assert_eq!(head.font_size, 14.0);
@@ -944,7 +944,7 @@ mod font_style_tests {
             "themeVariables": {"fontFamily": "ThemeWinner"}
         }));
         let cfg = IshikawaConfigView::new(config.as_value()).layout_settings();
-        let typography = IshikawaTypographyPlan::resolve(None, &config, cfg.font_size);
+        let typography = IshikawaTypographyPlan::resolve(&config, cfg.font_size);
         let probe = FontProbe(std::cell::RefCell::new(Vec::new()));
         let model = IshikawaDiagramModel {
             root: Some(0),

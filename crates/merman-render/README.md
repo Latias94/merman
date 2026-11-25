@@ -20,7 +20,7 @@ This guide covers `merman-render 0.11.0`. Upgrade shared model and renderer pack
 - `FamilyRenderArtifact`, which keeps one matching built-in semantic/layout pair opaque and projects layout JSON or consuming SVG output.
 - `LayoutOptions::headless_svg_defaults()` for editor/export use cases.
 - Text measurement hooks through `TextMeasurer`.
-- Theme typography through named font families, font sizes, and font weights. Font files remain host-owned; embedded theme font resources are rejected.
+- Native theme settings through family adapters, including typography from named font families, sizes, and weights. The host supplies font files.
 - Math rendering hooks through `MathRenderer`.
 - Shared Root Viewport policy for computed sizing, accessibility chrome, and root SVG emission.
 - `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.
@@ -55,12 +55,13 @@ selected execution. [Rust feature recipes](../../docs/FEATURES.md#svg-without-ge
 
 ## Render Environment
 
-`RenderEnvironment` owns SVG-specific adapters and policy for one operation: named
-text-measurement routes, math rendering, icons, time, randomness, and resource limits. Low-level
-callers may bind a caller-owned `OperationContext` and `OperationControl` with
-`begin_session_in_context()`, or atomically bind a compiled theme with `begin_session_with_theme()`.
-Retain that `RenderSession` through SVG postprocessing so every phase observes the same snapshot,
-theme resources, operation control, and provenance. Convert the final family SVG into
+`RenderEnvironment` provides text measurement, math rendering, icons, time, randomness, and
+resource limits for SVG operations. Wrap the resolved Theme v2 settings with `NativeTheme::new`
+and pass the result to `begin_session_with_native_theme()`. Callers that already own an
+`OperationContext` and `OperationControl` can use `begin_session_in_context()` or
+`begin_session_with_native_theme_in_context()`. Retain the `RenderSession` through SVG
+postprocessing so every phase observes the same runtime snapshot, visual settings, and
+operation control. Convert the final family SVG into
 `FamilyRenderCompletion` only after the pipeline finishes; that boundary drops the live session and
 retains a frozen `RenderSessionReport`. The higher-level `Renderer` captures the operation context
 once and also applies its frozen date and timezone to date-sensitive parsing; direct low-level

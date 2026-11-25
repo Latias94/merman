@@ -10,7 +10,7 @@ pub(crate) struct BlockClassCssDeclarations {
 #[derive(Debug, Clone)]
 pub(crate) struct BlockCssThemeBinding {
     pub(crate) class_definitions: Vec<BlockClassCssDeclarations>,
-    pub(crate) look_defs: crate::svg::PreparedLookDefs,
+    pub(crate) look_defs: Option<crate::svg::PreparedLookDefs>,
     pub(crate) text_color: String,
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
@@ -51,11 +51,6 @@ impl BlockCssThemeBinding {
             .parse::<f64>()
             .ok()
             .filter(|value| value.is_finite())
-    }
-
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) fn configured_stroke_width_px(config: &Value) -> Option<f64> {
-        Self::parse_stroke_width_px(&Self::stroke_width(config))
     }
 
     pub(super) fn palette_look(config: &Value) -> String {
@@ -182,7 +177,7 @@ impl BlockCssThemeBinding {
             .unwrap_or_default();
         Ok(Self {
             class_definitions: Vec::new(),
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            look_defs: Some(crate::svg::PreparedLookDefs::new(config)),
             text_color,
             node_text_color,
             title_color,

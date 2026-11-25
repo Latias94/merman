@@ -1,7 +1,10 @@
 use crate::config::{config_bool, config_f64, config_string, config_string_vec};
-use crate::mermaid_style::{self, CssFontFamilyOwnership, CssFontSizeOwnership};
 use crate::text::TextStyle;
+use crate::theme::{FamilyTheme, font_family_css};
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
+
+use super::JourneyNativeStyle;
 
 const DEFAULT_LEFT_MARGIN: f64 = 150.0;
 const DEFAULT_MAX_LABEL_WIDTH: f64 = 360.0;
@@ -42,7 +45,33 @@ impl<'a> JourneyConfigView<'a> {
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> JourneyLayoutSettings {
+    pub(super) fn layout_settings(
+        &self,
+        native: Option<&JourneyNativeStyle>,
+    ) -> JourneyLayoutSettings {
+        let (section_fills, section_fill_count) =
+            if native.is_none_or(|style| style.section_fills_owned) {
+                let fills = self.section_fills();
+                let count = fills.len();
+                (fills, count)
+            } else {
+                // The configured palette still determines Mermaid's section class and fillType slot.
+                let count = self
+                    .journey_config
+                    .get("sectionFills")
+                    .and_then(Value::as_array)
+                    .map_or(0, |fills| {
+                        fills.iter().filter(|fill| fill.is_string()).count()
+                    });
+                (
+                    Vec::new(),
+                    if count == 0 {
+                        DEFAULT_SECTION_FILLS.len()
+                    } else {
+                        count
+                    },
+                )
+            };
         JourneyLayoutSettings {
             left_margin_base: self
                 .journey_f64("leftMargin")
@@ -70,8 +99,13 @@ impl<'a> JourneyConfigView<'a> {
                 .max(0.0),
             cell_width: self.cell_dimension("width", DEFAULT_CELL_WIDTH),
             cell_height: self.cell_dimension("height", DEFAULT_CELL_HEIGHT),
-            actor_colours: self.actor_colours(),
-            section_fills: self.section_fills(),
+            actor_colours: if native.is_none_or(|style| style.actor_colors_owned) {
+                self.actor_colours()
+            } else {
+                Vec::new()
+            },
+            section_fills,
+            section_fill_count,
             use_max_width: self.use_max_width(),
         }
     }
@@ -80,18 +114,73 @@ impl<'a> JourneyConfigView<'a> {
         JourneyRenderSettings {
             text_placement: self.text_placement(),
             task_text_style: self.task_text_style(),
-            section_colours: if self.journey_config.get("sectionColours").is_none() {
-                vec!["#fff".to_string()]
-            } else {
-                config_string_vec(self.journey_config, &["sectionColours"])
-            },
-            title_font_size: config_string(self.journey_config, &["titleFontSize"])
-                .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
-            title_font_family: config_string(self.journey_config, &["titleFontFamily"])
-                .unwrap_or_else(|| DEFAULT_TITLE_FONT_FAMILY.to_string()),
-            title_color: config_string(self.journey_config, &["titleColor"])
-                .unwrap_or_else(|| DEFAULT_TITLE_COLOR.to_string()),
+            section_colours: self.section_colours(),
+            title_font_size: self.journey_string("titleFontSize", DEFAULT_TITLE_FONT_SIZE),
+            title_font_family: self.journey_string("titleFontFamily", DEFAULT_TITLE_FONT_FAMILY),
+            title_color: self.journey_string("titleColor", DEFAULT_TITLE_COLOR),
         }
+    }
+
+    pub(super) fn native_render_settings(
+        &self,
+        config: &PresentationConfig,
+        theme: &FamilyTheme,
+        body_font: &str,
+        inherited_font: Option<String>,
+        font_size_px: f64,
+    ) -> JourneyRenderSettings {
+        let owns = |path| config.explicit_config_owns_path(path);
+        let typography = &theme.typography;
+        JourneyRenderSettings {
+            text_placement: self.text_placement(),
+            task_text_style: TextStyle {
+                font_family: Some(if owns("journey.taskFontFamily") {
+                    self.journey_string("taskFontFamily", DEFAULT_TASK_FONT_FAMILY)
+                } else {
+                    body_font.to_owned()
+                }),
+                font_size: if owns("journey.taskFontSize") {
+                    self.journey_f64("taskFontSize")
+                        .unwrap_or(DEFAULT_TASK_FONT_SIZE)
+                } else {
+                    font_size_px
+                },
+                font_weight: None,
+                font_style: None,
+            },
+            section_colours: self.section_colours(),
+            title_font_family: if owns("journey.titleFontFamily") {
+                self.journey_string("titleFontFamily", DEFAULT_TITLE_FONT_FAMILY)
+            } else {
+                inherited_font
+                    .unwrap_or_else(|| font_family_css(typography.stack(typography.title_family)))
+            },
+            title_font_size: if owns("journey.titleFontSize") {
+                self.journey_string("titleFontSize", DEFAULT_TITLE_FONT_SIZE)
+            } else {
+                format!("{}px", font_size_px * 1.9375)
+            },
+            title_color: if owns("journey.titleColor") {
+                self.journey_string("titleColor", DEFAULT_TITLE_COLOR)
+            } else {
+                config
+                    .get_str("themeVariables.titleColor")
+                    .filter(|_| owns("themeVariables.titleColor"))
+                    .map_or_else(|| theme.roles.text_title.to_string(), str::to_owned)
+            },
+        }
+    }
+
+    fn section_colours(&self) -> Vec<String> {
+        if self.journey_config.get("sectionColours").is_none() {
+            vec!["#fff".to_owned()]
+        } else {
+            config_string_vec(self.journey_config, &["sectionColours"])
+        }
+    }
+
+    fn journey_string(&self, key: &str, fallback: &str) -> String {
+        config_string(self.journey_config, &[key]).unwrap_or_else(|| fallback.to_owned())
     }
 
     fn text_placement(&self) -> JourneyTextPlacement {
@@ -143,10 +232,7 @@ impl<'a> JourneyConfigView<'a> {
 
     fn task_text_style(&self) -> TextStyle {
         TextStyle {
-            font_family: Some(
-                config_string(self.journey_config, &["taskFontFamily"])
-                    .unwrap_or_else(|| DEFAULT_TASK_FONT_FAMILY.to_string()),
-            ),
+            font_family: Some(self.journey_string("taskFontFamily", DEFAULT_TASK_FONT_FAMILY)),
             font_size: self
                 .journey_f64("taskFontSize")
                 .unwrap_or(DEFAULT_TASK_FONT_SIZE),
@@ -172,7 +258,8 @@ pub(crate) struct JourneyLayoutSettings {
     pub(crate) cell_width: f64,
     pub(crate) cell_height: f64,
     pub(crate) actor_colours: Vec<String>,
-    pub(crate) section_fills: Vec<String>,
+    section_fills: Vec<String>,
+    section_fill_count: usize,
     pub(crate) use_max_width: bool,
 }
 
@@ -186,79 +273,14 @@ pub(crate) struct JourneyRenderSettings {
     pub(crate) title_color: String,
 }
 
-impl JourneyRenderSettings {
-    pub(super) fn label_font_family_ownership(&self) -> CssFontFamilyOwnership {
-        match self.text_placement {
-            JourneyTextPlacement::Fo | JourneyTextPlacement::Old => {
-                CssFontFamilyOwnership::Inherited
-            }
-            JourneyTextPlacement::Tspan => {
-                let font_family = self
-                    .task_text_style
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(DEFAULT_TASK_FONT_FAMILY);
-                if font_family.trim().is_empty() {
-                    return CssFontFamilyOwnership::Inherited;
-                }
-                let declaration = format!("font-family:{font_family}");
-                mermaid_style::css_font_family_ownership([declaration.as_str()])
-            }
-        }
-    }
-
-    pub(super) fn title_font_family_ownership(&self) -> CssFontFamilyOwnership {
-        let family = self.title_font_family.trim();
-        if family.is_empty() {
-            return CssFontFamilyOwnership::Inherited;
-        }
-        // Presentation attributes cannot carry declaration priority or a trailing semicolon.
-        let mut parser = cssparser::Parser::new(family);
-        while let Ok(token) = parser.next() {
-            if matches!(token, cssparser::Token::Semicolon) {
-                return CssFontFamilyOwnership::Inherited;
-            }
-        }
-        if mermaid_style::is_static_css_font_family_list(family) {
-            return CssFontFamilyOwnership::SourceOwned;
-        }
-        let declaration = format!("font-family:{family}");
-        // Keep conservative ownership for a single value outside the safe emitter's subset,
-        // including commented host functions, without recovering an attribute as a style list.
-        mermaid_style::css_font_family_override(&declaration).map_or(
-            CssFontFamilyOwnership::Inherited,
-            |winner| {
-                if winner.important() {
-                    CssFontFamilyOwnership::Inherited
-                } else {
-                    winner.ownership()
-                }
-            },
-        )
-    }
-
-    pub(super) fn title_inherits_font_size(&self) -> bool {
-        let size = self.title_font_size.trim();
-        let declaration = format!("font-size:{size}");
-        if let Some(parsed) = mermaid_style::parse_style_declaration(&declaration) {
-            if parsed.important() || parsed.value() != size {
-                return true;
-            }
-            // SVG attributes also admit nonzero unitless sizes, unlike CSS declarations.
-            if parsed.svg_number_or_px().is_some() {
-                return false;
-            }
-        }
-        mermaid_style::css_font_size_value_override(size)
-            .is_none_or(|value| value.ownership() == CssFontSizeOwnership::Inherited)
-    }
-
-    pub(super) const fn label_inherits_font_size(&self) -> bool {
-        // CSS rejects a negative task size, so that tspan inherits the base size too.
-        matches!(
-            self.text_placement,
-            JourneyTextPlacement::Fo | JourneyTextPlacement::Old
-        ) || self.task_text_style.font_size < 0.0
+impl JourneyLayoutSettings {
+    pub(super) fn section_paint(&self, ordinal: i64) -> (i64, &str) {
+        let slot = ordinal % self.section_fill_count as i64;
+        let fill = self
+            .section_fills
+            .get(slot as usize)
+            .map_or("#CCC", String::as_str);
+        (slot, fill)
     }
 }
 
@@ -270,6 +292,27 @@ pub(crate) const fn default_use_max_width() -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_journey_preserves_default_section_slot_wrap() {
+        let config = PresentationConfig::empty_object();
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_preset(crate::theme::BuiltinPreset::Studio, None)
+            .unwrap();
+        let style = JourneyNativeStyle::new(theme.family("journey"), &config);
+        let view = JourneyConfigView::new(config.as_value());
+        let mermaid = view.layout_settings(None);
+        let native = view.layout_settings(Some(&style));
+
+        assert!(native.actor_colours.is_empty());
+        assert!(native.section_fills.is_empty());
+        for ordinal in [0, 6, 7, 8] {
+            assert_eq!(
+                native.section_paint(ordinal).0,
+                mermaid.section_paint(ordinal).0
+            );
+        }
+    }
 
     #[test]
     fn journey_text_placement_matches_the_upstream_selector() {
@@ -300,53 +343,9 @@ mod tests {
     }
 
     #[test]
-    fn journey_label_font_ownership_keeps_invalid_and_unresolved_values_distinct() {
-        use crate::mermaid_style::CssFontFamilyOwnership::{Inherited, SourceOwned, Unverified};
-
-        for placement in ["fo", "old", "tspan"] {
-            for (font_family, ownership) in [
-                ("", Inherited),
-                ("123", Inherited),
-                ("inherit", Inherited),
-                ("unset", Inherited),
-                ("  InHeRiT  ", Inherited),
-                (r"i\6eherit", Inherited),
-                (r"u\6eset", Inherited),
-                (r#""inherit""#, SourceOwned),
-                (r#"'unset', sans-serif"#, SourceOwned),
-                ("Task Choice", SourceOwned),
-                ("initial", Unverified),
-                ("var(--task-font)", Unverified),
-            ] {
-                let config = json!({"journey": {
-                    "textPlacement": placement,
-                    "taskFontFamily": font_family,
-                    "taskFontSize": 14
-                }});
-                let settings = JourneyConfigView::new(&config).render_settings();
-                assert_eq!(
-                    settings.label_font_family_ownership(),
-                    if placement == "tspan" {
-                        ownership
-                    } else {
-                        Inherited
-                    },
-                    "{config}"
-                );
-                assert_eq!(settings.label_inherits_font_size(), placement != "tspan");
-                assert_eq!(
-                    settings.task_text_style.font_family.as_deref(),
-                    Some(font_family)
-                );
-                assert_eq!(settings.task_text_style.font_size, 14.0);
-            }
-        }
-    }
-
-    #[test]
     fn journey_layout_settings_preserve_defaults() {
         let cfg = json!({});
-        let settings = JourneyConfigView::new(&cfg).layout_settings();
+        let settings = JourneyConfigView::new(&cfg).layout_settings(None);
 
         assert_eq!(settings.left_margin_base, DEFAULT_LEFT_MARGIN);
         assert_eq!(settings.max_label_width, DEFAULT_MAX_LABEL_WIDTH);
@@ -376,7 +375,7 @@ mod tests {
             (json!("1e999"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
         ] {
             let config = json!({"journey": {"width": value, "height": value}});
-            let settings = JourneyConfigView::new(&config).layout_settings();
+            let settings = JourneyConfigView::new(&config).layout_settings(None);
             assert_eq!(settings.cell_width, expected_width, "{config}");
             assert_eq!(settings.cell_height, expected_height, "{config}");
         }
@@ -401,7 +400,7 @@ mod tests {
                 "useMaxWidth": false
             }
         });
-        let settings = JourneyConfigView::new(&cfg).layout_settings();
+        let settings = JourneyConfigView::new(&cfg).layout_settings(None);
 
         assert_eq!(settings.left_margin_base, 180.0);
         assert_eq!(settings.max_label_width, 250.0);

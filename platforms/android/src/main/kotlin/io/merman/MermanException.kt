@@ -109,7 +109,7 @@ class MermanException private constructor(
         payload?.let(::parseIconRegistryDetails) ?: localIconRegistryDetails
     val cancellationDetails: MermanCancelledDetails? =
         payload?.let(::parseCancellationDetails)
-    /** Complete core-owned details, including versioned theme-authoring diagnostics. */
+    /** Complete core-owned details, including fields unknown to this SDK version. */
     val detailsJson: String? = payload?.optJSONObject("details")?.toString()
 
     internal companion object {

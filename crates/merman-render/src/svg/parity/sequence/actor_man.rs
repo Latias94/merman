@@ -38,8 +38,6 @@ fn render_sequence_actor_man(
         let placement = if footer { "bottom" } else { "top" };
         let node_id = format!("actor-{placement}-{actor_id}");
         let Some(node) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-            ctx.typography_receipt
-                .record_missing_text_effect(crate::sequence::SequenceTextSurface::ParticipantLabel);
             continue;
         };
         write_actor_man_glyph(

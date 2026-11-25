@@ -82,7 +82,11 @@ fn mmdc_svg_canvas_defaults_to_white_and_accepts_overrides() {
     any(feature = "layout-dagre", feature = "layout-elk")
 ))]
 fn native_svg_canvas_accepts_explicit_host_colors() {
-    for color in ["transparent", "white", "#112233"] {
+    for (color, expected) in [
+        ("transparent", None),
+        ("white", Some("#FFFFFF")),
+        ("#112233", Some("#112233")),
+    ] {
         let output = run_with_stdin(
             &["render", "--format", "svg", "--background", color, "-"],
             SOURCE,
@@ -90,13 +94,14 @@ fn native_svg_canvas_accepts_explicit_host_colors() {
         assert!(output.status.success(), "stderr: {:?}", output.stderr);
         let svg = String::from_utf8(output.stdout).expect("UTF-8 SVG");
         let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
-        assert!(
-            doc.root_element()
-                .attribute("style")
-                .unwrap()
-                .contains(&format!("background-color: {color};")),
-            "{svg}"
-        );
+        let canvas = doc
+            .root_element()
+            .children()
+            .find(|node| node.attribute("class") == Some("merman-theme-canvas"));
+        let fill = canvas
+            .and_then(|canvas| canvas.children().find(|node| node.has_tag_name("rect")))
+            .and_then(|rect| rect.attribute("fill"));
+        assert_eq!(fill, expected, "{svg}");
     }
 }
 

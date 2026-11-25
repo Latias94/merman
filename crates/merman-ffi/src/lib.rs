@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-//! Native ABI 3 exports for embedding Merman in C-compatible hosts.
+//! Native ABI 4 exports for embedding Merman in C-compatible hosts.
 //!
 //! The only exported C symbol is [`merman_get_native_api`]. Hosts discover a size-tagged
 //! function table and execute every operation through the shared binding operation path. No raw Rust
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 include!("generated/text_measurement_abi.rs");
-include!("generated/abi3.rs");
+include!("generated/native_abi.rs");
 
 const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
 #[cfg(feature = "svg")]
@@ -1112,7 +1112,7 @@ fn execute_with_engine<T>(
 
     consume(NativeExecution {
         operation: merman_native_operation_code(operation.key())
-            .expect("every C ABI 3 operation must retain its frozen numeric code"),
+            .expect("every native ABI operation must retain its frozen numeric code"),
         media_type,
         data,
         metadata_json: metadata.into_json_bytes(),
@@ -1298,7 +1298,7 @@ unsafe fn result_status_boundary(
     }
 }
 
-/// Discovers the generated native ABI 3 function table.
+/// Discovers the generated native ABI 4 function table.
 ///
 /// # Safety
 ///
@@ -1342,7 +1342,7 @@ unsafe fn get_native_api_impl(
             return Err(NativeFailure::new(
                 MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
                 format!(
-                    "out_api.struct_size capacity is {output_capacity}; expected at least the ABI 3 minimum prefix size {MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE}"
+                    "out_api.struct_size capacity is {output_capacity}; expected at least the native ABI minimum prefix size {MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE}"
                 ),
             ));
         }
@@ -3067,111 +3067,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "svg")]
-    #[test]
-    fn materialize_theme_operation_preserves_authoring_error_envelope() {
-        let api = api_table();
-        let mut result = native_result();
-        let mut engine = 0;
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-        ))
-        .unwrap();
-        for vector in vectors.as_array().unwrap() {
-            let source = vector["source"].as_str().unwrap().as_bytes();
-            let options = vector["options_json"].as_str().unwrap_or("").as_bytes();
-            let request = native_request_with_options(
-                MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
-                source,
-                options,
-            );
-            let expected_status = match vector["native_status_name"].as_str().unwrap() {
-                "invalid-argument" => MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
-                "resource-limit-exceeded" => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
-                other => panic!("unknown golden status: {other}"),
-            };
-            assert_eq!(
-                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-                expected_status
-            );
-            let payload: serde_json::Value = serde_json::from_slice(unsafe {
-                std::slice::from_raw_parts(
-                    result.metadata_or_error_json.data,
-                    result.metadata_or_error_json.len,
-                )
-            })
-            .unwrap();
-            assert_eq!(payload["status_name"], vector["native_status_name"]);
-            assert_eq!(payload["status"], expected_status);
-            assert_eq!(payload["details"]["resource"], vector["resource"]);
-            let mut authoring = payload["details"]["theme_authoring"].clone();
-            for diagnostic in authoring["diagnostics"]
-                .as_array_mut()
-                .expect("diagnostics array")
-            {
-                let message = diagnostic
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("message")
-                    .expect("diagnostic message");
-                assert!(!message.as_str().expect("string message").trim().is_empty());
-            }
-            assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
-            unsafe { api.result_free.unwrap()(&mut result) };
-        }
-        assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(engine) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_support_matches_shared_golden() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
-        ))
-        .unwrap();
-        let api = api_table();
-        let mut result = native_result();
-        let mut engine = 0;
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
-        for vector in vectors.as_array().unwrap() {
-            let source = vector["query"].to_string();
-            let request = native_request(
-                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
-                source.as_bytes(),
-            );
-            assert_eq!(
-                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-                MERMAN_NATIVE_STATUS_OK
-            );
-            assert_eq!(
-                result.operation,
-                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON
-            );
-            let actual: serde_json::Value = serde_json::from_slice(unsafe {
-                std::slice::from_raw_parts(result.data.data, result.data.len)
-            })
-            .unwrap();
-            assert_eq!(actual, vector["expected"], "{}", vector["id"]);
-            unsafe { api.result_free.unwrap()(&mut result) };
-        }
-        assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(engine) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-    }
-
     fn native_config() -> MermanNativeEngineConfig {
         MermanNativeEngineConfig {
             struct_size: native_struct_size::<MermanNativeEngineConfig>(),
@@ -3365,17 +3260,20 @@ mod tests {
     #[test]
     fn api_discovery_requires_exact_version_and_digest() {
         let mut api = empty_api();
-        let wrong_version = MermanNativeApiRequest {
+        // The released v0.11.0 header requests ABI 3 with this minimum-prefix digest.
+        let published_abi3 = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
-            expected_abi_version: 2,
+            expected_abi_version: 3,
             expected_minimum_prefix_layout_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
+                b"sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41",
             ),
         };
         assert_eq!(
-            unsafe { merman_get_native_api(&wrong_version, &mut api) },
+            unsafe { merman_get_native_api(&published_abi3, &mut api) },
             MERMAN_NATIVE_STATUS_ABI_MISMATCH
         );
+        assert_eq!(api.abi_version, 0);
+        assert!(api.runtime_catalog.is_none());
 
         let wrong_digest = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
@@ -5019,9 +4917,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         for (operation_id, expected) in [
             ("analysis-json", cfg!(feature = "analysis")),
             ("ascii", cfg!(feature = "ascii")),
-            ("describe-theme-support-json", cfg!(feature = "svg")),
-            ("export-theme-preset-json", cfg!(feature = "svg")),
-            ("materialize-theme-json", cfg!(feature = "svg")),
+            ("export-theme-preset", cfg!(feature = "svg")),
+            ("resolve-theme", cfg!(feature = "svg")),
             ("jpeg", cfg!(feature = "jpeg")),
             ("pdf", cfg!(feature = "pdf")),
             ("png", cfg!(feature = "png")),
@@ -5207,10 +5104,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                     assert_eq!(actual, expected, "{metadata_id}");
                     if metadata_id == "theme-catalog" && cfg!(feature = "svg") {
                         let catalog: serde_json::Value = serde_json::from_slice(actual).unwrap();
-                        let presets: serde_json::Value = serde_json::from_str(include_str!(
-                            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-                        )).unwrap();
-                        assert_eq!(catalog["presets"], presets);
+                        assert_eq!(catalog["schema_version"], 2);
+                        assert_eq!(catalog["presets"].as_array().unwrap().len(), 13);
                     }
                 }
                 Err(expected) => {
@@ -5927,18 +5822,20 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
         unsafe { api.result_free.unwrap()(&mut config_result) };
 
-        let request = native_request(i32::MAX, b"flowchart TD\nA --> B");
-        let mut result = native_result();
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
-        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
-        let error = result_json(&result);
-        assert_eq!(error["version"], MERMAN_NATIVE_RESULT_SCHEMA_VERSION);
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
-        assert!(error["capability_id"].is_null());
-        unsafe { api.result_free.unwrap()(&mut result) };
+        for code in [15, 16, 17, i32::MAX] {
+            let request = native_request(code, b"flowchart TD\nA --> B");
+            let mut result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+            );
+            assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
+            let error = result_json(&result);
+            assert_eq!(error["version"], MERMAN_NATIVE_RESULT_SCHEMA_VERSION);
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
+            assert!(error["capability_id"].is_null());
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK

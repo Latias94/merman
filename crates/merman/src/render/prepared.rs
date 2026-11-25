@@ -7,8 +7,6 @@ use crate::operation_runner::{Operation, PresentationArtifact};
 use merman_core::{ParseOptions, ParsedDiagramRender};
 use merman_model::resources::{InputResourcePolicy, ModelComplexity};
 use merman_model::runtime::OperationContext;
-#[cfg(feature = "svg")]
-use merman_render::diagram_theme::DiagramTheme;
 
 /// A successfully parsed source with frozen semantics, configuration and parse-time runtime facts.
 ///
@@ -30,8 +28,6 @@ struct PreparedSourceState {
     parse_options: ParseOptions,
     source_bytes: usize,
     complexity: ModelComplexity,
-    #[cfg(feature = "svg")]
-    theme: Option<DiagramTheme>,
 }
 
 impl PreparedSource {
@@ -41,7 +37,6 @@ impl PreparedSource {
         parse_options: ParseOptions,
         source_bytes: usize,
         complexity: ModelComplexity,
-        #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Self {
         Self {
             state: Arc::new(PreparedSourceState {
@@ -50,8 +45,6 @@ impl PreparedSource {
                 parse_options,
                 source_bytes,
                 complexity,
-                #[cfg(feature = "svg")]
-                theme,
             }),
         }
     }
@@ -78,10 +71,6 @@ impl PreparedSource {
     pub(crate) fn model_complexity(&self) -> ModelComplexity {
         self.state.complexity
     }
-    #[cfg(feature = "svg")]
-    pub(crate) fn theme(&self) -> Option<&DiagramTheme> {
-        self.state.theme.as_ref()
-    }
     pub(crate) fn parsed(&self) -> &PresentationDiagram {
         self.state.parsed.presentation()
     }
@@ -94,8 +83,6 @@ pub struct PrepareSourceRequest<'a> {
     control: OperationControl,
     parse_options: Option<ParseOptions>,
     resources: Option<InputResourcePolicy>,
-    #[cfg(feature = "svg")]
-    theme: Option<DiagramTheme>,
 }
 
 impl<'a> PrepareSourceRequest<'a> {
@@ -105,8 +92,6 @@ impl<'a> PrepareSourceRequest<'a> {
             control,
             parse_options: None,
             resources: None,
-            #[cfg(feature = "svg")]
-            theme: None,
         }
     }
     pub fn with_parse_options(mut self, options: ParseOptions) -> Self {
@@ -115,11 +100,6 @@ impl<'a> PrepareSourceRequest<'a> {
     }
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
         self.resources = Some(resources);
-        self
-    }
-    #[cfg(feature = "svg")]
-    pub fn with_theme(mut self, theme: DiagramTheme) -> Self {
-        self.theme = Some(theme);
         self
     }
 }
@@ -136,8 +116,6 @@ impl Renderer {
             control: request.control,
             parse_options: request.parse_options,
             resources: request.resources,
-            #[cfg(feature = "svg")]
-            theme: request.theme,
         };
         let (semantic, _) = self.parse_presentation_request(request)?;
         Ok(semantic.map(PresentationArtifact::into_prepared_source))

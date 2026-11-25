@@ -50,7 +50,7 @@ import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { useShallow } from "zustand/react/shallow";
 import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
 import { useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
-import { currentThemeRender } from "@/src/lib/theme-discovery";
+import { currentWorkspaceRender } from "@/src/runtime/render-coordinator";
 
 type ExportFormat = "svg" | "png" | "jpeg";
 type RasterSizingMode = RasterSizing["mode"];
@@ -188,8 +188,8 @@ function ExportDialog({
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
   const hostAppearance = useAppStore((state) => state.resolvedTheme);
   const renderState = useRenderCoordinator((state) => state);
-  const current = currentThemeRender(renderState, workspace, hostAppearance);
-  const changed = current.batch?.snapshot.publicationId !== target.publicationId;
+  const current = currentWorkspaceRender(renderState, workspace, hostAppearance);
+  const changed = current?.snapshot.publicationId !== target.publicationId;
   const intrinsic = useMemo(
     () => inspectSvgForRasterExport(target.svgArtifact),
     [target],
@@ -646,7 +646,7 @@ function ExportDialog({
                 />
               </>
             )}
-            <OutputCompatibility metadata={target.metadata} svgPipeline={target.svgPipeline}
+            <OutputCompatibility svgPipeline={target.svgPipeline}
               engine={target.engine} raster={usesRaster} />
           </div>
 

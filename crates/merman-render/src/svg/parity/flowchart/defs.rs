@@ -1,10 +1,10 @@
 //! Flowchart SVG defs and marker emission.
 
 use std::fmt;
-use std::sync::Mutex;
 
 use indexmap::IndexMap;
-use rustc_hash::{FxHashMap, FxHashSet};
+use merman_theme_contract::v2::MarkerStyle;
+use rustc_hash::FxHashMap;
 
 use super::super::util::{escape_xml, escape_xml_display};
 use super::{
@@ -35,16 +35,6 @@ impl FlowchartMarkerPaint {
         match self {
             Self::None | Self::Stroke => 1,
             Self::StrokeAndFill => 2,
-        }
-    }
-
-    fn source_owned_channels(self, source_admitted: bool, config_owned: bool) -> (bool, bool) {
-        // These flags prove source/config precedence, never visible stroke pixels. Neo margin
-        // shapes can own a stroke declaration while their fixed stroke width remains zero.
-        match self {
-            Self::None => (config_owned, config_owned),
-            Self::Stroke => (config_owned, source_admitted),
-            Self::StrokeAndFill => (source_admitted, source_admitted),
         }
     }
 
@@ -79,6 +69,7 @@ struct FlowchartMarkerViewport {
     size: [f64; 2],
 }
 
+#[cfg(any(feature = "layout-shoal", test))]
 impl FlowchartMarkerViewport {
     fn rotation_radius(self) -> f64 {
         // All built-in markers use a zero-origin viewBox and the SVG default
@@ -94,6 +85,46 @@ impl FlowchartMarkerViewport {
             .max((self.size[0] - reference_x).abs())
             .hypot(reference_y.abs().max((self.size[1] - reference_y).abs()))
     }
+}
+
+fn write_marker_shape(
+    out: &mut impl fmt::Write,
+    spec: &FlowchartMarkerShapeSpec,
+    style: MarkerStyle,
+) {
+    use crate::number_format::canonical_number as number;
+
+    let start = match spec.base {
+        FlowchartMarkerBase::PointStart => Some(true),
+        FlowchartMarkerBase::PointEnd => Some(false),
+        _ => None,
+    };
+    let Some((start, path)) = start.zip(crate::theme::marker_svg::arrow_path(style)) else {
+        let _ = out.write_str(spec.shape);
+        return;
+    };
+
+    let [width, height] = spec.viewport.view_box;
+    let [reference_x, reference_y] = spec.viewport.reference;
+    let [marker_width, marker_height] = spec.viewport.size;
+    let (translate, scale) = if start { (width, -width) } else { (0.0, width) };
+    let _ = write!(
+        out,
+        r#" viewBox="0 0 {} {}" refX="{}" refY="{}" markerUnits="userSpaceOnUse" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{path}" transform="matrix({} 0 0 {} {} 0)" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"#,
+        number(width),
+        number(height),
+        number(reference_x),
+        number(reference_y),
+        number(marker_width),
+        number(marker_height),
+        number(scale / 10.0),
+        number(height / 10.0),
+        number(translate),
+    );
+    if style == MarkerStyle::Open {
+        let _ = out.write_str(" fill: none; stroke-linecap: round; stroke-linejoin: round;");
+    }
+    let _ = out.write_char('"');
 }
 
 const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
@@ -344,22 +375,11 @@ struct FlowchartMarkerVariantKey {
     base: FlowchartMarkerBase,
     margin: bool,
     color_id: String,
-    typed_edge: bool,
 }
 
 impl FlowchartMarkerVariantKey {
     fn paint(&self) -> FlowchartMarkerPaint {
-        if self.typed_edge {
-            match self.base {
-                FlowchartMarkerBase::PointStart
-                | FlowchartMarkerBase::PointEnd
-                | FlowchartMarkerBase::CircleStart
-                | FlowchartMarkerBase::CircleEnd => FlowchartMarkerPaint::StrokeAndFill,
-                _ => FlowchartMarkerPaint::Stroke,
-            }
-        } else {
-            flowchart_marker_shape_spec(self.base, self.margin).paint
-        }
+        flowchart_marker_shape_spec(self.base, self.margin).paint
     }
 }
 
@@ -367,13 +387,11 @@ impl FlowchartMarkerVariantKey {
 struct PreparedFlowchartMarkerColor<'a> {
     raw: &'a str,
     id: String,
-    typed_edge: bool,
 }
 
 impl<'a> PreparedFlowchartMarkerColor<'a> {
     fn prepare(
         raw: &'a str,
-        typed_edge: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let normalization_work = 1usize
@@ -381,59 +399,7 @@ impl<'a> PreparedFlowchartMarkerColor<'a> {
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         work_meter.charge(normalization_work)?;
         let id = marker_color_id(raw);
-        // Source marker ids contain only ASCII alphanumerics and underscores. The hyphen keeps
-        // typed edge paint separate even when source and theme colors normalize identically.
-        let id = if typed_edge && !id.is_empty() {
-            format!("theme-{id}")
-        } else {
-            id
-        };
-        Ok(Self {
-            raw,
-            id,
-            typed_edge,
-        })
-    }
-}
-
-pub(in crate::svg::parity::flowchart) struct FlowchartMarkerPathCheckpoint<'a> {
-    pub key: crate::flowchart::FlowchartEdgeKey,
-    pub has_geometry: bool,
-    pub attributes: Option<&'a str>,
-}
-
-struct MarkerAttributeMatcher<'a> {
-    remaining: &'a str,
-    matches: bool,
-}
-
-impl fmt::Write for MarkerAttributeMatcher<'_> {
-    fn write_str(&mut self, value: &str) -> fmt::Result {
-        if let Some(rest) = self.remaining.strip_prefix(value) {
-            self.remaining = rest;
-        } else {
-            self.matches = false;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct FlowchartMarkerTerminalReceipt {
-    seen_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey>,
-    fill_owners: Vec<bool>,
-    stroke_owners: Vec<bool>,
-    valid: bool,
-}
-
-impl Default for FlowchartMarkerTerminalReceipt {
-    fn default() -> Self {
-        Self {
-            seen_edges: FxHashSet::default(),
-            fill_owners: Vec::new(),
-            stroke_owners: Vec::new(),
-            valid: true,
-        }
+        Ok(Self { raw, id })
     }
 }
 
@@ -442,9 +408,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
     #[cfg(test)]
     edges: FxHashMap<String, Vec<FlowchartEdgeMarkerReferences>>,
     edge_occurrences: FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgeMarkerReferences>,
-    terminal: Option<Mutex<FlowchartMarkerTerminalReceipt>>,
     variants: IndexMap<FlowchartMarkerVariantKey, String>,
-    hand_drawn: bool,
+    marker_style: MarkerStyle,
     base_marker_bytes: usize,
     bpmn_markers: bool,
     extra_marker_bytes: usize,
@@ -453,14 +418,13 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
 }
 
 impl FlowchartMarkerEmissionPlan {
-    fn new(hand_drawn: bool) -> Self {
+    fn new() -> Self {
         Self {
             #[cfg(test)]
             edges: FxHashMap::default(),
             edge_occurrences: FxHashMap::default(),
-            terminal: None,
             variants: IndexMap::new(),
-            hand_drawn,
+            marker_style: MarkerStyle::Classic,
             base_marker_bytes: 0,
             bpmn_markers: false,
             extra_marker_bytes: 0,
@@ -476,11 +440,9 @@ impl FlowchartMarkerEmissionPlan {
         let look = ctx.compatibility.look;
         let hand_drawn = look.is_hand_drawn();
         let neo = look.is_neo();
-        let mut plan = Self::new(hand_drawn);
-        ctx.work_meter
-            .charge(ctx.effect_eligibility.marker_route_work)?;
-        if ctx.effect_eligibility.marker {
-            plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
+        let mut plan = Self::new();
+        if let Some(native) = ctx.native {
+            plan.marker_style = native.form.marker_style;
         }
         for &edge in hierarchy_plan.ordered_edges() {
             ctx.edge_style_plan.bind_path_sources_for(
@@ -491,19 +453,12 @@ impl FlowchartMarkerEmissionPlan {
                 ctx.work_meter,
             )?;
             let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;
-            let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                ctx.edge_style_plan
-                    .emitted_source_stroke_status_for(edge.key, hand_drawn)?,
-                ctx.edge_stroke_config_override,
-            );
-            let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
-            let marker_color = typed_stroke.or_else(|| edge_styles.edge_marker_color(hand_drawn));
+            let marker_color = edge_styles.edge_marker_color(hand_drawn);
             let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
             plan.register_edge_with_identity(
                 edge.key,
                 edge.edge,
                 marker_color,
-                typed_stroke.is_some(),
                 margin,
                 ctx.document_ids().marker_scope(),
                 ctx.diagram_type,
@@ -517,120 +472,6 @@ impl FlowchartMarkerEmissionPlan {
             ctx.work_meter,
         )?;
         Ok(plan)
-    }
-
-    /// Called only after the complete edge path and its prepared references reach a checkpoint.
-    pub(in crate::svg::parity::flowchart) fn record_edge_checkpoint(
-        &self,
-        checkpoint: FlowchartMarkerPathCheckpoint<'_>,
-        source: crate::flowchart::FlowchartSourceFacetStatus,
-        config_owned: bool,
-        diagram_id: &str,
-        diagram_type: &str,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<()> {
-        let Some(terminal) = &self.terminal else {
-            return Ok(());
-        };
-        let key = checkpoint.key;
-        let references =
-            self.edge_occurrences
-                .get(&key)
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: format!(
-                        "missing prepared Flowchart marker occurrence {}",
-                        key.semantic_index()
-                    ),
-                })?;
-        let count = usize::from(references.start.is_some()) + usize::from(references.end.is_some());
-        if count == 0 {
-            if checkpoint
-                .attributes
-                .is_some_and(|attributes| !attributes.is_empty())
-            {
-                work_meter.charge(1)?;
-                terminal
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .valid = false;
-            }
-            return Ok(());
-        }
-        work_meter.charge(1 + count + references.serialized_bytes.div_ceil(64))?;
-        let mut actual = MarkerAttributeMatcher {
-            remaining: checkpoint.attributes.unwrap_or_default(),
-            matches: checkpoint.attributes.is_some(),
-        };
-        self.push_prepared_edge_marker_attributes(
-            &mut actual,
-            diagram_id,
-            diagram_type,
-            references,
-        );
-        let references_match = actual.matches && actual.remaining.is_empty();
-        let mut terminal = terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let first_checkpoint = terminal.seen_edges.insert(key);
-        terminal.valid &= checkpoint.has_geometry && references_match && first_checkpoint;
-        if !terminal.valid {
-            return Ok(());
-        }
-        for reference in [references.start, references.end].into_iter().flatten() {
-            let paint = if !self.hand_drawn && reference.variant_index.is_some() {
-                flowchart_marker_shape_spec(reference.base, reference.margin).paint
-            } else {
-                FlowchartMarkerPaint::None
-            };
-            let (fill, stroke) = paint.source_owned_channels(
-                source == crate::flowchart::FlowchartSourceFacetStatus::Admitted,
-                config_owned,
-            );
-            terminal.fill_owners.push(fill);
-            terminal.stroke_owners.push(stroke);
-        }
-        Ok(())
-    }
-
-    pub(in crate::svg::parity::flowchart) fn finish_theme_evidence(
-        &self,
-        theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Option<crate::family::FamilyThemeOutcomes>> {
-        use crate::diagram_theme::{ThemeTarget, ThemeVariant};
-        use crate::family::{
-            TerminalVariantDomain, UnsupportedTerminalDomain,
-            reconcile_unsupported_terminal_domains,
-        };
-        let (Some(terminal), Some(theme)) = (&self.terminal, theme) else {
-            return Ok(None);
-        };
-        let terminal = terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        work_meter.charge(self.edge_occurrences.len() + terminal.fill_owners.len())?;
-        let mut evidence = crate::family::FamilyThemeOutcomes::default();
-        if !terminal.valid
-            || self.edge_occurrences.iter().any(|(key, references)| {
-                (references.start.is_some() || references.end.is_some())
-                    && !terminal.seen_edges.contains(key)
-            })
-        {
-            // Expected references without a completed path are incomplete, not terminal-less.
-            return Ok(Some(evidence));
-        }
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut evidence,
-            &[UnsupportedTerminalDomain::direct(
-                ThemeTarget::Marker,
-                TerminalVariantDomain::uniform(terminal.fill_owners.len(), ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&terminal.fill_owners)
-            .with_source_owned_stroke(&terminal.stroke_owners)],
-            work_meter,
-        )?;
-        Ok(Some(evidence))
     }
 
     fn variant(&self, index: usize) -> (&FlowchartMarkerVariantKey, &str) {
@@ -650,7 +491,6 @@ impl FlowchartMarkerEmissionPlan {
         key: crate::flowchart::FlowchartEdgeKey,
         edge: &crate::flowchart::FlowEdge,
         marker_color: Option<&str>,
-        typed_edge: bool,
         margin: bool,
         diagram_id: &str,
         diagram_type: &str,
@@ -661,7 +501,7 @@ impl FlowchartMarkerEmissionPlan {
         let end_base = flowchart_edge_marker_end_base(edge);
         let prepared_color = if start_base.is_some() || end_base.is_some() {
             marker_color
-                .map(|raw| PreparedFlowchartMarkerColor::prepare(raw, typed_edge, work_meter))
+                .map(|raw| PreparedFlowchartMarkerColor::prepare(raw, work_meter))
                 .transpose()?
         } else {
             None
@@ -734,7 +574,6 @@ impl FlowchartMarkerEmissionPlan {
             edge,
             marker_color,
             false,
-            false,
             "diagram",
             "flowchart-v2",
             work_meter,
@@ -770,7 +609,6 @@ impl FlowchartMarkerEmissionPlan {
             base,
             margin,
             color_id: marker_color.id.clone(),
-            typed_edge: marker_color.typed_edge,
         };
         let variant_index = if let Some(index) = self.variants.get_index_of(&key) {
             index
@@ -818,7 +656,12 @@ impl FlowchartMarkerEmissionPlan {
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         self.preflight_serialization_input(base_marker_input_bytes.div_ceil(64), work_meter)?;
         let mut base_counter = SvgByteCounter::default();
-        push_base_markers(&mut base_counter, diagram_id, diagram_type);
+        push_base_markers(
+            &mut base_counter,
+            diagram_id,
+            diagram_type,
+            self.marker_style,
+        );
         if self.bpmn_markers {
             push_bpmn_markers(&mut base_counter, diagram_id, diagram_type);
         }
@@ -916,28 +759,6 @@ impl FlowchartMarkerEmissionPlan {
         out.checkpoint()
     }
 
-    /// Bounds the selected marker paint around either endpoint under any rotation.
-    pub(in crate::svg::parity::flowchart) fn edge_paint_outset_for(
-        &self,
-        key: crate::flowchart::FlowchartEdgeKey,
-    ) -> Option<f64> {
-        if self.hand_drawn {
-            return None;
-        }
-        let references = self.edge_occurrences.get(&key)?;
-        Some(
-            [references.start, references.end]
-                .into_iter()
-                .flatten()
-                .map(|reference| {
-                    flowchart_marker_shape_spec(reference.base, reference.margin)
-                        .viewport
-                        .rotation_radius()
-                })
-                .fold(0.0, f64::max),
-        )
-    }
-
     pub(in crate::svg::parity::flowchart) fn push_edge_marker_attributes_for(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -1015,6 +836,7 @@ impl FlowchartMarkerEmissionPlan {
                 key,
                 raw_color,
                 security_level_loose,
+                self.marker_style,
             );
         }
     }
@@ -1051,7 +873,12 @@ impl FlowchartDefs<'_> {
         self.work_meter
             .check_svg_append(out.len(), self.marker_plan.base_marker_bytes)?;
         let before = out.len();
-        push_base_markers(out, self.diagram_id, self.diagram_type);
+        push_base_markers(
+            out,
+            self.diagram_id,
+            self.diagram_type,
+            self.marker_plan.marker_style,
+        );
         if self.marker_plan.bpmn_markers {
             push_bpmn_markers(out, self.diagram_id, self.diagram_type);
         }
@@ -1077,7 +904,12 @@ impl FlowchartDefs<'_> {
     }
 }
 
-fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: &str) {
+fn push_base_markers(
+    out: &mut impl fmt::Write,
+    diagram_id: &str,
+    diagram_type: &str,
+    marker_style: MarkerStyle,
+) {
     let id = escape_xml(diagram_id);
     let ty = escape_xml(diagram_type);
     for spec in FLOWCHART_MARKER_SHAPE_SPECS {
@@ -1092,7 +924,7 @@ fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
             let _ = out.write_str("-margin");
         }
         let _ = write!(out, r#"" class="{} {}""#, spec.marker_class, ty.as_str());
-        let _ = out.write_str(spec.shape);
+        write_marker_shape(out, &spec, marker_style);
         let _ = out.write_str("/></marker>");
     }
     if diagram_type == "agentflow" {
@@ -1175,6 +1007,7 @@ fn push_extra_marker(
     key: &FlowchartMarkerVariantKey,
     raw_color: &str,
     security_level_loose: bool,
+    marker_style: MarkerStyle,
 ) {
     let raw_color = raw_color.trim_end_matches(';');
     let normalized_color;
@@ -1202,7 +1035,7 @@ fn push_extra_marker(
         spec.marker_class,
         escape_xml_display(diagram_type)
     );
-    let _ = out.write_str(spec.shape);
+    write_marker_shape(out, spec, marker_style);
     if let Some(color) = color {
         key.paint().push(out, color);
     }
@@ -1245,43 +1078,48 @@ mod tests {
 
     #[test]
     fn bpmn_markers_keep_their_source_viewports_no_fill_and_no_neo_margin_variant() {
-        for typed_edge in [false, true] {
-            let work = meter();
-            let color =
-                PreparedFlowchartMarkerColor::prepare("#2468ac", typed_edge, &work).unwrap();
-            let mut plan = FlowchartMarkerEmissionPlan::new(false);
-            for spec in BPMN_MARKER_SHAPE_SPECS {
-                let reference = plan
-                    .register_reference(spec.base, Some(&color), true, &work)
-                    .unwrap();
-                assert!(!reference.margin);
-                let (key, raw_color) = plan.variant(reference.variant_index.unwrap());
-                let mut svg = String::from("<svg>");
-                push_extra_marker(&mut svg, "diagram", "flowchart-v2", key, raw_color, false);
-                svg.push_str("</svg>");
-                let document = crate::xml_dom::Document::parse(&svg).unwrap();
-                let marker = document
-                    .descendants()
-                    .find(|node| node.has_tag_name("marker"))
-                    .unwrap();
-                assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
-                assert!(!marker.attribute("id").unwrap().contains("-margin"));
-                let shape = marker.children().find(|node| node.is_element()).unwrap();
-                assert_eq!(shape.attribute("stroke"), Some("#2468ac"));
-                assert_eq!(shape.attribute("fill"), None);
-                assert!(shape.attribute("style").unwrap().contains("fill: none"));
-                if shape.has_tag_name("circle") {
-                    assert_eq!(shape.attribute("r"), Some("3.6"));
-                    assert_eq!(marker.attribute("markerWidth"), Some("10"));
-                } else {
-                    assert_eq!(marker.attribute("markerWidth"), Some("12"));
-                    assert!(
-                        shape
-                            .attribute("style")
-                            .unwrap()
-                            .contains("stroke-linejoin: round")
-                    );
-                }
+        let work = meter();
+        let color = PreparedFlowchartMarkerColor::prepare("#2468ac", &work).unwrap();
+        let mut plan = FlowchartMarkerEmissionPlan::new();
+        for spec in BPMN_MARKER_SHAPE_SPECS {
+            let reference = plan
+                .register_reference(spec.base, Some(&color), true, &work)
+                .unwrap();
+            assert!(!reference.margin);
+            let (key, raw_color) = plan.variant(reference.variant_index.unwrap());
+            let mut svg = String::from("<svg>");
+            push_extra_marker(
+                &mut svg,
+                "diagram",
+                "flowchart-v2",
+                key,
+                raw_color,
+                false,
+                MarkerStyle::Classic,
+            );
+            svg.push_str("</svg>");
+            let document = crate::xml_dom::Document::parse(&svg).unwrap();
+            let marker = document
+                .descendants()
+                .find(|node| node.has_tag_name("marker"))
+                .unwrap();
+            assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
+            assert!(!marker.attribute("id").unwrap().contains("-margin"));
+            let shape = marker.children().find(|node| node.is_element()).unwrap();
+            assert_eq!(shape.attribute("stroke"), Some("#2468ac"));
+            assert_eq!(shape.attribute("fill"), None);
+            assert!(shape.attribute("style").unwrap().contains("fill: none"));
+            if shape.has_tag_name("circle") {
+                assert_eq!(shape.attribute("r"), Some("3.6"));
+                assert_eq!(marker.attribute("markerWidth"), Some("10"));
+            } else {
+                assert_eq!(marker.attribute("markerWidth"), Some("12"));
+                assert!(
+                    shape
+                        .attribute("style")
+                        .unwrap()
+                        .contains("stroke-linejoin: round")
+                );
             }
         }
     }
@@ -1289,7 +1127,7 @@ mod tests {
     #[test]
     fn bpmn_marker_references_defs_and_budget_share_one_prepared_plan() {
         let work = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         for (id, edge_type) in [
             ("open", "arrow_open_head"),
             ("hollow", "arrow_hollow_circle"),
@@ -1341,7 +1179,7 @@ mod tests {
             plan.base_marker_bytes + plan.extra_marker_bytes + plan.edge_marker_attribute_bytes - 1,
             usize::MAX,
         );
-        let mut rejected = FlowchartMarkerEmissionPlan::new(false);
+        let mut rejected = FlowchartMarkerEmissionPlan::new();
         for (id, edge_type) in [
             ("open", "arrow_open_head"),
             ("hollow", "arrow_hollow_circle"),
@@ -1410,7 +1248,7 @@ mod tests {
     #[test]
     fn marker_paint_viewports_match_emitted_marker_geometry() {
         let mut defs = String::new();
-        push_base_markers(&mut defs, "diagram", "flowchart-v2");
+        push_base_markers(&mut defs, "diagram", "flowchart-v2", MarkerStyle::Classic);
         let svg = format!("<svg>{defs}</svg>");
         let doc = crate::xml_dom::Document::parse(&svg).unwrap();
         for spec in FLOWCHART_MARKER_SHAPE_SPECS {
@@ -1453,54 +1291,9 @@ mod tests {
     }
 
     #[test]
-    fn edge_marker_paint_outsets_follow_selected_marker_occurrences() {
-        let meter = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
-        for (index, (edge_type, margin, x, y)) in [
-            ("double_arrow_point", false, 4.4_f64, 4.0_f64),
-            ("double_arrow_circle", false, 12.1, 5.5),
-            ("double_arrow_cross", false, 12.0, 5.8),
-            ("double_arrow_point", true, 10.5, 7.0),
-            ("double_arrow_circle", true, 17.15, 7.0),
-            ("double_arrow_cross", true, 14.8, 6.0),
-            ("arrow_open", false, 0.0, 0.0),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let key = crate::flowchart::FlowchartEdgeKey::new(index);
-            plan.register_edge_with_identity(
-                key,
-                &edge("duplicate", edge_type),
-                Some("#00f2ff"),
-                false,
-                margin,
-                "diagram",
-                "flowchart-v2",
-                &meter,
-            )
-            .unwrap();
-            let radius = plan.edge_paint_outset_for(key).unwrap();
-            assert!(
-                (radius - x.hypot(y)).abs() < 1e-12,
-                "{edge_type}/{margin}: {radius}"
-            );
-        }
-        assert_eq!(
-            plan.edge_paint_outset_for(crate::flowchart::FlowchartEdgeKey::new(99)),
-            None
-        );
-        plan.hand_drawn = true;
-        assert_eq!(
-            plan.edge_paint_outset_for(crate::flowchart::FlowchartEdgeKey::new(0)),
-            None
-        );
-    }
-
-    #[test]
     fn base_marker_defs_match_mermaid_11_16_1_bytes() {
         let mut defs = String::new();
-        push_base_markers(&mut defs, "diagram", "flowchart-v2");
+        push_base_markers(&mut defs, "diagram", "flowchart-v2", MarkerStyle::Classic);
 
         assert_eq!(
             defs,
@@ -1538,7 +1331,12 @@ mod tests {
             (FlowchartMarkerBase::CrossStart, true, true, false),
         ];
         let mut base_defs = String::new();
-        push_base_markers(&mut base_defs, "diagram", "flowchart-v2");
+        push_base_markers(
+            &mut base_defs,
+            "diagram",
+            "flowchart-v2",
+            MarkerStyle::Classic,
+        );
 
         for (base, margin, paints_surface, paints_fill) in cases {
             let base_id = format!(
@@ -1565,7 +1363,6 @@ mod tests {
                 base,
                 margin,
                 color_id: "_2468ac".to_string(),
-                typed_edge: false,
             };
             let mut actual = String::new();
             push_extra_marker(
@@ -1575,6 +1372,7 @@ mod tests {
                 &key,
                 "#2468ac",
                 false,
+                MarkerStyle::Classic,
             );
 
             assert_eq!(
@@ -1586,106 +1384,11 @@ mod tests {
     }
 
     #[test]
-    fn typed_edge_markers_paint_filled_shapes_and_all_outlines() {
-        for spec in FLOWCHART_MARKER_SHAPE_SPECS {
-            let key = FlowchartMarkerVariantKey {
-                base: spec.base,
-                margin: spec.margin,
-                color_id: "theme-_2468ac".to_string(),
-                typed_edge: true,
-            };
-            let mut actual = String::new();
-            push_extra_marker(
-                &mut actual,
-                "diagram",
-                "flowchart-v2",
-                &key,
-                "#2468ac",
-                false,
-            );
-            assert!(actual.contains(r##" stroke="#2468ac""##), "{actual}");
-            let filled_shape = matches!(
-                spec.base,
-                FlowchartMarkerBase::PointStart
-                    | FlowchartMarkerBase::PointEnd
-                    | FlowchartMarkerBase::CircleStart
-                    | FlowchartMarkerBase::CircleEnd
-            );
-            assert_eq!(
-                actual.contains(r##" fill="#2468ac""##),
-                filled_shape,
-                "{actual}"
-            );
-        }
-    }
-
-    #[test]
-    fn same_source_and_typed_color_keep_distinct_identity_and_exact_svg_budget() {
-        let source_edge = edge("source", "double_arrow_point");
-        let typed_edge = edge("typed", "double_arrow_point");
-        let meter = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(true);
-        plan.register_edge(&source_edge, Some("#2468ac"), &meter)
-            .unwrap();
-        plan.register_edge_with_identity(
-            crate::flowchart::FlowchartEdgeKey::new(1),
-            &typed_edge,
-            Some("#2468ac"),
-            true,
-            false,
-            "diagram",
-            "flowchart-v2",
-            &meter,
-        )
-        .unwrap();
-        plan.finalize_svg_budget("diagram", "flowchart-v2", false, &meter)
-            .unwrap();
-        assert_eq!(plan.variants.len(), 4);
-
-        let mut output = String::new();
-        push_base_markers(&mut output, "diagram", "flowchart-v2");
-        plan.push_extra_markers(&mut output, "diagram", "flowchart-v2", false);
-        assert_eq!(
-            output.len(),
-            plan.base_marker_bytes + plan.extra_marker_bytes
-        );
-        for suffix in ["pointStart", "pointEnd"] {
-            let source = marker_chunk(&output, &format!("diagram_flowchart-v2-{suffix}__2468ac"));
-            assert!(
-                source.contains(r##" stroke="#2468ac" fill="#2468ac""##),
-                "{source}"
-            );
-            let typed = marker_chunk(
-                &output,
-                &format!("diagram_flowchart-v2-{suffix}_theme-_2468ac"),
-            );
-            assert!(
-                typed.contains(r##" stroke="#2468ac" fill="#2468ac""##),
-                "{typed}"
-            );
-        }
-        for edge_id in ["source", "typed"] {
-            plan.push_edge_marker_attributes(
-                &mut output,
-                "diagram",
-                "flowchart-v2",
-                edge_id,
-                0,
-                &meter,
-            )
-            .unwrap();
-        }
-        assert_eq!(output.len(), meter.projected_svg_bytes());
-        assert!(output.contains("url(#diagram_flowchart-v2-pointEnd__2468ac)"));
-        assert!(output.contains("url(#diagram_flowchart-v2-pointEnd_theme-_2468ac)"));
-    }
-
-    #[test]
     fn colored_marker_plan_defines_every_referenced_base_in_first_use_order() {
         let circle = edge("circle", "double_arrow_circle");
         let cross = edge("cross", "double_arrow_cross");
         let point = edge("point", "double_arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&circle, Some("#ef4444"), &meter)
             .unwrap();
@@ -1771,7 +1474,7 @@ mod tests {
     fn duplicate_mermaid_edge_ids_keep_occurrence_scoped_marker_references() {
         let first = edge("duplicate", "double_arrow_circle");
         let second = edge("duplicate", "double_arrow_cross");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
         plan.register_edge(&second, Some("#22c55e"), &meter)
@@ -1806,7 +1509,7 @@ mod tests {
     fn colored_marker_plan_deduplicates_by_base_and_color_id_with_first_raw_color() {
         let first = edge("first", "arrow_point");
         let second = edge("second", "arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#abc"), &meter).unwrap();
         plan.register_edge(&second, Some("$abc"), &meter).unwrap();
@@ -1868,7 +1571,7 @@ mod tests {
     fn same_colored_bidirectional_base_is_deduplicated_without_merging_start_and_end() {
         let first = edge("first", "double_arrow_point");
         let second = edge("second", "double_arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
         assert_eq!(meter.used(), 7);
@@ -1909,7 +1612,7 @@ mod tests {
     #[test]
     fn uncolored_edges_keep_base_marker_references_and_emit_no_extra_defs() {
         let edge = edge("edge", "arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&edge, None, &meter).unwrap();
 
@@ -1941,7 +1644,7 @@ mod tests {
         assert_eq!(normalization_work, 3);
 
         let short_meter = meter_with_limits(usize::MAX, normalization_work);
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let error = plan
             .register_edge(&edge, Some(&color), &short_meter)
             .expect_err("normalization must be rejected before scanning the color");
@@ -1957,7 +1660,7 @@ mod tests {
 
         let exact_work = 1 + normalization_work + 1 + 1;
         let exact_meter = meter();
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some(&color), &exact_meter)
             .expect("normalization, reference, and variant work must be charged once each");
@@ -1968,16 +1671,16 @@ mod tests {
     fn agentflow_hierarchy_definitions_are_included_in_the_svg_budget() {
         let diagram_id = "diagram<&";
         let mut emitted = String::new();
-        push_base_markers(&mut emitted, diagram_id, "agentflow");
+        push_base_markers(&mut emitted, diagram_id, "agentflow", MarkerStyle::Classic);
         let exact_meter = meter_with_limits(emitted.len(), usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .finalize_svg_budget(diagram_id, "agentflow", false, &exact_meter)
             .unwrap();
         assert_eq!(exact_plan.base_marker_bytes, emitted.len());
         assert_eq!(exact_meter.projected_svg_bytes(), emitted.len());
         let short_meter = meter_with_limits(emitted.len() - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         let error = short_plan
             .finalize_svg_budget(diagram_id, "agentflow", false, &short_meter)
             .expect_err("hierarchy definitions cannot escape the precharged SVG ceiling");
@@ -1989,7 +1692,7 @@ mod tests {
     fn marker_plan_precharges_exact_serialized_bytes_and_work() {
         let edge = edge("edge", "double_arrow_circle");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#ef4444"), &probe_meter)
             .unwrap();
@@ -2004,7 +1707,7 @@ mod tests {
         assert_eq!(probe_meter.projected_svg_bytes(), projected);
 
         let exact_meter = meter_with_limits(projected, work);
-        let mut exact = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact = FlowchartMarkerEmissionPlan::new();
         exact
             .register_edge(&edge, Some("#ef4444"), &exact_meter)
             .unwrap();
@@ -2015,7 +1718,7 @@ mod tests {
         assert_eq!(exact_meter.projected_svg_bytes(), projected);
 
         let short_svg_meter = meter_with_limits(projected - 1, usize::MAX);
-        let mut short_svg = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_svg = FlowchartMarkerEmissionPlan::new();
         short_svg
             .register_edge(&edge, Some("#ef4444"), &short_svg_meter)
             .unwrap();
@@ -2026,7 +1729,7 @@ mod tests {
         assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
 
         let short_work_meter = meter_with_limits(usize::MAX, work - 1);
-        let mut short_work = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_work = FlowchartMarkerEmissionPlan::new();
         let result = short_work
             .register_edge(&edge, Some("#ef4444"), &short_work_meter)
             .and_then(|_| {
@@ -2043,7 +1746,7 @@ mod tests {
     fn marker_defs_check_the_whole_svg_ceiling_before_each_append() {
         let edge = edge("edge", "double_arrow_cross");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#22c55e"), &probe_meter)
             .unwrap();
@@ -2054,7 +1757,7 @@ mod tests {
         let prefix = "x".repeat(probe.edge_marker_attribute_bytes + 1);
 
         let exact_meter = meter_with_limits(prefix.len() + projected, usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some("#22c55e"), &exact_meter)
             .unwrap();
@@ -2074,7 +1777,7 @@ mod tests {
         assert_eq!(exact_out.len(), prefix.len() + projected);
 
         let short_meter = meter_with_limits(prefix.len() + projected - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         short_plan
             .register_edge(&edge, Some("#22c55e"), &short_meter)
             .unwrap();
@@ -2099,7 +1802,7 @@ mod tests {
     fn marker_attributes_check_the_whole_svg_ceiling_before_append() {
         let edge = edge("edge", "double_arrow_point");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#2563eb"), &probe_meter)
             .unwrap();
@@ -2111,7 +1814,7 @@ mod tests {
         let prefix = "x".repeat(definitions + 1);
 
         let exact_meter = meter_with_limits(prefix.len() + attributes, usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some("#2563eb"), &exact_meter)
             .unwrap();
@@ -2132,7 +1835,7 @@ mod tests {
         assert_eq!(exact_out.len(), prefix.len() + attributes);
 
         let short_meter = meter_with_limits(prefix.len() + attributes - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         short_plan
             .register_edge(&edge, Some("#2563eb"), &short_meter)
             .unwrap();
@@ -2154,209 +1857,6 @@ mod tests {
                 .is_err()
         );
         assert_eq!(short_out, before);
-    }
-
-    fn unsupported_marker_theme() -> crate::diagram_theme::ResolvedDiagramTheme {
-        use crate::diagram_theme::{
-            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-            ThemeStylePatch, ThemeTarget,
-        };
-        DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Marker,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#ca3579").unwrap()),
-                    )),
-                ),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::FLOWCHART)
-    }
-
-    #[test]
-    fn marker_missing_geometry_checkpoint_or_actual_reference_cannot_claim_source_owned_na() {
-        let theme = unsupported_marker_theme();
-        let work = meter();
-        for case in [
-            "complete",
-            "omitted",
-            "empty-geometry",
-            "missing-attributes",
-            "wrong-reference",
-            "extra-attribute",
-            "duplicate",
-        ] {
-            let mut plan = FlowchartMarkerEmissionPlan::new(false);
-            plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
-            plan.register_edge(&edge("edge", "arrow_point"), Some("#246801"), &work)
-                .unwrap();
-            let key = crate::flowchart::FlowchartEdgeKey::new(0);
-            let mut attributes = String::new();
-            plan.push_edge_marker_attributes_for(
-                &mut attributes,
-                "diagram",
-                "flowchart-v2",
-                key,
-                &work,
-            )
-            .unwrap();
-            let actual = match case {
-                "missing-attributes" => String::new(),
-                "wrong-reference" => attributes.replace("pointEnd", "circleEnd"),
-                "extra-attribute" => format!("{attributes} marker-start=\"url(#unexpected)\""),
-                _ => attributes,
-            };
-            if case != "omitted" {
-                for _ in 0..if case == "duplicate" { 2 } else { 1 } {
-                    plan.record_edge_checkpoint(
-                        FlowchartMarkerPathCheckpoint {
-                            key,
-                            has_geometry: case != "empty-geometry",
-                            attributes: Some(&actual),
-                        },
-                        crate::flowchart::FlowchartSourceFacetStatus::Admitted,
-                        false,
-                        "diagram",
-                        "flowchart-v2",
-                        &work,
-                    )
-                    .unwrap();
-                }
-            }
-            let evidence = plan
-                .finish_theme_evidence(Some(&theme), &work)
-                .unwrap()
-                .unwrap();
-            assert!(evidence.applied().is_empty(), "{case}");
-            assert!(evidence.residuals().is_empty(), "{case}");
-            assert_eq!(
-                evidence.not_applicable_mechanisms().len(),
-                usize::from(case == "complete"),
-                "{case}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_uncheckpointed_edge_without_marker_references_does_not_invalidate_the_marker_domain() {
-        let theme = unsupported_marker_theme();
-        let work = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
-        plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
-        plan.register_edge(&edge("open", "arrow_open"), None, &work)
-            .unwrap();
-        plan.register_edge(&edge("marked", "arrow_point"), None, &work)
-            .unwrap();
-        let key = crate::flowchart::FlowchartEdgeKey::new(1);
-        let mut attributes = String::new();
-        plan.push_edge_marker_attributes_for(
-            &mut attributes,
-            "diagram",
-            "flowchart-v2",
-            key,
-            &work,
-        )
-        .unwrap();
-        plan.record_edge_checkpoint(
-            FlowchartMarkerPathCheckpoint {
-                key,
-                has_geometry: true,
-                attributes: Some(&attributes),
-            },
-            crate::flowchart::FlowchartSourceFacetStatus::Absent,
-            false,
-            "diagram",
-            "flowchart-v2",
-            &work,
-        )
-        .unwrap();
-        let evidence = plan
-            .finish_theme_evidence(Some(&theme), &work)
-            .unwrap()
-            .unwrap();
-        assert_eq!(evidence.residuals().len(), 1);
-        assert!(evidence.not_applicable_mechanisms().is_empty());
-    }
-
-    #[test]
-    fn marker_checkpoint_work_rejection_does_not_advance_terminal_ownership() {
-        let theme = unsupported_marker_theme();
-        let work = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
-        plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
-        plan.register_edge(&edge("edge", "double_arrow_point"), Some("#246801"), &work)
-            .unwrap();
-        let key = crate::flowchart::FlowchartEdgeKey::new(0);
-        let mut attributes = String::new();
-        plan.push_edge_marker_attributes_for(
-            &mut attributes,
-            "diagram",
-            "flowchart-v2",
-            key,
-            &work,
-        )
-        .unwrap();
-        let limited = meter_with_limits(usize::MAX, 1);
-        assert!(
-            plan.record_edge_checkpoint(
-                FlowchartMarkerPathCheckpoint {
-                    key,
-                    has_geometry: true,
-                    attributes: Some(&attributes),
-                },
-                crate::flowchart::FlowchartSourceFacetStatus::Admitted,
-                false,
-                "diagram",
-                "flowchart-v2",
-                &limited
-            )
-            .is_err()
-        );
-        let terminal = plan.terminal.as_ref().unwrap().lock().unwrap();
-        assert!(terminal.valid);
-        assert!(terminal.seen_edges.is_empty());
-        assert!(terminal.fill_owners.is_empty());
-        assert!(terminal.stroke_owners.is_empty());
-        drop(terminal);
-        let evidence = plan
-            .finish_theme_evidence(Some(&theme), &work)
-            .unwrap()
-            .unwrap();
-        assert!(evidence.applied().is_empty());
-        assert!(evidence.residuals().is_empty());
-        assert!(evidence.not_applicable_mechanisms().is_empty());
-    }
-
-    #[test]
-    fn unexpected_actual_marker_reference_on_an_open_edge_keeps_the_domain_incomplete() {
-        let theme = unsupported_marker_theme();
-        let work = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
-        plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
-        plan.register_edge(&edge("open", "arrow_open"), None, &work)
-            .unwrap();
-        plan.record_edge_checkpoint(
-            FlowchartMarkerPathCheckpoint {
-                key: crate::flowchart::FlowchartEdgeKey::new(0),
-                has_geometry: true,
-                attributes: Some(" marker-end=\"url(#unexpected)\""),
-            },
-            crate::flowchart::FlowchartSourceFacetStatus::Absent,
-            false,
-            "diagram",
-            "flowchart-v2",
-            &work,
-        )
-        .unwrap();
-        let evidence = plan
-            .finish_theme_evidence(Some(&theme), &work)
-            .unwrap()
-            .unwrap();
-        assert!(evidence.applied().is_empty());
-        assert!(evidence.residuals().is_empty());
-        assert!(evidence.not_applicable_mechanisms().is_empty());
     }
 }
 #[cfg(test)]
@@ -2382,7 +1882,7 @@ mod paint_security_tests {
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let edge = super::tests::edge("edge", "arrow_point");
-            let mut plan = FlowchartMarkerEmissionPlan::new(false);
+            let mut plan = FlowchartMarkerEmissionPlan::new();
             plan.register_edge(&edge, Some(raw), &work).unwrap();
             plan.finalize_svg_budget("diagram", "flowchart-v2", loose, &work)
                 .unwrap();

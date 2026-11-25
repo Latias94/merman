@@ -110,7 +110,12 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             .iter()
             .map(|(key, edge)| (*key, edge.semantic)),
     );
-    let config = config::SwimlaneConfig::from_config(effective_config);
+    let mut config = config::SwimlaneConfig::from_config(effective_config);
+    if let Some(density) = svg_label_sidecar.and_then(|labels| labels.native_density()) {
+        let (_, spacing) = crate::flowchart::native_theme::density_scales(density);
+        config.node_gap *= spacing;
+        config.layer_gap *= spacing;
+    }
     let mut working = prepare::prepare(
         &render_model,
         (&visible_edges, &transport_plan),

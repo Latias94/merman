@@ -23,6 +23,18 @@ final class MermanOperationMetadata {
   final MermanOutputPlan? outputPlan;
   final String rawJson;
 
+  /// Returns the immutable v2 theme outcome when the operation reports one.
+  Map<String, Object?>? get themeOutcome {
+    final outcome = jsonObject['theme_outcome'];
+    if (outcome == null) return null;
+    if (outcome is! Map<String, Object?>) {
+      throw const FormatException(
+        'operation metadata theme_outcome must be an object',
+      );
+    }
+    return outcome;
+  }
+
   /// Decodes the preserved document, including fields unknown to this SDK.
   Map<String, Object?> get jsonObject {
     final value = jsonDecode(rawJson);

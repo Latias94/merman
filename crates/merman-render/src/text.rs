@@ -2,6 +2,7 @@ mod create_text;
 mod css_font;
 mod deterministic;
 mod flowchart_parity;
+mod fonts;
 mod heuristic;
 pub(crate) mod html_wrap;
 mod icons;
@@ -12,7 +13,6 @@ mod measure;
 mod metrics;
 mod svg_metrics;
 mod types;
-mod visible_style;
 mod whitespace;
 mod wrap;
 
@@ -22,6 +22,11 @@ pub use deterministic::{
     try_measure_wrapped_text_with_line_metrics,
 };
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
+pub use fonts::{
+    FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
+    FontStack, FontStackError, FontStyle, GenericFontFamily,
+};
+pub(crate) use fonts::{is_css_wide_keyword, validate_font_stack_families};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub(crate) use html_wrap::HtmlWhiteSpace;
 pub use icons::replace_fontawesome_icons;
@@ -65,8 +70,6 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use css_font::{
     ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight, xhtml_font_default,
 };
-pub(crate) use visible_style::VisibleTextStyleFacts;
-pub(crate) use visible_style::visible_text_font_size_after_style;
 
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,

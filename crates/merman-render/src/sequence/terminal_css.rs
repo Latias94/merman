@@ -1,8 +1,4 @@
-use super::{
-    SequencePreparedTerminalTheme, SequenceTerminalForegroundProvenance, SequenceTextSurface,
-    SequenceTypographyPlan,
-};
-use crate::diagram_theme::ThemeTypographyProperty;
+use super::{SequenceTextSurface, SequenceTypographyPlan};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SequencePreparedTextCssGroup {
@@ -13,10 +9,6 @@ pub(crate) struct SequencePreparedTextCssGroup {
 /// Sequence CSS values that require formatting or grouping during preparation.
 #[derive(Debug, Clone)]
 pub(crate) struct SequencePreparedCss {
-    pub(crate) typed_font: bool,
-    pub(crate) font_size_override: Option<String>,
-    pub(crate) lifeline_width: Option<String>,
-    pub(crate) message_width_override: Option<String>,
     pub(crate) actor_text_fill: String,
     pub(crate) message_text_fill: String,
     pub(crate) note_text_fill: String,
@@ -27,30 +19,12 @@ pub(crate) struct SequencePreparedCss {
 }
 
 impl SequencePreparedCss {
-    pub(super) fn resolve(
-        typography: &SequenceTypographyPlan,
-        terminal: &SequencePreparedTerminalTheme,
-    ) -> Self {
-        let typed_font = typography
-            .root_typed_properties()
-            .contains(&ThemeTypographyProperty::FontStack);
-        let font_size_override = typography
-            .root_typed_properties()
-            .contains(&ThemeTypographyProperty::FontSize)
-            .then(|| {
-                format!(
-                    "{}px",
-                    crate::number_format::canonical_number(typography.root_font_size_px())
-                )
-            });
+    pub(super) fn resolve(typography: &SequenceTypographyPlan) -> Self {
         let baseline_declaration = |surface| {
-            let terminal = typography.terminal_text_style(surface);
-            match terminal.foreground_provenance {
-                SequenceTerminalForegroundProvenance::TypedTheme => String::new(),
-                SequenceTerminalForegroundProvenance::PresentationConfig => {
-                    format!("fill:{};", terminal.foreground)
-                }
-            }
+            format!(
+                "fill:{};",
+                typography.compat_binding().text_surface_fill(surface)
+            )
         };
         let actor_text_fill = baseline_declaration(SequenceTextSurface::ParticipantLabel);
         let message_text_fill = baseline_declaration(SequenceTextSurface::MessageLabel);
@@ -76,7 +50,7 @@ impl SequencePreparedCss {
             for &surface in surfaces {
                 let declarations = typography
                     .role(surface.role())
-                    .css_declarations_for(surface)
+                    .css_declarations()
                     .unwrap_or_default();
                 if declarations.is_empty() {
                     continue;
@@ -96,18 +70,6 @@ impl SequencePreparedCss {
             text_groups.extend(groups);
         }
         Self {
-            typed_font,
-            font_size_override,
-            lifeline_width: terminal
-                .lifeline
-                .typed_stroke_width
-                .map(|width| crate::number_format::canonical_number(f64::from(width)).to_string()),
-            message_width_override: terminal.message.typed_stroke_width.map(|width| {
-                format!(
-                    "{}px",
-                    crate::number_format::canonical_number(f64::from(width))
-                )
-            }),
             actor_text_fill,
             message_text_fill,
             note_text_fill,

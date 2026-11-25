@@ -5,6 +5,8 @@ use crate::error::InputRole;
 use crate::error::{FileOperation, safe_path};
 #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use crate::input::{IO_CHUNK_BYTES, InputReadError};
+#[cfg(feature = "svg")]
+use crate::invocation::ResolvedDestination;
 use crate::invocation::ResolvedInput;
 use crate::invocation::ResolvedInvocation;
 use std::path::{Path, PathBuf};
@@ -41,6 +43,14 @@ impl LocalPreflight {
     pub(crate) fn path_free(invocation: ResolvedInvocation) -> Result<Self, CliError> {
         let is_path_free = match &invocation {
             ResolvedInvocation::Capabilities(_) => true,
+            #[cfg(feature = "svg")]
+            ResolvedInvocation::ThemeList { .. }
+            | ResolvedInvocation::ThemeExport {
+                output: ResolvedDestination::Stdout,
+                ..
+            } => true,
+            #[cfg(feature = "svg")]
+            ResolvedInvocation::ThemeCheck(args) => matches!(args.input, ResolvedInput::Stdin),
             #[cfg(feature = "analysis")]
             ResolvedInvocation::LintRules(_) => true,
             #[cfg(feature = "shell-completions")]
@@ -491,6 +501,13 @@ pub(crate) fn preflight(
     #[allow(unused_mut)]
     let mut publications = PublicationGuards::new(Some(cwd));
     match &mut invocation {
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::ThemeExport { output, .. } => {
+            if let Some(path) = output.file() {
+                let target = preflight_file_target(path, cwd, &[], MissingParent::Reject)?;
+                publications.approve_exact(target)?;
+            }
+        }
         #[cfg(feature = "fixes")]
         ResolvedInvocation::Fix(args) => {
             let inputs = preflight_fix(args, cwd, &mut publications)?;
@@ -502,10 +519,6 @@ pub(crate) fn preflight(
             if let Some(target) = args.output.destination().file() {
                 let target = preflight_file_target(target, cwd, &inputs, MissingParent::Reject)?;
                 publications.approve_exact(target)?;
-            }
-            #[cfg(feature = "svg")]
-            if let Some(path) = &args.common.render.theme_report {
-                preflight_theme_report(path, cwd, &inputs, &mut publications, None)?;
             }
             #[cfg(feature = "layout-shoal")]
             if let Some(path) = &args.common.render.preview_frame_out {
@@ -557,15 +570,6 @@ pub(crate) fn preflight(
                 namespace.directory(),
             )?;
             publications.approve_numbered(namespace, parent)?;
-            if let Some(path) = &args.common.render.theme_report {
-                preflight_theme_report(
-                    path,
-                    cwd,
-                    &inputs,
-                    &mut publications,
-                    Some(&transaction_root.expected),
-                )?;
-            }
             publications.approve_transaction_root(transaction_root)?;
             publications.protect(&inputs);
         }
@@ -796,7 +800,7 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
         }
         ResolvedInvocation::Parse(args) => {
             anchor_input(&mut args.input, cwd);
-            anchor_optional_path(&mut args.parse.config_file, cwd);
+            anchor_optional_path(&mut args.parse.source.config_file, cwd);
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Layout(args) => {
@@ -804,9 +808,11 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
             anchor_optional_path(&mut args.parse.config_file, cwd);
         }
         #[cfg(feature = "svg")]
-        ResolvedInvocation::ThemeInspect(args) => {
+        ResolvedInvocation::ThemeCheck(args) => {
             anchor_input(&mut args.input, cwd);
         }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::ThemeList { .. } | ResolvedInvocation::ThemeExport { .. } => {}
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => {
             anchor_input(&mut args.input, cwd);
@@ -859,11 +865,11 @@ fn anchor_optional_path(path: &mut Option<PathBuf>, cwd: &Path) {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cwd: &Path) {
     anchor_optional_path(&mut common.parse.config_file, cwd);
+    if let Some(crate::theme::ThemeInput::Document(input)) = &mut common.theme.theme {
+        anchor_input(input, cwd);
+    }
     #[cfg(feature = "svg")]
     {
-        anchor_optional_path(&mut common.render.theme_file, cwd);
-        anchor_optional_path(&mut common.render.theme_design_file, cwd);
-        anchor_optional_path(&mut common.render.theme_report, cwd);
         anchor_optional_path(&mut common.css_file, cwd);
     }
     #[cfg(feature = "layout-shoal")]
@@ -952,19 +958,10 @@ fn render_inputs(
             &common.cwd,
         )?);
     }
-    #[cfg(feature = "svg")]
-    if let Some(path) = common.render.theme_file.as_deref() {
+    if let Some(crate::theme::ThemeInput::Document(ResolvedInput::File(path))) = &common.theme.theme
+    {
         inputs.push(ProtectedInput::inspect(
-            "theme selection input",
-            InputRole::Auxiliary,
-            path,
-            &common.cwd,
-        )?);
-    }
-    #[cfg(feature = "svg")]
-    if let Some(path) = common.render.theme_design_file.as_deref() {
-        inputs.push(ProtectedInput::inspect(
-            "theme design input",
+            "theme document input",
             InputRole::Auxiliary,
             path,
             &common.cwd,
@@ -1670,29 +1667,7 @@ struct FileTarget {
     parent: DirectoryGuard,
 }
 
-#[cfg(feature = "svg")]
-fn preflight_theme_report(
-    path: &Path,
-    cwd: &Path,
-    inputs: &[ProtectedInput],
-    publications: &mut PublicationGuards,
-    managed_root: Option<&Path>,
-) -> Result<(), CliError> {
-    if path == Path::new("-") {
-        return Err(CliError::InvalidOutput(
-            "--theme-report requires a separate file, not stdout".to_owned(),
-        ));
-    }
-    let target = preflight_file_target(path, cwd, inputs, MissingParent::Reject)?;
-    if managed_root.is_some_and(|root| target.canonical.starts_with(root)) {
-        return Err(CliError::InvalidOutput(
-            "--theme-report must be outside the managed batch output directory".to_owned(),
-        ));
-    }
-    approve_render_sidecar(target, "theme report", publications)
-}
-
-#[cfg(feature = "svg")]
+#[cfg(feature = "layout-shoal")]
 fn approve_render_sidecar(
     target: FileTarget,
     label: &str,
@@ -1749,7 +1724,7 @@ fn approve_render_sidecar(
     publications.approve_exact(target)
 }
 
-#[cfg(feature = "svg")]
+#[cfg(feature = "layout-shoal")]
 fn identities_match(
     left: Option<&Arc<same_file::Handle>>,
     right: Option<&Arc<same_file::Handle>>,

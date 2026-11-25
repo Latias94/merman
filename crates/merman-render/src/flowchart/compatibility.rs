@@ -1,5 +1,8 @@
 use crate::config::{config_css_number_or_string, config_string};
+use crate::theme::{Color, FamilyTheme};
 use serde_json::Value;
+
+use super::native_theme::FlowchartNativeStyle;
 
 /// Operation-local visual compatibility inputs. Raw CSS remains observable in SVG.
 #[derive(Debug)]
@@ -15,6 +18,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
     pub(crate) stroke_width: String,
+    pub(crate) connector_stroke_width: Option<f32>,
     pub(crate) stroke_width_configured: bool,
     pub(crate) error_bkg: String,
     pub(crate) error_text: String,
@@ -25,6 +29,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) border2: String,
     pub(crate) drop_shadow: String,
     pub(crate) root_font_family: String,
+    pub(crate) root_font_weight: Option<u16>,
     pub(crate) agentflow_container_stroke: String,
     pub(crate) neo: crate::svg::PreparedCommonNeoCss,
     pub(crate) html_labels: bool,
@@ -32,7 +37,6 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) node_corner_radius: f64,
     pub(crate) node_corner_radius_configured: bool,
     pub(crate) rounded_rect_radius: Value,
-    pub(crate) rounded_rect_radius_configured: bool,
     pub(crate) rounded_rect_radius_truthy: bool,
     pub(crate) rounded_rect_radius_numeric: Option<f64>,
     pub(crate) note_fill: String,
@@ -77,10 +81,6 @@ impl FlowchartCompatibilityBinding {
             look: crate::config::config_diagram_look(config).into_static(),
             hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
             look_defs: crate::svg::PreparedLookDefs::new(config),
-            rounded_rect_radius_configured: node_corner_radius.is_some()
-                || rounded_rect_radius
-                    .as_str()
-                    .is_some_and(|value| !value.trim().is_empty()),
             rounded_rect_radius,
             rounded_rect_radius_truthy,
             rounded_rect_radius_numeric,
@@ -102,6 +102,7 @@ impl FlowchartCompatibilityBinding {
             main_bkg: theme("mainBkg", "#ECECFF"),
             stroke_width_configured: stroke_width.is_some(),
             stroke_width: stroke_width.unwrap_or_else(|| "1".to_owned()),
+            connector_stroke_width: None,
             error_bkg: theme("errorBkgColor", "#552222"),
             error_text: theme("errorTextColor", "#552222"),
             edge_label_background: theme("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
@@ -115,6 +116,7 @@ impl FlowchartCompatibilityBinding {
             cluster_border,
             drop_shadow: theme("dropShadow", "none"),
             root_font_family: crate::config::config_root_font_family_css(config),
+            root_font_weight: None,
             neo: crate::svg::PreparedCommonNeoCss::new(config),
             html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
             node_stroke_width: crate::config::config_f64(
@@ -128,85 +130,94 @@ impl FlowchartCompatibilityBinding {
             node_corner_radius_configured: node_corner_radius.is_some(),
         }
     }
+
+    fn native(
+        config: &merman_model::presentation::PresentationConfig,
+        theme: &FamilyTheme,
+        style: &FlowchartNativeStyle,
+    ) -> Self {
+        let roles = &theme.roles;
+        let text_color = roles.text_primary.to_string();
+        let line_color = roles.stroke_connector.first_color().to_string();
+        let border = style.border.to_string();
+        let width = style.form.stroke_width.to_string();
+        let radius = style.form.radius;
+        Self {
+            look: crate::config::config_diagram_look(config).into_static(),
+            hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
+            look_defs: crate::svg::PreparedLookDefs::new(config),
+            node_text_color: text_color.clone(),
+            text_color,
+            arrowhead_color: line_color.clone(),
+            state_inner_fill: line_color.clone(),
+            line_color,
+            node_border: border.clone(),
+            main_bkg: style.node.to_string(),
+            title_color: roles.text_title.to_string(),
+            neo: crate::svg::PreparedCommonNeoCss::native_node_stroke(&border, &width),
+            stroke_width: width,
+            connector_stroke_width: Some(style.form.connector_width as f32),
+            stroke_width_configured: config_css_number_or_string(
+                config,
+                &["themeVariables", "strokeWidth"],
+            )
+            .is_some(),
+            error_bkg: roles.status_danger.to_string(),
+            error_text: roles.text_callout.to_string(),
+            edge_label_background: "#00000000".to_owned(),
+            tertiary: style.emphasis.to_string(),
+            cluster_bkg: style.container.to_string(),
+            cluster_border: border.clone(),
+            border2: border.clone(),
+            drop_shadow: "none".to_owned(),
+            root_font_family: crate::theme::font_family_css(
+                theme.typography.stack(theme.typography.body_family),
+            ),
+            root_font_weight: Some(theme.typography.label_weight),
+            agentflow_container_stroke: border.clone(),
+            html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
+            node_stroke_width: style.form.stroke_width as f32,
+            node_corner_radius: radius,
+            node_corner_radius_configured: crate::config::config_f64(
+                config,
+                &["themeVariables", "radius"],
+            )
+            .is_some(),
+            rounded_rect_radius: serde_json::json!(radius),
+            rounded_rect_radius_truthy: radius > 0.0,
+            rounded_rect_radius_numeric: Some(radius),
+            note_fill: style.callout.to_string(),
+            note_stroke: border.clone(),
+            small_state_shadow: crate::config::value_at(config, &["themeVariables", "nodeShadow"])
+                .is_some_and(crate::config::json_value_is_truthy),
+            collapsed_agentflow_stroke: border,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedTheme {
     pub(crate) compatibility: FlowchartCompatibilityBinding,
-    pub(crate) text_surface: super::FlowchartTextSurfacePaintPlan,
-    pub(crate) effects: FlowchartEffectEligibility,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct FlowchartEffectEligibility {
-    pub(crate) edge: bool,
-    pub(crate) label: bool,
-    pub(crate) marker: bool,
-    pub(crate) marker_route_work: usize,
-}
-
-impl FlowchartEffectEligibility {
-    fn resolve(theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>) -> Self {
-        use crate::diagram_theme::{FamilyThemeMechanism, FamilyThemeRuleFacet, ThemeTarget};
-        let Some(theme) = theme else {
-            return Self::default();
-        };
-        let mut eligibility = Self {
-            marker_route_work: theme.family_mechanism_routes().len(),
-            ..Self::default()
-        };
-        for route in theme.family_mechanism_routes() {
-            match route.mechanism() {
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                }
-                | FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Edge,
-                    facet: FamilyThemeRuleFacet::Effect,
-                    ..
-                } => eligibility.edge = true,
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    ..
-                }
-                | FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    facet: FamilyThemeRuleFacet::Effect,
-                    ..
-                } => eligibility.label = true,
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Marker,
-                    ..
-                }
-                | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Marker,
-                }
-                | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Marker,
-                    ..
-                } => eligibility.marker = true,
-                _ => {}
-            }
-        }
-        eligibility
-    }
+    pub(crate) native: Option<FlowchartNativeStyle>,
 }
 
 impl FlowchartPreparedTheme {
     pub(crate) fn resolve(
-        theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         config: &merman_model::presentation::PresentationConfig,
-        node_owned: bool,
-        work: &crate::resources::OperationWorkMeter,
-    ) -> Result<Self, crate::resources::OperationWorkError> {
-        Ok(Self {
-            effects: FlowchartEffectEligibility::resolve(theme),
+        theme: Option<&FamilyTheme>,
+        background: Option<Color>,
+    ) -> Self {
+        if let Some(theme) = theme {
+            let native = FlowchartNativeStyle::resolve(theme, background);
+            return Self {
+                compatibility: FlowchartCompatibilityBinding::native(config, theme, &native),
+                native: Some(native),
+            };
+        }
+        Self {
+            native: None,
             compatibility: FlowchartCompatibilityBinding::resolve(config),
-            text_surface: super::FlowchartTextSurfacePaintPlan::resolve(
-                theme, config, node_owned, work,
-            )?,
-        })
+        }
     }
 }
 
@@ -240,8 +251,12 @@ mod tests {
     }
 
     #[test]
-    fn prepared_defs_keep_case_sensitive_darkness_and_empty_gradient_stops() {
-        for (theme, expected_flood) in [("custom-dark", "#FFFFFF"), ("Dark", "#000000")] {
+    fn prepared_defs_use_known_dark_themes_and_keep_empty_gradient_stops() {
+        for (theme, expected_flood) in [
+            ("neo-dark", "#FFFFFF"),
+            ("custom-dark", "#000000"),
+            ("Dark", "#000000"),
+        ] {
             let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
                 "theme": theme, "themeVariables": {"useGradient": " ON ",
                     "gradientStart": "", "secondaryBorderColor": "var(--stop)"}

@@ -2,7 +2,7 @@ use super::{
     MeasuredLabels, MeasurementTarget, RelationTerminals, measure_into, positive_label_size,
 };
 use crate::class::config::ClassLayoutSettings;
-use crate::class::{ClassDiagramModel, ClassRenderConfig, ClassTextThemePlan, normalize_dir};
+use crate::class::{ClassDiagramModel, ClassRenderConfig, normalize_dir};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
@@ -43,7 +43,6 @@ pub(in crate::class) fn measure_for_shoal<'a>(
     config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography: &ClassTextThemePlan,
     render: &ClassRenderConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ShoalMeasurement<'a>, MeasuredLabels)> {
@@ -83,7 +82,6 @@ pub(in crate::class) fn measure_for_shoal<'a>(
         math_renderer,
         render,
         false,
-        typography,
         Some(work),
         &mut target,
     )?;
@@ -326,6 +324,7 @@ fn size_from_pair((width, height): (f64, f64)) -> Size {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::class::ClassTextThemePlan;
     use crate::text::DeterministicTextMeasurer;
     use crate::{RenderResourcePolicy, resources::OperationWorkMeter};
     use merman_core::{MermaidEngine, ParseOptions};
@@ -382,7 +381,6 @@ A -- B : other
             config,
             &DeterministicTextMeasurer::default(),
             None,
-            &typography,
             &render,
             &mut work,
         )

@@ -543,25 +543,11 @@ pub(super) fn state_edge_prepare_geometry(
 }
 
 #[cfg(feature = "layout-shoal")]
-fn state_edge_stroke_outset(ctx: &StateRenderCtx<'_>, path_style: &str) -> f64 {
-    let inline_width = path_style.split(';').rev().find_map(|declaration| {
-        let (property, value) = declaration.split_once(':')?;
-        if property.trim() != "stroke-width" {
-            return None;
-        }
-        let value = value.trim();
-        value
-            .strip_suffix("px")
-            .unwrap_or(value)
-            .parse::<f64>()
-            .ok()
-            .filter(|width| width.is_finite() && *width >= 0.0)
-    });
-    inline_width.unwrap_or_else(|| {
-        ctx.style_plan
-            .compatibility()
-            .terminal_stroke_width_value(crate::state::StateTerminalSurface::Transition)
-    }) / 2.0
+fn state_edge_stroke_outset(ctx: &StateRenderCtx<'_>) -> f64 {
+    ctx.style_plan
+        .compatibility()
+        .terminal_stroke_width_value(crate::state::StateTerminalSurface::Transition)
+        / 2.0
 }
 
 #[cfg(feature = "layout-shoal")]
@@ -612,17 +598,12 @@ fn write_state_edge_path(
         return Ok(());
     }
 
-    let path_style = ctx
-        .style_plan
-        .edge(edge_id)
-        .map(crate::state::StateEdgeStylePlan::path_style_attr)
-        .filter(|style| !style.is_empty());
     #[cfg(feature = "layout-shoal")]
     let canonical = ctx
         .canonical_routes
         .map(|routes| {
             let origin = kurbo::Vec2::new(origin_x, origin_y);
-            let outset = state_edge_stroke_outset(ctx, path_style.unwrap_or_default());
+            let outset = state_edge_stroke_outset(ctx);
             let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved)?;
             let rough_d = if state_effective_look(ctx) == "handDrawn" {
                 work_meter.charge(geometry.path.d.len().max(1))?;
@@ -677,10 +658,6 @@ fn write_state_edge_path(
         );
     }
     original_style.push_str("fill:none;;;fill:none");
-    if let Some(style) = path_style {
-        original_style.push(';');
-        original_style.push_str(style);
-    }
     let style = if let Some(path) = hopped_d {
         super::super::line_hops::rewrite_style_after_line_hop(&original_style, path, work_meter)?
     } else {
@@ -740,22 +717,10 @@ pub(super) fn render_state_edge_path(
                 state_data_look(ctx) == "neo"
             };
             let suffix = if neo { "-margin" } else { "" };
-            ctx.style_plan
-                .edge(edge.id.as_str())
-                .filter(|style| !style.marker_style_attr().is_empty())
-                .and_then(crate::state::StateEdgeStylePlan::marker_ordinal)
-                .map(|ordinal| {
-                    format!(
-                        "url(#{})",
-                        super::state_transition_marker_id(ctx.diagram_id, ordinal)
-                    )
-                })
-                .or_else(|| {
-                    Some(format!(
-                        "url(#{}_stateDiagram-barbEnd{suffix})",
-                        ctx.diagram_id
-                    ))
-                })
+            Some(format!(
+                "url(#{}_stateDiagram-barbEnd{suffix})",
+                ctx.diagram_id
+            ))
         }
         _ => None,
     };
@@ -785,7 +750,7 @@ pub(super) fn render_state_edge_label(
     edge: &StateSvgEdge,
     origin_x: f64,
     origin_y: f64,
-) {
+) -> Result<()> {
     fn fallback_background_metadata_attr(id: &str, fill: Option<&str>) -> String {
         let Some(fill) = fill else {
             return String::new();
@@ -847,17 +812,17 @@ pub(super) fn render_state_edge_label(
 
     #[allow(
         clippy::too_many_arguments,
-        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+        reason = "The SVG writer takes geometry and resolved label styles separately."
     )]
     fn write_visible_edge_label(
         out: &mut impl SvgOutput,
         id: &str,
         label_text: &str,
         measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
-        label_pos: crate::model::LayoutPoint,
         w: f64,
         h: f64,
         html_labels: bool,
+        uses_native_background: bool,
         label_style: &str,
         label_div_prefix: &str,
         html_background_style: &str,
@@ -879,9 +844,7 @@ pub(super) fn render_state_edge_label(
                 fallback_background_metadata_attr(id, fallback_background_fill);
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                fmt_display(label_pos.x),
-                fmt_display(label_pos.y),
+                r#"<g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
@@ -915,11 +878,14 @@ pub(super) fn render_state_edge_label(
                     h / 2.0,
                 )
             };
+            let background_fill = if uses_native_background {
+                r#" fill="none""#
+            } else {
+                ""
+            };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none;{}" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
-                fmt_display(label_pos.x),
-                fmt_display(label_pos.y),
+                r#"<g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background"{background_fill} style="stroke: none;{}" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g>"#,
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
@@ -933,30 +899,7 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    let edge_style = ctx.style_plan.edge(edge.id.as_str());
-    let label_style = edge_style
-        .map(crate::state::StateEdgeStylePlan::label_style_attr)
-        .unwrap_or_default();
-    let label_div_prefix = edge_style
-        .map(crate::state::StateEdgeStylePlan::label_div_style_prefix)
-        .unwrap_or_default();
-    let html_background_style = edge_style
-        .map(crate::state::StateEdgeStylePlan::label_background_div_style_prefix)
-        .filter(|style| !style.is_empty())
-        .unwrap_or_else(|| {
-            ctx.style_plan
-                .transition_label_background_div_style_prefix()
-        });
-    let fallback_background_fill = edge_style
-        .and_then(crate::state::StateEdgeStylePlan::label_background_fallback_fill)
-        .or_else(|| ctx.style_plan.transition_label_background_fallback_fill());
-    let svg_background_style = edge_style
-        .map(crate::state::StateEdgeStylePlan::label_background_style_attr)
-        .filter(|style| !style.is_empty())
-        .unwrap_or_else(|| ctx.style_plan.transition_label_background_style_attr());
-    let empty_edge_label_style = edge_label_div_style(0.0, label_div_prefix, html_background_style);
-    let empty_fallback_background_metadata_attr =
-        fallback_background_metadata_attr(&edge.id, fallback_background_fill);
+    let empty_edge_label_style = edge_label_div_style(0.0, "", "");
     let label_text = if ctx.uses_elk_adapter_dom {
         crate::text::mermaid_html_breaks_to_newlines(&edge.label)
     } else {
@@ -965,22 +908,22 @@ pub(super) fn render_state_edge_label(
     let label_text = label_text.trim();
     if label_text.is_empty() {
         if ctx.uses_elk_adapter_dom {
-            return;
+            return Ok(());
         }
         write_empty_edge_label(
             out,
             &edge.id,
             ctx.html_labels,
             empty_edge_label_style.as_str(),
-            empty_fallback_background_metadata_attr.as_str(),
+            "",
         );
-        return;
+        return Ok(());
     }
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
-        return;
+        return Ok(());
     };
     let Some(lbl) = le.label.as_ref() else {
-        return;
+        return Ok(());
     };
 
     let label_position = crate::model::LayoutPoint {
@@ -1008,22 +951,60 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
+    let _ = write!(
+        out,
+        r#"<g class="edgeLabel" transform="translate({}, {})">"#,
+        fmt_display(label_position.x),
+        fmt_display(label_position.y),
+    );
+    let native_background = ctx.style_plan.compatibility().native_edge_label_paint;
+    if let Some(paint) = native_background {
+        use merman_theme_contract::v2::EdgeLabelBackground;
+
+        let fill = match paint.mode {
+            EdgeLabelBackground::Auto => {
+                let center =
+                    kurbo::Point::new(label_position.x + origin_x, label_position.y + origin_y);
+                ctx.work_meter
+                    .charge_emit_work(ctx.composite_paints.len())?;
+                ctx.composite_paints
+                    .values()
+                    .fold(paint.canvas, |backdrop, composite| {
+                        composite.composite_at(center, backdrop)
+                    })
+            }
+            EdgeLabelBackground::Canvas => paint.canvas,
+            EdgeLabelBackground::Pill => paint.node,
+            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
+        };
+        let bounds = kurbo::Rect::from_center_size((0.0, 0.0), (w, h));
+        let _ = crate::theme::edge_label_bg::write_backplate(
+            out,
+            bounds,
+            paint.mode,
+            fill,
+            paint.border,
+        );
+        out.checkpoint()?;
+    }
     write_visible_edge_label(
         out,
         &edge.id,
         label_text,
         ctx.label_sidecar
             .measured_native_geometry(crate::state::StateLabelOwner::Edge(&edge.id)),
-        label_position,
         w,
         h,
         ctx.html_labels,
-        label_style,
-        label_div_prefix,
-        html_background_style,
-        fallback_background_fill,
-        svg_background_style,
+        native_background.is_some(),
+        "",
+        "",
+        "",
+        None,
+        "",
     );
+    out.push_str("</g>");
+    Ok(())
 }
 
 #[cfg(test)]

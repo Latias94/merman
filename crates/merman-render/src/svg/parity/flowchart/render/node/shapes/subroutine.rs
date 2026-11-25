@@ -3,7 +3,6 @@
 use std::fmt::Write as _;
 
 use super::super::FlowchartNodeGeometry;
-use super::super::emission::FlowchartNodeShapeEmissionReceipt;
 use super::super::helpers::timed_node_roughjs;
 use super::super::roughjs::{
     RoughGeometryTarget, RoughPathPair, roughjs_prepare_hachure_paths_for_rect,
@@ -23,7 +22,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut FlowchartRenderDetails,
-) -> FlowchartNodeShapeEmissionReceipt {
+) {
     let total_w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     if common.look_is_hand_drawn()
@@ -52,7 +51,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
             write_outline(out, common, &ops_to_svg_path_d(stroke));
             out.push_str("</g>");
         }
-        return FlowchartNodeShapeEmissionReceipt::hand_drawn_subroutine();
+        return;
     }
 
     let w = (total_w - 2.0 * FRAME_WIDTH).max(1.0);
@@ -84,7 +83,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
         fmt_display(h / 2.0),
         OptionalStyleAttr(common.style)
     );
-    FlowchartNodeShapeEmissionReceipt::classic_polygon()
 }
 
 fn write_outline(

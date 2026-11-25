@@ -689,17 +689,10 @@ fn flowchart_math_label_metrics_for_layout(
     let config = if request.config.get_str("securityLevel").is_none() {
         let mut values = request.config.as_config().clone();
         values.set_value("securityLevel", serde_json::json!("strict"));
-        let evidence = request.config.theme_compatibility();
         let parts = merman_model::presentation::FrozenPresentationConfigParts::new(values)
             .with_explicit_config_paths(std::sync::Arc::clone(
                 request.config.shared_explicit_config_paths(),
-            ))
-            .with_theme_compatibility(
-                evidence.recipe().cloned(),
-                std::sync::Arc::clone(evidence.shared_fields()),
-            )
-            .with_palette_paint_authority(request.config.palette_paint_authority())
-            .with_family_paint_inputs(request.config.family_paint_inputs());
+            ));
         // Flowchart's standalone measurement defaults to strict without declaring an assignment.
         // Construction validates the derived values without charging the request's model limits.
         resolved_config = PresentationConfig::try_from_frozen_parts_controlled(
@@ -2062,12 +2055,6 @@ mod tests {
 
     #[test]
     fn strict_math_default_is_flowchart_local_and_preserves_frozen_declarations() {
-        use merman_model::presentation::{
-            FamilyPaintInputs, GitGraphPaintInputs, PalettePaintAuthority, ThemeCompatibilityField,
-            ThemeCompatibilityFieldKind, ThemeCompatibilityRecipe,
-        };
-        use merman_model::resources::{InputResourcePolicy, ResourceProfile};
-        use merman_model::{MermaidConfig, OperationControl};
         use std::sync::Arc;
 
         #[derive(Debug)]
@@ -2094,19 +2081,9 @@ mod tests {
                     config.shared_explicit_config_paths(),
                     self.original.shared_explicit_config_paths(),
                 ));
+                assert!(config.explicit_config_owns_path("fontFamily"));
+                assert_eq!(config.get_str("fontFamily"), Some("serif"));
                 assert!(!config.explicit_config_owns_path("securityLevel"));
-                assert_eq!(
-                    config.theme_compatibility(),
-                    self.original.theme_compatibility()
-                );
-                assert_eq!(
-                    config.palette_paint_authority(),
-                    self.original.palette_paint_authority()
-                );
-                assert_eq!(
-                    config.family_paint_inputs(),
-                    self.original.family_paint_inputs()
-                );
                 Some(TextMetrics {
                     width: 123.5,
                     height: 20.0,
@@ -2115,72 +2092,40 @@ mod tests {
             }
         }
 
-        let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let control = OperationControl::new();
-        let recipe = ThemeCompatibilityRecipe::try_new(
-            [0x5a; 32],
-            MermaidConfig::from_value(serde_json::json!({"darkMode": true})),
-        )
-        .unwrap();
-        let field = ThemeCompatibilityField::try_new_controlled(
-            Arc::from("mermaid.darkMode"),
-            ThemeCompatibilityFieldKind::DarkMode,
-            Arc::from([Arc::from("darkMode"), Arc::from("themeVariables.darkMode")]),
-            &policy,
-            &control,
-        )
-        .unwrap()
-        .unwrap();
-        for mask in [
-            None,
-            Some(FamilyPaintInputs::GitGraph(GitGraphPaintInputs::default())),
-        ] {
-            let config = crate::test_support::presentation_config(serde_json::json!({
-                "darkMode": true, "themeVariables": {"darkMode": true}, "custom": 7,
-            }));
-            let config = PresentationConfig::try_from_frozen_parts_controlled(
-                config
-                    .frozen_parts()
-                    .with_theme_compatibility(Some(recipe.clone()), Arc::from([field.clone()]))
-                    .with_palette_paint_authority(PalettePaintAuthority::SelectedPalette)
-                    .with_family_paint_inputs(mask),
-                &policy,
-                &control,
-            )
-            .unwrap()
-            .unwrap();
-            let style = TextStyle::default();
-            let generic =
-                crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
-                    measurer: &PreciseTextMeasurer,
-                    raw_label: "$$x$$",
-                    style: &style,
-                    max_width_px: None,
-                    wrap_mode: WrapMode::HtmlLike,
-                    config: &config,
-                    math_renderer: Some(&ConfigCheckingMathRenderer {
-                        original: &config,
-                        security: None,
-                    }),
-                })
-                .expect("generic math keeps the caller's configuration");
-            let flowchart = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let config = crate::test_support::presentation_config(serde_json::json!({
+            "fontFamily": "serif",
+        }));
+        let style = TextStyle::default();
+        let generic =
+            crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
                 measurer: &PreciseTextMeasurer,
                 raw_label: "$$x$$",
-                label_type: "text",
                 style: &style,
                 max_width_px: None,
                 wrap_mode: WrapMode::HtmlLike,
                 config: &config,
                 math_renderer: Some(&ConfigCheckingMathRenderer {
                     original: &config,
-                    security: Some("strict"),
+                    security: None,
                 }),
-            });
-            assert_eq!(generic.width, 123.5);
-            assert_eq!(flowchart.width, 123.5);
-            assert_eq!(config.get_str("securityLevel"), None);
-        }
+            })
+            .expect("generic math keeps the caller's configuration");
+        let flowchart = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &PreciseTextMeasurer,
+            raw_label: "$$x$$",
+            label_type: "text",
+            style: &style,
+            max_width_px: None,
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: Some(&ConfigCheckingMathRenderer {
+                original: &config,
+                security: Some("strict"),
+            }),
+        });
+        assert_eq!(generic.width, 123.5);
+        assert_eq!(flowchart.width, 123.5);
+        assert_eq!(config.get_str("securityLevel"), None);
     }
 
     #[test]

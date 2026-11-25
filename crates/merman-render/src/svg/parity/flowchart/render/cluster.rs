@@ -1,10 +1,7 @@
 //! Flowchart cluster renderer.
 
 use super::super::*;
-use crate::flowchart::{
-    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission, FlowchartFacetPrecedence,
-    FlowchartShapeFacetEmissionReceipt, FlowchartThemeFacetEmission,
-};
+use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
 use crate::svg::parity::flowchart::{
     cluster_geometry::painted_cluster_frame, util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
 };
@@ -39,7 +36,7 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     let left = frame.origin.x + ctx.tx - origin_x;
     let top = frame.origin.y + ctx.ty - origin_y;
     let agentflow = ctx.diagram_type == "agentflow";
-    if agentflow && (!terminal.theme.requests_shape_style() || terminal.fill == "none") {
+    if agentflow {
         let path = rounded_rect_path_d(left, top, width, height, 10.0);
         let _ = super::node::roughjs::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
             super::node::roughjs::RoughGeometryTarget::Query,
@@ -49,14 +46,8 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
             &ctx.hand_drawn_seed,
         );
     } else {
-        let path =
-            rounded_rect_path_d(left, top, width, height, if agentflow { 10.0 } else { 0.0 });
-        let stroke_width = parse_css_px_f32(
-            terminal.compiled.stroke_width.as_ref(),
-            terminal
-                .typed_stroke_width
-                .unwrap_or(if agentflow { 0.75 } else { 1.3 }),
-        );
+        let path = rounded_rect_path_d(left, top, width, height, 0.0);
+        let stroke_width = parse_css_px_f32(terminal.compiled.stroke_width.as_ref(), 1.3);
         let dash = terminal
             .compiled
             .stroke_dasharray
@@ -150,16 +141,38 @@ fn write_flowchart_cluster_shape(
     top: f64,
     rect_w: f64,
     rect_h: f64,
-) -> FlowchartShapeFacetEmissionReceipt {
+) {
     let compiled_styles = &terminal.compiled;
     let rect_style = terminal.rect_style.as_str();
-    let typed_stroke_width = terminal.typed_stroke_width;
     let fill = terminal.fill.as_str();
     let stroke = terminal.stroke.as_str();
     let agentflow = ctx.diagram_type == "agentflow";
-    // Keep Mermaid's source-only serialization intact. A requested typed shape uses the
-    // prepared source/theme winners and the same terminal receipts as Flowchart.
-    if agentflow && !terminal.theme.requests_shape_style() {
+    if let Some(native) = ctx.native {
+        let radius = native
+            .form
+            .container_radius
+            .min(rect_w.min(rect_h) / 2.0)
+            .max(0.0);
+        let _ = write!(
+            out,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{}px"#,
+            fmt_display(left),
+            fmt_display(top),
+            fmt_display(rect_w),
+            fmt_display(rect_h),
+            fmt_display(radius),
+            escape_attr(fill),
+            escape_attr(stroke),
+            fmt_display(native.form.stroke_width),
+        );
+        // The native defaults are CSS tokens. Only source declarations need Mermaid entity recovery.
+        if !rect_style.is_empty() {
+            let _ = write!(out, ";{}", escape_xml_display(rect_style));
+        }
+        out.push_str(r#""/>"#);
+        return;
+    }
+    if agentflow {
         let stroke = &ctx.compatibility.agentflow_container_stroke;
         if ctx.compatibility.look.as_str() == "handDrawn" {
             let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
@@ -179,10 +192,8 @@ fn write_flowchart_cluster_shape(
                     escape_xml_display(stroke),
                     escape_xml_display(stroke_dasharray),
                 );
-                return FlowchartShapeFacetEmissionReceipt {
-                    stroke_dasharray: true,
-                    ..FlowchartShapeFacetEmissionReceipt::none()
-                };
+
+                return;
             }
         }
         let _ = write!(
@@ -194,66 +205,28 @@ fn write_flowchart_cluster_shape(
             fmt_display(rect_h),
             escape_xml_display(stroke),
         );
-        return FlowchartShapeFacetEmissionReceipt::none();
+        return;
     }
 
     if ctx.compatibility.look.as_str() == "handDrawn" {
-        let stroke_width = parse_css_px_f32(
-            compiled_styles.stroke_width.as_ref(),
-            typed_stroke_width.unwrap_or(if agentflow { 0.75 } else { 1.3 }),
-        );
+        let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled_styles
             .stroke_dasharray
             .as_deref()
             .unwrap_or("0 0")
             .trim();
-        let path = rounded_rect_path_d(
-            left,
-            top,
-            rect_w,
-            rect_h,
-            if agentflow { 10.0 } else { 0.0 },
-        );
+        let path = rounded_rect_path_d(left, top, rect_w, rect_h, 0.0);
 
-        if agentflow && fill == "none" {
-            if let Some(stroke_d) =
-                super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
-                    &path,
-                    FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-                    ctx.work_meter,
-                    &ctx.hand_drawn_seed,
-                )
-            {
-                let border_style = cluster_rough_border_style(rect_style);
-                let _ = write!(
-                    out,
-                    r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
-                    escape_xml_display(&stroke_d),
-                    escape_xml_display(stroke),
-                    fmt_display(stroke_width as f64),
-                    escape_xml_display(stroke_dasharray),
-                    OptionalStyleXmlAttr(&border_style),
-                );
-                return FlowchartShapeFacetEmissionReceipt {
-                    fill: true,
-                    stroke: true,
-                    stroke_width: true,
-                    stroke_dasharray: true,
-                    remaining_shape_style: false,
-                };
-            }
-        } else if let Some((fill_d, stroke_d)) =
-            super::node::roughjs::roughjs_hachure_paths_for_svg_path(
-                &path,
-                stroke_width,
-                stroke_dasharray,
-                FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
-                FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
-                FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-                ctx.work_meter,
-                &ctx.hand_drawn_seed,
-            )
-        {
+        if let Some((fill_d, stroke_d)) = super::node::roughjs::roughjs_hachure_paths_for_svg_path(
+            &path,
+            stroke_width,
+            stroke_dasharray,
+            FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
+            FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
+            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+            ctx.work_meter,
+            &ctx.hand_drawn_seed,
+        ) {
             let background_style = cluster_rough_background_style(rect_style);
             let border_style = cluster_rough_border_style(rect_style);
             let _ = write!(
@@ -269,66 +242,20 @@ fn write_flowchart_cluster_shape(
                 escape_xml_display(stroke_dasharray),
                 OptionalStyleXmlAttr(&border_style),
             );
-            return FlowchartShapeFacetEmissionReceipt {
-                fill: true,
-                stroke: true,
-                stroke_width: true,
-                stroke_dasharray: true,
-                remaining_shape_style: false,
-            };
+
+            return;
         }
     }
 
-    let agentflow_attributes = if agentflow {
-        format!(
-            r#" rx="10" ry="10" fill="none" stroke="{}" stroke-width="0.75px""#,
-            escape_xml_display(stroke),
-        )
-    } else {
-        String::new()
-    };
     let _ = write!(
         out,
-        r#"<rect style="{}"{agentflow_attributes} x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"<rect style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml_display(rect_style),
         fmt_display(left),
         fmt_display(top),
         fmt_display(rect_w),
         fmt_display(rect_h)
     );
-    FlowchartShapeFacetEmissionReceipt::all()
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The emission receipt records independent fill, stroke, and width precedence at the shape writer boundary."
-)]
-fn record_cluster_shape_emission(
-    ctx: &FlowchartRenderCtx<'_>,
-    cluster_theme: &crate::flowchart::FlowchartClusterThemeStyle,
-    compiled_styles: &FlowchartCompiledStyles,
-    cluster_id: &str,
-    receipt: FlowchartShapeFacetEmissionReceipt,
-    fill_precedence: FlowchartFacetPrecedence,
-    stroke_precedence: FlowchartFacetPrecedence,
-    stroke_width_precedence: FlowchartFacetPrecedence,
-) -> crate::Result<()> {
-    let source_residuals =
-        compiled_styles.emitted_shape_source_residuals_with_receipt(cluster_id, receipt);
-    ctx.theme_evidence.record_cluster_emission(
-        cluster_theme,
-        FlowchartClusterThemeEmission {
-            fill: FlowchartThemeFacetEmission::new(fill_precedence, receipt.fill),
-            stroke: FlowchartThemeFacetEmission::new(stroke_precedence, receipt.stroke),
-            stroke_width: FlowchartThemeFacetEmission::new(
-                stroke_width_precedence,
-                receipt.stroke_width,
-            ),
-        },
-        &source_residuals,
-        ctx.work_meter,
-    )?;
-    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -398,11 +325,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     }
 
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
-    let cluster_theme = &terminal.theme;
     let compiled_styles = &terminal.compiled;
-    let fill_precedence = terminal.fill_precedence;
-    let stroke_precedence = terminal.stroke_precedence;
-    let stroke_width_precedence = terminal.stroke_width_precedence;
     let label_style = compiled_styles.label_style.trim();
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
@@ -427,11 +350,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let title_owner = ctx
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
-    let title_receipt = super::node::emission::FlowchartNodeLabelEmissionReceipt::verified()
-        .with_prepared_typography_reach(
-            !crate::flowchart::flowchart_label_is_empty_for_render(render_title),
-            false,
-        );
     let title_text_style = terminal.title_text_style.as_ref();
     // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
     // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
@@ -504,18 +422,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             escape_attr(&class_attr),
             escape_attr(data_look),
         );
-        let shape_source_receipt =
-            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-        record_cluster_shape_emission(
-            ctx,
-            cluster_theme,
-            compiled_styles,
-            cluster.id.as_str(),
-            shape_source_receipt,
-            fill_precedence,
-            stroke_precedence,
-            stroke_width_precedence,
-        )?;
+        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
         out.push_str("</g>");
         return out.checkpoint();
     }
@@ -531,18 +438,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             escape_xml_display(data_look),
         );
         if pass == FlowchartClusterPass::Complete {
-            let shape_source_receipt =
-                write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-            record_cluster_shape_emission(
-                ctx,
-                cluster_theme,
-                compiled_styles,
-                cluster.id.as_str(),
-                shape_source_receipt,
-                fill_precedence,
-                stroke_precedence,
-                stroke_width_precedence,
-            )?;
+            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
         }
         let _ = write!(
             out,
@@ -577,12 +473,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             if ctx.layout.route_contract.group_parents().is_some()
                 && matches!(label_type, "text" | "string")
             {
-                let style = prepared.merge_emission_font_style(Some(""));
                 crate::svg::parity::label::write_measured_svg_title(
                     out,
                     &prepared.wrapped_lines(),
-                    style.as_deref().unwrap_or(""),
-                    prepared.font_weight(),
+                    "",
+                    None,
                     cluster.title_label.width,
                 );
             } else {
@@ -590,47 +485,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             }
         }
         out.push_str("</g></g></g>");
-        if ctx.text_surface_paint.requested() {
-            let facts = if label_type == "markdown" {
-                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(render_title)
-            } else {
-                crate::text::VisibleTextStyleFacts::plain_text(
-                    if crate::flowchart::flowchart_label_is_empty_for_render(render_title) {
-                        ""
-                    } else {
-                        render_title
-                    },
-                )
-            };
-            // Assigned-class CSS still reaches tspans even though inline label_style is omitted.
-            ctx.text_surface_paint.record_label(
-                cluster.id.as_str(),
-                &facts,
-                super::super::css::cluster_title_class_foreground(
-                    ctx.class_defs,
-                    classes,
-                    ctx.work_meter,
-                )?
-                .merge(terminal.structural_sources.label_foreground),
-                ctx.work_meter,
-            )?;
-        }
-
-        ctx.theme_evidence.record_source_residuals(
-            &compiled_styles
-                .emitted_label_source_residuals(cluster.id.as_str(), label_type != "markdown"),
-        );
-        ctx.record_base_typography_label_emission(
-            crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
-                title_owner,
-                title_receipt.typography_applicable(),
-                title_receipt.typography_verified(),
-            )
-            .with_source_facets(
-                compiled_styles.source_font_stack_status(),
-                compiled_styles.source_font_size_status(),
-            ),
-        );
         return Ok(());
     }
 
@@ -674,18 +528,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         escape_xml_display(data_look),
     );
     if pass == FlowchartClusterPass::Complete {
-        let shape_source_receipt =
-            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-        record_cluster_shape_emission(
-            ctx,
-            cluster_theme,
-            compiled_styles,
-            cluster.id.as_str(),
-            shape_source_receipt,
-            fill_precedence,
-            stroke_precedence,
-            stroke_width_precedence,
-        )?;
+        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
     }
     let _ = write!(
         out,
@@ -698,42 +541,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         escape_xml_display(&div_style),
         span_style_attr,
         title_html
-    );
-    if ctx.text_surface_paint.requested() {
-        ctx.text_surface_paint.record_label(
-            cluster.id.as_str(),
-            &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(title_html.as_ref()),
-            compiled_styles
-                .source_label_foreground_status()
-                .merge(terminal.structural_sources.label_foreground),
-            ctx.work_meter,
-        )?;
-    }
-    ctx.theme_evidence.record_source_residuals(
-        &compiled_styles.emitted_html_label_source_residuals(
-            cluster.id.as_str(),
-            true,
-            &title_html,
-        ),
-    );
-    let html_typography_statuses =
-        crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
-            title_html.as_ref(),
-        );
-    ctx.record_base_typography_label_emission(
-        crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
-            title_owner,
-            title_receipt.typography_applicable(),
-            title_receipt.typography_verified(),
-        )
-        .with_source_facets(
-            compiled_styles
-                .source_font_stack_status()
-                .merge(html_typography_statuses.0),
-            compiled_styles
-                .source_font_size_status()
-                .merge(html_typography_statuses.1),
-        ),
     );
     Ok(())
 }

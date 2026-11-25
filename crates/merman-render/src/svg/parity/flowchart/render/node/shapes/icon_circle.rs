@@ -12,7 +12,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
+) -> crate::Result<()> {
     let (top_label, icon_size, label_bbox_w, label_bbox_h, diameter, outer_w, outer_h, icon_dy) =
         prepare_icon_circle_geometry(ctx, common, label);
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
@@ -68,7 +68,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     } else {
         outer_h / 2.0 - label_bbox_h
     };
-    let label_receipt = common.label_emission.write_special_html_label(
+    common.label_emission.write_special_html_label(
         out,
         ctx,
         common,
@@ -120,7 +120,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(label_receipt)
+    Ok(())
 }
 
 fn prepare_icon_circle_geometry(

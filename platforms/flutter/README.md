@@ -2,13 +2,13 @@
 
 [![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
+Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package uses Merman's size-tagged native function table and Native Assets to bundle libraries for supported targets.
 
-This guide documents `0.11.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
+The installation commands below pin `0.11.0`. The Theme v2 examples target the current source checkout. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> `Merman.open()` accepts only the exact native package version `0.11.0` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> The current source requires the complete native ABI 4 table and Options JSON schema `4`. Use a native library built from the same source to run the Theme v2 examples. `Merman.open()` requires the exact native package version recorded by the Dart package. `Merman.openPath(...)` accepts a different package version when it provides the complete matching ABI and runtime schemas.
 
-Version `0.11.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, theme execution evidence schema `2`, and ASCII output schema `4`. In `MermanAsciiOutputPlan`, read nullable `primaryOverflowed` for the primary layout and `emittedOverflowed` for the output text. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
+Version `0.11.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, and ASCII output schema `4`. In `MermanAsciiOutputPlan`, read nullable `primaryOverflowed` for the primary layout and `emittedOverflowed` for the output text. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
 
 ## Install
 
@@ -122,7 +122,7 @@ print(output.metadata.runtimePolicy);
 print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+Convenience methods use `execute` to expose operations such as `analysisFactsJson`, `svgPlanJson`, and Theme v2 authoring. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
 The target assets provide SVG including math, semantic and layout JSON, Cytoscape and ELK layout,
 ASCII, analysis, validation, and document analysis. PNG, JPEG, PDF and native runtime adapters
@@ -180,35 +180,7 @@ try {
 
 ## Inspect Native Metadata
 
-The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
-
-`MermanThemePreset` groups one design's `supportedAppearances`, `defaultAppearance`, and
-`appearances`. Each `MermanThemePresetAppearance` has the exact `concretePresetId`,
-`previewColors` for ordered picker swatches,
-`familyDesigns` exposes curated family treatment, and `applicationNotes` contains typed
-`MermanThemePresetApplicationNote` values with an open `id`, `familyId`, readable `message`, and
-nullable `recommendedConfig` map. Use a matching artifact that provides this metadata; a package
-version alone does not establish its availability for host-owned libraries loaded with
-`Merman.openPath(...)`. The current catalog requires its appearance-specific arrays;
-missing or malformed fields are rejected. Recommendation maps
-and their nested maps/lists are also copied and immutable. `base_only` is the shared base appearance with necessary family adaptations;
-`dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
-Unknown values survive decoding. This metadata does not grant qualification or portability and
-must not cause an implicit switch to a different preset when the diagram family changes.
-The catalog, presets, appearances, and Mermaid groups expose an immutable `jsonObject` retaining
-additive raw fields. `mermaidThemeDesigns` preserves the upstream literal IDs; Default and Dark
-remain independent, while Neo, Redux, and Redux Color explicitly declare their paired appearances.
-
-Build the picker from the runtime inventory, using `id` for persistence and `displayName` for
-labels. It groups 11 designs with 14 concrete presets, including `paper-cut`, `carbon-copy`, and
-`pop-art`. Editor, Gruvbox, and Ayu provide both Light and Dark. Ghibli has a dedicated Pie design;
-all current built-ins remain alpha with empty qualification cells. Show applicable notes by
-`familyId`, preserving unknown IDs and
-their fallback messages. Offer `recommendedConfig` as an explicit action that merges into the
-host's Mermaid configuration while preserving unrelated nested values. Pass accepted settings
-through `site_config` in the operation's options JSON; preset selection alone does not apply them.
-Preview colors and application notes are curated visual guidance. Inspect the actual operation's
-theme execution metadata for its rendering outcome and target admission.
+The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, and theme catalogs. Decoded values are immutable and cached on the `Merman` instance. The `jsonObject` fields preserve additive metadata.
 
 ```dart
 final diagrams = merman.supportedDiagrams();
@@ -217,58 +189,43 @@ final families = merman.diagramFamilyCapabilities();
 final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
 final themeCatalog = merman.themeCatalog();
-final rawCatalog = merman.metadataJson('supported-diagrams');
+final rawCatalog = merman.metadataJson('theme-catalog');
 ```
 
-These discovery methods use the ABI 3 `metadata_collect` table slot. Discovery requires the current complete table before any engine or metadata API is exposed, including for `Merman.openPath(...)`.
+These methods use the `metadata_collect` table slot. Both `Merman.open()` and `Merman.openPath(...)` validate the native table before exposing metadata or engine operations.
 
-Select a discovered preset through Options JSON schema `3`:
+## Diagram Themes
 
-```dart
-const pieSource = 'pie\n"A":35\n"B":65';
-final themedSvg = merman.renderSvg(
-  pieSource,
-  optionsJson: '{"version":3,"theme":{"preset":"ghibli"}}',
-);
-```
+`MermanThemeCatalog` decodes schema `2`. Each preset has an `id`, `name`, `description`, `category`, `appearances`, `defaultAppearance`, and six `swatches` for its default appearance. `mermaidThemes` lists the classic Mermaid IDs, and `families` contains the native theme capability bitmask for each diagram family. For classic Mermaid styling, set `site_config.theme`.
 
-One design can also provide both reading modes:
+Set `theme` to a preset ID, a selector with `preset` or `document`, or an inline Theme v2 document. A selector can also set `appearance` (`light` or `dark`) and `precedence` (`host` or `source`). Resolve the app's appearance preference in Dart before passing it to Merman. For a reusable engine, omit `theme` to inherit the configured selection or use `"none"` to clear it for one request.
 
 ```dart
 import 'dart:convert';
 
-final recipe = merman.execute(MermanOperation.exportThemePresetJson, 'editor').jsonObject;
-final themeJson = const JsonEncoder.withIndent('  ').convert(recipe);
-final importedRecipe = jsonDecode(themeJson);
-final inspection = merman.execute(
-  MermanOperation.materializeThemeJson,
-  jsonEncode({'schema_version': 1, 'action': 'inspect', 'recipe': importedRecipe}),
+final exported = merman.execute(MermanOperation.exportThemePreset, 'studio');
+final themeJson = exported.utf8Text;
+final checked = merman.execute(
+  MermanOperation.resolveTheme,
+  jsonEncode({'document': themeJson, 'appearance': 'dark'}),
 ).jsonObject;
-final darkSvg = merman.renderSvg(
+if (checked['ok'] != true) {
+  throw FormatException(checked['message'] as String);
+}
+final rendered = merman.execute(
+  MermanOperation.svg,
   'flowchart LR\nA[Review] --> B[Publish]',
-  optionsJson: jsonEncode({'theme': {'recipe': importedRecipe, 'appearance': 'dark'}}),
+  optionsJson: jsonEncode({
+    'theme': {'document': exported.jsonObject, 'appearance': 'dark'},
+    'background': 'transparent',
+  }),
 );
+print(rendered.metadata.themeOutcome);
 ```
 
-Save `themeJson`, edit its `design` values, and decode the edited text in place of the round-trip
-string above. Keep `schema_version`, `kind`, and the complete recipe for customization and reuse.
-The [theme authoring example](https://github.com/Latias94/merman/blob/main/platforms/flutter/tool/theme_authoring_smoke.dart)
-also exercises these operations through one-shot and reusable clients. Shared values live in `design`;
-appearance exceptions live in `design.appearances`. An omitted selector uses the declared
-default, while an explicit unsupported appearance fails. Resolve Follow-app/editor in the host
-before submitting `light` or `dark`. Whole-design admission validates inactive appearances too.
-For a concrete snapshot, use the same authoring operation with `action: "materialize"` and
-`appearance: "dark"`; its `spec` no longer retains the shared design relationships.
+`exportThemePreset` takes the raw preset ID and returns editable JSON. `resolveTheme` accepts the document as a JSON object or original JSON text, and supports `auto_fix_contrast` in the request envelope. Send the original text to retain document-relative `line`, `column`, and `path` in errors. SVG metadata includes the render's `theme_outcome`, exposed as `themeOutcome` in Dart.
 
-For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
-or supply a complete selection or recipe to replace it.
-
-Flowchart glow and shadow effects support the documented shapes in Classic and Neo. Other families
-retain their own look and output restrictions; selecting a preset does not change the look or layout
-engine. Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
-resources in recipes are rejected. This Dart facade does not expose the native C/WASI
-memory-font constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
-for version-1 recipes, support discovery, and portability policy.
+`background` overrides the theme canvas with a color or `"transparent"`. On custom artifacts with PNG, JPEG, or PDF export, use `export_matte` for an opaque export backing color. Native themes supply palettes for truecolor and 256-color ASCII. Set `ascii.theme` to provide an explicit terminal palette. [Theme authoring smoke](https://github.com/Latias94/merman/blob/main/platforms/flutter/tool/theme_authoring_smoke.dart) · [Theme v2 schema](https://github.com/Latias94/merman/blob/main/schemas/theme-v2.schema.json)
 
 ## Options And Resource Limits
 
@@ -278,7 +235,7 @@ One-shot `Merman` methods accept the complete schema-3 options document for that
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 3,
+      "version": 4,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
@@ -299,7 +256,7 @@ The default interactive profile admits SVG math. Explicit `constrained` policy r
 native math backend with `MermanMissingCapabilityException` and capability `math`; compiled
 math does not remove the need for host execution and memory limits.
 
-`MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
+`MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
 Every current resource descriptor reports `minimum_value`; omitting it is a runtime-catalog contract error.
 
@@ -399,7 +356,7 @@ The build hook owns platform selection and Flutter owns final app bundling, fram
 ## Local Development
 
 The checked-in low-level binding is generated with `ffigen` from the public C header. It validates
-the size-tagged ABI 3 table and minimum-prefix digest, while release builds require the current
+the size-tagged ABI 4 table and minimum-prefix digest, while release builds require the current
 matching header/table contract. Application code uses `merman.dart` and never needs ABI pointers
 or record definitions.
 
@@ -409,7 +366,7 @@ cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
 flutter analyze
-dart run tool/abi3_contract_test.dart
+dart run tool/native_abi_contract_test.dart
 dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart

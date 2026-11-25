@@ -1,139 +1,104 @@
 import Foundation
 import Merman
 
-// Consume the same repository vectors as the Python, Dart, and native C smokes.
-func verifyThemeAuthoringGoldens(client: Merman) throws {
-    let fixtures = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .appendingPathComponent("../../../../../../crates/merman-theme-authoring-fixtures/fixtures/authoring-v1")
-        .standardizedFileURL
-    func read(_ name: String) throws -> Data {
-        try Data(contentsOf: fixtures.appendingPathComponent(name))
+func verifyThemeV2(client: Merman, engine: MermanEngine) throws {
+    let catalogJson = try client.themeCatalogJson()
+    let engineCatalogJson = try engine.themeCatalogJson()
+    let catalog = try themeObject(Data(catalogJson.utf8))
+    guard catalogJson == engineCatalogJson,
+          catalog["schema_version"] as? Int == 2,
+          let presets = catalog["presets"] as? [[String: Any]], presets.count == 13,
+          (catalog["mermaid_themes"] as? [String])?.count == 11,
+          let families = catalog["families"] as? [[String: Any]],
+          families.contains(where: { $0["id"] as? String == "flowchart" && ($0["capabilities"] as? Int ?? 0) > 0 }),
+          let studio = presets.first(where: { $0["id"] as? String == "studio" }),
+          studio["appearances"] as? [String] == ["light", "dark"],
+          studio["default_appearance"] as? String == "light",
+          (studio["swatches"] as? [String])?.count == 6 else {
+        throw ThemeSmokeError.failed("unexpected theme v2 catalog")
     }
-    func json(_ data: Data) throws -> Any {
-        try JSONSerialization.jsonObject(with: data)
-    }
-    func encoded(_ value: Any) throws -> Data {
-        try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed])
-    }
-    func requireEqual(_ actual: Any, _ expected: Any, _ label: String) throws {
-        guard try encoded(actual) == encoded(expected) else {
-            throw ThemeGoldenError.mismatch(label)
-        }
-    }
-    let support = try json(read("support.json")) as! [[String: Any]]
-    let errors = try json(read("errors.json")) as! [[String: Any]]
-    let engine = try MermanEngine(optionsJson: nil, services: nil)
-    defer { try? engine.close() }
+
     let consumers: [(String, (MermanOperationRequestV4) throws -> MermanOperationResult)] = [
-        ("one-shot", { try client.execute(request: $0) }),
-        ("reusable", { try engine.execute(request: $0) }),
+        ("one-shot", client.execute(request:)),
+        ("reusable", engine.execute(request:)),
     ]
-    for (consumer, execute) in consumers {
-        func request(_ operation: String, _ source: String, _ options: String? = nil) -> MermanOperationRequestV4 {
-            MermanOperationRequestV4(
-                operationId: operation, source: source, uri: nil, optionsJson: options, control: nil
-            )
-        }
-        func executeJSON(_ operation: String, _ source: String) throws -> Any {
-            let result = try execute(request(operation, source))
-            try requireEqual(result.operationId, operation, "\(consumer)/operation")
-            try requireEqual(result.mediaType, "application/json", "\(consumer)/media")
-            return try json(result.data)
-        }
-        let pairedRecipe = try json(read("paired.recipe.json"))
-        let inspection = try executeJSON("materialize-theme-json", String(decoding: encoded([
-            "schema_version": 1, "action": "inspect", "recipe": pairedRecipe,
-        ]), as: UTF8.self)) as! [String: Any]
-        try requireEqual(inspection["supported_appearances"]!, ["light", "dark"], "\(consumer)/paired appearances")
-        try requireEqual(inspection["default_appearance"]!, "light", "\(consumer)/paired default")
-        var pairedSpecs: [Any] = []
-        var pairedSVGs: [Data] = []
-        for appearance in ["light", "dark", "light"] {
-            let selected = try executeJSON("materialize-theme-json", String(decoding: encoded([
-                "schema_version": 1, "action": "materialize",
-                "recipe": pairedRecipe, "appearance": appearance,
-            ]), as: UTF8.self)) as! [String: Any]
-            try requireEqual(selected["effective_appearance"]!, appearance, "\(consumer)/paired selection")
-            pairedSpecs.append(selected["spec"]!)
-            let options: [String: Any] = [
-                "theme": ["recipe": pairedRecipe, "appearance": appearance],
-                "site_config": ["htmlLabels": false],
-                "svg": ["diagram_id": "apple-paired-theme"],
-            ]
-            let rendered = try execute(request(
-                "svg", "flowchart LR\nA[Review] --> B[Publish]",
-                String(decoding: encoded(options), as: UTF8.self)
+    for (name, execute) in consumers {
+        func run(_ operationId: String, _ source: String, options: [String: Any]? = nil) throws -> MermanOperationResult {
+            try execute(MermanOperationRequestV4(
+                operationId: operationId, source: source, uri: nil,
+                optionsJson: options.map(themeJSON), control: nil
             ))
-            pairedSVGs.append(rendered.data)
         }
-        try requireEqual(pairedSpecs[0], pairedSpecs[2], "\(consumer)/paired materialization isolation")
-        guard try encoded(pairedSpecs[0]) != encoded(pairedSpecs[1]),
-              pairedSVGs[0] != pairedSVGs[1], pairedSVGs[0] == pairedSVGs[2] else {
-            throw ThemeGoldenError.mismatch("\(consumer): paired appearance isolation")
+        func resolve(_ document: Any, appearance: String? = nil) throws -> [String: Any] {
+            var request = ["document": document]
+            if let appearance { request["appearance"] = appearance }
+            return try themeObject(run("resolve-theme", themeJSON(request)).data)
         }
-        let exportedPair = try executeJSON("export-theme-preset-json", "editor") as! [String: Any]
-        let exportedDesign = exportedPair["design"] as! [String: Any]
-        let appearances = exportedDesign["appearances"] as! [String: Any]
-        try requireEqual(appearances.keys.sorted(), ["dark", "light"], "\(consumer)/complete pair export")
-        for name in ["light", "dark"] {
-            let actual = try executeJSON(
-                "materialize-theme-json", String(decoding: read("\(name).design.json"), as: UTF8.self)
-            )
-            let expected: [String: Any] = [
-                "schema_version": 1, "authoring_schema_version": 1,
-                "expansion_version": 1, "spec_schema_version": 1,
-                "spec": try json(read("\(name).spec.canonical.json")),
-                "references": try json(read("\(name).references.json")),
-            ]
-            try requireEqual(actual, expected, "\(consumer)/\(name)")
+
+        let exported = try run("export-theme-preset", "studio")
+        let document = try themeObject(exported.data)
+        guard exported.operationId == "export-theme-preset", exported.mediaType == "application/json",
+              document["schema_version"] as? Int == 2, document["id"] as? String == "studio",
+              let appearances = document["appearances"] as? [String: Any],
+              Set(appearances.keys) == Set(["light", "dark"]) else {
+            throw ThemeSmokeError.failed("\(name) did not export the editable preset")
         }
-        for vector in support {
-            let actual = try executeJSON(
-                "describe-theme-support-json", String(decoding: encoded(vector["query"]!), as: UTF8.self)
-            )
-            try requireEqual(actual, vector["expected"]!, "\(consumer)/\(vector["id"]!)")
-        }
-        for vector in errors {
-            let operations = vector["id"] as? String == "encoded-byte-limit"
-                ? ["materialize-theme-json", "describe-theme-support-json", "export-theme-preset-json"]
-                : ["materialize-theme-json"]
-            for operation in operations {
-                let label = "\(consumer)/\(operation)/\(vector["id"]!)"
-                do {
-                    _ = try execute(request(operation, vector["source"] as! String, vector["options_json"] as? String))
-                    throw ThemeGoldenError.mismatch("\(label): invalid request accepted")
-                } catch let error as MermanError {
-                    switch error {
-                    case let .Binding(_, codeName, _, _, _, _, _, _, detailsJson, _):
-                        try requireEqual(codeName, vector["code_name"]!, label)
-                        guard let data = detailsJson?.data(using: .utf8),
-                              let details = try json(data) as? [String: Any] else {
-                            throw ThemeGoldenError.mismatch("\(label): missing error details")
-                        }
-                        try requireEqual(details["resource"] ?? NSNull(), vector["resource"] ?? NSNull(), label)
-                        var authoring: Any = details["theme_authoring"] ?? NSNull()
-                        if var envelope = authoring as? [String: Any],
-                           var diagnostics = envelope["diagnostics"] as? [[String: Any]] {
-                            for index in diagnostics.indices {
-                                guard let message = diagnostics[index].removeValue(forKey: "message") as? String,
-                                      !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                                    throw ThemeGoldenError.mismatch("\(label): missing diagnostic message")
-                                }
-                            }
-                            envelope["diagnostics"] = diagnostics
-                            authoring = envelope
-                        }
-                        let expected = operation == "materialize-theme-json" ? vector["theme_authoring"]! : NSNull()
-                        try requireEqual(authoring, expected, label)
-                    }
-                }
+        let restored = String(decoding: exported.data, as: UTF8.self)
+        for input in [document, restored] as [Any] {
+            let resolved = try resolve(input, appearance: "dark")
+            guard resolved["ok"] as? Bool == true,
+                  (resolved["resolved"] as? [String: Any])?["appearance"] as? String == "dark",
+                  resolved["notices"] is [Any] else {
+                throw ThemeSmokeError.failed("\(name) could not resolve Studio Dark")
             }
         }
+
+        for (text, column, path, message) in [
+            ("{\n  \"schema_version\": 2,\n  \"extends\": ]\n}", 14, "extends", "expected value"),
+            ("{\n  \"schema_version\": 2,\n  \"schema_version\": 2\n}", 18, ".", "duplicate key"),
+        ] {
+            let result = try resolve(text)
+            guard result["ok"] as? Bool == false, result["line"] as? Int == 3,
+                  result["column"] as? Int == column, result["path"] as? String == path,
+                  (result["message"] as? String)?.contains(message) == true else {
+                throw ThemeSmokeError.failed("\(name) lost document-relative diagnostics: \(result)")
+            }
+        }
+
+        let source = "---\nconfig:\n  layout: dagre\n---\nflowchart LR\nA[Review] --> B[Publish]"
+        let rendered = try run("svg", source, options: [
+            "theme": ["document": document, "appearance": "dark"],
+            "background": "#123456",
+        ])
+        let metadata = try themeObject(Data(rendered.metadata.rawJson.utf8))
+        guard let outcome = metadata["theme_outcome"] as? [String: Any],
+              outcome["mode"] as? String == "merman_native",
+              outcome["appearance"] as? String == "dark",
+              outcome["notices"] is [Any] else {
+            throw ThemeSmokeError.failed("\(name) lost the SVG theme outcome")
+        }
+        let svg = try XMLDocument(data: rendered.data, options: [.nodeLoadExternalEntitiesNever])
+        let fills = try svg.nodes(forXPath:
+            "//*[local-name()='g' and @class='merman-theme-canvas']/*[local-name()='rect'][1]/@fill"
+        )
+        guard fills.first?.stringValue?.lowercased() == "#123456" else {
+            throw ThemeSmokeError.failed("\(name) background did not replace the theme canvas")
+        }
     }
-    print("Apple theme goldens passed: paired appearances, 2 raw materializations, \(support.count) support queries, 5 errors per consumer")
+    print("Apple Theme v2 authoring smoke passed")
 }
 
-private enum ThemeGoldenError: Error {
-    case mismatch(String)
+func themeJSON(_ value: [String: Any]) throws -> String {
+    String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
+}
+
+func themeObject(_ data: Data) throws -> [String: Any] {
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw ThemeSmokeError.failed("expected a JSON object")
+    }
+    return object
+}
+
+private enum ThemeSmokeError: Error {
+    case failed(String)
 }

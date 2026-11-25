@@ -4,11 +4,10 @@
 //! convenient render, analysis, and theme-authoring helpers, but every plugin operation returns the
 //! same closed transport envelope so hosts can handle failures without depending on trap behavior.
 
-#[cfg(any(test, not(feature = "svg")))]
-use merman_bindings_core::BindingOperationRequest;
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingEngineServices, BindingTransportKey, CapabilityKey, MetadataKey,
-    OperationKey, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
+    CapabilityKey, MetadataKey, OperationKey, RuntimePolicyExposure, TargetKey,
+    ValidatedArtifactContract,
 };
 use serde_json::{json, Value};
 
@@ -22,29 +21,25 @@ pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
 /// because their capabilities could support them.
 pub const TYPST_TRANSPORT_OPERATION_KEYS: &[OperationKey] = &[
     OperationKey::AnalysisJson,
-    OperationKey::DescribeThemeSupportJson,
-    OperationKey::ExportThemePresetJson,
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ExportThemePreset,
+    OperationKey::ResolveTheme,
     OperationKey::Svg,
 ];
 const RENDER_OPERATION: &str = "render-svg";
 const ANALYZE_OPERATION: &str = "analyze";
 const THEME_OPERATION: &str = "theme-operation";
 const TYPST_OPERATION_ID_MAX_UTF8_BYTES: usize = 128;
-const THEME_OPERATION_KEYS: &[OperationKey] = &[
-    OperationKey::DescribeThemeSupportJson,
-    OperationKey::ExportThemePresetJson,
-    OperationKey::MaterializeThemeJson,
-];
+const TYPST_RESOURCE_PROFILE: &str = "constrained";
+const LAYOUT_WORK_LIMIT: &str = "max_layout_work_units";
+const THEME_OPERATION_KEYS: &[OperationKey] =
+    &[OperationKey::ExportThemePreset, OperationKey::ResolveTheme];
 const TYPST_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisJson,
     #[cfg(feature = "svg")]
-    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePreset,
     #[cfg(feature = "svg")]
-    OperationKey::ExportThemePresetJson,
-    #[cfg(feature = "svg")]
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ResolveTheme,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
 ];
@@ -106,25 +101,11 @@ pub fn capabilities_json() -> Vec<u8> {
     typst_capabilities_json()
 }
 
-/// Returns the shared theme catalog under the plugin's fixed resource ceiling.
+/// Returns the shared theme catalog for the current artifact.
 pub fn theme_catalog_json() -> Vec<u8> {
     let operation = MetadataKey::ThemeCatalog.id();
-    #[cfg(feature = "svg")]
-    let result = typst_artifact_contract().theme_catalog_json_with_resource_policy(
-        &merman_bindings_core::ThemeResourcePolicy::constrained(),
-    );
-    #[cfg(not(feature = "svg"))]
     let result = typst_artifact_contract().metadata_json(operation);
-    match result {
-        Ok(output) => match serde_json::from_slice::<Value>(&output) {
-            Ok(catalog) => typst_success_payload(operation, json!({ "result": catalog })),
-            Err(error) => typst_internal_error_payload(
-                operation,
-                format!("theme catalog returned invalid canonical JSON: {error}"),
-            ),
-        },
-        Err(error) => typst_binding_error_payload(operation, &error),
-    }
+    typst_theme_payload(operation, result)
 }
 
 fn typst_artifact_contract() -> &'static ValidatedArtifactContract {
@@ -137,16 +118,7 @@ fn typst_capabilities_json() -> Vec<u8> {
 }
 
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    let options_json = match typst_options_json(OperationKey::Svg, options_json) {
-        Ok(options_json) => options_json,
-        Err(error) => return typst_binding_error_payload(RENDER_OPERATION, &error),
-    };
-    match typst_artifact_contract().render_svg_once_data_with_services(
-        source,
-        &options_json,
-        BindingEngineServices::new(),
-        None,
-    ) {
+    match execute_typst_once_data(OperationKey::Svg, source, options_json) {
         Ok(svg) => match std::str::from_utf8(&svg) {
             Ok(svg) => typst_success_payload(RENDER_OPERATION, json!({ "svg": svg })),
             Err(error) => typst_internal_error_payload(
@@ -159,16 +131,7 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 }
 
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    let options_json = match typst_options_json(OperationKey::AnalysisJson, options_json) {
-        Ok(options_json) => options_json,
-        Err(error) => return typst_binding_error_payload(ANALYZE_OPERATION, &error),
-    };
-    match typst_artifact_contract().analyze_json_once_data_with_services(
-        source,
-        &options_json,
-        BindingEngineServices::new(),
-        None,
-    ) {
+    match execute_typst_once_data(OperationKey::AnalysisJson, source, options_json) {
         Ok(analysis_json) => match serde_json::from_slice::<Value>(&analysis_json) {
             Ok(analysis) => {
                 typst_success_payload(ANALYZE_OPERATION, json!({ "analysis": analysis }))
@@ -184,8 +147,8 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 
 /// Executes one versioned theme-authoring operation through the shared binding contract.
 ///
-/// The operation ID is restricted to the three theme-authoring rows advertised by the Typst
-/// artifact. Rendering and analysis keep their dedicated exports.
+/// The operation ID selects preset export or document resolution. Rendering and analysis keep
+/// their dedicated exports.
 pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u8]) -> Vec<u8> {
     let operation_id = match admit_typst_operation_id(operation_id) {
         Ok(operation_id) => operation_id,
@@ -206,65 +169,25 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
             return typst_binding_error_payload(THEME_OPERATION, &error);
         }
     };
-    #[cfg(feature = "svg")]
-    let output = {
-        let host_ceiling = merman_bindings_core::ThemeResourcePolicy::constrained();
-        let (normalized_options_json, theme_policy) =
-            match merman_bindings_core::prepare_theme_authoring_options_json(
-                options_json,
-                Some(&host_ceiling),
-            ) {
-                Ok(prepared) => prepared,
-                Err(error) => return typst_binding_error_payload(operation.id(), &error),
-            };
-        if let Err(error) = typst_options_json(operation, &normalized_options_json) {
-            return typst_binding_error_payload(operation.id(), &error);
-        }
-        execute_typst_theme_authoring_operation(operation, input, &theme_policy)
-    };
+    let output = typst_artifact_contract().execute_once_data(
+        BindingOperationRequest::new(operation.id(), input).with_options_json(options_json),
+    );
+    typst_theme_payload(operation.id(), output)
+}
 
-    #[cfg(not(feature = "svg"))]
-    let output = {
-        let options_json = match typst_options_json(operation, options_json) {
-            Ok(options_json) => options_json,
-            Err(error) => return typst_binding_error_payload(operation.id(), &error),
-        };
-        typst_artifact_contract().execute_once_data(
-            BindingOperationRequest::new(operation.id(), input).with_options_json(&options_json),
-        )
-    };
-
+fn typst_theme_payload(
+    operation: &str,
+    output: Result<Vec<u8>, merman_bindings_core::BindingError>,
+) -> Vec<u8> {
     match output {
         Ok(output) => match serde_json::from_slice::<Value>(&output) {
-            Ok(result) => typst_success_payload(operation.id(), json!({ "result": result })),
+            Ok(result) => typst_success_payload(operation, json!({ "result": result })),
             Err(error) => typst_internal_error_payload(
-                operation.id(),
+                operation,
                 format!("theme operation returned invalid canonical JSON: {error}"),
             ),
         },
-        Err(error) => typst_binding_error_payload(operation.id(), &error),
-    }
-}
-
-#[cfg(feature = "svg")]
-fn execute_typst_theme_authoring_operation(
-    operation: OperationKey,
-    input: &[u8],
-    policy: &merman_bindings_core::ThemeResourcePolicy,
-) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    match operation {
-        OperationKey::MaterializeThemeJson => {
-            merman_bindings_core::materialize_theme_design_json_with_resource_policy(input, policy)
-        }
-        OperationKey::DescribeThemeSupportJson => {
-            merman_bindings_core::describe_theme_support_json_with_resource_policy(input, policy)
-        }
-        OperationKey::ExportThemePresetJson => {
-            merman_bindings_core::export_theme_preset_json_with_resource_policy(input, policy)
-        }
-        _ => {
-            unreachable!("Typst theme operation admission must select a theme-authoring operation")
-        }
+        Err(error) => typst_binding_error_payload(operation, &error),
     }
 }
 
@@ -357,11 +280,23 @@ fn typst_result_payload(
     })
 }
 
-fn typst_options_json(
+fn execute_typst_once_data(
     operation: OperationKey,
+    source: &[u8],
     options_json: &[u8],
-) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    let ceiling_override = match operation {
+) -> Result<Vec<u8>, BindingError> {
+    let ceiling_override = typst_layout_work_ceiling(operation);
+    typst_artifact_contract().execute_once_data_with_resource_ceiling(
+        BindingOperationRequest::new(operation.id(), source).with_options_json(options_json),
+        TYPST_RESOURCE_PROFILE,
+        ceiling_override.as_slice(),
+        &[LAYOUT_WORK_LIMIT],
+        apply_typst_options_policy,
+    )
+}
+
+fn typst_layout_work_ceiling(operation: OperationKey) -> Option<(&'static str, usize)> {
+    match operation {
         #[cfg(feature = "svg")]
         OperationKey::Svg => {
             let contract = merman_bindings_core::binding_resource_contract();
@@ -373,173 +308,116 @@ fn typst_options_json(
             // Document layouts use the calibrated interactive work allowance while other limits
             // retain the constrained host policy. Explicit caller profiles keep their own defaults.
             Some((
-                "max_layout_work_units",
-                interactive.limits["max_layout_work_units"]
+                LAYOUT_WORK_LIMIT,
+                interactive.limits[LAYOUT_WORK_LIMIT]
                     .expect("interactive layout work has a finite allowance"),
             ))
         }
         _ => None,
-    };
-    let normalized = merman_bindings_core::apply_resource_ceiling_json_with_allowed_overrides(
-        options_json,
-        "constrained",
-        ceiling_override.as_slice(),
-        &["max_layout_work_units"],
-    )?;
-    let mut options = serde_json::from_slice::<Value>(&normalized).map_err(|error| {
-        merman_bindings_core::BindingError::new(
-            merman_bindings_core::BindingStatus::InternalError,
-            format!("failed to decode normalized Typst options: {error}"),
-        )
-    })?;
-    let root = options.as_object_mut().ok_or_else(|| {
-        merman_bindings_core::BindingError::new(
-            merman_bindings_core::BindingStatus::InternalError,
-            "normalized Typst options must be an object",
-        )
-    })?;
+    }
+}
+
+fn apply_typst_options_policy(options: &mut Value) -> Result<(), BindingError> {
+    let root = options
+        .as_object_mut()
+        .ok_or_else(|| BindingError::internal("normalized Typst options must be an object"))?;
 
     match root.get("runtime_policy") {
-        Some(Value::String(policy)) if policy.trim().eq_ignore_ascii_case("native") => {
-            return Err(merman_bindings_core::BindingError::missing_capability(
+        Some(Value::String(policy)) if policy == "native" => {
+            return Err(BindingError::missing_capability(
                 "system-clock",
                 "runtime_policy=native is not available in the Typst transport",
             ));
         }
-        Some(Value::String(policy)) if policy.trim().eq_ignore_ascii_case("deterministic") => {
-            root.insert(
-                "runtime_policy".to_string(),
-                Value::String("deterministic".to_string()),
-            );
-        }
         Some(Value::Null) | None => {
-            root.insert(
-                "runtime_policy".to_string(),
-                Value::String("deterministic".to_string()),
-            );
+            root.insert("runtime_policy".to_string(), Value::from("deterministic"));
         }
         Some(_) => {}
     }
 
-    if typst_artifact_contract()
-        .runtime_capabilities()
-        .has_operation("svg")
-    {
+    if TYPST_OPERATIONS.contains(&OperationKey::Svg) {
         let environment = root
             .entry("environment".to_string())
-            .or_insert_with(|| json!({}));
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
         if environment.is_null() {
-            *environment = json!({});
+            *environment = Value::Object(serde_json::Map::new());
         }
         let environment = environment.as_object_mut().ok_or_else(|| {
-            merman_bindings_core::BindingError::new(
-                merman_bindings_core::BindingStatus::OptionsJsonError,
+            BindingError::invalid_options_json(
                 "invalid options_json: `environment` must be an object",
             )
         })?;
         match environment.get("math_renderer") {
             Some(Value::String(renderer)) if renderer.trim().eq_ignore_ascii_case("ratex") => {
-                return Err(merman_bindings_core::BindingError::missing_capability(
+                return Err(BindingError::missing_capability(
                     "math",
                     "environment.math_renderer=ratex is not available in the Typst transport",
                 ));
             }
-            Some(Value::String(renderer)) if renderer.trim().eq_ignore_ascii_case("none") => {
-                environment.insert(
-                    "math_renderer".to_string(),
-                    Value::String("none".to_string()),
-                );
-            }
+            Some(Value::String(renderer)) if renderer.trim().eq_ignore_ascii_case("none") => {}
             Some(Value::String(renderer)) => {
-                return Err(merman_bindings_core::BindingError::new(
-                    merman_bindings_core::BindingStatus::InvalidArgument,
-                    format!("unsupported environment.math_renderer: {renderer}"),
-                ));
+                return Err(BindingError::invalid_argument(format!(
+                    "unsupported environment.math_renderer: {renderer}"
+                )));
             }
             Some(_) => {
-                return Err(merman_bindings_core::BindingError::new(
-                    merman_bindings_core::BindingStatus::OptionsJsonError,
+                return Err(BindingError::invalid_options_json(
                     "invalid options_json: `environment.math_renderer` must be a string",
                 ));
             }
-            None => {
-                environment.insert(
-                    "math_renderer".to_string(),
-                    Value::String("none".to_string()),
-                );
-            }
+            None => {}
         }
+        environment.insert("math_renderer".to_string(), Value::from("none"));
     }
 
-    serde_json::to_vec(&options).map_err(|error| {
-        merman_bindings_core::BindingError::new(
-            merman_bindings_core::BindingStatus::InternalError,
-            format!("failed to encode normalized Typst options: {error}"),
-        )
-    })
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 3);
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"3");
-        assert_eq!(abi_version(), b"3");
+    // Build the equivalent wire request for comparison with the ordinary binding executor.
+    fn reference_options_json(
+        operation: OperationKey,
+        options_json: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        let ceiling_override = typst_layout_work_ceiling(operation);
+        let normalized = merman_bindings_core::apply_resource_ceiling_json_with_allowed_overrides(
+            options_json,
+            TYPST_RESOURCE_PROFILE,
+            ceiling_override.as_slice(),
+            &[LAYOUT_WORK_LIMIT],
+        )?;
+        let mut options: Value = serde_json::from_slice(&normalized).unwrap();
+        apply_typst_options_policy(&mut options)?;
+        Ok(serde_json::to_vec(&options).unwrap())
     }
 
     #[test]
-    fn theme_catalog_matches_shared_presets_and_transport_resource_policy() {
+    fn abi_version_is_stable() {
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 4);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"4");
+        assert_eq!(abi_version(), b"4");
+    }
+
+    #[test]
+    fn theme_catalog_exposes_schema_two() {
         let payload: Value = serde_json::from_slice(&theme_catalog_json()).unwrap();
-        assert_eq!(payload["version"], 1);
-        assert_eq!(payload["operation"], "theme-catalog");
-        assert_eq!(payload["ok"], true, "{payload}");
+        assert_success_envelope(&payload, "theme-catalog");
         let catalog = &payload["data"]["result"];
-        assert_eq!(catalog["schema_version"], 1);
-        assert_eq!(catalog["structured_spec_available"], cfg!(feature = "svg"));
+        assert_eq!(catalog["schema_version"], 2);
+        assert!(catalog["mermaid_themes"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("forest")));
+        assert_eq!(
+            catalog["presets"].as_array().unwrap().len(),
+            if cfg!(feature = "svg") { 13 } else { 0 }
+        );
+        assert!(catalog["families"].is_array());
         let runtime: Value = serde_json::from_slice(&capabilities_json()).unwrap();
         assert_eq!(runtime["metadata_ids"], json!(["theme-catalog"]));
-        #[cfg(feature = "svg")]
-        {
-            let mut expected: Value = serde_json::from_str(include_str!(
-                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-            ))
-            .unwrap();
-            let cyberpunk = expected
-                .as_array_mut()
-                .unwrap()
-                .iter_mut()
-                .find(|preset| preset["id"] == "cyberpunk")
-                .expect("Cyberpunk preset fixture");
-            cyberpunk["available"] = false.into();
-            cyberpunk["availability_reason_ids"] =
-                serde_json::json!(["theme-preset.resource-policy-rejected"]);
-            let reason_ids = cyberpunk["availability_reason_ids"].clone();
-            for appearance in cyberpunk["appearances"]
-                .as_array_mut()
-                .expect("Cyberpunk preset appearances")
-            {
-                appearance["available"] = false.into();
-                appearance["availability_reason_ids"] = reason_ids.clone();
-            }
-            assert_eq!(catalog["presets"], expected);
-            assert_eq!(catalog["supported_output_ids"], json!(["svg"]));
-            let encoded_limit = catalog["resource_limits"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|limit| limit["id"] == "max_theme_encoded_bytes")
-                .unwrap();
-            assert_eq!(encoded_limit["effective_value"], 512 * 1024);
-        }
-        #[cfg(not(feature = "svg"))]
-        {
-            assert_eq!(catalog["presets"], json!([]));
-            assert_eq!(catalog["supported_output_ids"], json!([]));
-            assert_eq!(catalog["resource_limits"], json!([]));
-        }
     }
 
     #[test]
@@ -604,9 +482,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "analysis-json",
-                "describe-theme-support-json",
-                "export-theme-preset-json",
-                "materialize-theme-json",
+                "export-theme-preset",
+                "resolve-theme",
                 "svg",
             ]
         );
@@ -617,15 +494,11 @@ mod tests {
         assert_eq!(projected.has_operation("svg"), cfg!(feature = "svg"));
         assert!(!projected.has_capability("embedded-fonts"));
         assert_eq!(
-            projected.has_operation("materialize-theme-json"),
+            projected.has_operation("resolve-theme"),
             cfg!(feature = "svg")
         );
         assert_eq!(
-            projected.has_operation("describe-theme-support-json"),
-            cfg!(feature = "svg")
-        );
-        assert_eq!(
-            projected.has_operation("export-theme-preset-json"),
+            projected.has_operation("export-theme-preset"),
             cfg!(feature = "svg")
         );
         #[cfg(feature = "svg")]
@@ -673,13 +546,20 @@ mod tests {
         ] {
             for (source, options) in [
                 (b"".as_slice(), b"{".as_slice()),
+                (b"".as_slice(), b"\xff".as_slice()),
                 (b"\xff".as_slice(), b"".as_slice()),
+                (b"".as_slice(), br#"{"runtime_policy":"native"}"#),
+                (b"".as_slice(), br#"{"runtime_policy":" Native "}"#),
+                (
+                    b"".as_slice(),
+                    br#"{"unknown_option":true,"runtime_policy":"native"}"#,
+                ),
                 (
                     b"flowchart TD\nA --> B".as_slice(),
                     br#"{"resources":{"limits":{"max_source_bytes":-1}}}"#.as_slice(),
                 ),
             ] {
-                let full_error = match typst_options_json(operation, options) {
+                let full_error = match reference_options_json(operation, options) {
                     Ok(options) => typst_artifact_contract()
                         .execute_once(
                             BindingOperationRequest::new(operation.id(), source)
@@ -708,36 +588,34 @@ mod tests {
     #[test]
     fn typst_data_execution_preserves_svg_output_and_resource_ceiling() {
         let source = b"flowchart TD\nA[Hello] --> B[World]";
-        let options_json = typst_options_json(
-            OperationKey::Svg,
-            br#"{"svg":{"diagram_id":"typst-data-output"}}"#,
-        )
-        .unwrap();
+        let options_json = br#"{
+            "version":4,
+            "merman":{"site_config":{"theme":"dark"}},
+            "svg":{"diagram_id":"typst-data-output"}
+        }"#;
+        let normalized = reference_options_json(OperationKey::Svg, options_json).unwrap();
         let full = typst_artifact_contract()
             .execute_once(
-                BindingOperationRequest::new("svg", source).with_options_json(&options_json),
+                BindingOperationRequest::new("svg", source).with_options_json(&normalized),
             )
             .unwrap();
         let payload: Value =
-            serde_json::from_slice(&render_svg_json(source, &options_json)).unwrap();
+            serde_json::from_slice(&render_svg_json(source, options_json)).unwrap();
         assert_success_envelope(&payload, RENDER_OPERATION);
         let data = payload["data"]["svg"].as_str().unwrap().as_bytes();
         assert_eq!(data, full.data());
         assert_eq!(full.metadata().operation_id(), "svg");
         assert_eq!(full.metadata().byte_length(), data.len() as u64);
 
-        let limited_options = typst_options_json(
-            OperationKey::Svg,
-            br#"{"resources":{"limits":{"max_source_bytes":1}}}"#,
-        )
-        .unwrap();
+        let limited_options = br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1}}}}"#;
+        let normalized = reference_options_json(OperationKey::Svg, limited_options).unwrap();
         let full_error = typst_artifact_contract()
             .execute_once(
-                BindingOperationRequest::new("svg", source).with_options_json(&limited_options),
+                BindingOperationRequest::new("svg", source).with_options_json(&normalized),
             )
             .unwrap_err();
         let payload: Value =
-            serde_json::from_slice(&render_svg_json(source, &limited_options)).unwrap();
+            serde_json::from_slice(&render_svg_json(source, limited_options)).unwrap();
         let expected: Value =
             serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &full_error))
                 .unwrap();
@@ -752,151 +630,128 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn theme_operation_json_materializes_the_shared_design_contract() {
-        let definition = br##"{
-            "tokens": {"text": {"type":"color", "value":"#e5e7eb"}},
-            "canvas": {"base":"#0f172a"},
-            "styles": {"text":{"fill":{"kind":"solid", "color":{"ref":"text"}}}}
-        }"##;
-        let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"materialize-theme-json",
-            definition,
-            b"",
-        ))
-        .expect("valid theme-operation envelope");
-
-        assert_success_envelope(&payload, "materialize-theme-json");
-        assert_eq!(payload["data"]["result"]["authoring_schema_version"], 1);
-        assert_eq!(payload["data"]["result"]["expansion_version"], 1);
-        assert_eq!(payload["data"]["result"]["spec_schema_version"], 1);
-        assert!(payload["data"]["result"]["spec"]["styles"]
-            .as_array()
-            .is_some_and(|styles| !styles.is_empty()));
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_operation_json_dispatches_versioned_document_authoring() {
-        let recipe: Value = serde_json::from_slice(include_bytes!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
-        ))
-        .unwrap();
-        for (action, appearance) in [
-            ("inspect", None),
-            ("materialize", None),
-            ("materialize", Some("dark")),
+    fn typst_data_execution_preserves_duplicate_option_diagnostics() {
+        for (options, code_name, field) in [
+            (
+                br#"{"theme":"studio","theme":"none"}"#.as_slice(),
+                "MERMAN_OPTIONS_JSON_ERROR",
+                "theme",
+            ),
+            (
+                br#"{"theme":{"preset":"studio","preset":"paper"},"runtime_policy":"native"}"#,
+                "MERMAN_OPTIONS_JSON_ERROR",
+                "preset",
+            ),
+            (
+                br#"{"theme":{"document":{"schema_version":2,"extends":"studio","extends":"paper"}}}"#,
+                "MERMAN_INVALID_ARGUMENT",
+                "extends",
+            ),
+            (
+                br#"{"svg":{"viewbox_padding":2,"viewBoxPadding":3}}"#,
+                "MERMAN_OPTIONS_JSON_ERROR",
+                "viewbox_padding",
+            ),
         ] {
-            let mut request = json!({
-                "schema_version": 1, "action": action, "recipe": recipe
-            });
-            if let Some(appearance) = appearance {
-                request["appearance"] = json!(appearance);
-            }
-            let input = serde_json::to_vec(&request).unwrap();
-            let payload: Value = serde_json::from_slice(&theme_operation_json(
-                b"materialize-theme-json",
-                &input,
-                br#"{"theme":{"preset":"editor","appearance":"dark"}}"#,
-            ))
-            .unwrap();
-            assert_success_envelope(&payload, "materialize-theme-json");
-            let expected: Value = serde_json::from_slice(
-                &merman_bindings_core::materialize_theme_design_json_with_resource_policy(
-                    &input,
-                    &merman_bindings_core::ThemeResourcePolicy::constrained(),
-                )
-                .unwrap(),
-            )
-            .unwrap();
-            assert_eq!(payload["data"]["result"], expected);
-            assert_eq!(
-                payload["data"]["result"]["supported_appearances"],
-                json!(["light", "dark"])
-            );
-            if action == "materialize" {
-                assert_eq!(
-                    payload["data"]["result"]["effective_appearance"],
-                    appearance.unwrap_or("light")
-                );
+            for (operation, export) in [
+                (RENDER_OPERATION, render_svg_json as fn(&[u8], &[u8]) -> Vec<u8>),
+                (ANALYZE_OPERATION, analyze_json),
+            ] {
+                let payload: Value = serde_json::from_slice(&export(b"", options)).unwrap();
+                assert_error_envelope(&payload, operation, code_name);
+                let message = payload["message"].as_str().unwrap();
+                assert!(message.contains("duplicate") && message.contains(field), "{payload}");
             }
         }
-        let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"export-theme-preset-json",
-            b"editor",
-            b"",
-        ))
-        .unwrap();
-        assert_success_envelope(&payload, "export-theme-preset-json");
-        assert_eq!(payload["data"]["result"]["schema_version"], 1);
-        assert!(payload["data"]["result"]["design"]["appearances"]["light"].is_object());
-        assert!(payload["data"]["result"]["design"]["appearances"]["dark"].is_object());
     }
 
-    #[cfg(feature = "svg")]
     #[test]
-    fn theme_operation_json_admits_raw_versioned_requests_under_its_ceiling() {
-        for request in [
-            r#"{"schema_version":1,"action":"inspect","appearance":"dark","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
-            r#"{"schema_version":1,"action":"materialize","appearance":null,"recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
-            r#"{"schema_version":1,"action":"materialize","appearance":"auto","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
-            r#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"schema_\u0076ersion":1,"kind":"design","design":{}}}"#,
-            r#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{"appearances":{"light":{},"dark":{"tokens":{},"tokens":{}}},"default_appearance":"light"}}}"#,
-            r#"{"schema_version":2,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
+    fn typst_data_execution_preserves_options_json_byte_ceiling() {
+        let max = merman_bindings_core::BINDING_OPTIONS_JSON_MAX_BYTES;
+        let oversized = vec![0xff; max + 1];
+        let payload: Value = serde_json::from_slice(&analyze_json(b"", &oversized)).unwrap();
+        assert_error_envelope(
+            &payload,
+            ANALYZE_OPERATION,
+            "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+        );
+        let details = &payload["details"]["resource"];
+        assert_eq!(details["limit_id"], "max_options_json_bytes");
+        assert_eq!(details["actual"], max + 1);
+        assert_eq!(details["max"], max);
+
+        // The first input only exceeds the ceiling after the resource profile is inserted.
+        // The second one only exceeds it after the transport policy is applied.
+        let resource_options_len =
+            br#"{"site_config":{"padding":""},"resources":{"profile":"constrained"}}"#.len();
+        let transport_policy_len = br#","runtime_policy":"deterministic""#.len()
+            + if cfg!(feature = "svg") {
+                br#","environment":{"math_renderer":"none"}"#.len()
+            } else {
+                0
+            };
+        for empty_options_len in [
+            resource_options_len,
+            resource_options_len + transport_policy_len,
         ] {
-            let payload: Value = serde_json::from_slice(&theme_operation_json(
-                b"materialize-theme-json",
-                request.as_bytes(),
-                b"",
-            ))
-            .unwrap();
+            let padding = "x".repeat(max + 1 - empty_options_len);
+            let options = format!(r#"{{"site_config":{{"padding":"{padding}"}}}}"#);
+            assert!(options.len() <= max);
+            let payload: Value =
+                serde_json::from_slice(&analyze_json(b"", options.as_bytes())).unwrap();
             assert_error_envelope(
                 &payload,
-                "materialize-theme-json",
-                "MERMAN_OPTIONS_JSON_ERROR",
+                ANALYZE_OPERATION,
+                "MERMAN_RESOURCE_LIMIT_EXCEEDED",
             );
+            assert_eq!(payload["details"]["resource"], *details);
         }
-        let request = br#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{}}}"#;
-        let options = json!({
-            "resources": {"limits": {"max_theme_encoded_bytes": request.len() - 1}}
-        });
-        let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"materialize-theme-json",
-            request,
-            &serde_json::to_vec(&options).unwrap(),
-        ))
-        .unwrap();
-        assert_error_envelope(
-            &payload,
-            "materialize-theme-json",
-            "MERMAN_RESOURCE_LIMIT_EXCEEDED",
-        );
-        assert_eq!(
-            payload["details"]["resource"]["limit_id"],
-            "max_theme_encoded_bytes"
-        );
-        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
     }
 
     #[cfg(feature = "svg")]
     #[test]
-    fn theme_operation_json_honors_theme_authoring_resource_limits() {
+    fn theme_operation_json_exports_and_resolves_a_v2_theme() {
         let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"materialize-theme-json",
-            br#"{}"#,
-            br#"{"resources":{"limits":{"max_theme_encoded_bytes":1}}}"#,
+            b"export-theme-preset",
+            b"studio",
+            b"",
         ))
-        .expect("valid theme-operation resource error envelope");
+        .unwrap();
+        assert_success_envelope(&payload, "export-theme-preset");
+        let document = &payload["data"]["result"];
+        assert_eq!(document["schema_version"], 2);
+        assert_eq!(document["id"], "studio");
 
-        assert_error_envelope(
-            &payload,
-            "materialize-theme-json",
-            "MERMAN_RESOURCE_LIMIT_EXCEEDED",
-        );
-        assert_eq!(
-            payload["details"]["resource"]["limit_id"],
-            "max_theme_encoded_bytes"
-        );
-        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
+        let request =
+            json!({"document": document, "appearance": "dark", "auto_fix_contrast": true});
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"resolve-theme",
+            &serde_json::to_vec(&request).unwrap(),
+            b"",
+        ))
+        .unwrap();
+        assert_success_envelope(&payload, "resolve-theme");
+        let result = &payload["data"]["result"];
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["resolved"]["appearance"], "dark");
+        assert!(result["notices"].is_array());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_preserves_v2_document_diagnostics() {
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"resolve-theme",
+            br#"{"document":{"schema_version":2,"extends":"studio","typography":{"base_size_px":"large"}}}"#,
+            b"",
+        ))
+        .unwrap();
+        assert_success_envelope(&payload, "resolve-theme");
+        let result = &payload["data"]["result"];
+        assert_eq!(result["ok"], false);
+        assert_eq!(result["path"], "typography.base_size_px");
+        assert!(result["line"].is_number());
+        assert!(result["column"].is_number());
     }
 
     #[cfg(feature = "svg")]
@@ -924,7 +779,7 @@ mod tests {
         assert!(!payload.to_string().contains(&"x".repeat(32)));
 
         let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"materialize-theme-json\nforged",
+            b"resolve-theme\nforged",
             br#"{}"#,
             b"",
         ))
@@ -943,67 +798,6 @@ mod tests {
             .contains("future-theme-operation-identifier"));
     }
 
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_operation_json_preserves_contract_owned_authoring_details() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-        ))
-        .unwrap();
-        for vector in vectors.as_array().unwrap() {
-            let payload: Value = serde_json::from_slice(&theme_operation_json(
-                b"materialize-theme-json",
-                vector["source"].as_str().unwrap().as_bytes(),
-                vector["options_json"].as_str().unwrap_or("").as_bytes(),
-            ))
-            .expect("theme-authoring error envelope");
-            assert_error_envelope(
-                &payload,
-                "materialize-theme-json",
-                vector["code_name"].as_str().unwrap(),
-            );
-            assert_eq!(payload["code"], vector["typst_status_code"]);
-            assert_eq!(payload["kind"], vector["typst_error_kind"]);
-            assert_eq!(payload["details"]["resource"], vector["resource"]);
-            let mut authoring = payload["details"]["theme_authoring"].clone();
-            for diagnostic in authoring["diagnostics"]
-                .as_array_mut()
-                .expect("diagnostics array")
-            {
-                let message = diagnostic
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("message")
-                    .expect("diagnostic message");
-                assert!(!message.as_str().expect("string message").trim().is_empty());
-            }
-            assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_support_matches_shared_golden() {
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
-        ))
-        .unwrap();
-        for vector in vectors.as_array().unwrap() {
-            let payload: Value = serde_json::from_slice(&theme_operation_json(
-                b"describe-theme-support-json",
-                vector["query"].to_string().as_bytes(),
-                b"",
-            ))
-            .unwrap();
-            assert_success_envelope(&payload, "describe-theme-support-json");
-            assert_eq!(
-                payload["data"]["result"], vector["expected"],
-                "{}",
-                vector["id"]
-            );
-        }
-    }
-
     #[test]
     fn typst_transport_aligns_default_layout_work_with_interactive() {
         let expected = if cfg!(feature = "svg") {
@@ -1018,7 +812,7 @@ mod tests {
             br#"{"resources":{"profile":null}}"#,
         ] {
             let options =
-                typst_options_json(OperationKey::Svg, input).expect("default Typst options");
+                reference_options_json(OperationKey::Svg, input).expect("default Typst options");
             let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
             assert_eq!(payload["runtime_policy"], "deterministic");
             assert_eq!(payload["resources"], expected);
@@ -1032,7 +826,7 @@ mod tests {
 
     #[test]
     fn typst_explicit_constrained_profile_keeps_its_stricter_defaults() {
-        let options = typst_options_json(
+        let options = reference_options_json(
             OperationKey::Svg,
             br#"{"resources":{"profile":"constrained"}}"#,
         )
@@ -1052,7 +846,7 @@ mod tests {
             br#"{"runtime_policy":null}"#.as_slice()
         };
         let options =
-            typst_options_json(OperationKey::Svg, input).expect("null transport policy fields");
+            reference_options_json(OperationKey::Svg, input).expect("null transport policy fields");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
         assert_eq!(payload["runtime_policy"], "deterministic");
@@ -1074,7 +868,7 @@ mod tests {
                 .map(|wrapper| json!({ wrapper: analysis.clone() }))
                 .unwrap_or(analysis);
             let options =
-                typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                reference_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
                     .expect("valid options");
             let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
             let resources = wrapper
@@ -1102,7 +896,7 @@ mod tests {
                     .map(|wrapper| json!({ wrapper: analysis.clone() }))
                     .unwrap_or(analysis);
                 let options =
-                    typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                    reference_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
                         .expect("explicit finite layout allowance");
                 let payload: Value = serde_json::from_slice(&options).unwrap();
                 let resources = wrapper
@@ -1136,7 +930,7 @@ mod tests {
         ] {
             let input =
                 format!(r#"{{"resources":{{"limits":{{"max_layout_work_units":{value}}}}}}}"#);
-            let error = typst_options_json(OperationKey::Svg, input.as_bytes()).unwrap_err();
+            let error = reference_options_json(OperationKey::Svg, input.as_bytes()).unwrap_err();
             let expected = if value == "0" {
                 merman_bindings_core::BindingStatus::InvalidArgument
             } else {
@@ -1150,7 +944,7 @@ mod tests {
             br#"{"resources":{"limits":null}}"#.as_slice(),
             br#"{"resources":{"limits":[]}}"#.as_slice(),
         ] {
-            let error = typst_options_json(OperationKey::Svg, input).unwrap_err();
+            let error = reference_options_json(OperationKey::Svg, input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1176,7 +970,7 @@ mod tests {
                 .or_insert_with(|| json!({}));
             limits["max_layout_work_units"] = json!(1_000_000);
             let input = serde_json::to_vec(&json!({ "resources": resources })).unwrap();
-            let error = typst_options_json(OperationKey::Svg, &input).unwrap_err();
+            let error = reference_options_json(OperationKey::Svg, &input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1192,7 +986,7 @@ mod tests {
     fn typst_resource_policy_preserves_analysis_wrapper_shape() {
         for wrapper in ["analysis", "merman"] {
             let input = format!(r#"{{ "{wrapper}": {{ "site_config": {{ "theme": "dark" }} }} }}"#);
-            let options = typst_options_json(OperationKey::Svg, input.as_bytes())
+            let options = reference_options_json(OperationKey::Svg, input.as_bytes())
                 .expect("valid wrapped options");
             let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
@@ -1217,36 +1011,40 @@ mod tests {
 
     #[test]
     fn typst_target_policy_rejects_native_runtime_and_ratex_math() {
-        let native =
-            typst_options_json(OperationKey::Svg, br#"{"runtime_policy":"native"}"#).unwrap_err();
-        assert_eq!(
-            native.status(),
-            merman_bindings_core::BindingStatus::UnsupportedOperation
-        );
-        assert_eq!(
-            native.kind(),
-            merman_bindings_core::BindingErrorKind::MissingCapability
-        );
-        assert_eq!(native.capability_id(), Some("system-clock"));
+        for (operation, export) in [
+            (
+                RENDER_OPERATION,
+                render_svg_json as fn(&[u8], &[u8]) -> Vec<u8>,
+            ),
+            (ANALYZE_OPERATION, analyze_json),
+        ] {
+            let native: Value =
+                serde_json::from_slice(&export(b"", br#"{"runtime_policy":"native"}"#)).unwrap();
+            assert_error_envelope(&native, operation, "MERMAN_UNSUPPORTED_OPERATION");
+            assert_eq!(native["kind"], "missing-capability");
+            assert_eq!(native["capability_id"], "system-clock");
 
-        if typst_artifact_contract()
-            .runtime_capabilities()
-            .has_operation("svg")
-        {
-            let ratex = typst_options_json(
-                OperationKey::Svg,
-                br#"{"environment":{"math_renderer":"ratex"}}"#,
-            )
-            .unwrap_err();
-            assert_eq!(
-                ratex.status(),
-                merman_bindings_core::BindingStatus::UnsupportedOperation
-            );
-            assert_eq!(
-                ratex.kind(),
-                merman_bindings_core::BindingErrorKind::MissingCapability
-            );
-            assert_eq!(ratex.capability_id(), Some("math"));
+            if cfg!(feature = "svg") {
+                let ratex: Value = serde_json::from_slice(&export(
+                    b"",
+                    br#"{"environment":{"math_renderer":" RaTeX "}}"#,
+                ))
+                .unwrap();
+                assert_error_envelope(&ratex, operation, "MERMAN_UNSUPPORTED_OPERATION");
+                assert_eq!(ratex["kind"], "missing-capability");
+                assert_eq!(ratex["capability_id"], "math");
+
+                let null_math: Value = serde_json::from_slice(&export(
+                    b"",
+                    br#"{"environment":{"math_renderer":null}}"#,
+                ))
+                .unwrap();
+                assert_error_envelope(&null_math, operation, "MERMAN_OPTIONS_JSON_ERROR");
+                assert_eq!(
+                    null_math["message"],
+                    "invalid options_json: `environment.math_renderer` must be a string"
+                );
+            }
         }
     }
 
@@ -1257,7 +1055,7 @@ mod tests {
             br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1048577}}}}"#.as_slice(),
             br#"{"merman":{"resources":{"limits":{"max_model_items":1000000000}}}}"#.as_slice(),
         ] {
-            let error = typst_options_json(OperationKey::Svg, input).unwrap_err();
+            let error = reference_options_json(OperationKey::Svg, input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1268,7 +1066,7 @@ mod tests {
 
     #[test]
     fn null_resource_profile_cannot_bypass_the_typst_limits() {
-        let options = typst_options_json(
+        let options = reference_options_json(
             OperationKey::Svg,
             br#"{"resources":{"profile":null,"limits":{"max_source_bytes":4096}}}"#,
         )
@@ -1288,7 +1086,7 @@ mod tests {
             br#"{"merman":null,"resources":{"profile":"trusted-native"}}"#.as_slice(),
             br#"{"analysis":[]}"#.as_slice(),
         ] {
-            let error = typst_options_json(OperationKey::Svg, options).unwrap_err();
+            let error = reference_options_json(OperationKey::Svg, options).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1296,8 +1094,8 @@ mod tests {
             assert!(error.message().contains("wrapper must be an object"));
         }
 
-        let error =
-            typst_options_json(OperationKey::Svg, br#"{"analysis":{},"merman":{}}"#).unwrap_err();
+        let error = reference_options_json(OperationKey::Svg, br#"{"analysis":{},"merman":{}}"#)
+            .unwrap_err();
         assert_eq!(
             error.status(),
             merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1309,8 +1107,9 @@ mod tests {
                 "resources": { "limits": { "max_layout_work_units": 1_000_000 } },
                 wrapper: {}
             });
-            let error = typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
-                .unwrap_err();
+            let error =
+                reference_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                    .unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1505,22 +1304,14 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn render_svg_json_keeps_explicit_typography_in_the_resvg_safe_transport() {
+    fn render_svg_json_keeps_v2_typography_in_the_resvg_safe_transport() {
         let payload: Value = serde_json::from_slice(&render_svg_json(
-            br#"classDiagram
-    class User {
-        +String name
-    }"#,
+            b"flowchart TD\nA[Hello] --> B[World]",
             br#"{
                 "theme": {
-                    "spec": {
-                        "typography": {
-                            "default": {
-                                "font_stack": ["Typst Explicit Sans"],
-                                "font_size_px": 18
-                            }
-                        }
-                    }
+                    "schema_version": 2,
+                    "extends": "studio",
+                    "typography": {"sans": ["Typst Explicit Sans", "sans-serif"], "base_size_px": 18}
                 },
                 "svg": { "pipeline": "resvg-safe" }
             }"#,
@@ -1530,17 +1321,17 @@ mod tests {
         assert_success_envelope(&payload, RENDER_OPERATION);
         let svg = payload["data"]["svg"].as_str().expect("SVG payload");
         assert!(!svg.contains("<foreignObject"), "{svg}");
-        assert!(svg.contains("Typst Explicit Sans"), "{svg}");
-        let user_text_tag = svg
-            .split_once(">User</text>")
-            .expect("class User label")
+        let label = svg
+            .split_once(">Hello</text>")
+            .expect("flowchart Hello label")
             .0
             .rsplit_once("<text")
-            .expect("class User text element")
+            .expect("flowchart Hello text element")
             .1;
+        assert!(label.contains("Typst Explicit Sans"), "{label}");
         assert!(
-            user_text_tag.contains("font-size:18px") || user_text_tag.contains("font-size: 18px"),
-            "explicit Typst typography must reach the class label: {user_text_tag}"
+            label.contains("font-size:18px") || label.contains("font-size: 18px"),
+            "{label}"
         );
     }
 
@@ -1572,7 +1363,7 @@ mod tests {
             assert_success_envelope(&payload, RENDER_OPERATION);
             let svg = payload["data"]["svg"].as_str().unwrap();
             assert!(svg.contains("Hello"));
-            let options = typst_options_json(OperationKey::Svg, b"").unwrap();
+            let options = reference_options_json(OperationKey::Svg, b"").unwrap();
             let full = typst_artifact_contract()
                 .execute_once(
                     BindingOperationRequest::new("svg", source).with_options_json(&options),
@@ -1678,126 +1469,6 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn typst_options_preflight_measures_raw_theme_bytes_before_value_normalization() {
-        let raw_padding = " ".repeat(600 * 1024);
-        let options_json = format!(
-            r#"{{"resources":{{"limits":{{"max_layout_work_units":1000000}}}},"theme":{{{raw_padding}"preset":"base"}}}}"#
-        );
-
-        let error = typst_options_json(OperationKey::Svg, options_json.as_bytes())
-            .expect_err("raw encoded theme bytes must be checked before Value normalization");
-        assert_eq!(
-            error.status(),
-            merman_bindings_core::BindingStatus::ResourceLimitExceeded
-        );
-        let resource = error
-            .resource_details()
-            .expect("raw theme input rejection must remain structured");
-        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
-        assert_eq!(resource.profile, "constrained");
-
-        let compact = json!({
-            "resources": { "limits": { "max_layout_work_units": 1_000_000 } },
-            "theme": { "preset": "base" }
-        })
-        .to_string();
-        typst_options_json(OperationKey::Svg, compact.as_bytes())
-            .expect("the same semantic theme without raw padding must remain below the ceiling");
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn render_svg_json_rejects_oversized_font_input_before_base64_decoding() {
-        let oversized_base64 = "A".repeat(600 * 1024);
-        let options = json!({
-            "theme": {
-                "spec": {
-                    "assets": {
-                        "fonts": [{
-                            "id": "oversized-font",
-                            "format": "truetype",
-                            "data_base64": oversized_base64
-                        }]
-                    }
-                }
-            }
-        });
-        let options_json = options.to_string();
-        let preflight_error = typst_options_json(OperationKey::Svg, options_json.as_bytes())
-            .expect_err("Typst options preflight must reject before typed font decoding");
-        assert_eq!(
-            preflight_error.status(),
-            merman_bindings_core::BindingStatus::ResourceLimitExceeded
-        );
-        let preflight_resource = preflight_error
-            .resource_details()
-            .expect("Typst options preflight rejection must remain structured");
-        assert_eq!(preflight_resource.limit_id, "max_theme_encoded_bytes");
-        assert_eq!(preflight_resource.profile, "constrained");
-
-        let payload: Value = serde_json::from_slice(&render_svg_json(
-            b"flowchart TD\nA --> B",
-            options_json.as_bytes(),
-        ))
-        .expect("valid JSON payload");
-
-        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
-        assert_eq!(
-            payload["details"]["resource"]["limit_id"],
-            "max_theme_encoded_bytes"
-        );
-        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn render_svg_json_reports_effect_graph_compile_limits() {
-        let effects = (0..9)
-            .map(|index| {
-                json!({
-                    "kind": "graph",
-                    "id": format!("effect-{index}"),
-                    "primitives": [{
-                        "kind": "gaussian-blur",
-                        "std_deviation": 1.0
-                    }]
-                })
-            })
-            .collect::<Vec<_>>();
-        let options = json!({ "theme": { "spec": { "effects": effects } } });
-        let options_json = options.to_string();
-        let normalized = typst_options_json(OperationKey::Svg, options_json.as_bytes())
-            .expect("Typst options normalization should admit the encoded effect input");
-        let compile_error = typst_artifact_contract()
-            .create_engine(&normalized)
-            .err()
-            .expect("the constrained Typst engine must reject excess effect graphs");
-        assert_eq!(
-            compile_error.status(),
-            merman_bindings_core::BindingStatus::ResourceLimitExceeded
-        );
-        let compile_resource = compile_error
-            .resource_details()
-            .expect("Typst compile rejection must remain structured");
-        assert_eq!(compile_resource.limit_id, "max_effect_graphs");
-        assert_eq!(compile_resource.profile, "constrained");
-
-        let payload: Value = serde_json::from_slice(&render_svg_json(
-            b"flowchart TD\nA --> B",
-            options_json.as_bytes(),
-        ))
-        .expect("valid JSON payload");
-
-        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
-        assert_eq!(
-            payload["details"]["resource"]["limit_id"],
-            "max_effect_graphs"
-        );
-        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
     fn render_svg_json_returns_a_structured_error_envelope() {
         let payload: Value =
             serde_json::from_slice(&render_svg_json(b"", b"")).expect("valid JSON payload");
@@ -1829,7 +1500,7 @@ mod tests {
             assert_eq!(analysis["valid"], valid);
             assert!(analysis["diagnostics"].as_array().is_some());
 
-            let options = typst_options_json(OperationKey::AnalysisJson, options).unwrap();
+            let options = reference_options_json(OperationKey::AnalysisJson, options).unwrap();
             let full = typst_artifact_contract()
                 .execute_once(
                     BindingOperationRequest::new("analysis-json", b"flowchart TD\nA --> B")
@@ -1844,13 +1515,48 @@ mod tests {
     #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_returns_a_structured_error_envelope_for_option_failures() {
-        let payload: Value = serde_json::from_slice(&analyze_json(b"flowchart TD\nA --> B", b"{"))
-            .expect("valid JSON payload");
-
-        assert_error_envelope(&payload, ANALYZE_OPERATION, "MERMAN_OPTIONS_JSON_ERROR");
+        for (options, code_name, message) in [
+            (
+                b"{".as_slice(),
+                "MERMAN_OPTIONS_JSON_ERROR",
+                "invalid options_json",
+            ),
+            (
+                br#"{"resources":{"limits":{"max_model_items":1}}}"#,
+                "MERMAN_INVALID_ARGUMENT",
+                "not available for the single-diagram analysis operation",
+            ),
+        ] {
+            let payload: Value =
+                serde_json::from_slice(&analyze_json(b"flowchart TD\nA --> B", options)).unwrap();
+            assert_error_envelope(&payload, ANALYZE_OPERATION, code_name);
+            assert!(
+                payload["message"].as_str().unwrap().contains(message),
+                "{payload}"
+            );
+        }
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
+    #[cfg(all(feature = "analysis", feature = "svg"))]
+    #[test]
+    fn analyze_json_checks_transport_policy_before_operation_resource_scope() {
+        for (options, capability) in [
+            (
+                br#"{"runtime_policy":"native","resources":{"limits":{"max_model_items":1}}}"#
+                    .as_slice(),
+                "system-clock",
+            ),
+            (
+                br#"{"environment":{"math_renderer":"ratex"},"resources":{"limits":{"max_model_items":1}}}"#,
+                "math",
+            ),
+        ] {
+            let payload: Value = serde_json::from_slice(&analyze_json(b"", options)).unwrap();
+            assert_error_envelope(&payload, ANALYZE_OPERATION, "MERMAN_UNSUPPORTED_OPERATION");
+            assert_eq!(payload["capability_id"], capability);
+        }
+    }
+
     fn assert_success_envelope(payload: &Value, operation: &str) {
         assert_eq!(payload["version"], TYPST_RESULT_PAYLOAD_SCHEMA_VERSION);
         assert_eq!(payload["operation"], operation);

@@ -1,103 +1,179 @@
-use std::sync::OnceLock;
-
 use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTypographyProperty,
-};
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::config::config_font_family_css;
+use crate::svg::PreparedCommonCss;
+use crate::text::TextStyle;
+use crate::theme::{FamilyTheme, font_family_css};
 
-/// Resolves Timeline's base typography once for layout, CSS emission, and evidence.
+use super::config::TimelineFontSize;
+use super::{TimelineCssBinding, TimelineNativeStyle};
+
 #[derive(Debug)]
-pub(crate) struct TimelineTypographyThemePlan {
-    css_binding: super::TimelineCssBinding,
-    common_css: crate::svg::PreparedCommonCss,
+enum TimelineAppearance {
+    Mermaid(TimelineCssBinding),
+    Native(TimelineNativeStyle),
+}
+
+#[derive(Debug)]
+pub(crate) struct TimelineStyle {
+    appearance: TimelineAppearance,
+    common_css: PreparedCommonCss,
     layout_settings: super::config::TimelineLayoutSettings,
-    inherited_font_stack: InheritedFontStackPlan,
     used_font_size_px: Option<f64>,
-    typed_font_size_requested: bool,
-    typed_font_size_active: bool,
-    terminal: OnceLock<TimelineTypographyOutcome>,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct TimelineTypographyOutcome {
-    has_visible_node_text: bool,
-    has_visible_title: bool,
-    has_unverified_node_text: bool,
-    has_unverified_title: bool,
-}
-
-impl TimelineTypographyThemePlan {
-    #[cfg(test)]
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-    ) -> Self {
-        Self::resolve_with_text(theme, effective_config, None)
+impl TimelineStyle {
+    pub(crate) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
+        match native {
+            Some(theme) => Self::resolve_native(config, theme),
+            None => Self::resolve_mermaid(config),
+        }
     }
 
-    pub(crate) fn resolve_with_text(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        text_fill: Option<&str>,
-    ) -> Self {
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let typed_font_size_requested = theme.is_some_and(|theme| {
-            theme.family_mechanism_routes().iter().any(|route| {
-                route.mechanism()
-                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
-            })
-        });
-        // Root `fontSize` remains Timeline's independent layout-offset owner. Only an explicit
-        // theme-variable value shadows the typed base-size route itself.
-        let configured_font_size =
-            super::TimelineConfigView::new(effective_config.as_value()).configured_font_size();
-        let config_owns_font_size = typed_font_size_requested
-            && configured_font_size.is_some()
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
-        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let font_size = match theme {
-            Some(theme) if typed_font_size_active => {
-                let font_size_px = theme.typography().font_size_px();
-                super::config::TimelineFontSize {
-                    css: format!("{font_size_px}px"),
-                    used_px: Some(f64::from(font_size_px)),
-                }
-            }
-            _ => configured_font_size.unwrap_or_default(),
+    fn resolve_mermaid(config: &PresentationConfig) -> Self {
+        let config_view = super::TimelineConfigView::new(config.as_value());
+        let font_size = config_view.configured_font_size().unwrap_or_default();
+        let font_family = config_font_family_css(config);
+        let font_size_px = font_size.used_px.unwrap_or(16.0);
+        let css = TimelineCssBinding::resolve(config.as_value());
+        let text_style = TextStyle {
+            font_family: Some(font_family.clone()),
+            font_size: font_size_px,
+            font_weight: None,
+            font_style: None,
         };
-
-        let mut common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
-            effective_config.as_value(),
-            inherited_font_stack.font_family_css().to_owned(),
-            font_size.css,
+        let node_text_style = css.node_text_style(&text_style);
+        let layout_settings = config_view.layout_settings_for(
+            text_style,
+            node_text_style,
+            None,
+            config_view.root_font_size_px().unwrap_or(font_size_px),
         );
-        if let Some(fill) = text_fill {
-            common_css = common_css.with_text_color(fill);
-        }
-        let layout_settings = super::TimelineConfigView::new(effective_config.as_value())
-            .layout_settings_with_resolved_typography(
-                Some(inherited_font_stack.font_family_css()),
-                Some(font_size.used_px.unwrap_or(16.0)),
-            );
         Self {
-            css_binding: super::TimelineCssBinding::resolve(effective_config.as_value()),
-            common_css,
+            appearance: TimelineAppearance::Mermaid(css),
+            common_css: PreparedCommonCss::with_resolved_typography(
+                config.as_value(),
+                font_family,
+                font_size.css,
+            ),
             layout_settings,
-            inherited_font_stack,
             used_font_size_px: font_size.used_px,
-            typed_font_size_requested,
-            typed_font_size_active,
-            terminal: OnceLock::new(),
         }
     }
 
-    pub(crate) fn css_binding(&self) -> &super::TimelineCssBinding {
-        &self.css_binding
+    fn resolve_native(config: &PresentationConfig, theme: &FamilyTheme) -> Self {
+        let config_view = super::TimelineConfigView::new(config.as_value());
+        let typography = &theme.typography;
+        let source_family = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .filter(|path| config.explicit_config_owns_path(path))
+            .find_map(|path| {
+                config
+                    .get_str(path)
+                    .and_then(crate::config::normalized_config_font_family)
+            });
+        let body_family = source_family
+            .clone()
+            .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
+        let title_family = source_family
+            .unwrap_or_else(|| font_family_css(typography.stack(typography.title_family)));
+        let has_config_size = config.explicit_config_owns_path("themeVariables.fontSize");
+        let font_size = if has_config_size {
+            config_view.configured_font_size().unwrap_or_default()
+        } else {
+            TimelineFontSize {
+                css: format!("{}px", typography.base_size_px),
+                used_px: Some(typography.base_size_px),
+            }
+        };
+        let font_size_px = font_size.used_px.unwrap_or(16.0);
+        let layout_font_size = if config.explicit_config_owns_path("fontSize") {
+            config_view.root_font_size_px().unwrap_or_else(|| {
+                if has_config_size {
+                    font_size_px
+                } else {
+                    config_view.render_font_size_px()
+                }
+            })
+        } else {
+            font_size_px
+        };
+        let is_redux = config
+            .get_str("theme")
+            .is_some_and(|theme| theme.contains("redux"));
+        let configured_weight = (is_redux
+            && config.explicit_config_owns_path("themeVariables.fontWeight")
+            && super::timeline_theme_color_limit(config.as_value()) != 0)
+            .then(|| {
+                crate::config::config_css_number_or_string(
+                    config,
+                    &["themeVariables", "fontWeight"],
+                )
+                .unwrap_or_else(|| "normal".into())
+            });
+        let label_weight = typography.label_weight.to_string();
+        let node_weight = configured_weight
+            .as_deref()
+            .unwrap_or(&label_weight)
+            .to_owned();
+        let mut text_style = TextStyle {
+            font_family: Some(body_family.clone()),
+            font_size: font_size_px,
+            font_weight: None,
+            font_style: None,
+        };
+        // Explicit Redux weight inherits from the unweighted measurement style, as in Mermaid.
+        let mut node_text_style =
+            TimelineCssBinding::node_style_for_weight(&text_style, configured_weight.as_deref());
+        if configured_weight.is_none() {
+            node_text_style.font_weight = Some(label_weight.clone());
+        }
+        text_style.font_weight = Some(label_weight);
+        let title_style = TextStyle {
+            font_family: Some(title_family),
+            font_size: font_size_px * 1.9375,
+            font_weight: Some(typography.title_weight.to_string()),
+            font_style: None,
+        };
+        let native = TimelineNativeStyle::new(theme, config, &config_view, is_redux, node_weight);
+        let common_css = PreparedCommonCss::with_resolved_typography(
+            config.as_value(),
+            body_family,
+            font_size.css,
+        )
+        .with_text_color(&native.text);
+        Self {
+            appearance: TimelineAppearance::Native(native),
+            common_css,
+            layout_settings: config_view.layout_settings_for(
+                text_style,
+                node_text_style,
+                Some(title_style),
+                layout_font_size,
+            ),
+            used_font_size_px: font_size.used_px,
+        }
+    }
+
+    pub(crate) fn native(&self) -> Option<&TimelineNativeStyle> {
+        match &self.appearance {
+            TimelineAppearance::Native(native) => Some(native),
+            TimelineAppearance::Mermaid(_) => None,
+        }
+    }
+
+    pub(crate) fn css_binding(&self) -> Option<&TimelineCssBinding> {
+        match &self.appearance {
+            TimelineAppearance::Mermaid(css) => Some(css),
+            TimelineAppearance::Native(_) => None,
+        }
+    }
+
+    pub(crate) fn gradient_stops(&self) -> Option<&[Option<String>; 2]> {
+        match &self.appearance {
+            TimelineAppearance::Native(native) => native.gradient_stops.as_ref(),
+            TimelineAppearance::Mermaid(css) => css.use_neo_gradient.then_some(&css.gradient_stops),
+        }
     }
 
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
@@ -111,126 +187,6 @@ impl TimelineTypographyThemePlan {
     pub(crate) const fn used_font_size_px(&self) -> Option<f64> {
         self.used_font_size_px
     }
-
-    pub(crate) fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
-    }
-
-    pub(crate) fn begin_emission(&self) -> Option<TimelineTypographyOutcome> {
-        self.typography_requested()
-            .then(TimelineTypographyOutcome::default)
-    }
-
-    pub(crate) fn record_emission(&self, outcome: TimelineTypographyOutcome) {
-        let _ = self.terminal.set(outcome);
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        if !self.typography_requested() {
-            return;
-        }
-
-        let outcome = self.terminal.get();
-        for property in self
-            .inherited_font_stack
-            .unsupported_typography_properties()
-        {
-            let has_visible_consumer = outcome.is_none_or(|outcome| match property {
-                // The title owns its bold weight independently of inherited node typography.
-                ThemeTypographyProperty::FontWeight => {
-                    outcome.has_visible_node_text || outcome.has_unverified_node_text
-                }
-                _ => {
-                    outcome.has_visible_node_text
-                        || outcome.has_visible_title
-                        || outcome.has_unverified_node_text
-                        || outcome.has_unverified_title
-                }
-            });
-            let key = FamilyThemeMechanismKey::Typography(property);
-            if has_visible_consumer {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-        let Some(outcome) = outcome else {
-            for (property, requested, active) in [
-                (
-                    ThemeTypographyProperty::FontStack,
-                    self.inherited_font_stack.typed_font_stack_requested(),
-                    self.inherited_font_stack.typed_font_stack_active(),
-                ),
-                (
-                    ThemeTypographyProperty::FontSize,
-                    self.typed_font_size_requested,
-                    self.typed_font_size_active,
-                ),
-            ] {
-                if !requested {
-                    continue;
-                }
-                let key = FamilyThemeMechanismKey::Typography(property);
-                if active {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                } else {
-                    evidence.mark_not_applicable(key);
-                }
-            }
-            return;
-        };
-
-        for (property, requested, active, has_visible_consumer, has_unverified_consumer) in [
-            (
-                ThemeTypographyProperty::FontStack,
-                self.inherited_font_stack.typed_font_stack_requested(),
-                self.inherited_font_stack.typed_font_stack_active(),
-                outcome.has_visible_node_text || outcome.has_visible_title,
-                outcome.has_unverified_node_text || outcome.has_unverified_title,
-            ),
-            (
-                ThemeTypographyProperty::FontSize,
-                self.typed_font_size_requested,
-                self.typed_font_size_active,
-                // The title's explicit 4ex size is not an inherited font-size declaration.
-                outcome.has_visible_node_text,
-                outcome.has_unverified_node_text,
-            ),
-        ] {
-            if !requested {
-                continue;
-            }
-            let key = FamilyThemeMechanismKey::Typography(property);
-            if !active {
-                evidence.mark_not_applicable(key);
-            } else if has_unverified_consumer
-                || (outcome.has_visible_node_text
-                    && !self.css_binding.section_font_weight_is_measurable())
-            {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else if has_visible_consumer {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-    }
-}
-
-impl TimelineTypographyOutcome {
-    pub(crate) fn record_base_text_run(&mut self, text: &str, font_size_px: Option<f64>) {
-        if !text.trim().is_empty() {
-            self.has_visible_node_text |= font_size_px.is_some_and(|size| size > 0.0);
-            self.has_unverified_node_text |= font_size_px.is_none();
-        }
-    }
-
-    pub(crate) fn record_title(&mut self, text: &str, parent_font_size_px: Option<f64>) {
-        if !text.trim().is_empty() {
-            self.has_visible_title |= parent_font_size_px.is_some_and(|size| size > 0.0);
-            self.has_unverified_title |= parent_font_size_px.is_none();
-        }
-    }
 }
 
 #[cfg(test)]
@@ -238,13 +194,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_timeline_projects_authored_gradient_and_redux_font_weight() {
+        let config = crate::test_support::presentation_config(serde_json::json!({
+            "theme": "redux", "look": "neo", "fontSize": "18px",
+            "themeVariables": {
+                "fontSize": "24px", "fontWeight": "bold !important",
+                "useGradient": true, "gradientStop": "#112233"
+            }
+        }));
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_preset(crate::theme::BuiltinPreset::Studio, None)
+            .unwrap();
+        let plan = TimelineStyle::resolve(&config, Some(theme.family("timeline")));
+        let settings = plan.layout_settings();
+        assert!(plan.css_binding().is_none());
+        assert!(settings.is_neo);
+        assert_eq!(settings.layout_font_size, 18.0);
+        assert_eq!(settings.node_text_style.font_size, 24.0);
+        assert_eq!(settings.node_text_style.font_weight.as_deref(), Some("700"));
+        assert_eq!(plan.native().unwrap().node_weight, "bold !important");
+        let [start, stop] = plan.gradient_stops().unwrap();
+        assert_eq!(start.as_deref(), None);
+        assert_eq!(stop.as_deref(), Some("#112233"));
+    }
+
+    #[test]
     fn prepared_layout_preserves_independent_root_font_offset() {
         let config = crate::test_support::presentation_config(serde_json::json!({
             "theme": "redux", "fontSize": "18px",
-            "themeVariables": {"fontSize": "24px", "fontWeight": 900}
+            "themeVariables": {"fontSize": "24px", "fontWeight": 900, "textColor": "var(--text)"}
         }));
-        let plan =
-            TimelineTypographyThemePlan::resolve_with_text(None, &config, Some("var(--text)"));
+        let plan = TimelineStyle::resolve(&config, None);
         assert_eq!(plan.layout_settings().text_style.font_size, 24.0);
         assert_eq!(plan.layout_settings().node_text_style.font_size, 24.0);
         assert_eq!(plan.layout_settings().text_style.font_weight, None);
@@ -253,13 +233,13 @@ mod tests {
                 .node_text_style
                 .font_weight
                 .as_deref(),
-            plan.css_binding().section_font_weight()
+            plan.css_binding().unwrap().section_font_weight()
         );
         assert_eq!(plan.layout_settings().layout_font_size, 18.0);
         assert_eq!(plan.common_css().text_color(), "var(--text)");
         assert_eq!(
             plan.layout_settings().text_style.font_family.as_deref(),
-            Some(plan.inherited_font_stack.font_family_css())
+            Some(plan.common_css().font_family())
         );
         assert_eq!(
             plan.layout_settings().node_text_style.font_family,
@@ -269,7 +249,7 @@ mod tests {
             let config = crate::test_support::presentation_config(serde_json::json!({
                 "fontSize": "18px", "themeVariables": {"fontSize": format!("{size}px")}
             }));
-            let plan = TimelineTypographyThemePlan::resolve(None, &config);
+            let plan = TimelineStyle::resolve(&config, None);
             assert_eq!(plan.layout_settings().text_style.font_size, size);
             assert_eq!(plan.layout_settings().node_text_style.font_size, size);
             assert_eq!(plan.layout_settings().layout_font_size, 18.0);

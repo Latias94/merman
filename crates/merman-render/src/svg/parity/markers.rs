@@ -33,6 +33,7 @@ pub(crate) struct BaseEdgeMarkerGeometry {
 }
 
 impl BaseEdgeMarkerKind {
+    #[cfg(test)]
     pub(crate) const ALL: [Self; 12] = [
         Self::PointEnd,
         Self::PointStart,

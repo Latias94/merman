@@ -40,7 +40,7 @@ struct RawPreparedMathLabel {
 }
 
 impl RawPreparedMathLabel {
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
         let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
         Self::with_max_line_height(html, metrics, max_line_height_px, None)
@@ -140,7 +140,7 @@ pub(crate) struct PrepareMathLabelRequest<'a> {
     foreground: &'a str,
     text_measurer: Option<&'a dyn TextMeasurer>,
     max_width_px: Option<f64>,
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     wrap_mode: WrapMode,
     shell: MathLabelShell,
     occurrence_id: Option<&'a super::PreparedMathOccurrenceId>,
@@ -163,7 +163,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px,
-            #[cfg(any(test, merman_internal_theme_acceptance))]
+            #[cfg(test)]
             wrap_mode: _wrap_mode,
             shell: MathLabelShell::Flowchart,
             occurrence_id: None,
@@ -202,7 +202,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px: None,
-            #[cfg(any(test, merman_internal_theme_acceptance))]
+            #[cfg(test)]
             wrap_mode: WrapMode::HtmlLike,
             shell: MathLabelShell::Sequence,
             occurrence_id: None,
@@ -217,7 +217,6 @@ pub(crate) struct PreparedMathLabel {
     max_line_height_px: f64,
     max_math_height_px: Option<f64>,
     browser_xhtml: Arc<str>,
-    style_assurance: super::PreparedMathStyleAssurance,
     occurrence_id: Option<super::PreparedMathOccurrenceId>,
     native_projection: Option<Arc<PreparedMathNativeProjection>>,
 }
@@ -230,7 +229,6 @@ impl PreparedMathLabel {
             max_line_height_px: metrics.height,
             max_math_height_px: None,
             browser_xhtml: Arc::from("<span/>"),
-            style_assurance: super::PreparedMathStyleAssurance::opaque_html("", 16.0),
             occurrence_id: None,
             native_projection: None,
         }
@@ -254,10 +252,6 @@ impl PreparedMathLabel {
 
     pub(crate) fn native_projection(&self) -> Option<&Arc<PreparedMathNativeProjection>> {
         self.native_projection.as_ref()
-    }
-
-    pub(crate) const fn style_assurance(&self) -> &super::PreparedMathStyleAssurance {
-        &self.style_assurance
     }
 
     pub(crate) fn expectation(
@@ -286,7 +280,6 @@ impl PreparedMathLabel {
                         .map_or(0, |projection| projection.retained_bytes()),
                 )
             })
-            .and_then(|bytes| bytes.checked_add(self.style_assurance.retained_heap_bytes()))
             .and_then(|bytes| {
                 bytes.checked_add(
                     self.occurrence_id
@@ -334,7 +327,7 @@ impl MathPreparationOutcome {
 pub(crate) enum ConfiguredMathBackend {
     #[cfg(feature = "math")]
     CompiledRatex,
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     External(Arc<dyn MathRenderer + Send + Sync>),
 }
 
@@ -344,7 +337,7 @@ impl ConfiguredMathBackend {
         Self::CompiledRatex
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub(crate) fn external(renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         Self::External(renderer)
     }
@@ -365,7 +358,7 @@ impl ConfiguredMathBackend {
         match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => &super::RatexMathRenderer,
-            #[cfg(any(test, merman_internal_theme_acceptance))]
+            #[cfg(test)]
             Self::External(ref renderer) => renderer.as_ref(),
         }
     }
@@ -401,7 +394,7 @@ impl ConfiguredMathBackend {
                 );
                 prepare_compiled_ratex(request, classification, color, work_meter)
             }
-            #[cfg(any(test, merman_internal_theme_acceptance))]
+            #[cfg(test)]
             Self::External(ref renderer) => {
                 if !charge_external_math_source(request.text, work_meter.as_ref())? {
                     return Ok(MathPreparationOutcome::Unavailable(
@@ -424,7 +417,7 @@ impl fmt::Debug for ConfiguredMathBackend {
         match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => _formatter.write_str("ConfiguredMathBackend::CompiledRatex"),
-            #[cfg(any(test, merman_internal_theme_acceptance))]
+            #[cfg(test)]
             Self::External(ref renderer) => _formatter
                 .debug_tuple("ConfiguredMathBackend::External")
                 .field(renderer)
@@ -544,7 +537,7 @@ fn classify_math_label(
     })
 }
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(test)]
 fn charge_external_math_source(
     text: &str,
     work_meter: &OperationWorkMeter,
@@ -560,7 +553,7 @@ fn charge_external_math_source(
     Ok(saw_math)
 }
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(test)]
 fn prepare_external(
     renderer: &(dyn MathRenderer + Send + Sync),
     request: PrepareMathLabelRequest<'_>,
@@ -611,18 +604,12 @@ fn prepare_external(
         .zip(html)
         .map(|(metrics, html)| RawPreparedMathLabel::new(html, metrics));
     Ok(match prepared {
-        Some(prepared) => {
-            let style_assurance = super::PreparedMathStyleAssurance::opaque_html(
-                request.foreground,
-                request.style.font_size,
-            );
-            match finish_external_preparation(prepared, request, style_assurance, work_meter)? {
-                Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
-                None => {
-                    MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
-                }
+        Some(prepared) => match finish_external_preparation(prepared, request, work_meter)? {
+            Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
+            None => {
+                MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
             }
-        }
+        },
         None => MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined),
     })
 }
@@ -630,7 +617,6 @@ fn prepare_external(
 fn finish_external_preparation(
     prepared: RawPreparedMathLabel,
     request: PrepareMathLabelRequest<'_>,
-    style_assurance: super::PreparedMathStyleAssurance,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<Option<PreparedMathLabel>, OperationWorkError> {
     let RawPreparedMathLabel {
@@ -659,7 +645,6 @@ fn finish_external_preparation(
         max_line_height_px,
         max_math_height_px,
         browser_xhtml: Arc::from(browser_xhtml),
-        style_assurance,
         occurrence_id: request.occurrence_id.cloned(),
         native_projection,
     };
@@ -985,13 +970,7 @@ fn prepare_compiled_ratex(
             MathPreparationUnavailable::BackendDeclined,
         ));
     };
-    let style_assurance = super::PreparedMathStyleAssurance::compiled_ratex(
-        request.foreground,
-        request.style.font_size,
-    );
-    let Some(prepared) =
-        finish_external_preparation(prepared, request, style_assurance, work_meter)?
-    else {
+    let Some(prepared) = finish_external_preparation(prepared, request, work_meter)? else {
         return Ok(MathPreparationOutcome::Unavailable(
             MathPreparationUnavailable::BackendDeclined,
         ));
@@ -1481,7 +1460,6 @@ mod tests {
             std::mem::size_of::<PreparedMathLabel>()
                 + artifact.browser_xhtml().len()
                 + native.retained_bytes()
-                + "#e5e7eb".len()
         );
     }
 

@@ -1,24 +1,27 @@
 use super::{Outline, ShapePortProfile};
-use crate::c4::{
-    C4_FRAMED_FRAME_WIDTH, C4_ROUNDED_RADIUS, C4Look, C4NodeShape, C4PersonOutline, c4_cap_radius,
-};
+use crate::c4::{C4_FRAMED_FRAME_WIDTH, C4Look, C4NodeShape, C4PersonOutline, c4_cap_radius};
 use crate::graph_layout::ir::Size;
 
 impl ShapePortProfile {
     /// The solved box surrounds the actual outline. The final value is the horizontal offset
     /// of its center relative to the C4 shape's paint origin.
-    pub(crate) fn c4_shape(kind: C4NodeShape, look: C4Look, size: Size) -> (Self, Size, f64) {
+    pub(crate) fn c4_shape(
+        kind: C4NodeShape,
+        look: C4Look,
+        size: Size,
+        radius: f64,
+    ) -> (Self, Size, f64) {
         let width = size.width.max(1.0);
         let height = size.height.max(1.0);
         let (profile, width, height, dx) = match kind {
             C4NodeShape::Rounded => (
-                Self::rounded_rectangle(width, height, C4_ROUNDED_RADIUS, C4_ROUNDED_RADIUS),
+                Self::rounded_rectangle(width, height, radius, radius),
                 width,
                 height,
                 0.0,
             ),
             C4NodeShape::Framed if look.is_hand_drawn() => (
-                Self::rounded_rectangle(width, height, C4_ROUNDED_RADIUS, C4_ROUNDED_RADIUS),
+                Self::rounded_rectangle(width, height, radius, radius),
                 width,
                 height,
                 0.0,

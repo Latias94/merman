@@ -1,0 +1,44 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI-THEME-CHECK 1 2026-08-15 "Merman 0.11.0" "Merman CLI Manual"
+.SH NAME
+merman\-cli\-theme\-check \- Validate a v2 document and show its contrast results
+.SH SYNOPSIS
+\fBmerman\-cli theme check\fR [\fB\-\-appearance\fR] [\fB\-\-strict\-contrast\fR] [\fB\-\-json\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIFILE\fR>
+.SH DESCRIPTION
+Validate a v2 document and show its contrast results
+.SH OPTIONS
+.TP
+\fB\-\-appearance\fR \fI<APPEARANCE>\fR
+Check this appearance. Defaults to the document\*(Aqs default appearance
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+light
+.IP \(bu 2
+dark
+.RE
+.TP
+\fB\-\-strict\-contrast\fR
+Fail when any checked contrast pair misses its target
+.TP
+\fB\-\-json\fR
+Print the resolved theme, contrast ratios, and diagnostics as JSON
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+<\fIFILE\fR>
+Theme document JSON file. Use `\-` for stdin
+.SH "OPERATION CONTROL"
+.TP
+\fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
+Cancel the complete command operation after this many milliseconds.
+
+The deadline starts before input acquisition and covers generation, rendering, and publication. Omit this option for no deadline. Zero cancels at the first cooperative checkpoint. Resource budgets are independent; an unbounded resource profile does not disable this deadline. Blocking backend calls return to a checkpoint before cancellation.
+.SH VERSION
+v0.11.0

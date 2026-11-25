@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-parse \- Parse Mermaid source and print the semantic JSON model
 .SH SYNOPSIS
-\fBmerman\-cli parse\fR [\fB\-\-pretty\fR] [\fB\-\-meta\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-unix\-millis\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli parse\fR [\fB\-\-pretty\fR] [\fB\-\-meta\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-unix\-millis\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Parse Mermaid source and print the semantic JSON model
 .SH OPTIONS
@@ -24,12 +24,6 @@ Print version
 [\fIINPUT\fR]
 Input Mermaid file. Use `\-` for stdin
 .SH "MERMAID CONFIGURATION"
-.TP
-\fB\-\-suppress\-errors\fR
-Emit an error diagram instead of failing on parse errors
-.TP
-\fB\-c\fR, \fB\-\-config\-file\fR \fI<CONFIG_FILE>\fR
-JSON Mermaid configuration file
 .TP
 \fB\-t\fR, \fB\-\-theme\fR \fI<THEME>\fR
 Mermaid theme override
@@ -59,6 +53,12 @@ redux\-color
 .IP \(bu 2
 redux\-dark\-color
 .RE
+.TP
+\fB\-\-suppress\-errors\fR
+Emit an error diagram instead of failing on parse errors
+.TP
+\fB\-c\fR, \fB\-\-config\-file\fR \fI<CONFIG_FILE>\fR
+JSON Mermaid configuration file
 .SH "RUNTIME POLICY"
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]

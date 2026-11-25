@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::theme::ThemeOutcome;
+
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_model::OperationControl;
 
@@ -17,11 +19,12 @@ use super::target_admission::{
 };
 
 /// Successful SVG output and the evidence for the operation that produced it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SvgOutput {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     shoal_layout_frame: Option<Arc<merman_render::ShoalLayoutFrame>>,
     svg: String,
+    theme_outcome: ThemeOutcome,
     evidence: RenderEvidence,
     admission: TargetAdmissionReceipt,
 }
@@ -34,10 +37,11 @@ pub struct SvgOutput {
 /// construct a standalone-SVG target result.
 /// A native font context selected for layout is retained for every native projection. Export
 /// options can share that exact context but cannot replace it or add one after layout completed.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct RenderedDocument {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     svg: merman_render::svg::ResvgCompatibleSvg,
+    theme_outcome: Arc<ThemeOutcome>,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     #[cfg(all(
@@ -153,6 +157,7 @@ impl RenderedDocument {
             merman_render::svg::ResvgCompatibleSvg,
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
+        theme_outcome: ThemeOutcome,
         #[cfg(feature = "native-fonts")] native_fonts: Option<merman_export::NativeFontContext>,
         #[cfg(all(
             feature = "native-fonts",
@@ -170,6 +175,7 @@ impl RenderedDocument {
         Self {
             layout_adaptation,
             svg,
+            theme_outcome: Arc::new(theme_outcome),
             evidence,
             portability,
             #[cfg(all(
@@ -196,6 +202,11 @@ impl RenderedDocument {
 
     pub fn evidence(&self) -> &RenderEvidence {
         &self.evidence
+    }
+
+    /// Reports the visual defaults used to render this document.
+    pub fn theme_outcome(&self) -> &ThemeOutcome {
+        &self.theme_outcome
     }
 
     pub const fn portability(&self) -> &DocumentPortabilityReport {
@@ -273,12 +284,13 @@ impl RenderedDocument {
         bytes: Vec<u8>,
         export_report: merman_export::RasterExportReport,
     ) -> Result<RasterOutput, RenderError> {
-        let admission = native_raster_admission(export_report, &self.evidence, &self.portability);
+        let admission = native_raster_admission(export_report, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(RasterOutput {
             layout_adaptation: self.layout_adaptation,
             bytes,
             evidence: Arc::clone(&self.evidence),
+            theme_outcome: Arc::clone(&self.theme_outcome),
             export_report,
             admission,
         })
@@ -372,12 +384,13 @@ impl RenderedDocument {
         bytes: Vec<u8>,
         export_report: merman_export::PdfExportReport,
     ) -> Result<PdfOutput, RenderError> {
-        let admission = native_pdf_admission(export_report, &self.evidence, &self.portability);
+        let admission = native_pdf_admission(export_report, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(PdfOutput {
             layout_adaptation: self.layout_adaptation,
             bytes,
             evidence: Arc::clone(&self.evidence),
+            theme_outcome: Arc::clone(&self.theme_outcome),
             export_report,
             admission,
         })
@@ -385,6 +398,11 @@ impl RenderedDocument {
 }
 
 impl SvgOutput {
+    /// Reports the visual defaults used to render this SVG.
+    pub const fn theme_outcome(&self) -> &ThemeOutcome {
+        &self.theme_outcome
+    }
+
     #[cfg(feature = "native-fonts")]
     pub(super) fn with_native_font_diagnostics(
         mut self,
@@ -436,6 +454,7 @@ pub struct RasterOutput {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     bytes: Vec<u8>,
     evidence: Arc<RenderEvidence>,
+    theme_outcome: Arc<ThemeOutcome>,
     export_report: merman_export::RasterExportReport,
     admission: TargetAdmissionReceipt,
 }
@@ -459,6 +478,11 @@ impl RasterOutput {
         &self.evidence
     }
 
+    /// Reports the visual defaults used for this image.
+    pub fn theme_outcome(&self) -> &ThemeOutcome {
+        &self.theme_outcome
+    }
+
     pub const fn export_report(&self) -> merman_export::RasterExportReport {
         self.export_report
     }
@@ -479,6 +503,7 @@ pub struct PdfOutput {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     bytes: Vec<u8>,
     evidence: Arc<RenderEvidence>,
+    theme_outcome: Arc<ThemeOutcome>,
     export_report: merman_export::PdfExportReport,
     admission: TargetAdmissionReceipt,
 }
@@ -502,6 +527,11 @@ impl PdfOutput {
         &self.evidence
     }
 
+    /// Reports the visual defaults used for this PDF.
+    pub fn theme_outcome(&self) -> &ThemeOutcome {
+        &self.theme_outcome
+    }
+
     pub const fn export_report(&self) -> merman_export::PdfExportReport {
         self.export_report
     }
@@ -523,6 +553,7 @@ pub(super) fn finish_standalone_svg_target(
     control: &merman_model::OperationControl,
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
     shoal_layout_frame: Option<Arc<merman_render::ShoalLayoutFrame>>,
+    theme_outcome: ThemeOutcome,
 ) -> Result<SvgOutput, RenderError> {
     crate::operation_runner::checkpoint(control, merman_model::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
@@ -533,6 +564,7 @@ pub(super) fn finish_standalone_svg_target(
         layout_adaptation,
         shoal_layout_frame,
         svg: svg.into_string(),
+        theme_outcome,
         evidence,
         admission,
     })

@@ -1,59 +1,6 @@
-use std::collections::{BTreeMap, BTreeSet};
+use merman_model::presentation::PresentationConfig;
 
-use merman_model::presentation::{
-    PresentationConfig, ThemeCompatibilityConsumptionDisposition, ThemeCompatibilityEvidence,
-    ThemeCompatibilityFieldConsumption, ThemeCompatibilityFieldKind,
-};
-
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
-    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeOutcomes, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
-};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
-
-mod blocks;
-mod terminal;
-
-use terminal::{PacketTextColorOwnership, PacketTextWinners};
-pub(crate) use terminal::{PacketTextOutput, PacketTextRole};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PacketTypographyOutcome {
-    Inactive,
-    TypedFontStack,
-    ConfigOwned,
-}
-
-#[derive(Debug)]
-struct PacketUnsupportedRoute {
-    key: FamilyThemeMechanismKey,
-    target: ThemeTarget,
-    reason: FamilyThemeResidualReason,
-}
-
-#[derive(Debug)]
-struct PacketRuleObservation {
-    selector: FamilyThemeSelectorShape,
-    pending_fill: Option<ThemeCapability>,
-    unsupported: BTreeMap<ResolvedStyleProperty, FamilyThemeResidualReason>,
-    incomplete: BTreeSet<ResolvedStyleProperty>,
-}
-
-impl PacketRuleObservation {
-    const fn new(selector: FamilyThemeSelectorShape) -> Self {
-        Self {
-            selector,
-            pending_fill: None,
-            unsupported: BTreeMap::new(),
-            incomplete: BTreeSet::new(),
-        }
-    }
-}
+use crate::theme::{FamilyTheme, font_family_css};
 
 /// Final Packet stylesheet values used by the SVG writer.
 #[derive(Debug)]
@@ -61,234 +8,136 @@ pub(crate) struct PacketTypographyThemePlan {
     css_binding: super::config::PacketStyleSettings,
     font_family_css: Box<str>,
     root_font_size_px: f64,
-    selection: Option<PacketThemeSelection>,
+    native_typography: Option<Box<PacketNativeTypography>>,
 }
 
 #[derive(Debug)]
-struct PacketThemeSelection {
-    blocks: blocks::PacketBlockThemePlan,
-    text_color_ownership: PacketTextColorOwnership,
-    typography: PacketTypographyOutcome,
-    unsupported_properties: BTreeSet<ThemeTypographyProperty>,
-    compatibility_surface_candidate: bool,
-    canonical_dark_mode: bool,
-    rule_observations: BTreeMap<FamilyThemeMechanismKey, PacketRuleObservation>,
-    unsupported_routes: Box<[PacketUnsupportedRoute]>,
-    text_winners: PacketTextWinners,
-}
-
-/// Requested theme results produced only by successful visible SVG writes.
-pub(crate) struct PacketThemeOutcome {
-    pub(crate) evidence: FamilyThemeOutcomes,
-    compatibility: Option<(ThemeCompatibilityConsumptionDisposition, bool)>,
-}
-
-impl PacketThemeOutcome {
-    pub(crate) fn compatibility_consumptions(
-        &self,
-        parse_evidence: &ThemeCompatibilityEvidence,
-    ) -> Box<[ThemeCompatibilityFieldConsumption]> {
-        let Some((disposition, canonical_dark_mode)) = self.compatibility else {
-            return Box::new([]);
-        };
-        packet_text_surface_compatibility_consumptions(
-            parse_evidence,
-            disposition,
-            canonical_dark_mode,
-        )
-    }
+pub(crate) struct PacketNativeTypography {
+    pub(crate) byte_font_family: Option<String>,
+    pub(crate) title_font_family: Option<String>,
+    pub(crate) label_weight: u16,
+    pub(crate) title_weight: u16,
 }
 
 impl PacketTypographyThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let mut css_binding =
-            super::PacketConfigView::new(effective_config.as_value()).style_settings();
-        let root_font_size_px = crate::config::config_theme_font_size_css_or_root_number_px_opt(
-            effective_config.as_value(),
-        )
-        .unwrap_or(16.0);
-        let Some(theme) = theme.filter(|theme| !theme.family_mechanism_routes().is_empty()) else {
-            return Ok(Self {
-                css_binding,
-                font_family_css: crate::config::config_font_family_css(effective_config.as_value())
-                    .into_boxed_str(),
-                root_font_size_px,
-                selection: None,
-            });
-        };
-        let text_color_ownership = PacketTextColorOwnership::from_config(effective_config);
-        let blocks = blocks::PacketBlockThemePlan::resolve(theme, effective_config, work_meter)?;
-        blocks.apply_css(&mut css_binding);
-
-        let config_owns_font_stack = packet_config_owns_font_stack(effective_config);
-        let mut typed_font_stack = false;
-        let mut unsupported_properties = BTreeSet::new();
-        let byte_label_style = theme.style_with_work_meter(
-            ThemeTarget::PacketByteLabel,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let field_label_style = theme.text_style_with_work_meter(
-            ThemeTarget::PacketFieldLabel,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let title_style = theme.style_with_work_meter(
-            ThemeTarget::Title,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let byte_label_fill =
-            packet_direct_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]);
-        let field_label_fill = packet_direct_static_fill(
-            theme,
-            &field_label_style,
-            &[ThemeTarget::Text, ThemeTarget::PacketFieldLabel],
-        );
-        let title_fill = packet_direct_static_fill(theme, &title_style, &[ThemeTarget::Title]);
-        let text_winners =
-            PacketTextWinners::new(theme, &byte_label_style, &field_label_style, &title_style);
-        let mut rule_observations = BTreeMap::new();
-        let mut unsupported_routes = Vec::new();
-
-        for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                    if route.disposition() == FamilyThemeDisposition::TypedAdapter =>
-                {
-                    typed_font_stack = true;
-                }
-                FamilyThemeMechanism::BaseTypography(property)
-                    if route.disposition() == FamilyThemeDisposition::Unsupported =>
-                {
-                    unsupported_properties.insert(property);
-                }
-                FamilyThemeMechanism::BaseTypography(_) => {}
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target,
-                    selector,
-                    facet,
-                } => {
-                    if target == ThemeTarget::Node {
-                        continue;
-                    }
-                    let key = theme.family_mechanism_key(route);
-                    let observation = rule_observations
-                        .entry(key)
-                        .or_insert_with(|| PacketRuleObservation::new(selector));
-                    let property = resolved_style_property_for_facet(facet);
-                    match (route.disposition(), selector, facet) {
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static {
-                                variant: None | Some(ThemeVariant::Default),
-                            },
-                            FamilyThemeRuleFacet::Fill(_),
-                        ) => {
-                            observation.pending_fill = selected_fill_for_target(
-                                target,
-                                &byte_label_fill,
-                                &field_label_fill,
-                                &title_fill,
-                            )
-                            .filter(|fill| fill.rule_index() == rule_index)
-                            .map(DirectStaticPaint::capability);
-                        }
-                        (FamilyThemeDisposition::Unsupported, _, facet) => {
-                            observation
-                                .unsupported
-                                .entry(property)
-                                .or_insert_with(|| unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
-                            observation.incomplete.insert(property);
-                        }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette { target } => {
-                    if target == ThemeTarget::Node {
-                        continue;
-                    }
-                    debug_assert_eq!(route.disposition(), FamilyThemeDisposition::Unsupported);
-                    unsupported_routes.push(PacketUnsupportedRoute {
-                        key: theme.family_mechanism_key(route),
-                        target,
-                        reason: FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                    });
-                }
-                FamilyThemeMechanism::EffectBinding { target, .. } => {
-                    if target == ThemeTarget::Node {
-                        continue;
-                    }
-                    debug_assert_eq!(route.disposition(), FamilyThemeDisposition::Unsupported);
-                    unsupported_routes.push(PacketUnsupportedRoute {
-                        key: theme.family_mechanism_key(route),
-                        target,
-                        reason: FamilyThemeResidualReason::UnsupportedEffect,
-                    });
-                }
-            }
+    fn from_config(config: &PresentationConfig) -> Self {
+        let config = config.as_value();
+        Self {
+            css_binding: super::PacketConfigView::new(config).style_settings(),
+            font_family_css: crate::config::config_font_family_css(config).into_boxed_str(),
+            root_font_size_px: crate::config::config_theme_font_size_css_or_root_number_px_opt(
+                config,
+            )
+            .unwrap_or(16.0),
+            native_typography: None,
         }
+    }
 
-        let font_family_css = if typed_font_stack && !config_owns_font_stack {
-            theme.typography().font_stack().as_css()
-        } else {
-            crate::config::config_font_family_css(effective_config.as_value())
-        };
-        let outcome = if typed_font_stack && config_owns_font_stack {
-            PacketTypographyOutcome::ConfigOwned
-        } else if typed_font_stack {
-            PacketTypographyOutcome::TypedFontStack
-        } else {
-            PacketTypographyOutcome::Inactive
-        };
-        let compatibility_surface_candidate = outcome == PacketTypographyOutcome::TypedFontStack
-            && byte_label_fill.is_some()
-            && field_label_fill.is_some()
-            && title_fill.is_some();
-
-        for (role, configured) in [
-            (PacketTextRole::ByteStart, &mut css_binding.start_byte_color),
-            (PacketTextRole::ByteEnd, &mut css_binding.end_byte_color),
-            (PacketTextRole::Label, &mut css_binding.label_color),
-            (PacketTextRole::Title, &mut css_binding.title_color),
+    pub(crate) fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
+        let mut plan = Self::from_config(config);
+        let Some(theme) = native else { return plan };
+        let packet = super::PacketConfigView::new(config.as_value());
+        let roles = &theme.roles;
+        let css = &mut plan.css_binding;
+        let owns_style =
+            |key, path| config.explicit_config_owns_path(path) && packet.style_value(key).is_some();
+        for (target, key, path, color) in [
+            (
+                &mut css.block_fill_color,
+                "blockFillColor",
+                "themeVariables.packet.blockFillColor",
+                roles.surface_node.first_color(),
+            ),
+            (
+                &mut css.block_stroke_color,
+                "blockStrokeColor",
+                "themeVariables.packet.blockStrokeColor",
+                roles.stroke_border.first_color(),
+            ),
+            (
+                &mut css.start_byte_color,
+                "startByteColor",
+                "themeVariables.packet.startByteColor",
+                roles.text_muted,
+            ),
+            (
+                &mut css.end_byte_color,
+                "endByteColor",
+                "themeVariables.packet.endByteColor",
+                roles.text_muted,
+            ),
+            (
+                &mut css.label_color,
+                "labelColor",
+                "themeVariables.packet.labelColor",
+                roles.text_primary,
+            ),
+            (
+                &mut css.title_color,
+                "titleColor",
+                "themeVariables.packet.titleColor",
+                roles.text_title,
+            ),
         ] {
-            if !text_color_ownership.owns(role)
-                && let Some(fill) = selected_fill_for_target(
-                    role.target(),
-                    &byte_label_fill,
-                    &field_label_fill,
-                    &title_fill,
-                )
-            {
-                *configured = fill.css().to_owned().into();
+            if !owns_style(key, path) {
+                *target = color.to_string().into();
             }
         }
 
-        Ok(Self {
-            css_binding,
-            font_family_css: font_family_css.into_boxed_str(),
-            root_font_size_px,
-            selection: Some(PacketThemeSelection {
-                blocks,
-                text_color_ownership,
-                typography: outcome,
-                unsupported_properties,
-                compatibility_surface_candidate,
-                canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
-                rule_observations,
-                unsupported_routes: unsupported_routes.into_boxed_slice(),
-                text_winners,
-            }),
-        })
+        let typography = &theme.typography;
+        let base_size = typography.base_size_px;
+        for (target, key, path, size) in [
+            (
+                &mut css.byte_font_size,
+                "byteFontSize",
+                "themeVariables.packet.byteFontSize",
+                base_size * 10.0 / 14.0,
+            ),
+            (
+                &mut css.label_font_size,
+                "labelFontSize",
+                "themeVariables.packet.labelFontSize",
+                base_size * 12.0 / 14.0,
+            ),
+            (
+                &mut css.title_font_size,
+                "titleFontSize",
+                "themeVariables.packet.titleFontSize",
+                base_size,
+            ),
+        ] {
+            if !owns_style(key, path) {
+                *target = format!("{size:.3}px").into();
+            }
+        }
+        if !owns_style("blockStrokeWidth", "themeVariables.packet.blockStrokeWidth") {
+            css.block_stroke_width = theme.form.stroke_width.to_string().into();
+        }
+        plan.root_font_size_px =
+            crate::config::configured_theme_font_size_css_or_root_number_px(config.as_value())
+                .filter(|(_, path)| config.explicit_config_owns_path(path))
+                .map_or(base_size, |(size, _)| size);
+        let explicit_font = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .filter(|path| config.explicit_config_owns_path(path))
+            .find_map(|path| {
+                config
+                    .get_str(path)
+                    .and_then(crate::config::normalized_config_font_family)
+            });
+        let has_explicit_font = explicit_font.is_some();
+        plan.font_family_css = explicit_font
+            .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)))
+            .into_boxed_str();
+        plan.native_typography = Some(Box::new(PacketNativeTypography {
+            byte_font_family: (!has_explicit_font)
+                .then(|| font_family_css(typography.stack(typography.code_family))),
+            title_font_family: (!has_explicit_font)
+                .then(|| font_family_css(typography.stack(typography.title_family))),
+            label_weight: typography.label_weight,
+            title_weight: typography.title_weight,
+        }));
+        plan
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -303,234 +152,7 @@ impl PacketTypographyThemePlan {
         &self.css_binding
     }
 
-    pub(crate) fn begin_text_output(&self) -> Option<PacketTextOutput<'_>> {
-        self.selection.as_ref().map(|selection| {
-            PacketTextOutput::new(selection, &self.css_binding, self.root_font_size_px)
-        })
+    pub(crate) fn native_typography(&self) -> Option<&PacketNativeTypography> {
+        self.native_typography.as_deref()
     }
-
-    pub(crate) fn finish_blocks(
-        &self,
-        output: &mut PacketThemeOutcome,
-        count: usize,
-        work: &OperationWorkMeter,
-    ) -> Result<(), OperationWorkError> {
-        if let Some(selection) = &self.selection {
-            output
-                .evidence
-                .merge_accounted_from(selection.blocks.finish(count, work)?);
-        }
-        Ok(())
-    }
-}
-
-impl PacketThemeSelection {
-    fn finish(&self, output: &PacketTextOutput<'_>) -> PacketThemeOutcome {
-        let mut evidence = FamilyThemeOutcomes::default();
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if output.has_potential_text() {
-            match self.typography {
-                PacketTypographyOutcome::TypedFontStack => {
-                    if output.has_unverified_text() {
-                        evidence
-                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                    } else {
-                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                    }
-                }
-                PacketTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-                PacketTypographyOutcome::Inactive => {}
-            }
-        } else {
-            evidence.mark_not_applicable(key);
-        }
-        for property in &self.unsupported_properties {
-            let key = FamilyThemeMechanismKey::Typography(*property);
-            if output.has_potential_text() {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-        for route in &self.unsupported_routes {
-            if output.occurrence_count(route.target) != 0 {
-                evidence.mark_residual(route.key.clone(), route.reason);
-            } else {
-                evidence.mark_not_applicable(route.key.clone());
-            }
-        }
-        for (key, observation) in &self.rule_observations {
-            let FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target,
-            } = *key
-            else {
-                unreachable!("Packet rule observations must use rule mechanism keys");
-            };
-            if !selector_intersects_default_occurrences(
-                observation.selector,
-                output.occurrence_count(target),
-            ) {
-                evidence.mark_not_applicable(key.clone());
-                continue;
-            }
-            if let Some(reason) = observation
-                .unsupported
-                .iter()
-                .find_map(|(property, reason)| {
-                    output.route_won(rule_index, *property).then_some(*reason)
-                })
-            {
-                evidence.mark_residual(key.clone(), reason);
-                continue;
-            }
-            if observation
-                .incomplete
-                .iter()
-                .any(|property| output.route_won(rule_index, *property))
-            {
-                continue;
-            }
-            match observation.pending_fill {
-                Some(capability)
-                    if output.route_won(rule_index, ResolvedStyleProperty::Fill)
-                        && output.has_typed_fill(target) =>
-                {
-                    if output.target_has_unverified_text(target) {
-                        evidence.mark_residual(
-                            key.clone(),
-                            FamilyThemeResidualReason::UnsupportedTypography,
-                        );
-                    } else {
-                        evidence.mark_applied_with_capabilities(key.clone(), [capability]);
-                    }
-                }
-                _ => evidence.mark_not_applicable(key.clone()),
-            }
-        }
-        let compatibility = self.compatibility_surface_candidate.then(|| {
-            let disposition = if output.has_potential_text() {
-                ThemeCompatibilityConsumptionDisposition::ReplacedByTypedSurface
-            } else {
-                ThemeCompatibilityConsumptionDisposition::NotReadByFamily
-            };
-            (disposition, self.canonical_dark_mode)
-        });
-        PacketThemeOutcome {
-            evidence,
-            compatibility,
-        }
-    }
-}
-
-/// Returns provisional path coverage used only to preserve pre-SVG compatibility error order.
-/// Final reports replace this deferral with actual writer outcomes.
-pub(crate) fn deferred_mermaid_compatibility_consumptions(
-    theme: Option<&ResolvedDiagramTheme>,
-    effective_config: &PresentationConfig,
-    parse_evidence: &ThemeCompatibilityEvidence,
-) -> Box<[ThemeCompatibilityFieldConsumption]> {
-    let Some(theme) = theme else {
-        return Box::new([]);
-    };
-    if !has_complete_direct_text_surface_plan(theme) {
-        return Box::new([]);
-    }
-    packet_text_surface_compatibility_consumptions(
-        parse_evidence,
-        ThemeCompatibilityConsumptionDisposition::ReplacedByTypedSurface,
-        packet_dark_mode_is_canonical(effective_config),
-    )
-}
-
-fn has_complete_direct_text_surface_plan(theme: &ResolvedDiagramTheme) -> bool {
-    let byte_label_style = theme.style(ThemeTarget::PacketByteLabel, ThemeVariant::Default, None);
-    let field_label_style = theme.style(ThemeTarget::PacketFieldLabel, ThemeVariant::Default, None);
-    let text_style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
-    let title_style = theme.style(ThemeTarget::Title, ThemeVariant::Default, None);
-    packet_direct_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]).is_some()
-        && (packet_direct_static_fill(theme, &field_label_style, &[ThemeTarget::PacketFieldLabel])
-            .is_some()
-            || packet_direct_static_fill(theme, &text_style, &[ThemeTarget::Text]).is_some())
-        && packet_direct_static_fill(theme, &title_style, &[ThemeTarget::Title]).is_some()
-        && theme.family_mechanism_routes().iter().any(|route| {
-            route.disposition() == FamilyThemeDisposition::TypedAdapter
-                && route.mechanism()
-                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-        })
-}
-
-fn packet_text_surface_compatibility_consumptions(
-    parse_evidence: &ThemeCompatibilityEvidence,
-    disposition: ThemeCompatibilityConsumptionDisposition,
-    consume_dark_mode: bool,
-) -> Box<[ThemeCompatibilityFieldConsumption]> {
-    parse_evidence
-        .mermaid_fields()
-        .filter(|field| {
-            field.kind() == ThemeCompatibilityFieldKind::Theme
-                || (consume_dark_mode && field.kind() == ThemeCompatibilityFieldKind::DarkMode)
-        })
-        .flat_map(|field| field.consume_all(disposition))
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn packet_dark_mode_is_canonical(config: &PresentationConfig) -> bool {
-    match (
-        config.get_bool("darkMode"),
-        config.get_bool("themeVariables.darkMode"),
-    ) {
-        (Some(root), Some(variable)) => root == variable,
-        (None, None) => true,
-        (Some(_), None) | (None, Some(_)) => false,
-    }
-}
-
-fn selected_fill_for_target<'a>(
-    target: ThemeTarget,
-    byte_label_fill: &'a Option<DirectStaticPaint>,
-    field_label_fill: &'a Option<DirectStaticPaint>,
-    title_fill: &'a Option<DirectStaticPaint>,
-) -> Option<&'a DirectStaticPaint> {
-    match target {
-        ThemeTarget::PacketByteLabel => byte_label_fill.as_ref(),
-        ThemeTarget::Text | ThemeTarget::PacketFieldLabel => field_label_fill.as_ref(),
-        ThemeTarget::Title => title_fill.as_ref(),
-        _ => None,
-    }
-}
-
-fn packet_direct_static_fill(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-    accepted_targets: &[ThemeTarget],
-) -> Option<DirectStaticPaint> {
-    resolve_direct_static_fill(
-        theme,
-        style,
-        accepted_targets,
-        DirectStaticSelectorDomain::Default,
-    )
-}
-
-const fn selector_intersects_default_variant(selector: FamilyThemeSelectorShape) -> bool {
-    let variant = match selector {
-        FamilyThemeSelectorShape::Static { variant }
-        | FamilyThemeSelectorShape::Ordinal { variant, .. } => variant,
-    };
-    matches!(variant, None | Some(ThemeVariant::Default))
-}
-
-const fn selector_intersects_default_occurrences(
-    selector: FamilyThemeSelectorShape,
-    occurrence_count: usize,
-) -> bool {
-    selector_intersects_default_variant(selector)
-        && selector.ordinal_domain_intersects_occurrence_count(occurrence_count)
-}
-
-fn packet_config_owns_font_stack(config: &PresentationConfig) -> bool {
-    config.config_path_overrides_typed_default("themeVariables.fontFamily")
-        || config.config_path_overrides_typed_default("fontFamily")
 }

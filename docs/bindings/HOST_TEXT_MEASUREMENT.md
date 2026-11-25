@@ -170,7 +170,7 @@ surface that will render the SVG.
 The operation-aware request and tagged result described here use text-measurement protocol v1
 (`MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION == 1`). The enclosing native ABI owns the callback
 entrypoint and its record layout; it is versioned independently from these operation codes. Install
-a callback when creating an ABI 3 engine:
+a callback when creating an ABI 4 engine:
 
 ```c
 MermanNativeEngineConfig config = {
@@ -345,7 +345,7 @@ verify this consumer contract; rebuilding TypeScript alone does not refresh WASM
 
 ## Lifecycle And Threading Rules
 
-- The callback and `user_data` are fixed at engine creation; ABI 3 has no callback setter or clearer.
+- The callback and `user_data` are fixed at engine creation; ABI 4 has no callback setter or clearer.
 - Keep the callback and `user_data` alive until `engine_try_close` succeeds.
 - `engine_try_close` never waits. It returns `MERMAN_NATIVE_STATUS_BUSY` while an operation is
   active and leaves the token valid for a later retry. Success permanently closes admission before
@@ -353,7 +353,7 @@ verify this consumer contract; rebuilding TypeScript alone does not refresh WASM
 - Treat callbacks as synchronous and latency-sensitive. They run during layout.
 - If the same reusable engine can render on multiple threads, the callback and all shared font
   caches must be thread-safe.
-- Do not execute on or retire the same engine from inside its callback. ABI 3 rejects same-thread
+- Do not execute on or retire the same engine from inside its callback. ABI 4 rejects same-thread
   and cross-thread callback re-entry with `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
 - A raw C callback must return normally. It must not unwind, throw, propagate SEH, call `longjmp`,
   or otherwise perform a non-local exit across the native boundary. Catch host-language failures

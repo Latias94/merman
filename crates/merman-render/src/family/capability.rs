@@ -428,13 +428,6 @@ pub(super) fn plan_render_request(
     session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let family_id = validate_paired_render_model(parsed)?;
-    if !meta
-        .effective_config
-        .theme_compatibility()
-        .matches_recipe(session.theme_compatibility_recipe())
-    {
-        return Err(Error::ThemeParseBindingMismatch);
-    }
     session
         .work_meter()
         .preflight_parsed_render(parsed, OperationPhase::Layout)?;

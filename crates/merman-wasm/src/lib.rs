@@ -61,15 +61,13 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::DocumentAnalysisJson,
     #[cfg(feature = "svg")]
-    OperationKey::DescribeThemeSupportJson,
-    #[cfg(feature = "svg")]
-    OperationKey::ExportThemePresetJson,
-    #[cfg(feature = "svg")]
     OperationKey::EdgeGeometryJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePreset,
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     #[cfg(feature = "svg")]
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ResolveTheme,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -399,41 +397,24 @@ pub fn theme_catalog() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("theme-catalog"))
 }
 
-#[wasm_bindgen(js_name = materializeTheme)]
-pub fn materialize_theme(
-    design_json: &str,
-    options_json: Option<String>,
-) -> Result<JsValue, JsValue> {
-    json_value_result(execute_wasm_operation(
-        "materialize-theme-json",
-        design_json.as_bytes(),
-        options_bytes(options_json.as_deref()),
-        None,
-    ))
-}
-
-#[wasm_bindgen(js_name = describeThemeSupport)]
-pub fn describe_theme_support(
-    query_json: &str,
-    options_json: Option<String>,
-) -> Result<JsValue, JsValue> {
-    json_value_result(execute_wasm_operation(
-        "describe-theme-support-json",
-        query_json.as_bytes(),
-        options_bytes(options_json.as_deref()),
-        None,
-    ))
-}
-
+#[cfg(feature = "svg")]
 #[wasm_bindgen(js_name = exportThemePreset)]
-pub fn export_theme_preset(
-    preset_id: &str,
-    options_json: Option<String>,
-) -> Result<JsValue, JsValue> {
+pub fn export_theme_preset(preset_id: &str) -> Result<JsValue, JsValue> {
     json_value_result(execute_wasm_operation(
-        "export-theme-preset-json",
+        "export-theme-preset",
         preset_id.as_bytes(),
-        options_bytes(options_json.as_deref()),
+        b"",
+        None,
+    ))
+}
+
+#[cfg(feature = "svg")]
+#[wasm_bindgen(js_name = resolveTheme)]
+pub fn resolve_theme(request_json: &str) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "resolve-theme",
+        request_json.as_bytes(),
+        b"",
         None,
     ))
 }
@@ -507,7 +488,7 @@ fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), Bind
 }
 
 // Preserve member order, duplicate keys, and nested raw values for shared admission.
-// A Value or Map round trip would erase malformed recipes before they can be rejected.
+// A Value or Map round trip would erase duplicate theme fields before they can be rejected.
 struct WasmOptionsFields<'a>(Vec<(String, &'a serde_json::value::RawValue)>);
 
 impl<'de> Deserialize<'de> for WasmOptionsFields<'de> {
@@ -930,7 +911,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 11);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 12);
     }
 
     #[cfg(feature = "ascii")]
@@ -1037,7 +1018,7 @@ mod tests {
 
     #[test]
     fn wasm_timeout_preserves_raw_options_members_for_shared_admission() {
-        let raw_theme = r#"{"schema_version":2,"schema_version":1,"kind":"design","design":{}}"#;
+        let raw_theme = r#"{"schema_version":2,"schema_version":2,"extends":"studio"}"#;
         let raw_options =
             format!(r#"{{"theme":{raw_theme},"theme":{raw_theme},"timeout_ms":125}}"#);
         let (normalized, timeout) = wasm_options(raw_options.as_bytes()).unwrap();
@@ -1051,29 +1032,24 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn wasm_timeout_does_not_hide_duplicate_recipe_fields() {
-        let design = r#"{"tokens":{}}"#;
-        for recipe in [
-            format!(
-                r#"{{"schema_version":2,"schema_version":1,"kind":"design","design":{design}}}"#
-            ),
-            format!(
-                r#"{{"schema_version":2,"schema_\u0076ersion":1,"kind":"design","design":{design}}}"#
-            ),
-            r#"{"schema_version":1,"kind":"design","design":{"tokens":{},"tokens":{}}}"#.to_owned(),
+    fn wasm_timeout_does_not_hide_duplicate_theme_document_fields() {
+        for document in [
+            r#"{"schema_version":2,"schema_version":2,"extends":"studio"}"#,
+            r#"{"schema_version":2,"schema_\u0076ersion":2,"extends":"studio"}"#,
+            r##"{"schema_version":2,"extends":"studio","seed":{"accent":"#123456","accent":"#123456"}}"##,
         ] {
-            let options = format!(r#"{{"theme":{recipe}}}"#);
-            let timed_options = format!(r#"{{"theme":{recipe},"timeout_ms":60000}}"#);
+            let options = format!(r#"{{"theme":{document}}}"#);
+            let timed_options = format!(r#"{{"theme":{document},"timeout_ms":60000}}"#);
             let plain =
                 execute_wasm_operation("svg", b"flowchart LR\nA --> B", options.as_bytes(), None)
-                    .expect_err("duplicate recipe fields must be rejected");
+                    .expect_err("duplicate theme fields must be rejected");
             let timed = execute_wasm_operation(
                 "svg",
                 b"flowchart LR\nA --> B",
                 timed_options.as_bytes(),
                 None,
             )
-            .expect_err("transport timeout must preserve duplicate recipe rejection");
+            .expect_err("transport timeout must preserve duplicate theme field rejection");
             assert_eq!(timed.status(), plain.status());
             assert_eq!(timed.message(), plain.message());
             assert!(plain.message().contains("duplicate"), "{plain:?}");
@@ -1280,50 +1256,86 @@ mod tests {
         assert_eq!(plan["ready"], true);
     }
 
+    #[test]
+    fn wasm_theme_catalog_and_operations_follow_the_artifact_capabilities() {
+        let capabilities = wasm_runtime_catalog().capabilities;
+        for operation_id in ["resolve-theme", "export-theme-preset"] {
+            assert_eq!(
+                capabilities.operation_ids.contains(&operation_id),
+                cfg!(feature = "svg"),
+                "unexpected availability for {operation_id}"
+            );
+        }
+        let catalog = wasm_artifact_contract()
+            .metadata_json("theme-catalog")
+            .unwrap();
+        let catalog: serde_json::Value = serde_json::from_slice(&catalog).unwrap();
+        assert_eq!(catalog["schema_version"], 2);
+        assert!(
+            catalog["mermaid_themes"]
+                .as_array()
+                .unwrap()
+                .contains(&"dark".into())
+        );
+        let presets = catalog["presets"].as_array().unwrap();
+        let families = catalog["families"].as_array().unwrap();
+        if cfg!(any(feature = "svg", feature = "ascii")) {
+            let studio = presets
+                .iter()
+                .find(|preset| preset["id"] == "studio")
+                .unwrap();
+            assert_eq!(studio["swatches"].as_array().unwrap().len(), 6);
+            assert!(!families.is_empty());
+        } else {
+            assert!(presets.is_empty());
+            assert!(families.is_empty());
+        }
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn wasm_theme_authoring_operations_share_the_canonical_operation_surface() {
-        let operation_ids = &wasm_runtime_catalog().capabilities.operation_ids;
-        for operation_id in [
-            "materialize-theme-json",
-            "describe-theme-support-json",
-            "export-theme-preset-json",
-        ] {
-            assert!(
-                operation_ids.contains(&operation_id),
-                "the Web catalog must advertise {operation_id}"
-            );
-        }
-
-        let materialized = execute_wasm_operation(
-            "materialize-theme-json",
-            br##"{
-                "tokens": { "paint.ink": {"type":"paint","value":"#123456"} },
-                "styles": {"text":{"fill":{"ref":"paint.ink"}}}
-            }"##,
-            b"",
-            None,
-        )
-        .expect("WASM should materialize an editable theme design");
-        let materialized: serde_json::Value = serde_json::from_slice(&materialized).unwrap();
-        assert_eq!(materialized["schema_version"], 1);
-        assert!(materialized["spec"]["styles"].is_array());
-
-        let support = execute_wasm_operation(
-            "describe-theme-support-json",
-            br#"{"schema_version":1,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
-            b"",
-            None,
-        )
-        .expect("WASM should expose theme support discovery");
-        let support: serde_json::Value = serde_json::from_slice(&support).unwrap();
-        assert_eq!(support["schema_version"], 1);
-        assert_eq!(support["query"]["family"], "sequence");
-
-        let preset = execute_wasm_operation("export-theme-preset-json", b"editor-light", b"", None)
+        let preset = execute_wasm_operation("export-theme-preset", b"studio", b"", None)
             .expect("WASM should export a built-in preset");
         let preset: serde_json::Value = serde_json::from_slice(&preset).unwrap();
-        assert_eq!(preset["kind"], "design");
+        assert_eq!(preset["schema_version"], 2);
+        assert_eq!(preset["id"], "studio");
+
+        let request = serde_json::to_vec(&serde_json::json!({
+            "document": preset,
+            "appearance": "dark",
+            "auto_fix_contrast": true,
+        }))
+        .unwrap();
+        let result = execute_wasm_operation("resolve-theme", &request, b"", None).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&result).unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["resolved"]["appearance"], "dark");
+        assert!(result["notices"].is_array());
+
+        for (document, column, path, message) in [
+            (
+                "{\n  \"schema_version\": 2,\n  \"extends\": ]\n}",
+                14,
+                "extends",
+                "expected value",
+            ),
+            (
+                "{\n  \"schema_version\": 2,\n  \"schema_version\": 2\n}",
+                18,
+                ".",
+                "duplicate",
+            ),
+        ] {
+            let request = serde_json::to_vec(&serde_json::json!({ "document": document })).unwrap();
+            let result = execute_wasm_operation("resolve-theme", &request, b"", None).unwrap();
+            let error: serde_json::Value = serde_json::from_slice(&result).unwrap();
+            assert_eq!(error["ok"], false);
+            assert_eq!(error["line"], 3);
+            assert_eq!(error["column"], column);
+            assert_eq!(error["path"], path);
+            assert!(error["message"].as_str().unwrap().contains(message));
+        }
     }
 
     #[cfg(all(
@@ -1686,14 +1698,22 @@ mod tests {
     #[test]
     fn wasm_svg_data_and_result_share_bytes_and_errors() {
         let source = b"flowchart TD\nA --> B";
-        for options in [
-            b"".as_slice(),
-            br##"{"theme":{"spec":{"canvas":{"base":"#f7f3e8"}}}}"##.as_slice(),
+        for (options, expected) in [
+            (
+                b"".as_slice(),
+                serde_json::json!({ "mode": "mermaid_parity", "notices": [] }),
+            ),
+            (
+                br#"{"theme":{"preset":"studio","appearance":"dark"}}"#.as_slice(),
+                serde_json::json!({
+                    "mode": "merman_native", "preset_id": "studio", "appearance": "dark", "notices": []
+                }),
+            ),
         ] {
             let full = execute_wasm_operation_result("svg", source, options, None).unwrap();
             let data = execute_wasm_operation("svg", source, options, None).unwrap();
             assert_eq!(data, full.data());
-            assert!(full.metadata().theme_execution_evidence().is_some());
+            assert_eq!(full.metadata().theme_outcome(), Some(&expected));
         }
         for options in [
             b"{".as_slice(),
@@ -1993,7 +2013,7 @@ mod tests {
         let result = execute_wasm_operation_result(
             "ascii",
             source.as_bytes(),
-            br#"{"version":3,"ascii":{"graph_presentation":"adaptive","charset":"ascii"}}"#,
+            br#"{"version":4,"ascii":{"graph_presentation":"adaptive","charset":"ascii"}}"#,
             None,
         )
         .unwrap();

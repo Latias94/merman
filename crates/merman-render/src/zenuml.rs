@@ -1,5 +1,6 @@
 //! Headless ZenUML geometry derived from the selected ZenUML Core SVG pipeline.
 
+mod native_theme;
 mod theme;
 
 use crate::Result;
@@ -13,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub(crate) use theme::{ZenumlSourceStyle, ZenumlThemePlan};
+pub(crate) use native_theme::ZenumlNativeStyle;
+pub(crate) use theme::ZenumlSourceStyle;
 
 pub(crate) const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";
 
@@ -69,6 +71,9 @@ pub(crate) fn resolve_zenuml_title<'a>(
 pub(crate) struct ZenumlTypography {
     font_family: Option<String>,
     font_size: Option<f64>,
+    font_weight: Option<String>,
+    title_family: Option<String>,
+    title_weight: Option<String>,
 }
 
 impl ZenumlTypography {
@@ -82,6 +87,7 @@ impl ZenumlTypography {
                 .get("fontSize")
                 .and_then(crate::config::json_f64_css_px)
                 .filter(|size| *size > 0.0),
+            ..Self::default()
         }
     }
 
@@ -96,8 +102,37 @@ impl ZenumlTypography {
     pub(crate) fn css_family(&self) -> Cow<'_, str> {
         self.font_family.as_deref().map_or_else(
             || Cow::Borrowed("Helvetica,Verdana,serif"),
-            |font_family| Cow::Owned(crate::config::normalize_css_font_family(font_family)),
+            |font_family| {
+                if self.font_weight.is_some() {
+                    Cow::Borrowed(font_family)
+                } else {
+                    Cow::Owned(crate::config::normalize_css_font_family(font_family))
+                }
+            },
         )
+    }
+
+    pub(crate) fn native_label_weight(&self) -> &str {
+        self.font_weight.as_deref().unwrap_or("400")
+    }
+
+    pub(crate) fn native_title_style(&self) -> TextStyle {
+        TextStyle {
+            font_family: self.title_family.clone(),
+            font_weight: self.title_weight.clone(),
+            ..self.style(16.0)
+        }
+    }
+
+    pub(crate) fn native_title_font(&self) -> (&str, &str) {
+        (
+            self.title_family.as_deref().unwrap_or("serif"),
+            self.title_weight.as_deref().unwrap_or("600"),
+        )
+    }
+
+    pub(crate) fn number_style(&self) -> TextStyle {
+        self.style(12.0)
     }
 
     pub(crate) fn uses_default_css(&self) -> bool {
@@ -112,7 +147,7 @@ impl ZenumlTypography {
                     .unwrap_or_else(|| "Helvetica, Verdana, serif".to_string()),
             ),
             font_size: self.size(source_size),
-            font_weight: None,
+            font_weight: self.font_weight.clone(),
             font_style: None,
         }
     }
@@ -136,7 +171,9 @@ impl ZenumlTypography {
             && (authored.contains_key("font-weight") || authored.contains_key("font-style"))
         {
             let mut style = base.clone();
-            style.font_weight = authored.get("font-weight").cloned();
+            if let Some(weight) = authored.get("font-weight") {
+                style.font_weight = Some(weight.clone());
+            }
             style.font_style = authored.get("font-style").cloned();
             Cow::Owned(style)
         } else {
@@ -2485,10 +2522,8 @@ mod tests {
     }
 
     #[test]
-    fn typed_family_typography_is_resolved_before_text_measurement() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-        };
+    fn native_family_typography_is_resolved_before_text_measurement() {
+        use crate::theme::ThemeCompiler;
         struct RecordingMeasurer(std::sync::Mutex<Vec<(String, TextStyle)>>);
         impl TextMeasurer for RecordingMeasurer {
             fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
@@ -2499,23 +2534,23 @@ mod tests {
                 DeterministicTextMeasurer::default().measure(text, style)
             }
         }
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default().with_family_style(
-                        crate::DiagramFamilyId::ZENUML,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("HostFamily").unwrap())
-                            .with_font_size_px(24.0)
-                            .unwrap(),
-                    ),
-                ),
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                br#"{
+                    "schema_version": 2,
+                    "extends": "paper",
+                    "overrides": [{
+                        "families": ["zenuml"],
+                        "typography": {
+                            "sans": ["HostFamily", "sans-serif"],
+                            "body_family": "sans",
+                            "base_size_px": 24
+                        }
+                    }]
+                }"#,
+                None,
             )
             .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::ZENUML);
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nAlice->Bob: request\n",
@@ -2527,46 +2562,21 @@ mod tests {
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML");
         };
-        for (config, family, participant_size, message_size) in [
-            (serde_json::json!({}), "HostFamily", 24.0, 21.0),
-            (
-                serde_json::json!({"themeVariables":{"zenuml":{"fontFamily":"SourceFamily"}}}),
-                "SourceFamily",
-                24.0,
-                21.0,
-            ),
-            (
-                serde_json::json!({"themeVariables":{"zenuml":{"fontSize":18}}}),
-                "HostFamily",
-                18.0,
-                15.75,
-            ),
-        ] {
-            let style = ZenumlSourceStyle::resolve(
-                Some(&resolved),
-                &crate::test_support::presentation_config(config),
-                &meter,
-                false,
-            )
-            .unwrap();
-            let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
-            layout_zenuml_diagram_typed(model, &style.typography, &measurer).unwrap();
-            let measurements = measurer.0.lock().unwrap();
-            assert!(
-                measurements
-                    .iter()
-                    .all(|(_, measured)| measured.font_family.as_deref() == Some(family))
-            );
-            assert!(
-                measurements
-                    .iter()
-                    .any(|(text, measured)| text == "Alice"
-                        && measured.font_size == participant_size)
-            );
-            assert!(measurements.iter().any(|(text, measured)| text == "request" && measured.font_size == message_size));
-            assert_eq!(style.typography.size(16.0), participant_size);
-            assert_eq!(style.typography.size(14.0), message_size);
-        }
+        let style = ZenumlSourceStyle::for_native(theme.family("zenuml"), None);
+        let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
+        layout_zenuml_diagram_typed(model, &style.typography, &measurer).unwrap();
+        let measurements = measurer.0.lock().unwrap();
+        let family = "\"HostFamily\", sans-serif";
+        assert!(measurements.iter().any(|(text, measured)| {
+            text == "Alice"
+                && measured.font_family.as_deref() == Some(family)
+                && measured.font_size == 24.0
+        }));
+        assert!(measurements.iter().any(|(text, measured)| {
+            text == "request"
+                && measured.font_family.as_deref() == Some(family)
+                && measured.font_size == 21.0
+        }));
     }
 
     #[test]

@@ -55,7 +55,7 @@ archives do not cover musl/Alpine or NixOS; the Nix integration builds from sour
 ## CLI contract migration
 
 Complete releases governed by the current source contract report capability document schema 2
-and CLI contract 8. Default source builds and the official release profile include `native-fonts`
+and CLI contract 9. Default source builds and the official release profile include `native-fonts`
 and `system-fonts`. Mermaid SVG defaults to deterministic measurement. Mermaid PNG/JPEG/PDF
 use native measurements with the same font context as painting. Archives built from the current
 profile query the platform catalog by default. On Linux the default retries bounded discovery
@@ -72,21 +72,17 @@ and `layout` envelope, use `layout --snapshot` on contract 8 and `layout` on con
 With `--suppress-errors`, use the snapshot to retrieve the original parse diagnostic.
 The outer capabilities schema remains 2. [Layout guide](../rendering/HEADLESS_LAYOUT.md)
 
-The CLI retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
+The CLI provides `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
 `rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel
-selected by `--ascii-report`. Rust library, FFI, ASCII, and committed Rustdoc generation defaults
-remain unchanged. Published tags keep their own contract and verifier. The standard
+selected by `--ascii-report`. Published tags keep their own contract and verifier. The standard
 release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
 `lint`, `lint-rules`, `mmdc`, `parse`, `render`, `rustdoc`, and `theme`.
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
-Contract 7 adds `theme inspect <INPUT|->` for bounded portable-recipe inspection and
-`--theme-appearance light|dark` for native Merman file/preset selection. Mermaid `--theme` and
-the mmdc dialect retain their original meanings. SVG-enabled artifacts expose the grouped
-schema-1 `theme_presets` catalog with supported/default appearances, exact
-`appearances[].concrete_preset_id` choices, Mermaid presentation groups, and single recipe/authoring
-schema-version fields. Alpha maturity, compiler-policy availability, and empty built-in
-qualification scope remain separate; archive qualification is a host-scoped companion rather
-than a claim from the installed binary alone.
+Contract 9 moves the native preset catalog to `merman-cli theme list --json` and accepts
+Mermaid theme names, Merman preset IDs, and Theme v2 JSON files with `--theme` on native render
+commands. Use `--appearance light|dark` with a native theme, `theme export <ID>` to start an
+editable document, and `theme check <INPUT|->` for validation and contrast diagnostics.
+The explicit `mmdc` dialect accepts Mermaid theme names.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. Native `render` / `batch` use `-f/--format`; the former native `-e` aliases are removed in 0.9.0 as scheduled by 0.8.x. See the [migration guide](../release/V080_TO_V090_UPGRADE_GUIDE.md#fonts-and-cli-discovery). The explicit `merman-cli mmdc` command and its `-e/--outputFormat` option remain supported. Failed ASCII report-mode invocations retain exactly one schema-1 Plain JSON stderr
@@ -141,8 +137,8 @@ covered by the GitHub attestation described below.
 
 For those releases, GitHub artifact attestations cover the binary archives, adjacent checksums,
 installers, checksum index, and verification manifest. GitHub's automatically generated tag source
-snapshots are outside this workflow-owned bundle. After downloading a binary asset, verify its
-release-workflow identity and expected tag with GitHub CLI:
+snapshots are outside this workflow-owned bundle. For an asset attested from the release tag,
+verify its release-workflow identity and expected tag with GitHub CLI:
 
 ```bash
 gh attestation verify merman-cli-x86_64-unknown-linux-gnu.tar.xz \
@@ -174,13 +170,12 @@ CLI jobs execute version, capability, completion, SVG, PNG, JPEG, and PDF smokes
 initialize, initialized, shutdown, and exit. Each job reports only one product, so no product's
 verification result is produced after another product's binary runs in the same writable job. A
 clean aggregate job requires the complete matrix to succeed and reverifies the immutable bundle
-before any registry candidate, attestation, or GitHub Release job can run.
+before the attestation and GitHub Release jobs run.
 
-Stable releases additionally generate Scoop and WinGet candidates from the verified Windows
-archive through the independent candidate workflow. Separate Windows jobs validate the Scoop JSON
+After a stable release is published, the independent candidate workflow can generate Scoop and
+WinGet candidates from the verified Windows archive. Separate Windows jobs validate the Scoop JSON
 and the WinGet manifest. The WinGet job also installs the manifest and smoke-tests its portable
-command alias. Candidate files remain workflow artifacts for external submission; they are not
-uploaded as product release assets. Prereleases take an explicit successful no-candidate path.
+command alias. Candidate files are workflow artifacts for external submission.
 
 ## cargo-binstall
 
@@ -335,9 +330,16 @@ After a stable GitHub Release is published, run the independent candidate workfl
 gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.9.0
 ```
 
-The workflow requires an existing non-draft stable release. It resolves the tag to a commit, verifies the release receipt's GitHub attestation, and checks every CLI/LSP bundle file against that receipt before generating candidates. The generator compares the Windows archive with the tagged source rather than the current branch. No binaries are rebuilt and no release assets are replaced.
+The workflow resolves the published stable tag to its commit and verifies the downloaded
+`release-verification.json` with the repository's `release.yml` signer. It runs the tagged bundle
+verifier when the tag commit is in the selected workflow revision's Git history. For other tag
+commits it runs the current workflow's verifier. In both cases the verifier checks the exact
+version, source commit, and CLI/LSP asset inventory and bytes against the attested manifest.
+A workflow-only recovery can attest the same assets from a different workflow revision while
+retaining the tagged artifact source. The generator runs from the current workflow revision and
+compares the Windows archive with the tagged source.
 
-WinGet and Scoop validate in separate jobs. WinGet uses the explicit `1.29.380` client and the version directory (`winget/manifests/l/Latias94/MermanCLI/<VERSION>/`); Scoop uses the official schema from Scoop `v0.6.0`. After `winget validate`, the WinGet job enables local manifests on its disposable hosted runner and installs the generated manifest with user scope and normal dependency/hash verification. It executes the installed `Microsoft/WinGet/Links/merman-cli.exe` alias directly, checking the exact release version, explicit help, no-argument usage, and a minimal SVG render. No-argument invocation must display usage and exit `2`; this is a CLI usage result, not a Windows file-not-found error. The version, help, and render probes must exit `0`.
+WinGet and Scoop validate the same run's candidate artifact in separate jobs. WinGet uses the explicit `1.29.380` client and the version directory (`winget/manifests/l/Latias94/MermanCLI/<VERSION>/`); Scoop uses the official schema from Scoop `v0.6.0`. After `winget validate`, the WinGet job enables local manifests on its disposable hosted runner and installs the generated manifest with user scope and normal dependency/hash verification. It executes the installed `Microsoft/WinGet/Links/merman-cli.exe` alias directly, checking the exact release version, explicit help, no-argument usage, and a minimal SVG render. No-argument invocation must display usage and exit `2`; this is a CLI usage result, not a Windows file-not-found error. The version, help, and render probes must exit `0`.
 
 Only after these checks pass does the job upload `winget-validated-<VERSION>` with the release receipt. Scoop uploads its separately schema-validated `scoop-validated-<VERSION>` artifact. The shared `cli-registry-candidates-<VERSION>` artifact is generated input, not proof that either validator or installation test passed. Retry only failed jobs when a validator or runner fails. These checks do not establish upstream acceptance or catalog availability.
 

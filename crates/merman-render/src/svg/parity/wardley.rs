@@ -1,140 +1,11 @@
 use super::*;
-use crate::diagram_theme::{ResolvedStyleProperty, ThemeTarget};
-use crate::family::{TerminalPaint, TerminalPaintPlan};
 use crate::wardley::{
     WardleyAnnotationsBoxLayout, WardleyArrowLayout, WardleyCircleLayout, WardleyDiagramLayout,
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
-    WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout,
+    WardleyPaintBinding, WardleySourceOverlayLayout, WardleyStyle, WardleyTextAnchor,
+    WardleyTextLayout, WardleyTextRole,
 };
 use merman_model::families::wardley::WardleyDiagramModel;
-
-struct WardleyPaintContext<'a> {
-    plan: TerminalPaintPlan<'a>,
-    base: &'a crate::wardley::WardleyPaintBinding,
-    typography: &'a crate::wardley::WardleyTypographyThemePlan,
-    text_ordinals: std::collections::BTreeMap<ThemeTarget, usize>,
-}
-
-impl WardleyPaintContext<'_> {
-    fn text_fill(
-        &mut self,
-        role: crate::wardley::WardleyTextRole,
-        can_be_visible: bool,
-    ) -> Result<Option<TerminalPaint>> {
-        use crate::wardley::WardleyTextRole as Role;
-        let shared_paths: &[&str] = &[self.base.axis_text_color_source];
-        let node_paths: &[&str] = &[self.base.component_label_color_source];
-        let (target, paths, base): (_, &[&str], _) = match role {
-            Role::Title => (
-                ThemeTarget::Title,
-                shared_paths,
-                self.base.axis_text_color.as_str(),
-            ),
-            Role::AxisLabel | Role::StageLabel => (
-                ThemeTarget::Axis,
-                shared_paths,
-                self.base.axis_text_color.as_str(),
-            ),
-            Role::LinkLabel => (
-                ThemeTarget::EdgeLabel,
-                shared_paths,
-                self.base.axis_text_color.as_str(),
-            ),
-            Role::NodeLabel => (
-                ThemeTarget::NodeLabel,
-                node_paths,
-                self.base.component_label_color.as_str(),
-            ),
-            Role::AnchorLabel => (
-                ThemeTarget::NodeLabel,
-                &[
-                    "themeVariables.wardley.anchorLabelColor",
-                    "themeVariables.primaryTextColor",
-                ],
-                self.base.anchor_label_color.as_str(),
-            ),
-            Role::EvolvedLabel => (
-                ThemeTarget::NodeLabel,
-                &["themeVariables.wardley.evolutionStroke"],
-                self.base.evolution_stroke.as_str(),
-            ),
-            _ => return Ok(None),
-        };
-        let ordinal = self.text_ordinals.entry(target).or_default();
-        *ordinal += 1;
-        let ordinal = *ordinal;
-        if !can_be_visible {
-            return Ok(None);
-        }
-        let style = self.plan.style(target, ordinal, true)?;
-        let fill = self.plan.paint(
-            target,
-            ordinal,
-            style.as_ref(),
-            ResolvedStyleProperty::Fill,
-            paths,
-            base,
-        );
-        if target != ThemeTarget::Axis {
-            self.plan
-                .unsupported_property(target, style.as_ref(), ResolvedStyleProperty::Stroke);
-        }
-        Ok(fill)
-    }
-
-    fn line_stroke(
-        &mut self,
-        target: ThemeTarget,
-        ordinal: usize,
-        paths: &[&str],
-        base: &str,
-    ) -> Result<Option<TerminalPaint>> {
-        let style = self.plan.style(target, ordinal, false)?;
-        let stroke = self.plan.paint(
-            target,
-            ordinal,
-            style.as_ref(),
-            ResolvedStyleProperty::Stroke,
-            paths,
-            base,
-        );
-        if target == ThemeTarget::Edge {
-            self.plan
-                .unsupported_property(target, style.as_ref(), ResolvedStyleProperty::Fill);
-        }
-        Ok(stroke)
-    }
-}
-
-struct WardleyLineStyle<'a> {
-    class: Option<&'a str>,
-    stroke: &'a str,
-    stroke_width: Option<f64>,
-    dash: Option<&'a str>,
-}
-
-fn write_themed_line(
-    out: &mut impl SvgOutput,
-    line: WardleyLineLayout,
-    style: WardleyLineStyle<'_>,
-    context: &mut WardleyPaintContext<'_>,
-    target: ThemeTarget,
-    ordinal: usize,
-    paths: &[&str],
-) -> Result<()> {
-    let paint = context.line_stroke(target, ordinal, paths, style.stroke)?;
-    let actual = paint.as_ref().map_or(style.stroke, TerminalPaint::css);
-    write_line(
-        out,
-        line,
-        style.class,
-        actual,
-        style.stroke_width,
-        style.dash,
-    )?;
-    context.plan.record(paint.as_ref(), actual);
-    Ok(())
-}
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {
@@ -168,29 +39,17 @@ fn write_text(
     out: &mut impl SvgOutput,
     text: &WardleyTextLayout,
     style: WardleyTextStyle<'_>,
-    role: crate::wardley::WardleyTextRole,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    role: WardleyTextRole,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
     let fallback_size;
-    let font_size = match paint_context.typography.font_size(role) {
+    let font_size = match wardley_style.font_size(role) {
         Some(size) => size,
         None => {
             fallback_size = crate::wardley::WardleyFontSize::numeric(text.font_size);
             &fallback_size
         }
     };
-    let used_font_size = font_size.used_px;
-    let font_size_css = font_size.css.clone();
-    let typed_fill = if text.text.trim().is_empty() {
-        None
-    } else {
-        paint_context.text_fill(role, used_font_size != Some(0.0))?
-    };
-    if typed_fill.is_some() {
-        surface_receipt.paint_overridden_text_roles.insert(role);
-    }
-    let fill = typed_fill.as_ref().map_or(style.fill, TerminalPaint::css);
     out.push_str("<text");
     if let Some(class) = style.class {
         let _ = write!(out, r#" class="{}""#, escape_attr_display(class));
@@ -200,10 +59,17 @@ fn write_text(
         r#" x="{}" y="{}" fill="{}" font-size="{}""#,
         ryu_js::Buffer::new().format(text.x),
         ryu_js::Buffer::new().format(text.y),
-        escape_attr_display(fill),
-        escape_attr_display(&font_size_css)
+        escape_attr_display(style.fill),
+        escape_attr_display(&font_size.css)
     );
-    if style.include_font_weight {
+    if role == WardleyTextRole::Title
+        && let Some(family) = wardley_style.native_title_family()
+    {
+        let _ = write!(out, r#" font-family="{}""#, escape_attr_display(family));
+    }
+    if let Some(weight) = wardley_style.native_font_weight(role) {
+        let _ = write!(out, r#" font-weight="{weight}""#);
+    } else if style.include_font_weight {
         let _ = write!(out, r#" font-weight="{}""#, font_weight(text.font_weight));
     }
     let _ = write!(out, r#" text-anchor="{}""#, text_anchor(text.text_anchor));
@@ -224,12 +90,7 @@ fn write_text(
         );
     }
     let _ = write!(out, ">{}</text>", escape_xml_display(&text.text));
-    out.checkpoint()?;
-    surface_receipt.record_text(role, &text.text, fill, used_font_size);
-    if used_font_size.is_some_and(|size| size > 0.0) {
-        paint_context.plan.record(typed_fill.as_ref(), fill);
-    }
-    Ok(())
+    out.checkpoint()
 }
 
 fn write_line(
@@ -318,39 +179,26 @@ fn write_accessibility(
 fn write_axes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     out.push_str(r#"<g class="wardley-axes">"#);
     out.checkpoint()?;
-    write_themed_line(
+    write_line(
         out,
         layout.axes.x_axis,
-        WardleyLineStyle {
-            class: None,
-            stroke: &theme.axis_color,
-            stroke_width: Some(1.0),
-            dash: None,
-        },
-        paint_context,
-        ThemeTarget::Axis,
-        1,
-        &["themeVariables.wardley.axisColor"],
+        None,
+        &theme.axis_color,
+        Some(theme.connector_width),
+        None,
     )?;
-    write_themed_line(
+    write_line(
         out,
         layout.axes.y_axis,
-        WardleyLineStyle {
-            class: None,
-            stroke: &theme.axis_color,
-            stroke_width: Some(1.0),
-            dash: None,
-        },
-        paint_context,
-        ThemeTarget::Axis,
-        2,
-        &["themeVariables.wardley.axisColor"],
+        None,
+        &theme.axis_color,
+        Some(theme.connector_width),
+        None,
     )?;
     write_text(
         out,
@@ -360,9 +208,8 @@ fn write_axes(
             fill: &theme.axis_text_color,
             include_font_weight: true,
         },
-        crate::wardley::WardleyTextRole::AxisLabel,
-        surface_receipt,
-        paint_context,
+        WardleyTextRole::AxisLabel,
+        wardley_style,
     )?;
     write_text(
         out,
@@ -372,9 +219,8 @@ fn write_axes(
             fill: &theme.axis_text_color,
             include_font_weight: true,
         },
-        crate::wardley::WardleyTextRole::AxisLabel,
-        surface_receipt,
-        paint_context,
+        WardleyTextRole::AxisLabel,
+        wardley_style,
     )?;
     out.push_str("</g>");
     out.checkpoint()
@@ -383,30 +229,23 @@ fn write_axes(
 fn write_stages(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     if layout.stages.is_empty() {
         return Ok(());
     }
     out.push_str(r#"<g class="wardley-stages">"#);
     out.checkpoint()?;
-    for (index, stage) in layout.stages.iter().enumerate() {
+    for stage in &layout.stages {
         if let Some(divider) = stage.divider {
-            write_themed_line(
+            write_line(
                 out,
                 divider,
-                WardleyLineStyle {
-                    class: None,
-                    stroke: &theme.stage_divider_color,
-                    stroke_width: Some(1.0),
-                    dash: Some("5 5"),
-                },
-                paint_context,
-                ThemeTarget::Axis,
-                index + 3,
-                &["themeVariables.wardley.stageDividerColor"],
+                None,
+                &theme.stage_divider_color,
+                Some(1.0),
+                Some("5 5"),
             )?;
             let insert_at = out.len() - 2;
             out.replace_range(insert_at..insert_at, r#" opacity="0.8""#)?;
@@ -419,9 +258,8 @@ fn write_stages(
                 fill: &theme.axis_text_color,
                 include_font_weight: false,
             },
-            crate::wardley::WardleyTextRole::StageLabel,
-            surface_receipt,
-            paint_context,
+            WardleyTextRole::StageLabel,
+            wardley_style,
         )?;
     }
     out.push_str("</g>");
@@ -431,42 +269,29 @@ fn write_stages(
 fn write_grid(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    paint_context: &mut WardleyPaintContext<'_>,
+    theme: &WardleyPaintBinding,
 ) -> Result<()> {
     if layout.grid.is_empty() {
         return Ok(());
     }
     out.push_str(r#"<g class="wardley-grid">"#);
     out.checkpoint()?;
-    for (index, grid) in layout.grid.iter().enumerate() {
-        write_themed_line(
+    for grid in &layout.grid {
+        write_line(
             out,
             grid.vertical,
-            WardleyLineStyle {
-                class: None,
-                stroke: &theme.grid_color,
-                stroke_width: None,
-                dash: Some("2 6"),
-            },
-            paint_context,
-            ThemeTarget::Axis,
-            index * 2 + layout.stages.len() + 3,
-            &["themeVariables.wardley.gridColor"],
+            None,
+            &theme.grid_color,
+            None,
+            Some("2 6"),
         )?;
-        write_themed_line(
+        write_line(
             out,
             grid.horizontal,
-            WardleyLineStyle {
-                class: None,
-                stroke: &theme.grid_color,
-                stroke_width: None,
-                dash: Some("2 6"),
-            },
-            paint_context,
-            ThemeTarget::Axis,
-            index * 2 + layout.stages.len() + 4,
-            &["themeVariables.wardley.gridColor"],
+            None,
+            &theme.grid_color,
+            None,
+            Some("2 6"),
         )?;
     }
     out.push_str("</g>");
@@ -477,8 +302,7 @@ fn write_pipelines(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramModel,
-    theme: &crate::wardley::WardleyPaintBinding,
-    paint_context: &mut WardleyPaintContext<'_>,
+    theme: &WardleyPaintBinding,
 ) -> Result<()> {
     if model.pipelines.is_empty() {
         return Ok(());
@@ -486,17 +310,8 @@ fn write_pipelines(
 
     out.push_str(r#"<g class="wardley-pipelines">"#);
     out.checkpoint()?;
-    for (index, pipeline) in layout.pipeline_boxes.iter().enumerate() {
+    for pipeline in &layout.pipeline_boxes {
         let rect = pipeline.rect;
-        let paint = paint_context.line_stroke(
-            ThemeTarget::Node,
-            index + 1,
-            &["themeVariables.wardley.axisColor"],
-            &theme.axis_color,
-        )?;
-        let stroke = paint
-            .as_ref()
-            .map_or(theme.axis_color.as_str(), TerminalPaint::css);
         let _ = write!(
             out,
             r#"<rect class="wardley-pipeline-box" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
@@ -504,32 +319,25 @@ fn write_pipelines(
             fmt(rect.y),
             fmt(rect.width),
             fmt(rect.height),
-            escape_attr_display(stroke),
+            escape_attr_display(&theme.axis_color),
             fmt(rect.corner_radius),
             fmt(rect.corner_radius)
         );
         out.checkpoint()?;
-        paint_context.plan.record(paint.as_ref(), stroke);
     }
     out.push_str("</g>");
     out.checkpoint()?;
 
     out.push_str(r#"<g class="wardley-pipeline-links">"#);
     out.checkpoint()?;
-    for (index, link) in layout.pipeline_links.iter().enumerate() {
-        write_themed_line(
+    for link in &layout.pipeline_links {
+        write_line(
             out,
             link.line,
-            WardleyLineStyle {
-                class: Some("wardley-pipeline-evolution-link"),
-                stroke: &theme.link_stroke,
-                stroke_width: Some(1.0),
-                dash: Some("4 4"),
-            },
-            paint_context,
-            ThemeTarget::Edge,
-            index + 1,
-            &["themeVariables.wardley.linkStroke"],
+            Some("wardley-pipeline-evolution-link"),
+            &theme.link_stroke,
+            Some(theme.connector_width),
+            Some("4 4"),
         )?;
     }
     out.push_str("</g>");
@@ -539,34 +347,27 @@ fn write_pipelines(
 fn write_links(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
     diagram_id: SvgDiagramId<'_>,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
     options: &SvgExecution<'_>,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     out.push_str(r#"<g class="wardley-links">"#);
     out.checkpoint()?;
-    for (index, link) in layout.links.iter().enumerate() {
+    for link in &layout.links {
         options.checkpoint_emit()?;
         let class = if link.dashed {
             "wardley-link wardley-link--dashed"
         } else {
             "wardley-link"
         };
-        write_themed_line(
+        write_line(
             out,
             link.line,
-            WardleyLineStyle {
-                class: Some(class),
-                stroke: &theme.link_stroke,
-                stroke_width: Some(1.0),
-                dash: link.dashed.then_some("6 6"),
-            },
-            paint_context,
-            ThemeTarget::Edge,
-            layout.pipeline_links.len() + index + 1,
-            &["themeVariables.wardley.linkStroke"],
+            Some(class),
+            &theme.link_stroke,
+            Some(theme.connector_width),
+            link.dashed.then_some("6 6"),
         )?;
         let insert_at = out.len() - 2;
         let mut marker_attrs = String::new();
@@ -595,9 +396,8 @@ fn write_links(
                     fill: &theme.axis_text_color,
                     include_font_weight: false,
                 },
-                crate::wardley::WardleyTextRole::LinkLabel,
-                surface_receipt,
-                paint_context,
+                WardleyTextRole::LinkLabel,
+                wardley_style,
             )?;
         }
     }
@@ -608,28 +408,21 @@ fn write_links(
 fn write_trends(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
+    theme: &WardleyPaintBinding,
     diagram_id: SvgDiagramId<'_>,
     options: &SvgExecution<'_>,
-    paint_context: &mut WardleyPaintContext<'_>,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-trends">"#);
     out.checkpoint()?;
-    for (index, trend) in layout.trends.iter().enumerate() {
+    for trend in &layout.trends {
         options.checkpoint_emit()?;
-        write_themed_line(
+        write_line(
             out,
             trend.line,
-            WardleyLineStyle {
-                class: Some("wardley-trend"),
-                stroke: &theme.evolution_stroke,
-                stroke_width: Some(1.0),
-                dash: Some("4 4"),
-            },
-            paint_context,
-            ThemeTarget::Edge,
-            layout.pipeline_links.len() + layout.links.len() + index + 1,
-            &["themeVariables.wardley.evolutionStroke"],
+            Some("wardley-trend"),
+            &theme.evolution_stroke,
+            Some(1.0),
+            Some("4 4"),
         )?;
         let insert_at = out.len() - 2;
         let marker_attr = format!(r#" marker-end="url(#arrow-{diagram_id})""#);
@@ -643,69 +436,16 @@ fn write_trends(
 fn write_source_overlay(
     out: &mut impl SvgOutput,
     overlay: &WardleySourceOverlayLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    ordinal: usize,
-    context: &mut WardleyPaintContext<'_>,
+    theme: &WardleyPaintBinding,
 ) -> Result<()> {
-    let (base_fill, base_stroke, fill_path, stroke_path) = match overlay {
-        WardleySourceOverlayLayout::Build { .. } => (
-            &theme.build_fill,
-            &theme.build_stroke,
-            "themeVariables.wardley.buildFill",
-            "themeVariables.wardley.buildStroke",
-        ),
-        WardleySourceOverlayLayout::Buy { .. } => (
-            &theme.buy_fill,
-            &theme.component_stroke,
-            "themeVariables.wardley.buyFill",
-            "themeVariables.wardley.componentStroke",
-        ),
-        WardleySourceOverlayLayout::Outsource { .. } => (
-            &theme.outsource_fill,
-            &theme.component_stroke,
-            "themeVariables.wardley.outsourceFill",
-            "themeVariables.wardley.componentStroke",
-        ),
-        WardleySourceOverlayLayout::Market { .. } => (
-            &theme.market_fill,
-            &theme.component_stroke,
-            "themeVariables.wardley.marketFill",
-            "themeVariables.wardley.componentStroke",
-        ),
+    let (fill, stroke) = match overlay {
+        WardleySourceOverlayLayout::Build { .. } => (&theme.build_fill, &theme.build_stroke),
+        WardleySourceOverlayLayout::Buy { .. } => (&theme.buy_fill, &theme.component_stroke),
+        WardleySourceOverlayLayout::Outsource { .. } => {
+            (&theme.outsource_fill, &theme.component_stroke)
+        }
+        WardleySourceOverlayLayout::Market { .. } => (&theme.market_fill, &theme.component_stroke),
     };
-    let style = context.plan.style(ThemeTarget::Node, ordinal, false)?;
-    let fill = context.plan.paint(
-        ThemeTarget::Node,
-        ordinal,
-        style.as_ref(),
-        ResolvedStyleProperty::Fill,
-        &[fill_path],
-        base_fill,
-    );
-    let stroke = context.plan.paint(
-        ThemeTarget::Node,
-        ordinal,
-        style.as_ref(),
-        ResolvedStyleProperty::Stroke,
-        &[stroke_path],
-        base_stroke,
-    );
-    let actual_fill = fill.as_ref().map_or(base_fill.as_str(), TerminalPaint::css);
-    let actual_stroke = stroke
-        .as_ref()
-        .map_or(base_stroke.as_str(), TerminalPaint::css);
-    write_source_overlay_binding(out, overlay, actual_fill, actual_stroke)?;
-    context.plan.record(fill.as_ref(), actual_fill);
-    context.plan.record(stroke.as_ref(), actual_stroke);
-    Ok(())
-}
-
-fn write_source_overlay_binding(
-    out: &mut impl SvgOutput,
-    overlay: &WardleySourceOverlayLayout,
-    fill: &str,
-    stroke: &str,
-) -> Result<()> {
     match overlay {
         WardleySourceOverlayLayout::Build { circle } => write_circle(
             out,
@@ -760,13 +500,12 @@ fn write_source_overlay_binding(
 fn write_nodes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     out.push_str(r#"<g class="wardley-nodes">"#);
     out.checkpoint()?;
-    for (index, node) in layout.nodes.iter().enumerate() {
+    for node in &layout.nodes {
         out.push_str(r#"<g class="wardley-node"#);
         if let Some(class_name) = node.class_name.as_deref().filter(|class| !class.is_empty()) {
             let _ = write!(out, " wardley-node--{}", escape_attr_display(class_name));
@@ -775,42 +514,10 @@ fn write_nodes(
         out.checkpoint()?;
 
         if let Some(overlay) = &node.source_overlay {
-            write_source_overlay(out, overlay, theme, index + 1, paint_context)?;
+            write_source_overlay(out, overlay, theme)?;
         }
-        let (typed_fill, typed_stroke) = if matches!(
-            &node.shape,
-            WardleyNodeShapeLayout::Circle { .. } | WardleyNodeShapeLayout::PipelineSquare { .. }
-        ) {
-            let style = paint_context
-                .plan
-                .style(ThemeTarget::Node, index + 1, false)?;
-            (
-                paint_context.plan.paint(
-                    ThemeTarget::Node,
-                    index + 1,
-                    style.as_ref(),
-                    ResolvedStyleProperty::Fill,
-                    &["themeVariables.wardley.componentFill"],
-                    &theme.component_fill,
-                ),
-                paint_context.plan.paint(
-                    ThemeTarget::Node,
-                    index + 1,
-                    style.as_ref(),
-                    ResolvedStyleProperty::Stroke,
-                    &["themeVariables.wardley.componentStroke"],
-                    &theme.component_stroke,
-                ),
-            )
-        } else {
-            (None, None)
-        };
-        let fill = typed_fill
-            .as_ref()
-            .map_or(theme.component_fill.as_str(), TerminalPaint::css);
-        let stroke = typed_stroke
-            .as_ref()
-            .map_or(theme.component_stroke.as_str(), TerminalPaint::css);
+        let fill = &theme.component_fill;
+        let stroke = &theme.component_stroke;
         match &node.shape {
             WardleyNodeShapeLayout::Circle { circle } => {
                 write_circle(out, None, *circle, fill, stroke, 1.0)?
@@ -830,37 +537,20 @@ fn write_nodes(
             }
             WardleyNodeShapeLayout::Anchor | WardleyNodeShapeLayout::None => {}
         }
-        paint_context.plan.record(typed_fill.as_ref(), fill);
-        paint_context.plan.record(typed_stroke.as_ref(), stroke);
         if let Some(inertia) = node.inertia {
-            write_themed_line(
+            write_line(
                 out,
                 inertia,
-                WardleyLineStyle {
-                    class: Some("wardley-inertia"),
-                    stroke: &theme.component_stroke,
-                    stroke_width: Some(6.0),
-                    dash: None,
-                },
-                paint_context,
-                ThemeTarget::Node,
-                index + 1,
-                &["themeVariables.wardley.componentStroke"],
+                Some("wardley-inertia"),
+                &theme.component_stroke,
+                Some(6.0),
+                None,
             )?;
         }
         let (label_fill, label_role) = match node.class_name.as_deref() {
-            Some("evolved") => (
-                &theme.evolution_stroke,
-                crate::wardley::WardleyTextRole::EvolvedLabel,
-            ),
-            Some("anchor") => (
-                &theme.anchor_label_color,
-                crate::wardley::WardleyTextRole::AnchorLabel,
-            ),
-            _ => (
-                &theme.component_label_color,
-                crate::wardley::WardleyTextRole::NodeLabel,
-            ),
+            Some("evolved") => (&theme.evolution_stroke, WardleyTextRole::EvolvedLabel),
+            Some("anchor") => (&theme.anchor_label_color, WardleyTextRole::AnchorLabel),
+            _ => (&theme.component_label_color, WardleyTextRole::NodeLabel),
         };
         write_text(
             out,
@@ -871,8 +561,7 @@ fn write_nodes(
                 include_font_weight: true,
             },
             label_role,
-            surface_receipt,
-            paint_context,
+            wardley_style,
         )?;
         out.push_str("</g>");
         out.checkpoint()?;
@@ -884,10 +573,9 @@ fn write_nodes(
 fn write_annotations_box(
     out: &mut impl SvgOutput,
     annotations_box: &WardleyAnnotationsBoxLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     out.push_str(r#"<g class="wardley-annotations-box">"#);
     out.checkpoint()?;
     if let Some(rect) = annotations_box.rect {
@@ -914,9 +602,8 @@ fn write_annotations_box(
                 fill: &theme.annotation_text,
                 include_font_weight: false,
             },
-            crate::wardley::WardleyTextRole::AnnotationBoxLine,
-            surface_receipt,
-            paint_context,
+            WardleyTextRole::AnnotationBoxLine,
+            wardley_style,
         )?;
     }
     out.push_str("</g>");
@@ -926,10 +613,9 @@ fn write_annotations_box(
 fn write_annotations(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     if layout.annotations.is_empty() {
         return Ok(());
     }
@@ -968,16 +654,15 @@ fn write_annotations(
                     fill: &theme.annotation_text,
                     include_font_weight: true,
                 },
-                crate::wardley::WardleyTextRole::AnnotationPoint,
-                surface_receipt,
-                paint_context,
+                WardleyTextRole::AnnotationPoint,
+                wardley_style,
             )?;
             out.push_str("</g>");
             out.checkpoint()?;
         }
     }
     if let Some(annotations_box) = &layout.annotations_box {
-        write_annotations_box(out, annotations_box, theme, surface_receipt, paint_context)?;
+        write_annotations_box(out, annotations_box, wardley_style)?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -986,10 +671,9 @@ fn write_annotations(
 fn write_notes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     if layout.notes.is_empty() {
         return Ok(());
     }
@@ -1004,9 +688,8 @@ fn write_notes(
                 fill: &theme.axis_text_color,
                 include_font_weight: true,
             },
-            crate::wardley::WardleyTextRole::Note,
-            surface_receipt,
-            paint_context,
+            WardleyTextRole::Note,
+            wardley_style,
         )?;
     }
     out.push_str("</g>");
@@ -1016,11 +699,10 @@ fn write_notes(
 fn write_arrow(
     out: &mut impl SvgOutput,
     arrow: &WardleyArrowLayout,
-    theme: &crate::wardley::WardleyPaintBinding,
-    role: crate::wardley::WardleyTextRole,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    role: WardleyTextRole,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
+    let theme = wardley_style.paint_binding();
     out.push_str(r#"<path d="M "#);
     out.checkpoint()?;
     for (index, point) in arrow.path.iter().enumerate() {
@@ -1046,8 +728,7 @@ fn write_arrow(
             include_font_weight: true,
         },
         role,
-        surface_receipt,
-        paint_context,
+        wardley_style,
     )
 }
 
@@ -1055,10 +736,8 @@ fn write_arrows(
     out: &mut impl SvgOutput,
     class: &str,
     arrows: &[WardleyArrowLayout],
-    theme: &crate::wardley::WardleyPaintBinding,
-    role: crate::wardley::WardleyTextRole,
-    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
-    paint_context: &mut WardleyPaintContext<'_>,
+    role: WardleyTextRole,
+    wardley_style: &WardleyStyle,
 ) -> Result<()> {
     if arrows.is_empty() {
         return Ok(());
@@ -1066,138 +745,43 @@ fn write_arrows(
     let _ = write!(out, r#"<g class="{}">"#, escape_attr_display(class));
     out.checkpoint()?;
     for arrow in arrows {
-        write_arrow(out, arrow, theme, role, surface_receipt, paint_context)?;
+        write_arrow(out, arrow, role, wardley_style)?;
     }
     out.push_str("</g>");
     out.checkpoint()
 }
 
-fn write_marker_path(
-    out: &mut impl SvgOutput,
-    path: &str,
-    fill: &str,
-    edge_ordinal: Option<usize>,
-    ordinal: usize,
-    fill_source_path: &str,
-    paint_context: &mut WardleyPaintContext<'_>,
-) -> Result<()> {
-    let style = if edge_ordinal.is_some() {
-        paint_context
-            .plan
-            .style(ThemeTarget::Marker, ordinal, false)?
-    } else {
-        None
-    };
-    let mut typed_fill = paint_context.plan.paint(
-        ThemeTarget::Marker,
-        ordinal,
-        style.as_ref(),
-        ResolvedStyleProperty::Fill,
-        &[fill_source_path],
-        fill,
-    );
-    if let Some(edge_ordinal) = edge_ordinal
-        && style
-            .as_ref()
-            .is_some_and(|style| style.fill_resolution().specified().is_unspecified())
-    {
-        // Marker slots have their own ordinals; fallback belongs to a real referencing edge.
-        let edge_style = paint_context
-            .plan
-            .style(ThemeTarget::Edge, edge_ordinal, false)?;
-        typed_fill = paint_context.plan.paint(
-            ThemeTarget::Edge,
-            edge_ordinal,
-            edge_style.as_ref(),
-            ResolvedStyleProperty::Stroke,
-            &[fill_source_path],
-            fill,
-        );
-    }
-    let typed_stroke = paint_context.plan.paint(
-        ThemeTarget::Marker,
-        ordinal,
-        style.as_ref(),
-        ResolvedStyleProperty::Stroke,
-        // The source color supplies marker fill; upstream marker stroke is independently none.
-        &[],
-        "none",
-    );
-    let actual_fill = typed_fill.as_ref().map_or(fill, TerminalPaint::css);
-    let actual_stroke = typed_stroke.as_ref().map_or("none", TerminalPaint::css);
+fn write_marker_path(out: &mut impl SvgOutput, path: &str, fill: &str) -> Result<()> {
     let _ = write!(
         out,
-        r#"<path d="{}" fill="{}" stroke="{}"/>"#,
+        r#"<path d="{}" fill="{}" stroke="none"/>"#,
         path,
-        escape_attr_display(actual_fill),
-        escape_attr_display(actual_stroke)
+        escape_attr_display(fill)
     );
-    out.checkpoint()?;
-    paint_context.plan.record(typed_fill.as_ref(), actual_fill);
-    paint_context
-        .plan
-        .record(typed_stroke.as_ref(), actual_stroke);
-    Ok(())
+    out.checkpoint()
 }
 
 fn write_defs(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
-    theme: &crate::wardley::WardleyPaintBinding,
-    layout: &WardleyDiagramLayout,
-    paint_context: &mut WardleyPaintContext<'_>,
+    theme: &WardleyPaintBinding,
 ) -> Result<()> {
-    paint_context
-        .plan
-        .charge(layout.links.len().saturating_mul(2))?;
     let diagram_id = escape_attr_display(diagram_id);
     let _ = write!(
         out,
         r#"<defs><marker id="arrow-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">"#
     );
-    write_marker_path(
-        out,
-        "M 0 0 L 10 5 L 0 10 z",
-        &theme.evolution_stroke,
-        (!layout.trends.is_empty()).then_some(layout.pipeline_links.len() + layout.links.len() + 1),
-        1,
-        "themeVariables.wardley.evolutionStroke",
-        paint_context,
-    )?;
+    write_marker_path(out, "M 0 0 L 10 5 L 0 10 z", &theme.evolution_stroke)?;
     let _ = write!(
         out,
         r#"</marker><marker id="link-arrow-end-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">"#
     );
-    write_marker_path(
-        out,
-        "M 0 0 L 10 5 L 0 10 z",
-        &theme.link_stroke,
-        layout
-            .links
-            .iter()
-            .position(|link| link.markers.end)
-            .map(|index| layout.pipeline_links.len() + index + 1),
-        2,
-        "themeVariables.wardley.linkStroke",
-        paint_context,
-    )?;
+    write_marker_path(out, "M 0 0 L 10 5 L 0 10 z", &theme.link_stroke)?;
     let _ = write!(
         out,
         r#"</marker><marker id="link-arrow-start-{diagram_id}" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="5" markerHeight="5" orient="auto">"#
     );
-    write_marker_path(
-        out,
-        "M 10 0 L 0 5 L 10 10 z",
-        &theme.link_stroke,
-        layout
-            .links
-            .iter()
-            .position(|link| link.markers.start)
-            .map(|index| layout.pipeline_links.len() + index + 1),
-        3,
-        "themeVariables.wardley.linkStroke",
-        paint_context,
-    )?;
+    write_marker_path(out, "M 10 0 L 0 5 L 10 10 z", &theme.link_stroke)?;
     out.push_str("</marker></defs>");
     out.checkpoint()
 }
@@ -1205,8 +789,7 @@ fn write_defs(
 pub(crate) fn render_wardley_diagram_svg_model(
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramModel,
-    _diagram_title: Option<&str>,
-    typography_theme: &crate::wardley::WardleyTypographyThemePlan,
+    wardley_style: &WardleyStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("wardley");
@@ -1214,20 +797,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = typography_theme.paint_binding();
-    let background_color = theme.background_color.as_str();
-    let mut surface_receipt = typography_theme.begin_terminal_receipt();
-    let mut paint_context = WardleyPaintContext {
-        plan: TerminalPaintPlan::new(
-            options.resolved_theme(),
-            typography_theme.config(),
-            crate::wardley::PAINT_TARGETS,
-            options.work_meter(),
-        )?,
-        base: typography_theme.base_paint_binding(),
-        typography: typography_theme,
-        text_ordinals: std::collections::BTreeMap::new(),
-    };
+    let theme = wardley_style.paint_binding();
 
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
@@ -1237,130 +807,74 @@ pub(crate) fn render_wardley_diagram_svg_model(
     root_chrome.dom.trailing_newline = false;
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::WARDLEY, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::WARDLEY, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr)?;
 
-    if typography_theme.should_write_inherited_font() {
+    if wardley_style.should_write_inherited_font() {
         let _ = write!(
             &mut out,
             r#"<g class="wardley-map" font-family="{}">"#,
-            escape_attr_display(typography_theme.font_family_css())
+            escape_attr_display(wardley_style.font_family_css())
         );
         out.checkpoint()?;
-        surface_receipt.record_font_family(typography_theme.font_family_css());
     } else {
         out.push_str(r#"<g class="wardley-map">"#);
         out.checkpoint()?;
     }
-    let _ = write!(
-        out,
-        r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,
-        fmt(layout.width),
-        fmt(layout.height),
-        escape_attr_display(background_color)
-    );
-    out.checkpoint()?;
+    if !wardley_style.is_native() && options.family.session().canvas_background().is_none() {
+        let _ = write!(
+            out,
+            r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,
+            fmt(layout.width),
+            fmt(layout.height),
+            escape_attr_display(&theme.background_color)
+        );
+        out.checkpoint()?;
+    }
     if let Some(title) = &layout.title {
         write_text(
             &mut out,
             title,
             WardleyTextStyle {
                 class: Some("wardley-title"),
-                fill: &theme.axis_text_color,
+                fill: wardley_style.title_color(),
                 include_font_weight: true,
             },
-            crate::wardley::WardleyTextRole::Title,
-            &mut surface_receipt,
-            &mut paint_context,
+            WardleyTextRole::Title,
+            wardley_style,
         )?;
     }
-    write_axes(
-        &mut out,
-        layout,
-        theme,
-        &mut surface_receipt,
-        &mut paint_context,
-    )?;
-    write_stages(
-        &mut out,
-        layout,
-        theme,
-        &mut surface_receipt,
-        &mut paint_context,
-    )?;
-    write_grid(&mut out, layout, theme, &mut paint_context)?;
-    write_pipelines(&mut out, layout, model, theme, &mut paint_context)?;
-    write_links(
-        &mut out,
-        layout,
-        theme,
-        diagram_id,
-        &mut surface_receipt,
-        options,
-        &mut paint_context,
-    )?;
-    write_trends(
-        &mut out,
-        layout,
-        theme,
-        diagram_id,
-        options,
-        &mut paint_context,
-    )?;
-    write_nodes(
-        &mut out,
-        layout,
-        theme,
-        &mut surface_receipt,
-        &mut paint_context,
-    )?;
-    write_annotations(
-        &mut out,
-        layout,
-        theme,
-        &mut surface_receipt,
-        &mut paint_context,
-    )?;
-    write_notes(
-        &mut out,
-        layout,
-        theme,
-        &mut surface_receipt,
-        &mut paint_context,
-    )?;
+    write_axes(&mut out, layout, wardley_style)?;
+    write_stages(&mut out, layout, wardley_style)?;
+    write_grid(&mut out, layout, theme)?;
+    write_pipelines(&mut out, layout, model, theme)?;
+    write_links(&mut out, layout, diagram_id, options, wardley_style)?;
+    write_trends(&mut out, layout, theme, diagram_id, options)?;
+    write_nodes(&mut out, layout, wardley_style)?;
+    write_annotations(&mut out, layout, wardley_style)?;
+    write_notes(&mut out, layout, wardley_style)?;
     write_arrows(
         &mut out,
         "wardley-accelerators",
         &layout.accelerators,
-        theme,
-        crate::wardley::WardleyTextRole::Accelerator,
-        &mut surface_receipt,
-        &mut paint_context,
+        WardleyTextRole::Accelerator,
+        wardley_style,
     )?;
     write_arrows(
         &mut out,
         "wardley-deaccelerators",
         &layout.deaccelerators,
-        theme,
-        crate::wardley::WardleyTextRole::Deaccelerator,
-        &mut surface_receipt,
-        &mut paint_context,
+        WardleyTextRole::Deaccelerator,
+        wardley_style,
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
-    write_defs(&mut out, diagram_id, theme, layout, &mut paint_context)?;
-    surface_receipt.paint_evidence = paint_context.plan.finish();
+    write_defs(&mut out, diagram_id, theme)?;
     out.push_str("</svg>");
     options.checkpoint_emit()?;
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if !typography_theme.record_terminal(surface_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Wardley typography receipt was recorded more than once".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -1372,20 +886,19 @@ mod tests {
     use crate::text::DeterministicTextMeasurer;
 
     #[test]
-    fn wardley_evolved_model_label_keeps_its_evolution_paint_under_host_text() {
-        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
-            .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::WARDLEY);
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
+    fn wardley_evolved_model_label_keeps_its_source_evolution_paint() {
+        use crate::theme::ThemeCompiler;
+
+        let native = ThemeCompiler::new()
+            .compile_json(br#"{"schema_version":2,"extends":"blueprint"}"#, None)
+            .unwrap();
         let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": { "wardley": { "evolutionStroke": "#ab1234" } }
         }));
-        let typography =
-            crate::wardley::WardleyTypographyThemePlan::resolve(Some(&theme), &config, &work_meter)
-                .unwrap();
+        let style = WardleyStyle::resolve(
+            &config,
+            Some(native.family(crate::DiagramFamilyId::WARDLEY.as_str())),
+        );
         let model: WardleyDiagramModel = serde_json::from_value(serde_json::json!({
             "nodes": [{
                 "id": "evolved", "label": "Evolved API", "x": 0.8, "y": 0.6,
@@ -1393,44 +906,22 @@ mod tests {
             }]
         }))
         .unwrap();
-        let layout = crate::wardley::layout_wardley_diagram_typed_with_theme(
+        let layout = crate::wardley::layout_wardley_diagram_typed_with_style(
             &model,
             None,
             config.as_value(),
-            &typography,
+            &style,
             &DeterministicTextMeasurer::default(),
         )
         .unwrap();
         let mut svg = String::new();
-        let mut receipt = typography.begin_terminal_receipt();
-        let mut paint_context = WardleyPaintContext {
-            plan: TerminalPaintPlan::new(
-                Some(&theme),
-                &config,
-                crate::wardley::PAINT_TARGETS,
-                &work_meter,
-            )
-            .unwrap(),
-            base: typography.base_paint_binding(),
-            typography: &typography,
-            text_ordinals: std::collections::BTreeMap::new(),
-        };
-        write_nodes(
-            &mut svg,
-            &layout,
-            typography.paint_binding(),
-            &mut receipt,
-            &mut paint_context,
-        )
-        .unwrap();
-        receipt.paint_evidence = paint_context.plan.finish();
+        write_nodes(&mut svg, &layout, &style).unwrap();
         let document = roxmltree::Document::parse(&svg).unwrap();
         let label = document
             .descendants()
             .find(|node| node.has_tag_name("text"))
             .unwrap();
         assert_eq!(label.attribute("fill"), Some("#ab1234"));
-        assert!(typography.record_terminal(receipt));
     }
 
     fn render_wardley_with_policy(
@@ -1440,11 +931,7 @@ mod tests {
         let effective_config = serde_json::json!({});
         let effective_mermaid_config =
             crate::test_support::presentation_config(effective_config.clone());
-        let typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
-            None,
-            &effective_mermaid_config,
-            &crate::resources::OperationWorkMeter::new(policy),
-        )?;
+        let style = WardleyStyle::resolve(&effective_mermaid_config, None);
         let layout = crate::wardley::layout_wardley_diagram_typed(
             &model,
             None,
@@ -1468,7 +955,7 @@ mod tests {
         )
         .expect("SVG execution");
 
-        render_wardley_diagram_svg_model(&layout, &model, None, &typography_theme, &execution)
+        render_wardley_diagram_svg_model(&layout, &model, &style, &execution)
     }
 
     #[test]

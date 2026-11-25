@@ -357,17 +357,15 @@
               "source",
               "default",
               "dark",
-              "mermaid:neo",
-              "mermaid:redux",
-              "mermaid:redux-color",
-              "preset:editor",
-              "preset:gruvbox",
+              "neo-dark",
+              "studio",
+              "gruvbox",
               "file"
             ],
             "default": "source",
             "scope": "window",
             "order": 20,
-            "markdownDescription": "Theme for new preview panels and document export/copy commands. `source` preserves source/default Mermaid behavior. A literal Mermaid ID pins that original theme; `mermaid:<design>` selects a runtime-discovered design, `preset:<id>` selects a Merman preset, and `file` loads `#merman.preview.themeFile#`. The preview's single Theme selector lists the choices supported by your CLI."
+            "markdownDescription": "Theme for new preview panels and document export/copy commands. Use a Merman preset or Mermaid Classic ID from the installed CLI's catalog. `source` uses the diagram's authored theme or the Mermaid default. `file` loads `#merman.preview.themeFile#`."
           },
           "merman.preview.appearance": {
             "type": "string",
@@ -384,14 +382,14 @@
             "default": "follow-editor",
             "scope": "window",
             "order": 21,
-            "markdownDescription": "Appearance preference for paired diagram themes. Source/default remains source-driven, and literal Mermaid IDs remain fixed. High-contrast editor themes select their light/dark appearance without claiming high-contrast diagram support."
+            "markdownDescription": "Appearance preference for Merman presets and custom files. Single-appearance themes use their default appearance. Mermaid Classic and Source / default use their own colors."
           },
           "merman.preview.themeFile": {
             "type": "string",
             "default": "",
             "scope": "window",
             "order": 22,
-            "markdownDescription": "Portable theme recipe JSON used when `#merman.preview.diagramTheme#` is `file`. Use an absolute path or a path relative to the source document's workspace folder. The CLI validates the complete recipe, including inactive appearances. Import theme in a preview instead to use a panel-local snapshot."
+            "markdownDescription": "Merman v2 theme JSON used when `#merman.preview.diagramTheme#` is `file`. Use an absolute path or a path relative to the source document's workspace folder. Use Import theme in the preview to load a file for that panel."
           },
           "merman.preview.displayMode": {
             "type": "string",
@@ -435,7 +433,7 @@
             "default": "theme",
             "scope": "window",
             "order": 40,
-            "markdownDescription": "Canvas override for preview and document export/copy. `theme` preserves the theme's own canvas. Existing explicit `paper`, `transparent`, and `dark` values keep their export meaning. Use `#merman.preview.viewerBackground#` to change only the surrounding viewer."
+            "markdownDescription": "Canvas override for SVG previews and image export/copy. `theme` uses the diagram's canvas. Use `#merman.preview.viewerBackground#` to change the surrounding viewer."
           },
           "merman.preview.viewerBackground": {
             "type": "string",

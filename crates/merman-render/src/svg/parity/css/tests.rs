@@ -2,12 +2,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 fn er_binding(config: &serde_json::Value) -> crate::er::ErCssBinding {
-    let config = crate::test_support::presentation_config(config.clone());
-    crate::er::ErCssBinding::resolve(
-        config.as_value(),
-        &crate::family::InheritedFontStackPlan::resolve_property_local(None, &config),
-        &crate::er::ErBaseFontSizePlan::resolve(None, &config),
-    )
+    crate::er::ErCssBinding::resolve(config)
 }
 
 fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
@@ -184,17 +179,16 @@ fn neo_css_accepts_renderer_owned_resource_ids() {
 }
 
 #[test]
-fn resolved_typography_owns_the_root_variable_and_receipt() {
+fn resolved_typography_owns_the_root_variable_and_nested_svg_font() {
     let config = serde_json::json!({
         "fontFamily": "Courier, monospace",
         "themeVariables": { "fontFamily": "Arial, sans-serif" }
     });
     let mut css = String::new();
     let values = PreparedCommonCss::new(&config, Some("serif"));
-    let receipt = write_prepared_info_css(&mut css, "diag", &values).unwrap();
+    write_prepared_info_css(&mut css, "diag", &values).unwrap();
     assert!(css.ends_with("#diag :root{--mermaid-font-family:serif;}"));
-    assert_eq!(receipt.root_variable_font_family_css(), "serif");
-    assert_eq!(receipt.inherited_font_family_css(), "serif");
+    assert!(css.contains("#diag svg{font-family:serif;"));
 }
 
 #[test]
@@ -326,7 +320,7 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
         &merman_model::families::pie::PieDiagramModel::default(),
         &cfg,
     );
-    write_pie_css(&mut css, "pie", &paint_plan, false).unwrap();
+    write_pie_css(&mut css, "pie", &paint_plan).unwrap();
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
     assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));
@@ -404,93 +398,6 @@ fn er_css_rejects_unsupported_tertiary_color() {
     assert!(error.to_string().contains("not-a-css-color"));
 }
 
-#[test]
-fn gantt_css_honors_mermaid_11_15_theme_options() {
-    let cfg = serde_json::json!({
-        "themeVariables": {
-            "fontFamily": "\"ibm plex sans\", arial, sans-serif",
-            "textColor": "#707070",
-            "excludeBkgColor": "#101010",
-            "sectionBkgColor": "#202020",
-            "sectionBkgColor2": "#303030",
-            "altSectionBkgColor": "#404040",
-            "titleColor": "#505050",
-            "gridColor": "#606060",
-            "todayLineColor": "#808080",
-            "taskTextDarkColor": "#909090",
-            "taskTextClickableColor": "#a0a0a0",
-            "taskTextColor": "#b0b0b0",
-            "taskBkgColor": "#c0c0c0",
-            "taskBorderColor": "#d0d0d0",
-            "taskTextOutsideColor": "#e0e0e0",
-            "activeTaskBkgColor": "#111111",
-            "activeTaskBorderColor": "#222222",
-            "doneTaskBorderColor": "#333333",
-            "doneTaskBkgColor": "#444444",
-            "critBorderColor": "#555555",
-            "critBkgColor": "#666666",
-            "vertLineColor": "#777777"
-        }
-    });
-
-    let config = crate::test_support::presentation_config(cfg);
-    let meter = crate::resources::OperationWorkMeter::new(
-        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-    );
-    let task_theme = crate::gantt::GanttTaskTheme::resolve(None, &config, &[], &meter)
-        .expect("resolve Gantt CSS binding");
-    let css = gantt_css("g", &task_theme);
-
-    assert!(css.contains(r#"#g .exclude-range{fill:#101010;}"#));
-    assert!(css.contains(r#"#g .section0{fill:#202020;}"#));
-    assert!(css.contains(r#"#g .section2{fill:#303030;}"#));
-    assert!(css.contains(r#"#g .grid .tick{stroke:#606060;"#));
-    assert!(
-        css.contains(r#"#g .taskText0,#g .taskText1,#g .taskText2,#g .taskText3{fill:#b0b0b0;}"#)
-    );
-    assert!(
-        css.contains(r#"#g .task0,#g .task1,#g .task2,#g .task3{fill:#c0c0c0;stroke:#d0d0d0;}"#)
-    );
-    assert!(
-        css.contains(r#"#g .doneText0.taskTextOutsideLeft,#g .doneText0.taskTextOutsideRight"#)
-    );
-    assert!(css.contains(r#"fill:#e0e0e0!important;"#));
-    assert!(css.contains(r#"#g .titleText{text-anchor:middle;font-size:18px;fill:#505050;font-family:"ibm plex sans",arial,sans-serif;}"#));
-}
-
-#[test]
-fn treemap_css_honors_mermaid_11_15_style_options() {
-    let cfg = serde_json::json!({
-        "themeVariables": {
-            "fontFamily": "\"ibm plex sans\", arial, sans-serif",
-            "textColor": "#123456",
-            "titleColor": "#654321"
-        },
-        "treemap": {
-            "sectionStrokeColor": "#111111",
-            "sectionStrokeWidth": 2,
-            "sectionFillColor": "#222222",
-            "leafStrokeColor": "#333333",
-            "leafStrokeWidth": "3",
-            "leafFillColor": "#444444",
-            "labelColor": "#555555",
-            "valueColor": "#666666",
-            "titleColor": "#777777",
-            "labelFontSize": "13px",
-            "valueFontSize": "11px",
-            "titleFontSize": "15px"
-        }
-    });
-
-    let css = treemap_css("tm", &cfg).unwrap();
-
-    assert!(css.contains("#tm .treemapNode.section{stroke:#111111;stroke-width:2;fill:#222222;}"));
-    assert!(css.contains("#tm .treemapNode.leaf{stroke:#333333;stroke-width:3;fill:#444444;}"));
-    assert!(css.contains("#tm .treemapLabel{fill:#555555;font-size:13px;}"));
-    assert!(css.contains("#tm .treemapValue{fill:#666666;font-size:11px;}"));
-    assert!(css.contains("#tm .treemapTitle{fill:#777777;font-size:15px;}"));
-}
-
 #[cfg(feature = "diagram-xychart")]
 #[test]
 fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
@@ -498,14 +405,9 @@ fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
         "fontFamily": "Inter, sans-serif",
         "themeVariables": { "textColor": "#123456", "lineColor": "#abcdef" }
     }));
-    let meter = crate::resources::OperationWorkMeter::new(
-        crate::resources::RenderResourcePolicy::interactive(),
-    );
-    let typography =
-        crate::xychart::XyChartTypographyThemePlan::resolve(None, &config, &meter).unwrap();
+    let typography = crate::xychart::XyChartTypographyThemePlan::resolve(&config);
     let mut css = String::new();
-    let emission = write_prepared_info_css(&mut css, "chart", typography.common_css()).unwrap();
-    assert_eq!(emission.root_font_family_css(), "Inter,sans-serif");
+    write_prepared_info_css(&mut css, "chart", typography.common_css()).unwrap();
     assert_css_properties(
         &css,
         "#chart",

@@ -1,9 +1,6 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
-use super::math_label::{
-    record_sequence_katex_terminal_emission, sequence_katex_label,
-    write_sequence_katex_foreign_object,
-};
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
     SequenceDrawnTextNode, SequenceMathHeightMode, bracketize_sequence_block_label,
     measure_sequence_drawn_line_height, sequence_drawn_text_first_y, sequence_drawn_text_style,
@@ -11,14 +8,11 @@ use crate::sequence::{
 };
 
 pub(super) struct LoopTextRenderContext<'a> {
-    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
-    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
     pub(super) config: &'a merman_model::presentation::PresentationConfig,
     pub(super) margin: f64,
     pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -102,18 +96,6 @@ pub(super) fn write_loop_text_lines(
         // Mermaid's drawKatex centers on the complete frame, independently of prose placement.
         let x = (placement.math_center_x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
-        record_sequence_katex_terminal_emission(
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
-            &katex,
-        );
-        ctx.text_shadow.record_terminal(
-            None,
-            false,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
-        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -139,32 +121,10 @@ pub(super) fn write_loop_text_lines(
             prepared.as_ref()
         };
         let style = ctx.typography.terminal_style("", css.clone());
-        let paintless = ctx.text_shadow.is_paintless(line);
-        let shadow = if paintless {
-            None
-        } else {
-            ctx.text_shadow.write_definition(
-                out,
-                line,
-                placement.x,
-                y + if ctx.margin == 0.0 {
-                    i as f64 * ctx.style.font_size
-                } else {
-                    0.0
-                },
-                super::text_effect::TextShadowBaseline::Alphabetic,
-                ctx.typography.terminal_text_style(),
-                ctx.measurer,
-            )?
-        };
-        let filter = shadow
-            .as_ref()
-            .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
-            .unwrap_or_default();
         if placement.use_tspan {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText"{dy} style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText"{dy} style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
@@ -173,23 +133,14 @@ pub(super) fn write_loop_text_lines(
         } else {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText"{dy} style="{style}"{filter}>{text}</text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText"{dy} style="{style}">{text}</text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
                 text = super::escape_prepared_text(line)
             );
         }
-        ctx.typography_receipt
-            .record_terminal_text(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
         out.checkpoint()?;
-        ctx.text_shadow.record_terminal(
-            shadow.as_ref(),
-            paintless,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
-        );
         if ctx.margin > 0.0 {
             let node = if placement.use_tspan {
                 SequenceDrawnTextNode::Tspan
@@ -227,18 +178,6 @@ pub(super) fn write_section_title_lines(
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
         write_sequence_katex_foreign_object(out, &katex, x, y);
-        record_sequence_katex_terminal_emission(
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlSectionTitle,
-            &katex,
-        );
-        ctx.text_shadow.record_terminal(
-            None,
-            false,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlSectionTitle,
-        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -258,46 +197,15 @@ pub(super) fn write_section_title_lines(
             prepared.as_ref()
         };
         let style = ctx.typography.terminal_style("", css.clone());
-        let paintless = ctx.text_shadow.is_paintless(line);
-        let shadow = if paintless {
-            None
-        } else {
-            ctx.text_shadow.write_definition(
-                out,
-                line,
-                x,
-                y + if ctx.margin == 0.0 {
-                    i as f64 * ctx.style.font_size
-                } else {
-                    0.0
-                },
-                super::text_effect::TextShadowBaseline::Alphabetic,
-                ctx.typography.terminal_text_style(),
-                ctx.measurer,
-            )?
-        };
-        let filter = shadow
-            .as_ref()
-            .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
-            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle"{dy} style="{style}"{filter}>{text}</text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle"{dy} style="{style}">{text}</text>"#,
             x = fmt(x),
             y = fmt(y),
             style = escape_attr_display(&style),
             text = super::escape_prepared_text(line)
         );
-        ctx.typography_receipt
-            .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);
         out.checkpoint()?;
-        ctx.text_shadow.record_terminal(
-            shadow.as_ref(),
-            paintless,
-            ctx.shadow_evidence,
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ControlSectionTitle,
-        );
         if ctx.margin > 0.0 {
             preceding_height += measure_sequence_drawn_line_height(
                 ctx.measurer,
@@ -357,30 +265,17 @@ mod tests {
         crate::svg::parity::with_test_svg_execution(
             crate::DiagramFamilyId::SEQUENCE,
             &crate::svg::SvgRenderOptions::default(),
-            |execution| {
+            |_execution| {
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
                 let style = TextStyle::default();
                 let config = merman_model::presentation::PresentationConfig::default();
-                let typography =
-                    crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
-                        .unwrap();
-                let mut receipt =
-                    crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
-                let text_shadow = super::super::text_effect::SequenceTextShadow::from_prepared(
-                    execution,
-                    crate::sequence::SequenceTypographyRole::Loop,
-                    typography.loop_label(),
-                    &mut receipt,
-                );
+                let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
                 for margin in [5.0, 0.0, -5.0] {
                     for tspan in [true, false] {
                         let probe = RowProbe::default();
                         let ctx = LoopTextRenderContext {
-                            text_shadow: &text_shadow,
-                            shadow_evidence: &Default::default(),
                             typography: typography.loop_label(),
-                            typography_receipt: &receipt,
                             math_sidecar: &Default::default(),
                             measurer: &probe,
                             style: &style,

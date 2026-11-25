@@ -34,7 +34,6 @@ pub(crate) fn layout(
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography_theme: &ClassTextThemePlan,
     render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
@@ -52,7 +51,6 @@ pub(crate) fn layout(
         math_renderer,
         render_config,
         false,
-        typography_theme,
         Some(work_control),
     )?;
     let namespace_ids = class_namespace_ids_in_decl_order(model);
@@ -188,7 +186,6 @@ pub fn debug_build_class_diagram_dagre_graph(
         None,
         &render_config,
         false,
-        &typography_theme,
         None,
     )?;
     Ok(project_graph(measured.graph))

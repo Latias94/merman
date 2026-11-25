@@ -137,9 +137,9 @@ pub(super) fn paint(
                 route.endpoints,
                 kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
                 ctx.edge_style_plan
-                    .stroke_width_for(key)
+                    .stroke_outset_for(key)
                     .ok()
-                    .and_then(|stroke| stroke.paint_outset())
+                    .flatten()
                     .unwrap_or_default(),
             ),
         ),

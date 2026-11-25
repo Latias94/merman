@@ -346,6 +346,15 @@ impl<'a> BoundedSvgOutput<'a> {
         }
     }
 
+    /// Continues writing a document whose retained bytes have already been admitted.
+    pub(super) fn resume(out: String, work_meter: &'a OperationWorkMeter) -> Self {
+        Self {
+            admitted_end: out.len(),
+            out,
+            ..Self::new(work_meter)
+        }
+    }
+
     pub(super) fn finish(self) -> crate::Result<String> {
         match self.state.into_error() {
             Some(error) => Err(error),

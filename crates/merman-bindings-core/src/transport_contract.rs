@@ -1,10 +1,15 @@
 use crate::{BindingPayloadSchemaKey, ConstructorServiceKey, TargetKey};
 
+/// Compatibility epoch shared by the Node N-API and Node-targeted WASM transports.
+///
+/// Both artifact producers and the generated Node wire contract use this value for discovery.
+pub const NODE_TRANSPORT_API_VERSION: u32 = 3;
+
 /// Compatibility epoch for the generated JavaScript/WASM transport surface.
 ///
 /// The Web package generator and the WASM producer share this value so a wrapper built for one
 /// incompatible surface cannot silently initialize another.
-pub const WEB_TRANSPORT_API_VERSION: u32 = 11;
+pub const WEB_TRANSPORT_API_VERSION: u32 = 12;
 
 /// Feature-independent facade exposure projected into one concrete artifact selection.
 ///
@@ -189,7 +194,7 @@ mod tests {
 
     #[test]
     fn transport_exposure_registry_is_bijective_and_sorted() {
-        assert_eq!(WEB_TRANSPORT_API_VERSION, 11);
+        assert_eq!(WEB_TRANSPORT_API_VERSION, 12);
         assert_eq!(
             BindingTransportKey::ALL.len(),
             TRANSPORT_EXPOSURE_SPECS.len()

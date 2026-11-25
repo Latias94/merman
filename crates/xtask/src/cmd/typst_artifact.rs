@@ -27,7 +27,8 @@ const OPTIMIZED_FILE_NAME: &str = "optimized.wasm";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
 const CARGO_PROFILE: &str = "wasm-size";
 const WASM_OPT_VERSION: &str = "wasm-opt version 133";
-const WASM_OPT_FEATURES: [&str; 7] = [
+const WASM_OPT_ARGS: [&str; 9] = [
+    "-Oz",
     "--enable-bulk-memory",
     "--enable-bulk-memory-opt",
     "--enable-multivalue",
@@ -35,6 +36,8 @@ const WASM_OPT_FEATURES: [&str; 7] = [
     "--enable-nontrapping-float-to-int",
     "--enable-reference-types",
     "--enable-sign-ext",
+    // Typst 0.15 uses Wasmi 1.0.9, which can panic when translating branches in large inlined functions.
+    "--inline-max-combined-binary-size=32768",
 ];
 
 #[derive(Debug, Clone)]
@@ -401,6 +404,9 @@ impl ToolIdentity {
         hash_framed(&mut hasher, self.cargo_version.as_bytes());
         hash_framed(&mut hasher, self.rustc_version.as_bytes());
         hash_framed(&mut hasher, self.wasm_opt_version.as_bytes());
+        for arg in WASM_OPT_ARGS {
+            hash_framed(&mut hasher, arg.as_bytes());
+        }
         hash_framed(&mut hasher, self.wasm_tools_version.as_bytes());
         hash_optional(&mut hasher, self.rustflags.as_deref());
         hash_optional(&mut hasher, self.cargo_encoded_rustflags.as_deref());
@@ -567,8 +573,7 @@ fn validate_typst_wasm_optimizer_version(version: &str) -> Result<(), XtaskError
 
 fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), XtaskError> {
     let command_output = Command::new("wasm-opt")
-        .arg("-Oz")
-        .args(WASM_OPT_FEATURES)
+        .args(WASM_OPT_ARGS)
         .arg(input)
         .arg("-o")
         .arg(output)

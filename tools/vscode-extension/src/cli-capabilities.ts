@@ -4,16 +4,16 @@ import { isAbsolute } from "node:path";
 import type { BinaryInvocation } from "./binaries.js";
 import { runRenderProcess } from "./render-process.js";
 
-const capabilitiesByInvocation = new Map<string, {
+const metadataByInvocation = new Map<string, {
   identity: string | undefined;
   pending: Promise<unknown>;
 }>();
 const MAX_PREVIEW_FRAME_BYTES = 4 * 1024 * 1024;
 
-export function readCliCapabilities(invocation: BinaryInvocation): Promise<unknown> {
-  const key = cliCapabilitiesKey(invocation);
+export function readCliMetadata(invocation: BinaryInvocation): Promise<unknown> {
+  const key = cliMetadataKey(invocation);
   const identity = cliExecutableIdentity(invocation);
-  const cached = capabilitiesByInvocation.get(key);
+  const cached = metadataByInvocation.get(key);
   if (cached && cached.identity === identity) {
     return cached.pending;
   }
@@ -24,26 +24,26 @@ export function readCliCapabilities(invocation: BinaryInvocation): Promise<unkno
     timeoutMs: 15000,
     maxStdoutBytes: 8 * 1024 * 1024,
   }).then((result): unknown => JSON.parse(result.stdout.toString("utf8")));
-  capabilitiesByInvocation.set(key, { identity, pending });
+  metadataByInvocation.set(key, { identity, pending });
   void pending.then(
     () => {
       if (identity === undefined) {
-        discardCliCapabilities(invocation, pending);
+        discardCliMetadata(invocation, pending);
       }
     },
-    () => discardCliCapabilities(invocation, pending),
+    () => discardCliMetadata(invocation, pending),
   );
   return pending;
 }
 
-function cliCapabilitiesKey(invocation: BinaryInvocation): string {
+function cliMetadataKey(invocation: BinaryInvocation): string {
   return JSON.stringify([invocation.command, invocation.cwd, invocation.args]);
 }
 
-export function discardCliCapabilities(invocation: BinaryInvocation, pending: Promise<unknown>): void {
-  const key = cliCapabilitiesKey(invocation);
-  if (capabilitiesByInvocation.get(key)?.pending === pending) {
-    capabilitiesByInvocation.delete(key);
+export function discardCliMetadata(invocation: BinaryInvocation, pending: Promise<unknown>): void {
+  const key = cliMetadataKey(invocation);
+  if (metadataByInvocation.get(key)?.pending === pending) {
+    metadataByInvocation.delete(key);
   }
 }
 

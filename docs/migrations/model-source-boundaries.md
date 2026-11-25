@@ -60,7 +60,7 @@ let engine = MermaidEngine::new()
 
 Custom full parser callbacks now receive `&SourcePresentationMetadata`. Completed parse results expose shared `PresentationMetadata` with immutable `PresentationConfig`. Inspect its values and ownership through read-only queries. A completed configuration is not a mutable source builder; change the source engine configuration and parse again when the source environment changes.
 
-Compiled themes expose `DiagramTheme::compatibility_recipe()`. A low-level source integration can create `merman_core::presentation::ThemeCompatibilityPlan::from_recipe(recipe.clone())` and install it with `MermaidEngine::with_theme_plan(&plan)`. Retain the plan for repeated initialization. The facade handles this when a request selects a theme.
+For current native themes, compile a Theme v2 document and attach the result to the render request or render session. Source parsing uses `SourcePresentationConfig`. The same parsed source can then be drawn in multiple appearances. See the [native theme guide](../rendering/custom-diagram-themes.md).
 
 ## Pass presentation data to graphical consumers
 

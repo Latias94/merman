@@ -3,7 +3,7 @@
 use crate::Result;
 use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+use crate::text::{TextMetrics, TextStyle};
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -20,9 +20,7 @@ mod theme;
 
 #[cfg(feature = "layout-shoal")]
 pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
-pub(crate) use theme::{
-    UsecaseCssBinding, UsecaseThemePlan, UsecaseThemeReceipt, UsecaseThemeStyle,
-};
+pub(crate) use theme::UsecaseCssBinding;
 
 /// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
 /// Keep the source label intact for accessibility while sharing its rendered text with measurement.
@@ -51,7 +49,6 @@ pub(crate) struct UsecaseLabelPlan {
     pub style: TextStyle,
     pub max_width: Option<f64>,
     pub styles: indexmap::IndexMap<String, String>,
-    pub theme_style: UsecaseThemeStyle,
     /// Final HTML terminal shared by measurement and emission, including effective Markdown config.
     pub html: Option<Arc<measure::UsecasePreparedHtmlLabel>>,
 }
@@ -112,8 +109,6 @@ pub(crate) struct UsecaseEdgePlan {
 #[derive(Debug)]
 pub(crate) struct UsecasePreparedArtifact {
     pub(crate) css_binding: UsecaseCssBinding,
-    pub(crate) theme_plan: UsecaseThemePlan,
-    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(crate) layout: UsecaseDiagramLayout,
     pub(crate) nodes: Vec<UsecaseNodePlan>,
     pub(crate) edges: Vec<UsecaseEdgePlan>,
@@ -124,18 +119,6 @@ pub(crate) struct UsecasePreparedArtifact {
 }
 
 impl UsecasePreparedArtifact {
-    pub(crate) fn record_theme_evidence(&self, evidence: &mut crate::family::FamilyThemeEvidence) {
-        self.theme_plan.record_evidence(evidence);
-    }
-
-    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
-        &self.effect_evidence
-    }
-
-    pub(crate) fn expected_effect_applications(&self) -> usize {
-        self.theme_plan.expected_effect_applications()
-    }
-
     pub(crate) fn layout(&self) -> &UsecaseDiagramLayout {
         &self.layout
     }
@@ -284,7 +267,6 @@ pub(crate) fn requires_math(
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
     effective_config: &merman_model::presentation::PresentationConfig,
-    diagram_title: Option<&str>,
     execution: &crate::LayoutExecution<'_>,
 ) -> Result<UsecasePreparedArtifact> {
     #[cfg(any(
@@ -297,20 +279,19 @@ pub(crate) fn prepare_usecase_diagram(
     let work_meter = execution.work_meter();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
-    let css_binding = UsecaseCssBinding::new(config_value);
-    let theme_plan = UsecaseThemePlan::resolve(
-        execution.resolved_theme(),
-        effective_config,
-        model,
-        diagram_title,
-        &work_meter,
-    )?;
+    let mut css_binding = UsecaseCssBinding::new(config_value);
+    if let Some(theme) = execution.native_family_theme() {
+        css_binding.apply_native(
+            effective_config,
+            theme,
+            execution.family.session().canvas_background(),
+        );
+    }
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
     let (nodes, edges) = measure::measure(
         model,
         effective_config,
         &css_binding,
-        &theme_plan,
         execution.text_measurer(),
         execution.math_renderer(),
         &mut work,
@@ -324,14 +305,11 @@ pub(crate) fn prepare_usecase_diagram(
             config_value,
             &nodes,
             &edges,
-            &theme_plan,
             Some(execution),
             &mut work,
         )?;
         return Ok(UsecasePreparedArtifact {
             css_binding,
-            theme_plan,
-            effect_evidence: Default::default(),
             layout,
             nodes,
             edges,
@@ -341,12 +319,11 @@ pub(crate) fn prepare_usecase_diagram(
         });
     }
     #[cfg(feature = "layout-dagre")]
-    let (mut nodes, mut edges, mut theme_plan) = (nodes, edges, theme_plan);
+    let (mut nodes, mut edges) = (nodes, edges);
     let (mut layout, route_contract) = match backend {
         #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => {
             dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
-            theme_plan.retain_edge_terminals(&edges, &mut work)?;
             Ok((
                 dagre::layout(model, config_value, &nodes, &mut edges, &mut work)?,
                 RouteContract::DagreParity,
@@ -377,8 +354,6 @@ pub(crate) fn prepare_usecase_diagram(
     )?;
     Ok(UsecasePreparedArtifact {
         css_binding,
-        theme_plan,
-        effect_evidence: Default::default(),
         layout,
         nodes,
         edges,

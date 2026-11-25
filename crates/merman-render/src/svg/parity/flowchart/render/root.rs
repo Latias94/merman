@@ -80,11 +80,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root<'data, 'plan>(
     parent_origin_y: f64,
     session: &mut FlowchartRootRenderSession<'_, '_, 'plan, 'data>,
 ) -> crate::Result<()> {
-    if ctx
-        .node_effects
-        .get()
-        .is_some_and(|plan| plan.has_paint_bounds())
-    {
+    if ctx.native.is_some_and(|style| style.has_depth()) {
         render_flowchart_root_pass(
             out,
             ctx,
@@ -221,8 +217,6 @@ fn render_flowchart_root_pass<'data, 'plan>(
                     id,
                     current.origin_x,
                     current.content_origin_y,
-                    session.timing,
-                    &mut *session.details,
                 )?;
             } else {
                 render_flowchart_node(
@@ -286,10 +280,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     // artifact agree on the hierarchy even though the package still uses the
     // historical singular `edgePath` class.
     out.push_str(r#"<g class="root">"#);
-    let has_depth = ctx
-        .node_effects
-        .get()
-        .is_some_and(|plan| plan.has_paint_bounds());
+    let has_depth = ctx.native.is_some_and(|style| style.has_depth());
     render_flowchart_elk_subgraphs(
         out,
         ctx,
@@ -305,15 +296,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
         out.push_str(r#"<g class="nodes" data-merman-theme-depth="layer">"#);
         for &id in session.hierarchy_plan.root(None)?.dom_order() {
             ctx.checkpoint_emit()?;
-            render_flowchart_node_depth(
-                out,
-                ctx,
-                id,
-                0.0,
-                0.0,
-                session.timing,
-                &mut *session.details,
-            )?;
+            render_flowchart_node_depth(out, ctx, id, 0.0, 0.0)?;
         }
         out.push_str("</g>");
         out.checkpoint()?;

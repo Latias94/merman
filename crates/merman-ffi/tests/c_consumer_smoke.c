@@ -241,7 +241,7 @@ int merman_c_consumer_smoke(
         !bytes_contain(
             result.metadata_or_error_json.data,
             result.metadata_or_error_json.len,
-            "\"transport_api_version\":3"
+            "\"transport_api_version\":4"
         ) ||
         !bytes_contain(
             result.metadata_or_error_json.data,
@@ -287,7 +287,7 @@ int merman_c_consumer_smoke(
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"schema_version\":1"
+                    "\"schema_version\":2"
                 ) ||
                 !bytes_contain(
                     result.metadata_or_error_json.data,
@@ -297,22 +297,12 @@ int merman_c_consumer_smoke(
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"known_semantic_target_ids\""
+                    "\"families\""
                 ) ||
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"supported_appearances\""
-                ) ||
-                !bytes_contain(
-                    result.metadata_or_error_json.data,
-                    result.metadata_or_error_json.len,
-                    "\"concrete_preset_id\""
-                ) ||
-                !bytes_contain(
-                    result.metadata_or_error_json.data,
-                    result.metadata_or_error_json.len,
-                    "\"mermaid_theme_designs\""
+                    "\"mermaid_themes\""
                 )
             )
         ) {
@@ -394,25 +384,23 @@ int merman_c_consumer_smoke(
     request.options_json = borrowed_slice(NULL, 0);
 
     if (require_complete_artifact) {
-        static const uint8_t paired_inspection[] =
-            "{\"schema_version\":1,\"action\":\"inspect\",\"recipe\":"
-            "{\"schema_version\":1,\"kind\":\"design\",\"design\":"
-            "{\"appearances\":{\"light\":{},\"dark\":{}},\"default_appearance\":\"light\"}}}";
-        request.operation = MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON;
-        request.source = borrowed_slice(paired_inspection, sizeof(paired_inspection) - 1);
+        static const uint8_t resolve[] =
+            "{\"document\":{\"schema_version\":2,\"extends\":\"studio\"},\"appearance\":\"dark\"}";
+        request.operation = MERMAN_NATIVE_OPERATION_RESOLVE_THEME;
+        request.source = borrowed_slice(resolve, sizeof(resolve) - 1);
         result = empty_result();
         status = api.execute_collect(engine, &request, &result);
         if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
             result.operation != request.operation ||
             !bytes_contain(result.data.data, result.data.len,
-                           "\"supported_appearances\":[\"light\",\"dark\"]")) {
+                           "\"ok\":true")) {
             api.result_free(&result);
             api.engine_try_close(engine);
             return 35;
         }
         api.result_free(&result);
-        request.operation = MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON;
-        request.source = borrowed_slice((const uint8_t *)"editor", strlen("editor"));
+        request.operation = MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET;
+        request.source = borrowed_slice((const uint8_t *)"studio", strlen("studio"));
         result = empty_result();
         status = api.execute_collect(engine, &request, &result);
         if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
@@ -642,60 +630,6 @@ int merman_c_consumer_smoke(
         return 9;
     }
     return 0;
-}
-
-/* Exercise theme errors using C-owned request construction and result ownership. */
-#if defined(_WIN32)
-__declspec(dllexport)
-#else
-__attribute__((visibility("default")))
-#endif
-int merman_c_theme_authoring_error(
-    const MermanNativeApi *api,
-    const uint8_t *source, size_t source_len,
-    const uint8_t *options, size_t options_len,
-    MermanNativeStatus expected_status,
-    uint8_t *output, size_t capacity, size_t *output_len
-) {
-    MermanNativeEngineConfig config = {0};
-    MermanNativeEngineToken engine = 0;
-    MermanNativeOperationRequest request = {0};
-    MermanNativeResult result = empty_result();
-    MermanNativeStatus status;
-    int failure = 0;
-
-    *output_len = 0;
-    config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
-    config.options_json = borrowed_slice(NULL, 0);
-    status = api->engine_new(&config, &engine, &result);
-    if (status != MERMAN_NATIVE_STATUS_OK || result.status != status || engine == 0) {
-        api->result_free(&result);
-        if (engine != 0) api->engine_try_close(engine);
-        return 1;
-    }
-    api->result_free(&result);
-
-    request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
-    request.operation = MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON;
-    request.source = borrowed_slice(source, source_len);
-    request.uri = borrowed_slice(NULL, 0);
-    request.options_json = borrowed_slice(options, options_len);
-    result = empty_result();
-    status = api->execute_collect(engine, &request, &result);
-    if (status != expected_status || result.status != expected_status ||
-        result.operation != request.operation || result.allocation_token == 0 ||
-        result.data.len != 0 || result.metadata_or_error_json.data == NULL ||
-        result.metadata_or_error_json.len == 0 ||
-        result.metadata_or_error_json.len > capacity) {
-        failure = 2;
-    } else {
-        *output_len = result.metadata_or_error_json.len;
-        memcpy(output, result.metadata_or_error_json.data, *output_len);
-    }
-    api->result_free(&result);
-    if (result.allocation_token != 0) failure = 3;
-    if (api->engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) failure = 4;
-    return failure;
 }
 
 #if defined(_WIN32)

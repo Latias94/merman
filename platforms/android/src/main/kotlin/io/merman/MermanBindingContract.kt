@@ -13,7 +13,7 @@ internal val MERMAN_RUNTIME_CATALOG_IDENTIFIER_REGEX =
 internal val MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_REGEX =
     Regex(MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN)
 
-internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 3
+internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 4
 internal const val MERMAN_OPERATION_METADATA_SCHEMA_VERSION: Int = 1
 internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 1
 
@@ -84,16 +84,15 @@ internal object MermanBindingOperationId {
     internal const val ANALYSIS_FACTS_JSON: String = "analysis-facts-json"
     internal const val ANALYSIS_JSON: String = "analysis-json"
     internal const val ASCII: String = "ascii"
-    internal const val DESCRIBE_THEME_SUPPORT_JSON: String = "describe-theme-support-json"
     internal const val DOCUMENT_ANALYSIS_FACTS_JSON: String = "document-analysis-facts-json"
     internal const val DOCUMENT_ANALYSIS_JSON: String = "document-analysis-json"
     internal const val EDGE_GEOMETRY_JSON: String = "edge-geometry-json"
-    internal const val EXPORT_THEME_PRESET_JSON: String = "export-theme-preset-json"
+    internal const val EXPORT_THEME_PRESET: String = "export-theme-preset"
     internal const val JPEG: String = "jpeg"
     internal const val LAYOUT_JSON: String = "layout-json"
-    internal const val MATERIALIZE_THEME_JSON: String = "materialize-theme-json"
     internal const val PDF: String = "pdf"
     internal const val PNG: String = "png"
+    internal const val RESOLVE_THEME: String = "resolve-theme"
     internal const val SEMANTIC_JSON: String = "semantic-json"
     internal const val SVG: String = "svg"
     internal const val SVG_PLAN_JSON: String = "svg-plan-json"
@@ -152,7 +151,9 @@ internal val MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS: Map<String, Int> = mapOf(
 
 internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionGroupSpec> = listOf(
     MermanBindingOptionGroupSpec("ascii", false, setOf("ascii"), false),
+    MermanBindingOptionGroupSpec("background", false, setOf(), true),
     MermanBindingOptionGroupSpec("environment", false, setOf(), true),
+    MermanBindingOptionGroupSpec("export_matte", false, setOf("jpeg", "pdf", "png"), false),
     MermanBindingOptionGroupSpec("fixed_local_offset_minutes", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_today", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_unix_millis", true, setOf(), false),
@@ -166,7 +167,7 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
     MermanBindingOptionGroupSpec("runtime_policy", true, setOf(), false),
     MermanBindingOptionGroupSpec("site_config", true, setOf(), false),
     MermanBindingOptionGroupSpec("svg", false, setOf(), true),
-    MermanBindingOptionGroupSpec("theme", false, setOf(), true),
+    MermanBindingOptionGroupSpec("theme", false, setOf("ascii"), true),
     MermanBindingOptionGroupSpec("version", true, setOf(), false),
 ).associateBy(MermanBindingOptionGroupSpec::id)
 
@@ -191,16 +192,15 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
     MermanBindingOperationExpectation("analysis-facts-json", "stable", null, "application/json", 1, false, "analysis", setOf()),
     MermanBindingOperationExpectation("analysis-json", "stable", null, "application/json", 1, false, "analysis", setOf()),
     MermanBindingOperationExpectation("ascii", "stable", "ascii", "text/plain; charset=utf-8", 1, false, "ascii", setOf()),
-    MermanBindingOperationExpectation("describe-theme-support-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
     MermanBindingOperationExpectation("document-analysis-facts-json", "stable", null, "application/json", 1, true, "analysis", setOf()),
     MermanBindingOperationExpectation("document-analysis-json", "stable", null, "application/json", 1, true, "analysis", setOf()),
     MermanBindingOperationExpectation("edge-geometry-json", "stable", null, "application/json", 1, false, "svg", setOf()),
-    MermanBindingOperationExpectation("export-theme-preset-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("export-theme-preset", "stable", null, "application/json", 1, false, "svg", setOf()),
     MermanBindingOperationExpectation("jpeg", "stable", "jpeg", "image/jpeg", 1, false, "jpeg", setOf("svg")),
     MermanBindingOperationExpectation("layout-json", "stable", null, "application/json", 1, false, "svg", setOf()),
-    MermanBindingOperationExpectation("materialize-theme-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
     MermanBindingOperationExpectation("pdf", "stable", "pdf", "application/pdf", 1, false, "pdf", setOf("svg")),
     MermanBindingOperationExpectation("png", "stable", "png", "image/png", 1, false, "png", setOf("svg")),
+    MermanBindingOperationExpectation("resolve-theme", "stable", null, "application/json", 1, false, "svg", setOf()),
     MermanBindingOperationExpectation("semantic-json", "stable", null, "application/json", 1, false, null, setOf()),
     MermanBindingOperationExpectation("svg", "stable", "svg", "image/svg+xml", 1, false, "svg", setOf()),
     MermanBindingOperationExpectation("svg-plan-json", "stable", null, "application/json", 1, false, "svg", setOf()),
@@ -211,7 +211,7 @@ internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectat
     capabilityIds = listOf("analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"),
     outputIds = listOf("ascii", "svg"),
     systemAdapterIds = listOf(),
-    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "describe-theme-support-json", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "export-theme-preset-json", "layout-json", "materialize-theme-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
+    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "export-theme-preset", "layout-json", "resolve-theme", "semantic-json", "svg", "svg-plan-json", "validation-json"),
     metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "supported-diagrams", "supported-themes", "theme-catalog"),
     textMeasurementProviderIds = listOf("deterministic", "host-callback"),
 )

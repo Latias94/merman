@@ -27,8 +27,10 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
-      - name: Resolve the published stable release
+      - name: Download and authenticate the published stable release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,8 +45,13 @@ jobs:
           }
           gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > release.json
           jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false' release.json
-          source_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          source_sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq .sha)"
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          gh release download "$RELEASE_TAG" --dir release-assets \
+            --pattern 'merman-cli-*' --pattern 'merman-lsp-*' \
+            --pattern 'sha256.sum' --pattern 'release-verification.json'
+          gh attestation verify release-assets/release-verification.json \
+            --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/release.yml"
           {
             printf 'version=%s\n' "${RELEASE_TAG#v}"
             printf 'source_sha=%s\n' "$source_sha"
@@ -55,22 +62,19 @@ jobs:
           ref: ${{ steps.release.outputs.source_sha }}
           path: release-source
           persist-credentials: false
-      - name: Download and verify the original release bundle
+      - name: Verify the release bundle and generate candidates
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
           SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release download "$RELEASE_TAG" --dir release-assets \
-            --pattern 'merman-cli-*' --pattern 'merman-lsp-*' \
-            --pattern 'sha256.sum' --pattern 'release-verification.json'
-          gh attestation verify release-assets/release-verification.json \
-            --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/release.yml"
-          python3 scripts/release_artifact_bundle.py verify-bundle release-assets \
+          # Use a release's verifier when its source is in the trusted workflow history.
+          verifier=scripts/release_artifact_bundle.py
+          if git merge-base --is-ancestor "$SOURCE_SHA" "$GITHUB_WORKFLOW_SHA"; then
+            verifier="release-source/$verifier"
+          fi
+          python3 "$verifier" verify-bundle release-assets \
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA"
           python3 scripts/generate_cli_registry_candidates.py release-assets \
             --version "$RELEASE_VERSION" --repo-root release-source --output-dir candidates

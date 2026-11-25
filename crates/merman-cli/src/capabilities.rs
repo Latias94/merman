@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 8;
+const CLI_CONTRACT_VERSION: u32 = 9;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
@@ -33,8 +33,6 @@ struct CapabilityDocument<'a> {
     native_fonts: NativeFontsView,
     #[cfg(feature = "ascii")]
     ascii: AsciiCapabilityDocument,
-    #[cfg(feature = "svg")]
-    theme_presets: Option<ThemePresetCatalogDocument>,
     #[cfg(all(
         feature = "svg",
         any(feature = "layout-shoal", feature = "diagram-kanban")
@@ -50,17 +48,6 @@ struct PreviewLayoutFrameDocument {
     protocol_version: u16,
     max_bytes: usize,
     private_output: bool,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Serialize)]
-struct ThemePresetCatalogDocument {
-    schema_version: u32,
-    recipe_schema_version: u32,
-    authoring_request_schema_version: u32,
-    authoring_result_schema_version: u32,
-    presets: Vec<merman::svg::ThemePresetMetadataV1>,
-    mermaid_theme_designs: Vec<merman::svg::ThemeMermaidDesignMetadataV1>,
 }
 
 #[cfg(feature = "native-fonts")]
@@ -316,8 +303,6 @@ pub(crate) fn write_compiled_capabilities(
             .collect(),
         #[cfg(feature = "ascii")]
         ascii: ascii_capability_document(),
-        #[cfg(feature = "svg")]
-        theme_presets: Some(theme_preset_catalog_document()),
         #[cfg(all(
             feature = "svg",
             any(feature = "layout-shoal", feature = "diagram-kanban")
@@ -345,64 +330,8 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\n');
     }
     #[cfg(feature = "svg")]
-    if let Some(catalog) = &document.theme_presets {
-        output.push_str(
-            "\nMerman styling presets (alpha; design scope is not output qualification)\n",
-        );
-        output.push_str("ID\tAppearance\tDedicated designs\tBase palette adaptations\n");
-        for preset in &catalog.presets {
-            for appearance in &preset.appearances {
-                let families = |treatment| {
-                    let ids = appearance
-                        .family_designs
-                        .iter()
-                        .filter(|design| design.treatment == treatment)
-                        .map(|design| design.family_id.as_str())
-                        .collect::<Vec<_>>();
-                    if ids.is_empty() {
-                        "—".to_owned()
-                    } else {
-                        ids.join(", ")
-                    }
-                };
-                output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\n",
-                    preset.id,
-                    appearance.appearance,
-                    families("dedicated"),
-                    families("base_only")
-                ));
-                for note in &appearance.application_notes {
-                    output.push_str(&format!("  {}: {}\n", note.family_id, note.message));
-                    if let Some(config) = &note.recommended_config {
-                        output.push_str(&format!(
-                            "  Suggested --config-file content: {}\n",
-                            serde_json::to_string(config).expect("catalog config serializes")
-                        ));
-                    }
-                }
-            }
-        }
-        output.push_str("Unlisted families have unreviewed design scope. Use capabilities --json for full discovery metadata.\n");
-        output.push_str("Apply Mermaid's base theme with --theme; add Merman styling with --theme-preset ID or --theme-file PATH.\n");
-        output.push_str("Select a concrete appearance with --theme-appearance light|dark; omission uses the design default. Inspect portable recipes with theme inspect INPUT.\n");
-    }
+    output.push_str("\nUse `merman-cli theme list` to browse native presets and Mermaid themes.\n");
     write_stdout(output.as_bytes(), stdout)
-}
-
-#[cfg(feature = "svg")]
-fn theme_preset_catalog_document() -> ThemePresetCatalogDocument {
-    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
-        merman::svg::ThemeResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
-    );
-    ThemePresetCatalogDocument {
-        schema_version: merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
-        recipe_schema_version: 1,
-        authoring_request_schema_version: 1,
-        authoring_result_schema_version: 1,
-        presets: merman::svg::describe_theme_presets(&compiler),
-        mermaid_theme_designs: merman::svg::describe_mermaid_theme_designs(),
-    }
 }
 
 #[cfg(feature = "ascii")]

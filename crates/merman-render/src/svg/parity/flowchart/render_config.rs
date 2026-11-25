@@ -23,21 +23,31 @@ pub(crate) struct FlowchartRenderConfig {
     pub default_edge_style: Vec<String>,
     pub node_border_color: String,
     pub node_stroke_width: f32,
-    pub node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
-    pub node_label_fill_config_override: bool,
-    pub node_border_config_override: bool,
-    pub node_fill_config_override: bool,
     pub node_stroke_width_config_override: bool,
-    pub edge_stroke_config_override: bool,
     pub cluster_fill_color: String,
     pub cluster_stroke_color: String,
-    pub cluster_fill_config_override: bool,
-    pub cluster_stroke_config_override: bool,
     pub node_corner_radius_config_override: bool,
-    pub rounded_rect_radius_config_override: bool,
     pub edge_corner_radius: f64,
-    pub edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
     pub compact_edge_corners: bool,
+}
+
+impl FlowchartRenderConfig {
+    pub(crate) fn apply_native(
+        &mut self,
+        native: &crate::flowchart::native_theme::FlowchartNativeStyle,
+        model: &crate::flowchart::FlowchartModel,
+        config: &merman_model::presentation::PresentationConfig,
+        uses_elk: bool,
+    ) {
+        self.node_padding *= crate::flowchart::native_theme::density_scales(native.form.density).0;
+        self.cluster_fill_color = native.container.to_string();
+        if !uses_elk
+            && let Some(curve) =
+                crate::flowchart::native_theme::default_curve(native.form.edge_style, model, config)
+        {
+            self.default_edge_interpolate = curve.to_owned();
+        }
+    }
 }
 
 pub(crate) fn prepare_flowchart_render_config(
@@ -46,7 +56,6 @@ pub(crate) fn prepare_flowchart_render_config(
     compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
     is_elk_layout: bool,
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
-    edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 ) -> FlowchartRenderConfig {
     let config = FlowchartConfigView::new(effective_config);
     let typography = base_typography.map_or_else(
@@ -91,19 +100,8 @@ pub(crate) fn prepare_flowchart_render_config(
 
     let node_border_color = compatibility.node_border.clone();
     let node_stroke_width = compatibility.node_stroke_width;
-    let node_typography_config_ownership =
-        crate::flowchart::flowchart_typography_config_ownership(effective_config);
-    let node_label_fill_config_override =
-        flowchart_node_label_fill_config_override(effective_config);
-    let owns_color = |path| {
-        effective_config.get_str(path).is_some()
-            && effective_config.config_paint_overrides_typed_default(path)
-    };
-    let node_border_config_override = owns_color("themeVariables.nodeBorder");
-    let node_fill_config_override = owns_color("themeVariables.mainBkg");
     let node_stroke_width_config_override = compatibility.stroke_width_configured
-        && effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
-    let edge_stroke_config_override = owns_color("themeVariables.lineColor");
+        && effective_config.explicit_config_owns_path("themeVariables.strokeWidth");
     let agentflow = model.keyword == "agentflow-beta";
     let cluster_fill_color = if agentflow {
         "none".to_owned()
@@ -115,24 +113,8 @@ pub(crate) fn prepare_flowchart_render_config(
     } else {
         compatibility.cluster_border.clone()
     };
-    let cluster_fill_config_override = !agentflow && owns_color("themeVariables.clusterBkg");
-    let cluster_stroke_config_override = if agentflow {
-        crate::config::selected_config_string(
-            effective_config,
-            &[
-                "themeVariables.flowContainerStroke",
-                "themeVariables.secondaryBorderColor",
-                "themeVariables.clusterBorder",
-            ],
-        )
-        .is_some_and(|(path, _)| owns_color(path))
-    } else {
-        owns_color("themeVariables.clusterBorder")
-    };
     let node_corner_radius_config_override = compatibility.node_corner_radius_configured
-        && effective_config.config_path_overrides_typed_default("themeVariables.radius");
-    let rounded_rect_radius_config_override = compatibility.rounded_rect_radius_configured
-        && effective_config.config_path_overrides_typed_default("themeVariables.radius");
+        && effective_config.explicit_config_owns_path("themeVariables.radius");
     let edge_corner_radius = 5.0;
     let compact_edge_corners = false;
 
@@ -155,64 +137,11 @@ pub(crate) fn prepare_flowchart_render_config(
         default_edge_style,
         node_border_color,
         node_stroke_width,
-        node_typography_config_ownership,
-        node_label_fill_config_override,
-        node_border_config_override,
-        node_fill_config_override,
         node_stroke_width_config_override,
-        edge_stroke_config_override,
         cluster_fill_color,
         cluster_stroke_color,
-        cluster_fill_config_override,
-        cluster_stroke_config_override,
         node_corner_radius_config_override,
-        rounded_rect_radius_config_override,
         edge_corner_radius,
-        edge_label_padding,
         compact_edge_corners,
     }
-}
-
-pub(crate) fn flowchart_node_label_fill_config_override(
-    effective_config: &merman_model::presentation::PresentationConfig,
-) -> bool {
-    const NODE_TEXT_COLOR: &str = "themeVariables.nodeTextColor";
-    const PRIMARY_TEXT_COLOR: &str = "themeVariables.primaryTextColor";
-    const TEXT_COLOR: &str = "themeVariables.textColor";
-
-    // Mermaid's Flowchart stylesheet resolves this terminal as
-    // `nodeTextColor || textColor`. `primaryTextColor` only owns the terminal when the
-    // materialized `nodeTextColor` is its direct derived value.
-    let theme_variables = effective_config
-        .get("themeVariables")
-        .and_then(serde_json::Value::as_object);
-    let node_text_color = theme_variables
-        .and_then(|variables| variables.get("nodeTextColor"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|color| !color.is_empty());
-
-    let owns = |path| effective_config.config_paint_overrides_typed_default(path);
-    let Some(node_text_color) = node_text_color else {
-        return effective_config.get_str(TEXT_COLOR).is_some() && owns(TEXT_COLOR);
-    };
-    if owns(NODE_TEXT_COLOR) {
-        return true;
-    }
-
-    let theme = effective_config
-        .get_str("theme")
-        .and_then(|name| merman_model::config::MermaidThemeId::parse(name).ok())
-        .unwrap_or_default();
-    if !matches!(
-        theme,
-        merman_model::config::MermaidThemeId::Default | merman_model::config::MermaidThemeId::Base
-    ) {
-        return false;
-    }
-
-    theme_variables
-        .and_then(|variables| variables.get("primaryTextColor"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|primary_text_color| *primary_text_color == node_text_color)
-        .is_some_and(|_| owns(PRIMARY_TEXT_COLOR))
 }

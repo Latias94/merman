@@ -1,20 +1,6 @@
-use std::collections::BTreeSet;
-
 use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet,
-    ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
-};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextStyle, parse_css_font_stack};
-
-const DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES: [ThemeTypographyProperty; 4] = [
-    ThemeTypographyProperty::FontStack,
-    ThemeTypographyProperty::FontSize,
-    ThemeTypographyProperty::FontWeight,
-    ThemeTypographyProperty::FontStyle,
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum SequenceTypographyRole {
@@ -25,25 +11,6 @@ pub(crate) enum SequenceTypographyRole {
 }
 
 impl SequenceTypographyRole {
-    pub(crate) const fn target(self) -> ThemeTarget {
-        match self {
-            Self::Actor => ThemeTarget::ActorLabel,
-            Self::Message => ThemeTarget::MessageLabel,
-            Self::Note => ThemeTarget::NoteLabel,
-            Self::Loop => ThemeTarget::LoopLabel,
-        }
-    }
-
-    pub(crate) const fn from_target(target: ThemeTarget) -> Option<Self> {
-        match target {
-            ThemeTarget::ActorLabel => Some(Self::Actor),
-            ThemeTarget::MessageLabel => Some(Self::Message),
-            ThemeTarget::NoteLabel => Some(Self::Note),
-            ThemeTarget::LoopLabel => Some(Self::Loop),
-            _ => None,
-        }
-    }
-
     const fn config_role(self) -> super::config::SequenceTypographyConfigRole {
         match self {
             Self::Actor => super::config::SequenceTypographyConfigRole::Actor,
@@ -53,133 +20,7 @@ impl SequenceTypographyRole {
     }
 }
 
-#[derive(Debug)]
-struct SequenceBaseTypography {
-    configured_font_family_css: String,
-    font_family_css: String,
-    font_size_px: f64,
-    typed_properties: BTreeSet<ThemeTypographyProperty>,
-    root_font_size_px: f64,
-    root_typed_properties: BTreeSet<ThemeTypographyProperty>,
-}
-
-impl SequenceBaseTypography {
-    fn resolve(
-        effective_config: &PresentationConfig,
-        resolved_theme: Option<&ResolvedDiagramTheme>,
-        compat: &super::SequenceCompatBinding,
-    ) -> Self {
-        let mut config_overrides = BTreeSet::new();
-        for (property, paths) in [
-            (
-                ThemeTypographyProperty::FontStack,
-                &["fontFamily", "themeVariables.fontFamily"][..],
-            ),
-            (ThemeTypographyProperty::FontSize, &["fontSize"][..]),
-        ] {
-            if paths
-                .iter()
-                .any(|path| effective_config.config_path_overrides_typed_default(path))
-            {
-                config_overrides.insert(property);
-            }
-        }
-
-        let configured_font_family = compat.font_family.clone();
-        // Diagram titles inherit root CSS, not the message role's inline font size.
-        let configured_font_size =
-            crate::mermaid_style::resolve_mermaid_absolute_font_size_px(&compat.font_size_css)
-                .unwrap_or(16.0)
-                .max(1.0);
-        let mut font_family_css = configured_font_family.clone();
-        let mut font_size_px = configured_font_size;
-        let mut typed_properties = BTreeSet::new();
-
-        if let Some(theme) = resolved_theme {
-            for route in theme.family_mechanism_routes().iter().copied() {
-                let FamilyThemeMechanism::BaseTypography(property) = route.mechanism() else {
-                    continue;
-                };
-                if route.disposition() != FamilyThemeDisposition::TypedAdapter
-                    || config_overrides.contains(&property)
-                {
-                    continue;
-                }
-                match property {
-                    ThemeTypographyProperty::FontStack => {
-                        font_family_css = theme.typography().font_stack().as_css();
-                        typed_properties.insert(property);
-                    }
-                    ThemeTypographyProperty::FontSize => {
-                        font_size_px = f64::from(theme.typography().font_size_px());
-                        typed_properties.insert(property);
-                    }
-                    ThemeTypographyProperty::FontWeight
-                    | ThemeTypographyProperty::FontStyle
-                    | ThemeTypographyProperty::LineHeight
-                    | ThemeTypographyProperty::LetterSpacing
-                    | ThemeTypographyProperty::WordSpacing
-                    | ThemeTypographyProperty::Transform
-                    | ThemeTypographyProperty::Decoration
-                    | ThemeTypographyProperty::TextAlign
-                    | ThemeTypographyProperty::WhiteSpace
-                    | ThemeTypographyProperty::Wrap => {}
-                }
-            }
-        }
-
-        // Sequence role sizes are inline declarations, while the diagram title inherits the
-        // root theme variable. A configured root size must not suppress the role defaults.
-        let root_size_owned = effective_config
-            .config_path_overrides_typed_default("themeVariables.fontSize")
-            && crate::mermaid_style::css_font_size_override(&format!(
-                "font-size:{}",
-                compat.font_size_css
-            ))
-            .is_some();
-        let mut root_typed_properties = typed_properties.clone();
-        let root_font_size_px = if root_size_owned {
-            root_typed_properties.remove(&ThemeTypographyProperty::FontSize);
-            configured_font_size
-        } else {
-            font_size_px
-        };
-
-        Self {
-            configured_font_family_css: configured_font_family,
-            font_family_css,
-            font_size_px,
-            typed_properties,
-            root_font_size_px,
-            root_typed_properties,
-        }
-    }
-
-    fn apply_to_role(
-        &self,
-        role_config: &super::config::SequenceRoleTypographyConfig,
-        text_style: &mut TextStyle,
-    ) -> BTreeSet<ThemeTypographyProperty> {
-        let mut applied = BTreeSet::new();
-        for property in [
-            ThemeTypographyProperty::FontStack,
-            ThemeTypographyProperty::FontSize,
-        ] {
-            let overridden = role_config.config_owns(property);
-            if self.typed_properties.contains(&property) && !overridden {
-                apply_base_property(text_style, self, property);
-                applied.insert(property);
-            }
-        }
-        applied
-    }
-}
-
-/// Private terminal text surfaces that share public Sequence typography targets.
-///
-/// Public theme targets intentionally remain role-oriented. This internal seam keeps terminal
-/// Mermaid ownership and writer receipts local to the selector arm that actually consumes the
-/// fill, without duplicating font resolution or layout measurement.
+/// SVG text surfaces sharing Sequence typography and foreground roles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum SequenceTextSurface {
     ParticipantLabel,
@@ -192,6 +33,7 @@ pub(crate) enum SequenceTextSurface {
 }
 
 impl SequenceTextSurface {
+    #[cfg(test)]
     pub(crate) const ALL: [Self; 7] = [
         Self::ParticipantLabel,
         Self::BoxTitle,
@@ -201,7 +43,6 @@ impl SequenceTextSurface {
         Self::ControlPrimaryTitle,
         Self::ControlSectionTitle,
     ];
-    pub(crate) const COUNT: usize = Self::ALL.len();
 
     pub(crate) const fn role(self) -> SequenceTypographyRole {
         match self {
@@ -211,29 +52,6 @@ impl SequenceTextSurface {
             Self::ControlKeyword | Self::ControlPrimaryTitle | Self::ControlSectionTitle => {
                 SequenceTypographyRole::Loop
             }
-        }
-    }
-
-    pub(crate) const fn index(self) -> usize {
-        match self {
-            Self::ParticipantLabel => 0,
-            Self::BoxTitle => 1,
-            Self::MessageLabel => 2,
-            Self::NoteLabel => 3,
-            Self::ControlKeyword => 4,
-            Self::ControlPrimaryTitle => 5,
-            Self::ControlSectionTitle => 6,
-        }
-    }
-
-    pub(crate) const fn mermaid_fill_owner_path(self) -> &'static str {
-        match self {
-            Self::ParticipantLabel => "themeVariables.actorTextColor",
-            Self::BoxTitle => "themeVariables.textColor",
-            Self::MessageLabel => "themeVariables.signalTextColor",
-            Self::NoteLabel => "themeVariables.noteTextColor",
-            Self::ControlKeyword => "themeVariables.labelTextColor",
-            Self::ControlPrimaryTitle | Self::ControlSectionTitle => "themeVariables.loopTextColor",
         }
     }
 
@@ -252,120 +70,37 @@ impl SequenceTextSurface {
 
 #[derive(Debug)]
 pub(crate) struct SequenceResolvedTypography {
-    role: SequenceTypographyRole,
     measurement_style: TextStyle,
     terminal_text_style: TextStyle,
-    resolved_style: Option<ResolvedThemeStyle>,
-    text_effect: super::SequencePreparedTextEffect,
-    typed_properties: BTreeSet<ThemeTypographyProperty>,
-    base_typed_properties: BTreeSet<ThemeTypographyProperty>,
-    config_overrides: BTreeSet<ThemeTypographyProperty>,
-    typed_fill: Option<String>,
-    fill_overrides: BTreeSet<SequenceTextSurface>,
+    explicit_style: bool,
+    native: bool,
 }
 
 impl SequenceResolvedTypography {
-    fn resolve(
-        role: SequenceTypographyRole,
-        effective_config: &PresentationConfig,
-        resolved_theme: Option<&ResolvedDiagramTheme>,
-        work_meter: &OperationWorkMeter,
-        base_typography: &SequenceBaseTypography,
-    ) -> Result<Self, OperationWorkError> {
-        let resolved_style = resolved_theme
-            .filter(|theme| {
-                theme.family_mechanism_routes().iter().any(|route| {
-                    matches!(
-                        route.mechanism(),
-                        FamilyThemeMechanism::RuleFacet { target, .. } if target == role.target()
-                    )
-                })
-            })
-            .map(|theme| {
-                theme.style_with_work_meter(role.target(), ThemeVariant::Default, None, work_meter)
-            })
-            .transpose()?;
-        let direct_typed_properties = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
-            .into_iter()
-            .filter(|property| {
-                let Some((theme, style)) = resolved_theme.zip(resolved_style.as_ref()) else {
-                    return false;
-                };
-                let Some(origin) = style.typography_resolution().winner(*property) else {
-                    return false;
-                };
-                theme.rule_facet_disposition(
-                    origin.rule_index(),
-                    FamilyThemeRuleFacet::Typography(*property),
-                ) == Some(FamilyThemeDisposition::TypedAdapter)
-            })
-            .collect::<BTreeSet<_>>();
-        let mut typed_theme_properties = base_typography.typed_properties.clone();
-        typed_theme_properties.extend(direct_typed_properties.iter().copied());
-        let role_config = super::config::SequenceConfigView::from_mermaid_config(effective_config)
-            .resolve_role_typography_with_typed_properties(
-                role.config_role(),
-                &typed_theme_properties,
-            );
-        let config_overrides = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
-            .into_iter()
-            .filter(|property| role_config.config_owns(*property))
-            .collect::<BTreeSet<_>>();
-        let fill_overrides = SequenceTextSurface::ALL
-            .into_iter()
-            .filter(|surface| surface.role() == role)
-            .filter(|surface| {
-                effective_config
-                    .config_paint_overrides_typed_default(surface.mermaid_fill_owner_path())
-            })
-            .collect::<BTreeSet<_>>();
-        let mut text_style = role_config.measurement_style().clone();
-        let mut base_typed_properties =
-            base_typography.apply_to_role(&role_config, &mut text_style);
-        let mut typed_properties = BTreeSet::new();
-        if let Some(style) = resolved_style.as_ref() {
-            for property in direct_typed_properties {
-                if config_overrides.contains(&property) {
-                    continue;
-                }
-                apply_direct_property(&mut text_style, style, property);
-                typed_properties.insert(property);
-                base_typed_properties.remove(&property);
-            }
+    fn native(style: TextStyle) -> Self {
+        Self {
+            terminal_text_style: style.clone(),
+            measurement_style: style,
+            explicit_style: true,
+            native: true,
         }
-        let typed_fill = resolved_theme
-            .zip(resolved_style.as_ref())
-            .and_then(|(theme, style)| typed_static_fill(theme, style));
-        let measurement_style = text_style;
-        let inherited_font_family =
-            if config_overrides.contains(&ThemeTypographyProperty::FontStack) {
-                &base_typography.configured_font_family_css
-            } else {
-                &base_typography.font_family_css
-            };
-        let terminal_text_style =
-            cssom_effective_text_style(&measurement_style, inherited_font_family);
-        let text_effect = if role == SequenceTypographyRole::Message {
-            super::SequencePreparedTextEffect::default()
-        } else {
-            super::SequencePreparedTextEffect::resolve(
-                resolved_theme,
-                role,
-                resolved_style.as_ref(),
-            )
-        };
-        Ok(Self {
-            role,
+    }
+
+    fn resolve(
+        config: &super::config::SequenceConfigView<'_>,
+        role: SequenceTypographyRole,
+        inherited_family: &str,
+    ) -> Self {
+        let (measurement_style, explicit_style) = config
+            .resolve_role_typography(role.config_role())
+            .into_style();
+        let terminal_text_style = cssom_effective_text_style(&measurement_style, inherited_family);
+        Self {
             measurement_style,
             terminal_text_style,
-            resolved_style,
-            text_effect,
-            typed_properties,
-            base_typed_properties,
-            config_overrides,
-            typed_fill,
-            fill_overrides,
-        })
+            explicit_style,
+            native: false,
+        }
     }
 
     pub(crate) const fn measurement_style(&self) -> &TextStyle {
@@ -376,75 +111,12 @@ impl SequenceResolvedTypography {
         &self.terminal_text_style
     }
 
-    pub(crate) fn typed_terminal_style(&self) -> Option<&TextStyle> {
-        self.has_typed_typography()
-            .then_some(&self.terminal_text_style)
-    }
-
-    pub(crate) fn non_normal_typed_terminal_style(&self) -> Option<&TextStyle> {
-        (self
-            .typed_properties
-            .contains(&ThemeTypographyProperty::FontStyle)
-            && matches!(
-                self.terminal_text_style.font_style.as_deref(),
-                Some("italic" | "oblique")
-            ))
-        .then_some(&self.terminal_text_style)
-    }
-
-    pub(crate) const fn resolved_style(&self) -> Option<&ResolvedThemeStyle> {
-        self.resolved_style.as_ref()
-    }
-
-    pub(crate) const fn text_effect(&self) -> &super::SequencePreparedTextEffect {
-        &self.text_effect
-    }
-
-    pub(crate) const fn config_overrides(&self) -> &BTreeSet<ThemeTypographyProperty> {
-        &self.config_overrides
-    }
-
-    pub(crate) const fn typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
-        &self.typed_properties
-    }
-
-    pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
-        &self.base_typed_properties
-    }
-
-    pub(crate) fn typed_fill_for(&self, surface: SequenceTextSurface) -> Option<&str> {
-        debug_assert_eq!(surface.role(), self.role);
-        (!self.fill_overrides.contains(&surface))
-            .then_some(self.typed_fill.as_deref())
-            .flatten()
-    }
-
-    pub(crate) fn fill_overridden(&self, surface: SequenceTextSurface) -> bool {
-        debug_assert_eq!(surface.role(), self.role);
-        self.fill_overrides.contains(&surface)
-    }
-
-    pub(crate) fn has_typed_emission(&self) -> bool {
-        !self.typed_properties.is_empty()
-    }
-
-    pub(crate) fn has_typed_typography(&self) -> bool {
-        self.has_typed_emission() || !self.base_typed_properties.is_empty()
-    }
-
-    pub(crate) fn requires_resolved_emission(&self) -> bool {
-        self.has_typed_typography() || !self.config_overrides.is_empty()
-    }
-
-    pub(crate) fn requires_terminal_evidence_for(&self, surface: SequenceTextSurface) -> bool {
-        debug_assert_eq!(surface.role(), self.role);
-        self.has_typed_emission()
-            || !self.base_typed_properties.is_empty()
-            || self.typed_fill_for(surface).is_some()
+    pub(crate) fn native_terminal_style(&self) -> Option<&TextStyle> {
+        self.native.then_some(&self.terminal_text_style)
     }
 
     pub(crate) fn inline_style(&self, base: &str) -> String {
-        if !self.requires_resolved_emission() {
+        if !self.explicit_style {
             return base.to_string();
         }
         let mut style = base.trim().trim_end_matches(';').to_string();
@@ -454,32 +126,19 @@ impl SequenceResolvedTypography {
     }
 
     pub(crate) fn terminal_style(&self, typed_prefix: &str, legacy: String) -> String {
-        if self.requires_resolved_emission() {
+        if self.explicit_style {
             self.inline_style(typed_prefix)
         } else {
             legacy
         }
     }
 
-    pub(crate) fn css_declarations_for(&self, surface: SequenceTextSurface) -> Option<String> {
-        let typed_fill = self.typed_fill_for(surface);
-        (self.requires_resolved_emission() || typed_fill.is_some()).then(|| {
-            let mut declarations = String::new();
-            if self.requires_resolved_emission() {
-                append_typography_declarations(&mut declarations, &self.terminal_text_style);
-                declarations.push(';');
-            }
-            if let Some(fill) = typed_fill {
-                declarations.push_str("fill:");
-                declarations.push_str(fill);
-                declarations.push(';');
-            }
-            declarations
-        })
+    pub(crate) fn css_declarations(&self) -> Option<String> {
+        self.explicit_style.then(|| self.inline_style(""))
     }
 
     pub(crate) fn fixed_size_terminal_style(&self) -> Option<String> {
-        self.requires_resolved_emission().then(|| {
+        self.explicit_style.then(|| {
             let mut declarations = String::new();
             append_font_source_declarations(&mut declarations, &self.terminal_text_style);
             declarations.push(';');
@@ -488,151 +147,99 @@ impl SequenceResolvedTypography {
     }
 }
 
-fn css_paint(paint: Option<&CanvasPaint>) -> Option<String> {
-    match paint? {
-        CanvasPaint::Transparent => Some("transparent".to_string()),
-        CanvasPaint::Solid(color) => Some(color.as_css()),
-        CanvasPaint::LinearGradient(_)
-        | CanvasPaint::RadialGradient(_)
-        | CanvasPaint::Pattern(_) => None,
-    }
-}
-
-fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -> Option<String> {
-    let origin = style.fill_resolution().winner()?;
-    let facet = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
-    if theme.rule_facet_disposition(origin.rule_index(), facet)
-        != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-    css_paint(style.fill())
-}
-
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
-    explicit_theme: bool,
-    compat: std::sync::Arc<super::SequenceCompatBinding>,
-    base_typography: SequenceBaseTypography,
+    compat: super::SequenceCompatBinding,
+    root_font_size_px: f64,
+    native_title: Option<TextStyle>,
     actor: SequenceResolvedTypography,
     message: SequenceResolvedTypography,
     note: SequenceResolvedTypography,
     loop_label: SequenceResolvedTypography,
-    terminal_foreground_provenance:
-        [SequenceTerminalForegroundProvenance; SequenceTextSurface::COUNT],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SequenceTerminalForegroundProvenance {
-    PresentationConfig,
-    TypedTheme,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SequenceTerminalTextStyle<'a> {
     pub(crate) text_style: &'a TextStyle,
     pub(crate) foreground: &'a str,
-    pub(crate) foreground_provenance: SequenceTerminalForegroundProvenance,
 }
 
 impl SequenceTypographyPlan {
-    pub(crate) fn resolve(
-        effective_config: &PresentationConfig,
-        resolved_theme: Option<&ResolvedDiagramTheme>,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let compat = std::sync::Arc::new(super::SequenceCompatBinding::resolve_for_theme(
-            effective_config,
-            resolved_theme,
-        ));
-        let base_typography =
-            SequenceBaseTypography::resolve(effective_config, resolved_theme, &compat);
-        let actor = SequenceResolvedTypography::resolve(
-            SequenceTypographyRole::Actor,
-            effective_config,
-            resolved_theme,
-            work_meter,
-            &base_typography,
-        )?;
-        let message = SequenceResolvedTypography::resolve(
-            SequenceTypographyRole::Message,
-            effective_config,
-            resolved_theme,
-            work_meter,
-            &base_typography,
-        )?;
-        let note = SequenceResolvedTypography::resolve(
-            SequenceTypographyRole::Note,
-            effective_config,
-            resolved_theme,
-            work_meter,
-            &base_typography,
-        )?;
-        let loop_label = SequenceResolvedTypography::resolve(
-            SequenceTypographyRole::Loop,
-            effective_config,
-            resolved_theme,
-            work_meter,
-            &base_typography,
-        )?;
-        let mut terminal_foreground_provenance =
-            [SequenceTerminalForegroundProvenance::PresentationConfig; SequenceTextSurface::COUNT];
-        for surface in SequenceTextSurface::ALL {
-            let typography = match surface.role() {
-                SequenceTypographyRole::Actor => &actor,
-                SequenceTypographyRole::Message => &message,
-                SequenceTypographyRole::Note => &note,
-                SequenceTypographyRole::Loop => &loop_label,
-            };
-            if typography.typed_fill_for(surface).is_some() {
-                terminal_foreground_provenance[surface.index()] =
-                    SequenceTerminalForegroundProvenance::TypedTheme;
-            }
-        }
-        Ok(Self {
-            explicit_theme: resolved_theme.is_some(),
+    pub(crate) fn for_native(
+        config: &serde_json::Value,
+        theme: &crate::theme::FamilyTheme,
+        background: Option<crate::theme::Color>,
+    ) -> Self {
+        let compat = super::SequenceCompatBinding::for_native(config, theme, background);
+        let typography = &theme.typography;
+        let font_size = typography.base_size_px;
+        let body = TextStyle {
+            font_family: Some(compat.font_family.clone()),
+            font_size,
+            font_weight: Some(typography.label_weight.to_string()),
+            font_style: None,
+        };
+        let title = TextStyle {
+            font_family: Some(crate::theme::font_family_css(
+                typography.stack(typography.title_family),
+            )),
+            font_weight: Some(typography.title_weight.to_string()),
+            ..body.clone()
+        };
+        Self {
+            root_font_size_px: font_size,
             compat,
-            base_typography,
-            actor,
-            message,
-            note,
-            loop_label,
-            terminal_foreground_provenance,
-        })
+            native_title: Some(title),
+            actor: SequenceResolvedTypography::native(body.clone()),
+            message: SequenceResolvedTypography::native(body.clone()),
+            note: SequenceResolvedTypography::native(body.clone()),
+            loop_label: SequenceResolvedTypography::native(body),
+        }
     }
 
-    pub(crate) const fn has_explicit_theme(&self) -> bool {
-        self.explicit_theme
+    pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
+        let compat = super::SequenceCompatBinding::resolve(effective_config.as_value());
+        let config = super::config::SequenceConfigView::from_mermaid_config(effective_config);
+        let role = |role| SequenceResolvedTypography::resolve(&config, role, &compat.font_family);
+        // The title inherits root CSS, independently of the message's inline font size.
+        let root_font_size_px =
+            crate::mermaid_style::resolve_mermaid_absolute_font_size_px(&compat.font_size_css)
+                .unwrap_or(16.0)
+                .max(1.0);
+        Self {
+            root_font_size_px,
+            native_title: None,
+            actor: role(SequenceTypographyRole::Actor),
+            message: role(SequenceTypographyRole::Message),
+            note: role(SequenceTypographyRole::Note),
+            loop_label: role(SequenceTypographyRole::Loop),
+            compat,
+        }
     }
 
     pub(crate) fn compat_binding(&self) -> &super::SequenceCompatBinding {
         &self.compat
     }
 
-    pub(crate) fn base_font_family_css(&self) -> &str {
-        &self.base_typography.font_family_css
-    }
-
-    pub(crate) const fn root_font_size_px(&self) -> f64 {
-        self.base_typography.root_font_size_px
-    }
-
     /// Root-inherited text, including the diagram title, has its own size owner.
     pub(crate) fn base_measurement_style(&self) -> TextStyle {
+        if let Some(style) = &self.native_title {
+            return style.clone();
+        }
         TextStyle {
-            font_family: Some(self.base_typography.font_family_css.clone()),
-            font_size: self.base_typography.root_font_size_px,
+            font_family: Some(self.compat.font_family.clone()),
+            font_size: self.root_font_size_px,
             font_weight: None,
             font_style: None,
         }
     }
 
-    pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
-        &self.base_typography.typed_properties
-    }
-
-    pub(crate) const fn root_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
-        &self.base_typography.root_typed_properties
+    pub(crate) fn native_title_css(&self) -> Option<String> {
+        self.native_title.as_ref().map(|style| {
+            let mut css = String::new();
+            append_typography_declarations(&mut css, style);
+            css
+        })
     }
 
     pub(crate) const fn role(&self, role: SequenceTypographyRole) -> &SequenceResolvedTypography {
@@ -665,78 +272,10 @@ impl SequenceTypographyPlan {
         surface: SequenceTextSurface,
     ) -> SequenceTerminalTextStyle<'_> {
         let role = self.role(surface.role());
-        let (foreground, foreground_provenance) = match (
-            self.terminal_foreground_provenance[surface.index()],
-            role.typed_fill.as_deref(),
-        ) {
-            (SequenceTerminalForegroundProvenance::TypedTheme, Some(fill)) => {
-                (fill, SequenceTerminalForegroundProvenance::TypedTheme)
-            }
-            _ => (
-                self.compat.text_surface_fill(surface),
-                SequenceTerminalForegroundProvenance::PresentationConfig,
-            ),
-        };
         SequenceTerminalTextStyle {
             text_style: role.terminal_text_style(),
-            foreground,
-            foreground_provenance,
+            foreground: self.compat.text_surface_fill(surface),
         }
-    }
-}
-
-fn apply_base_property(
-    text_style: &mut TextStyle,
-    base: &SequenceBaseTypography,
-    property: ThemeTypographyProperty,
-) {
-    match property {
-        ThemeTypographyProperty::FontStack => {
-            text_style.font_family = Some(base.font_family_css.clone());
-        }
-        ThemeTypographyProperty::FontSize => {
-            text_style.font_size = base.font_size_px;
-        }
-        ThemeTypographyProperty::FontWeight
-        | ThemeTypographyProperty::FontStyle
-        | ThemeTypographyProperty::LineHeight
-        | ThemeTypographyProperty::LetterSpacing
-        | ThemeTypographyProperty::WordSpacing
-        | ThemeTypographyProperty::Transform
-        | ThemeTypographyProperty::Decoration
-        | ThemeTypographyProperty::TextAlign
-        | ThemeTypographyProperty::WhiteSpace
-        | ThemeTypographyProperty::Wrap => {}
-    }
-}
-
-fn apply_direct_property(
-    text_style: &mut TextStyle,
-    resolved: &ResolvedThemeStyle,
-    property: ThemeTypographyProperty,
-) {
-    let computed = resolved.typography();
-    match property {
-        ThemeTypographyProperty::FontStack => {
-            text_style.font_family = Some(computed.font_stack().as_css());
-        }
-        ThemeTypographyProperty::FontSize => {
-            text_style.font_size = f64::from(computed.font_size_px());
-        }
-        ThemeTypographyProperty::FontWeight => {
-            text_style.font_weight = Some(computed.font_weight().to_string());
-        }
-        ThemeTypographyProperty::FontStyle => {
-            text_style.font_style = Some(computed.font_style().id().to_string());
-        }
-        ThemeTypographyProperty::LineHeight
-        | ThemeTypographyProperty::LetterSpacing
-        | ThemeTypographyProperty::WordSpacing
-        | ThemeTypographyProperty::Transform
-        | ThemeTypographyProperty::Decoration
-        | ThemeTypographyProperty::TextAlign
-        | ThemeTypographyProperty::WhiteSpace
-        | ThemeTypographyProperty::Wrap => {}
     }
 }
 
@@ -790,111 +329,6 @@ fn append_font_weight_and_style_declarations(style: &mut String, typography: &Te
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn root_size_ownership_is_local_to_inherited_text_and_preserves_host_values() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
-        };
-        use crate::resources::RenderResourcePolicy;
-        use serde_json::json;
-
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(
-                    crate::DiagramFamilyId::SEQUENCE,
-                    ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
-                ),
-            ))
-            .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
-        for (css, expected_size, root_typed) in [
-            ("52px", 52.0, false),
-            ("24pt", 32.0, false),
-            ("2em", 16.0, false),
-            ("calc(1rem + 4px)", 16.0, false),
-            ("-12px", 24.0, true),
-            ("invalid", 24.0, true),
-        ] {
-            let config = merman_core::MermaidEngine::new()
-                .with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                        "theme": "base", "themeVariables": {"fontSize": css}
-                    })),
-                )
-                .parse_metadata_sync("sequenceDiagram\nA->>B: Ping\n")
-                .unwrap()
-                .effective_config;
-            let meter =
-                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-            let plan = SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter).unwrap();
-            assert_eq!(plan.root_font_size_px(), expected_size, "{css}");
-            assert_eq!(
-                plan.root_typed_properties()
-                    .contains(&ThemeTypographyProperty::FontSize),
-                root_typed,
-                "{css}"
-            );
-            assert_eq!(
-                plan.base_measurement_style().font_size,
-                expected_size,
-                "{css}"
-            );
-            for role in [plan.actor(), plan.message(), plan.note(), plan.loop_label()] {
-                assert_eq!(role.measurement_style().font_size, 24.0, "{css}");
-                assert!(
-                    role.base_typed_properties()
-                        .contains(&ThemeTypographyProperty::FontSize)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn equal_terminal_foregrounds_keep_distinct_source_provenance() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-        };
-        use crate::resources::RenderResourcePolicy;
-        use serde_json::json;
-
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::ActorLabel,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                    )),
-                ),
-            )
-            .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
-        let config = merman_core::MermaidEngine::new()
-            .with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                    "themeVariables": { "actorTextColor": "#123456" },
-                })),
-            )
-            .parse_metadata_sync("sequenceDiagram\nA->>B: Message\n")
-            .unwrap()
-            .effective_config;
-        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let plan = SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter).unwrap();
-        let participant = plan.terminal_text_style(SequenceTextSurface::ParticipantLabel);
-        let box_title = plan.terminal_text_style(SequenceTextSurface::BoxTitle);
-
-        assert_eq!(participant.foreground, "#123456");
-        assert_eq!(box_title.foreground, participant.foreground);
-        assert_eq!(
-            participant.foreground_provenance,
-            SequenceTerminalForegroundProvenance::PresentationConfig
-        );
-        assert_eq!(
-            box_title.foreground_provenance,
-            SequenceTerminalForegroundProvenance::TypedTheme
-        );
-    }
 
     #[test]
     fn cssom_rejected_measurement_font_only_falls_back_for_terminal_text() {

@@ -8,8 +8,7 @@ type StateNode = merman_model::families::state::StateDiagramRenderNode;
 mod label;
 pub(crate) use label::{
     StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,
-    state_label_source_style_facts, state_markdown_label_plain_text, state_node_label_xhtml,
-    state_value_to_label_text,
+    state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
 };
 
 mod edge_label_geometry;
@@ -68,7 +67,6 @@ mod compatibility;
 mod config;
 #[cfg(feature = "layout-dagre")]
 mod dagre;
-mod effect_plan;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod layout;
@@ -76,17 +74,14 @@ mod measure;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod style_plan;
-mod theme_evidence;
 
 pub(crate) use compatibility::{
-    StateCompatibilityPlan, StateTerminalPaintProperty, StateTerminalSurface,
+    StateCompatibilityPlan, StateNodeKind, StateTerminalPaintProperty, StateTerminalSurface,
 };
 pub(crate) use config::StateConfigView;
-pub(crate) use effect_plan::{StateEffectPlan, StateNodeEffectPlan};
 pub(crate) use style_plan::{
-    ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+    ResolvedLabelTypography, StateCssDeclaration, StateNodeStylePlan, StateStylePlan,
 };
-pub(crate) use theme_evidence::{StateAppliedThemeOutcome, StateThemeOutcomes, StateThemeSurface};
 
 #[cfg(feature = "layout-dagre")]
 pub use dagre::{debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph};

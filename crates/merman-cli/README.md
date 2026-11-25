@@ -378,112 +378,50 @@ Native `render` and `batch` use `-f/--format`; their former `-e` aliases are rem
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
 
-`mmdc -t/--theme` remains the official Mermaid CLI selector and accepts only `default`, `forest`, `dark`, and `neutral`; omitting the option value selects `default`, matching mmdc. Native Merman theme selection belongs to `render` and `batch`: use `--theme-preset` for a built-in design, `--theme-file` for a portable `ThemeRecipeV1` document or render selection, or `--theme-design-file` for raw `ThemeDesignV1` JSON. These three inputs are mutually exclusive. `mmdc` and `layout` reject them and `--theme-appearance`; use the official `--theme` or `--configFile` on `mmdc`. The removed `--presentation-profile` and `merman-modern` inputs are not compatibility aliases.
+`mmdc -t/--theme` accepts `default`, `forest`, `dark`, and `neutral`. Omitting the value selects
+`default`, matching the pinned Mermaid CLI. `mmdc --configFile` can override that selection.
 
-Choose a Merman design and, when declared by that design, its concrete appearance:
+## Diagram themes
 
-```sh
-merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg
-merman-cli render diagram.mmd --theme-file theme.json --theme-appearance light -o diagram.svg
-merman-cli batch README.md --output-dir generated --theme-preset editor --theme-appearance light
-```
-
-`--theme-appearance` accepts only `light` or `dark`. Omitting it uses a file selection's explicit
-appearance, or otherwise the design's declared default. CLI rendering never reads the system's
-appearance. Recipe schema 1 stores the optional `appearances` and `default_appearance` inside
-`design`; an unclassified concrete recipe or `complete_spec` renders without an appearance
-selector. A request for an undeclared appearance fails. Concrete preset IDs such as `editor-dark`
-remain accepted as fixed selections and reject a conflicting appearance.
-
-`--theme-file` accepts a standalone recipe or exactly one of these render selections:
-`{"preset":"editor","appearance":"dark"}`,
-`{"recipe":RECIPE,"appearance":"light"}`, or `{"spec":COMPLETE_SPEC}`.
-The appearance may be omitted in the preset and recipe forms; the spec form cannot select one.
-A selector in the file must agree with `--theme-appearance` if both are provided. Original JSON
-is validated before normalization, including duplicate keys. `--theme-appearance` requires
-`--theme-file` or `--theme-preset`; for a raw `--theme-design-file`, save a portable recipe first.
-Merman appearance selection does not rewrite Mermaid's `--theme`, `darkMode`, or source styling.
-
-Inspect a portable recipe before applying it:
+Use `--theme` with `render` and `batch` to select a Merman preset, a local `.json` theme document,
+or a Mermaid theme ID such as `forest`. Use `--theme -` to read a v2 document from stdin when
+Mermaid or Markdown input comes from a file.
 
 ```sh
-merman-cli theme inspect theme.json
-merman-cli theme inspect -
+merman-cli render diagram.mmd --theme studio --appearance dark -o diagram.svg
+merman-cli render diagram.mmd --theme forest --background '#F8FAFC' -o diagram.svg
+merman-cli render diagram.mmd --theme studio --appearance dark -f unicode --ascii-color truecolor
+merman-cli batch README.md --output-dir generated --theme theme.json --appearance light
 ```
 
-`theme inspect` emits schema-1 JSON directly, with `supported_appearances`, `default_appearance`,
-and appearance-specific reference information. It validates the whole design, including inactive
-appearances, without changing the file. It also accepts a concrete schema-1 `complete_spec` recipe.
-This command expects a standalone portable recipe; render-selection wrappers remain valid inputs
-for `render --theme-file` and are not theme documents to inspect. Both file and stdin input are
-bounded by the theme resource policy. `--resource-profile` selects that policy, and
-`--operation-timeout-ms` bounds the command's cooperative operation.
+`--appearance light|dark` selects a native document's appearance. When omitted, the compiler
+uses the document's default. Color-enabled ASCII and Unicode use the native theme's semantic
+palette. `--background COLOR` changes the graphical canvas for any theme. For example,
+`--background transparent` clears the canvas base paint. Textures remain visible where defined.
 
-Run `merman-cli capabilities` to choose a Merman preset using its curated diagram-design scope
-and application notes. `capabilities --json` groups designs under `theme_presets.presets`;
-each `appearances` entry contains its `concrete_preset_id`, representative `preview_colors`,
-`family_designs` and `application_notes`. An unlisted family is unreviewed;
-recipe availability and a dedicated design do not qualify every scene or output format.
-Mermaid's base theme (`--theme dark`) and Merman styling (`--theme-preset ghibli`) are separate
-inputs. A preset never changes diagram look or layout. For example, Brutalist hard Flowchart
-shadows require an explicit Classic configuration; the capability listing provides the suggested
-`--config-file` content. See the [two-theme gallery](../../docs/rendering/theme-gallery/README.md)
-for complete sources, configuration and commands.
-
-Native `render` and `batch` print one concise theme line to stderr for an actual theme request
-or an actionable renderer diagnostic. The line includes up to three explanations, such as
-`unsupported-geometry rule (lifeline)`. A rule-level diagnostic describes a partially consumed
-rule; it does not claim that every property failed. `--quiet` suppresses this feedback while
-retaining errors and explicitly requested report files. Plain diagrams do not print generic
-theme-evidence or unadapted-family notices.
-
-Use `--theme-report PATH` to retain the full renderer diagnostics and target-admission result:
+An explicit theme ID takes precedence over the selection in `--config-file`. The default
+`--theme-precedence host` also prefers the CLI selection over a source-authored Mermaid theme.
+Use `--theme-precedence source` to let a diagram that declares a Mermaid theme use that theme.
+Graphical rendering writes theme notices to stderr. Use `--quiet` to suppress them.
 
 ```sh
-merman-cli render diagram.mmd --theme-file theme.json --output diagram.svg \
-  --theme-report diagram.theme.json
-merman-cli batch README.md --output-dir generated --theme-file theme.json \
-  --theme-report README.theme.json --quiet
+merman-cli theme list
+merman-cli theme list --json
+merman-cli theme export studio --minimal -o theme.json
+merman-cli theme check theme.json --appearance dark --strict-contrast
+merman-cli theme check - --json
 ```
 
-The JSON report has `schema_version: 1`, `stage: "render"`, and an ordered `results` array.
-Each result identifies its one-based `chart` number and optional `output` path (a relative image
-URL for batch; omitted for stdout). `selected_appearance`, when present, records the compiler's
-concrete Merman choice; it does not claim that source overrides produce that visual mode.
-A completed result contains `evidence` with the diagram
-family, theme status, output-mutation flag, and all diagnostics. Diagnostics preserve renderer
-codes, subjects, targets, optional properties, source-document names, RFC 6901 source paths,
-and generated-default markers. `target` contains the actual artifact kind, admission status,
-reason IDs and font source. These IDs are open strings. SVG, PNG, JPEG and PDF use the same
-feedback path; the report records each format's own target receipt.
-`target.font_source` describes the output target's font resources, not the selected
-`--font-measurement` mode or the absence of per-request measurement fallback. See the
-[measurement and evidence guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md).
-`evidence.materialized_theme`, when available, remains the actual Mermaid palette ID and is
-independent of `selected_appearance`.
+`theme list` shows default-appearance swatches in the terminal. Redirected output displays the
+swatches as hex colors. `theme list --json` prints the shared schema-2 catalog with presets,
+Mermaid theme IDs, and family capabilities. `theme export` writes the editable preset document.
+With `--minimal`, it writes an `extends` template where you can set `seed.accent`, the
+`typography` font stacks, or `form.radius`.
 
-Render failures instead contain `error` and any target receipt returned by the renderer.
-Unavailable completed evidence is omitted. Preflight, input acquisition, theme compilation,
-batch setup and cancellation can fail before a report is published; an existing report then
-remains unchanged. Batch reports contain the charts that reached rendering, including failures,
-in source order even with parallel jobs. An empty batch produces an empty results array.
-
-Reports are separate files with an existing parent directory. They reject `-`, stdio aliases,
-input aliases, and image/document aliases, including existing hard links. Report and image names
-in the same directory must not differ only by case, including on case-sensitive hosts. A batch report must
-be outside the managed output directory. The report is atomically replaced after rendering and
-before image publication; a report write failure prevents image publication. The report is
-render evidence, not a receipt that image publication succeeded. Failed rendering preserves
-existing images and the previous batch generation. Stdout carries only the requested image.
-
-`--theme-portability best-effort` is the default. `--theme-portability require-portable` passes
-the strict requirement directly to the renderer environment, which enforces its existing family
-and target admission checks. It rejects residuals and other nonportable target conditions without
-changing fonts, SVG pipelines, or diagram geometry. Browser-oriented SVG can remain `unverified`,
-and encoded output can depend on host fonts. Choosing `--svg-pipeline resvg-safe` requests SVG
-compatibility observation, but does not by itself guarantee portable admission. Empty diagnostics
-are not a portability certificate. Theme feedback options apply to Mermaid graphical `render`
-and `batch`; they are not available for raw SVG conversion, ASCII/Unicode, `layout`, or `mmdc`.
+`theme check` validates a schema-2 document and shows WCAG contrast ratios and compiler
+notices. `--strict-contrast` exits with status `1` when a contrast check fails. `--json` emits
+the resolved theme, contrast ratios, and notices. For invalid documents it emits a message and,
+when available, the line, column, and JSON path, then exits with status `2`.
 
 ## Markdown Batches
 
@@ -726,7 +664,7 @@ The current source build requires an explicit layout leaf for defaults-off recip
 ordinary graph diagrams. Default CLI builds include Dagre, ELK, and Cytoscape. An explicit Shoal
 request needs a build with `layout-shoal`. [Graph layout feature recipes](../../docs/FEATURES.md#svg-without-general-purpose-layout-engines)
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The document reports `schema_version: 2` and `cli_contract_version: 8`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families`, capabilities, and outputs. `diagram_families` lists the compiled parser families. Use the corresponding output capabilities to determine SVG or ASCII availability. SVG-enabled artifacts expose the `theme` command and the grouped schema-1 `theme_presets` catalog with recipe and authoring schema versions, preset appearances, and `mermaid_theme_designs` with their literal upstream IDs. Host-specific output qualification is recorded separately in the archive's qualification companion.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The document reports `schema_version: 2` and `cli_contract_version: 9`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families`, capabilities, and outputs. `diagram_families` lists the compiled parser families. Use the corresponding output capabilities to determine SVG or ASCII availability. SVG-enabled artifacts expose `theme list --json` for the shared theme catalog.
 
 For native-font builds, `native_fonts.default_policy_scope` is `mermaid-svg-input`:
 `default_measurement`, `default_font_source`, and `default_system_discovery` remain

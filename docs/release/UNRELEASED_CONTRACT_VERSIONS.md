@@ -1,7 +1,6 @@
 # Unreleased contract version audit
 
-The [2026-11-16 ASCII follow-up](#ascii-scene-planning-follow-up) records the current schema-4,
-UniFFI-8, and Web-11 development decisions against published `v0.10.0`. Earlier entries below
+The [Theme v2 follow-up](#theme-v2-follow-up) records the changes since `v0.11.0`. Earlier entries
 retain their original release baselines.
 
 Checked on 2026-09-15 at candidate source `646ac9228`. This is a development decision, not a
@@ -15,6 +14,18 @@ unpublished theme hash-domain counters. It compares the new domains with frozen 
 The maintainer selected `v0.8.0-alpha.7` as the next workspace release on 2026-09-15.
 New theme schemas, recipes, catalogs and qualification formats remain version 1.
 The package release number does not change those independent protocol identities.
+
+## Theme v2 follow-up
+
+Theme documents and the catalog use schema 2. The CLI advertises contract 9 and `theme list --json`
+returns that catalog. Binding Options schema 4 carries the new theme grammar. Web transport 12
+identifies the new theme exports and native render outcomes. Node transport 3 identifies the
+replacement theme operation IDs and catalog shape. Native C ABI 4 reserves the retired operation
+codes and assigns new codes to the Theme v2 operations. Typst wrapper 0.7.0 uses plugin ABI 4 with
+the same export signatures as 0.6.0. UniFFI API 8 continues to use generic operation dispatch.
+Deploy generated wrappers with artifacts from the same revision.
+
+[Theme guide](../rendering/custom-diagram-themes.md) · [Binding options](../bindings/OPTIONS_JSON.md#diagram-theme)
 
 ## ASCII scene planning follow-up
 

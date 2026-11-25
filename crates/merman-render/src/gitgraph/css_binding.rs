@@ -131,7 +131,6 @@ impl GitGraphCssBinding {
                     .pointer("/themeVariables/useGradient")
                     .and_then(crate::config::json_bool)
                     .unwrap_or(false),
-                has_border_color_array: !border_color_array.is_empty(),
             },
             theme_color_limit,
             named: std::array::from_fn(|i| GitGraphNamedPaint {
@@ -160,13 +159,12 @@ impl GitGraphCssBinding {
         }
     }
 
-    /// Resolves the gradient start using the same raw/typed fallback order for defs and CSS.
+    /// Resolves the gradient start using the same Mermaid fallback order for defs and CSS.
     ///
     /// An authored empty string is a value and must therefore remain distinct from absence.
-    pub(crate) fn gradient_start<'a>(&'a self, typed_primary_border: Option<&'a str>) -> &'a str {
+    pub(crate) fn gradient_start(&self) -> &str {
         self.gradient_start
             .as_deref()
-            .or(typed_primary_border)
             .unwrap_or(&self.primary_border)
     }
 
@@ -180,17 +178,6 @@ impl GitGraphCssBinding {
             .or(self.secondary_border.as_deref())
             .unwrap_or(start)
     }
-
-    pub(crate) fn branch_root_inheritance(&self, slot: Option<usize>) -> [bool; 2] {
-        if slot.is_none_or(|slot| slot >= self.theme_color_limit) {
-            [true, true]
-        } else {
-            [
-                self.sources.use_neo_theme && !self.sources.use_gradient,
-                false,
-            ]
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -200,49 +187,6 @@ pub(crate) struct GitGraphTerminalPaletteSources {
     pub(crate) use_dark_theme: bool,
     pub(crate) use_color_gen: bool,
     pub(crate) use_gradient: bool,
-    has_border_color_array: bool,
-}
-
-impl GitGraphTerminalPaletteSources {
-    pub(crate) fn branch_slot(self, slot: usize) -> crate::gitgraph::GitGraphPaletteSource {
-        if !self.use_color_gen {
-            crate::gitgraph::GitGraphPaletteSource::Git(slot)
-        } else if self.use_neo_theme {
-            if slot == 0 {
-                crate::gitgraph::GitGraphPaletteSource::NodeBorder
-            } else {
-                crate::gitgraph::GitGraphPaletteSource::Git(slot)
-            }
-        } else if !self.use_color_theme || slot == 0 || !self.has_border_color_array {
-            crate::gitgraph::GitGraphPaletteSource::NodeBorder
-        } else {
-            crate::gitgraph::GitGraphPaletteSource::BorderColorArray
-        }
-    }
-
-    pub(crate) fn state(self) -> crate::gitgraph::GitGraphPaletteSource {
-        if self.use_color_gen {
-            crate::gitgraph::GitGraphPaletteSource::MainBackground
-        } else {
-            crate::gitgraph::GitGraphPaletteSource::PrimaryColor
-        }
-    }
-
-    pub(crate) fn branch_label_background(
-        self,
-        slot: usize,
-    ) -> Option<crate::gitgraph::GitGraphPaletteSource> {
-        if !self.use_color_gen {
-            Some(crate::gitgraph::GitGraphPaletteSource::Git(slot))
-        } else if self.use_neo_theme {
-            self.use_gradient
-                .then_some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
-        } else if !self.use_color_theme || slot == 0 || self.use_dark_theme {
-            Some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
-        } else {
-            Some(self.branch_slot(slot))
-        }
-    }
 }
 
 fn default_git_color(i: usize) -> &'static str {

@@ -1,21 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
-
-use crate::config::config_string;
-
 use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackPlan, resolve_direct_static_fill,
-    unsupported_residual_for_facet,
-};
-use crate::resources::OperationWorkMeter;
+use crate::config::config_string;
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct WardleyPaintBinding {
@@ -39,8 +25,7 @@ pub(crate) struct WardleyPaintBinding {
     pub(crate) annotation_text: String,
     pub(crate) arrow_fill: String,
     pub(crate) arrow_text: String,
-    pub(crate) axis_text_color_source: &'static str,
-    pub(crate) component_label_color_source: &'static str,
+    pub(crate) connector_width: f64,
 }
 
 impl WardleyPaintBinding {
@@ -54,32 +39,18 @@ impl WardleyPaintBinding {
                 .or_else(|| config_string(config, &["themeVariables", root_key]))
                 .unwrap_or_else(|| fallback.to_string())
         };
-        let inherited_text = |key, nested_path| {
-            if let Some(color) = config["themeVariables"]["wardley"][key].as_str() {
-                (color.to_owned(), nested_path)
-            } else {
-                (
-                    config_string(config, &["themeVariables", "primaryTextColor"])
-                        .unwrap_or_else(|| "#222".to_owned()),
-                    "themeVariables.primaryTextColor",
-                )
-            }
-        };
-        let (axis_text_color, axis_text_color_source) =
-            inherited_text("axisTextColor", "themeVariables.wardley.axisTextColor");
-        let (component_label_color, component_label_color_source) = inherited_text(
-            "componentLabelColor",
-            "themeVariables.wardley.componentLabelColor",
-        );
-
         Self {
             background_color: nested_or_root("backgroundColor", "background", "#fff"),
             axis_color: nested("axisColor", "#000"),
-            axis_text_color,
+            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
             grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
             component_fill: nested("componentFill", "#fff"),
             component_stroke: nested("componentStroke", "#000"),
-            component_label_color,
+            component_label_color: nested_or_root(
+                "componentLabelColor",
+                "primaryTextColor",
+                "#222",
+            ),
             link_stroke: nested("linkStroke", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
             anchor_label_color: nested("anchorLabelColor", "#000"),
@@ -97,13 +68,72 @@ impl WardleyPaintBinding {
             .unwrap_or_else(|| nested_or_root("axisTextColor", "primaryTextColor", "#222")),
             arrow_fill: nested("arrowFill", "white"),
             arrow_text: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
-            axis_text_color_source,
-            component_label_color_source,
+            connector_width: 1.0,
         }
+    }
+
+    fn apply_native(&mut self, theme: &FamilyTheme, config: &PresentationConfig) -> String {
+        let roles = &theme.roles;
+        let variables = &config.as_value()["themeVariables"];
+        let authored_local = |key: &str| {
+            config
+                .explicit_config_owns_path(&format!("themeVariables.wardley.{key}"))
+                .then(|| variables["wardley"][key].as_str())
+                .flatten()
+        };
+        let authored_root = |key: &str| {
+            config
+                .explicit_config_owns_path(&format!("themeVariables.{key}"))
+                .then(|| variables[key].as_str())
+                .flatten()
+        };
+        let paint = |key, root: Option<&str>, color: Color| {
+            authored_local(key)
+                .or_else(|| root.and_then(authored_root))
+                .map_or_else(|| color.to_string(), str::to_owned)
+        };
+        let guide = roles.stroke_guide.first_color();
+        let border = roles.stroke_border.first_color();
+        let connector = roles.stroke_connector.first_color();
+        let node = roles.surface_node.first_color();
+        let primary_text = Some("primaryTextColor");
+        let line = Some("lineColor");
+        self.axis_color = paint("axisColor", line, connector);
+        self.axis_text_color = paint("axisTextColor", primary_text, roles.text_muted);
+        self.grid_color = paint("gridColor", Some("gridColor"), guide);
+        self.stage_divider_color = paint("stageDividerColor", None, guide);
+        self.component_fill = paint("componentFill", None, node);
+        self.component_stroke = paint("componentStroke", line, border);
+        self.component_label_color = paint("componentLabelColor", primary_text, roles.text_primary);
+        self.anchor_label_color = paint("anchorLabelColor", None, roles.text_primary);
+        self.link_stroke = paint("linkStroke", line, connector);
+        self.evolution_stroke = paint(
+            "evolutionStroke",
+            Some("wardleyEvolutionColor"),
+            roles.text_title,
+        );
+        self.build_fill = paint("buildFill", None, theme.data.ink(0));
+        self.build_stroke = paint("buildStroke", None, border);
+        self.buy_fill = paint("buyFill", None, theme.data.ink(1));
+        self.outsource_fill = paint("outsourceFill", None, theme.data.ink(2));
+        self.market_fill = paint("marketFill", None, theme.data.ink(3));
+        self.annotation_fill = paint(
+            "annotationBackgroundColor",
+            None,
+            roles.surface_callout.first_color(),
+        );
+        self.annotation_text = authored_local("annotationLabelColor").map_or_else(
+            || paint("axisTextColor", primary_text, roles.text_callout),
+            str::to_owned,
+        );
+        self.arrow_fill = paint("arrowFill", None, node);
+        self.arrow_text = paint("axisTextColor", primary_text, roles.text_primary);
+        self.connector_width = theme.form.connector_width;
+        paint("axisTextColor", primary_text, roles.text_title)
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WardleyTextRole {
     Title,
     AxisLabel,
@@ -119,82 +149,30 @@ pub(crate) enum WardleyTextRole {
     Deaccelerator,
 }
 
-/// Optional application outcomes collected at the existing text writer events.
-#[derive(Debug, Default)]
-pub(crate) struct WardleySurfaceReceipt {
-    requested: bool,
-    text_fills: BTreeMap<WardleyTextRole, BTreeSet<Box<str>>>,
-    uncertain_text_roles: BTreeSet<WardleyTextRole>,
-    emitted_font_family: Option<Box<str>>,
-    pub(crate) paint_evidence: FamilyThemeOutcomes,
-    pub(crate) paint_overridden_text_roles: BTreeSet<WardleyTextRole>,
-}
-
-impl WardleySurfaceReceipt {
-    pub(crate) fn record_text(
-        &mut self,
-        role: WardleyTextRole,
-        text: &str,
-        fill: &str,
-        used_font_size: Option<f64>,
-    ) {
-        if self.requested && !text.trim().is_empty() && used_font_size != Some(0.0) {
-            self.text_fills.entry(role).or_default().insert(fill.into());
-            if used_font_size.is_none() {
-                self.uncertain_text_roles.insert(role);
-            }
-        }
-    }
-
-    pub(crate) fn record_font_family(&mut self, font: &str) {
-        self.emitted_font_family = Some(font.into());
-    }
-
-    fn has_visible_text(&self) -> bool {
-        !self.text_fills.is_empty()
-    }
-}
-
-/// Final inherited Wardley font shared by annotation measurement, SVG inheritance, and evidence.
+/// Style shared by Wardley layout measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct WardleyTypographyThemePlan {
+pub(crate) struct WardleyStyle {
     paint_binding: WardleyPaintBinding,
-    base_paint_binding: WardleyPaintBinding,
-    config: PresentationConfig,
     font_family_css: Box<str>,
-    config_owns_font_family: bool,
     write_font_family: bool,
     font_sizes: super::font_size::WardleyFontSizes,
-    inherited_font_stack: InheritedFontStackPlan,
-    unsupported_routes: Box<[WardleyUnsupportedRoute]>,
-    direct_text_fill_routes: Box<[WardleyDirectTextFillRoute]>,
-    typed_text_fills: BTreeMap<WardleyTextRole, DirectStaticPaint>,
-    terminal_receipt: OnceLock<WardleySurfaceReceipt>,
+    native: Option<Box<WardleyNativeStyle>>,
 }
 
 #[derive(Debug)]
-struct WardleyUnsupportedRoute {
-    key: FamilyThemeMechanismKey,
-    reason: FamilyThemeResidualReason,
+struct WardleyNativeStyle {
+    title_color: String,
+    title_family: Option<String>,
+    title_weight: u16,
+    label_weight: u16,
+    gridlines: Option<bool>,
 }
 
-#[derive(Debug)]
-struct WardleyDirectTextFillRoute {
-    key: FamilyThemeMechanismKey,
-    rule_index: usize,
-}
-
-impl WardleyTypographyThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        work_meter: &OperationWorkMeter,
-    ) -> crate::Result<Self> {
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let config = effective_config.as_value();
+impl WardleyStyle {
+    pub(crate) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
+        let values = config.as_value();
         let family_font =
-            accepted_font_family(config["themeVariables"]["wardley"]["fontFamily"].as_str());
+            accepted_font_family(values["themeVariables"]["wardley"]["fontFamily"].as_str());
         let root_font = [
             (
                 &["themeVariables", "fontFamily"][..],
@@ -204,154 +182,108 @@ impl WardleyTypographyThemePlan {
         ]
         .into_iter()
         .find_map(|(path, owner)| {
-            accepted_font_family(crate::config::value_at(config, path).and_then(|v| v.as_str()))
+            accepted_font_family(crate::config::value_at(values, path).and_then(|v| v.as_str()))
                 .map(|font| (font, owner))
         });
-        let config_owns_font_family = family_font.is_some()
-            || root_font.as_ref().is_some_and(|(_, path)| {
-                effective_config.config_path_overrides_typed_default(path)
-            });
-        let write_font_family =
-            config_owns_font_family || inherited_font_stack.typed_font_stack_requested();
-        let font_family_css = family_font.unwrap_or_else(|| {
-            if !config_owns_font_family && inherited_font_stack.typed_font_stack_requested() {
-                theme
-                    .expect("a requested font stack has a resolved theme")
-                    .typography()
-                    .font_stack()
-                    .as_css()
-            } else {
-                root_font.map_or_else(
-                    || crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned(),
-                    |(font, _)| font,
-                )
-            }
-        });
-        let mut plan = Self {
-            paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
-            base_paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
-            config: effective_config.clone(),
+        let write_font_family = family_font.is_some()
+            || root_font
+                .as_ref()
+                .is_some_and(|(_, path)| config.explicit_config_owns_path(path));
+        let font_family_css = family_font
+            .or_else(|| root_font.map(|(font, _)| font))
+            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned());
+        let mut style = Self {
+            paint_binding: WardleyPaintBinding::from_config(values),
             font_family_css: font_family_css.into_boxed_str(),
-            config_owns_font_family,
             write_font_family,
-            font_sizes: super::font_size::WardleyFontSizes::from_config(config),
-            inherited_font_stack,
-            unsupported_routes: wardley_unsupported_routes(theme),
-            direct_text_fill_routes: wardley_direct_text_fill_routes(theme),
-            typed_text_fills: BTreeMap::new(),
-            terminal_receipt: OnceLock::new(),
+            font_sizes: super::font_size::WardleyFontSizes::from_config(values),
+            native: None,
         };
-        let Some(theme) = theme else {
-            return Ok(plan);
-        };
-        let text_style = theme.text_style_with_work_meter(
-            ThemeTarget::Text,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let node_style = theme.text_style_with_work_meter(
-            ThemeTarget::NodeLabel,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let text_fill = resolve_direct_static_fill(
-            theme,
-            &text_style,
-            &[ThemeTarget::Text],
-            DirectStaticSelectorDomain::Default,
-        );
-        let node_fill = resolve_direct_static_fill(
-            theme,
-            &node_style,
-            &[ThemeTarget::Text, ThemeTarget::NodeLabel],
-            DirectStaticSelectorDomain::Default,
-        );
-        if text_fill.is_some()
-            && !effective_config
-                .config_paint_overrides_typed_default(plan.paint_binding.axis_text_color_source)
-        {
-            plan.paint_binding.arrow_text = "#333".to_owned();
+        if let Some(theme) = native {
+            style.apply_native(theme, config);
         }
+        style
+    }
 
-        // Upstream anchors hard-code black. Only an active host label-paint request
-        // introduces this adapter channel, whose foreground an authored palette owns.
-        if node_fill.is_some()
-            && !effective_config
-                .config_paint_overrides_typed_default("themeVariables.wardley.anchorLabelColor")
-            && effective_config
-                .config_paint_overrides_typed_default("themeVariables.primaryTextColor")
-            && let Some(color) = config_string(
-                effective_config.as_value(),
-                &["themeVariables", "primaryTextColor"],
-            )
-        {
-            plan.paint_binding.anchor_label_color = color;
+    fn apply_native(&mut self, theme: &FamilyTheme, config: &PresentationConfig) {
+        let owns = |path| config.explicit_config_owns_path(path);
+        let typography = &theme.typography;
+        let native_family = !owns("fontFamily")
+            && !owns("themeVariables.fontFamily")
+            && !owns("themeVariables.wardley.fontFamily");
+        if native_family {
+            self.font_family_css = font_family_css(typography.stack(typography.body_family)).into();
         }
-        bind_text_fill(
-            &mut plan.paint_binding.axis_text_color,
-            &mut plan.typed_text_fills,
-            effective_config,
-            &[plan.paint_binding.axis_text_color_source],
-            &[
-                WardleyTextRole::Title,
-                WardleyTextRole::AxisLabel,
-                WardleyTextRole::StageLabel,
-                WardleyTextRole::LinkLabel,
-                WardleyTextRole::Note,
-            ],
-            text_fill.as_ref(),
-        );
-        bind_text_fill(
-            &mut plan.paint_binding.component_label_color,
-            &mut plan.typed_text_fills,
-            effective_config,
-            &[plan.paint_binding.component_label_color_source],
-            &[WardleyTextRole::NodeLabel],
-            node_fill.as_ref(),
-        );
-        bind_text_fill(
-            &mut plan.paint_binding.anchor_label_color,
-            &mut plan.typed_text_fills,
-            effective_config,
-            &[
-                "themeVariables.wardley.anchorLabelColor",
-                "themeVariables.primaryTextColor",
-            ],
-            &[WardleyTextRole::AnchorLabel],
-            node_fill.as_ref(),
-        );
-        // Annotation labels own an independent foreground/background pair. Generic
-        // host text applies only to the shared map surface, not those white boxes.
-        Ok(plan)
+        self.write_font_family = true;
+        let values = config.as_value();
+        let base_size = [
+            (
+                "themeVariables.fontSize",
+                crate::config::config_f64_css_absolute_px(values, &["themeVariables", "fontSize"]),
+            ),
+            ("fontSize", crate::config::config_f64(values, &["fontSize"])),
+        ]
+        .into_iter()
+        .find_map(|(path, size)| size.filter(|size| owns(path) && size.is_finite() && *size >= 0.0))
+        .unwrap_or(typography.base_size_px);
+        self.font_sizes.apply_native(config, base_size);
+        let title_color = self.paint_binding.apply_native(theme, config);
+        self.native = Some(Box::new(WardleyNativeStyle {
+            title_color,
+            title_family: native_family
+                .then(|| font_family_css(typography.stack(typography.title_family))),
+            title_weight: typography.title_weight,
+            label_weight: typography.label_weight,
+            gridlines: (!owns("wardley-beta.showGrid")).then_some(theme.form.chart.gridlines),
+        }));
+    }
+
+    pub(super) fn apply_layout_settings(&self, settings: &mut super::WardleySettings) {
+        let Some(native) = &self.native else {
+            return;
+        };
+        if let Some(show_grid) = native.gridlines {
+            settings.show_grid = show_grid;
+        }
+        if let Some(size) = self
+            .font_size(WardleyTextRole::AxisLabel)
+            .and_then(|size| size.used_px)
+        {
+            settings.axis_font_size = size;
+        }
+        if let Some(size) = self
+            .font_size(WardleyTextRole::NodeLabel)
+            .and_then(|size| size.used_px)
+        {
+            settings.label_font_size = size;
+        }
+    }
+
+    pub(crate) fn native_title_family(&self) -> Option<&str> {
+        self.native.as_ref()?.title_family.as_deref()
+    }
+
+    pub(crate) fn title_color(&self) -> &str {
+        self.native
+            .as_deref()
+            .map_or(self.paint_binding.axis_text_color.as_str(), |native| {
+                &native.title_color
+            })
+    }
+
+    pub(crate) fn native_font_weight(&self, role: WardleyTextRole) -> Option<u16> {
+        self.native.as_ref().map(|native| match role {
+            WardleyTextRole::Title => native.title_weight,
+            _ => native.label_weight,
+        })
     }
 
     pub(crate) const fn paint_binding(&self) -> &WardleyPaintBinding {
         &self.paint_binding
     }
 
-    pub(crate) const fn base_paint_binding(&self) -> &WardleyPaintBinding {
-        &self.base_paint_binding
-    }
-
-    pub(crate) fn config(&self) -> &PresentationConfig {
-        &self.config
-    }
-
-    pub(crate) fn prepare_root_background(
-        &mut self,
-        root_theme: Option<&crate::diagram_theme::RootThemePlan>,
-        effective_config: &PresentationConfig,
-    ) {
-        if root_theme.is_some_and(|plan| {
-            plan.replaces_default_family_background(
-                effective_config,
-                "themeVariables.wardley.backgroundColor",
-            )
-        }) {
-            self.paint_binding.background_color = "none".to_owned();
-        }
+    pub(crate) const fn is_native(&self) -> bool {
+        self.native.is_some()
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -368,100 +300,6 @@ impl WardleyTypographyThemePlan {
 
     pub(crate) fn apply_known_font_sizes(&self, layout: &mut super::WardleyDiagramLayout) {
         self.font_sizes.apply_known_sizes(layout);
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> WardleySurfaceReceipt {
-        WardleySurfaceReceipt {
-            requested: self.inherited_font_stack.typography_requested()
-                || !self.unsupported_routes.is_empty()
-                || !self.direct_text_fill_routes.is_empty(),
-            text_fills: BTreeMap::new(),
-            uncertain_text_roles: BTreeSet::new(),
-            emitted_font_family: None,
-            paint_evidence: FamilyThemeOutcomes::default(),
-            paint_overridden_text_roles: BTreeSet::new(),
-        }
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: WardleySurfaceReceipt) -> bool {
-        self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        for route in &self.unsupported_routes {
-            evidence.mark_residual(route.key.clone(), route.reason);
-        }
-        let Some(receipt) = self.terminal_receipt.get() else {
-            return;
-        };
-        evidence.merge_borrowed(&receipt.paint_evidence);
-        self.finish_text_fill_evidence(evidence, receipt);
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if !receipt.has_visible_text() {
-            evidence.mark_not_applicable(key);
-            return;
-        }
-        if !self.inherited_font_stack.typed_font_stack_requested() {
-            return;
-        }
-        if self.config_owns_font_family {
-            evidence.mark_not_applicable(key);
-        } else if receipt.uncertain_text_roles.is_empty()
-            && receipt.emitted_font_family.as_deref() == Some(self.font_family_css())
-        {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        }
-    }
-
-    fn finish_text_fill_evidence(
-        &self,
-        evidence: &mut FamilyThemeEvidence,
-        receipt: &WardleySurfaceReceipt,
-    ) {
-        for route in &self.direct_text_fill_routes {
-            // Mechanism keys aggregate a rule's facets. Applied fill must not erase an
-            // unsupported sibling such as opacity, typography, or a gradient channel.
-            if self
-                .unsupported_routes
-                .iter()
-                .any(|unsupported| unsupported.key == route.key)
-            {
-                continue;
-            }
-            let mut visible = false;
-            let mut matches = true;
-            let mut capabilities = BTreeSet::new();
-            for (role, paint) in &self.typed_text_fills {
-                if receipt.paint_overridden_text_roles.contains(role) {
-                    continue;
-                }
-                if paint.rule_index() != route.rule_index {
-                    continue;
-                }
-                let Some(fills) = receipt.text_fills.get(role) else {
-                    continue;
-                };
-                visible = true;
-                matches &= !receipt.uncertain_text_roles.contains(role)
-                    && fills.len() == 1
-                    && fills.contains(paint.css());
-                capabilities.insert(paint.capability());
-            }
-            if !visible {
-                evidence.mark_not_applicable(route.key.clone());
-            } else if matches {
-                evidence.mark_applied_with_capabilities(route.key.clone(), capabilities);
-            } else {
-                evidence.mark_residual(
-                    route.key.clone(),
-                    FamilyThemeResidualReason::UnsupportedPaint,
-                );
-            }
-        }
     }
 }
 
@@ -485,134 +323,21 @@ fn accepted_font_family(font: Option<&str>) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
-fn bind_text_fill(
-    color: &mut String,
-    typed_text_fills: &mut BTreeMap<WardleyTextRole, DirectStaticPaint>,
-    config: &PresentationConfig,
-    source_paths: &[&str],
-    roles: &[WardleyTextRole],
-    paint: Option<&DirectStaticPaint>,
-) {
-    if source_paths
-        .iter()
-        .any(|path| config.config_paint_overrides_typed_default(path))
-    {
-        return;
-    }
-    let Some(paint) = paint else {
-        return;
-    };
-    paint.css().clone_into(color);
-    for role in roles {
-        typed_text_fills.insert(*role, paint.clone());
-    }
-}
-
-fn wardley_direct_text_fill_routes(
-    theme: Option<&ResolvedDiagramTheme>,
-) -> Box<[WardleyDirectTextFillRoute]> {
-    let Some(theme) = theme else {
-        return Box::new([]);
-    };
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .filter_map(|route| match route.mechanism() {
-            FamilyThemeMechanism::RuleFacet {
-                rule_index,
-                target: ThemeTarget::Text,
-                selector:
-                    FamilyThemeSelectorShape::Static {
-                        variant: None | Some(ThemeVariant::Default),
-                    },
-                facet: FamilyThemeRuleFacet::Fill(_),
-            } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
-                Some(WardleyDirectTextFillRoute {
-                    key: theme.family_mechanism_key(route),
-                    rule_index,
-                })
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn wardley_unsupported_routes(
-    theme: Option<&ResolvedDiagramTheme>,
-) -> Box<[WardleyUnsupportedRoute]> {
-    let Some(theme) = theme else {
-        return Box::new([]);
-    };
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .filter_map(|route| {
-            if matches!(route.mechanism(),
-                FamilyThemeMechanism::RuleFacet { target, .. }
-                | FamilyThemeMechanism::OrdinalPalette { target }
-                | FamilyThemeMechanism::EffectBinding { target, .. }
-                if super::owns_target(target))
-            {
-                return None;
-            }
-            if route.disposition() != FamilyThemeDisposition::Unsupported {
-                return None;
-            }
-            let reason = match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet { facet, .. } => {
-                    unsupported_residual_for_facet(facet)
-                }
-                FamilyThemeMechanism::OrdinalPalette { .. } => {
-                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
-                }
-                FamilyThemeMechanism::EffectBinding { .. } => {
-                    FamilyThemeResidualReason::UnsupportedEffect
-                }
-                FamilyThemeMechanism::BaseTypography(_) => return None,
-            };
-            Some(WardleyUnsupportedRoute {
-                key: theme.family_mechanism_key(route),
-                reason,
-            })
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn prepared_paint_preserves_defaults_and_raw_nested_root_fallbacks() {
-        let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let defaults = WardleyTypographyThemePlan::resolve(
-            None,
-            &PresentationConfig::empty_object(),
-            &work_meter,
-        )
-        .unwrap();
+        let defaults = WardleyStyle::resolve(&PresentationConfig::empty_object(), None);
         let paint = defaults.paint_binding();
         assert_eq!(paint.background_color, "#fff");
         assert_eq!(paint.axis_color, "#000");
         assert_eq!(paint.axis_text_color, "#222");
-        assert_eq!(
-            paint.axis_text_color_source,
-            "themeVariables.primaryTextColor"
-        );
         assert_eq!(paint.grid_color, "rgba(100, 100, 100, 0.2)");
         assert_eq!(paint.component_fill, "#fff");
         assert_eq!(paint.component_stroke, "#000");
         assert_eq!(paint.component_label_color, "#222");
-        assert_eq!(
-            paint.component_label_color_source,
-            "themeVariables.primaryTextColor"
-        );
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
@@ -633,23 +358,15 @@ mod tests {
                 }
             }
         }));
-        let prepared = WardleyTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
+        let prepared = WardleyStyle::resolve(&config, None);
         let paint = prepared.paint_binding();
         assert_eq!(paint.background_color, "var(--background)");
         assert_eq!(paint.axis_color, "var(--axis)");
         assert_eq!(paint.axis_text_color, "");
-        assert_eq!(
-            paint.axis_text_color_source,
-            "themeVariables.wardley.axisTextColor"
-        );
         assert_eq!(paint.grid_color, "transparent");
         assert_eq!(paint.component_fill, "none");
         assert_eq!(paint.component_stroke, "invalid-color");
         assert_eq!(paint.component_label_color, "currentColor");
-        assert_eq!(
-            paint.component_label_color_source,
-            "themeVariables.primaryTextColor"
-        );
         assert_eq!(paint.link_stroke, "var(--link)");
         assert_eq!(paint.evolution_stroke, "currentColor");
     }

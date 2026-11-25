@@ -22,8 +22,6 @@ pub mod architecture;
     any(feature = "layout-cytoscape", feature = "layout-shoal")
 ))]
 pub(crate) mod architecture_metrics;
-#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-mod architecture_text_receipt;
 #[cfg(feature = "diagram-block")]
 pub mod block;
 #[cfg(feature = "diagram-c4")]
@@ -55,7 +53,6 @@ pub mod cynefin;
     )
 ))]
 mod dagre;
-pub mod diagram_theme;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -245,7 +242,6 @@ mod mermaid_style;
 #[cfg(feature = "diagram-mindmap")]
 pub mod mindmap;
 pub mod model;
-mod native_filter_receipt;
 mod number_format;
 #[cfg(feature = "diagram-packet")]
 pub mod packet;
@@ -285,6 +281,7 @@ pub mod swimlane;
     )
 )]
 pub mod text;
+pub mod theme;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;
 #[cfg(feature = "diagram-tree-view")]
@@ -330,241 +327,10 @@ pub use merman_model::family::DiagramFamilyId;
 /// Bounded facade and actual-output projections may evolve independently of the public renderer API.
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::diagram_theme::EffectComposition;
-    pub use crate::family::{FamilyLayoutArtifact, prepare_layout};
-    use crate::family::{FamilyRenderReport, FamilyStyleVerification};
-
-    pub use crate::diagram_theme::{EffectColorSpace, EffectInput};
     pub use crate::family::native_typography::{
         unsupported_native_html_style, unsupported_native_text_style,
     };
-    pub use crate::native_filter_receipt::{
-        NativeSvgFilterApplication, NativeSvgFilterOutput, NativeSvgFilterReceipt,
-        NativeSvgFilterUnits, NativeSvgShadowStage,
-    };
-    pub const MAX_NATIVE_SHADOW_STAGES: usize =
-        crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
-
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub use crate::architecture_text_receipt::{
-        ArchitectureTextReceipt, ArchitectureTextRole, ArchitectureTextTerminal,
-    };
-
-    /// Returns the renderer-owned Architecture Text terminal facts sealed by the final writer.
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub fn architecture_text_receipt(
-        report: &FamilyRenderReport,
-    ) -> Option<&ArchitectureTextReceipt> {
-        report.architecture_text_receipt()
-    }
-
-    /// Coarse family-evidence state used by the workspace facade.
-    ///
-    /// This type is intentionally isolated from the stable renderer surface. It carries only the
-    /// terminal projection needed to build document admission and must not grow family mechanism
-    /// keys, selectors, contribution identifiers, or per-element evidence.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FamilyEvidenceStatus {
-        NotApplicable,
-        Verified,
-        Unverified,
-        Unadapted,
-        Incomplete,
-    }
-
-    impl FamilyEvidenceStatus {
-        pub(crate) const fn from_verification(verification: FamilyStyleVerification) -> Self {
-            match verification {
-                FamilyStyleVerification::NotApplicable => Self::NotApplicable,
-                FamilyStyleVerification::Verified => Self::Verified,
-                FamilyStyleVerification::Unverified => Self::Unverified,
-                FamilyStyleVerification::Unadapted => Self::Unadapted,
-                FamilyStyleVerification::Incomplete => Self::Incomplete,
-            }
-        }
-    }
-
-    /// Bounded terminal family evidence projected for the workspace facade.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct FamilyEvidenceSummary {
-        status: FamilyEvidenceStatus,
-        required_count: usize,
-        accounted_count: usize,
-        applied_count: usize,
-        not_applicable_count: usize,
-        theme_residual_count: usize,
-        source_residual_count: usize,
-        mermaid_compatibility_residual_count: usize,
-        output_mutated: bool,
-    }
-
-    impl FamilyEvidenceSummary {
-        #[allow(clippy::too_many_arguments)]
-        pub(crate) const fn new(
-            status: FamilyEvidenceStatus,
-            required_count: usize,
-            accounted_count: usize,
-            applied_count: usize,
-            not_applicable_count: usize,
-            theme_residual_count: usize,
-            source_residual_count: usize,
-            mermaid_compatibility_residual_count: usize,
-            output_mutated: bool,
-        ) -> Self {
-            Self {
-                status,
-                required_count,
-                accounted_count,
-                applied_count,
-                not_applicable_count,
-                theme_residual_count,
-                source_residual_count,
-                mermaid_compatibility_residual_count,
-                output_mutated,
-            }
-        }
-
-        pub const fn status(self) -> FamilyEvidenceStatus {
-            self.status
-        }
-
-        pub const fn required_count(self) -> usize {
-            self.required_count
-        }
-
-        pub const fn accounted_count(self) -> usize {
-            self.accounted_count
-        }
-
-        pub const fn applied_count(self) -> usize {
-            self.applied_count
-        }
-
-        pub const fn not_applicable_count(self) -> usize {
-            self.not_applicable_count
-        }
-
-        pub const fn theme_residual_count(self) -> usize {
-            self.theme_residual_count
-        }
-
-        pub const fn source_residual_count(self) -> usize {
-            self.source_residual_count
-        }
-
-        pub const fn mermaid_compatibility_residual_count(self) -> usize {
-            self.mermaid_compatibility_residual_count
-        }
-
-        pub const fn output_mutated(self) -> bool {
-            self.output_mutated
-        }
-    }
-
-    /// Projects renderer-private family evidence into the bounded workspace facade summary.
-    pub fn family_evidence(report: &FamilyRenderReport) -> FamilyEvidenceSummary {
-        report.evidence_summary()
-    }
-
-    /// Bounded root-evidence projection used by the workspace facade.
-    ///
-    /// Mechanism keys, per-capability ledgers, and residual identities remain renderer-private.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct RootEvidenceSummary {
-        status: crate::diagram_theme::RootThemeVerification,
-        required_count: usize,
-        accounted_count: usize,
-        applied_count: usize,
-        residual_count: usize,
-        output_mutated: bool,
-    }
-
-    impl RootEvidenceSummary {
-        pub(crate) fn from_root(root: &crate::diagram_theme::RootThemeReport) -> Self {
-            let required_count = root.required_count();
-            let applied_count = root.applied_count();
-            let residual_count = root.residual_count();
-            Self {
-                status: root.verification(),
-                required_count,
-                accounted_count: applied_count.saturating_add(residual_count),
-                applied_count,
-                residual_count,
-                output_mutated: root.output_mutated(),
-            }
-        }
-
-        pub const fn status(self) -> crate::diagram_theme::RootThemeVerification {
-            self.status
-        }
-
-        pub const fn required_count(self) -> usize {
-            self.required_count
-        }
-
-        pub const fn accounted_count(self) -> usize {
-            self.accounted_count
-        }
-
-        pub const fn applied_count(self) -> usize {
-            self.applied_count
-        }
-
-        pub const fn residual_count(self) -> usize {
-            self.residual_count
-        }
-
-        pub const fn output_mutated(self) -> bool {
-            self.output_mutated
-        }
-    }
-
-    /// Moves the completed session and explanations to their consuming facade.
-    pub fn into_session_and_theme_diagnostics(
-        report: FamilyRenderReport,
-    ) -> (
-        crate::environment::RenderSessionReport,
-        Box<[crate::family::ThemeDiagnostic]>,
-    ) {
-        report.into_session_and_theme_diagnostics()
-    }
-
-    /// Projects renderer-private root evidence without exporting the mechanism ledger.
-    pub fn root_evidence(report: &FamilyRenderReport) -> RootEvidenceSummary {
-        RootEvidenceSummary::from_root(report.root_theme_report())
-    }
-
-    /// Borrows only the actual facts needed for standalone SVG admission, without freezing reports.
-    pub fn standalone_admission_summary(
-        rendered: &crate::family::RenderedStandaloneSvg,
-    ) -> (RootEvidenceSummary, FamilyEvidenceSummary, bool) {
-        rendered.admission_summary()
-    }
-
-    /// Returns the bounded set of root capabilities proved by the terminal SVG consumer.
-    pub fn root_applied_capabilities(
-        report: &FamilyRenderReport,
-    ) -> Box<[crate::diagram_theme::ThemeCapability]> {
-        report
-            .root_theme_report()
-            .applied_capabilities()
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    }
-
-    /// Returns the exact State hard-shadow receipt frozen after SVG emission.
-    pub fn family_native_filter_receipt(
-        report: &FamilyRenderReport,
-    ) -> Option<NativeSvgFilterReceipt> {
-        report.native_filter_receipt()
-    }
-
-    /// Returns the exact host/theme resource-policy intersection captured by the session.
-    pub fn effective_theme_resource_policy(
-        report: &crate::environment::RenderSessionReport,
-    ) -> &crate::diagram_theme::ThemeResourcePolicy {
-        report.effective_theme_resource_policy()
-    }
+    pub use crate::family::{FamilyLayoutArtifact, prepare_layout};
 
     /// Bounded prepared-math projection used by document and target admission.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -619,24 +385,6 @@ pub mod __private {
             terminal_occurrence_count: receipt.map_or(0, |receipt| receipt.occurrence_count()),
             terminal_artifact_digest: receipt.map(|receipt| receipt.artifact_digest()),
         }
-    }
-
-    /// Finalizes a standalone SVG while deferring the caller's portability requirement to the
-    /// workspace facade's target-owned admission receipt.
-    pub fn finalize_standalone_for_target_admission(
-        rendered: crate::family::RenderedFamilySvg,
-        pipeline: Option<&crate::svg::SvgPipeline>,
-    ) -> crate::Result<crate::family::RenderedStandaloneSvg> {
-        rendered.finalize_standalone_for_target_admission(pipeline)
-    }
-
-    /// Finalizes native SVG while retaining evidence for the workspace facade's target-owned
-    /// portability admission. Resource, cancellation and prepared-math checks remain enforced.
-    pub fn finalize_resvg_for_target_admission(
-        rendered: crate::family::RenderedFamilySvg,
-        pipeline: &crate::svg::SvgPipeline,
-    ) -> crate::Result<crate::family::RenderedResvgCompatibleSvg> {
-        rendered.finalize_resvg_for_target_admission(pipeline)
     }
 
     /// Reports whether terminal SVG text is fully resolved by a renderer-owned font seal.
@@ -820,55 +568,11 @@ pub enum Error {
         diagram_type: String,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_id}`"
+        "portable native theme rendering for `{family_id}` cannot apply a requested feature. {message}"
     )]
-    UnverifiedFamilyStyle {
+    UnsupportedNativeThemeFeature {
         family_id: DiagramFamilyId,
-        residual_count: usize,
-    },
-    #[error(
-        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_id}`"
-    )]
-    UnverifiedFamilyTheme {
-        family_id: DiagramFamilyId,
-        residual_count: usize,
-    },
-    #[error(
-        "portable theme rendering rejected SVG output mutation after family `{family_id}` emitted its evidence"
-    )]
-    UnverifiedFamilyOutputMutation { family_id: DiagramFamilyId },
-    #[error(
-        "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_id}`"
-    )]
-    LegacyFamilyThemeCompatibility {
-        family_id: DiagramFamilyId,
-        residual_count: usize,
-    },
-    #[error(
-        "portable theme rendering rejected {residual_count} explicit Mermaid compatibility field(s) for `{family_id}`"
-    )]
-    MermaidThemeCompatibility {
-        family_id: DiagramFamilyId,
-        residual_count: usize,
-    },
-    #[error(
-        "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_id}`"
-    )]
-    UnadaptedFamilyTheme { family_id: DiagramFamilyId },
-    #[error(
-        "portable theme rendering has incomplete structured family evidence for `{family_id}`: accounted for {accounted_count} of {required_count} mechanism(s)"
-    )]
-    IncompleteFamilyTheme {
-        family_id: DiagramFamilyId,
-        required_count: usize,
-        accounted_count: usize,
-    },
-    #[error(
-        "portable theme rendering rejected root theme verification {verification:?} with {residual_count} residual(s)"
-    )]
-    RejectedRootTheme {
-        verification: crate::diagram_theme::RootThemeVerification,
-        residual_count: usize,
+        message: &'static str,
     },
     #[error(transparent)]
     SemanticProjection(merman_model::presentation::compat::CompatProjectionError),
@@ -876,14 +580,12 @@ pub enum Error {
     PresentationConfig(#[from] merman_model::presentation::PresentationConfigError),
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
-    #[error("parsed diagram is bound to a different theme session")]
-    ThemeParseBindingMismatch,
     #[error(
         "render target `{target}` does not support RequirePortable because it has no target portability admission"
     )]
     PortabilityUnavailableForTarget { target: &'static str },
-    #[error(transparent)]
-    ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
+    #[error("trusted theme lane `raw-theme-css` is disabled by the host")]
+    UntrustedThemeCss,
     #[error(
         "custom JSON model `{model_name}` from {provenance:?} cannot render diagram type `{diagram_type}`"
     )]
@@ -900,8 +602,6 @@ pub enum Error {
     IconProcessing { message: String },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
-    #[error(transparent)]
-    ThemeResourceLimitExceeded(#[from] crate::diagram_theme::ThemeResourceLimitExceeded),
     #[error(transparent)]
     OperationResourceTerminal(merman_model::OperationLedgerError),
     #[error(transparent)]
@@ -974,56 +674,6 @@ impl Error {
     pub const fn missing_capability(&self) -> Option<RenderCapability> {
         match self {
             Self::MissingCapability { capability, .. } => Some(*capability),
-            _ => None,
-        }
-    }
-
-    pub const fn unverified_family_style(&self) -> Option<(DiagramFamilyId, usize)> {
-        match self {
-            Self::UnverifiedFamilyStyle {
-                family_id,
-                residual_count,
-            } => Some((*family_id, *residual_count)),
-            _ => None,
-        }
-    }
-
-    pub const fn unadapted_family_theme(&self) -> Option<DiagramFamilyId> {
-        match self {
-            Self::UnadaptedFamilyTheme { family_id } => Some(*family_id),
-            _ => None,
-        }
-    }
-
-    pub const fn incomplete_family_theme(&self) -> Option<(DiagramFamilyId, usize, usize)> {
-        match self {
-            Self::IncompleteFamilyTheme {
-                family_id,
-                required_count,
-                accounted_count,
-            } => Some((*family_id, *required_count, *accounted_count)),
-            _ => None,
-        }
-    }
-
-    pub const fn unverified_family_theme(&self) -> Option<(DiagramFamilyId, usize)> {
-        match self {
-            Self::UnverifiedFamilyTheme {
-                family_id,
-                residual_count,
-            } => Some((*family_id, *residual_count)),
-            _ => None,
-        }
-    }
-
-    pub const fn rejected_root_theme(
-        &self,
-    ) -> Option<(crate::diagram_theme::RootThemeVerification, usize)> {
-        match self {
-            Self::RejectedRootTheme {
-                verification,
-                residual_count,
-            } => Some((*verification, *residual_count)),
             _ => None,
         }
     }
@@ -1233,17 +883,13 @@ impl<'a> LayoutExecution<'a> {
         self.family.layout_backend()
     }
 
-    #[cfg(feature = "diagram-state")]
-    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
-        self.family.style_plan().and_then(|plan| plan.state())
-    }
-
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
         &self.text_measurer
     }
 
-    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
-        self.family.resolved_theme()
+    #[allow(dead_code, reason = "Used by enabled diagram families.")]
+    pub(crate) fn native_family_theme(&self) -> Option<&crate::theme::FamilyTheme> {
+        self.family.native_theme()
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
@@ -1329,7 +975,6 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
-    typography_theme: &crate::class::ClassTextThemePlan,
     render_config: &crate::class::ClassRenderConfig,
 ) -> Result<(
     model::ClassDiagramLayout,
@@ -1357,7 +1002,6 @@ pub(crate) fn layout_class_typed_by_engine(
             model,
             effective_config,
             options,
-            typography_theme,
             render_config,
             &mut work_control,
         )
@@ -1371,7 +1015,6 @@ pub(crate) fn layout_class_typed_by_engine(
                 options.math_renderer(),
                 options.elk_operation_seed(),
                 algorithm,
-                typography_theme,
                 render_config,
                 &mut work_control,
             )
@@ -1383,7 +1026,6 @@ pub(crate) fn layout_class_typed_by_engine(
             effective_config,
             options.text_measurer(),
             options.math_renderer(),
-            typography_theme,
             render_config,
             &mut work_control,
         )
@@ -1618,7 +1260,6 @@ mod tests {
                 )
                 .unwrap(),
             ),
-            &typography_theme,
             &render_config,
         )
         .expect("class layout")

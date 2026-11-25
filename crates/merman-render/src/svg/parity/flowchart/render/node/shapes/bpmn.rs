@@ -1,5 +1,3 @@
-use super::super::emission::FlowchartNodeShapeEmissionReceipt;
-use crate::diagram_theme::ResolvedStyleProperty;
 use crate::flowchart::bpmn::{BpmnGeometry, BpmnShape, ICON_SIZE};
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
@@ -12,85 +10,13 @@ struct BpmnOptions<'a> {
     annotation_right: bool,
 }
 
-/// Only declarations selected by the prepared typed lane may reach these extra terminals.
-#[derive(Default)]
-struct BpmnTerminalStyle<'a> {
-    fill: Option<&'a str>,
-    stroke: Option<&'a str>,
-    stroke_width: Option<&'a str>,
-    stroke_dasharray: Option<&'a str>,
-}
-
-impl<'a> BpmnTerminalStyle<'a> {
-    fn resolve(shape: BpmnShape, theme_style: &'a str) -> Self {
-        let event = shape.event_rings().is_some();
-        let annotation = shape == BpmnShape::Annotation;
-        let mut style = Self::default();
-        if !event && !annotation {
-            return style;
-        }
-        // The prepared selection also excludes direct BPMN structural classDef owners. Do not
-        // recover fields from the mixed source style or reinterpret rule/palette winners.
-        for declaration in theme_style
-            .split(';')
-            .filter_map(crate::mermaid_style::parse_style_declaration)
-        {
-            let value = Some(declaration.source_value());
-            match declaration.property() {
-                "fill" if event => style.fill = value,
-                "stroke" => style.stroke = value,
-                // Event ring weights belong to BPMN notation even under a typed theme.
-                "stroke-width" if annotation => style.stroke_width = value,
-                "stroke-dasharray" => style.stroke_dasharray = value,
-                _ => {}
-            }
-        }
-        style
-    }
-
-    fn is_empty(&self) -> bool {
-        self.fill.is_none()
-            && self.stroke.is_none()
-            && self.stroke_width.is_none()
-            && self.stroke_dasharray.is_none()
-    }
-
-    fn write_declarations(
-        &self,
-        out: &mut impl crate::svg::parity::SvgOutput,
-    ) -> crate::Result<FlowchartNodeShapeEmissionReceipt> {
-        let mut receipt = FlowchartNodeShapeEmissionReceipt::unverified();
-        for (name, property, value) in [
-            ("fill", ResolvedStyleProperty::Fill, self.fill),
-            ("stroke", ResolvedStyleProperty::Stroke, self.stroke),
-            (
-                "stroke-width",
-                ResolvedStyleProperty::StrokeWidth,
-                self.stroke_width,
-            ),
-            (
-                "stroke-dasharray",
-                ResolvedStyleProperty::StrokeDasharray,
-                self.stroke_dasharray,
-            ),
-        ] {
-            if let Some(value) = value {
-                let _ = write!(out, "{name}:{};", escape_xml_display(value));
-                out.checkpoint()?;
-                receipt = receipt.with_typed_paint_reach(property);
-            }
-        }
-        Ok(receipt)
-    }
-}
-
 pub(in crate::svg::parity::flowchart::render::node) fn render_bpmn(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     shape: BpmnShape,
-) -> crate::Result<FlowchartNodeShapeEmissionReceipt> {
+) -> crate::Result<()> {
     let options = BpmnOptions {
         icon: common.node_icon.filter(|icon| !icon.is_empty()),
         ..Default::default()
@@ -102,7 +28,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bpmn(
         options.icon.is_some(),
         !options.markers.is_empty(),
     );
-    let receipt = write_shape(
+    write_shape(
         out,
         shape,
         geometry,
@@ -143,7 +69,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bpmn(
     if shape == BpmnShape::Annotation {
         label.dx = if options.annotation_right { -3.0 } else { 3.0 };
     }
-    Ok(receipt)
+    Ok(())
 }
 
 fn write_bounds(out: &mut impl crate::svg::parity::SvgOutput, geometry: BpmnGeometry) {
@@ -165,9 +91,7 @@ fn write_shape(
     theme_style: &str,
     options: &BpmnOptions<'_>,
     mut glyph: impl FnMut(&str, f64, usize) -> crate::Result<String>,
-) -> crate::Result<FlowchartNodeShapeEmissionReceipt> {
-    let terminal_style = BpmnTerminalStyle::resolve(shape, theme_style);
-    let mut receipt = FlowchartNodeShapeEmissionReceipt::unverified();
+) -> crate::Result<()> {
     if shape != BpmnShape::Activity {
         write_bounds(out, geometry);
     }
@@ -186,7 +110,10 @@ fn write_shape(
                 fmt_display(18.0 - ring as f64 * 3.0),
                 fmt_display(stroke_width),
             );
-            receipt = terminal_style.write_declarations(out)?;
+            // The event ring owns its notation width; a native palette can supply its fill.
+            if !theme_style.is_empty() {
+                let _ = write!(out, "{};", escape_xml_display(theme_style));
+            }
             out.push_str(r#""/>"#);
             out.checkpoint()?;
         }
@@ -199,7 +126,7 @@ fn write_shape(
         }
         out.push_str("</g>");
         out.checkpoint()?;
-        return Ok(receipt);
+        return Ok(());
     }
     match shape {
         BpmnShape::Gateway => {
@@ -304,11 +231,6 @@ fn write_shape(
                 fmt_display(-half_height),
                 fmt_display(half_height),
             );
-            if !terminal_style.is_empty() {
-                out.push_str(r#" style=""#);
-                receipt = terminal_style.write_declarations(out)?;
-                out.push('"');
-            }
             out.push_str("/></g>");
         }
         BpmnShape::Start | BpmnShape::Intermediate | BpmnShape::Boundary | BpmnShape::End => {
@@ -316,7 +238,7 @@ fn write_shape(
         }
     }
     out.checkpoint()?;
-    Ok(receipt)
+    Ok(())
 }
 
 #[cfg(test)]

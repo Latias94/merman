@@ -1589,17 +1589,7 @@ fn subgraph_label(
         None
     };
     let base_style = if let Some(structural) = &structural {
-        ctx.svg_label_sidecar
-            .map_or_else(
-                super::FlowchartLabelTypography::default,
-                FlowchartSvgLabelSidecarBuilder::label_typography,
-            )
-            .node_source_parent_style(
-                ctx.cluster_label_base_style,
-                &ctx.model.class_defs,
-                (classes, styles, false),
-                structural,
-            )
+        structural.apply_to_parent(std::borrow::Cow::Borrowed(ctx.cluster_label_base_style))
     } else {
         std::borrow::Cow::Borrowed(ctx.cluster_label_base_style)
     };

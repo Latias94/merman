@@ -77,13 +77,13 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "c4ca1fdb09d3f1556fdc925fdaf11efa7d1107892c499906e346b09b1134d76e",
+    "cargo_lock_sha256": "43628cbf831681d38be6f76684af5bc382490d27180f36361989205685e13173",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "b570223852f6f57dee6f328510b8307d9ef7537d3386d4da7585b94a38ce4fc3"
   },
   "dependency_closure": {
     "package_count": 170,
-    "packages_sha256": "aa88916232498802a8247e98066a7a3f908881f54def6ae546454b2ce91533ce"
+    "packages_sha256": "5eeff1c2cfa085540594ef3eba65f64a61ba73f5ae68bd2970a1e58a37f868ca"
   },
   "licenses": [
     {
@@ -297,6 +297,16 @@
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/serde-rs/json"
+        },
+        {
+          "name": "serde_path_to_error",
+          "version": "0.1.20",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "David Tolnay <dtolnay@gmail.com>"
+          ],
+          "repository": "https://github.com/dtolnay/path-to-error"
         },
         {
           "name": "syn",
@@ -1661,22 +1671,6 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/ia0/data-encoding"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "b68d86a60d3619bfd55b89a322e8464d3f9ca1c7e2409cc6035ea290435831e0",
-      "text": "MIT License\r\n\r\nCopyright (c) 2023 Attila Mravik\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
-      "packages": [
-        {
-          "name": "serde_json_canonicalizer",
-          "version": "0.4.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/evik42/serde-json-canonicalizer"
         }
       ]
     },

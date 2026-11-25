@@ -14,17 +14,14 @@ yield with a no-op. These deterministic shims are smoke policies, **not** secure
 randomness and not a production cryptographic host. Actual shim calls are
 recorded. Path functions see no guest preopens; host-only inputs use raw ABI bytes.
 
-Theme selection uses the same Options JSON schema 3 as the other bindings. A request can select
-`{"theme":{"preset":"editor","appearance":"dark"}}` or a complete schema-1 recipe object and a
-concrete appearance. An omitted selector uses the design's declared default; the headless reactor
-never detects host UI brightness.
+Theme selection uses Options JSON schema `4`. For example, set
+`{"theme":{"preset":"studio","appearance":"dark"}}` or supply a Theme v2 document. The host can
+request an appearance or use the document's declared default.
 
-The existing `execute` transport carries `materialize-theme-json`, `describe-theme-support-json`,
-and `export-theme-preset-json`. Plain-ID preset export returns the complete `ThemeRecipeV1`,
-with `design.appearances` and `design.default_appearance`. Schema-1 authoring actions inspect all
-appearances or materialize one selected `spec`. `theme-catalog` groups presets and supplies
-appearance-specific swatches, family guidance, qualifications, and `concrete_preset_id`.
-The scalar ABI, result descriptor, and native-memory ownership rules remain unchanged.
+Use `theme-catalog` to discover preset IDs, supported appearances, and family capability flags.
+SVG-enabled reactors expose `export-theme-preset` and `resolve-theme` through the same
+`merman_wasi_execute` entry point. See the [WASI ABI guide](../../crates/merman-wasi/README.md#theme-presets-and-editable-documents)
+for the source payloads and result ownership.
 
 Math/full have a reviewed dependency-export residual: RaTeX's pinned embedded-font
 closure retains several wasm-bindgen allocation/closure helpers even without a

@@ -1,7 +1,5 @@
 use serde_json::Value;
 
-use super::paint::ClassConfigPaint;
-
 /// Raw browser paint slots bound before Class measurement and SVG emission.
 /// Values stay as CSS tokens; binding does not imply native color support.
 #[derive(Debug, Clone)]
@@ -15,7 +13,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) node_default_fill: String,
     pub(crate) node_default_stroke: String,
     pub(crate) node_border: String,
-    pub(crate) edge_label_background: String,
     pub(crate) palette: Vec<(String, Option<String>)>,
     pub(crate) palette_look: String,
 }
@@ -26,7 +23,19 @@ impl ClassCssThemeBinding {
             crate::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_string())
         };
-        let class_text = ClassConfigPaint::class_text(config).css().to_owned();
+        let paint = |paths: &[&'static str], fallback: &str| {
+            crate::config::selected_config_string(config, paths)
+                .map_or(fallback, |(_, value)| value)
+                .to_owned()
+        };
+        let class_text = paint(
+            &[
+                "themeVariables.classText",
+                "themeVariables.primaryTextColor",
+                "themeVariables.textColor",
+            ],
+            "#333",
+        );
         let class_group_text =
             crate::config::config_string(config, &["themeVariables", "nodeBorder"])
                 .unwrap_or_else(|| class_text.clone());
@@ -85,13 +94,41 @@ impl ClassCssThemeBinding {
             note_text: token("noteTextColor", "#333"),
             class_group_text,
             text_color: token("textColor", &class_text),
-            main_bkg: ClassConfigPaint::background(config).css().to_owned(),
-            node_default_fill: ClassConfigPaint::node_fill(config).css().to_owned(),
-            node_default_stroke: ClassConfigPaint::node_stroke(config).css().to_owned(),
+            main_bkg: token("mainBkg", "#ECECFF"),
+            node_default_fill: paint(
+                &["themeVariables.mainBkg", "themeVariables.primaryColor"],
+                "#ECECFF",
+            ),
+            node_default_stroke: paint(
+                &[
+                    "themeVariables.nodeBorder",
+                    "themeVariables.primaryBorderColor",
+                ],
+                "#9370DB",
+            ),
             node_border: token("nodeBorder", "#9370DB"),
-            edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             palette,
             palette_look,
+        }
+    }
+
+    pub(super) fn from_native(theme: &crate::theme::FamilyTheme) -> Self {
+        let roles = &theme.roles;
+        let main_bkg = roles.surface_node.first_color().to_string();
+        let node_border = roles.stroke_border.first_color().to_string();
+        let class_text = roles.text_primary.to_string();
+        Self {
+            look_defs: crate::svg::PreparedLookDefs::new(&Value::Null),
+            class_group_text: class_text.clone(),
+            class_text,
+            note_text: roles.text_callout.to_string(),
+            text_color: roles.text_title.to_string(),
+            node_default_fill: main_bkg.clone(),
+            main_bkg,
+            node_default_stroke: node_border.clone(),
+            node_border,
+            palette: Vec::new(),
+            palette_look: String::new(),
         }
     }
 }

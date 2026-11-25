@@ -827,16 +827,12 @@ is overwritten. Python verifies the complete public wheel set before its PyPI jo
 Tree-sitter native
 prebuild recovery stays within the same workflow run.
 
-The formal Release's final Linux CLI archive must also pass
-[scoped preset qualification](../rendering/preset-qualification.md) and fresh replay before the
-release verification gate passes. Its Flowchart/State/Sequence system-font observations remain
-in a private workflow artifact. The gate attaches only the public
-`merman-cli-x86_64-unknown-linux-gnu.preset-catalog.json` companion to a new publication bundle,
-binding it to the source and final archive and recording its digest and size in
-`release-verification.json`. Registry candidate, attestation and publishing jobs verify that this
-companion is present before consuming the final bundle. The original archives are not repacked.
-Shared Rust/SDK catalogs remain alpha with empty qualification scope; this archive observation
-does not qualify other targets, font installations or arbitrary source text.
+Release preflight checks the built-in v2 preset colors against the committed fixture and runs the
+`merman-theme-contract` `theme_v2` tests. The release workflow executes the final CLI and LSP
+archives on their native targets, including the CLI's installed capability and output checks. After
+the central and native jobs pass, the release gate validates the exact asset inventory, checksums,
+and source identity in `release-verification.json`. Attestation and publication consume the same
+verified bundle.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
@@ -873,7 +869,7 @@ flutter analyze
 dart format --set-exit-if-changed \
   lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
   example tool hook
-dart run tool/abi3_contract_test.dart
+dart run tool/native_abi_contract_test.dart
 dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
@@ -1025,14 +1021,14 @@ and Typst 0.15.0 for the compatibility consumer.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
 profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which pins
-`default-features = false`, the `svg`, `analysis`,
-`layout-cytoscape`, and `layout-elk` features, the `wasm-size` Cargo profile, and the
+`default-features = false`, the `all-diagrams`, `svg`, `analysis`, `layout-cytoscape`,
+`layout-dagre`, and `layout-elk` features, the `wasm-size` Cargo profile, and the
 `wasm32-unknown-unknown` target. Feature bundles are additive closure descriptions, not alternate
 release artifacts. The exact dependency gate admits `json5`, `html5ever`, and `url` as measured
 pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
-plugin ABI 3, independently from native ABI 3, the closed export surface including `analyze_json`
+plugin ABI 4, the closed export surface including `analyze_json`
 and `theme_operation_json`, and the descriptor-owned `publish` artifact. One producer owns Cargo
 build, optimization, stripping, and the private schema-4 manifest with raw/optimized/final digests.
 The package builder's `--budget-file` gate consumes those verified bytes before staging; it does
@@ -1050,7 +1046,7 @@ replacing the prior version if live source or any staged byte changes.
 
 The crates.io workflow checks the exact workspace plugin's dependency closure, WASM size, version, ABI, capability catalog, and successful/error protocol calls through the package builder, then compiles the real Typst examples with `typst-package-smoke --examples-only`. The independent wrapper's complete suite retains its pinned bundled-engine assertion and runs in its package owner; publishing a workspace plugin patch does not change that wrapper's version mapping.
 
-These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the independently versioned Typst Universe wrapper are separate publication surfaces; publishing the crate does not publish the wrapper. Wrapper `0.5.0` bundles Merman `0.9.0`, and `0.4.0` bundles `0.8.0`; their published bytes remain unchanged. The selected next wrapper is `0.6.0`, bundling Merman `0.10.0`; follow the [Typst package guide](../../distribution/typst/merman/README.md) and [current publication record](PUBLISH_ORDER.md#0100-preparation). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the independently versioned Typst Universe wrapper are separate publication surfaces; publishing the crate does not publish the wrapper. Wrapper `0.5.0` bundles Merman `0.9.0`, and `0.4.0` bundles `0.8.0`; their published bytes remain unchanged. Published wrapper `0.6.0` bundles Merman `0.10.0`. The next wrapper is `0.7.0`, bundling Merman `0.11.0`. See the [Typst package guide](../../distribution/typst/merman/README.md). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
 
 ## Tag And Push
 

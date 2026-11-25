@@ -83,7 +83,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
             handwritten = (
                 root / "lib" / "merman.dart",
                 root / "example" / "smoke.dart",
-                root / "tool" / "abi3_contract_test.dart",
+                root / "tool" / "native_abi_contract_test.dart",
                 root / "hook" / "build.dart",
             )
             generated = (
@@ -101,7 +101,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
             [
                 "lib/merman.dart",
                 "example/smoke.dart",
-                "tool/abi3_contract_test.dart",
+                "tool/native_abi_contract_test.dart",
                 "hook/build.dart",
             ],
         )

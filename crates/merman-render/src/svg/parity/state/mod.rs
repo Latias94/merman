@@ -1,8 +1,8 @@
-use super::shadow::write_theme_shadow_depth_application;
 use super::*;
 #[cfg(feature = "layout-shoal")]
 use crate::graph_layout::canonical::CanonicalRoutes;
 use rustc_hash::FxHashMap;
+mod composite_paint;
 mod context;
 mod edge;
 mod effect;
@@ -41,10 +41,6 @@ type StateSvgLinks = merman_model::families::state::StateLinks;
 type StateSvgNode = merman_model::families::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_model::families::state::StateDiagramRenderEdge;
 
-fn state_transition_marker_id(diagram_id: impl SvgDiagramIdValue, ordinal: usize) -> String {
-    format!("{diagram_id}_stateDiagram-barbEnd-{ordinal}")
-}
-
 struct StateRenderCtx<'a> {
     work_meter: &'a crate::resources::OperationWorkMeter,
     diagram_id: SvgDiagramId<'a>,
@@ -65,6 +61,7 @@ struct StateRenderCtx<'a> {
     layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
     layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
+    composite_paints: composite_paint::StateCompositePaints<'a>,
     #[cfg(feature = "layout-shoal")]
     canonical_routes: Option<&'a CanonicalRoutes>,
     parent: FxHashMap<&'a str, &'a str>,
@@ -77,9 +74,9 @@ struct StateRenderCtx<'a> {
     include_edges: bool,
     include_nodes: bool,
     has_node_shadows: bool,
+    native_elevation: Option<&'a merman_theme_contract::v2::Elevation>,
     measurer: &'a dyn TextMeasurer,
     label_sidecar: &'a crate::state::StateLabelSidecar,
-    effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &'a crate::state::StateStylePlan,
     rough_cache: StateRoughCache,
 }

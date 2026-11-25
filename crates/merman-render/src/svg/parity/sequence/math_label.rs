@@ -6,7 +6,6 @@ pub(super) struct SequenceKatexLabel<'a> {
     pub(super) html: &'a str,
     pub(super) width: f64,
     pub(super) height: f64,
-    style_assurance: &'a crate::math::PreparedMathStyleAssurance,
 }
 
 pub(super) fn sequence_katex_label<'a>(
@@ -22,16 +21,7 @@ pub(super) fn sequence_katex_label<'a>(
         html: prepared.browser_xhtml(),
         width,
         height,
-        style_assurance: prepared.style_assurance(),
     })
-}
-
-pub(super) fn record_sequence_katex_terminal_emission(
-    receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-    surface: crate::sequence::SequenceTextSurface,
-    label: &SequenceKatexLabel<'_>,
-) {
-    receipt.record_prepared_math_emission(surface, label.style_assurance);
 }
 
 pub(super) fn write_sequence_katex_foreign_object(

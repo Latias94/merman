@@ -19,14 +19,14 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-Current-source browser packages use Web transport API `11` and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-4 ASCII output. Published `0.10.0` uses Web API `10` and ASCII schema `3`. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision; see the [current-source migration](../../docs/migrations/render-reuse-host-integration.md).
+Current-source browser packages target Mermaid `12.3.0` and use Web transport API `12` with Options JSON schema `4`. Analysis-capable packages use facts schema `3`, SVG results report `metadata.theme_outcome`, and ASCII-capable packages use schema-4 ASCII output. Published `0.10.0` uses Web API `10` and ASCII schema `3`. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Current-source migration](../../docs/migrations/render-reuse-host-integration.md)
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.
 
 Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade the facade, generated glue, and WASM together when adopting `0.10.0`, and update JSON consumers for the [source appearance and render-evidence changes](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-Prebuilt full/render packages include mathematical labels, Cytoscape and ELK layouts, compiled themes,
+Prebuilt full/render packages include mathematical labels, Cytoscape and ELK layouts, native themes,
 prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.
 Dedicated analysis/editor/ASCII products retain their task scope. No extra npm math tier is
 required.
@@ -182,195 +182,70 @@ Keep `renderSvgToElement()` for a single publication without a retained lifecycl
 
 ## Choose a preset for a diagram
 
-In the full or render package, read `themeCatalog().presets` from the initialized runtime to build
-a picker. Use each entry's open `id` as the saved design identity and `display_name` as its label.
-`supported_appearances` and `default_appearance` describe its available reading modes.
-Each `appearances` entry supplies its `appearance`, exact `concrete_preset_id`, ordered
-`preview_colors`, `family_designs`, `application_notes`, and `qualified_cells`.
-Discover the inventory instead of keeping
-a preset list or count in the host. `supportedThemes()` lists Mermaid base themes and is separate
-from these Merman presets. `mermaid_theme_designs` groups Neo, Redux, and Redux Color with their
-declared dark counterparts while retaining each literal Mermaid ID. Default and Dark remain
-independent upstream designs.
-
-`available` means that the runtime's compiler can construct the recipe. `maturity` describes the
-catalog entry independently of rendering support. Availability admits the complete design,
-including inactive appearances. An appearance's `family_designs` describes curated design intent for a logical family:
-`dedicated` is a family-specific design, `base_only` is the shared base appearance (including
-necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
-states certifies readable output or portability; those depend on the actual scene and target.
-Use `diagramFamilyCapabilities()` to map the detected `syntaxId` to its `family_id`.
-Its `diagram_type` field uses parser syntax IDs; the detection's `diagramType` is a separate
-normalized metadata ID, which differs for families such as Git Graph and Quadrant Chart.
+Call `themeCatalog()` after initialization to build a theme picker. Each preset has an ID, name,
+category, description, concrete appearances, and six swatches from its default appearance. The
+swatches represent the canvas, node, container, title, primary text, and first data fill. Use
+`mermaid_themes` to list the classic Mermaid IDs and `families` to read each family's native
+capability bit mask.
 
 ```ts
-import {
-  detectDiagramFacts, diagramFamilyCapabilities, renderSvgResult, themeCatalog,
-} from "@mermanjs/web";
+import { initMerman, renderSvgResult, themeCatalog } from "@mermanjs/web";
 
-// Call after initMerman(). Keep this selection in the host's own state.
+await initMerman();
 const source = "flowchart LR\nA[Start] --> B[Done]";
-const selectedId = "brutalist";
-const catalog = themeCatalog();
-const detected = detectDiagramFacts(source);
-const familyId = detected.status === "available"
-  ? diagramFamilyCapabilities().find((family) => family.diagram_type === detected.syntaxId)?.family_id
-  : undefined;
-const selected = catalog.presets.find((preset) => preset.id === selectedId);
-if (!selected) throw new Error(`Unknown saved preset: ${selectedId}`);
-if (!selected.available) throw new Error(selected.availability_reason_ids.join(", "));
+const preset = themeCatalog().presets.find(({ id }) => id === "studio");
+if (!preset) throw new Error("Studio is unavailable in this artifact");
 
-const choices = catalog.presets.map((preset) => ({
-  value: preset.id, label: preset.display_name, disabled: !preset.available,
-  appearances: preset.supported_appearances, maturity: preset.maturity,
-}));
-const appearance = selected.default_appearance;
-const concrete = selected.appearances.find((entry) => entry.appearance === appearance)!;
-const declaredTreatment = concrete.family_designs
-  .find((design) => design.family_id === familyId)?.treatment;
-const treatment = declaredTreatment === "dedicated" || declaredTreatment === "base_only"
-  ? declaredTreatment : "unreviewed";
-const notes = concrete.application_notes.filter((note) => note.family_id === familyId);
-console.log({ choices, treatment, notes });
-
-const result = renderSvgResult(source, { theme: { preset: selected.id, appearance } });
-console.log(result.metadata.theme_execution_evidence);
+const result = renderSvgResult(source, {
+  theme: { preset: preset.id, appearance: preset.default_appearance },
+  background: "#F8FAFC",
+});
+console.log(result.metadata.theme_outcome);
 ```
 
-Ghibli is an ordinary catalog preset with a dedicated Pie design. Other families remain unreviewed
-unless the catalog declares their treatment. All current built-ins remain `alpha` with empty
-`qualified_cells`; a curated design or an attractive swatch grants no qualification.
+Choose `light` or `dark` in the host before passing `appearance`. If you omit it, the preset
+uses its default. Pass `theme: "studio"` to select Studio directly, or `theme: "none"` to clear
+a native selection. Classic Mermaid IDs belong in `site_config.theme`.
 
-Show each applicable `application_notes` message, including unknown note IDs. A host may localize
-known IDs, retaining `message` as its fallback. `recommended_config` is a partial Mermaid
-configuration object or `null`; a note with no recommendation still has useful guidance. For
-example, Flowchart notes can explain the Classic look and basic-shape conditions for shadows or
-glow. Selecting a preset never applies these settings or changes the source.
+A native selection owns global visual defaults by default. Use `precedence: "source"` inside the
+selector to let a source-declared Mermaid theme choose the rendering mode. A top-level `background`
+sets the canvas to a hex color or `"transparent"` in either mode.
 
-Offer an explicit action to accept suggested settings. For a fresh request with no existing site
-configuration, that action can pass the object directly:
+`renderSvgResult()` includes the rendered SVG and its `theme_outcome`. Read `mode` to distinguish
+`merman_native` from `mermaid_parity`. `preset_id` and `appearance` are present when applicable,
+and `notices` carries contrast or selection messages. `renderSvgResultWithTextMeasurer()` returns
+the same metadata with per-call host text measurement.
 
-```ts
-import type { ThemePresetApplicationNote } from "@mermanjs/web";
+## Edit, validate, and share a theme
 
-function renderWithAcceptedSettings(note: ThemePresetApplicationNote) {
-  return renderSvgResult(source, {
-    theme: { preset: selectedId },
-    site_config: note.recommended_config ?? {},
-  });
-}
-```
-
-With existing configuration, merge the accepted object into it while preserving unrelated nested
-keys, then pass the result through `site_config`. Parse and validate stored configuration before
-offering this action; show invalid JSON to the user instead of replacing their edits. Recommendations
-are separate from `options.theme` and exported recipes, so persist accepted configuration separately.
-The catalog requires its appearance-specific discovery arrays; malformed or missing fields
-are rejected. IDs remain open strings, and Web catalog reads return
-defensive copies, including nested recommendation objects.
-
-Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
-rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;
-use `renderSvgResult()` to inspect the actual request's theme and target status. `renderSvg()`
-returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
-Do not silently substitute another preset. An unknown
-saved preset ID is an explicit input error; the host can retain it for explanation and offer an
-explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
-
-## Use one theme in light and dark mode
-
-Preset export returns the complete editable recipe. Keep that recipe when saving or sharing a
-design; choose the concrete appearance separately for each render:
+The full and render packages export editable `ThemeDocumentV2` objects with `exportThemePreset(id)`.
+Save the document as JSON to keep the preset's authored appearances, or write a small document
+with `extends` to override selected values.
 
 ```ts
-import { exportThemePreset, materializeTheme, renderSvg } from "@mermanjs/web";
+import { exportThemePreset, renderSvg, resolveTheme, type ThemeDocumentV2 } from "@mermanjs/web";
 
-const recipe = exportThemePreset("editor");
-const inspection = materializeTheme({ schema_version: 1, action: "inspect", recipe });
-console.log(inspection.supported_appearances, inspection.default_appearance);
+const presetJson = JSON.stringify(exportThemePreset("studio"), null, 2);
+const document: ThemeDocumentV2 = {
+  schema_version: 2,
+  extends: "studio",
+  seed: { accent: "#0052CC" },
+  form: { radius: 8 },
+};
+const resolution = resolveTheme(document, { appearance: "dark", auto_fix_contrast: true });
+if (resolution.ok) console.log(resolution.notices);
+
 const svg = renderSvg("flowchart LR\nA[Review] --> B[Publish]", {
-  theme: { recipe, appearance: "dark" },
-});
-const snapshot = materializeTheme({
-  schema_version: 1, action: "materialize", recipe, appearance: "dark",
+  theme: { document, appearance: "dark" },
 });
 ```
 
-An omitted selector uses the declared default. An explicit unsupported appearance fails.
-Follow-app/editor is host policy: resolve it to `light` or `dark` before rendering, using the
-declared default when a single-appearance design lacks the host mode. A dark viewer can display
-a light paper design without changing its authored canvas.
-
-For customization, edit shared `recipe.design` values and appearance-specific exceptions under
-`recipe.design.appearances`. The runtime validates every appearance before accepting the design.
-Raw JSON strings passed to `materializeTheme()` retain duplicate-field admission and source paths
-in Rust. Typed inspect/materialize requests infer their corresponding result type.
-The raw-design route still returns `MaterializedThemeWireV1` for the design's default appearance.
-`snapshot.spec` is a concrete snapshot; exporting only it loses shared design relationships.
-Changing a prepared diagram's theme or appearance requires calling `prepareSource()` again.
-
-## Inspect the actual rendering outcome
-
-```ts
-import { renderSvgResult } from "@mermanjs/web";
-
-const result = renderSvgResult("classDiagram\nclass Account", {
-  theme: { preset: "cyberpunk" },
-});
-const evidence = result.metadata.theme_execution_evidence;
-// Display the SVG and inspect the versioned outcome from that same execution.
-console.log(evidence);
-const svg = result.svg;
-```
-
-`metadata.byte_length` is the SVG's UTF-8 byte length, not JavaScript string length.
-For evidence version `2`, `theme_status` is currently `verified`, `not_applicable`, `residual`, or
-`incomplete`. Theme verification and `target_status` are separate: a verified theme does not imply
-portable output. BestEffort may return SVG together with a `rejected` target status; strict policy
-is what turns failed admission into an operation error. IDs are open strings; unknown versions, missing evidence, and unknown statuses
-must not be interpreted as portable. The metadata is descriptive, not an independent certificate.
-`materialized_theme` records the actual materialized Mermaid palette or null. Optional
-`diagnostics` can include rule or property details; an absent or empty list does not establish portability.
-Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
-`font_source: "none"` describes SVG font resources, not whether a host measurer was called.
-The [measurement guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md) explains per-request fallback
-and the current metadata boundary.
-
-Set `environment: { theme_portability: "require-portable" }` to require the renderer's
-native portability admission. Failure throws the normal structured render error; the runtime does
-not change your preset. The default is `"best-effort"`. Strict requests may reject unsupported theme
-facets, host-dependent fonts, or other target residuals; this is stronger than choosing the
-`resvg-safe` pipeline. Browser-only effects are not made portable by this option.
-
-## Save and share a theme
-
-The full and render packages accept a preset ID, a complete specification, or a versioned
-`ThemeRecipeV1` document in `options.theme`. Export a preset once and keep the returned document
-intact when saving or sharing it:
-
-```ts
-import { exportThemePreset, renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
-
-const recipe: ThemeRecipeV1 = exportThemePreset("editor-light");
-const saved = JSON.stringify(recipe);
-const restored: unknown = JSON.parse(saved);
-const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", JSON.stringify({ theme: restored }));
-```
-
-Initialize the runtime before these calls. Passing the options JSON lets Rust validate a document
-loaded from storage; a TypeScript assertion cannot validate untrusted JSON. Keep `schema_version`
-and `kind` with the payload. Unknown versions and mixed recipe/preset/spec selections are rejected.
-A recipe with `kind: "design"` retains typed reusable values, explicit bindings, semantic defaults,
-scoped rules, canvas layers, and effects under `design`. All built-in presets export this editable
-representation. A `complete_spec` recipe carries the concrete specification. Inspect `kind` before
-editing an imported document. You can also select a preset with `{ theme: { preset: "editor-light" } }`.
-
-A reusable recipe is not a claim that every diagram family or output target supports every authored
-style. Query `describeThemeSupport()` for the relevant family, output, and mechanism. Saving a recipe
-does not switch it to another preset or embed fonts supplied separately by the host.
-
-For scoped edits, Clear/transparent semantics, simple theme creation, and redistribution, see
-[Create, Customize, and Share Diagram Themes](../../docs/rendering/custom-diagram-themes.md).
+Pass a document directly as `options.theme` to use its default appearance. To inspect a document
+from a JSON editor, pass the original source text to `resolveTheme()`. The `{ ok: false }` result
+includes a message and the available `line`, `column`, and `path` from that document. Auto-fix
+returns adjusted role colors in `resolved` and records each adjustment in `notices`. Keep the
+editable v2 document as the saved source of truth. To change a prepared diagram's theme or
+appearance, call `prepareSource()` again.
 
 ## Choose an SVG pipeline
 
@@ -416,9 +291,9 @@ State accepts only `canonical`, so omit `layout_profile: "auto"` for State reque
 [ASCII option contract](../../docs/bindings/OPTIONS_JSON.md#ascii-options) for versioned fields and
 the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) for admitted family combinations.
 
-For known host RGB colors, supply `ascii.theme` with TrueColor, or ANSI256 for an approximation.
-ANSI16 uses terminal Reset and named colors for semantic roles. SVG's top-level `theme` does not
-configure ASCII colors; the host maps its application theme into each output independently.
+Pass a native preset or v2 document in `theme` to use its colors with `color_mode: "truecolor"`
+or `"ansi256"`. A terminal palette in `ascii.theme` takes precedence. ANSI16 uses terminal Reset
+and named colors for semantic roles.
 
 ## Mount SVG safely
 
@@ -462,7 +337,7 @@ contract.
 ## Deadlines and cancellation
 
 Use `transportApiVersion()` and `runtimeCatalog()` to inspect the loaded runtime. Initialization
-validates Web transport API `11` and all required exports before making the module available.
+validates Web transport API `12` and all required exports before making the module available.
 
 SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
 Other transport-dispatched one-shot operations accept this field through their JSON-string options.

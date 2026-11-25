@@ -67,9 +67,7 @@ pub(super) fn write_actor_man_glyph(
     } else {
         0.0
     };
-    let separate_shadow =
-        matches!(actor_type, "boundary" | "entity") && label_ctx.separate_label_shadow();
-    if matches!(actor_type, "boundary" | "entity") && !separate_shadow {
+    if matches!(actor_type, "boundary" | "entity") {
         label_ctx.write_shadow_attr(out);
     }
     label_ctx.write_style_attr(out, actor_type, placement.actor_index);
@@ -82,12 +80,6 @@ pub(super) fn write_actor_man_glyph(
         );
     }
     out.push('>');
-    if separate_shadow {
-        // Keep the default glyph decoration off the independently filtered label.
-        out.push_str("<g");
-        label_ctx.write_shadow_attr(out);
-        out.push('>');
-    }
 
     let idx = placement.line_index;
     let cx_text = fmt(cx);
@@ -178,9 +170,6 @@ pub(super) fn write_actor_man_glyph(
         }
         _ => {}
     }
-    if separate_shadow {
-        out.push_str("</g>");
-    }
     let label_y = bands
         .as_ref()
         .map(|band| band.label_center_y)
@@ -202,11 +191,7 @@ pub(super) fn write_actor_man_glyph(
                     _ => 0.0,
                 }
         });
-    let translated_labels = ActorLabelContext {
-        translate_y,
-        ..*label_ctx
-    };
-    translated_labels.write_actor_man(out, cx, label_y, actor)?;
+    label_ctx.write_actor_man(out, cx, label_y, actor)?;
     out.push_str("</g>");
     out.checkpoint()
 }

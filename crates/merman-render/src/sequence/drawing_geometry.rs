@@ -6,17 +6,10 @@ use crate::model::{LayoutEdge, LayoutNode, SequenceFrameLayout, SequenceFrameSec
 use merman_model::families::sequence::{SequenceControlKind, SequenceDiagramModel};
 use rustc_hash::FxHashMap;
 
-/// Emission order is independent of source-ordered public geometry. Empty blocks still have an
-/// emission occurrence so typography evidence can report their missing terminal text effects.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum SequenceFramePlacement {
-    Draw(usize),
-    Empty,
-}
-
 pub(super) struct SequenceFrameGeometry {
     pub(super) frames: Vec<SequenceFrameLayout>,
-    pub(super) placements: Vec<Option<SequenceFramePlacement>>,
+    /// Frame indices in message emission order, independent of source-ordered geometry.
+    pub(super) placements: Vec<Option<usize>>,
 }
 
 pub(super) fn prepare_sequence_frame_geometry(
@@ -68,7 +61,6 @@ pub(super) fn prepare_sequence_frame_geometry(
         let Some(block_index) = block_index else {
             continue;
         };
-        result.placements[end_index] = Some(SequenceFramePlacement::Empty);
         if let Some(first) = blocks[block_index].sections.first() {
             blocks_by_start_id.insert(first.label_id, (end_index, block_index));
         }
@@ -107,7 +99,7 @@ pub(super) fn prepare_sequence_frame_geometry(
         if dividers.len() != block.sections.len().saturating_sub(1) {
             continue;
         }
-        result.placements[end_index] = Some(SequenceFramePlacement::Draw(result.frames.len()));
+        result.placements[end_index] = Some(result.frames.len());
         result.frames.push(SequenceFrameLayout {
             id: message.id.clone(),
             kind: control.kind,

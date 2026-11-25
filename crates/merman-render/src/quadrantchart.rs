@@ -10,11 +10,10 @@ use merman_model::families::quadrant_chart::{
 use serde_json::Value;
 
 mod config;
-mod text_paint;
+mod native_theme;
 mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
-pub(crate) use text_paint::QuadrantChartPaintPlan;
 pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn point_class_styles<'a>(
@@ -62,7 +61,8 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
                 .to_string(),
         });
     }
-    let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
+    let mut cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
+    point_theme.apply_native_layout(&mut cfg);
     let theme = point_theme.css();
 
     let title_text = model

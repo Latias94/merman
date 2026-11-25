@@ -77,11 +77,6 @@ function renderToolbar(): string {
       <label>Theme
         <select data-action="diagram-theme" title="Diagram theme">
           <option value="source">Source / default</option>
-          <option value="default">Mermaid · Default</option>
-          <option value="dark">Mermaid · Dark</option>
-          <option value="forest">Mermaid · Forest</option>
-          <option value="neutral">Mermaid · Neutral</option>
-          <option value="base">Mermaid · Base</option>
         </select>
       </label>
       <label data-preview-appearance hidden>Appearance
@@ -91,7 +86,7 @@ function renderToolbar(): string {
           <option value="dark">Dark</option>
         </select>
       </label>
-      <button type="button" data-action="import-theme" title="Import a complete theme recipe JSON">Import theme…</button>
+      <button type="button" data-action="import-theme" title="Import a Merman theme document" hidden>Import theme…</button>
       <span class="theme-summary" data-preview-theme-summary role="status"></span>
     </span>
     <details class="preview-menu" data-preview-menu>

@@ -1,3 +1,4 @@
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use super::{WardleyDiagramLayout, WardleyTextRole};
@@ -9,6 +10,7 @@ pub(super) struct WardleyFontSizes {
     axis: WardleyFontSize,
     stage: WardleyFontSize,
     label: WardleyFontSize,
+    native_base: Option<WardleyFontSize>,
 }
 
 #[derive(Debug)]
@@ -106,7 +108,20 @@ impl WardleyFontSizes {
             axis: direct(axis, 12.0),
             stage: arithmetic(axis_number.map(|size| size - 2.0)),
             label: direct(label, 10.0),
+            native_base: None,
         }
+    }
+
+    pub(super) fn apply_native(&mut self, config: &PresentationConfig, base_size: f64) {
+        if !config.explicit_config_owns_path("wardley-beta.axisFontSize") {
+            self.title = WardleyFontSize::numeric(base_size * 1.05);
+            self.axis = WardleyFontSize::numeric(base_size);
+            self.stage = WardleyFontSize::numeric((base_size - 2.0).max(0.0));
+        }
+        if !config.explicit_config_owns_path("wardley-beta.labelFontSize") {
+            self.label = WardleyFontSize::numeric(base_size);
+        }
+        self.native_base = Some(WardleyFontSize::numeric(base_size));
     }
 
     pub(super) fn role(&self, role: WardleyTextRole) -> Option<&WardleyFontSize> {
@@ -118,7 +133,11 @@ impl WardleyFontSizes {
             | WardleyTextRole::AnchorLabel
             | WardleyTextRole::EvolvedLabel
             | WardleyTextRole::LinkLabel => Some(&self.label),
-            _ => None,
+            WardleyTextRole::AnnotationPoint
+            | WardleyTextRole::AnnotationBoxLine
+            | WardleyTextRole::Note
+            | WardleyTextRole::Accelerator
+            | WardleyTextRole::Deaccelerator => self.native_base.as_ref(),
         }
     }
 
@@ -145,6 +164,23 @@ impl WardleyFontSizes {
                 if let Some(label) = &mut link.label {
                     label.font_size = size;
                 }
+            }
+        }
+        if let Some(size) = self.native_base.as_ref().and_then(|font| font.used_px) {
+            for annotation in &mut layout.annotations {
+                for point in &mut annotation.points {
+                    point.label.font_size = size;
+                }
+            }
+            for note in &mut layout.notes {
+                note.text.font_size = size;
+            }
+            for arrow in layout
+                .accelerators
+                .iter_mut()
+                .chain(&mut layout.deaccelerators)
+            {
+                arrow.label.font_size = size;
             }
         }
     }

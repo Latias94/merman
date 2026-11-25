@@ -2331,7 +2331,6 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "merman-render",
- "merman-theme-authoring-fixtures",
  "merman-theme-contract",
  "merman-usvg",
  "png",
@@ -2374,6 +2373,7 @@ dependencies = [
  "dugong",
  "merman-core",
  "merman-model",
+ "merman-theme-contract",
  "pulldown-cmark",
  "rustc-hash",
  "ryu-js",
@@ -2404,8 +2404,6 @@ dependencies = [
  "merman-ascii-test-contracts",
  "merman-core",
  "merman-render",
- "merman-theme-authoring-fixtures",
- "merman-theme-contract",
  "quick-xml",
  "roxmltree 0.21.2",
  "serde",
@@ -2428,7 +2426,6 @@ dependencies = [
  "merman",
  "merman-analysis",
  "merman-ascii-test-contracts",
- "merman-bindings-core",
  "merman-doc",
  "merman-render",
  "merman-usvg",
@@ -2442,6 +2439,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "similar",
+ "svgtypes 0.16.2",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -2744,34 +2742,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "merman-theme-acceptance"
-version = "0.11.0"
-dependencies = [
- "image",
- "merman",
- "merman-export",
- "merman-render",
- "png",
- "quick-xml",
- "roxmltree 0.21.2",
- "serde_json",
- "sha2",
- "svgtypes 0.16.2",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "merman-theme-authoring-fixtures"
-version = "0.11.0"
-
-[[package]]
 name = "merman-theme-contract"
 version = "0.11.0"
 dependencies = [
- "merman-theme-authoring-fixtures",
  "serde",
  "serde_json",
- "serde_json_canonicalizer",
+ "serde_path_to_error",
  "thiserror 2.0.21",
 ]
 
@@ -4359,14 +4335,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_json_canonicalizer"
-version = "0.4.1"
+name = "serde_path_to_error"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f7bb64f8c7e9f783fdfe883b5fe93a90bee1597c63705baa91842c5f698620"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
 dependencies = [
- "ryu-js",
+ "itoa",
  "serde",
- "serde_json",
+ "serde_core",
 ]
 
 [[package]]

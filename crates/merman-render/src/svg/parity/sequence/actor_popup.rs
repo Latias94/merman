@@ -30,7 +30,6 @@ pub(super) fn render_sequence_actor_popup_menus(
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     let actor_typography = label_ctx.typography;
-    let typography_receipt = label_ctx.typography_receipt;
     // Mermaid emits actor popup menus (links/link directives) as root-level
     // `<g class="actorPopupMenu">` groups after messages.
     for (actor_cnt, actor_id) in model.actor_order.iter().enumerate() {
@@ -72,8 +71,6 @@ pub(super) fn render_sequence_actor_popup_menus(
             format!("actor-top-{actor_id}")
         };
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-            typography_receipt
-                .record_missing_text_effect(crate::sequence::SequenceTextSurface::ParticipantLabel);
             continue;
         };
         let (x, _y) = node_left_top(n);
@@ -129,24 +126,6 @@ pub(super) fn render_sequence_actor_popup_menus(
             };
             let text_x = x + 10.0;
             let text_y = rect_height + popup.text_y_offset(row_index);
-            // Hidden interactive links do not survive native export. Keep their
-            // requested effect incomplete instead of certifying an absent filter.
-            let application = if options.force_menus {
-                label_ctx.write_shadow(
-                    out,
-                    label,
-                    text_x,
-                    text_y,
-                    options.actor_text_style.font_size,
-                    super::text_effect::TextShadowBaseline::MiddleStart,
-                )?
-            } else {
-                None
-            };
-            let filter = application
-                .as_ref()
-                .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
-                .unwrap_or_default();
             let style = actor_typography.terminal_style(
                 "text-anchor: start",
                 format!("text-anchor: start; {text_style}"),
@@ -154,7 +133,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             if let Some(href) = href {
                 let _ = write!(
                     out,
-                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"{filter}><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     href = href.as_serialized_str(),
                     target = target_attr,
                     x = fmt(text_x),
@@ -165,7 +144,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             } else {
                 let _ = write!(
                     out,
-                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"{filter}><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     x = fmt(text_x),
                     y = fmt(text_y),
                     style = escape_attr_display(&style),
@@ -173,14 +152,6 @@ pub(super) fn render_sequence_actor_popup_menus(
                 );
             }
             out.checkpoint()?;
-            label_ctx.record_shadow(
-                application.as_ref(),
-                label,
-                crate::sequence::SequenceTextSurface::ParticipantLabel,
-                0.0,
-            );
-            typography_receipt
-                .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
             row_index += 1;
         }
 

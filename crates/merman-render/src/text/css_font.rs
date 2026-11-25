@@ -1,6 +1,6 @@
 //! Source-owned CSS font decisions.
 
-use crate::diagram_theme::{GenericFontFamily, validate_font_stack_families};
+use super::{GenericFontFamily, validate_font_stack_families};
 use cssparser::Parser;
 use std::collections::BTreeMap;
 

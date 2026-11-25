@@ -1,4 +1,5 @@
-use super::{RenderEvidence, ThemeEvidenceSummary};
+use super::RenderEvidence;
+use merman_render::theme::ThemePortabilityRequirement;
 
 /// Artifact kind covered by one target-owned admission receipt.
 #[cfg(feature = "svg")]
@@ -90,7 +91,6 @@ impl TargetFontSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TargetAdmissionReason {
-    ThemeEvidenceIncomplete,
     HostDependentTextLayout,
     PreparedMathEvidenceInvalid,
     PreparedMathTerminalProofIncomplete,
@@ -99,9 +99,6 @@ pub enum TargetAdmissionReason {
     SvgTerminalUnverified,
     FontResolutionIncomplete,
     SystemOrHostFontDependency,
-    NativeRootCapabilityUnsupported,
-    NativeFilterReceiptMismatch,
-    PdfNativeFilterNotLocalized,
     /// Native filter offsets can differ where a local transform mixes the filter axes.
     NativeDirectionalFilterTransformResidual,
     /// An inferred PDF viewport can clip painted content without a source clipping decision.
@@ -113,7 +110,6 @@ pub enum TargetAdmissionReason {
 #[cfg(feature = "svg")]
 impl TargetAdmissionReason {
     pub const ALL: &'static [Self] = &[
-        Self::ThemeEvidenceIncomplete,
         Self::HostDependentTextLayout,
         Self::PreparedMathEvidenceInvalid,
         Self::PreparedMathTerminalProofIncomplete,
@@ -122,9 +118,6 @@ impl TargetAdmissionReason {
         Self::SvgTerminalUnverified,
         Self::FontResolutionIncomplete,
         Self::SystemOrHostFontDependency,
-        Self::NativeRootCapabilityUnsupported,
-        Self::NativeFilterReceiptMismatch,
-        Self::PdfNativeFilterNotLocalized,
         Self::NativeDirectionalFilterTransformResidual,
         Self::PdfImplicitViewportClippingResidual,
         Self::FallbackCssResidual,
@@ -132,7 +125,6 @@ impl TargetAdmissionReason {
 
     pub const fn id(self) -> &'static str {
         match self {
-            Self::ThemeEvidenceIncomplete => "theme_evidence_incomplete",
             Self::HostDependentTextLayout => "host_dependent_text_layout",
             Self::PreparedMathEvidenceInvalid => "prepared_math_evidence_invalid",
             Self::PreparedMathTerminalProofIncomplete => "prepared_math_terminal_proof_incomplete",
@@ -141,9 +133,6 @@ impl TargetAdmissionReason {
             Self::SvgTerminalUnverified => "svg_terminal_unverified",
             Self::FontResolutionIncomplete => "font_resolution_incomplete",
             Self::SystemOrHostFontDependency => "system_or_host_font_dependency",
-            Self::NativeRootCapabilityUnsupported => "native_root_capability_unsupported",
-            Self::NativeFilterReceiptMismatch => "native_filter_receipt_mismatch",
-            Self::PdfNativeFilterNotLocalized => "pdf_native_filter_not_localized",
             Self::NativeDirectionalFilterTransformResidual => {
                 "native_directional_filter_transform_residual"
             }
@@ -162,7 +151,6 @@ impl TargetAdmissionReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentPortabilityReport {
     family_id: merman_model::family::DiagramFamilyId,
-    theme_evidence: ThemeEvidenceSummary,
     resource_closure_complete: bool,
     prepared_math_evidence: merman_render::__private::PreparedMathEvidenceSummary,
     rejected: bool,
@@ -174,10 +162,6 @@ pub struct DocumentPortabilityReport {
 impl DocumentPortabilityReport {
     pub const fn family_id(&self) -> merman_model::family::DiagramFamilyId {
         self.family_id
-    }
-
-    pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
-        self.theme_evidence
     }
 
     pub const fn resource_closure_complete(&self) -> bool {
@@ -309,25 +293,6 @@ fn classify_target_admission(rejected: bool, host_dependent: bool) -> TargetAdmi
 }
 
 #[cfg(feature = "svg")]
-fn classify_common_document_evidence(
-    theme_evidence: ThemeEvidenceSummary,
-    host_measurements: bool,
-    reasons: &mut Vec<TargetAdmissionReason>,
-) -> (bool, bool) {
-    let mut rejected = false;
-    let mut host_dependent = false;
-    if !theme_evidence.is_satisfied() {
-        rejected = true;
-        reasons.push(TargetAdmissionReason::ThemeEvidenceIncomplete);
-    }
-    if host_measurements {
-        host_dependent = true;
-        reasons.push(TargetAdmissionReason::HostDependentTextLayout);
-    }
-    (rejected, host_dependent)
-}
-
-#[cfg(feature = "svg")]
 pub(super) fn document_portability_report(
     svg: &merman_render::svg::ResvgCompatibleSvg,
     evidence: &RenderEvidence,
@@ -351,7 +316,6 @@ fn portability_report(
     });
     portability_report_from_summary(
         evidence.family_id(),
-        evidence.theme_evidence(),
         host_measurements,
         native_svg,
         terminal_status,
@@ -361,14 +325,15 @@ fn portability_report(
 #[cfg(feature = "svg")]
 fn portability_report_from_summary(
     family_id: merman_model::family::DiagramFamilyId,
-    theme_evidence: ThemeEvidenceSummary,
     host_measurements: bool,
     native_svg: Option<&merman_render::svg::ResvgCompatibleSvg>,
     terminal_status: merman_render::svg::StandaloneSvgTerminalStatus,
 ) -> DocumentPortabilityReport {
     let mut reasons = Vec::new();
-    let (mut rejected, host_dependent) =
-        classify_common_document_evidence(theme_evidence, host_measurements, &mut reasons);
+    let mut rejected = false;
+    if host_measurements {
+        reasons.push(TargetAdmissionReason::HostDependentTextLayout);
+    }
     match terminal_status {
         merman_render::svg::StandaloneSvgTerminalStatus::Unverified => {
             reasons.push(TargetAdmissionReason::SvgTerminalUnverified);
@@ -379,8 +344,12 @@ fn portability_report_from_summary(
         }
         merman_render::svg::StandaloneSvgTerminalStatus::Compatible => {}
     }
+    // Native finalization rejects invalidated evidence for nonempty math before sealing the SVG.
     let prepared_math_evidence = native_svg
         .map(merman_render::__private::prepared_math_evidence)
+        .filter(|evidence| {
+            evidence.expected_occurrence_count() != 0 || evidence.terminal_occurrence_count() != 0
+        })
         .unwrap_or_else(merman_render::__private::PreparedMathEvidenceSummary::not_applicable);
     if !prepared_math_evidence.evidence_valid() {
         rejected = true;
@@ -392,12 +361,11 @@ fn portability_report_from_summary(
     }
     DocumentPortabilityReport {
         family_id,
-        theme_evidence,
         resource_closure_complete: terminal_status
             == merman_render::svg::StandaloneSvgTerminalStatus::Compatible,
         prepared_math_evidence,
         rejected,
-        host_dependent,
+        host_dependent: host_measurements,
         reasons: reasons.into_boxed_slice(),
     }
 }
@@ -438,12 +406,10 @@ pub(super) fn standalone_svg_admission(
 pub(super) fn standalone_svg_admission_from_summary(
     svg: &merman_render::svg::StandaloneSvgArtifact,
     family_id: merman_model::family::DiagramFamilyId,
-    theme_evidence: ThemeEvidenceSummary,
     host_measurements: bool,
 ) -> TargetAdmissionReceipt {
     let document = portability_report_from_summary(
         family_id,
-        theme_evidence,
         host_measurements,
         svg.as_resvg_compatible(),
         svg.terminal_status(),
@@ -518,49 +484,13 @@ fn classify_native_export_fonts(
     (rejected, host_dependent)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf", test))]
-const NATIVE_ROOT_CAPABILITY_WHITELIST: &[merman_render::diagram_theme::ThemeCapability] = &[
-    merman_render::diagram_theme::ThemeCapability::SolidPaint,
-    merman_render::diagram_theme::ThemeCapability::TransparentPaint,
-    merman_render::diagram_theme::ThemeCapability::GradientPaint,
-    merman_render::diagram_theme::ThemeCapability::LayeredCanvas,
-    merman_render::diagram_theme::ThemeCapability::PatternPaint,
-    merman_render::diagram_theme::ThemeCapability::CanvasLayerPlacement,
-    merman_render::diagram_theme::ThemeCapability::BlendMode,
-    merman_render::diagram_theme::ThemeCapability::Opacity,
-];
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf", test))]
-fn native_root_capabilities_are_supported(
-    capabilities: impl IntoIterator<Item = merman_render::diagram_theme::ThemeCapability>,
-) -> bool {
-    capabilities
-        .into_iter()
-        .all(|capability| NATIVE_ROOT_CAPABILITY_WHITELIST.contains(&capability))
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn classify_native_root_capabilities(
-    evidence: &RenderEvidence,
-    reasons: &mut Vec<TargetAdmissionReason>,
-) -> bool {
-    if native_root_capabilities_are_supported(evidence.root_applied_capabilities().iter().copied())
-    {
-        return false;
-    }
-    reasons.push(TargetAdmissionReason::NativeRootCapabilityUnsupported);
-    true
-}
-
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub(super) fn native_raster_admission(
     report: merman_export::RasterExportReport,
-    evidence: &RenderEvidence,
     document: &DocumentPortabilityReport,
 ) -> TargetAdmissionReceipt {
     let mut reasons = Vec::new();
     let (mut rejected, mut host_dependent) = inherit_document_portability(document, &mut reasons);
-    rejected |= classify_native_root_capabilities(evidence, &mut reasons);
     let (fonts_rejected, fonts_host_dependent) =
         classify_native_export_fonts(report.fonts(), &mut reasons);
     rejected |= fonts_rejected;
@@ -572,10 +502,6 @@ pub(super) fn native_raster_admission(
     if report.fallback_css_residual() {
         rejected = true;
         reasons.push(TargetAdmissionReason::FallbackCssResidual);
-    }
-    if report.native_filter_receipt() != evidence.native_filter_receipt() {
-        rejected = true;
-        reasons.push(TargetAdmissionReason::NativeFilterReceiptMismatch);
     }
     let status = classify_target_admission(rejected, host_dependent);
     let artifact_kind = match report.output() {
@@ -594,12 +520,10 @@ pub(super) fn native_raster_admission(
 #[cfg(feature = "pdf")]
 pub(super) fn native_pdf_admission(
     report: merman_export::PdfExportReport,
-    evidence: &RenderEvidence,
     document: &DocumentPortabilityReport,
 ) -> TargetAdmissionReceipt {
     let mut reasons = Vec::new();
     let (mut rejected, mut host_dependent) = inherit_document_portability(document, &mut reasons);
-    rejected |= classify_native_root_capabilities(evidence, &mut reasons);
     let (fonts_rejected, fonts_host_dependent) =
         classify_native_export_fonts(report.fonts(), &mut reasons);
     rejected |= fonts_rejected;
@@ -616,15 +540,6 @@ pub(super) fn native_pdf_admission(
         rejected = true;
         reasons.push(TargetAdmissionReason::FallbackCssResidual);
     }
-    let expected_native_filter = evidence.native_filter_receipt();
-    if report.native_filter_receipt() != expected_native_filter {
-        rejected = true;
-        reasons.push(TargetAdmissionReason::NativeFilterReceiptMismatch);
-    }
-    if expected_native_filter.is_some() && !report.native_filter_fully_localized() {
-        rejected = true;
-        reasons.push(TargetAdmissionReason::PdfNativeFilterNotLocalized);
-    }
     let status = classify_target_admission(rejected, host_dependent);
     TargetAdmissionReceipt::new(
         RenderArtifactKind::Pdf,
@@ -639,9 +554,7 @@ pub(super) fn enforce_portability_requirement(
     evidence: &RenderEvidence,
     receipt: &TargetAdmissionReceipt,
 ) -> Result<(), TargetAdmissionError> {
-    if evidence.portability_requirement()
-        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
-    {
+    if evidence.portability_requirement() == ThemePortabilityRequirement::RequirePortable {
         return enforce_required_portability(receipt);
     }
     Ok(())
@@ -659,40 +572,13 @@ pub(super) fn enforce_required_portability(
 
 #[cfg(test)]
 mod tests {
-    use super::{TargetAdmissionReason, native_root_capabilities_are_supported};
-    use merman_render::diagram_theme::ThemeCapability;
-
-    #[test]
-    fn native_root_capability_whitelist_is_explicit_and_fail_closed() {
-        assert!(native_root_capabilities_are_supported([
-            ThemeCapability::SolidPaint,
-            ThemeCapability::TransparentPaint,
-            ThemeCapability::GradientPaint,
-            ThemeCapability::PatternPaint,
-            ThemeCapability::LayeredCanvas,
-            ThemeCapability::CanvasLayerPlacement,
-            ThemeCapability::BlendMode,
-            ThemeCapability::Opacity,
-        ]));
-        for unsupported in [
-            ThemeCapability::CanvasBleed,
-            ThemeCapability::SemanticRules,
-            ThemeCapability::Shadow,
-            ThemeCapability::SvgFilter,
-        ] {
-            assert!(
-                !native_root_capabilities_are_supported([unsupported]),
-                "native root admission must reject {unsupported} until explicitly qualified"
-            );
-        }
-    }
+    use super::TargetAdmissionReason;
 
     #[test]
     fn target_admission_reason_exposes_the_complete_alpha_catalog() {
         assert_eq!(
             TargetAdmissionReason::ALL,
             &[
-                TargetAdmissionReason::ThemeEvidenceIncomplete,
                 TargetAdmissionReason::HostDependentTextLayout,
                 TargetAdmissionReason::PreparedMathEvidenceInvalid,
                 TargetAdmissionReason::PreparedMathTerminalProofIncomplete,
@@ -701,9 +587,6 @@ mod tests {
                 TargetAdmissionReason::SvgTerminalUnverified,
                 TargetAdmissionReason::FontResolutionIncomplete,
                 TargetAdmissionReason::SystemOrHostFontDependency,
-                TargetAdmissionReason::NativeRootCapabilityUnsupported,
-                TargetAdmissionReason::NativeFilterReceiptMismatch,
-                TargetAdmissionReason::PdfNativeFilterNotLocalized,
                 TargetAdmissionReason::NativeDirectionalFilterTransformResidual,
                 TargetAdmissionReason::PdfImplicitViewportClippingResidual,
                 TargetAdmissionReason::FallbackCssResidual,

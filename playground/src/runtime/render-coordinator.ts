@@ -5,8 +5,8 @@ import {
   type DiagramType,
   type ShoalLayoutFrame,
   type SvgRenderMetadata,
-  type ThemeAppearance,
 } from "@mermanjs/web";
+import type { ThemeAppearance, ThemeCatalog } from "@mermanjs/web";
 
 import type {
   MermanDomainFacade,
@@ -14,6 +14,7 @@ import type {
 } from "./merman-core.ts";
 import {
   freezeRenderOperation,
+  matchesWorkspaceRender,
   previewRenderWithShoalFitWidth,
   previewRenderWithShoalFrame,
   type ConfiguredMermanOperationInput,
@@ -21,7 +22,7 @@ import {
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
-import { inspectThemeRecipe, resolveThemeSelection } from "../lib/theme-appearance.ts";
+import { resolveThemeSelection } from "../lib/theme-appearance.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 import { mermaidExternalRequirementsFor } from "./mermaid-requirements.ts";
 import type {
@@ -269,10 +270,9 @@ export function createRenderCoordinator({
   let active: Promise<void> | null = null;
   let activeRequest: ActiveRequest | null = null;
   let shoalPreview: { readonly diagramType: DiagramType; readonly frame: ShoalLayoutFrame } | null = null;
-  let themeContextCache: {
+  let themeCatalogCache: {
     facade: MermanDomainFacade;
-    recipeJson: string | null;
-    context: ReturnType<typeof previewThemeContext>;
+    catalog: ThemeCatalog | null;
   } | null = null;
 
   const replaceState = (state: RenderCoordinatorState) => {
@@ -308,8 +308,10 @@ export function createRenderCoordinator({
       replaceState(EMPTY_STATE);
       return;
     }
-    if (force || themeContextCache?.facade !== facade || themeContextCache.recipeJson !== workspace.themeRecipeJson) {
-      themeContextCache = { facade, recipeJson: workspace.themeRecipeJson, context: previewThemeContext(facade, workspace) };
+    if ((workspace.themePresetId !== null || workspace.themeDocumentJson !== null) && themeCatalogCache?.facade !== facade) {
+      let catalog: ThemeCatalog | null = null;
+      try { catalog = facade.themeCatalog(); } catch { /* Mermaid parity can render without theme discovery. */ }
+      themeCatalogCache = { facade, catalog };
     }
     const operationInput = freezeScheduledOperationInput({
       asciiEnabled,
@@ -323,7 +325,7 @@ export function createRenderCoordinator({
       viewport: compareEnabled ? renderViewport.viewport : null,
       workspace,
       hostAppearance,
-      ...themeContextCache.context,
+      themeCatalog: themeCatalogCache?.facade === facade ? themeCatalogCache.catalog : null,
     });
     if (
       !force &&
@@ -479,6 +481,7 @@ export function createRenderCoordinator({
     const shoalPreviewWidth = isPositiveCssWidth(input.shoalPreviewWidth) ? input.shoalPreviewWidth : null;
     const identityChanged = currentInput?.documentRevision !== input.documentRevision ||
       currentInput?.facade !== input.facade;
+    const previous = currentInput?.workspace;
     if (identityChanged || currentInput?.shoalPreviewWidth !== shoalPreviewWidth) shoalPreview = null;
     currentInput = { ...input, shoalPreviewWidth };
     if (!enabled) {
@@ -486,7 +489,11 @@ export function createRenderCoordinator({
       renderRequiredWhenEnabled = true;
       return;
     }
-    scheduleCurrent(identityChanged);
+    const { workspace } = input;
+    const themeChanged = previous && previous.code === workspace.code && previous.mermaidConfig === workspace.mermaidConfig &&
+      (previous.themePresetId !== workspace.themePresetId || previous.themeDocumentJson !== workspace.themeDocumentJson ||
+        previous.diagramTheme !== workspace.diagramTheme || (previous.themeAppearance ?? "default") !== (workspace.themeAppearance ?? "default"));
+    scheduleCurrent(identityChanged, Boolean(themeChanged));
   };
 
   const markCompletedInputStale = () => {
@@ -718,21 +725,6 @@ export function createRenderCoordinator({
   };
 }
 
-function previewThemeContext(
-  facade: MermanDomainFacade,
-  workspace: Readonly<WorkspaceSnapshot>,
-): Pick<FreezeRenderOperationInput, "themeCatalog" | "themeRecipeInspection" | "themeInspectionError"> {
-  let themeCatalog: FreezeRenderOperationInput["themeCatalog"];
-  try {
-    themeCatalog = facade.themeCatalog();
-  } catch {
-    themeCatalog = undefined;
-  }
-  if (workspace.themeRecipeJson === null) return { themeCatalog };
-  try { return { themeCatalog, themeRecipeInspection: inspectThemeRecipe(facade, workspace.themeRecipeJson) }; }
-  catch (cause) { return { themeCatalog, themeInspectionError: projectError(cause) }; }
-}
-
 function freezeScheduledOperationInput({
   asciiEnabled,
   compareEnabled,
@@ -743,8 +735,6 @@ function freezeScheduledOperationInput({
   workspace,
   hostAppearance,
   themeCatalog,
-  themeRecipeInspection,
-  themeInspectionError,
 }: FreezeRenderOperationInput): FreezeRenderOperationInput {
   return Object.freeze({
     asciiEnabled,
@@ -756,8 +746,6 @@ function freezeScheduledOperationInput({
     workspace: Object.freeze({ ...workspace }),
     hostAppearance,
     themeCatalog,
-    themeRecipeInspection,
-    themeInspectionError,
   });
 }
 
@@ -783,7 +771,7 @@ function sameScheduledOperationInput(
     left.workspace.mermaidConfig === right.workspace.mermaidConfig &&
     left.workspace.diagramTheme === right.workspace.diagramTheme &&
     left.workspace.themePresetId === right.workspace.themePresetId &&
-    left.workspace.themeRecipeJson === right.workspace.themeRecipeJson &&
+    left.workspace.themeDocumentJson === right.workspace.themeDocumentJson &&
     (left.workspace.themeAppearance ?? "default") === (right.workspace.themeAppearance ?? "default") &&
     sameScheduledAppearance(left, right) &&
     left.workspace.svgPipeline === right.workspace.svgPipeline &&
@@ -795,8 +783,9 @@ function sameScheduledOperationInput(
 
 function sameScheduledAppearance(left: FreezeRenderOperationInput, right: FreezeRenderOperationInput): boolean {
   if (left.workspace.themeAppearance !== "follow") return true;
-  const previous = resolveThemeSelection(left.workspace, left.hostAppearance ?? "light", left.themeCatalog, left.themeRecipeInspection);
-  const next = resolveThemeSelection(right.workspace, right.hostAppearance ?? "light", right.themeCatalog, right.themeRecipeInspection);
+  if (left.hostAppearance === right.hostAppearance) return true;
+  const previous = resolveThemeSelection(left.workspace, left.hostAppearance ?? "light", left.themeCatalog);
+  const next = resolveThemeSelection(right.workspace, right.hostAppearance ?? "light", right.themeCatalog);
   return previous.appearance === next.appearance && previous.mermaidTheme === next.mermaidTheme;
 }
 
@@ -817,7 +806,7 @@ function renderCompare(
   externalRequirements: ReturnType<typeof mermaidExternalRequirementsFor>,
 ): Promise<MermaidRealmRenderResult | null> {
   if (!operation.compareEnabled) return Promise.resolve(null);
-  if (operation.themePresetId === null && operation.themeRecipeJson === null && operation.configurationError) {
+  if (operation.themePresetId === null && operation.themeDocumentJson === null && operation.configurationError) {
     return Promise.resolve({
       status: "failure", stage: "render",
       message: operation.configurationError.summary, detail: operation.configurationError.detail,
@@ -1135,4 +1124,12 @@ export function isCompletedRenderState(
     state.status === "partial" ||
     state.status === "failed"
   );
+}
+
+export function currentWorkspaceRender(
+  state: RenderCoordinatorState,
+  workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance?: ThemeAppearance,
+): CompletedRenderBatch | null {
+  return isCompletedRenderState(state) && matchesWorkspaceRender(state.snapshot.operation, workspace, hostAppearance) ? state : null;
 }

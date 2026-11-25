@@ -111,35 +111,30 @@ and Typst do not acquire a native font context through this API.
 
 ## SVG Output Contract
 
-Successful native output can carry a `rejected` target-admission status in
-`theme_execution_evidence`: this classifies strict portability, not operation success.
-Default best-effort rendering still returns bytes. Reasons such as
-`native_directional_filter_transform_residual`, `fallback_css_residual`, and
-`pdf_implicit_viewport_clipping_residual` identify known fidelity limits. An explicit
-portable-output requirement rejects them. Invalid geometry, resource exhaustion and
-cancellation retain their operation errors.
-
 `render_svg` and the cached engine `render_svg` entry point return SVG bytes. With empty options, that SVG is the Mermaid-parity contract. Hosts that pass SVG to strict SVG renderers or rasterizers should request the export contract with:
 
 ```json
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
-SVG-enabled artifacts can select one compiled diagram theme through top-level `theme`, using
-a `preset` selector, a complete typed `spec`, or a schema-1 `ThemeRecipeV1` document.
-For example, `{"theme":{"preset":"paper-cut"}}` selects Paper Cut.
-The binding compiler maps that value to the same `DiagramThemeSpec` / `ThemePreset` model used by
-Rust and installs the resulting immutable
-`DiagramTheme` on the renderer. Raw Mermaid overrides remain top-level `site_config`, while layout,
-environment, and SVG postprocessing choices retain their independent owners. The removed
-`presentation` and `host_theme` groups are rejected rather than treated as compatibility aliases.
-Theme compilation reports requirements; it does not by itself prove the unfinished cross-family,
-cross-output portability matrix.
+Top-level `theme` selects a preset ID, a v2 theme document, or an object with `preset` or
+`document` and an optional `appearance` and `precedence`. Use `{"theme":"paper-cut"}` to select
+Paper Cut's default appearance. Set `precedence` to `source` to honor a Mermaid theme declared
+in the diagram. In a request overlay, `theme: null` or `theme: "none"` clears the engine's native
+selection. Mermaid configuration stays in `site_config`.
 
-See the [C ABI theme workflow](../merman-ffi/README.md#theme-presets-and-editable-json),
-[UniFFI theme workflow](../merman-uniffi/README.md#theme-presets-and-editable-json), and
-[theme guide](../../docs/rendering/custom-diagram-themes.md) for catalog discovery, editable
-recipe export, customization, and appearance selection.
+The `background` option accepts `transparent`, `#RRGGBB`, or `#RRGGBBAA` for graphical output.
+Use `export_matte` to set an opaque hex color behind PNG, JPEG, or PDF content. It takes
+precedence over `raster.matte` and `pdf.page_paint`. Native themes supply the default palette
+for colored ASCII, which `ascii.theme` can override. Graphical result metadata reports a
+`theme_outcome` with the selected mode, applicable preset and appearance, and notices.
+
+Discover presets and family capabilities through `theme-catalog` metadata. The
+`export-theme-preset` operation takes a raw preset ID and returns its editable v2 JSON document.
+The `resolve-theme` operation takes a JSON object with `document` and optional `appearance` and
+`auto_fix_contrast` fields. Pass `document` as an inline object or as original JSON text to retain
+syntax error locations. The result includes resolved settings and notices or an authoring
+diagnostic with the available source location.
 
 Hosts can enable `drop_native_duplicate_fallbacks` for generated labels tied to native SVG switch
 fallbacks. Independent labels with equal text are preserved.
@@ -150,7 +145,9 @@ Hosts that inline SVG in a browser and want fallback text while retaining the or
 
 `runtime_catalog()` reports one artifact's supported options and binding-payload schemas, named metadata IDs, sorted capability/output/operation/system-adapter IDs, text-measurement providers, registry facts, and resource-to-operation mappings. Consumers validate its flat schema and local relations while tolerating newly introduced stable IDs. Artifact owners must construct that catalog from callable endpoints rather than package names or transport-local booleans. `diagram_family_capabilities()` exposes the one complete pinned Mermaid language catalog: detector, semantic/editor parser, typed render, authoring-header, and config-namespace facts. This catalog is not selected by a build profile. The `analysis` capability is independent from `svg` and `ascii`; slim artifacts can expose ASCII or render output without compiling diagnostics and lint catalog support.
 
-Diagnostics payloads and rich parser-only document facts are independent contracts: diagnostics use schema v1 and facts use schema v3. Other facts versions are rejected at the boundary before the body is decoded. Current facts writers always emit `rename_policy`; schema v3 contains generic semantic facts and source-owned appearance declarations with provenance, without a Flowchart-only rich graph. Successful render metadata carries theme execution evidence v2, including the actual materialized Mermaid palette or null when unavailable. Transport and platform ABI versions are independent from these JSON schema versions.
+Diagnostics payloads use schema v1. Parser-only document facts use schema v3, including
+`rename_policy`, generic semantic facts, and source-owned appearance declarations with
+provenance. Transport and platform ABI versions are independent of these JSON schema versions.
 
 With `svg` enabled, this crate centralizes the host text-measurement result-shape contract. The current transports expose 23 exact operations with contiguous codes `0..22`; operation 18 is `raw-bbox-height`, and operations 19 through 21 are signed direct-text bbox y offsets for ordinary, middle, and hanging baselines. The text-measurement protocol remains independently versioned at 1, while the native C ABI, UniFFI binding API, and browser WASM transport each report their own API version through the runtime catalog.
 

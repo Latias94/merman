@@ -1400,7 +1400,6 @@ pub(crate) enum PreparedFlowchartNodeGeometry {
 pub(crate) struct FlowchartRectangleGeometry {
     pub(crate) shape: kurbo::Rect,
     pub(crate) group: kurbo::Rect,
-    pub(crate) resolved_dimensions: [bool; 2],
 }
 
 impl FlowchartRectangleGeometry {
@@ -1426,11 +1425,7 @@ impl FlowchartRectangleGeometry {
         } else {
             shape.union(label)
         };
-        Self {
-            shape,
-            group,
-            resolved_dimensions: [css_width.is_some(), css_height.is_some()],
-        }
+        Self { shape, group }
     }
 }
 

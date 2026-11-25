@@ -42,7 +42,28 @@ impl<'a> ErConfigView<'a> {
         )
     }
 
-    pub(crate) fn layout_settings_with_resolved_typography(
+    pub(crate) fn layout_settings_with_native_style(
+        &self,
+        direction: &str,
+        font_family_css: Option<&str>,
+        native: Option<&super::ErNativeStyle>,
+        relationship_html_labels: bool,
+    ) -> ErLayoutSettings {
+        let mut settings = self.layout_settings_with_resolved_typography(
+            direction,
+            native
+                .and_then(|style| style.body_family.as_deref())
+                .or(font_family_css),
+            native.and_then(|style| style.font_size),
+            relationship_html_labels,
+        );
+        if let Some(style) = native {
+            style.apply_layout(&mut settings);
+        }
+        settings
+    }
+
+    fn layout_settings_with_resolved_typography(
         &self,
         direction: &str,
         font_family_override: Option<&str>,
@@ -71,6 +92,7 @@ impl<'a> ErConfigView<'a> {
             rank_spacing: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
             label_style,
             attr_style,
+            code_family: None,
             calculation_style: self.calculation_text_style(),
             relationship_label_style,
             relationship_html_labels,
@@ -313,6 +335,7 @@ pub(crate) struct ErLayoutSettings {
     pub(super) rank_spacing: f64,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
+    pub(super) code_family: Option<String>,
     pub(super) calculation_style: TextStyle,
     pub(super) relationship_label_style: TextStyle,
     pub(super) relationship_html_labels: bool,

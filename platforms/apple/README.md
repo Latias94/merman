@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-The `0.11.0` examples use Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. See the [upgrade index](../../docs/release/README.md#merman-0110) for migration from `0.10.0`.
+The current source examples use Options JSON schema `4`, facts schema `3`, and Theme v2. For migration from `0.10.0` to the published `0.11.0` release, see the [upgrade index](../../docs/release/README.md#merman-0110).
 
 > **Binding contract:** Current source uses direct UniFFI binding API `8` and ASCII output schema `4`; published Merman `0.10.0` wrappers retain API `7`. Options JSON remains schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
@@ -51,7 +51,7 @@ Its matching checkout supplies the generated Swift facade and `Package.swift`;
 mixing tags is unsupported. That artifact uses Options JSON schema `2`, omits math and
 binary codecs, and does not provide the complete SwiftPM archives. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) for API
-examples; the current theme examples in this README require a matching `0.11.0` build.
+examples. The Theme v2 examples in this README require artifacts built from the current source.
 
 ## Build The Local Package
 
@@ -221,7 +221,7 @@ let svg = try client.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
-`resourceOptionsJson` emits Options JSON schema `3`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
+`resourceOptionsJson` emits Options JSON schema `4`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
@@ -270,47 +270,37 @@ remain open strings.
 
 ## Diagram Themes
 
-Use `client.themeCatalogJson()` to discover 11 design groups with 14 concrete presets, including
-`paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through schema-3 options:
+Decode `client.themeCatalogJson()` to discover the schema-2 catalog with 13 built-in presets, classic Mermaid IDs, and native theme capability flags by family. Each preset lists its supported appearances, default appearance, and six swatches for the default.
 
 ```swift
-let pieSource = "pie\n\"A\":35\n\"B\":65"
-let themedSvg = try client.renderSvg(
-    source: pieSource,
-    optionsJson: #"{"version":3,"theme":{"preset":"ghibli"}}"#
+let request = MermanOperationRequestV4(
+    operationId: "export-theme-preset", source: "studio", uri: nil,
+    optionsJson: nil, control: nil
 )
+let exported = try client.execute(request: request)
+let themeJson = String(decoding: exported.data, as: UTF8.self)
+let input = try JSONSerialization.data(withJSONObject: ["document": themeJson, "appearance": "dark"])
+let resolution = try client.execute(request: MermanOperationRequestV4(
+    operationId: "resolve-theme", source: String(decoding: input, as: UTF8.self),
+    uri: nil, optionsJson: nil, control: nil
+))
+let checked = try JSONSerialization.jsonObject(with: resolution.data) as? [String: Any]
+let document = try JSONSerialization.jsonObject(with: exported.data)
+let options = try JSONSerialization.data(withJSONObject: [
+    "theme": ["document": document, "appearance": "dark"],
+    "background": "transparent",
+] as [String: Any])
+let rendered = try client.execute(request: MermanOperationRequestV4(
+    operationId: "svg", source: "flowchart LR\nA[Review] --> B[Publish]", uri: nil,
+    optionsJson: String(decoding: options, as: UTF8.self),
+    control: nil
+))
+let metadata = try JSONSerialization.jsonObject(with: Data(rendered.metadata.rawJson.utf8))
 ```
 
-For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
-or supply a complete selection or recipe to replace it.
+`export-theme-preset` takes the raw preset ID and returns editable Theme v2 JSON. In `resolve-theme`, pass the document as an object or as original JSON text. Successful responses contain `resolved` and `notices`. Document errors carry `line`, `column`, `path`, and `message`. Set `auto_fix_contrast` in the request envelope to enable contrast correction. SVG results describe the actual theme in `metadata.rawJson` under `theme_outcome`. [Authoring smoke](examples/smoke/Sources/MermanAppleSmoke/ThemeAuthoring.swift)
 
-The schema-1 theme catalog groups each design's `supported_appearances`, `default_appearance`,
-and `appearances`. Swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
-`concrete_preset_id` belong to each appearance. Use
-`{"theme":{"preset":"editor","appearance":"dark"}}` for an explicit reading mode.
-Resolve Follow-app/editor in Swift; an omitted selector uses the design's default, and an explicit
-unsupported appearance fails. Editor, Gruvbox, and Ayu provide both Light and Dark.
-
-The existing `execute(request:)` path accepts `export-theme-preset-json` with the plain `editor`
-ID and returns the complete `ThemeRecipeV1`, including `design.appearances` and
-`design.default_appearance`. Save that editable document rather than a materialized snapshot.
-Send a schema-1 `materialize-theme-json` request with `action: "inspect"` and `recipe` to inspect
-all modes; `action: "materialize"` adds an optional concrete `appearance` and returns its `spec`.
-Pass the full recipe object with `appearance` in the render options' `theme` selection.
-The [paired authoring example](examples/smoke/Sources/MermanAppleSmoke/ThemeAuthoring.swift)
-shows the exact `MermanOperationRequestV4` calls, complete-pair export, inspection, and rendering.
-The [editable recipe example](examples/smoke/Sources/MermanAppleSmoke/ThemeRecipes.swift) shows
-editing and reuse across clients. Exported `result.data` is complete JSON: save it, edit `design`
-values, and reload it with `JSONSerialization`, retaining `schema_version`, `kind`, and both
-appearances before passing the recipe back to rendering. The Swift records and UniFFI API remain unchanged.
-
-Built-in presets are alpha, with empty public qualification cells. Catalog availability and
-family design scope do not certify the result for every diagram or output target. Flowchart
-glow and shadow effects support the documented shapes in Classic and Neo. Other families retain
-their own look and output restrictions; selecting a preset does not change the look or layout engine.
-Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
-resources in recipes are rejected. See the [theme guide](../../docs/rendering/custom-diagram-themes.md)
-for version-1 recipes, support discovery, and portability policy.
+For rendering, `theme` accepts a preset ID, an inline Theme v2 document, or a selector with `preset` or `document` and optional `appearance` and `precedence`. For a reusable engine, omit `theme` to inherit the selection or pass `"none"` to clear it for one request. Choose classic Mermaid themes with `site_config.theme`. Use `background` to replace the canvas with a color or `"transparent"`. On custom artifacts with PNG, JPEG, or PDF export, use `export_matte` for an opaque export backing color. [Theme v2 schema](../../schemas/theme-v2.schema.json)
 
 ## Text Measurement
 
@@ -327,13 +317,7 @@ git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
 The final command proves that the checked-in UniFFI Swift projection matches the library used to build the XCFramework.
 
-The macOS smoke compares the shared theme catalog and authoring vectors, round-trips every preset recipe in that inventory, and imports complete Cyberpunk and edited Class recipes in fresh processes. It also checks that unsupported Class node widths retain a source-addressed diagnostic and rejected admission. Set `MERMAN_APPLE_THEME_SMOKE_OUTPUT` to retain each run's recipe files, SVGs, and operation metadata under a chosen directory. These checks do not qualify visual output, iOS execution, or the Swift 5.9 compiler floor.
-
-The same smoke checks omitted, cleared, and transparent Class paints against source-owned styles.
-Clear masks the earlier paint but retains an unsupported-route diagnostic; strict portability rejects
-it. A deliberately absent font family remains a legal SVG reference with a fallback family. The
-default artifact rejects embedded font resources before decoding, including at engine construction.
-These checks do not prove that a browser or PDF renderer has the requested font or uses matching metrics.
+The macOS smoke checks the theme catalog, exports Studio, resolves both object and text forms of the document, and checks document-relative diagnostics. It also verifies the selected appearance in SVG metadata and the visible canvas override through both one-shot and reusable clients.
 
 ## Documentation And Releases
 

@@ -9,8 +9,6 @@ mod prepare;
 pub(crate) mod preview_frame;
 #[cfg(feature = "svg")]
 mod svg_pipeline;
-#[cfg(feature = "svg")]
-pub(crate) mod theme_feedback;
 
 pub(crate) use execute::execute_render;
 #[cfg(feature = "rustdoc")]

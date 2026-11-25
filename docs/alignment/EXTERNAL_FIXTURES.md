@@ -40,8 +40,7 @@ preset catalog. Merman does not execute their TypeScript or adopt arbitrary CSS 
 Retain asset, license, and NOTICE bytes, including trailing whitespace, when refreshing a source
 snapshot. Review source identities and hashes together; a new snapshot does not establish production
 font embedding, font API availability, or artifact qualification. Current claims belong to
-[theme coverage](../rendering/diagram-theme-coverage.md),
-[preset qualification](../rendering/preset-qualification.md), and their public API/artifact tests.
+[theme coverage](../rendering/diagram-theme-coverage.md) and the public API and artifact tests.
 Application annotation overlays and arbitrary host element styling remain host-owned.
 
 ## PR 28 Attribution

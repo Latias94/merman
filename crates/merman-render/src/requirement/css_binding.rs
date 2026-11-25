@@ -9,6 +9,7 @@ use super::config::{RequirementConfigView, RequirementLayoutSettings};
 #[derive(Debug)]
 pub(crate) struct RequirementCssBinding {
     pub(crate) common: PreparedCommonCss,
+    pub(crate) native: Option<super::RequirementNativeStyle>,
     pub(crate) layout: RequirementLayoutSettings,
     pub(crate) border_colors: Vec<String>,
     pub(crate) background_colors: Vec<String>,
@@ -16,7 +17,6 @@ pub(crate) struct RequirementCssBinding {
     pub(crate) default_stroke: String,
     pub(crate) node_text_color: String,
     pub(crate) relation_color: String,
-    pub(crate) typed_relation_rule: Option<usize>,
     pub(crate) line_color: String,
     pub(crate) requirement_background: String,
     pub(crate) requirement_border_color: String,
@@ -34,35 +34,22 @@ pub(crate) struct RequirementCssBinding {
 }
 
 impl RequirementCssBinding {
-    pub(super) fn node_text_color_source(config: &Value) -> (&'static str, Option<&str>) {
-        if let Some(color) = config
+    fn node_text_color_source(config: &Value) -> Option<&str> {
+        config
             .pointer("/themeVariables/nodeTextColor")
             .and_then(Value::as_str)
             .filter(|color| !color.is_empty())
-        {
-            ("themeVariables.nodeTextColor", Some(color))
-        } else {
-            (
-                "themeVariables.textColor",
+            .or_else(|| {
                 config
                     .pointer("/themeVariables/textColor")
-                    .and_then(Value::as_str),
-            )
-        }
-    }
-
-    pub(crate) fn palette_slot(&self, color_index: usize) -> Option<usize> {
-        if self.border_colors.is_empty() {
-            return None;
-        }
-        Some(color_index % self.border_colors.len())
+                    .and_then(Value::as_str)
+            })
     }
 
     pub(super) fn resolve(
         config: &Value,
         font_family: Option<&str>,
         font_size_css: Option<&str>,
-        typed_relation_color: Option<(usize, &str)>,
     ) -> Self {
         let common = match font_size_css {
             Some(size) => PreparedCommonCss::with_resolved_typography(
@@ -98,22 +85,19 @@ impl RequirementCssBinding {
                 .as_ref()
                 .is_some_and(|value| !value.is_empty());
         let node_text_color = Self::node_text_color_source(config)
-            .1
             .unwrap_or_else(|| common.text_color())
             .to_owned();
         let neo = crate::config::config_diagram_look(config).is_neo();
         Self {
             common,
+            native: None,
             layout,
             border_colors,
             background_colors,
             default_fill: color("mainBkg", "#ECECFF"),
             default_stroke: color("nodeBorder", "#9370DB"),
             node_text_color,
-            relation_color: typed_relation_color
-                .map(|(_, color)| color.to_owned())
-                .unwrap_or_else(|| option("relationColor", "#333333")),
-            typed_relation_rule: typed_relation_color.map(|(rule, _)| rule),
+            relation_color: option("relationColor", "#333333"),
             line_color: option("lineColor", "#333333"),
             requirement_background: option("requirementBackground", "#ECECFF"),
             requirement_border_color: option(
@@ -185,7 +169,7 @@ mod tests {
                 "#000000",
             ),
         ] {
-            let binding = RequirementCssBinding::resolve(&config, None, None, None);
+            let binding = RequirementCssBinding::resolve(&config, None, None);
             assert_eq!(binding.shadow_flood_color, expected);
         }
     }

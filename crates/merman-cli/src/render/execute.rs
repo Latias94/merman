@@ -21,20 +21,14 @@ pub(crate) fn execute_render(
                 #[cfg(feature = "ascii")]
                 PreparedSingleOutput::Text(text) => {
                     let permit = text.admission.acquire_controlled(&single.control)?;
-                    let request = merman::AsciiRequest {
-                        options: text.options,
-                        resources: text.resources,
-                        viewport: text.viewport,
-                    };
                     let output = text
                         .renderer
-                        .renderer
-                        .render(text.renderer.request(
+                        .render(merman::RenderRequest::new(
                             &single.source,
-                            merman::RenderTarget::Ascii(request),
+                            merman::RenderTarget::Ascii(text.request.clone()),
                             single.control.clone(),
                         ))
-                        .map_err(|error| map_ascii_render_error(error, text.resources))?;
+                        .map_err(|error| map_ascii_render_error(error, text.request.resources))?;
                     let merman::RenderOutput::Ascii(Some(rendered)) = output else {
                         return Err(CliError::NoDiagram);
                     };
@@ -46,50 +40,15 @@ pub(crate) fn execute_render(
                     ExecutedArtifact::text(bytes, permit)
                 }
                 #[cfg(feature = "svg")]
-                PreparedSingleOutput::Graphical {
+                PreparedSingleOutput::Graphical { renderer, .. } => execute_graphical(
                     renderer,
-                    destination,
-                } => {
-                    let mut result = execute_graphical(
-                        renderer,
-                        &single.source,
-                        &single.control,
-                        &context.stderr,
-                        None,
-                        #[cfg(feature = "markdown")]
-                        false,
-                    );
-                    if let Some(path) = &renderer.theme_report {
-                        let report = match &mut result {
-                            Ok(artifact) => artifact
-                                .theme_result
-                                .take()
-                                .expect("theme report requested"),
-                            Err(error) => super::theme_feedback::ThemeResult::failed(
-                                error,
-                                renderer.selected_theme_appearance(),
-                            ),
-                        };
-                        let publication =
-                            report.encode_single(destination.file()).and_then(|bytes| {
-                                context.publication.publish_file_controlled(
-                                    path,
-                                    &bytes,
-                                    &single.publications,
-                                    &single.control,
-                                )
-                            });
-                        if let Err(report_error) = publication {
-                            if let Err(render_error) = result {
-                                crate::diagnostics::DiagnosticSink::new(false, &context.stderr)
-                                    .info(format!("theme report failed: {report_error}"));
-                                return Err(render_error);
-                            }
-                            return Err(report_error);
-                        }
-                    }
-                    result?
-                }
+                    &single.source,
+                    &single.control,
+                    &context.stderr,
+                    None,
+                    #[cfg(feature = "markdown")]
+                    false,
+                )?,
             };
             let destination = match &single.output {
                 #[cfg(feature = "ascii")]
@@ -209,10 +168,11 @@ fn execute_graphical_with_pipeline(
             let mut svg = renderer.svg.clone();
             svg.pipeline = Some(pipeline.clone());
             let target = prepared.output.target(svg);
-            let output =
-                renderer
-                    .renderer
-                    .render(renderer.request(source, target, control.clone()))?;
+            let output = renderer.renderer.render(merman::RenderRequest::new(
+                source,
+                target,
+                control.clone(),
+            ))?;
             #[cfg(feature = "native-fonts")]
             if prepared.font_context.is_some() {
                 crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
@@ -240,8 +200,12 @@ fn execute_graphical_with_pipeline(
             }
             match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
-                    let theme_result =
-                        theme_feedback(prepared, svg.evidence(), svg.admission(), stderr, chart);
+                    crate::theme::report_outcome(
+                        svg.theme_outcome(),
+                        prepared.quiet,
+                        chart,
+                        stderr,
+                    );
                     report_fallback_css_residual(
                         prepared.quiet,
                         svg.admission()
@@ -261,7 +225,6 @@ fn execute_graphical_with_pipeline(
                     let metadata = svg_metadata_for_document(&svg, writes_document);
                     Ok(ExecutedArtifact {
                         bytes: svg.into_bytes(),
-                        theme_result,
                         #[cfg(feature = "layout-shoal")]
                         preview_frame,
                         _permit: Some(permit),
@@ -299,16 +262,14 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
-                    let theme_result = theme_feedback(
-                        prepared,
-                        output.evidence(),
-                        output.admission(),
-                        stderr,
+                    crate::theme::report_outcome(
+                        output.theme_outcome(),
+                        prepared.quiet,
                         chart,
+                        stderr,
                     );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
-                        theme_result,
                         #[cfg(feature = "layout-shoal")]
                         preview_frame: None,
                         _permit: Some(permit),
@@ -347,16 +308,14 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
-                    let theme_result = theme_feedback(
-                        prepared,
-                        output.evidence(),
-                        output.admission(),
-                        stderr,
+                    crate::theme::report_outcome(
+                        output.theme_outcome(),
+                        prepared.quiet,
                         chart,
+                        stderr,
                     );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
-                        theme_result,
                         #[cfg(feature = "layout-shoal")]
                         preview_frame: None,
                         _permit: Some(permit),
@@ -394,16 +353,14 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
-                    let theme_result = theme_feedback(
-                        prepared,
-                        output.evidence(),
-                        output.admission(),
-                        stderr,
+                    crate::theme::report_outcome(
+                        output.theme_outcome(),
+                        prepared.quiet,
                         chart,
+                        stderr,
                     );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
-                        theme_result,
                         #[cfg(feature = "layout-shoal")]
                         preview_frame: None,
                         _permit: Some(permit),
@@ -451,33 +408,6 @@ fn execute_graphical_with_pipeline(
     }
 }
 
-#[cfg(feature = "svg")]
-fn theme_feedback(
-    prepared: &PreparedGraphicalRender,
-    evidence: &merman::RenderEvidence,
-    target: &merman::TargetAdmissionReceipt,
-    stderr: &SharedWriter,
-    chart: Option<u64>,
-) -> Option<super::theme_feedback::ThemeResult> {
-    if prepared.theme_feedback_enabled {
-        super::theme_feedback::observe(
-            prepared.theme_requested,
-            prepared.quiet,
-            evidence,
-            target,
-            stderr,
-            chart,
-        );
-    }
-    prepared.theme_report.as_ref().map(|_| {
-        super::theme_feedback::ThemeResult::completed(
-            evidence,
-            target,
-            prepared.selected_theme_appearance(),
-        )
-    })
-}
-
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
@@ -516,7 +446,6 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
-                theme_result: None,
                 #[cfg(feature = "layout-shoal")]
                 preview_frame: None,
                 bytes: prepared_raster
@@ -552,7 +481,6 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
-                theme_result: None,
                 #[cfg(feature = "layout-shoal")]
                 preview_frame: None,
                 bytes: prepared_raster
@@ -584,7 +512,6 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
-                theme_result: None,
                 #[cfg(feature = "layout-shoal")]
                 preview_frame: None,
                 bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
@@ -674,8 +601,6 @@ fn report_pdf_filter_plan(
 
 pub(crate) struct ExecutedArtifact {
     bytes: Vec<u8>,
-    #[cfg(feature = "svg")]
-    pub(super) theme_result: Option<super::theme_feedback::ThemeResult>,
     #[cfg(feature = "layout-shoal")]
     preview_frame: Option<(std::path::PathBuf, Vec<u8>)>,
     _permit: Option<super::admission::BackendPermit>,
@@ -695,8 +620,6 @@ impl ExecutedArtifact {
     fn text(bytes: Vec<u8>, permit: super::admission::BackendPermit) -> Self {
         Self {
             bytes,
-            #[cfg(feature = "svg")]
-            theme_result: None,
             #[cfg(feature = "layout-shoal")]
             preview_frame: None,
             _permit: Some(permit),

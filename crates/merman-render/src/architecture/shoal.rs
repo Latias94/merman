@@ -1,7 +1,7 @@
 mod align;
 mod measure;
 
-use super::ArchitectureTypographyThemePlan;
+use super::ArchitectureGroupThemePlan;
 use crate::architecture_metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, extend_bounds};
 use crate::config::config_f64;
 use crate::graph_layout::Marker;
@@ -25,6 +25,7 @@ use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureLayoutDirection, ArchitectureNodeKind,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_theme_contract::v2::MarkerStyle;
 use rustc_hash::FxHashMap;
 
 pub(crate) use measure::ArchitectureShoalText;
@@ -36,6 +37,7 @@ pub(crate) struct ArchitectureShoalGeometry {
     pub(crate) groups: Vec<ArchitectureShoalGroup>,
     pub(crate) service_titles: Vec<Option<ArchitectureShoalTitle>>,
     pub(crate) edge_labels: Vec<Option<ArchitectureShoalText>>,
+    pub(crate) edge_stroke_outset: f64,
     _label_storage: PreparedTextRetainedReservation,
 }
 
@@ -208,11 +210,16 @@ fn containing_group(
     }
 }
 
-fn marker(arrow: Option<bool>, size: f64) -> Marker {
+fn marker(arrow: Option<bool>, size: f64, style: MarkerStyle) -> Marker {
     if arrow == Some(true) {
+        let trim = match style {
+            MarkerStyle::Classic | MarkerStyle::Filled => size,
+            MarkerStyle::Stealth => size * 0.72,
+            MarkerStyle::Open => 0.0,
+        };
         Marker {
-            trim: size,
-            depth: 0.0,
+            trim,
+            depth: size - trim,
             width: size,
         }
     } else {
@@ -245,6 +252,7 @@ fn node_index(indices: &FxHashMap<&str, u32>, id: &str) -> Result<u32> {
 pub(crate) fn layout_architecture_shoal(
     model: &ArchitectureDiagramModel,
     config: &PresentationConfig,
+    group_theme: &ArchitectureGroupThemePlan,
     execution: &LayoutExecution<'_>,
 ) -> Result<(ArchitectureDiagramLayout, ArchitectureShoalGeometry)> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
@@ -252,13 +260,15 @@ pub(crate) fn layout_architecture_shoal(
     let g = model.groups.len();
     let m = model.edges.len();
     work.charge_adapter(work.checked_add(work.checked_add(n, g)?, m)?)?;
-    let typography = ArchitectureTypographyThemePlan::resolve(execution.resolved_theme(), config);
+    let typography = group_theme.typography_theme();
+    let native = group_theme.native_style();
     let binding = typography.css_binding();
     let style = typography.svg_text_style();
     let measurer = execution.text_measurer();
     let icon = binding.icon_size_px;
     let arrow = icon / 6.0;
-    let edge_stroke = binding
+    let marker_style = native.map_or(MarkerStyle::Classic, |style| style.marker_style);
+    let edge_stroke_outset = binding
         .edge_width
         .trim()
         .trim_end_matches("px")
@@ -266,10 +276,11 @@ pub(crate) fn layout_architecture_shoal(
         .parse::<f64>()
         .ok()
         .filter(|width| width.is_finite() && *width >= 0.0)
-        .unwrap_or(3.0);
+        .unwrap_or(3.0)
+        / 2.0;
     // The deterministic measurer can supply a neutral middle baseline. Leave half an em for
     // differences in the browser's x-height and keep the visible shaft outside that allowance.
-    let label_clearance = (style.font_size / 2.0 + edge_stroke / 2.0).max(TEXT_CLEARANCE);
+    let label_clearance = (style.font_size / 2.0 + edge_stroke_outset).max(TEXT_CLEARANCE);
     let group_padding = binding.padding_px.max(2.0 * TEXT_CLEARANCE);
     let rank_spacing = (spacing(config, "idealEdgeLengthMultiplier", 1.5) * icon)
         .max(2.0 * arrow + 4.0 * TEXT_CLEARANCE);
@@ -414,8 +425,8 @@ pub(crate) fn layout_architecture_shoal(
             label,
             start_label: None,
             end_label: None,
-            start_marker: marker(edge.lhs_into, arrow),
-            end_marker: marker(edge.rhs_into, arrow),
+            start_marker: marker(edge.lhs_into, arrow, marker_style),
+            end_marker: marker(edge.rhs_into, arrow, marker_style),
         });
     }
 
@@ -427,11 +438,16 @@ pub(crate) fn layout_architecture_shoal(
     for (index, node) in model.nodes.iter().enumerate() {
         work.charge_adapter(1)?;
         let junction = node.node_type == ArchitectureNodeKind::Junction;
-        let radius = if node.icon.is_none() && node.icon_text.as_deref().is_none_or(str::is_empty) {
-            5.0f64.min(icon / 2.0)
-        } else {
-            0.0
-        };
+        let radius = native.map_or_else(
+            || {
+                if node.icon.is_none() && node.icon_text.as_deref().is_none_or(str::is_empty) {
+                    5.0
+                } else {
+                    0.0
+                }
+            },
+            |style| style.radius,
+        );
         // A junction's transparent SVG box positions it. Its visible connections meet at its center.
         let profile = if junction {
             ShapePortProfile::rectangle(0.0, 0.0)
@@ -665,7 +681,7 @@ pub(crate) fn layout_architecture_shoal(
         &graph,
         &solved,
         &profiles,
-        |_| 0.0,
+        |_| native.map_or(0.0, |style| style.group_radius),
         layout.edges.iter().map(|edge| edge.id.as_str()),
         &mut work,
     )?;
@@ -695,6 +711,7 @@ pub(crate) fn layout_architecture_shoal(
             groups,
             service_titles: titles,
             edge_labels,
+            edge_stroke_outset,
             _label_storage: work.reserve_prepared_text_retained_bytes(retained)?,
         },
     ))

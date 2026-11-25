@@ -1,282 +1,141 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { initMerman, WEB_TRANSPORT_API_VERSION } from "../dist/runtime-core.js";
-import {
-  describeThemeSupport,
-  exportThemePreset,
-  materializeTheme,
-  renderSvg,
-  renderSvgResult,
-  renderSvgResultWithTextMeasurer,
-} from "../dist/runtime-render.js";
+import * as web from "../dist/index.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 import { customizeNodeColors } from "../examples/custom-theme.mjs";
+import { webPackages } from "./surface-manifest.mjs";
 
-test("scoped customization preserves bindings and unrelated fields in both recipe kinds", () => {
-  for (const [kind, payload, field] of [
-    ["design", { tokens: { brand: { type: "color", value: "#123456" } }, rules: [] }, "rules"],
-    ["complete_spec", { effects: [], styles: [] }, "styles"],
-  ]) {
-    const original = {
-      schema_version: 1, kind,
-      [kind]: { ...payload, canvas: { base: "#ffffff", bleed: 8, layers: [{ paint: "#eeeeee" }] } },
-    };
-    const before = structuredClone(original);
-    const result = customizeNodeColors(original, {
-      background: "#000000", nodeBorder: "#abcdef", classFill: null,
-    });
-    assert.deepEqual(original, before);
-    const value = result[kind];
-    assert.deepEqual(value.canvas, { ...original[kind].canvas, base: "#000000" });
-    assert.equal(value[field].length, 2);
-    assert.equal(value[field][1].style.fill, null, "explicit clear must survive customization");
-    assert.equal(value[field][0].kind, kind === "design" ? undefined : "rule");
-    value.canvas.base = before[kind].canvas.base;
-    value[field].splice(-2);
-    assert.deepEqual(result, original, "scoped edits must preserve the rest of the authored document");
-  }
-});
+const source = "flowchart LR\nA --> B";
+const studio = { schema_version: 2, id: "studio", appearances: { light: {}, dark: {} } };
 
-test("theme authoring rejects non-finite numbers before they become Clear", async () => {
-  const calls = [];
-  const runtime = bindSurfaceRuntime(
-    async () => ({
-      default: async () => {},
-      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-      materializeTheme(design, options) {
-        calls.push({ design, options });
-        return { schema_version: 1 };
-      },
-      describeThemeSupport(query, options) {
-        calls.push({ query, options });
-        return { schema_version: 1 };
-      },
-    }),
-    { initMerman, materializeTheme, describeThemeSupport },
-  );
-  await runtime.initMerman();
-
-  for (const value of [NaN, Infinity, -Infinity]) {
-    assert.throws(
-      () => runtime.materializeTheme({
-        styles: { text: { opacity: value } },
-      }),
-      { name: "TypeError", message: /theme design contains a non-finite number/ },
-    );
-    assert.throws(
-      () => runtime.describeThemeSupport({
-        schema_version: value,
-        family: "pie",
-        output: "standalone-svg",
-        target: "text",
-        facet: "fill",
-      }),
-      { name: "TypeError", message: /theme support query contains a non-finite number/ },
-    );
-    assert.throws(
-      () => runtime.materializeTheme({
-        styles: { text: { opacity: { toJSON: () => value } } },
-      }),
-      TypeError,
-    );
-  }
-  assert.deepEqual(calls, [], "invalid inputs must not reach the WASM transport");
-
-  for (const opacity of [null, 0, 0.5, 1]) {
-    const design = {
-      styles: { text: { opacity } },
-    };
-    runtime.materializeTheme(design, { theme: "dark" });
-    assert.deepEqual(calls.at(-1), {
-      design: JSON.stringify(design),
-      options: JSON.stringify({ theme: "dark" }),
-    });
-  }
-  const raw = '{}';
-  runtime.materializeTheme(raw);
-  assert.equal(calls.at(-1).design, raw);
-});
-
-
-test("ordinary SVG options reject non-finite numbers while preserving explicit null", async () => {
-  const calls = [];
-  const runtime = bindSurfaceRuntime(
-    async () => ({
-      default: async () => {},
-      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-      renderSvg(source, options) {
-        calls.push({ source, options });
-        return "<svg/>";
-      },
-    }),
-    { initMerman, renderSvg },
-  );
-  await runtime.initMerman();
-
-  for (const value of [NaN, Infinity, -Infinity]) {
-    assert.throws(
-      () => runtime.renderSvg("flowchart LR\nA --> B", {
-        version: 3,
-        site_config: { fixed_today: value },
-      }),
-      { name: "TypeError", message: /options contains a non-finite number/ },
-    );
-  }
-  assert.deepEqual(calls, [], "invalid ordinary options must not reach the WASM transport");
-
-  runtime.renderSvg("flowchart LR\nA --> B", {
-    version: 3,
-    theme: null,
-    site_config: { fixed_today: null },
+async function themeRuntime(exports) {
+  const runtime = bindSurfaceRuntime(async () => ({
+    default: async () => {},
+    transportApiVersion: () => web.WEB_TRANSPORT_API_VERSION,
+    ...exports,
+  }), {
+    initMerman: web.initMerman,
+    exportThemePreset: web.exportThemePreset,
+    resolveTheme: web.resolveTheme,
+    renderSvg: web.renderSvg,
+    renderSvgResult: web.renderSvgResult,
+    renderSvgResultWithTextMeasurer: web.renderSvgResultWithTextMeasurer,
   });
-  assert.deepEqual(calls.at(-1), {
-    source: "flowchart LR\nA --> B",
-    options: JSON.stringify({
-      version: 3,
-      theme: null,
-      site_config: { fixed_today: null },
-    }),
-  });
-});
-
-test("exported recipes survive JSON storage and enter SVG options without unpacking", async () => {
-  const calls = [];
-  const recipe = {
-    schema_version: 1,
-    kind: "complete_spec",
-    complete_spec: { styles: [] },
-  };
-  const runtime = bindSurfaceRuntime(
-    async () => ({
-      default: async () => {},
-      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-      exportThemePreset(presetId, options) {
-        calls.push({ presetId, options });
-        return structuredClone(recipe);
-      },
-      renderSvg(source, options) {
-        calls.push({ source, options });
-        return "<svg/>";
-      },
-    }),
-    { initMerman, exportThemePreset, renderSvg },
-  );
   await runtime.initMerman();
+  return runtime;
+}
 
-  const stored = JSON.stringify(runtime.exportThemePreset("editor-light"));
-  const restored = JSON.parse(stored);
-  runtime.renderSvg("flowchart LR\nA --> B", { theme: restored });
-  assert.deepEqual(calls, [
-    { presetId: "editor-light", options: undefined },
-    {
-      source: "flowchart LR\nA --> B",
-      options: JSON.stringify({ theme: recipe }),
+test("preset export takes an ID and returns a document accepted as SVG options", async () => {
+  const calls = [];
+  const web = await themeRuntime({
+    exportThemePreset(...args) {
+      calls.push(args);
+      return studio;
     },
+    renderSvg(...args) {
+      calls.push(args);
+      return "<svg/>";
+    },
+  });
+  const restored = JSON.parse(JSON.stringify(web.exportThemePreset("studio")));
+  const options = { theme: restored, background: "transparent" };
+  assert.equal(web.renderSvg(source, options), "<svg/>");
+  assert.deepEqual(restored, studio);
+  assert.deepEqual(calls, [["studio"], [source, JSON.stringify(options)]]);
+});
+
+test("theme resolution encodes the options alongside the document and returns Rust's result", async () => {
+  const requests = [];
+  const success = { ok: true, resolved: { appearance: "dark" }, notices: [] };
+  const diagnostic = { ok: false, line: 3, column: 14, path: ".", message: "invalid JSON" };
+  const web = await themeRuntime({
+    resolveTheme(requestJson) {
+      const request = JSON.parse(requestJson);
+      requests.push(request);
+      return typeof request.document === "string" ? diagnostic : success;
+    },
+  });
+  const options = { appearance: "dark", auto_fix_contrast: true };
+  assert.equal(web.resolveTheme(studio, options), success);
+  assert.equal(web.resolveTheme(studio), success);
+  const raw = '{\r\n  "schema_version": 2,\r\n  "extends": ]\r\n}\r\n';
+  assert.equal(web.resolveTheme(raw), diagnostic);
+  assert.equal(web.resolveTheme('{"schema_version":2,"schema_version":2}'), diagnostic);
+  assert.deepEqual(requests, [
+    { document: studio, ...options }, { document: studio }, { document: raw },
+    { document: '{"schema_version":2,"schema_version":2}' },
   ]);
 });
 
-test("paired authoring forwards schema-one actions, explicit selection, and raw JSON unchanged", async () => {
-  const recipe = JSON.parse(readFileSync(new URL(
-    "../../../crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json",
-    import.meta.url,
-  ), "utf8"));
+test("object encoders reject non-finite theme values and keep explicit null site config", async () => {
   const calls = [];
-  const customized = customizeNodeColors(recipe, {
-    background: "#fdf6e3", nodeBorder: "#657b83", classFill: "#eee8d5",
+  const web = await themeRuntime({
+    resolveTheme: (...args) => calls.push(args),
+    renderSvg: (...args) => calls.push(args),
   });
-  assert.deepEqual(customized.design.appearances, recipe.design.appearances);
-  assert.equal(customized.design.default_appearance, "light");
-  assert.equal(customized.design.canvas.base, "#fdf6e3");
-  assert.equal(recipe.design.canvas.base, "#f8fafc", "shared customization must not mutate its source");
-  const runtime = bindSurfaceRuntime(async () => ({
-    default: async () => {},
-    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-    materializeTheme(input, options) {
-      calls.push({ input, options });
-      return { schema_version: 1, supported_appearances: ["light", "dark"] };
-    },
-    exportThemePreset(id) { calls.push({ id }); return structuredClone(recipe); },
-  }), { initMerman, materializeTheme, exportThemePreset });
-  await runtime.initMerman();
-  for (const request of [
-    { schema_version: 1, action: "inspect", recipe },
-    { schema_version: 1, action: "materialize", recipe, appearance: "dark" },
-  ]) {
-    runtime.materializeTheme(request);
-    assert.equal(calls.at(-1).input, JSON.stringify(request));
+  for (const radius of [NaN, Infinity, -Infinity, { toJSON: () => NaN }]) {
+    const document = { schema_version: 2, extends: "studio", form: { radius } };
+    assert.throws(() => web.resolveTheme(document), /theme resolution request contains a non-finite number/);
+    assert.throws(() => web.renderSvg(source, { theme: document }), /options contains a non-finite number/);
   }
-  const raw = '{"schema_version":1,"action":"inspect","recipe":{"kind":"design","kind":"complete_spec"}}';
-  runtime.materializeTheme(raw);
-  assert.equal(calls.at(-1).input, raw, "duplicate-field and provenance admission stays in Rust");
-  const exported = runtime.exportThemePreset("editor");
-  assert.deepEqual(exported.design.appearances, recipe.design.appearances);
-  assert.deepEqual(calls.at(-1), { id: "editor" });
-  assert.throws(
-    () => runtime.materializeTheme({
-      schema_version: 1, action: "materialize",
-      recipe: { ...recipe, design: { ...recipe.design, appearances: {
-        dark: { canvas: { bleed: NaN } }, light: {},
-      } } },
-    }),
-    /non-finite/,
-  );
+  assert.deepEqual(calls, []);
+  const options = { theme: "none", site_config: { fixed_today: null } };
+  web.renderSvg(source, options);
+  assert.deepEqual(calls, [[source, JSON.stringify(options)]]);
 });
 
-
-test("SVG results preserve opaque evidence and forward policy through one execution", async () => {
+test("SVG result facades return the same execution's theme outcome", async () => {
   const calls = [];
-  let evidence = {
-    version: 1,
-    theme_status: "future-theme",
-    target_status: "future-target",
-    diagnostics: [{
-      code: "future-code", subject: "future-subject", target: "future-target",
-      source_document: "future-document", source_paths: ["/styles/3"], generated: false,
-    }],
+  const result = {
+    svg: "<svg/>",
+    metadata: { version: 1, theme_outcome: {
+      mode: "merman_native", preset_id: "studio", appearance: "dark",
+      notices: [{ kind: "contrast_adjusted", foreground: "text.title", color: "#F8FAFC" }],
+    } },
   };
-  const runtime = bindSurfaceRuntime(
-    async () => ({
-      default: async () => {},
-      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-      renderSvgResult(source, options) {
-        calls.push({ source, options });
-        return { svg: "<svg>用户</svg>", metadata: { version: 1, theme_execution_evidence: evidence } };
-      },
-      renderSvgResultWithTextMeasurer(source, options, callback) {
-        calls.push({ source, options, callback });
-        return { svg: "<svg/>", metadata: { version: 1, theme_execution_evidence: evidence } };
-      },
-    }),
-    { initMerman, renderSvgResult, renderSvgResultWithTextMeasurer },
-  );
-  await runtime.initMerman();
-  for (const value of [
-    evidence,
-    { version: 99, future: { target_status: "portable" } },
-    { version: 1, theme_status: "verified", target_status: "future-target", diagnostics: [] },
-  ]) {
-    evidence = value;
-    const result = runtime.renderSvgResult("classDiagram\nclass Account", {
-      environment: { theme_portability: "best-effort" },
-    });
-    assert.deepEqual(result.metadata.theme_execution_evidence, value);
-    const outcome = result.metadata.theme_execution_evidence;
-    assert.equal(outcome.version === 1 && outcome.theme_status === "verified"
-      && outcome.target_status === "portable", false, "unknown evidence must not grant portability");
-  }
-  assert.equal(calls.length, 3, "each result must come from one render operation");
+  const web = await themeRuntime({
+    renderSvgResult(...args) { calls.push(args); return result; },
+    renderSvgResultWithTextMeasurer(...args) { calls.push(args); return result; },
+  });
+  const options = { theme: { preset: "studio", appearance: "dark", precedence: "source" } };
   const callback = () => null;
-  runtime.renderSvgResultWithTextMeasurer("flowchart LR\nA", callback, {
-    environment: { theme_portability: "require-portable" },
+  assert.equal(web.renderSvgResult(source, options), result);
+  assert.equal(web.renderSvgResultWithTextMeasurer(source, callback, options), result);
+  assert.deepEqual(calls, [
+    [source, JSON.stringify(options)], [source, JSON.stringify(options), callback],
+  ]);
+});
+
+test("the full and render packages expose both theme authoring operations", () => {
+  for (const descriptor of webPackages) {
+    const expected = descriptor.id === "full" || descriptor.id === "render";
+    for (const name of ["exportThemePreset", "resolveTheme"]) {
+      assert.equal(typeof web[name], "function");
+      assert.equal(descriptor.runtimeExportNames.includes(name), expected, descriptor.name);
+      assert.equal(descriptor.wasmExportNames.includes(name), expected, descriptor.name);
+    }
+    assert.ok(descriptor.runtimeExportNames.includes("themeCatalog"));
+    assert.ok(descriptor.wasmExportNames.includes("themeCatalog"));
+  }
+});
+
+test("customization keeps other appearances and family overrides intact", () => {
+  const original = {
+    ...studio,
+    roles: { "stroke.border": "#111111" },
+    appearances: { ...studio.appearances, dark: {
+      roles: { canvas: "#121212" }, canvas: { padding_px: 8 },
+    } },
+    overrides: [{ families: ["pie"], form: { chart: { pie_gap_px: 2 } } }],
+  };
+  const before = structuredClone(original);
+  const result = customizeNodeColors(original, "dark", {
+    background: "#142535", nodeBorder: "#FB7185", nodeFill: "#22354D",
   });
-  assert.deepEqual(calls.at(-1), {
-    source: "flowchart LR\nA", callback,
-    options: JSON.stringify({ environment: { theme_portability: "require-portable" } }),
-  });
-  assert.throws(() => runtime.renderSvgResult("classDiagram\nclass Account", {
-    theme: { spec: { typography: { default: { font_size_px: NaN } } } },
-  }), TypeError);
-  assert.equal(calls.length, 4, "invalid input must not reach the result transport");
+  assert.deepEqual(original, before);
+  assert.deepEqual(result, { ...original, appearances: { ...original.appearances, dark: {
+    canvas: { padding_px: 8 },
+    roles: { canvas: "#142535", "stroke.border": "#FB7185", "surface.node": "#22354D" },
+  } } });
 });

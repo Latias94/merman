@@ -5,8 +5,6 @@ pub(crate) struct TimelineSectionCssBinding {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
     pub(crate) c_scale_inv: String,
-    source_scale_present: bool,
-    source_inverse_present: bool,
 }
 
 /// Operation-owned visual inputs, including browser CSS and absent gradient stops.
@@ -15,7 +13,6 @@ pub(crate) struct TimelineCssBinding {
     pub(crate) is_redux_theme: bool,
     pub(crate) is_dark_theme: bool,
     pub(crate) is_color_theme: bool,
-    pub(crate) is_neo: bool,
     pub(crate) use_neo_gradient: bool,
     pub(crate) stroke_width: String,
     pub(crate) font_weight: String,
@@ -31,23 +28,30 @@ pub(crate) struct TimelineCssBinding {
 }
 
 impl TimelineCssBinding {
-    pub(super) fn config_owns_color(
-        config: &merman_model::presentation::PresentationConfig,
-        key: &str,
-    ) -> bool {
-        let path = format!("themeVariables.{key}");
-        config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path)
-    }
-
     pub(crate) fn section_font_weight(&self) -> Option<&str> {
         (self.is_redux_theme && !self.sections.is_empty()).then_some(self.font_weight.as_str())
     }
 
     pub(crate) fn node_text_style(&self, base: &crate::text::TextStyle) -> crate::text::TextStyle {
-        let Some(weight) = self.section_font_weight() else {
+        Self::node_style_for_weight(base, self.section_font_weight())
+    }
+
+    pub(super) fn node_style_for_weight(
+        base: &crate::text::TextStyle,
+        weight: Option<&str>,
+    ) -> crate::text::TextStyle {
+        let Some(weight) = weight else {
             return base.clone();
         };
-        if self.section_font_weight_is_measurable() {
+        let measurable =
+            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
+                .is_some_and(|declaration| {
+                    declaration.inherits_property_value()
+                        || crate::mermaid_style::is_supported_css_font_weight_value(
+                            declaration.value(),
+                        )
+                });
+        if measurable {
             let mut cascade = crate::mermaid_style::TextStyleCascade::new(
                 base,
                 crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
@@ -60,18 +64,6 @@ impl TimelineCssBinding {
                 ..base.clone()
             }
         }
-    }
-
-    pub(crate) fn section_font_weight_is_measurable(&self) -> bool {
-        self.section_font_weight().is_none_or(|weight| {
-            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
-                .is_some_and(|declaration| {
-                    declaration.inherits_property_value()
-                        || crate::mermaid_style::is_supported_css_font_weight_value(
-                            declaration.value(),
-                        )
-                })
-        })
     }
 
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
@@ -99,16 +91,10 @@ impl TimelineCssBinding {
             .map(|index| {
                 let [fill, label, inverse] =
                     crate::svg::render_theme::timeline_default_section_colors(index);
-                let source_fill =
-                    config_string(config, &["themeVariables", &format!("cScale{index}")]);
-                let source_inverse =
-                    config_string(config, &["themeVariables", &format!("cScaleInv{index}")]);
                 TimelineSectionCssBinding {
-                    source_scale_present: source_fill.is_some(),
-                    source_inverse_present: source_inverse.is_some(),
-                    c_scale: source_fill.unwrap_or_else(|| fill.into()),
+                    c_scale: color(&format!("cScale{index}"), fill),
                     c_scale_label: color(&format!("cScaleLabel{index}"), label),
-                    c_scale_inv: source_inverse.unwrap_or_else(|| inverse.into()),
+                    c_scale_inv: color(&format!("cScaleInv{index}"), inverse),
                 }
             })
             .collect();
@@ -118,7 +104,6 @@ impl TimelineCssBinding {
             // Mermaid's Redux section generator selects this branch from the theme name.
             // The independent darkMode input must not change the selected paint source.
             is_dark_theme: theme.contains("dark"),
-            is_neo: crate::config::config_diagram_look(config).is_neo(),
             use_neo_gradient: super::TimelineConfigView::new(config).uses_neo_gradient(),
             stroke_width: css("strokeWidth", "1"),
             font_weight: css("fontWeight", "normal"),
@@ -133,20 +118,6 @@ impl TimelineCssBinding {
             gradient_stops: ["gradientStart", "gradientStop"]
                 .map(|key| config_string(config, &["themeVariables", key])),
         }
-    }
-
-    pub(crate) fn source_scale(&self, slot: usize) -> Option<&str> {
-        let section = self.sections.get(slot)?;
-        section
-            .source_scale_present
-            .then_some(section.c_scale.as_str())
-    }
-
-    pub(crate) fn source_inverse(&self, slot: usize) -> Option<&str> {
-        let section = self.sections.get(slot)?;
-        section
-            .source_inverse_present
-            .then_some(section.c_scale_inv.as_str())
     }
 
     pub(crate) fn section_palette_color(&self, slot: usize) -> Option<&str> {
@@ -257,9 +228,14 @@ mod tests {
         assert_eq!(binding.section_palette_color(2), None);
         assert_eq!(binding.section_palette_color(3), Some("var(--border)"));
         assert_eq!(binding.border_colors, [None, Some("var(--border)".into())]);
-        assert_eq!(binding.source_scale(0), None);
-        assert_eq!(binding.source_inverse(0), None);
-        assert!(!binding.sections[0].c_scale.is_empty());
+        assert_eq!(
+            binding.sections[0].c_scale,
+            "hsl(240, 100%, 76.2745098039%)"
+        );
+        assert_eq!(
+            binding.sections[0].c_scale_inv,
+            "hsl(60, 100%, 86.2745098039%)"
+        );
     }
 
     #[test]

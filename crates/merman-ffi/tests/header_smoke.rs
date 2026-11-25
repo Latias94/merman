@@ -16,7 +16,7 @@ fn header_smoke() {
 #include "merman_resource_contract.h"
 #include <string.h>
 
-#if MERMAN_NATIVE_ABI_VERSION != 3
+#if MERMAN_NATIVE_ABI_VERSION != 4
 #error "unexpected native ABI version"
 #endif
 
@@ -154,7 +154,7 @@ int merman_header_smoke(void) {
 #include "merman_resource_contract.h"
 #include <type_traits>
 
-static_assert(MERMAN_NATIVE_ABI_VERSION == 3u, "unexpected native ABI version");
+static_assert(MERMAN_NATIVE_ABI_VERSION == 4u, "unexpected native ABI version");
 static_assert(MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1u, "unexpected result schema version");
 static_assert(MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5, "unexpected metadata slot");
 static_assert(
@@ -165,7 +165,7 @@ static_assert(
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ==
         offsetof(MermanNativeApi, engine_new_with_services) +
             sizeof(MermanNativeApi::engine_new_with_services),
-    "the ABI 3 minimum prefix must end at the service constructor"
+    "the native ABI minimum prefix must end at the service constructor"
 );
 static_assert(
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE &&

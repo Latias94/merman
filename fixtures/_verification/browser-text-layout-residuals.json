@@ -861,7 +861,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "2276d6f5fc1ffa0920b724fc22c7712dae8c998d7686afa8cd40b2bbc2ff6681",
+      "local_svg_signature_sha256": "34d0dabb5fe0e80c72ab68d166efab81a05e7f1b2a9c256bcdb1b693081e6be2",
       "input_sha256": "497091b33d552075bae534efc0ecedd43ab2c4b816d0a495cb8b9443dd1714b4",
       "upstream_svg_sha256": "85819f7490ecd425f0ecd6c9951fe4cf0bc42aa82a097cb41ffef485d7cbba79"
     },
@@ -1053,7 +1053,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "f53fa5961d28ff1ddd209023d3e01f6cfa5290b200a1d0d3eafd1de89b275150",
+      "local_svg_signature_sha256": "1b80b2b4ea8e9eec61bbdd82c87adfe597814e2881dcea1624001f3ddbf2a8ca",
       "input_sha256": "52e260a3b23e4d9c3f93b41ffa99eba1a37c8a6ac9cb2934b29028ba97645073",
       "upstream_svg_sha256": "84480feaa99204ef41c7efffd43f4395f2a814b170208b79f4c30bdd3d1444a3"
     },

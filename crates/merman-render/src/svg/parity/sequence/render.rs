@@ -3,9 +3,6 @@ use super::SequenceEmitCheckpoints;
 use super::activation::SequenceActivationPlan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
-use super::actor_shapes::{
-    ActorFillCoverage, ActorStrokeCoverage, actor_fill_coverage, actor_stroke_coverage,
-};
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
@@ -15,6 +12,8 @@ use super::interactions::{SequenceInteractionRenderContext, render_sequence_inte
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
 use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
+use kurbo::{Rect, Shape};
+use merman_theme_contract::v2::{Elevation, MarkerStyle};
 use rustc_hash::FxHashMap;
 
 use super::css::write_sequence_css;
@@ -76,6 +75,38 @@ fn write_scoped_sequence_base_defs(
     write_scoped_sequence_defs_fragment(out, MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED, diagram_id)
 }
 
+fn write_native_sequence_defs(
+    out: &mut impl SvgOutput,
+    id: SvgDiagramId<'_>,
+    marker: MarkerStyle,
+) -> Result<()> {
+    let fragment = PINNED_MERMAID_SEQUENCE_BASE_DEFS;
+    let Some((symbols, markers)) = fragment.split_once(r#"<defs><marker id="arrowhead""#) else {
+        return write_scoped_sequence_base_defs(out, id);
+    };
+    let Some((_, remaining)) = markers.split_once("</marker></defs>") else {
+        return write_scoped_sequence_base_defs(out, id);
+    };
+    write_scoped_sequence_defs_fragment(out, symbols, id)?;
+    let (path, attributes) = match marker {
+        MarkerStyle::Classic => ("M -1 0 L 10 5 L 0 10 z", ""),
+        MarkerStyle::Stealth => ("M -1 0 L 10 5 L -1 10 L 2 5 Z", ""),
+        MarkerStyle::Filled => ("M 0 0 L 10 5 L 0 10 Z", ""),
+        MarkerStyle::Open => (
+            "M 0 0 L 10 5 L 0 10",
+            r#" class="merman-sequence-open-arrow""#,
+        ),
+    };
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{}-arrowhead" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="{path}"{attributes}/></marker></defs>"#,
+        escape_attr_display(id)
+    );
+    out.checkpoint()?;
+    write_scoped_sequence_defs_fragment(out, remaining, id)?;
+    write_scoped_sequence_defs_fragment(out, MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED, id)
+}
+
 pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared: &crate::sequence::SequencePreparedArtifact,
     model: &SequenceSvgModel,
@@ -89,78 +120,23 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
     checkpoints.checkpoint()?;
     let layout = prepared.layout();
+    let native = prepared.native();
     let compat = prepared.typography().compat_binding();
 
     let settings =
         SequenceRenderSettings::from_resolved_typography(effective_config, prepared.typography());
-    let mut typography_receipt =
-        crate::sequence::SequenceTypographyThemeReceipt::from_plan(prepared.typography());
-    let note_text_shadow = super::text_effect::SequenceTextShadow::from_prepared(
-        options,
-        crate::sequence::SequenceTypographyRole::Note,
-        prepared.typography().note(),
-        &mut typography_receipt,
-    );
-    let loop_text_shadow = super::text_effect::SequenceTextShadow::from_prepared(
-        options,
-        crate::sequence::SequenceTypographyRole::Loop,
-        prepared.typography().loop_label(),
-        &mut typography_receipt,
-    );
-    let actor_text_shadow = super::text_effect::SequenceTextShadow::from_prepared(
-        options,
-        crate::sequence::SequenceTypographyRole::Actor,
-        prepared.typography().actor(),
-        &mut typography_receipt,
-    );
-    let defer_text_bounds = note_text_shadow.needs_bounds()
-        || loop_text_shadow.needs_bounds()
-        || actor_text_shadow.needs_bounds();
-    let terminal = prepared.terminal_theme();
-    let actor_theme = &terminal.actor;
-    let lifeline_theme = &terminal.lifeline;
-    let message_theme = &terminal.message;
-    let keyword_theme = &terminal.keyword;
-    let frame_theme = &terminal.frame;
-    let note_theme = &terminal.note;
-    let mut actor_receipt = actor_theme.fresh_receipt();
-    let mut lifeline_receipt = lifeline_theme.fresh_receipt();
-    let mut message_receipt = message_theme.fresh_receipt();
-    let mut keyword_receipt = keyword_theme.fresh_receipt();
-    let mut frame_receipt = frame_theme.fresh_receipt();
-    let mut note_receipt = note_theme.fresh_receipt();
+    let stroke_width = native.map(|theme| theme.form.stroke_width as f32);
+    let radius = native.map(|theme| theme.form.radius as f32);
     let actor_rect_style = super::actor_shapes::SequenceActorRectStyle {
-        stroke_width: actor_theme.stroke_width,
-        radius: actor_theme.radius,
+        stroke_width,
+        radius,
     };
-    let actor_fill_overridden = actor_theme.fill_overridden;
-    let actor_stroke_overridden = actor_theme.stroke_overridden;
-    let lifeline_stroke_overridden = lifeline_theme.stroke_overridden;
-    let message_stroke_overridden = message_theme.stroke_overridden;
-    let keyword_fill_overridden = keyword_theme.fill_overridden;
-    let keyword_stroke_overridden = keyword_theme.stroke_overridden;
-    let note_fill_overridden = note_theme.fill_overridden;
-    let note_stroke_overridden = note_theme.stroke_overridden;
-    let note_count = terminal.note_count;
-    let sequence_number_theme = prepared.number_theme();
-    let sequence_number_fill_overridden = sequence_number_theme.fill_overridden();
-    let mut sequence_number_receipt = sequence_number_theme.fresh_receipt();
-    let activation_theme = prepared.activation_theme();
-    let activation_paint = activation_theme.activation_paint(compat);
-    let activation_fill_overridden = activation_paint.fill_overridden;
-    let activation_stroke_overridden = activation_paint.stroke_overridden;
-    // Mermaid's non-mirrored viewport does not include the lifeline tail. An explicit canvas
-    // needs the terminal painted frame; keep the unthemed viewport and line geometry unchanged.
-    let has_root_canvas = options.family.root_theme_plan().is_some_and(|plan| {
-        plan.canvas().has_explicit_base() || !plan.canvas().layers().is_empty()
-    });
-    let mut lifeline_paint = super::actor_effect::SequenceLifelinePaint::new(
-        lifeline_theme.effect.clone(),
-        has_root_canvas || lifeline_theme.typed_stroke_width.is_some(),
-    );
-    let lifeline_effective_stroke_width =
-        super::css::lifeline_effective_stroke_width(lifeline_theme.typed_stroke_width);
-    let mut defer_paint_bounds = defer_text_bounds || lifeline_paint.needs_bounds();
+    // An explicit canvas needs the painted lifeline tail beyond Mermaid's layout viewport.
+    let has_root_canvas =
+        native.is_some() || options.family.session().canvas_background().is_some();
+    let lifeline_stroke_width = super::css::lifeline_effective_stroke_width(stroke_width);
+    let mut lifeline_bounds = None;
+    let defer_paint_bounds = has_root_canvas;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -179,69 +155,46 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         model,
         &nodes_by_id,
         &edges_by_id,
-        message_theme.typed_stroke_width,
-        message_theme.effect.clone(),
-        &mut message_receipt,
-        options,
+        native.map(|theme| theme.form.connector_width as f32),
         settings.right_angles,
         settings.actor_height,
         checkpoints,
     )?;
-    let actor_shadows = super::actor_effect::SequenceActorShadowPlan::prepare(
-        actor_theme.effect.clone(),
+    let actor_paint_bounds = super::actor_effect::builtin_actor_paint_bounds(
         &nodes_by_id,
         model,
         settings.mirror_actors,
         has_root_canvas,
         actor_rect_style,
         compat,
-        &mut actor_receipt,
         options,
     )?;
     let note_paint = super::notes::SequenceNotePaintPlan::prepare(
         model,
         &nodes_by_id,
-        note_theme.stroke_width,
-        note_theme.radius,
-        note_theme.effect.clone(),
-        &mut note_receipt,
+        stroke_width,
+        radius,
         options,
     )?;
-    prepared
-        .expected_effect_applications()
-        .set(actor_shadows.len() + message_paint.len() + note_paint.len());
     let mut activation_plan =
         SequenceActivationPlan::new(&layout.activations, prepared.activation_geometry());
-    let activation_count = layout.activations.len();
-    let mut activation_receipt = activation_theme.fresh_receipt();
-
-    activation_plan.prepare_paint(
-        activation_paint.typed_fill.is_some(),
-        activation_paint.typed_stroke.is_some(),
-        activation_theme.stroke_width,
-        activation_theme.radius,
-        activation_theme.effect.clone(),
-        &mut activation_receipt,
-        options,
-    )?;
-
-    defer_paint_bounds |= frame_theme.effect.is_some()
-        || frame_theme.stroke_width.is_some()
-        || keyword_theme.effect.is_some()
-        || keyword_theme.stroke_width.is_some();
+    activation_plan.prepare_paint(stroke_width, radius, options)?;
     let box_paint_bounds =
         super::frames::builtin_box_paint_bounds(&layout.boxes, compat, checkpoints)?;
     let diagram_id = options.diagram_id_or("merman");
+    let root_viewport = options.root_viewport(crate::DiagramFamilyId::SEQUENCE, diagram_id);
     let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut native_actor_depth_bounds = None;
     let root_document = write_sequence_svg_root_open(
         &mut out,
         layout,
         model,
         diagram_id,
-        actor_theme.stroke_width.map(f64::from).unwrap_or(0.0) / 2.0,
+        &root_viewport,
+        stroke_width.map(f64::from).unwrap_or(0.0) / 2.0,
         &[
             box_paint_bounds.as_ref(),
-            actor_shadows.bounds.as_ref(),
+            actor_paint_bounds.as_ref(),
             message_paint.bounds.as_ref(),
             note_paint.bounds.as_ref(),
             activation_plan.bounds.as_ref(),
@@ -251,16 +204,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
     {
         let actor_ctx = SequenceActorRenderContext {
-            text_shadow: &actor_text_shadow,
             rect_style: actor_rect_style,
-            geometry_receipt: &actor_receipt,
-            shadow_plan: &actor_shadows,
-            shadow_evidence: prepared.effect_evidence(),
             model,
             diagram_id,
             compat,
-            typed_fill: actor_theme.typed_fill.as_deref(),
-            typed_stroke: actor_theme.typed_stroke.as_deref(),
+            native: native.is_some(),
             security_level_loose: sanitize_config.get_str("securityLevel") == Some("loose"),
             nodes_by_id: &nodes_by_id,
             edges_by_id: &edges_by_id,
@@ -272,8 +220,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             measurer,
             actor_text_style: &settings.actor_text_style,
             actor_typography: prepared.typography().actor(),
-            typography_receipt: &typography_receipt,
-            lifeline_effective_stroke_width,
+            lifeline_effective_stroke_width: lifeline_stroke_width,
             checkpoints,
         };
 
@@ -292,12 +239,24 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         )?;
         out.checkpoint()?;
 
-        super::actors::render_sequence_actor_depths(
-            &mut out,
-            &actor_ctx,
-            settings.mirror_actors,
-            options,
-        )?;
+        if let Some(native) = native {
+            for (index, frame) in layout.frames.iter().enumerate() {
+                checkpoints.checkpoint_loop(index)?;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="merman-sequence-frame-surface" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}"/>"#,
+                    fmt(frame.x),
+                    fmt(frame.y),
+                    fmt(frame.width),
+                    fmt(frame.height),
+                    fmt(native.form.container_radius),
+                    native.container,
+                );
+            }
+            out.checkpoint()?;
+            native_actor_depth_bounds =
+                write_native_actor_depths(&mut out, native, &actor_ctx, settings.mirror_actors)?;
+        }
 
         if settings.mirror_actors {
             render_sequence_bottom_actors(&mut out, &actor_ctx)?;
@@ -308,9 +267,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         render_sequence_top_actors_and_lifelines(
             &mut out,
             &actor_ctx,
-            &mut lifeline_receipt,
-            &mut lifeline_paint,
-            options,
+            has_root_canvas.then_some(&mut lifeline_bounds),
         )?;
         out.checkpoint()?;
     }
@@ -321,56 +278,14 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         diagram_id,
         prepared,
     )?;
-    sequence_number_receipt
-        .record_stylesheet_emission(sequence_number_theme.typed_fill().is_some());
-    for surface in crate::sequence::SequenceTextSurface::ALL {
-        let terminal = prepared.typography().terminal_text_style(surface);
-        let typed_fill = (terminal.foreground_provenance
-            == crate::sequence::SequenceTerminalForegroundProvenance::TypedTheme)
-            .then_some(terminal.foreground);
-        typography_receipt.record_stylesheet_emission(surface, terminal.foreground, typed_fill);
-    }
-    keyword_receipt.record_stylesheet_emission(
-        keyword_theme.typed_fill.is_some(),
-        keyword_theme.typed_stroke.is_some(),
-    );
     out.push_str("</style><g/>");
     out.checkpoint()?;
-    prepared.theme_evidence().record_lifeline_emission(
-        crate::sequence::SequenceLifelineThemeEmission::from_terminal_writer(
-            lifeline_theme.typed_stroke.as_deref(),
-            lifeline_theme.typed_stroke_width,
-            lifeline_theme.typed_stroke_width_won,
-            lifeline_theme.selected_property,
-            lifeline_stroke_overridden,
-            lifeline_receipt,
-        ),
-    );
-    let mut actor_fill_emitted = false;
-    let mut actor_fill_unhandled = false;
-    let mut actor_stroke_emitted = false;
-    let mut actor_stroke_unhandled = false;
-    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
-        checkpoints.checkpoint_loop(actor_index)?;
-        let Some(actor) = model.actors.get(actor_id) else {
-            continue;
-        };
-        let coverage = actor_fill_coverage(actor);
-        match coverage {
-            ActorFillCoverage::TypedCss => actor_fill_emitted = true,
-            ActorFillCoverage::Unhandled => actor_fill_unhandled = true,
-        }
-        match actor_stroke_coverage(actor) {
-            ActorStrokeCoverage::TypedCss => actor_stroke_emitted = true,
-            ActorStrokeCoverage::Unhandled => actor_stroke_unhandled = true,
-        }
-    }
-    actor_fill_emitted &= actor_theme.typed_fill.is_some();
-    actor_fill_unhandled &= actor_theme.typed_fill.is_some();
-    actor_stroke_emitted &= actor_theme.typed_stroke.is_some();
-    actor_stroke_unhandled &= actor_theme.typed_stroke.is_some();
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
-    write_scoped_sequence_base_defs(&mut out, diagram_id)?;
+    if let Some(native) = native {
+        write_native_sequence_defs(&mut out, diagram_id, native.form.marker_style)?;
+    } else {
+        write_scoped_sequence_base_defs(&mut out, diagram_id)?;
+    }
     if compat.is_neo {
         let flood_color = compat.neo_flood_color;
         let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
@@ -384,16 +299,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let actor_labels = super::actor_shapes::ActorLabelContext {
         compat,
         diagram_id,
-        typed_fill: actor_theme.typed_fill.as_deref(),
-        typed_stroke: actor_theme.typed_stroke.as_deref(),
-        translate_y: 0.0,
-        shadow: &actor_text_shadow,
-        shadow_evidence: prepared.effect_evidence(),
+        native: native.is_some(),
         wrap_width_px: settings.actor_wrap_width,
         measurer,
         style: &settings.actor_text_style,
         typography: prepared.typography().actor(),
-        typography_receipt: &typography_receipt,
         math_sidecar: prepared.math_sidecar(),
         actor_label_footprints: prepared.actor_label_footprints(),
         actor_index: None,
@@ -408,33 +318,14 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         options.work_meter(),
     )?;
 
-    if frame_theme.typed_stroke.is_some() {
-        frame_receipt.record_stylesheet_emission(false, true);
-    }
-    let frame_paint = super::control_paint::SequenceControlPaint::new(
-        &frame_receipt,
-        frame_theme.effect.clone(),
-        frame_theme.stroke_width,
-        crate::diagram_theme::ThemeTarget::Loop,
-        options,
-    );
-    let keyword_paint = super::control_paint::SequenceControlPaint::new(
-        &keyword_receipt,
-        keyword_theme.effect.clone(),
-        keyword_theme.stroke_width,
-        crate::diagram_theme::ThemeTarget::LoopLabelBackground,
-        options,
-    );
+    let frame_paint = super::control_paint::SequenceControlPaint::new(stroke_width, false);
+    let keyword_paint = super::control_paint::SequenceControlPaint::new(stroke_width, true);
     let interaction_ctx = SequenceInteractionRenderContext {
-        wrapped_note_text: prepared.wrapped_note_text(),
         sanitize_config,
         compat,
         frame_paint: &frame_paint,
         keyword_paint: &keyword_paint,
-        note_text_shadow: &note_text_shadow,
-        loop_text_shadow: &loop_text_shadow,
         note_paint: &note_paint,
-        shadow_evidence: prepared.effect_evidence(),
         model,
         block_widths_by_id: &block_widths_by_id,
         frames: &layout.frames,
@@ -445,49 +336,17 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         typography: prepared.typography(),
         block_label_box_metrics: prepared.block_label_box_metrics(),
         measurer,
-        typography_receipt: &typography_receipt,
         checkpoints,
     };
-    render_sequence_interaction_overlays(
-        &mut out,
-        &interaction_ctx,
-        &activation_plan,
-        &mut note_receipt,
-        &mut activation_receipt,
-    )?;
+    render_sequence_interaction_overlays(&mut out, &interaction_ctx, &activation_plan)?;
     out.checkpoint()?;
-    prepared.theme_evidence().record_note_emission(
-        crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
-            note_count,
-            note_theme.typed_fill.as_deref(),
-            note_fill_overridden,
-            note_theme.typed_stroke.as_deref(),
-            note_stroke_overridden,
-            note_receipt,
-        ),
-    );
-    prepared.theme_evidence().record_activation_emission(
-        crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
-            activation_count,
-            activation_paint.typed_fill,
-            activation_fill_overridden,
-            activation_paint.typed_stroke,
-            activation_stroke_overridden,
-            activation_receipt,
-        ),
-    );
 
     let actor_ctx = SequenceActorRenderContext {
-        text_shadow: &actor_text_shadow,
         rect_style: actor_rect_style,
-        geometry_receipt: &actor_receipt,
-        shadow_plan: &actor_shadows,
-        shadow_evidence: prepared.effect_evidence(),
         model,
         diagram_id,
         compat,
-        typed_fill: actor_theme.typed_fill.as_deref(),
-        typed_stroke: actor_theme.typed_stroke.as_deref(),
+        native: native.is_some(),
         security_level_loose: sanitize_config.get_str("securityLevel") == Some("loose"),
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
@@ -499,8 +358,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         measurer,
         actor_text_style: &settings.actor_text_style,
         actor_typography: prepared.typography().actor(),
-        typography_receipt: &typography_receipt,
-        lifeline_effective_stroke_width,
+        lifeline_effective_stroke_width: lifeline_stroke_width,
         checkpoints,
     };
 
@@ -510,8 +368,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let message_ctx = SequenceMessageRenderContext {
         sanitize_config,
         model,
-        paint_plan: &message_paint,
-        shadow_evidence: prepared.effect_evidence(),
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         math_sidecar: prepared.math_sidecar(),
@@ -525,45 +381,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         right_angles: settings.right_angles,
         message_text_style: &settings.message_text_style,
         message_typography: prepared.typography().message(),
-        typography_receipt: &typography_receipt,
         checkpoints,
     };
-    render_sequence_messages(
-        &mut out,
-        &message_ctx,
-        &mut message_receipt,
-        &mut sequence_number_receipt,
-    )?;
-    prepared.theme_evidence().record_message_emission(
-        crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
-            message_theme.typed_stroke.as_deref(),
-            message_theme.typed_stroke_width_won,
-            message_stroke_overridden,
-            message_theme.selected_property,
-            message_receipt,
-        ),
-    );
-    prepared.theme_evidence().record_sequence_number_emission(
-        crate::sequence::SequenceNumberLabelThemeEmission::from_terminal_writer(
-            sequence_number_fill_overridden,
-            sequence_number_receipt,
-        ),
-    );
+    render_sequence_messages(&mut out, &message_ctx)?;
 
     if settings.mirror_actors {
         render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
     }
-
-    prepared.theme_evidence().record_actor_emission(
-        model.actor_order.len(),
-        actor_fill_emitted,
-        actor_fill_unhandled,
-        actor_fill_overridden,
-        actor_stroke_emitted,
-        actor_stroke_unhandled,
-        actor_stroke_overridden,
-        actor_receipt,
-    );
 
     render_sequence_actor_popup_menus(
         &mut out,
@@ -589,88 +413,99 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             x = fmt(title.x),
             y = fmt(title.y),
         );
-        let fill = prepared.theme_evidence().title_fill_css();
-        if let Some(fill) = fill {
-            let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
+        if let Some(native) = native {
+            let _ = write!(&mut out, r#" fill="{}""#, native.title);
+        }
+        if let Some(style) = prepared.typography().native_title_css() {
+            let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
         }
         let _ = write!(&mut out, ">{}</text>", escape_xml_display(&title.text));
         out.checkpoint()?;
-        if !prepared
-            .theme_evidence()
-            .record_title_emission(&title.text, fill)
-        {
-            return Err(crate::Error::InvalidModel {
-                message: "Sequence title paint did not match the terminal SVG".to_owned(),
-            });
-        }
-        if !title.text.trim().is_empty() {
-            typography_receipt.record_inherited_text();
-        }
     }
 
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
     let root_document = if defer_paint_bounds {
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
-            .finish_document(
-                &mut out,
-                root_document,
-                root_svg::RootViewportSpec::responsive(super::root::sequence_root_bounds(
-                    layout,
-                    actor_theme.stroke_width.map(f64::from).unwrap_or(0.0) / 2.0,
-                    &[
-                        box_paint_bounds.as_ref(),
-                        actor_shadows.bounds.as_ref(),
-                        message_paint.bounds.as_ref(),
-                        note_paint.bounds.as_ref(),
-                        activation_plan.bounds.as_ref(),
-                        note_text_shadow.bounds.borrow().as_ref(),
-                        loop_text_shadow.bounds.borrow().as_ref(),
-                        actor_text_shadow.bounds.borrow().as_ref(),
-                        lifeline_paint.bounds.as_ref(),
-                        frame_paint.bounds.borrow().as_ref(),
-                        keyword_paint.bounds.borrow().as_ref(),
-                    ],
-                )),
-            )?
+        root_viewport.finish_document(
+            &mut out,
+            root_document,
+            root_svg::RootViewportSpec::responsive(super::root::sequence_root_bounds(
+                layout,
+                stroke_width.map(f64::from).unwrap_or(0.0) / 2.0,
+                &[
+                    box_paint_bounds.as_ref(),
+                    actor_paint_bounds.as_ref(),
+                    native_actor_depth_bounds.as_ref(),
+                    message_paint.bounds.as_ref(),
+                    note_paint.bounds.as_ref(),
+                    activation_plan.bounds.as_ref(),
+                    lifeline_bounds.as_ref(),
+                    frame_paint.bounds.borrow().as_ref(),
+                    keyword_paint.bounds.borrow().as_ref(),
+                ],
+            )),
+        )?
     } else {
         root_document
     };
-    prepared.expected_effect_applications().set(
-        actor_shadows.len()
-            + message_paint.len()
-            + note_paint.len()
-            + activation_plan.effect_count()
-            + lifeline_paint.emitted_count()
-            + frame_paint.len()
-            + keyword_paint.len()
-            + note_text_shadow.len()
-            + loop_text_shadow.len()
-            + actor_text_shadow.len(),
-    );
+    root_document.complete(out.finish()?)
+}
 
-    prepared.theme_evidence().record_control_emission(
-        crate::diagram_theme::ThemeTarget::LoopLabelBackground,
-        crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
-            keyword_fill_overridden,
-            keyword_stroke_overridden,
-            keyword_receipt,
-        ),
-    );
-    prepared.theme_evidence().record_control_emission(
-        crate::diagram_theme::ThemeTarget::Loop,
-        crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
-            false,
-            keyword_stroke_overridden,
-            frame_receipt,
-        ),
-    );
-    let svg = out.finish()?;
-    prepared
-        .theme_evidence()
-        .record_typography_emission(typography_receipt);
-    let rooted = root_document.complete(svg)?;
-    Ok(rooted)
+fn write_native_actor_depths(
+    out: &mut impl SvgOutput,
+    native: &crate::sequence::SequenceNativeStyle,
+    ctx: &SequenceActorRenderContext<'_>,
+    mirror: bool,
+) -> Result<Option<Bounds>> {
+    if matches!(native.elevation, Elevation::Flat) {
+        return Ok(None);
+    }
+    let mut bounds: Option<Rect> = None;
+    for (index, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(index)?;
+        if !ctx
+            .model
+            .actors
+            .get(actor_id)
+            .is_some_and(super::actor_shapes::actor_rect_geometry_supported)
+        {
+            continue;
+        }
+        let placements = if mirror {
+            &["top", "bottom"][..]
+        } else {
+            &["top"][..]
+        };
+        for placement in placements {
+            let id = format!("actor-{placement}-{actor_id}");
+            let Some(node) = ctx.nodes_by_id.get(id.as_str()) else {
+                continue;
+            };
+            let (x, y) = super::geometry::node_left_top(node);
+            let surface = Rect::from_origin_size((x, y), (node.width, node.height));
+            let silhouette = surface.to_rounded_rect(native.form.radius).to_path(0.1);
+            let scoped = format!(
+                "{}-actor-{index}-{placement}",
+                ctx.diagram_id.semantic_str()
+            );
+            let _ = crate::theme::elevation_svg::write_depth(
+                out,
+                &native.elevation,
+                &scoped,
+                &silhouette,
+                (0.0, 0.0),
+            );
+            out.checkpoint()?;
+            let depth = crate::theme::elevation_svg::bounds(&native.elevation, surface);
+            bounds = Some(bounds.map_or(depth, |bounds| bounds.union(depth)));
+        }
+    }
+    Ok(bounds.map(|bounds| Bounds {
+        min_x: bounds.x0,
+        min_y: bounds.y0,
+        max_x: bounds.x1,
+        max_y: bounds.y1,
+    }))
 }
 
 #[cfg(test)]

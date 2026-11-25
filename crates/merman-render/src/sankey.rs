@@ -61,10 +61,7 @@ mod theme;
 
 pub(crate) use config::SankeyConfigView;
 use config::{NodeAlign, SankeyLayoutSettings};
-pub(crate) use theme::{
-    SankeyLabelSurface, SankeyLinkPaint, SankeyNodePalettePlan, SankeyNodePaletteReceipt,
-    SankeyTypographyCssEmission, SankeyTypographyThemePlan,
-};
+pub(crate) use theme::{SankeyLabelSurface, SankeyLinkPaint, SankeyNodePalette, SankeyStyle};
 
 #[derive(Debug, Clone)]
 struct Node {

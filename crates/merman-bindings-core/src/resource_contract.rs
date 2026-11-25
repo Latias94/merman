@@ -297,7 +297,7 @@ impl BindingResourceScope {
                     || input == Some(merman::model::resources::InputResourceLimitId::MaxSourceBytes)
             }
             Self::Model => input.is_some(),
-            Self::ThemeAuthoring => is_theme_resource_limit(stable_id),
+            Self::ThemeAuthoring => false,
             Self::Ascii => input.is_some() || ascii,
             Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
             Self::EdgeGeometry => {
@@ -342,18 +342,6 @@ impl BindingResourceScope {
             Self::Jpeg => "JPEG export",
             Self::Pdf => "PDF export",
         }
-    }
-}
-
-fn is_theme_resource_limit(stable_id: &str) -> bool {
-    #[cfg(feature = "svg")]
-    {
-        merman::svg::ThemeResourceLimitId::from_stable_id(stable_id).is_some()
-    }
-    #[cfg(not(feature = "svg"))]
-    {
-        let _ = stable_id;
-        false
     }
 }
 

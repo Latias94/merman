@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_f64_css_px, config_string};
+use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::text::TextStyle;
 use serde_json::Value;
 
@@ -7,7 +7,6 @@ const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 const DEFAULT_USE_MAX_WIDTH: bool = false;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
-pub(crate) const MAX_THEME_COLOR_LIMIT: usize = 64;
 
 #[derive(Debug)]
 pub(super) struct TimelineFontSize {
@@ -60,16 +59,18 @@ impl<'a> TimelineConfigView<'a> {
             && self.effective_config.get("theme").and_then(Value::as_str) != Some("neutral")
     }
 
-    pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
-        let text_style = self.text_style();
-        let node_text_style =
-            super::TimelineCssBinding::resolve(self.effective_config).node_text_style(&text_style);
+    pub(super) fn layout_settings_for(
+        &self,
+        text_style: TextStyle,
+        node_text_style: TextStyle,
+        title_style: Option<TextStyle>,
+        layout_font_size: f64,
+    ) -> TimelineLayoutSettings {
         TimelineLayoutSettings {
-            text_style: text_style.clone(),
+            text_style,
             node_text_style,
-            layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
-                .unwrap_or(text_style.font_size)
-                .max(0.0),
+            title_style,
+            layout_font_size,
             theme_color_limit: timeline_theme_color_limit(self.effective_config),
             is_neo: crate::config::config_diagram_look(self.effective_config).is_neo(),
             left_margin: config_f64(self.timeline_config, &["leftMargin"])
@@ -85,21 +86,32 @@ impl<'a> TimelineConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
+        self.layout_settings_with_resolved_typography(None, None)
+    }
+
+    #[cfg(test)]
     pub(crate) fn layout_settings_with_resolved_typography(
         &self,
         resolved_font_family_css: Option<&str>,
         resolved_font_size_px: Option<f64>,
     ) -> TimelineLayoutSettings {
-        let mut settings = self.layout_settings();
+        let mut text_style = self.text_style();
+        let layout_font_size = self.root_font_size_px().unwrap_or(text_style.font_size);
         if let Some(font_family_css) = resolved_font_family_css {
-            settings.text_style.font_family = Some(font_family_css.to_owned());
-            settings.node_text_style.font_family = Some(font_family_css.to_owned());
+            text_style.font_family = Some(font_family_css.to_owned());
         }
         if let Some(font_size_px) = resolved_font_size_px {
-            settings.text_style.font_size = font_size_px.max(0.0);
-            settings.node_text_style.font_size = font_size_px.max(0.0);
+            text_style.font_size = font_size_px.max(0.0);
         }
-        settings
+        let node_text_style =
+            super::TimelineCssBinding::resolve(self.effective_config).node_text_style(&text_style);
+        self.layout_settings_for(text_style, node_text_style, None, layout_font_size)
+    }
+
+    pub(super) fn root_font_size_px(&self) -> Option<f64> {
+        config_f64_css_px(self.effective_config, &["fontSize"]).map(|size| size.max(0.0))
     }
 
     pub(super) fn configured_font_size(&self) -> Option<TimelineFontSize> {
@@ -143,6 +155,7 @@ impl<'a> TimelineConfigView<'a> {
             .unwrap_or(DEFAULT_FONT_SIZE)
     }
 
+    #[cfg(test)]
     fn text_style(&self) -> TextStyle {
         TextStyle {
             font_family: self.font_family(),
@@ -152,9 +165,10 @@ impl<'a> TimelineConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     fn font_family(&self) -> Option<String> {
-        config_string(self.effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string(self.effective_config, &["fontFamily"]))
+        crate::config::config_string(self.effective_config, &["themeVariables", "fontFamily"])
+            .or_else(|| crate::config::config_string(self.effective_config, &["fontFamily"]))
             .map(|s| s.trim().trim_end_matches(';').trim().to_string())
             .filter(|s| !s.is_empty())
     }
@@ -165,6 +179,7 @@ pub(crate) struct TimelineLayoutSettings {
     // getVirtualNodeHeight() has no section class; drawNode() attaches it before wrap()/getBBox().
     pub(crate) text_style: TextStyle,
     pub(crate) node_text_style: TextStyle,
+    pub(crate) title_style: Option<TextStyle>,
     pub(crate) layout_font_size: f64,
     pub(crate) theme_color_limit: usize,
     pub(crate) is_neo: bool,
@@ -172,6 +187,17 @@ pub(crate) struct TimelineLayoutSettings {
     pub(crate) disable_multicolor: bool,
     pub(crate) viewbox_padding: f64,
     pub(crate) use_max_width: bool,
+}
+
+impl TimelineLayoutSettings {
+    pub(crate) fn title_text_style(&self) -> TextStyle {
+        self.title_style.clone().unwrap_or_else(|| TextStyle {
+            font_family: self.text_style.font_family.clone(),
+            font_size: self.text_style.font_size * 1.9375,
+            font_weight: Some("bold".into()),
+            font_style: None,
+        })
+    }
 }
 
 #[cfg(test)]

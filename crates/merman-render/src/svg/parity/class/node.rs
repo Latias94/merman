@@ -12,8 +12,8 @@ use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
-    class_node_paint_style, class_svg_label_rect, render_class_html_label,
-    wrap_class_svg_text_like_mermaid, write_class_svg_text_markdown_with_style,
+    class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
+    write_class_svg_text_markdown_with_style,
 };
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
@@ -62,6 +62,7 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub radius: Option<f64>,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
 }
@@ -120,7 +121,6 @@ pub(super) struct ClassSvgNodeLabelRun {
 
 pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub label_style: &'a str,
-    pub inherited_fill: Option<&'a str>,
     pub translate_y: f64,
     pub width: f64,
     pub height: f64,
@@ -144,7 +144,6 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub hide_empty_members_box: bool,
     pub node_stroke_style_attr: &'a str,
     pub node_label_style_attr: &'a str,
-    pub node_label_fill: Option<&'a str>,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -153,6 +152,8 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
+    pub native: Option<&'a crate::class::ClassNativeStyle>,
+    pub paint_heading: bool,
 }
 
 pub(super) struct ClassSvgNodeBodyContext<'a> {
@@ -171,6 +172,8 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub look: &'a str,
     pub use_gradient: bool,
     pub timing: RenderTiming,
+    pub native: Option<&'a crate::class::ClassNativeStyle>,
+    pub paint_heading: bool,
 }
 
 fn write_class_color_slot(
@@ -291,6 +294,37 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
     );
     let hand_drawn = ctx.look == "handDrawn";
     out.push_str(r#"<g class="basic label-container outer-path">"#);
+    if let Some(radius) = ctx.radius.filter(|_| !hand_drawn) {
+        let _ = write!(
+            out,
+            r#"<rect class="class-native-box" x="{}" y="{}" width="{}" height="{}" rx="{}" style="fill:{};stroke:{};stroke-width:{};{}"/></g>"#,
+            fmt(left),
+            fmt(top),
+            fmt(w),
+            fmt(h),
+            fmt(radius),
+            escape_attr_display(ctx.node_fill),
+            escape_attr_display(ctx.node_stroke),
+            escape_attr_display(ctx.node_stroke_width),
+            escape_attr_display(ctx.node_fill_style_attr),
+        );
+        include_xywh(
+            content_bounds,
+            position.node_bounds_tx + left,
+            position.node_bounds_ty + top,
+            w,
+            h,
+        );
+        return ClassNodeBasicContainerResult {
+            geometry: ClassNodeBoxGeometry {
+                w,
+                h,
+                left,
+                rough_seed,
+            },
+            stats,
+        };
+    }
     if !hand_drawn {
         let _ = write!(
             out,
@@ -376,6 +410,45 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
         },
         stats,
     }
+}
+
+fn write_class_native_heading(
+    out: &mut impl SvgOutput,
+    geometry: &ClassNodeBoxGeometry,
+    bottom: f64,
+    native: &crate::class::ClassNativeStyle,
+    stroke_width: &str,
+) {
+    let inset = stroke_width.parse::<f64>().unwrap_or(1.0).max(0.0) / 2.0;
+    let left = geometry.left + inset;
+    let right = geometry.left + geometry.w - inset;
+    let top = -geometry.h / 2.0 + inset;
+    let bottom = bottom.min(geometry.h / 2.0 - inset);
+    if right <= left || bottom <= top {
+        return;
+    }
+    let radius = (native.radius - inset)
+        .max(0.0)
+        .min((right - left) / 2.0)
+        .min(bottom - top);
+    let _ = write!(
+        out,
+        r#"<path class="class-native-header" d="M{} {} Q{} {} {} {} H{} Q{} {} {} {} V{} H{} Z" style="fill:{};stroke:none"/>"#,
+        fmt(left),
+        fmt(top + radius),
+        fmt(left),
+        fmt(top),
+        fmt(left + radius),
+        fmt(top),
+        fmt(right - radius),
+        fmt(right),
+        fmt(top),
+        fmt(right),
+        fmt(top + radius),
+        fmt(bottom),
+        fmt(left),
+        escape_attr_display(&native.emphasis),
+    );
 }
 
 pub(super) fn render_class_node_dividers<O: SvgOutput>(
@@ -496,11 +569,13 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
     );
     let title_metrics = prepared_html.map_or_else(
         || {
-            let style = crate::class::class_html_node_text_style(
-                ctx.text_style,
-                "font-weight:bolder",
-                ctx.node_label_style_attr,
-            );
+            let (base, weight) = ctx
+                .native
+                .map_or((ctx.text_style, "font-weight:bolder"), |native| {
+                    (&native.title_style, "")
+                });
+            let style =
+                crate::class::class_html_node_text_style(base, weight, ctx.node_label_style_attr);
             ctx.mermaid_config
                 .and_then(|config| {
                     crate::class::class_math_label_metrics(
@@ -579,8 +654,12 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
 
     let html_rows_ctx = ClassHtmlNodeRowsContext {
         measurer: ctx.measurer,
-        text_style: ctx.text_style,
-        html_calc_text_style: ctx.html_calc_text_style,
+        text_style: ctx
+            .native
+            .map_or(ctx.text_style, |native| &native.code_style),
+        html_calc_text_style: ctx
+            .native
+            .map_or(ctx.html_calc_text_style, |native| &native.code_style),
         node_label_style: ctx.node_label_style_attr,
         line_height: ctx.line_height,
     };
@@ -642,6 +721,17 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         + padding
         + gap * 2.0;
 
+    if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        write_class_native_heading(
+            out,
+            &geometry,
+            divider1_y.max(title_y - 12.0 + title_height),
+            native,
+            ctx.node_stroke_width,
+        );
+        out.push_str(r#"<g class="class-native-heading">"#);
+    }
+
     if let Some(annotation_text) = annotation_text.as_deref() {
         let annotation_max_width_px = annotation_prepared.map_or_else(
             || {
@@ -665,7 +755,6 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             out,
             &ClassHtmlNodeLabelGroupSpec {
                 label_style: "",
-                inherited_fill: ctx.node_label_fill,
                 translate_y: -annotation_height / 2.0,
                 width: annotation_width.max(1.0),
                 height: annotation_height.max(1.0),
@@ -695,11 +784,16 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         fmt(title_x),
         fmt(title_y)
     );
+    let native_title_weight = ctx
+        .native
+        .and_then(|native| native.title_style.font_weight.as_deref())
+        .map(|weight| format!("font-weight:{weight}"));
     render_class_html_node_label_group(
         out,
         &ClassHtmlNodeLabelGroupSpec {
-            label_style: "font-weight: bolder",
-            inherited_fill: ctx.node_label_fill,
+            label_style: native_title_weight
+                .as_deref()
+                .unwrap_or("font-weight: bolder"),
             translate_y: -12.0,
             width: title_width,
             height: title_height,
@@ -714,6 +808,9 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         },
     );
     out.push_str("</g>");
+    if ctx.paint_heading {
+        out.push_str("</g>");
+    }
 
     render_class_html_node_rows_group(
         out,
@@ -920,6 +1017,17 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         adjusted_annotation_group_x
     };
     let ann_new_y = adjust_y(ann_ty);
+    let label_new_y = adjust_y(label_ty);
+    if let Some(native) = ctx.native.filter(|_| ctx.paint_heading) {
+        write_class_native_heading(
+            out,
+            &geometry,
+            label_new_y + label_group_height / 2.0 + padding / 2.0,
+            native,
+            ctx.node_stroke_width,
+        );
+        out.push_str(r#"<g class="class-native-heading">"#);
+    }
     render_class_svg_node_runs_group(
         out,
         "annotation-group text",
@@ -929,7 +1037,10 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         ctx.node_label_style_attr,
     );
 
-    let label_new_y = adjust_y(label_ty);
+    let native_title_weight = ctx
+        .native
+        .and_then(|native| native.title_style.font_weight.as_deref())
+        .map(|weight| format!("font-weight:{weight}"));
     render_class_svg_title_group(
         out,
         adjusted_label_group_x,
@@ -937,7 +1048,13 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         title_label,
         &title_metrics,
         ctx.node_label_style_attr,
+        native_title_weight
+            .as_deref()
+            .unwrap_or("font-weight: bolder"),
     );
+    if ctx.paint_heading {
+        out.push_str("</g>");
+    }
 
     let members_new_y = adjust_y(members_ty);
     render_class_svg_node_runs_group(
@@ -1059,11 +1176,10 @@ pub(super) fn render_class_html_node_label_group(
     out: &mut impl SvgOutput,
     spec: &ClassHtmlNodeLabelGroupSpec<'_>,
 ) {
-    let group_style = class_node_paint_style(spec.label_style, "fill", spec.inherited_fill);
     let _ = write!(
         out,
         r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-        escape_attr_display(&group_style),
+        escape_attr_display(spec.label_style.trim().trim_end_matches(';')),
         fmt(spec.translate_y),
         fmt(spec.width),
         fmt(spec.height),
@@ -1117,7 +1233,6 @@ fn render_class_html_node_rows_group(
             out,
             &ClassHtmlNodeLabelGroupSpec {
                 label_style: row.row_style.as_str(),
-                inherited_fill: ctx.node_label_fill,
                 translate_y: row.y,
                 width: row.metrics.width.max(1.0),
                 height: row.metrics.height.max(ctx.line_height).max(1.0),
@@ -1148,7 +1263,8 @@ fn measure_class_svg_node_rows(
         let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
         let literal_fallback = fallback.is_some();
         let text_style = crate::class::class_svg_row_text_style(
-            ctx.text_style,
+            ctx.native
+                .map_or(ctx.text_style, |native| &native.code_style),
             &row.css_style,
             literal_fallback,
         );
@@ -1160,7 +1276,11 @@ fn measure_class_svg_node_rows(
                 &text,
                 ctx.measurer,
                 &text_style,
-                ctx.html_calc_text_style,
+                if ctx.native.is_some() {
+                    &text_style
+                } else {
+                    ctx.html_calc_text_style
+                },
                 ctx.wrap_probe_font_size,
                 false,
             );
@@ -1252,6 +1372,7 @@ pub(super) fn render_class_svg_title_group(
     title: &crate::class::ClassSvgTitleLabel,
     title_metrics: &crate::text::TextMetrics,
     group_style: &str,
+    weight_style: &str,
 ) {
     let _ = write!(
         out,
@@ -1262,7 +1383,8 @@ pub(super) fn render_class_svg_title_group(
     let t_y = -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
     let _ = write!(
         out,
-        r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="{}">"#,
+        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="{}">"#,
+        weight_style,
         fmt(t_y),
         escape_attr_display(group_style),
     );
@@ -1400,6 +1522,8 @@ mod typography_tests {
             look: "classic",
             use_gradient: false,
             timing: RenderTiming::disabled(),
+            native: None,
+            paint_heading: false,
         }
     }
 

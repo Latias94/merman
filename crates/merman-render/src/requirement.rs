@@ -28,24 +28,19 @@ mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod html_label;
-mod relation_paint;
+mod native_theme;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod source_typography;
-mod text_paint;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
 pub(crate) use css_binding::{RequirementCssBinding, requirement_color_indices};
 use html_label::RequirementHtmlLabel;
 pub(crate) use html_label::sanitize_label_with_sink;
-pub(crate) use relation_paint::RequirementRelationPaintPlan;
+pub(crate) use native_theme::RequirementNativeStyle;
 pub(crate) use source_typography::RequirementNodeTypography;
-pub(crate) use text_paint::{
-    RequirementTextColorOwner, RequirementTextPaintPlan, RequirementTextPaintReceipt,
-    RequirementTextTerminalId,
-};
-pub(crate) use theme::{RequirementDividerEmission, RequirementPaintThemePlan};
+pub(crate) use theme::RequirementPaintThemePlan;
 
 fn requirement_layout_work_units(model: &RequirementDiagramModel) -> usize {
     let source_node_count = model
@@ -275,7 +270,6 @@ pub(crate) type RequirementEdgeLabels =
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementEdgeLabelPlan {
-    pub(crate) relationship_index: usize,
     pub(crate) relationship_type: String,
     pub(crate) display_text: String,
     pub(crate) rendered_id: String,
@@ -292,7 +286,6 @@ impl RequirementEdgeLabelPlan {
     ) -> Self {
         let contains = relationship.rel_type == "contains";
         Self {
-            relationship_index,
             relationship_type: relationship.rel_type.clone(),
             display_text,
             rendered_id: requirement_edge_id(
@@ -1038,7 +1031,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = std::sync::Arc::new(OperationWorkMeter::new(resource_limits));
-    let binding = RequirementCssBinding::resolve(effective_config, None, None, None);
+    let binding = RequirementCssBinding::resolve(effective_config, None, None);
     let config = merman_model::MermaidConfig::from_value(effective_config.clone());
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,

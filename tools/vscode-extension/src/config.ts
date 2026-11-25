@@ -153,7 +153,8 @@ export function getDidChangeConfigurationPayload(
 }
 
 function normalizePreviewDiagramTheme(value: string): PreviewDiagramTheme {
-  return isDiagramTheme(value) ? value : "source";
+  const id = typeof value === "string" ? value.replace(/^preset:/, "") : value;
+  return isDiagramTheme(id) ? id : "source";
 }
 
 function normalizePreviewDisplayMode(value: string): PreviewDisplayMode {

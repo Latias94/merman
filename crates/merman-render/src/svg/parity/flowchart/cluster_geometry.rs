@@ -45,7 +45,7 @@ pub(super) fn cluster_css_size(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option
         return None;
     }
     let terminal = ctx.prepared_nodes.cluster(id).ok()?;
-    if ctx.diagram_type == "agentflow" && !terminal.theme.requests_shape_style() {
+    if ctx.diagram_type == "agentflow" {
         return None;
     }
     let size = terminal.compiled.rectangle_size;

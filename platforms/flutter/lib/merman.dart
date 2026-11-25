@@ -2,7 +2,7 @@
 ///
 /// This public facade owns Dart-friendly lifecycle, error, resource, and text
 /// measurement APIs. Its C declarations stay private and are generated from
-/// the ABI 3 header by `ffigen`.
+/// the native ABI header by `ffigen`.
 library;
 
 export 'src/generated/resource_options.dart'
@@ -54,14 +54,8 @@ export 'src/merman_ffi.dart'
         MermanOperationControl,
         MermanOperationResult,
         MermanThemeCatalog,
+        MermanThemeFamilyCapabilities,
         MermanThemePreset,
-        MermanThemePresetAppearance,
-        MermanThemePresetApplicationNote,
-        MermanThemePresetFamilyDesign,
-        MermanThemePresetQualifiedCell,
-        MermanThemeResourceLimit,
-        MermanMermaidThemeDesign,
-        MermanMermaidThemeAppearance,
         MermanReentrantCallException,
         MermanResourceErrorDetails,
         MermanResourceLimitDescriptor,

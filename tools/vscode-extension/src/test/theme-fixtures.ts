@@ -1,41 +1,27 @@
-import { legacyThemeDiscovery, type ThemeDiscovery } from "../theme-selection.js";
+import { CUSTOM_FILE_THEME, SOURCE_THEME, type ThemeDiscovery } from "../theme-selection.js";
 
-export function pairedThemeDiscovery(): ThemeDiscovery {
+export function v2ThemeDiscovery(): ThemeDiscovery {
   return {
-    ...legacyThemeDiscovery(),
-    paired: true,
-    inspect: true,
-    notice: undefined,
     choices: [
-      ...legacyThemeDiscovery().choices,
+      SOURCE_THEME,
+      ...["default", "dark", "forest", "neutral", "base", "neo"].map((id) => ({
+        id,
+        label: id,
+        origin: "mermaid" as const,
+      })),
       {
-        id: "preset:editor",
-        label: "Merman · Editor",
+        id: "studio",
+        label: "Studio",
         origin: "preset",
-        available: true,
-        supportedAppearances: ["light", "dark"],
-        defaultAppearance: "light",
+        appearances: { supportedAppearances: ["light", "dark"], defaultAppearance: "light" },
       },
       {
-        id: "preset:ghibli",
-        label: "Merman · Ghibli",
+        id: "paper-cut",
+        label: "Paper Cut",
         origin: "preset",
-        available: true,
-        supportedAppearances: ["light"],
-        defaultAppearance: "light",
+        appearances: { supportedAppearances: ["light"], defaultAppearance: "light" },
       },
-      {
-        id: "mermaid:neo",
-        label: "Mermaid · Neo",
-        origin: "mermaid",
-        available: true,
-        supportedAppearances: ["light", "dark"],
-        defaultAppearance: "light",
-        variants: [
-          { appearance: "light", themeId: "neo" },
-          { appearance: "dark", themeId: "neo-dark" },
-        ],
-      },
+      CUSTOM_FILE_THEME,
     ],
   };
 }

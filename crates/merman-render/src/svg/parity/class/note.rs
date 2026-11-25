@@ -17,8 +17,6 @@ use super::rough::{
 };
 
 pub(super) struct ClassNoteRenderContext<'a> {
-    pub capture_text_facts: bool,
-    pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
@@ -43,9 +41,6 @@ pub(super) struct ClassNoteRenderStats {
     pub notes_sanitize: Duration,
     pub path_bounds: Duration,
     pub path_bounds_calls: usize,
-    pub typography: crate::class::ClassTextTerminalFacts,
-    pub fill_rule: Option<usize>,
-    pub stroke_rule: Option<usize>,
 }
 
 pub(super) fn render_class_note_node<O: SvgOutput>(
@@ -59,13 +54,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     let content_bounds = &mut *state.content_bounds;
     let mut stats = ClassNoteRenderStats::default();
 
-    let note_label_style = super::label::class_node_label_style(
-        "text-align:left !important;white-space:nowrap !important",
-        None,
-    );
-    let note_label_style = ctx.text_paint.map_or(note_label_style.clone(), |paint| {
-        format!("{note_label_style};{}", paint.style())
-    });
+    let note_label_style = "text-align:left !important;white-space:nowrap !important";
     let note_src = note.text.trim();
     let note_text = decode_entities_minimal_cow(note_src);
     let svg_label =
@@ -127,9 +116,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         label_h,
     );
     let path_bounds_start = ctx.timing.start();
-    let paint = ctx.relation_theme.note_paint();
-    let note_fill = paint.fill();
-    let note_stroke = paint.stroke();
+    let (note_fill, note_stroke) = ctx.relation_theme.note_paint();
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -173,27 +160,13 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     let note_label_class = "label noteLabel";
     let mut note_shape = String::new();
     if hand_drawn {
-        let fill_style = paint.fill_rule().map_or_else(String::new, |_| {
-            format!(
-                r#" style="stroke:{} !important;fill:none !important""#,
-                escape_attr_display(note_fill)
-            )
-        });
-        let stroke_style = paint.stroke_rule().map_or_else(String::new, |_| {
-            format!(
-                r#" style="stroke:{} !important;fill:none !important""#,
-                escape_attr_display(note_stroke)
-            )
-        });
         let _ = write!(
             &mut note_shape,
-            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"{}/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"{}/></g>"##,
+            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
             escape_attr_display(&note_fill_d),
             escape_attr_display(&note_fill),
-            fill_style,
             escape_attr_display(&note_stroke_d),
             escape_attr_display(&note_stroke),
-            stroke_style,
         );
     } else {
         let _ = write!(
@@ -215,7 +188,6 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         );
     }
 
-    let emitted_style;
     if ctx.use_html_labels {
         let note_div_style =
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -237,24 +209,15 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_h),
             escape_attr_display(&note_div_style),
         );
-        emitted_style = super::label::open_class_note_label(out, Some(&note_label_style));
+        super::label::open_class_note_label(out, note_label_style);
         let sanitize_start = ctx.timing.start();
         let note_html = if let Some(math_html) =
             class_math_html_label(note_src, Some(ctx.mermaid_config), ctx.math_renderer)
         {
-            if ctx.capture_text_facts {
-                stats.typography = crate::class::ClassTextTerminalFacts::unverified_text(note_src);
-            }
             math_html
         } else {
             let html = crate::class::class_note_html_fragment(note_src, ctx.mermaid_config);
-            let note_html = format!("<p>{html}</p>");
-            if ctx.capture_text_facts {
-                let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
-                stats.typography =
-                    crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
-            }
-            note_html
+            format!("<p>{html}</p>")
         };
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
@@ -278,27 +241,14 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_x),
             fmt(label_y),
         );
-        emitted_style = super::super::label::write_svg_markdown_word_lines_with_style(
+        super::super::label::write_svg_markdown_word_lines_with_style(
             out,
             svg_label.as_ref().expect("SVG note plan").lines(),
-            Some(&note_label_style),
+            Some(note_label_style),
             crate::text::SvgTextEntityMode::DecodedModel,
-        )
-        .filter(|style| !style.is_empty());
+        );
         out.push_str("</g></g></g>");
-        if ctx.capture_text_facts {
-            let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
-            stats.typography =
-                crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
-        }
     }
 
-    if let Some(paint) = ctx.text_paint {
-        stats.typography = paint.observe(stats.typography, emitted_style);
-    }
-    stats.fill_rule = paint
-        .fill_rule()
-        .filter(|_| !hand_drawn || !note_fill_d.is_empty());
-    stats.stroke_rule = paint.stroke_rule().filter(|_| !note_stroke_d.is_empty());
     Ok(stats)
 }

@@ -117,14 +117,6 @@ impl<'a> NodeWrapperClasses<'a> {
         self
     }
 
-    pub(in crate::svg::parity::flowchart) fn contains(self, expected: &str) -> bool {
-        self.base
-            .split_ascii_whitespace()
-            .chain(self.assigned.iter().map(String::as_str))
-            .chain(self.extra.into_iter().flat_map(str::split_ascii_whitespace))
-            .any(|class| class.trim() == expected)
-    }
-
     fn write(self, out: &mut impl crate::svg::parity::SvgOutput) {
         escape_xml_into(out, self.base);
         for c in self.assigned {
@@ -602,23 +594,9 @@ pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
     } else {
         &ctx.text_style
     };
-    let label_base_style = ctx
-        .svg_label_sidecar
-        .map_or_else(
-            crate::flowchart::FlowchartLabelTypography::default,
-            |sidecar| sidecar.label_typography(),
-        )
-        .source_parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
-            label_base_style,
-            ctx.class_defs,
-            node_classes,
-            node_styles,
-            true,
-        );
     std::borrow::Cow::Owned(
         crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style.as_ref(),
+            label_base_style,
             ctx.class_defs,
             node_classes,
             node_styles,

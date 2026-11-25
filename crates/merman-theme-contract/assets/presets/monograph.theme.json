@@ -1,0 +1,90 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "monograph",
+  "name": "Monograph",
+  "description": "Publication-grade monochrome theme for academic papers, LaTeX/Typst exports, and grayscale printing.",
+  "category": "reading",
+  "default_appearance": "light",
+  "typography": {
+    "sans": ["Liberation Sans", "Inter", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["Liberation Mono", "JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["STIX Two Text", "Linux Libertine", "Georgia", "Times New Roman", "Noto Serif SC", "serif"],
+    "body_family": "serif",
+    "title_family": "serif",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 700,
+    "label_weight": 600
+  },
+  "form": {
+    "density": "compact",
+    "radius": 2,
+    "container_radius": 2,
+    "stroke_width": 1.1,
+    "connector_width": 1.25,
+    "edge_style": "orthogonal",
+    "marker_style": "classic",
+    "edge_label_bg": "auto",
+    "elevation": "flat",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 0,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 1.0
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#FFFFFF",
+        "surface": "#FFFFFF",
+        "ink": "#111111",
+        "accent": "#222222",
+        "callout": "#F3F3F3"
+      },
+      "roles": {
+        "surface.container": "#F5F5F5",
+        "surface.emphasis": "#E5E5E5",
+        "stroke.border": "#222222",
+        "stroke.connector": "#222222",
+        "stroke.guide": "#D4D4D4",
+        "text.muted": "#4A4A4A",
+        "text.callout": "#111111",
+        "text.on_emphasis": "#111111"
+      },
+      "data": {
+        "ink": ["#111111", "#383838", "#555555", "#6E6E6E", "#262626", "#484848"],
+        "fill": ["#E6E6E6", "#CCCCCC", "#B3B3B3", "#999999", "#D9D9D9", "#BFBFBF"],
+        "fill_ink": "#111111",
+        "pattern_encoding": true
+      }
+    },
+    "dark": {
+      "seed": {
+        "canvas": "#111111",
+        "surface": "#1B1B1B",
+        "ink": "#F2F2F2",
+        "accent": "#E0E0E0",
+        "callout": "#262626"
+      },
+      "roles": {
+        "surface.container": "#171717",
+        "surface.emphasis": "#2D2D2D",
+        "stroke.border": "#CCCCCC",
+        "stroke.connector": "#D4D4D4",
+        "stroke.guide": "#333333",
+        "text.muted": "#B0B0B0",
+        "text.callout": "#F2F2F2",
+        "text.on_emphasis": "#F2F2F2"
+      },
+      "data": {
+        "ink": ["#F2F2F2", "#D4D4D4", "#B8B8B8", "#9C9C9C", "#E3E3E3", "#C4C4C4"],
+        "fill": ["#2E2E2E", "#424242", "#545454", "#666666", "#383838", "#4C4C4C"],
+        "fill_ink": "#F5F5F5",
+        "pattern_encoding": true
+      }
+    }
+  }
+}

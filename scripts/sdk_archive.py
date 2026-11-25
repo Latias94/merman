@@ -48,6 +48,7 @@ NATIVE_TARGETS = (
     "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc",
 )
 WASI_TARGET = "wasm32-wasip1"
+NATIVE_ABI_VERSION = 4
 HEADERS = ("merman.h", "merman_text_measurement_abi.h", "merman_resource_contract.h")
 WASI_EXAMPLE_FILES = (
     *(f"go-wasi/{name}" for name in ("go.mod", "go.sum", "client.go", "client_test.go",
@@ -218,7 +219,7 @@ def _catalog(sidecar: dict, *, profile, target, commit, version, expected, binar
     catalog = sidecar.get("runtime_catalog")
     if not isinstance(catalog, dict):
         raise ArchiveVerificationError("an actual artifact runtime_catalog object is required")
-    abi = 1 if target == WASI_TARGET else 3
+    abi = 1 if target == WASI_TARGET else NATIVE_ABI_VERSION
     for field, value in (("schema_version", 1), ("transport_api_version", abi),
                          ("package_version", version)):
         if type(catalog.get(field)) is not type(value) or catalog[field] != value:
@@ -450,7 +451,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
 
     wasi = target == WASI_TARGET
     if not wasi:
-        contract_path = "contracts/abi/merman-v3.json"
+        contract_path = f"contracts/abi/merman-v{NATIVE_ABI_VERSION}.json"
         contract = _json(_input(repo_root, contract_path))
         if type(contract.get("abi_version")) is not int or contract["abi_version"] != catalog["transport_api_version"]:
             raise ArchiveVerificationError("packaged ABI contract disagrees with artifact catalog")

@@ -298,8 +298,10 @@ fn native_batch_applies_the_selected_theme_preset() {
             "input.md",
             "--output-dir",
             "generated",
-            "--theme-preset",
-            "editor-dark",
+            "--theme",
+            "studio",
+            "--appearance",
+            "dark",
             "--quiet",
         ],
     );
@@ -308,7 +310,7 @@ fn native_batch_applies_the_selected_theme_preset() {
     let svg = fs::read_to_string(temp.path().join("generated/input-1.svg"))
         .expect("read generated Flowchart SVG");
     assert!(
-        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        svg.contains(r#"class="merman-theme-canvas""#),
         "batch rendering should compile the selected theme preset through the typed theme path: {svg}"
     );
     let baseline = run_in(

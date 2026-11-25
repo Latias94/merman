@@ -1,0 +1,69 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "blueprint",
+  "name": "Blueprint",
+  "description": "Cyanotype engineering drafting sheet with major/minor grid lines, orthogonal routing, and wireframe charts.",
+  "category": "art",
+  "typography": {
+    "sans": ["IBM Plex Sans", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["IBM Plex Mono", "JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "mono",
+    "title_family": "mono",
+    "code_family": "mono",
+    "base_size_px": 13.5,
+    "title_weight": 600,
+    "label_weight": 500
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 0,
+    "container_radius": 0,
+    "stroke_width": 1.25,
+    "connector_width": 1.4,
+    "edge_style": "orthogonal",
+    "marker_style": "open",
+    "edge_label_bg": "auto",
+    "elevation": "flat",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 0,
+      "bar_wireframe": true,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 0.88
+    }
+  },
+  "appearances": {
+    "dark": {
+      "seed": {
+        "canvas": "#0E3558",
+        "surface": "#12406A",
+        "ink": "#F2F8FF",
+        "accent": "#7AE6FF",
+        "callout": "#174E78"
+      },
+      "roles": {
+        "surface.container": "#103B61",
+        "surface.emphasis": "#1A5282",
+        "stroke.border": "#C5E4FF",
+        "stroke.connector": "#E3F2FF",
+        "stroke.guide": "#3F78A8",
+        "text.muted": "#B5DAFA",
+        "text.title": "#7AE6FF",
+        "text.callout": "#FFF2B2"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "grid", "step_px": 12, "major_every": 5, "color": "#8ACBFF", "opacity": 0.08, "major_opacity": 0.20 }
+        ]
+      },
+      "data": {
+        "ink":  ["#7AE6FF", "#FFE074", "#A4F5B7", "#FFB09E", "#D6B8FF", "#F2F8FF"],
+        "fill": ["#1C5687", "#5B4F1A", "#175946", "#6B2E36", "#423478", "#2B4D6B"],
+        "fill_ink": "#F2F8FF"
+      }
+    }
+  }
+}

@@ -1264,7 +1264,7 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     model: &'m ArchitectureModelView<'a>,
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
-    font_size_px: f64,
+    text_style: &'m TextStyle,
 }
 
 fn architecture_cytoscape_edge_text_style() -> TextStyle {
@@ -1287,9 +1287,9 @@ fn architecture_fcose_node_bounds_extras<'a>(
         model,
         text_measurer,
         icon_size,
-        font_size_px,
+        text_style,
     } = input;
-    let text_style = architecture_cytoscape_text_style(font_size_px);
+    let font_size_px = text_style.font_size;
 
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
@@ -1298,7 +1298,7 @@ fn architecture_fcose_node_bounds_extras<'a>(
             architecture_measure_cytoscape_compound_child_bbox_extras(
                 n.title,
                 text_measurer,
-                &text_style,
+                text_style,
                 icon_size,
                 font_size_px,
             )
@@ -1306,7 +1306,7 @@ fn architecture_fcose_node_bounds_extras<'a>(
             architecture_measure_cytoscape_final_node_bbox_extras(
                 n.title,
                 text_measurer,
-                &text_style,
+                text_style,
                 icon_size,
                 font_size_px,
             )
@@ -1820,9 +1820,8 @@ fn architecture_cytoscape_service_bounds<'a>(
     nodes: &[LayoutNode],
     text_measurer: &dyn TextMeasurer,
     icon_size: f64,
-    font_size_px: f64,
+    text_style: &TextStyle,
 ) -> Vec<ArchitectureCytoscapeServiceBounds> {
-    let text_style = architecture_cytoscape_text_style(font_size_px);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len().saturating_mul(2));
     for node in nodes {
@@ -1846,8 +1845,8 @@ fn architecture_cytoscape_service_bounds<'a>(
         let label_bounds = architecture_cytoscape_child_label_bounds(
             node.title,
             text_measurer,
-            &text_style,
-            font_size_px,
+            text_style,
+            text_style.font_size,
         );
         let label_metrics = label_bounds.map(|label| ArchitectureCytoscapeServiceLabelMetrics {
             text_width: label.metrics.width,
@@ -2001,6 +2000,7 @@ pub(crate) fn layout_architecture_diagram_typed(
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
+    native_text: Option<&TextStyle>,
 ) -> Result<ArchitectureDiagramLayout> {
     let adapter_work_plan = checked_typed_architecture_adapter_work_plan(model)
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
@@ -2020,6 +2020,7 @@ pub(crate) fn layout_architecture_diagram_typed(
         operation_seed,
         work_meter,
         admission,
+        native_text,
     )
 }
 
@@ -2048,6 +2049,7 @@ fn layout_architecture_diagram_model(
         operation_seed,
         work_meter,
         admission,
+        None,
     )
 }
 
@@ -2058,14 +2060,21 @@ fn layout_architecture_diagram_model_admitted(
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
     admission: ArchitectureLayoutAdmission,
+    native_text: Option<&TextStyle>,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;
     let padding_px = config_f64(effective_config, &["architecture", "padding"]).unwrap_or(40.0);
     let padding_px = padding_px.max(0.0);
-    let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
-    let font_size_px = font_size_px.max(1.0);
+    let fallback_text;
+    let text_style = if let Some(native) = native_text {
+        native
+    } else {
+        let size = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
+        fallback_text = architecture_cytoscape_text_style(size.max(1.0));
+        &fallback_text
+    };
     let fcose_randomize =
         config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
     let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
@@ -2092,7 +2101,7 @@ fn layout_architecture_diagram_model_admitted(
             model,
             text_measurer,
             icon_size,
-            font_size_px,
+            text_style,
         });
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
@@ -2156,13 +2165,8 @@ fn layout_architecture_diagram_model_admitted(
         fcose_compound_bounds = projection.compound_bounds;
     }
 
-    let cytoscape_service_bounds = architecture_cytoscape_service_bounds(
-        model,
-        &nodes,
-        text_measurer,
-        icon_size,
-        font_size_px,
-    );
+    let cytoscape_service_bounds =
+        architecture_cytoscape_service_bounds(model, &nodes, text_measurer, icon_size, text_style);
 
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
@@ -2884,9 +2888,15 @@ mod tests {
             )
             .unwrap();
         let narrow_meter = OperationWorkMeter::new(narrow_policy);
-        let error =
-            super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &narrow_meter)
-                .unwrap_err();
+        let error = super::layout_architecture_diagram_typed(
+            model,
+            &config,
+            &measurer,
+            1,
+            &narrow_meter,
+            None,
+        )
+        .unwrap_err();
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
@@ -2909,6 +2919,7 @@ mod tests {
             &measurer,
             1,
             &admission_meter,
+            None,
         );
         assert_eq!(super::typed_architecture_projection_count(), 1);
         assert!(admission_meter.used() >= admission_plan.adapter_work_units);
@@ -2916,8 +2927,15 @@ mod tests {
         super::reset_typed_architecture_projection_count();
         let baseline_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &baseline_meter)
-            .unwrap();
+        super::layout_architecture_diagram_typed(
+            model,
+            &config,
+            &measurer,
+            1,
+            &baseline_meter,
+            None,
+        )
+        .unwrap();
         let exact_work = baseline_meter.used();
         assert!(exact_work >= admission_plan.preflight_work_units);
         assert_eq!(super::typed_architecture_projection_count(), 1);
@@ -2927,7 +2945,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
-        super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &exact_meter)
+        super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &exact_meter, None)
             .unwrap();
         assert_eq!(exact_meter.used(), exact_work);
         assert_eq!(super::typed_architecture_projection_count(), 1);
@@ -3682,7 +3700,7 @@ mod tests {
                 model: &model,
                 text_measurer: &measurer,
                 icon_size: 80.0,
-                font_size_px: 16.0,
+                text_style: &super::architecture_cytoscape_text_style(16.0),
             },
         );
         let grouped = node_bounds_extras.get("api").expect("api node extras");

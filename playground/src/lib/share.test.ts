@@ -10,7 +10,7 @@ import {
   decodeShareHash,
   encodeShareHash,
   SHARE_LIMITS,
-  SHARE_THEME_RECIPE_BYTES,
+  SHARE_THEME_DOCUMENT_BYTES,
   SHARE_V3_LIMITS,
   WORKSPACE_V2_DEFAULTS,
   WORKSPACE_V3_DEFAULTS,
@@ -29,7 +29,7 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   diagramTheme: "forest",
   diagramFont: "arial",
   themePresetId: "future-theme",
-  themeRecipeJson: null,
+  themeDocumentJson: null,
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -41,11 +41,7 @@ test("round-trips one complete workspace snapshot through the s2 envelope", () =
   assert.equal(Object.hasOwn(decodeS2Payload(hash), "renderViewportMode"), false);
 });
 
-const CUSTOM_THEME_RECIPE = JSON.stringify({
-  schema_version: 1,
-  kind: "design",
-  design: { tokens: { primaryColor: { type: "color", value: "#ff66aa" } } },
-});
+const CUSTOM_THEME_DOCUMENT = JSON.stringify({ schema_version: 2, extends: "studio", seed: { accent: "#FF66AA" } });
 
 test("s5 saves host preference without capturing the sender's application appearance", () => {
   const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "neo" as const, themeAppearance: "follow" as const };
@@ -65,48 +61,48 @@ test("s5 saves host preference without capturing the sender's application appear
 test("s5 preserves the complete unique-v1 recipe, original bytes and customization provenance", () => {
   const raw = '{"schema_version":1,"kind":"design","design":{"tokens":{},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}\n';
   const value = {
-    ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: raw, themeAppearance: "dark" as const,
-    themeRecipeLabel: { name: "Editor copy", source: "imported" as const, derivedFrom: "preset:editor-dark" },
+    ...DEFAULT_WORKSPACE_SNAPSHOT, themeDocumentJson: raw, themeAppearance: "dark" as const,
+    themeDocumentLabel: { name: "Editor copy", source: "imported" as const, derivedFrom: "preset:editor-dark" },
   };
   assert.deepEqual(decodeShareHash(encodeShareHash(value)), value);
-  const duplicated = { ...value, themeRecipeJson: raw.replace('"tokens":{}', '"tokens":{},"tokens":{}') };
-  assert.equal(decodeShareHash(encodeShareHash(duplicated))?.themeRecipeJson, duplicated.themeRecipeJson);
+  const duplicated = { ...value, themeDocumentJson: raw.replace('"tokens":{}', '"tokens":{},"tokens":{}') };
+  assert.equal(decodeShareHash(encodeShareHash(duplicated))?.themeDocumentJson, duplicated.themeDocumentJson);
   for (const invalid of ["auto", "system", "sepia", null, 1, {}]) {
     const hash = s2Payload({ themeAppearance: invalid }).replace("#s2:", "#s5:");
     assert.equal(decodeShareHash(hash), null);
   }
 });
 
-test("round-trips a custom recipe through s3 without changing s2 links", () => {
+test("round-trips a v2 document through s3 without changing s2 links", () => {
   const snapshot = {
     ...COMPLETE_SNAPSHOT,
     themePresetId: null,
-    themeRecipeJson: CUSTOM_THEME_RECIPE,
+    themeDocumentJson: CUSTOM_THEME_DOCUMENT,
   };
   const hash = encodeShareHash(snapshot);
   assert.match(hash, /^#s3:[A-Za-z0-9_-]+$/u);
   assert.deepEqual(decodeShareHash(hash), snapshot);
-  assert.equal(decodeShareHash(s2Payload({}))?.themeRecipeJson, null);
+  assert.equal(decodeShareHash(s2Payload({}))?.themeDocumentJson, null);
   assert.match(encodeShareHash(COMPLETE_SNAPSHOT), /^#s2:/u);
   assert.equal(
-    decodeShareHash(s2Payload({ themeRecipeJson: CUSTOM_THEME_RECIPE })),
+    decodeShareHash(s2Payload({ themeRecipeJson: CUSTOM_THEME_DOCUMENT })),
     null,
   );
 });
 
 test("named recipes retain their identity in s4 while old envelopes stay strict", () => {
   const snapshot: WorkspaceSnapshot = {
-    ...COMPLETE_SNAPSHOT, themePresetId: null, themeRecipeJson: CUSTOM_THEME_RECIPE,
-    themeRecipeLabel: { name: "Nightfall", source: "exploration" },
+    ...COMPLETE_SNAPSHOT, themePresetId: null, themeDocumentJson: CUSTOM_THEME_DOCUMENT,
+    themeDocumentLabel: { name: "Nightfall", source: "exploration" },
   };
   const hash = encodeShareHash(snapshot);
   assert.match(hash, /^#s4:[A-Za-z0-9_-]+$/u);
   assert.deepEqual(decodeShareHash(hash), snapshot);
   assert.equal(decodeShareHash(hash.replace("#s4:", "#s3:")), null);
   useAppStore.getState().applyWorkspaceSnapshot(snapshot);
-  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeLabel?.name, "Nightfall");
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeDocumentLabel?.name, "Nightfall");
   useAppStore.getState().applyWorkspaceSnapshot(COMPLETE_SNAPSHOT);
-  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeLabel, undefined);
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeDocumentLabel, undefined);
 });
 
 test("share metadata cannot claim a name without a recipe or exceed its display boundary", () => {
@@ -117,11 +113,11 @@ test("share metadata cannot claim a name without a recipe or exceed its display 
     { name: "Theme", source: "exploration", trusted: true },
   ]) {
     assert.throws(() => encodeShareHash({
-      ...COMPLETE_SNAPSHOT, themePresetId: null, themeRecipeJson: CUSTOM_THEME_RECIPE,
-      themeRecipeLabel: label as WorkspaceSnapshot["themeRecipeLabel"],
+      ...COMPLETE_SNAPSHOT, themePresetId: null, themeDocumentJson: CUSTOM_THEME_DOCUMENT,
+      themeDocumentLabel: label as WorkspaceSnapshot["themeDocumentLabel"],
     }), /share URL contract/u);
   }
-  assert.throws(() => encodeShareHash({ ...COMPLETE_SNAPSHOT, themeRecipeLabel: { name: "Theme", source: "imported" } }), /share URL contract/u);
+  assert.throws(() => encodeShareHash({ ...COMPLETE_SNAPSHOT, themeDocumentLabel: { name: "Theme", source: "imported" } }), /share URL contract/u);
 });
 
 
@@ -131,7 +127,7 @@ test("s3 defaults do not inherit later application or caller theme choices", () 
   const callerDefaults = {
     ...COMPLETE_SNAPSHOT,
     themePresetId: null,
-    themeRecipeJson: CUSTOM_THEME_RECIPE,
+    themeDocumentJson: CUSTOM_THEME_DOCUMENT,
   };
   assert.deepEqual(
     decodeShareHash(s3Payload({}), callerDefaults),
@@ -141,7 +137,7 @@ test("s3 defaults do not inherit later application or caller theme choices", () 
     decodeShareHash(encodedPayload({
       code: "flowchart LR\nA --> B",
       theme: "default",
-    }), callerDefaults)?.themeRecipeJson,
+    }), callerDefaults)?.themeDocumentJson,
     null,
   );
 });
@@ -151,21 +147,21 @@ test("rejects mixed preset and custom recipe selections on encode and decode", (
     () =>
       encodeShareHash({
         ...COMPLETE_SNAPSHOT,
-        themeRecipeJson: CUSTOM_THEME_RECIPE,
+        themeDocumentJson: CUSTOM_THEME_DOCUMENT,
       }),
     /share URL contract/u,
   );
   assert.equal(
     decodeShareHash(s3Payload({
       themePresetId: "brutalist",
-      themeRecipeJson: CUSTOM_THEME_RECIPE,
+      themeRecipeJson: CUSTOM_THEME_DOCUMENT,
     })),
     null,
   );
 });
 
 test("bounds custom recipes by UTF-8 bytes and checks only their envelope", () => {
-  const recipeLimit = SHARE_THEME_RECIPE_BYTES;
+  const recipeLimit = SHARE_THEME_DOCUMENT_BYTES;
   assert.equal(recipeLimit, 256 * 1024);
   const base = JSON.stringify({
     schema_version: 1,
@@ -175,23 +171,23 @@ test("bounds custom recipes by UTF-8 bytes and checks only their envelope", () =
   const maximumRecipe = base + " ".repeat(recipeLimit - base.length);
   const snapshot = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
-    themeRecipeJson: maximumRecipe,
+    themeDocumentJson: maximumRecipe,
   };
   assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
-  for (const themeRecipeJson of [
+  for (const themeDocumentJson of [
     maximumRecipe + " ",
     base + "中".repeat(Math.ceil(recipeLimit / 3)),
     "null",
     "[]",
     "not-json",
-    JSON.stringify({ schema_version: 2, kind: "design" }),
+    JSON.stringify({ schema_version: 3, extends: "studio" }),
     JSON.stringify({ schema_version: 1, kind: "unknown" }),
   ]) {
     assert.throws(
-      () => encodeShareHash({ ...snapshot, themeRecipeJson }),
+      () => encodeShareHash({ ...snapshot, themeDocumentJson }),
       /share URL contract/u,
     );
-    assert.equal(decodeShareHash(s3Payload({ themeRecipeJson })), null);
+    assert.equal(decodeShareHash(s3Payload({ themeRecipeJson: themeDocumentJson })), null);
   }
 });
 
@@ -199,7 +195,7 @@ test("grants the additional decompression budget only to s3", () => {
   const payload = {
     code: "a".repeat(SHARE_LIMITS.sourceBytes),
     config: "b".repeat(SHARE_LIMITS.configBytes),
-    themeRecipeJson: CUSTOM_THEME_RECIPE + " ".repeat(128 * 1024),
+    themeRecipeJson: CUSTOM_THEME_DOCUMENT + " ".repeat(128 * 1024),
   };
   assert.notEqual(decodeShareHash(s3Payload(payload)), null);
   assert.equal(decodeShareHash(s2Payload(payload)), null);
@@ -282,7 +278,7 @@ test("uses present current fields and defaults omitted optional fields", () => {
 test("new inherited fonts are explicit while historical links keep Trebuchet", () => {
   for (const snapshot of [
     { ...DEFAULT_WORKSPACE_SNAPSHOT },
-    { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: CUSTOM_THEME_RECIPE },
+    { ...DEFAULT_WORKSPACE_SNAPSHOT, themeDocumentJson: CUSTOM_THEME_DOCUMENT },
   ]) {
     assert.equal(snapshot.diagramFont, "inherit");
     const hash = encodeShareHash(snapshot);

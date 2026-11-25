@@ -5,9 +5,7 @@ members = [
     "crates/merman-analysis",
     "crates/merman-editor-core",
     "crates/merman-fixture-render-context",
-    "crates/merman-theme-authoring-fixtures",
     "crates/merman-theme-contract",
-    "crates/merman-theme-acceptance",
     "crates/merman-core",
     "crates/merman-model",
     "crates/merman-markup",
@@ -102,6 +100,7 @@ ryu-js = "1.0.3"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.6", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+serde_path_to_error = "0.1.20"
 same-file = "1.0.6"
 rustix = { version = "1.1.6", default-features = false, features = ["fs", "std"] }
 sha2 = "0.11.1"
@@ -110,7 +109,6 @@ tokio = { version = "1.54.1", default-features = false }
 granit-parser = { version = "2.1.0", default-features = false, features = ["error_messages"] }
 serde-saphyr = { version = "2.1.1", default-features = false }
 toml = { version = "1.2.0", default-features = false, features = ["std", "serde", "parse"] }
-serde_json_canonicalizer = "0.4.1"
 json5 = "1.3.7"
 jsonschema = { version = "0.60.2", default-features = false }
 kurbo = "0.13.1"

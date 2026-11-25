@@ -13,7 +13,7 @@ const chunk = (name: string) => {
   return entry.file;
 };
 const paths = { monaco: chunk("monaco"), store: chunk("store") };
-const readingRecipe = readFileSync(new URL("../src/themes/recipes/reading.theme.json", import.meta.url), "utf8");
+const themeDocument = '{"schema_version":2,"extends":"studio","seed":{"accent":"#0052CC"}}';
 
 declare global {
   interface Window {
@@ -129,23 +129,30 @@ test("workspace-only changes invalidate preview actions and restore them with th
     { code: "flowchart LR\nchanged[Different source]" },
     { mermaidConfig: '{"htmlLabels":false}' },
     { diagramTheme: "dark" },
-    { themePresetId: "reading" },
-    { themeRecipeJson: readingRecipe },
+    { themePresetId: "studio" },
+    { themeDocumentJson: themeDocument },
     { svgPipeline: "readable" },
     { textMeasurementMode: "headless" },
     { diagramFont: "monospace" },
     { themeAppearance: "follow" },
   ];
   for (const change of changes) {
-    const initial = await page.evaluate((fields) => {
-      const { store } = window.sourceSyncFixture;
-      const previous = Object.fromEntries(Object.keys(fields).map((key) => [key, store.getState()[key as keyof ReturnType<typeof store.getState>]]));
-      store.setState(fields);
-      return previous;
-    }, change);
-    await expect(copy).toBeDisabled();
-    await page.evaluate((previous) => window.sourceSyncFixture.store.setState(previous), initial);
-    await expect(copy).toBeEnabled();
+    await test.step(`Change ${Object.keys(change).join(", ")}`, async () => {
+      const initial = await page.evaluate((fields) => {
+        // Hold the completed preview while the workspace changes.
+        window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+        const { store } = window.sourceSyncFixture;
+        const previous = Object.fromEntries(Object.keys(fields).map((key) => [key, store.getState()[key as keyof ReturnType<typeof store.getState>]]));
+        store.setState(fields);
+        return previous;
+      }, change);
+      await expect(copy).toBeDisabled();
+      await page.evaluate((previous) => {
+        window.sourceSyncFixture.store.setState(previous);
+        window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      }, initial);
+      await expect(copy).toBeEnabled();
+    });
   }
   errors.assertNone();
 });

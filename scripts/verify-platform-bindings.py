@@ -855,7 +855,7 @@ def main() -> int:
             [dart, "format", "--set-exit-if-changed", *flutter_format_paths()],
             cwd=FLUTTER_ROOT,
         )
-        run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "tool/native_abi_contract_test.dart"], cwd=FLUTTER_ROOT)
 
         step("Flutter Native Assets smoke")
         run([dart, "run", "example/main.dart"], cwd=FLUTTER_ROOT)

@@ -12,7 +12,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     ctx: &FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
+) {
     let geometry = ctx.rectangle_geometry(common.layout_node);
     let rect = geometry.shape;
     let width = rect.width();
@@ -50,20 +50,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
             common.stroke_width,
             escape_attr(common.stroke_dasharray),
         );
-        return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_hachure();
+        return;
     }
 
     // Keep Mermaid's square default while preserving explicit Neo configuration
     // and the independently admitted typed/source geometry channels.
     let radius = common
-        .typed_corner_radius
+        .native_corner_radius
         .or(common.configured_corner_radius);
     common.write_rectangle_start(out, rect);
     common.write_rectangle_radii(out, radius);
     out.push_str(" />");
-    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
-        .with_rectangle_dimensions(geometry.resolved_dimensions)
-        .with_effect_reach(common.effect_selected)
 }
 
 pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {

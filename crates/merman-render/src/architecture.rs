@@ -4,20 +4,14 @@ mod css_binding;
 #[cfg(feature = "layout-cytoscape")]
 mod fcose;
 pub(crate) mod labels;
+mod native_theme;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod theme;
 
 pub(crate) use css_binding::ArchitectureCssBinding;
-
-pub(crate) use theme::{
-    ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
-    ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission, ArchitectureGroupThemePlan,
-    ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
-    ArchitectureServiceTerminalEmission, ArchitectureSurfaceRenderState,
-    ArchitectureTextTerminalEmission, ArchitectureThemeOutcome, ArchitectureTypographyEmission,
-    ArchitectureTypographyThemePlan,
-};
+pub(crate) use native_theme::ArchitectureNativeStyle;
+pub(crate) use theme::{ArchitectureGroupThemePlan, ArchitectureTypographyThemePlan};
 
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use fcose::layout_architecture_diagram_typed;

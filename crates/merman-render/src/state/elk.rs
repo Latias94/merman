@@ -203,10 +203,7 @@ pub(super) fn layout(
             &edge.id,
             &label,
             measurer,
-            style_plan
-                .edge(&edge.id)
-                .map(super::StateEdgeStylePlan::resolved_label_typography)
-                .unwrap_or_else(|| style_plan.transition_label_typography()),
+            style_plan.transition_label_typography(),
             settings.wrap_mode,
             label_sidecar,
         );

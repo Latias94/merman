@@ -2,9 +2,12 @@
 
 Status: experimental, publishable Flutter package.
 
-`platforms/flutter` provides the `merman` Dart/Flutter package directly over the canonical Merman native ABI 3. It follows Dart's `package_ffi` structure and uses Native Assets for platform bundling. It is a Dart facade, not a second operation protocol: the package discovers one size-tagged C function table, validates the runtime catalog, and routes every output through the same generic operation path.
+`platforms/flutter` provides the `merman` Dart/Flutter package over Merman native ABI 4. It follows Dart's `package_ffi` structure and uses Native Assets for platform bundling. The package discovers one size-tagged C function table, validates the runtime catalog, and routes every output through the same generic operation path.
 
-The generated [`merman.h`](../../crates/merman-ffi/include/merman.h) header is the authoritative native wire definition. ABI 2 and pre-freeze ABI 3 layouts are removed. The Dart transport does not pass through JNI or UniFFI, including on Android; those transports have separate owners and lifecycles.
+The Dart facade requires an ABI 4 native library. The native discovery function returns
+`MERMAN_NATIVE_STATUS_ABI_MISMATCH` to ABI 3 callers. On Android, Dart calls the C table directly.
+JNI and UniFFI have separate owners and lifecycles. The generated header defines the native wire
+contract. [merman.h](../../crates/merman-ffi/include/merman.h)
 
 This guide owns Dart transport and packaging details. Start with the
 [package README](../../platforms/flutter/README.md) for application use, the
@@ -36,12 +39,17 @@ if (catalog.supportsOutput('svg')) {
 `Merman` is a stateless discovery and one-shot facade; it owns no native engine token and therefore
 has no `close()` method. Each operation constructs a fresh deterministic engine and closes it before
 returning. `Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat
-runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema
-versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement
+runtime-catalog schema `1`, ABI transport version `4`, Options JSON schema `4`, supported payload
+schema versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement
 availability, complete resource-to-operation relations, and agreement between the table and catalog
 package versions before it becomes usable.
 
-Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `themeCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. The theme catalog describes the selected artifact's typed semantic-theme vocabulary and carries an explicit open-string maturity for every built-in preset. The initial inventory is `alpha`; catalog presence does not imply a stable preset or cross-target portability claim. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
+`supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`,
+`supportedThemes()`, and `themeCatalog()` call the generic `metadata_collect` slot and
+return immutable typed Dart values. The schema-2 `themeCatalog()` exposes native presets with
+their appearances and default swatches, classic Mermaid theme IDs, and native capability flags
+by diagram family. See [Options JSON](OPTIONS_JSON.md#diagram-theme) for render selection and
+theme authoring operations.
 
 The generated `MermanResourceLimitId` describes the complete catalog vocabulary. `MermanResourceOverrideId` is the narrower set accepted by `MermanResourceOptionsBuilder`, whose profile is optional so reusable requests can inherit their constructor ceiling. The generated values intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
 
@@ -94,13 +102,12 @@ Discovery sends:
 - `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`;
 - the Dart consumer's `MermanNativeApi` capacity.
 
-The ABI 3 table is size-tagged. The caller passes its real table capacity and the producer returns
+The ABI 4 table is size-tagged. The caller passes its real table capacity and the producer returns
 only complete fields safely initialized within that capacity, so a host never reads a partial
-function pointer. Release builds use the matching generated header and current complete table;
-historical five- or six-slot producers are not a supported compatibility target. The minimum ABI 3
-prefix still ends at `engine_new_with_services` (slot `6`), while the current Dart package requires
-the complete appended table through `execute_collect_controlled` (slot `10`). The generated prefix
-constants for slots `7`-`10` make those complete boundaries explicit.
+function pointer. The minimum prefix ends at `engine_new_with_services` (slot `6`). Dart requires
+the complete generated table through `engine_new_with_fonts` (slot `11`) and verifies the function
+pointers it calls through `execute_collect_controlled` (slot `10`). The layouts and slot numbers
+are the same as in ABI 3.
 
 The returned digests have separate roles:
 
@@ -209,7 +216,7 @@ try {
 ```
 
 At the C boundary, an omitted Dart control calls `execute_collect`; a supplied control calls the
-append-only `execute_collect_controlled` entry point without changing the ABI 3 request record. The
+`execute_collect_controlled` entry point with the same request record as `execute_collect`. The
 nonzero token is borrowed, may be reused across operations, and must be released explicitly.
 `release()` is idempotent in Dart and retires the token only; an operation that already cloned the
 control remains safe until it returns.
@@ -235,7 +242,7 @@ Pass SVG, resource, layout, environment, and theme options to engine constructio
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 3,
+      "version": 4,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
@@ -369,15 +376,15 @@ dart format --set-exit-if-changed \
   lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
   example tool hook
 flutter analyze
-dart run tool/abi3_contract_test.dart
+dart run tool/native_abi_contract_test.dart
 dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
 ```
 
-The local contract test validates the current complete ABI
-3 table boundary through controlled-execution slot `10`, runtime-catalog and typed metadata relations,
-package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
+The local contract test covers the complete ABI 4 table boundary, Theme v2 and retired operation
+codes, runtime-catalog and typed metadata relations, package-version projection, status decoding,
+and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
 operation and lifecycle cases. The small hook contract uses real loopback HTTP and supported

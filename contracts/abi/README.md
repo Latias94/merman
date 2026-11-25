@@ -6,7 +6,7 @@ Transport versions are independent of each other and of the Merman workspace ver
 
 | Descriptor | Authority | Direct consumers |
 | --- | --- | --- |
-| [Native ABI 3](merman-v3.json) | C statuses and operation codes, function slots, record layouts, discovery prefix, caller-memory and ownership rules. | [The native ABI generator](../../crates/xtask/src/cmd/native_abi.rs) emits Rust definitions, the C header, and Dart operation values. |
+| [Native ABI 4](merman-v4.json) | C statuses and operation codes, reserved operation codes, function slots, record layouts, discovery prefix, caller-memory and ownership rules. | [The native ABI generator](../../crates/xtask/src/cmd/native_abi.rs) emits Rust definitions, the C header, and Dart operation values. |
 | [Text measurement v1](text-measurement-v1.json) | Callback operation codes, external names, result kinds, and platform vocabularies, independent of the enclosing transport's record layout. | [The text-measurement generator](../../crates/xtask/src/cmd/text_measurement/abi.rs) emits Rust, C, Kotlin, Dart, TypeScript, and Python projections. |
 
 Regenerate the native ABI or text-measurement projections after editing their descriptor:
@@ -19,6 +19,8 @@ cargo run -p xtask -- verify-text-measurement-protocol
 ```
 
 `verify-generated` includes both projection checks.
+After regenerating the native C header, regenerate the raw Dart FFI declarations with `ffigen`
+as shown in the [Flutter binding guide](../../docs/bindings/FLUTTER_DART_FFI.md#abi-discovery).
 [SDK assembly](../../scripts/sdk_archive.py) also packages the native ABI and text-measurement
 descriptors with the matching native headers.
 

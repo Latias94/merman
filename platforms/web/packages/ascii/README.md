@@ -2,7 +2,7 @@
 
 Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-Version `0.11.0` uses Web transport API `11` and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+The current source uses Web transport API `12` and Options JSON schema `4`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
 Use `renderAsciiResult()` to read ASCII schema `4` output metadata. Update report readers for the nullable primary layout and separate emitted overflow. [ASCII report migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
 
@@ -20,9 +20,15 @@ import { initMerman, renderAscii } from "@mermanjs/web-ascii";
 await initMerman();
 
 const output = renderAscii(`flowchart TD
-  A[Start] --> B[Done]`);
+  A[Start] --> B[Done]`, {
+  theme: { preset: "studio", appearance: "dark" },
+  ascii: { color_mode: "truecolor" },
+});
 console.log(output);
 ```
+
+Use `themeCatalog()` to discover native presets and their available appearances. Pass a preset ID
+or a v2 theme document to color truecolor and ANSI256 output.
 
 ## Scope
 

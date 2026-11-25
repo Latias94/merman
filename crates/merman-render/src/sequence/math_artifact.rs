@@ -67,7 +67,6 @@ impl SequenceMathOccurrence {
 struct SequencePreparedMathEntry {
     occurrence_id: PreparedMathOccurrenceId,
     source: Arc<str>,
-    foreground_provenance: super::SequenceTerminalForegroundProvenance,
     outcome: MathPreparationOutcome,
     expected_terminal_emissions: usize,
     retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
@@ -213,16 +212,6 @@ impl SequenceMathSidecar {
             .get(occurrence)
             .and_then(|entry| entry.outcome.unavailable_reason())
     }
-
-    #[cfg(test)]
-    pub(crate) fn foreground_provenance(
-        &self,
-        occurrence: &SequenceMathOccurrence,
-    ) -> Option<super::SequenceTerminalForegroundProvenance> {
-        self.entries
-            .get(occurrence)
-            .map(|entry| entry.foreground_provenance)
-    }
 }
 
 pub(crate) trait SequenceMathArtifactStore {
@@ -301,7 +290,6 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
                 source,
                 "one Sequence math occurrence must bind one effective source"
             );
-            debug_assert_eq!(entry.foreground_provenance, terminal.foreground_provenance);
             return match &entry.outcome {
                 MathPreparationOutcome::Prepared(artifact) => Some(Arc::clone(artifact)),
                 MathPreparationOutcome::Unavailable(_) => None,
@@ -368,7 +356,6 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
             SequencePreparedMathEntry {
                 occurrence_id,
                 source: Arc::from(source),
-                foreground_provenance: terminal.foreground_provenance,
                 outcome,
                 expected_terminal_emissions,
                 retained_reservation: RefCell::new(Some(reservation)),
@@ -478,8 +465,6 @@ mod tests {
         SequenceTerminalTextStyle {
             text_style: style,
             foreground: "#67e8f9",
-            foreground_provenance:
-                super::super::SequenceTerminalForegroundProvenance::PresentationConfig,
         }
     }
 
@@ -514,15 +499,6 @@ mod tests {
         assert!(Arc::ptr_eq(&layout, &repeated));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(layout.max_line_height_px(), 26.5);
-        assert_eq!(
-            builder
-                .entries
-                .borrow()
-                .get(&occurrence)
-                .expect("prepared occurrence")
-                .foreground_provenance,
-            super::super::SequenceTerminalForegroundProvenance::PresentationConfig
-        );
         assert!(layout.browser_xhtml().contains("font-size:27px"));
         assert!(layout.browser_xhtml().contains("color:#67e8f9"));
         assert_eq!(
@@ -542,10 +518,6 @@ mod tests {
         let sidecar = builder.finish().unwrap();
         let writer = sidecar.get_arc(&occurrence, "$$x$$<br>$$y$$").unwrap();
         assert!(Arc::ptr_eq(&layout, writer));
-        assert_eq!(
-            sidecar.foreground_provenance(&occurrence),
-            Some(super::super::SequenceTerminalForegroundProvenance::PresentationConfig)
-        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         drop(sidecar);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);

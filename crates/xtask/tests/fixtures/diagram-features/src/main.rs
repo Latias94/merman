@@ -97,7 +97,6 @@ fn verify_declared_svg(diagram: &merman_model::ParsedSemanticDiagram) {
             config: diagram.metadata.config.clone(),
             effective_config: diagram.metadata.semantic_config.clone(),
             title: diagram.metadata.title.clone(),
-            theme_recipe: None,
         },
         RenderSemanticModel::Flowchart(model.clone()),
         PresentationContext::None,

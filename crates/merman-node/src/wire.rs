@@ -8,9 +8,9 @@ use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
     BindingError, BindingErrorKind, BindingOperationKind, BindingOperationRequest,
     BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
-    CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey, OperationPhase,
-    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
+    CapabilityKey, ConstructorServiceKey, NODE_TRANSPORT_API_VERSION, OperationControl,
+    OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,7 +18,6 @@ use serde_json::Value;
 
 const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
-const NODE_TRANSPORT_API_VERSION: u32 = 2;
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
@@ -27,13 +26,11 @@ const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
 };
 const NODE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
-    OperationKey::DescribeThemeSupportJson,
-    #[cfg(feature = "svg")]
-    OperationKey::ExportThemePresetJson,
+    OperationKey::ExportThemePreset,
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     #[cfg(feature = "svg")]
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ResolveTheme,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -1548,6 +1545,10 @@ mod tests {
     fn runtime_catalog_reports_exact_static_svg_artifact() {
         let catalog: serde_json::Value =
             serde_json::from_str(&runtime_catalog_wire().unwrap()).unwrap();
+        assert_eq!(
+            catalog["transport_api_version"],
+            node_wire_contract().transport_api_version
+        );
         let capabilities = &catalog["capabilities"];
         let expected = &node_wire_contract().artifact;
         assert_eq!(
@@ -1710,6 +1711,10 @@ mod tests {
             assert_eq!(identity["artifact_id"], "merman-node-static-svg");
             assert_eq!(identity["package_version"], env!("CARGO_PKG_VERSION"));
             assert_eq!(identity["transport_kind"], expected_kind);
+            assert_eq!(
+                identity["transport_api_version"],
+                node_wire_contract().transport_api_version
+            );
             assert_eq!(
                 identity["capability_descriptor_digest"],
                 merman_bindings_core::CAPABILITY_DESCRIPTOR_DIGEST
@@ -2061,44 +2066,30 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn theme_catalog_transport_uses_constrained_engine_limits_and_preset_availability() {
+    fn theme_catalog_presets_export_through_the_node_transport() {
         let engine = create_engine(r#"{"resources":{"profile":"constrained"}}"#)
             .expect("constrained Node engine");
         let catalog: serde_json::Value = serde_json::from_str(
             &metadata_wire_for_engine(&engine, "theme-catalog").expect("engine theme catalog"),
         )
         .expect("Node theme catalog JSON");
-        assert_eq!(catalog["schema_version"], 1);
-        let limits = catalog["resource_limits"].as_array().expect("theme limits");
-        for (id, expected) in [
-            ("max_theme_encoded_bytes", 512 * 1024),
-            ("max_effect_graphs", 8),
-        ] {
-            let matching = limits
-                .iter()
-                .filter(|limit| limit["id"] == id)
-                .collect::<Vec<_>>();
-            assert_eq!(matching.len(), 1, "one transport descriptor for {id}");
-            assert_eq!(
-                matching[0]["effective_value"], expected,
-                "constrained engine limit {id}"
-            );
-        }
-        for preset in catalog["presets"].as_array().expect("preset catalog") {
+        assert_eq!(catalog["schema_version"], 2);
+        let presets = catalog["presets"].as_array().expect("preset catalog");
+        assert!(!presets.is_empty());
+        for preset in presets {
             let request = serde_json::json!({
-                "operation_id": "export-theme-preset-json",
+                "operation_id": "export-theme-preset",
                 "source": preset["id"], "uri": null,
             });
-            let result: serde_json::Value = serde_json::from_str(&execute_wire(
-                &engine,
-                &serde_json::to_string(&request).unwrap(),
-            ))
-            .expect("Node preset export envelope");
-            assert_eq!(
-                result["ok"], preset["available"],
-                "preset availability must match actual admission through the same engine: {}",
-                preset["id"]
-            );
+            let result: serde_json::Value =
+                serde_json::from_str(&execute_wire(&engine, &request.to_string()))
+                    .expect("Node preset export envelope");
+            assert_eq!(result["ok"], true, "{}: {result}", preset["id"]);
+            assert_eq!(result["result"]["media_type"], "application/json");
+            let document: serde_json::Value =
+                serde_json::from_str(result["result"]["data"].as_str().unwrap()).unwrap();
+            assert_eq!(document["schema_version"], 2);
+            assert_eq!(document["id"], preset["id"]);
         }
     }
 
@@ -2211,82 +2202,27 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn materialize_theme_wire_preserves_authoring_error_envelope() {
+    fn resolve_theme_wire_preserves_document_diagnostics() {
         let engine = create_engine("").unwrap();
+        let document =
+            "{\n  \"schema_version\": 2,\n  \"schema_version\": 2,\n  \"extends\": \"studio\"\n}";
         let request = serde_json::json!({
-            "operation_id": "materialize-theme-json",
-            "source": r#"{"styles":{"node":{"typography":{"font_stack":[]}}}}"#,
-            "uri": null,
+            "operation_id": "resolve-theme",
+            "source": serde_json::json!({ "document": document }).to_string(),
+            "include_metadata": false,
         });
-        let payload: serde_json::Value =
+        let envelope: serde_json::Value =
             serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
-        assert_eq!(payload["ok"], false);
-        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
-        let authoring = &payload["error"]["details"]["theme_authoring"];
-        assert_eq!(authoring["schema_version"], 1);
-        assert_eq!(
-            authoring["diagnostics"][0]["code"],
-            "theme-authoring.invalid-token-value"
-        );
-        assert_eq!(
-            authoring["diagnostics"][0]["path"],
-            "/styles/node/typography/font_stack"
-        );
-        assert_eq!(
-            authoring["diagnostics"][0]["details"],
-            serde_json::json!({"expected_domain_id": "font-stack"})
-        );
+        assert_eq!(envelope["ok"], true, "{envelope}");
+        let result: serde_json::Value =
+            serde_json::from_str(envelope["result"]["data"].as_str().unwrap()).unwrap();
+        assert_eq!(result["ok"], false);
+        assert_eq!(result["line"], 3);
         assert!(
-            !authoring["diagnostics"][0]["message"]
+            result["message"]
                 .as_str()
                 .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn materialize_theme_wire_preserves_reference_type_diagnostics() {
-        let engine = create_engine("").unwrap();
-        let request = serde_json::json!({
-            "operation_id": "materialize-theme-json",
-            "source": r#"{"tokens":{"ink":{"type":"number","value":2}},"styles":{"node":{"fill":{"kind":"solid","color":{"ref":"ink"}}}}}"#,
-            "uri": null,
-        });
-        let payload: serde_json::Value =
-            serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
-        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
-        let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
-        assert_eq!(diagnostic["code"], "theme-authoring.invalid-token-value");
-        assert_eq!(diagnostic["path"], "/styles/node/fill/color");
-        assert_eq!(
-            diagnostic["details"],
-            serde_json::json!({"expected_domain_id":"color"})
-        );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn materialize_theme_wire_bounds_diagnostics_for_escaped_identifiers() {
-        let engine = create_engine("").unwrap();
-        let target = "\u{0001}".repeat(64 * 1024);
-        let design = serde_json::json!({ "styles": { target: {"fill":"#123456"} } });
-        let request = serde_json::json!({
-            "operation_id": "materialize-theme-json", "source": design.to_string(), "uri": null,
-        });
-        let wire = execute_wire(&engine, &request.to_string());
-        let payload: serde_json::Value = serde_json::from_str(&wire).unwrap();
-        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
-        let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
-        assert_eq!(diagnostic["code"], "theme-authoring.invalid-token-value");
-        assert_eq!(diagnostic["path"], "/styles");
-        assert_eq!(
-            diagnostic["details"],
-            serde_json::json!({"expected_domain_id":"bounded-theme-identifier"})
-        );
-        assert!(
-            wire.len() < 4096,
-            "oversized escaped identifiers must not amplify error payloads"
+                .contains("duplicate key `schema_version`")
         );
     }
 

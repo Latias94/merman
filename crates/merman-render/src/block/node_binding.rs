@@ -1,5 +1,10 @@
 use std::fmt::Write as _;
 
+use merman_model::families::block::BlockDiagramRenderModel;
+
+use crate::model::BlockDiagramLayout;
+use crate::resources::{OperationWorkError, OperationWorkMeter};
+
 pub(super) fn is_font_key(key: &str) -> bool {
     matches!(
         key,
@@ -114,9 +119,6 @@ mod tests {
             ],
             &[],
             &indexmap::IndexMap::new(),
-            None,
-            None,
-            None,
         );
         assert_eq!(
             binding.box_style,
@@ -125,7 +127,6 @@ mod tests {
         assert_eq!(binding.text_style, "color:var(--text);");
         assert_eq!(binding.svg_text_style, "fill:var(--text);");
         assert_eq!(binding.div_style_prefix, "color: var(--text); ");
-        assert!(binding.html_paragraph_color.is_none());
     }
 
     #[test]
@@ -147,9 +148,6 @@ mod tests {
                 ],
                 &[],
                 &indexmap::IndexMap::new(),
-                None,
-                None,
-                None,
             );
             assert_eq!(binding.text_style, format!("{expected};color:#123456;"));
             assert_eq!(binding.svg_text_style, format!("{expected};fill:#123456;"));
@@ -160,25 +158,6 @@ mod tests {
             assert_eq!(binding.box_style, "fill:#abcdef !important;");
         }
     }
-
-    #[test]
-    fn prepared_typed_candidates_reach_their_separate_label_sinks() {
-        let binding = lower(
-            &["stroke-width:2px".into()],
-            &[],
-            &indexmap::IndexMap::new(),
-            Some("#123456"),
-            Some("transparent"),
-            Some("#abcdef"),
-        );
-        assert_eq!(
-            binding.box_style,
-            "stroke-width:2px;fill:#123456;stroke:transparent;"
-        );
-        assert_eq!(binding.svg_text_style, "fill:#abcdef;");
-        assert_eq!(binding.html_paragraph_color.as_deref(), Some("#abcdef"));
-        assert_eq!(binding.text_style, "");
-    }
 }
 
 #[derive(Debug)]
@@ -187,16 +166,12 @@ pub(crate) struct BlockNodeTerminalBinding {
     pub(crate) text_style: String,
     pub(crate) svg_text_style: String,
     pub(crate) div_style_prefix: String,
-    pub(crate) html_paragraph_color: Option<String>,
 }
 
-pub(crate) fn lower(
+fn lower(
     styles: &[String],
     classes: &[String],
     definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
-    fill: Option<&str>,
-    stroke: Option<&str>,
-    label: Option<&str>,
 ) -> BlockNodeTerminalBinding {
     let mut box_style = String::new();
     let mut text_style = String::new();
@@ -248,19 +223,40 @@ pub(crate) fn lower(
         }
     }
 
-    for (key, value) in [("fill", fill), ("stroke", stroke)] {
-        if let Some(value) = value {
-            let _ = write!(box_style, "{key}:{value};");
-        }
-    }
-    if let Some(value) = label {
-        let _ = write!(svg_text_style, "fill:{value};");
-    }
     BlockNodeTerminalBinding {
-        html_paragraph_color: label.map(str::to_owned),
         box_style,
         text_style,
         svg_text_style,
         div_style_prefix: div_prefix,
+    }
+}
+
+/// Lowered source declarations in layout node order.
+#[derive(Debug, Default)]
+pub(crate) struct BlockNodeBindings(Box<[Option<BlockNodeTerminalBinding>]>);
+
+impl BlockNodeBindings {
+    pub(crate) fn prepare(
+        model: &BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        work: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        work.charge(layout.nodes.len())?;
+        let sources = super::resolve_block_node_sources(model);
+        let bindings = layout
+            .nodes
+            .iter()
+            .map(|node| {
+                work.charge(1)?;
+                Ok(sources
+                    .get(node.id.as_str())
+                    .map(|source| lower(source.styles, source.classes, &model.class_defs)))
+            })
+            .collect::<Result<_, OperationWorkError>>()?;
+        Ok(Self(bindings))
+    }
+
+    pub(crate) fn get(&self, node_index: usize) -> Option<&BlockNodeTerminalBinding> {
+        self.0.get(node_index)?.as_ref()
     }
 }

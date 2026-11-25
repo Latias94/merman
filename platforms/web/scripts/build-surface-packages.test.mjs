@@ -70,7 +70,7 @@ describe("browser package assembly", () => {
     );
   });
 
-  it("exports grouped preset discovery types through the shared root and every Web package", () => {
+  it("exports Theme v2 types through the shared root and every Web package", () => {
     const contract = loadTypeScriptContract({
       tsconfigPath: path.join(webRoot, "tsconfig.json"),
     });
@@ -79,22 +79,13 @@ describe("browser package assembly", () => {
     const entries = ["index.ts", ...webPackages.map(({ id }) => `package-entries/${id}.ts`)];
     for (const entry of entries) {
       const file = path.join(webRoot, "src", entry);
-      assert.ok(contract.exportedTypeNames(file).has("ThemePresetApplicationNote"), entry);
-      const properties = contract.exportedTypePropertyNames(file, "ThemePresetCatalogEntry");
-      for (const property of ["supported_appearances", "default_appearance", "appearances"]) {
-        assert.ok(properties.has(property), `${entry}: ${property}`);
+      const types = contract.exportedTypeNames(file);
+      for (const name of ["ThemeCatalog", "ThemeDocumentV2", "ThemeOutcome", "ThemeResolution"]) {
+        assert.ok(types.has(name), `${entry}: ${name}`);
       }
-      const appearanceProperties = contract.exportedTypePropertyNames(
-        file,
-        "ThemePresetAppearanceMetadataV1",
-      );
-      for (const property of [
-        "appearance",
-        "concrete_preset_id",
-        "preview_colors",
-        "application_notes",
-      ]) {
-        assert.ok(appearanceProperties.has(property), `${entry}: ${property}`);
+      const preset = contract.exportedTypePropertyNames(file, "ThemePresetCatalogEntry");
+      for (const property of ["id", "name", "category", "default_appearance", "appearances", "swatches"]) {
+        assert.ok(preset.has(property), `${entry}: ${property}`);
       }
     }
   });

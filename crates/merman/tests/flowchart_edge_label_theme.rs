@@ -1,49 +1,7 @@
-#![cfg(feature = "svg")]
+#![cfg(all(feature = "svg", feature = "diagram-flowchart"))]
 
-use merman::svg::{DiagramTheme, SvgPipeline, ThemePortabilityRequirement};
-use merman::{
-    OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgOutput, SvgRequest,
-    ThemeEvidenceStatus,
-};
-
-fn svg_request(strict: bool) -> SvgRequest {
-    let environment = if strict {
-        SvgEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-    } else {
-        SvgEnvironment::deterministic()
-    };
-    SvgRequest {
-        environment,
-        pipeline: strict.then(SvgPipeline::resvg_safe),
-        ..SvgRequest::default()
-    }
-}
-
-fn render(source: &str, theme: Option<DiagramTheme>, strict: bool) -> Result<SvgOutput, String> {
-    render_with_renderer(Renderer::new(), source, theme, strict)
-}
-
-fn render_with_renderer(
-    renderer: Renderer,
-    source: &str,
-    theme: Option<DiagramTheme>,
-    strict: bool,
-) -> Result<SvgOutput, String> {
-    let request = RenderRequest::svg(source, OperationControl::new(), svg_request(strict));
-    let request = match theme {
-        Some(theme) => request.with_theme(theme),
-        None => request,
-    };
-    match renderer
-        .render(request)
-        .map_err(|error| error.to_string())?
-    {
-        RenderOutput::Svg(Some(output)) => Ok(output),
-        RenderOutput::Svg(None) => Err("source did not contain a diagram".to_string()),
-        other => Err(format!("unexpected render output: {other:?}")),
-    }
-}
+use merman::theme::ThemeMode;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn edge_label_text_content(svg: &str) -> Vec<String> {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG XML");
@@ -71,8 +29,9 @@ fn edge_label_text_content(svg: &str) -> Vec<String> {
 
 #[test]
 fn unthemed_edge_labels_keep_the_legacy_svg_path() {
-    let output = render(
-        r#"---
+    let RenderOutput::Svg(Some(output)) = Renderer::new()
+        .render(RenderRequest::svg(
+            r#"---
 config:
   htmlLabels: false
   flowchart:
@@ -81,15 +40,15 @@ config:
 flowchart LR
 A -->|legacy edge label| B
 "#,
-        None,
-        false,
-    )
-    .expect("unthemed Flowchart should render");
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))
+        .expect("unthemed Flowchart should render")
+    else {
+        panic!("expected a Flowchart SVG");
+    };
 
-    assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::NotApplicable
-    );
+    assert_eq!(output.theme_outcome().mode, ThemeMode::MermaidParity);
     assert!(
         !output.svg().contains("merman-prepared-"),
         "{}",

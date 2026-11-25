@@ -1,9 +1,9 @@
 #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 use super::font_selection::FontSelectionPolicy;
 use super::{ExportError, OperationControl, Result, export_checkpoint};
-#[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
-use merman_render::diagram_theme::{FontCatalog, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
+#[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
+use merman_render::text::{FontCatalog, FontSource, FontSourcePolicy};
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -463,7 +463,7 @@ impl ExportFontEnvironment {
     #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
     fn from_resources(
         catalog: &FontCatalog,
-        policy: &merman_render::diagram_theme::FontSourcePolicy,
+        policy: &FontSourcePolicy,
         system_fonts: impl FnOnce() -> (Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>),
     ) -> Result<Self> {
         if !policy.priority().any(|source| {
@@ -555,7 +555,6 @@ pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
 mod tests {
     use super::*;
     use crate::font_selection::face_family_name;
-    use merman_render::diagram_theme::FontSourcePolicy;
     use merman_render::environment::RenderEnvironment;
     use merman_render::svg::finalize_resvg_svg;
 

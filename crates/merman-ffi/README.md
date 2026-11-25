@@ -2,7 +2,7 @@
 
 Embed Merman's headless Mermaid parser, analyzer, layout engine, and render/export backends in a C-compatible host. It does not require a browser or JavaScript runtime.
 
-> **Native ABI 3:** this crate exposes native ABI 3 only. The ABI 2 entry points and records shipped in `0.8.0-alpha.2` and `0.8.0-alpha.3` were removed; rebuild those hosts against the ABI 3 header and library from the same Merman release.
+> This source implements **Native ABI 4**. Rebuild ABI 3 consumers against the matching generated header and native library. An ABI 3 discovery request returns `MERMAN_NATIVE_STATUS_ABI_MISMATCH`.
 
 ## Choose A Native Surface
 
@@ -64,7 +64,7 @@ target/merman-ffi-render-svg
 
 Windows hosts use the same header and example with the release-matched DLL/import library and the host compiler's normal DLL search configuration.
 
-## ABI 3 Model
+## ABI 4 Model
 
 The C surface has one exported discovery symbol:
 
@@ -77,7 +77,7 @@ MermanNativeStatus merman_get_native_api(
 
 The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`, then receives the common prefix of a size-tagged function table. `MermanNativeApi.struct_size` is the host capacity on input and the largest complete producer prefix safely initialized within that capacity on output. The returned minimum-prefix digest is the compatibility key, the full descriptor digest records producer provenance, and the capability catalog digest identifies the loaded artifact. Every other record requires its exact generated size. Use `MERMAN_NATIVE_RESULT_INIT` to fully zero-initialize each result before a producing call; setting only `struct_size` in otherwise uninitialized storage is invalid. The generated C header and release C smoke tests carry the compile-run layout fingerprint, so applications should not implement a second runtime offset probe.
 
-The ABI 3 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
+The ABI 4 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
 is an additive current-contract extension: `operation_control_new`, `operation_control_cancel`, and
 `operation_control_release` occupy slots `7`, `8`, and `9`, while
 `execute_collect_controlled` occupies slot `10`. The generated prefix-size macros identify each
@@ -113,8 +113,9 @@ Every operation follows the same path:
 Initialize the `out_engine` value to zero before any constructor; a nonzero value is rejected
 without being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel
 and is not executable: `execute_collect` returns invalid argument with the generic error kind.
-Unknown numeric operation codes continue to return unsupported operation with
-`unknown-operation`.
+Unknown numeric operation codes return unsupported operation with `unknown-operation`, including
+the reserved codes `15` through `17`. Theme v2 uses `18` for `resolve-theme` and `19` for
+`export-theme-preset`.
 
 `api.engine_new_with_services` embeds the existing `MermanNativeEngineConfig` in a
 `MermanNativeEngineServicesConfig` and optionally accepts a contiguous array of
@@ -140,39 +141,25 @@ With `svg` enabled, render with a built-in theme by setting
 `MermanNativeOperationRequest.options_json` to the following document.
 
 ```json
-{"version":3,"theme":{"preset":"paper-cut"}}
+{"version":4,"theme":{"preset":"studio","appearance":"dark"}}
 ```
 
-Built-in editable designs include Paper Cut, Carbon Copy (`carbon-copy`), and Pop Art (`pop-art`).
-For a paired design, use `{"theme":{"preset":"editor","appearance":"dark"}}`.
-An omitted appearance uses the declared default; the host resolves Follow-app/editor to
-`light` or `dark` before calling this headless API.
+Pass the UTF-8 metadata ID `theme-catalog` to `api.metadata_collect`. Its schema-2 data lists
+presets and their supported appearances, default swatches, classic Mermaid IDs, and native
+capability flags by family.
 
-Pass the UTF-8 metadata ID `theme-catalog` to `api.metadata_collect` to discover designs and
-their supported appearances. Each appearance reports family guidance, swatches, qualification,
-and `concrete_preset_id`; availability alone does not qualify an output.
+Set `request.operation` to `MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET` and `request.source`
+to a raw UTF-8 preset ID such as `studio`. Call `api.execute_collect(engine, &request, &result)`
+with empty `uri` and `options_json`. Decode successful `result.data` as an editable Theme v2
+document. `MERMAN_NATIVE_OPERATION_RESOLVE_THEME` takes a JSON source object with `document`
+and optional `appearance` and `auto_fix_contrast`. Its data contains resolved settings and
+notices or a document diagnostic. Initialize results with `MERMAN_NATIVE_RESULT_INIT` and
+release them with `api.result_free`.
 
-Theme authoring uses the existing `MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON`,
-`MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON`, and
-`MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON` operation codes. Preset export takes a
-plain ID such as `paper-cut` and returns the complete schema-1 recipe. Paired designs retain
-`design.appearances` and their declared default in that document.
-Set `request.operation` to `MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON` and
-`request.source` to the raw UTF-8 preset ID, with empty `uri` and `options_json`, then call
-`api.execute_collect(engine, &request, &result)`. Decode successful `result.data` as the recipe
-JSON. Initialize each result with `MERMAN_NATIVE_RESULT_INIT` and free it with `api.result_free`.
-
-To customize Paper Cut, change `design.tokens.surface.value`, for example to `#DCEAF7`, while
-preserving the complete recipe. Supply that document as `options_json.theme` for rendering.
-For a paired recipe, put the saved document in `theme.recipe` and choose `theme.appearance`.
-Materialization accepts a schema-1 `action` (`inspect` or `materialize`) with that `recipe`;
-selected materialization also accepts a concrete `appearance`. Raw design input still materializes
-the default appearance.
-
-These nested JSON payloads use the current ABI 3 table and Options JSON schema 3 unchanged.
-See the [C example](examples/render_svg.c) for request and result ownership, and the
-[theme guide](../../docs/rendering/custom-diagram-themes.md) for editable tokens, appearance
-overrides, import/export, and Mermaid `site_config` precedence.
+Pass the document in `options_json.theme` to render its default appearance. Use a selector
+with `document` and `appearance` to choose a specific appearance. Graphical result metadata
+reports `theme_outcome`. See the [C example](examples/render_svg.c) for request ownership and
+the [Theme v2 guide](../../docs/rendering/custom-diagram-themes.md) for customization.
 
 ## Memory-Only Fonts
 
@@ -293,7 +280,7 @@ The public feature names describe callable capabilities:
 
 This crate exports only the native C ABI discovery surface. Android JNI transport code lives in the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a feature combination.
 
-Use the generated runtime catalog to determine what the loaded artifact actually supports. The full wire contract, status semantics, callback rules, and C snippets are in [the FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md); ABI 2 and pre-freeze ABI 3 hosts must follow its [contract evolution rules](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#contract-evolution-rules).
+Use the generated runtime catalog to determine what the loaded artifact supports. The protocol guide covers discovery, wire contracts, status semantics, and callbacks. [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md)
 
 ## Platform Wrappers
 

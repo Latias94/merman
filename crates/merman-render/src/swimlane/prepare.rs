@@ -90,7 +90,6 @@ struct MeasureContext<'a> {
     title_html_labels: bool,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
-    edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
     work_meter: &'a OperationWorkMeter,
 }
 
@@ -261,9 +260,8 @@ fn measure_edge_label(
         Some(&style),
         FlowchartSvgWidthMode::Bbox,
     );
-    let (label_width, label_height) = ctx
-        .edge_label_padding
-        .padded_size(metrics.width.max(0.0), metrics.height.max(0.0));
+    let label_width = metrics.width.max(0.0);
+    let label_height = metrics.height.max(0.0);
 
     Ok(WorkingNode {
         id: label_node_id,
@@ -404,10 +402,6 @@ pub(super) fn prepare(
         || config_view.layout_settings(),
         |sidecar| sidecar.layout_settings(effective_config.as_value()),
     );
-    let edge_label_padding = svg_label_sidecar.map_or_else(
-        crate::flowchart::FlowchartEdgeLabelPadding::default,
-        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
-    );
     let measure_ctx = MeasureContext {
         model,
         config: effective_config,
@@ -418,7 +412,6 @@ pub(super) fn prepare(
         title_html_labels: swimlane_title_html_labels,
         svg_label_sidecar,
         edge_style_plan,
-        edge_label_padding,
         work_meter,
     };
 

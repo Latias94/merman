@@ -907,6 +907,7 @@ dependencies = [
  "merman-model",
  "merman-render",
  "merman-theme-contract",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
 ]
@@ -929,6 +930,7 @@ version = "0.11.0"
 dependencies = [
  "dugong",
  "merman-model",
+ "merman-theme-contract",
  "pulldown-cmark",
  "rustc-hash",
  "ryu-js",
@@ -945,7 +947,6 @@ version = "0.11.0"
 dependencies = [
  "merman",
  "merman-analysis",
- "merman-theme-contract",
  "quick-xml",
  "serde",
  "serde_json",
@@ -1168,7 +1169,7 @@ version = "0.11.0"
 dependencies = [
  "serde",
  "serde_json",
- "serde_json_canonicalizer",
+ "serde_path_to_error",
  "thiserror 2.0.21",
 ]
 
@@ -1983,14 +1984,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_json_canonicalizer"
-version = "0.4.1"
+name = "serde_path_to_error"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f7bb64f8c7e9f783fdfe883b5fe93a90bee1597c63705baa91842c5f698620"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
 dependencies = [
- "ryu-js",
+ "itoa",
  "serde",
- "serde_json",
+ "serde_core",
 ]
 
 [[package]]

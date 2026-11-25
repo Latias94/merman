@@ -10,9 +10,11 @@ export function ThemeAppearanceControl({ selection, onChange }: {
   const { t } = useTranslation();
   const id = useId();
   const { supported_appearances: supported, preference, appearance } = selection;
-  return <section className="flex min-w-0 flex-col gap-2" data-testid="theme-appearance-control" data-effective-appearance={selection.error ? "invalid" : appearance ?? "unclassified"}>
+  const canChoose = supported.length > 1 ||
+    ((preference === "light" || preference === "dark") && !supported.includes(preference));
+  return <section className="flex min-w-0 flex-col gap-2" data-testid="theme-appearance-control" data-effective-appearance={appearance ?? "unclassified"}>
     <label htmlFor={id} className="block text-xs font-semibold">{t("appearanceMode.title")}</label>
-    {supported.length > 1 ? <Select value={preference} onValueChange={(value) => onChange(value as ThemeAppearancePreference)}>
+    {canChoose ? <Select value={preference} onValueChange={(value) => onChange(value as ThemeAppearancePreference)}>
       <SelectTrigger id={id} size="sm" aria-label={t("appearanceMode.title")} data-value={preference} className="w-full min-w-0"><SelectValue /></SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -24,8 +26,8 @@ export function ThemeAppearanceControl({ selection, onChange }: {
     </Select> : <p id={id} className="text-xs text-muted-foreground">
       {supported.length === 1 ? t("appearanceMode.only", { appearance: t(`appearanceMode.${supported[0]}`) }) : t("appearanceMode.unclassified")}
     </p>}
-    {selection.error && <p role="alert" className="text-xs text-destructive" data-testid="theme-appearance-error">{selection.error}</p>}
-    {appearance && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground" data-testid="theme-effective-appearance">
+    {selection.error && <p role="alert" className="text-xs text-destructive">{selection.error}</p>}
+    {appearance && supported.length > 1 && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground" data-testid="theme-effective-appearance">
       {t(preference === "follow" ? "appearanceMode.following" : "appearanceMode.selected", { appearance: t(`appearanceMode.${appearance}`) })}
     </p>}
   </section>;

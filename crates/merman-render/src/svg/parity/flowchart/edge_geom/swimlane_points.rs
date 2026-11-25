@@ -14,9 +14,7 @@ mod tests {
         use crate::svg::parity::flowchart::node_inventory::{
             FlowchartNodeLayoutView, FlowchartPreparedNodes,
         };
-        use crate::svg::parity::flowchart::render_config::{
-            flowchart_node_label_fill_config_override, prepare_flowchart_render_config,
-        };
+        use crate::svg::parity::flowchart::render_config::prepare_flowchart_render_config;
         use crate::svg::parity::flowchart::svg_emit::FlowchartSvgModelRequest;
         use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
         use merman_core::{MermaidEngine, ParseOptions};
@@ -100,22 +98,17 @@ mod tests {
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
             &metadata.effective_config,
-            flowchart_node_label_fill_config_override(&metadata.effective_config),
-            execution.work_meter(),
-        )
-        .expect("prepared theme");
-        let edge_theme =
-            crate::flowchart::FlowchartEdgeThemeStyle::resolve(None, execution.work_meter())
-                .expect("prepared edge theme");
+            None,
+            None,
+        );
+
         let render_config = prepare_flowchart_render_config(
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
             layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
-            sidecar.edge_label_padding(),
         );
         let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
             &model,
@@ -126,8 +119,6 @@ mod tests {
         .expect("edge style plan")
         .with_resolved_stroke_widths(
             &model,
-            &edge_theme,
-            &metadata.effective_config,
             &prepared_theme.compatibility,
             execution.work_meter(),
         )
@@ -142,7 +133,6 @@ mod tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &metadata.effective_config,
             &prepared_theme,
             &render_config,
@@ -150,9 +140,7 @@ mod tests {
             true,
         )
         .expect("prepared fixed-layout nodes");
-        let theme_evidence = crate::flowchart::FlowchartThemeEvidenceRecorder::default();
-        let effect_evidence = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
-        let expected_effect_applications = std::cell::Cell::new(0);
+
         let request = FlowchartSvgModelRequest {
             render_config: &render_config,
             prepared_nodes: &prepared_nodes,
@@ -165,11 +153,8 @@ mod tests {
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: None,
             svg_label_sidecar: &sidecar,
-            theme_evidence: &theme_evidence,
-            effect_evidence: &effect_evidence,
-            expected_effect_applications: &expected_effect_applications,
+
             edge_style_plan: &edge_style_plan,
-            edge_theme: &edge_theme,
         };
         let painted_edges = super::super::paint::edge_geometry(request, &execution).unwrap();
         assert_eq!(

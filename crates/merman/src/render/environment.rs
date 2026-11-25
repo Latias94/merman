@@ -1,9 +1,9 @@
 use merman_model::{OperationControl, resources::InputResourcePolicy};
 use merman_render::{
     RenderCapabilityPolicy,
-    diagram_theme::{DiagramTheme, ThemeResourcePolicy},
     environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
     resources::RenderResourcePolicy,
+    theme::ThemePortabilityRequirement,
 };
 
 use super::RenderError;
@@ -59,6 +59,8 @@ pub(super) fn resolve_native_font_context(
 #[derive(Debug, Clone)]
 pub struct SvgEnvironment {
     backend: BackendRenderEnvironment,
+    pub(super) native_theme: Option<crate::theme::ThemeSelection>,
+    pub(super) background: Option<crate::theme::Color>,
     #[cfg(feature = "native-fonts")]
     // The caller-selected context is retained for measurement/painting identity checks. The
     // active context is forked per render operation so counters and sticky failures do not leak.
@@ -82,6 +84,8 @@ impl SvgEnvironment {
         let text_measurement = TextMeasurementPolicy::deterministic();
         let resources = RenderResourcePolicy::default();
         Self {
+            native_theme: None,
+            background: None,
             #[cfg(feature = "native-fonts")]
             native_fonts: None,
             #[cfg(feature = "native-fonts")]
@@ -208,35 +212,22 @@ impl SvgEnvironment {
         self
     }
 
-    /// Sets the host-owned ceiling for resources used while materializing a compiled theme.
-    ///
-    /// Session creation intersects this ceiling with the restriction captured by the theme
-    /// compiler. Neither side can widen the other.
-    pub fn with_theme_resource_ceiling(mut self, ceiling: ThemeResourcePolicy) -> Self {
-        self.backend = self.backend.with_theme_resource_ceiling(ceiling);
-        self
-    }
-
-    pub fn with_theme_admission_policy(
-        mut self,
-        policy: merman_render::diagram_theme::ThemeAdmissionPolicy,
-    ) -> Self {
-        self.backend = self.backend.with_theme_admission_policy(policy);
+    /// Allows document-provided Mermaid `themeCSS` from a trusted source. Defaults to false.
+    pub fn with_trusted_theme_css(mut self, allow: bool) -> Self {
+        self.backend = self.backend.with_trusted_theme_css(allow);
         self
     }
 
     pub fn with_theme_portability_requirement(
         mut self,
-        requirement: merman_render::diagram_theme::ThemePortabilityRequirement,
+        requirement: ThemePortabilityRequirement,
     ) -> Self {
         self.backend = self.backend.with_theme_portability_requirement(requirement);
         self
     }
 
     /// Returns the portability requirement that will be captured by the next session.
-    pub fn theme_portability_requirement(
-        &self,
-    ) -> merman_render::diagram_theme::ThemePortabilityRequirement {
+    pub fn theme_portability_requirement(&self) -> ThemePortabilityRequirement {
         self.backend.theme_portability_requirement()
     }
 
@@ -247,20 +238,25 @@ impl SvgEnvironment {
 
     pub(super) fn begin_session_in_context(
         &self,
-        theme: Option<&DiagramTheme>,
+        metadata: &merman_model::presentation::PresentationMetadata,
         context: merman_model::runtime::OperationContext,
         control: OperationControl,
     ) -> Result<merman_render::environment::RenderSession, RenderError> {
-        match theme {
-            Some(theme) => self
-                .backend
-                .begin_session_with_theme_in_context(theme, context, control)
-                .map_err(RenderError::from),
-            None => self
-                .backend
-                .begin_session_in_context(context, control)
-                .map_err(RenderError::from),
-        }
+        let session = if let Some(selection) = &self.native_theme {
+            let native = selection.resolve_svg(metadata)?;
+            match native {
+                Some(native) => self
+                    .backend
+                    .begin_session_with_native_theme_in_context(native, context, control),
+                None => self.backend.begin_session_in_context(context, control),
+            }
+        } else {
+            self.backend.begin_session_in_context(context, control)
+        }?;
+        Ok(match self.background {
+            Some(color) => session.with_canvas_background(color),
+            None => session,
+        })
     }
 }
 

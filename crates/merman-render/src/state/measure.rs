@@ -268,7 +268,6 @@ pub(super) fn state_node_dimensions(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use crate::text::{TextMetrics, TextStyle};

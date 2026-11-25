@@ -13,7 +13,6 @@ use crate::Result;
 #[derive(Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
-    pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -32,18 +31,12 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
-    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
     for c in clusters {
-        let typography =
-            render_class_namespace_cluster(out, content_bounds, c, ctx, theme_receipt)?;
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_namespace(&c.id, typography);
-        }
+        render_class_namespace_cluster(out, content_bounds, c, ctx)?;
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -57,8 +50,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
-) -> Result<crate::class::ClassTextTerminalFacts> {
+) -> Result<()> {
     render_class_namespace_cluster_at(
         out,
         content_bounds,
@@ -68,7 +60,6 @@ fn render_class_namespace_cluster(
             cluster.y - cluster.height.max(1.0) / 2.0 + ctx.content_ty,
         ),
         ctx,
-        theme_receipt,
     )
 }
 
@@ -78,8 +69,7 @@ fn render_class_namespace_cluster_at(
     cluster: &LayoutCluster,
     (left, top): (f64, f64),
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
-) -> Result<crate::class::ClassTextTerminalFacts> {
+) -> Result<()> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
     include_xywh(
@@ -108,87 +98,44 @@ fn render_class_namespace_cluster_at(
         label_h,
     );
 
-    let (title_html, typography) = if ctx.use_html_labels {
-        class_namespace_title_html(&cluster.title, ctx)
-    } else {
-        (
-            String::new(),
-            crate::class::ClassTextTerminalFacts::inherited_text(&cluster.title),
-        )
-    };
-    let terminal_style = ctx.relation_theme.cluster_terminal_style();
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})">"#,
+        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})">"#,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
         fmt(top),
         fmt(w),
         fmt(h),
-        escape_attr_display(terminal_style),
         fmt(label_x),
         fmt(label_y),
     );
-    let title_paint = ctx.relation_theme.namespace_title_terminal();
-    let emitted_title_style = if ctx.use_html_labels {
+    if ctx.use_html_labels {
+        let title_html = class_namespace_title_html(&cluster.title, ctx);
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel""#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{title_html}</span></div></foreignObject>"#,
             fmt(label_w),
             fmt(label_h),
             MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
         );
-        let emitted_style =
-            super::super::util::write_style_attribute(out, title_paint.map(|(_, style)| style))
-                .unwrap_or("");
-        let _ = write!(out, ">{title_html}</span></div></foreignObject>");
-        emitted_style
     } else {
-        write_class_svg_plain_node_text(
-            out,
-            &cluster.title,
-            title_paint.map_or("", |(_, style)| style),
-        )
-    };
-    out.push_str("</g></g>");
-    out.checkpoint()?;
-    let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
-    theme_receipt.record_cluster(fill_rule, stroke_rule);
-    if let Some((rule, _)) = title_paint {
-        theme_receipt.record_namespace_title(
-            rule,
-            label_w > 0.0 && !cluster.title.trim().is_empty(),
-            typography.has_verified_inherited_paint(),
-        );
+        write_class_svg_plain_node_text(out, &cluster.title);
     }
-    Ok(typography.with_paint(
-        ctx.relation_theme.namespace_title_fill(),
-        emitted_title_style,
-    ))
+    out.push_str("</g></g>");
+    out.checkpoint()
 }
 
-fn class_namespace_title_html(
-    title: &str,
-    ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> (String, crate::class::ClassTextTerminalFacts) {
+fn class_namespace_title_html(title: &str, ctx: ClassNamespaceClusterGroupContext<'_>) -> String {
     if let Some(math_html) = class_math_html_label(title, ctx.mermaid_config, ctx.math_renderer) {
-        return (
-            math_html,
-            crate::class::ClassTextTerminalFacts::unverified_text(title),
-        );
+        return math_html;
     }
-    let html = ctx.mermaid_config.map_or_else(
+    ctx.mermaid_config.map_or_else(
         || format!("<p>{}</p>", escape_xml_display(title)),
         |config| crate::class::class_plain_html_fragment(title, config),
-    );
-    let visible = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html);
-    (
-        html,
-        crate::class::ClassTextTerminalFacts::from_visible_style_facts(&visible),
     )
 }
 
@@ -208,8 +155,6 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
-    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
@@ -229,7 +174,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
                 c.y - h / 2.0 + ctx.content_ty - root_dy,
             )
         };
-        let typography = render_class_namespace_cluster_at(
+        render_class_namespace_cluster_at(
             out,
             content_bounds,
             c,
@@ -239,11 +184,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
                 bounds_dy: root_dy + ctx.bounds_dy,
                 ..ctx
             },
-            theme_receipt,
         )?;
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_namespace(&c.id, typography);
-        }
     }
     out.push_str("</g>");
     out.checkpoint()

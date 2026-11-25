@@ -45,7 +45,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_square(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
+) -> crate::Result<()> {
     render_icon_rect_frame(out, ctx, common, label, details, 0.1, None)
 }
 
@@ -55,7 +55,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_rounded(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
+) -> crate::Result<()> {
     render_icon_rect_frame(out, ctx, common, label, details, 5.0, Some("icon-shape2"))
 }
 
@@ -67,7 +67,7 @@ fn render_icon_rect_frame(
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
     corner_radius: f64,
     frame_class: Option<&str>,
-) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
+) -> crate::Result<()> {
     let (
         top_label,
         icon_size,
@@ -192,7 +192,7 @@ fn render_icon_rect_frame(
     } else {
         outer_h / 2.0 - label_bbox_h
     };
-    let label_receipt = common.label_emission.write_special_html_label(
+    common.label_emission.write_special_html_label(
         out,
         ctx,
         common,
@@ -234,7 +234,7 @@ fn render_icon_rect_frame(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(label_receipt)
+    Ok(())
 }
 
 fn prepare_icon_rect_frame_geometry(

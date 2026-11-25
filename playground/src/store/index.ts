@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { MermaidThemeSelection } from "../lib/mermaid-theme-name.ts";
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { mergeRecommendedMermaidConfig, type MermaidConfigObject } from "../lib/mermaid-config.ts";
 import type {
   ShareViewWarning,
   StartupShareHydration,
@@ -27,7 +26,7 @@ import {
   type AppearanceChange,
   type DiagramAppearance,
   type DiagramThemeChoice,
-  type ThemeRecipeLabel,
+  type ThemeDocumentLabel,
 } from "../lib/diagram-appearance.ts";
 import type { ThemeAppearancePreference } from "../lib/theme-appearance.ts";
 
@@ -57,17 +56,15 @@ export interface AppState {
 
   // Diagram rendering
   diagramTheme: Theme;
-  setDiagramTheme: (theme: Theme) => void;
   themePresetId: string | null;
-  themeRecipeJson: string | null;
-  themeRecipeLabel: ThemeRecipeLabel | null;
+  themeDocumentJson: string | null;
+  themeDocumentLabel: ThemeDocumentLabel | null;
   themeAppearance: ThemeAppearancePreference;
   setThemeAppearance: (appearance: ThemeAppearancePreference) => void;
   themePanelOpen: boolean;
   openThemePanel: () => void;
   closeThemePanel: () => void;
   selectTheme: (choice: DiagramThemeChoice) => void;
-  applyThemeConfig: (config: Readonly<MermaidConfigObject>) => void;
   appearanceHistory: readonly AppearanceChange[];
   undoAppearance: () => boolean;
   svgPipeline: SvgPipeline;
@@ -108,8 +105,8 @@ export function selectWorkspaceSnapshot(
     mermaidConfig: state.mermaidConfig,
     diagramTheme: state.diagramTheme,
     themePresetId: state.themePresetId,
-    themeRecipeJson: state.themeRecipeJson,
-    ...(state.themeRecipeLabel ? { themeRecipeLabel: state.themeRecipeLabel } : {}),
+    themeDocumentJson: state.themeDocumentJson,
+    ...(state.themeDocumentLabel ? { themeDocumentLabel: state.themeDocumentLabel } : {}),
     ...(state.themeAppearance && state.themeAppearance !== "default" ? { themeAppearance: state.themeAppearance } : {}),
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
@@ -188,20 +185,15 @@ export const useAppStore = create<AppState>((set, get) => {
 
     // Diagram rendering
     diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
-    setDiagramTheme: (diagramTheme) => changeAppearance({
-      diagramTheme,
-      ...(get().themePresetId === null && get().themeRecipeJson === null ? { themeAppearance: "default" } : {}),
-    }),
     themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
-    themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
-    themeRecipeLabel: null,
+    themeDocumentJson: DEFAULT_WORKSPACE_SNAPSHOT.themeDocumentJson,
+    themeDocumentLabel: null,
     themeAppearance: "default",
     setThemeAppearance: (themeAppearance) => changeAppearance({ themeAppearance }),
     themePanelOpen: false,
     openThemePanel: () => set({ themePanelOpen: true }),
     closeThemePanel: () => set({ themePanelOpen: false }),
     selectTheme: (choice) => changeAppearance(themeChoiceFields(choice)),
-    applyThemeConfig: (config) => changeAppearance({ mermaidConfig: mergeRecommendedMermaidConfig(get().mermaidConfig, config) }),
     appearanceHistory: [],
     undoAppearance: () => {
       const state = get();
@@ -226,7 +218,7 @@ export const useAppStore = create<AppState>((set, get) => {
     applyWorkspaceSnapshot: (snapshot) => set((state) => ({
       ...snapshot,
       documentRevision: state.documentRevision + 1,
-      themeRecipeLabel: snapshot.themeRecipeLabel ?? null,
+      themeDocumentLabel: snapshot.themeDocumentLabel ?? null,
       themeAppearance: snapshot.themeAppearance ?? "default",
       appearanceHistory: [],
       themePanelOpen: false,
@@ -236,7 +228,7 @@ export const useAppStore = create<AppState>((set, get) => {
       set((state) => ({
         ...workspace,
         documentRevision: state.documentRevision + 1,
-        themeRecipeLabel: workspace.themeRecipeLabel ?? null,
+        themeDocumentLabel: workspace.themeDocumentLabel ?? null,
         themeAppearance: workspace.themeAppearance ?? "default",
         appearanceHistory: [],
         themePanelOpen: false,

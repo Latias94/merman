@@ -1,22 +1,14 @@
 //! Ordered execution for the classic Mermaid theme classes.
 //!
 //! Mermaid theme classes are mutable JavaScript objects, but their public behavior is a small,
-//! deterministic staged protocol. This module keeps that protocol behind one interface and
-//! records ownership from the same writes that produce values. It intentionally models only the
-//! three assignment operators used by the pinned theme sources: unconditional assignment,
+//! deterministic staged protocol. The pinned theme sources use unconditional assignment,
 //! JavaScript `||`, and JavaScript `??`.
 
 use super::{ThemeResolutionError, is_js_truthy, value_is_missing};
-#[cfg(test)]
-use crate::MermaidConfig;
 use crate::json_value::number_value;
-use crate::presentation::SourcePresentationConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use merman_model::presentation::ThemeEvaluationLimitExceeded;
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
-#[cfg(test)]
-use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 mod base;
@@ -51,11 +43,10 @@ impl StagedProgram {
             .get_or_init(|| {
                 // The generated snapshot sorts object keys. Execute once to preserve the
                 // insertion order observed by config consumers, including nested objects.
-                Resolution::execute_impl(
+                Resolution::execute(
                     self,
                     ThemeProgram::resolve(theme).prepared_constructor(),
                     &Map::new(),
-                    None,
                 )
                 .map(|resolution| resolution.variables)
             })
@@ -64,389 +55,31 @@ impl StagedProgram {
     }
 }
 
-/// The interpreter always executes the same assignments. Authority is an optional, separate
-/// data flow: authored leaves are borrowed and become owner identities only when actually read.
 #[derive(Debug, Clone)]
-pub(super) struct ThemeState<'a> {
-    pub(super) variables: Map<String, Value>,
-    authority: Option<AuthorityState<'a>>,
+pub(super) struct ThemeState {
+    variables: Map<String, Value>,
     theme_color_iterations: usize,
 }
 
 pub(super) struct Resolution {
-    variables: Map<String, Value>,
-    authority: Option<ResolvedAuthority>,
+    pub(super) variables: Map<String, Value>,
     #[cfg(test)]
     trace: ResolutionTrace,
-    #[cfg(test)]
-    work: AuthorityWork,
 }
 
 #[cfg(test)]
 pub(super) struct ResolutionTrace {
-    pub(super) constructor_prepared: StateSnapshot,
-    pub(super) overrides_applied: StateSnapshot,
-    pub(super) after_update: StateSnapshot,
-    pub(super) explicit_replay: StateSnapshot,
-    pub(super) final_resolved: StateSnapshot,
+    pub(super) constructor_prepared: Map<String, Value>,
+    pub(super) overrides_applied: Map<String, Value>,
+    pub(super) after_update: Map<String, Value>,
+    pub(super) explicit_replay: Map<String, Value>,
+    pub(super) final_resolved: Map<String, Value>,
 }
 
-#[cfg(test)]
-pub(super) struct StateSnapshot {
-    pub(super) variables: Map<String, Value>,
-    dependencies: BTreeMap<String, BTreeSet<String>>,
-}
-
-#[cfg(test)]
-impl StateSnapshot {
-    pub(super) fn depends_on(&self, target: &str, source: &str) -> bool {
-        self.dependencies
-            .get(target)
-            .is_some_and(|sources| sources.contains(source))
-    }
-}
-
-/// IDs refer to the operation-local source table, never to a value or a theme name.
-/// Keeping the set sorted makes unions deterministic without allocating tree nodes per source.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct Owners(Vec<usize>);
-
-impl Owners {
-    fn extend(&mut self, other: Self) {
-        self.0.extend(other.0);
-        self.0.sort_unstable();
-        self.0.dedup();
-    }
-
-    fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum OwnerSource<'a> {
-    Config(&'a SourcePresentationConfig),
-    #[cfg(test)]
-    AllExplicit,
-}
-
-impl OwnerSource<'_> {
-    fn owns(self, path: &str) -> bool {
-        match self {
-            Self::Config(config) => config.theme_variable_has_calculation_owner(path),
-            #[cfg(test)]
-            Self::AllExplicit => true,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum ValueAuthority<'a> {
-    /// A replay write restored this authored subtree and blocks older dotted descendants.
-    Authored(&'a Value),
-    /// An empty set still blocks the original authored value after an assignment.
-    Computed(Owners),
-}
-
-#[derive(Debug, Clone, Default)]
-struct SourceTable {
-    // Cache negative reads too: a constructor-owned value need not query host ownership again.
-    seeds: BTreeMap<String, Option<usize>>,
-    paths: Vec<String>,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct AuthorityWork {
-    reads: usize,
-    source_queries: usize,
-    replacement_probes: usize,
-    removed_replacements: usize,
-}
-
-#[derive(Debug, Clone)]
-struct AuthorityState<'a> {
-    explicit: &'a Map<String, Value>,
-    owner_source: OwnerSource<'a>,
-    explicit_applied: bool,
-    // Only overlapping literal roots need an overlay-order index and explicit full replay.
-    // Borrow the keys; ordinary unrelated scalar overrides allocate no index or self seed.
-    overlay_order: BTreeMap<&'a str, usize>,
-    // Only actual interpreter writes are represented. Unread explicit variables have no entry.
-    replacements: BTreeMap<String, ValueAuthority<'a>>,
-    sources: std::cell::RefCell<SourceTable>,
-    #[cfg(test)]
-    work: std::cell::Cell<AuthorityWork>,
-}
-
-struct ResolvedAuthority {
-    paths: Vec<String>,
-    dependencies: BTreeMap<String, Owners>,
-}
-
-impl<'a> AuthorityState<'a> {
-    fn new(explicit: &'a Map<String, Value>, owner_source: OwnerSource<'a>) -> Self {
-        let mut overlay_order = BTreeMap::new();
-        for key in explicit.keys() {
-            let mut overlaps_ancestor = false;
-            for (index, _) in key.match_indices('.') {
-                let ancestor = &key[..index];
-                if explicit.contains_key(ancestor) {
-                    overlay_order.entry(ancestor).or_default();
-                    overlaps_ancestor = true;
-                }
-            }
-            if overlaps_ancestor {
-                overlay_order.entry(key.as_str()).or_default();
-            }
-        }
-        // Map iteration is the interpreter's write order, including preserve_order builds.
-        // Index both sides of each overlap without indexing unrelated authored variables.
-        if !overlay_order.is_empty() {
-            for (order, key) in explicit.keys().enumerate() {
-                if let Some(indexed_order) = overlay_order.get_mut(key.as_str()) {
-                    *indexed_order = order;
-                }
-            }
-        }
-        Self {
-            explicit,
-            owner_source,
-            explicit_applied: false,
-            overlay_order,
-            replacements: BTreeMap::new(),
-            sources: std::cell::RefCell::new(SourceTable::default()),
-            #[cfg(test)]
-            work: std::cell::Cell::new(AuthorityWork::default()),
-        }
-    }
-
-    /// Find the nearest replacement, including the path itself. A computed ancestor blocks
-    /// authored fallback; replay can restore an authored child without disturbing siblings.
-    fn origin(&self, path: &str) -> Option<(&str, &ValueAuthority<'a>)> {
-        if let Some((root, origin)) = self.replacements.get_key_value(path) {
-            return Some((root, origin));
-        }
-        path.rmatch_indices('.').find_map(|(index, _)| {
-            self.replacements
-                .get_key_value(&path[..index])
-                .map(|(root, origin)| (root.as_str(), origin))
-        })
-    }
-
-    fn read(&self, path: &str) -> Owners {
-        #[cfg(test)]
-        self.record_work(|work| work.reads += 1);
-        if !self.explicit_applied {
-            return Owners::default();
-        }
-        let authored_leaf = match self.origin(path) {
-            Some((root, ValueAuthority::Computed(owners))) => {
-                // A parent object's authority is not authority for an unlisted child.
-                return if root == path {
-                    owners.clone()
-                } else {
-                    Owners::default()
-                };
-            }
-            Some((root, ValueAuthority::Authored(value))) => {
-                authored_value_has_leaf(value, &path[root.len()..])
-            }
-            None => self.explicit_has_leaf_path(path),
-        };
-        if !authored_leaf {
-            return Owners::default();
-        }
-        let mut sources = self.sources.borrow_mut();
-        if let Some(owner) = sources.seeds.get(path) {
-            return Owners(owner.iter().copied().collect());
-        }
-        #[cfg(test)]
-        self.record_work(|work| work.source_queries += 1);
-        let owner = self.owner_source.owns(path).then(|| {
-            let owner = sources.paths.len();
-            sources.paths.push(path.to_string());
-            owner
-        });
-        sources.seeds.insert(path.to_string(), owner);
-        Owners(owner.into_iter().collect())
-    }
-
-    /// Every matching literal root overwrites this path, even when it supplies no leaf there.
-    /// Select the last such write in Map order, not the longest dotted prefix.
-    fn explicit_has_leaf_path(&self, path: &str) -> bool {
-        let mut latest: Option<(usize, usize, &Value)> = None;
-        for root in
-            std::iter::once(path).chain(path.rmatch_indices('.').map(|(index, _)| &path[..index]))
-        {
-            let Some(value) = self.explicit.get(root) else {
-                continue;
-            };
-            let Some(&order) = self.overlay_order.get(root) else {
-                // If another literal root could match this same path, both would be indexed.
-                return authored_value_has_leaf(value, &path[root.len()..]);
-            };
-            if latest.is_none_or(|(previous, _, _)| order > previous) {
-                latest = Some((order, root.len(), value));
-            }
-        }
-        latest.is_some_and(|(_, root_len, value)| authored_value_has_leaf(value, &path[root_len..]))
-    }
-
-    fn remove_subtree(&mut self, root: &str) {
-        #[cfg(test)]
-        self.record_work(|work| work.replacement_probes += 1);
-        if self.replacements.remove(root).is_some() {
-            #[cfg(test)]
-            self.record_work(|work| work.removed_replacements += 1);
-        }
-        let prefix = format!("{root}.");
-        loop {
-            let descendant = self
-                .replacements
-                .range::<str, _>((
-                    std::ops::Bound::Included(prefix.as_str()),
-                    std::ops::Bound::Unbounded,
-                ))
-                .next()
-                .filter(|(path, _)| path.starts_with(&prefix))
-                .map(|(path, _)| path.clone());
-            let Some(descendant) = descendant else {
-                break;
-            };
-            self.replacements.remove(&descendant);
-            #[cfg(test)]
-            self.record_work(|work| work.removed_replacements += 1);
-        }
-    }
-
-    fn replay(&mut self, root: &str, value: &'a Value) {
-        self.remove_subtree(root);
-        // Full replay can clear dotted descendants or restore a root shadowed during overlay.
-        // Preserve both sides of an overlap: a later shallow replay may not write this path.
-        // Unrelated unchanged roots already have the right authored fallback and need no entry.
-        // Nested replay binds the actual shallow write, including literal dotted-key aliases.
-        let unchanged_root = self
-            .explicit
-            .get(root)
-            .is_some_and(|original| std::ptr::eq(original, value));
-        if !unchanged_root || self.origin(root).is_some() || self.overlay_order.contains_key(root) {
-            self.replacements
-                .insert(root.to_string(), ValueAuthority::Authored(value));
-        }
-    }
-
-    fn commit(&mut self, target: &str, owners: Owners, nested: BTreeMap<String, Owners>) {
-        self.remove_subtree(target);
-        self.replacements
-            .insert(target.to_string(), ValueAuthority::Computed(owners));
-        for (path, owners) in nested {
-            self.replacements
-                .insert(format!("{target}.{path}"), ValueAuthority::Computed(owners));
-        }
-    }
-
-    fn finish(self) -> ResolvedAuthority {
-        ResolvedAuthority {
-            paths: self.sources.into_inner().paths,
-            dependencies: self
-                .replacements
-                .into_iter()
-                .filter_map(|(target, origin)| match origin {
-                    ValueAuthority::Computed(owners) if !owners.is_empty() => {
-                        Some((target, owners))
-                    }
-                    ValueAuthority::Authored(_) | ValueAuthority::Computed(_) => None,
-                })
-                .collect(),
-        }
-    }
-
-    #[cfg(test)]
-    fn record_work(&self, record: impl FnOnce(&mut AuthorityWork)) {
-        let mut work = self.work.get();
-        record(&mut work);
-        self.work.set(work);
-    }
-}
-
-/// Inside one authored value, flattening does not perform intervening subtree replacements.
-/// Try each object-key boundary so literal dots retain the original compatibility behavior.
-fn authored_value_has_leaf(value: &Value, suffix: &str) -> bool {
-    if suffix.is_empty() {
-        return value.as_object().is_none_or(Map::is_empty);
-    }
-    let Some(object) = value.as_object() else {
-        return false;
-    };
-    let path = &suffix[1..];
-    if object
-        .get(path)
-        .is_some_and(|value| authored_value_has_leaf(value, ""))
-    {
-        return true;
-    }
-    path.match_indices('.').any(|(index, _)| {
-        object
-            .get(&path[..index])
-            .is_some_and(|value| authored_value_has_leaf(value, &path[index..]))
-    })
-}
-
-#[derive(Debug)]
-struct ComputedValue {
-    value: Value,
-    owners: Owners,
-    nested_owners: BTreeMap<String, Owners>,
-}
-
-impl ComputedValue {
-    fn constant(value: impl Into<Value>) -> Self {
-        Self {
-            value: value.into(),
-            owners: Owners::default(),
-            nested_owners: BTreeMap::new(),
-        }
-    }
-
-    fn string(value: impl Into<String>) -> Self {
-        Self::constant(Value::String(value.into()))
-    }
-
-    fn number(value: i64) -> Self {
-        Self::constant(Value::Number(value.into()))
-    }
-
-    fn with_owners(value: Value, owners: Owners) -> Self {
-        Self {
-            value,
-            owners,
-            nested_owners: BTreeMap::new(),
-        }
-    }
-
-    fn inherit(&mut self, stage: &ThemeState<'_>, path: &str) {
-        self.owners.extend(stage.owners(path));
-    }
-
-    fn object(value: Map<String, Value>, nested_owners: BTreeMap<String, Owners>) -> Self {
-        Self {
-            value: Value::Object(value),
-            owners: Owners::default(),
-            nested_owners,
-        }
-    }
-}
-
-impl<'a> ThemeState<'a> {
-    fn constructor(
-        variables: Map<String, Value>,
-        explicit: &'a Map<String, Value>,
-        owner_source: Option<OwnerSource<'a>>,
-    ) -> Self {
+impl ThemeState {
+    fn constructor(variables: Map<String, Value>) -> Self {
         Self {
             variables,
-            authority: owner_source.map(|source| AuthorityState::new(explicit, source)),
             theme_color_iterations: 0,
         }
     }
@@ -457,64 +90,22 @@ impl<'a> ThemeState<'a> {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone())),
         );
-        if let Some(authority) = &mut self.authority {
-            authority.explicit_applied = true;
-        }
     }
 
-    fn replay_explicit(&mut self, explicit: &'a Map<String, Value>) {
+    fn replay_explicit(&mut self, explicit: &Map<String, Value>) {
         for (key, value) in explicit {
-            if self.variables.get(key).is_some_and(Value::is_object)
+            if let Some(target) = self.variables.get_mut(key).and_then(Value::as_object_mut)
                 && let Value::Object(children) = value
             {
-                for (child, value) in children {
-                    self.variables
-                        .get_mut(key)
-                        .and_then(Value::as_object_mut)
-                        .expect("replay target remains an object")
-                        .insert(child.clone(), value.clone());
-                    if let Some(authority) = &mut self.authority {
-                        authority.replay(&format!("{key}.{child}"), value);
-                    }
-                }
+                target.extend(
+                    children
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone())),
+                );
             } else {
                 self.variables.insert(key.clone(), value.clone());
-                if let Some(authority) = &mut self.authority {
-                    authority.replay(key, value);
-                }
             }
         }
-    }
-
-    fn owners(&self, key: &str) -> Owners {
-        self.authority
-            .as_ref()
-            .map_or_else(Owners::default, |authority| authority.read(key))
-    }
-
-    fn computed(&self, value: Value, keys: &[&str]) -> ComputedValue {
-        let mut owners = Owners::default();
-        for key in keys {
-            owners.extend(self.owners(key));
-        }
-        ComputedValue::with_owners(value, owners)
-    }
-
-    fn computed_from(&self, key: &str) -> Result<ComputedValue, ColorError> {
-        let value = self
-            .variables
-            .get(key)
-            .cloned()
-            .ok_or_else(|| missing_value_error(key))?;
-        Ok(self.computed(value, &[key]))
-    }
-
-    fn truthy_from(&self, key: &str) -> Option<ComputedValue> {
-        self.variables
-            .get(key)
-            .filter(|value| is_js_truthy(value))
-            .cloned()
-            .map(|value| self.computed(value, &[key]))
     }
 
     fn color(&self, key: &str) -> Result<String, ColorError> {
@@ -526,29 +117,29 @@ impl<'a> ThemeState<'a> {
             .ok_or_else(|| missing_value_error(key))
     }
 
+    fn truthy_from(&self, key: &str) -> Option<Value> {
+        self.variables
+            .get(key)
+            .filter(|value| is_js_truthy(value))
+            .cloned()
+    }
+
     /// Execute an unconditional JavaScript assignment.
     fn assign(
         &mut self,
         target: &str,
-        compute: impl FnOnce(&Self) -> Result<ComputedValue, ColorError>,
+        compute: impl FnOnce(&Self) -> Result<Value, ColorError>,
     ) -> Result<(), ColorError> {
-        let computed = compute(self)?;
-        self.commit_computed(target, computed);
+        let value = compute(self)?;
+        self.variables.insert(target.to_string(), value);
         Ok(())
-    }
-
-    fn commit_computed(&mut self, target: &str, computed: ComputedValue) {
-        self.variables.insert(target.to_string(), computed.value);
-        if let Some(authority) = &mut self.authority {
-            authority.commit(target, computed.owners, computed.nested_owners);
-        }
     }
 
     /// Execute `target = target || fallback`, including short-circuit evaluation.
     fn assign_if_falsy(
         &mut self,
         target: &str,
-        fallback: impl FnOnce(&Self) -> Result<ComputedValue, ColorError>,
+        fallback: impl FnOnce(&Self) -> Result<Value, ColorError>,
     ) -> Result<(), ColorError> {
         if value_is_missing(&self.variables, target) {
             self.assign(target, fallback)?;
@@ -560,126 +151,28 @@ impl<'a> ThemeState<'a> {
     fn assign_if_nullish(
         &mut self,
         target: &str,
-        fallback: impl FnOnce(&Self) -> Result<ComputedValue, ColorError>,
+        fallback: impl FnOnce(&Self) -> Result<Value, ColorError>,
     ) -> Result<(), ColorError> {
         if self.variables.get(target).is_none_or(Value::is_null) {
             self.assign(target, fallback)?;
         }
         Ok(())
     }
-
-    #[cfg(test)]
-    fn snapshot(&self) -> StateSnapshot {
-        // Snapshots are a test projection. Read a clone so observing the trace cannot seed or
-        // increase work in the interpreter being measured by structural regression tests.
-        let dependencies = self
-            .authority
-            .clone()
-            .map_or_else(BTreeMap::new, |authority| {
-                let mut paths = authority
-                    .replacements
-                    .keys()
-                    .cloned()
-                    .collect::<BTreeSet<_>>();
-                for (key, value) in authority.explicit {
-                    paths.extend(explicit_dependency_leaf_paths(key, value));
-                }
-                let mut dependencies = BTreeMap::new();
-                for path in paths {
-                    let owners = authority.read(&path);
-                    let sources = authority.sources.borrow();
-                    if !owners.is_empty() {
-                        dependencies.insert(
-                            path,
-                            owners
-                                .0
-                                .iter()
-                                .map(|owner| sources.paths[*owner].clone())
-                                .collect(),
-                        );
-                    }
-                }
-                dependencies
-            });
-        StateSnapshot {
-            variables: self.variables.clone(),
-            dependencies,
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn depends_on(&self, target: &str, source: &str) -> bool {
-        self.snapshot().depends_on(target, source)
-    }
-}
-
-#[cfg(test)]
-fn explicit_dependency_leaf_paths(root: &str, value: &Value) -> Vec<String> {
-    let mut paths = Vec::new();
-    let mut stack = vec![(root.to_string(), value)];
-    while let Some((path, value)) = stack.pop() {
-        match value {
-            Value::Object(object) if !object.is_empty() => {
-                for (key, child) in object.iter().rev() {
-                    stack.push((format!("{path}.{key}"), child));
-                }
-            }
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_)
-            | Value::Object(_) => paths.push(path),
-        }
-    }
-    paths
 }
 
 impl Resolution {
-    pub(super) fn execute_with_owners(
-        program: StagedProgram,
-        prepared_constructor: &Map<String, Value>,
-        explicit: &Map<String, Value>,
-        config: &SourcePresentationConfig,
-    ) -> Result<Self, ThemeResolutionError> {
-        Self::execute_impl(
-            program,
-            prepared_constructor,
-            explicit,
-            config
-                .has_theme_variable_calculation_owners()
-                .then_some(OwnerSource::Config(config)),
-        )
-    }
-
-    #[cfg(test)]
     pub(super) fn execute(
         program: StagedProgram,
         prepared_constructor: &Map<String, Value>,
         explicit: &Map<String, Value>,
     ) -> Result<Self, ThemeResolutionError> {
-        Self::execute_impl(
-            program,
-            prepared_constructor,
-            explicit,
-            Some(OwnerSource::AllExplicit),
-        )
-    }
-
-    fn execute_impl(
-        program: StagedProgram,
-        prepared_constructor: &Map<String, Value>,
-        explicit: &Map<String, Value>,
-        owner_source: Option<OwnerSource<'_>>,
-    ) -> Result<Self, ThemeResolutionError> {
-        let mut state =
-            ThemeState::constructor(prepared_constructor.clone(), explicit, owner_source);
+        let mut state = ThemeState::constructor(prepared_constructor.clone());
         #[cfg(test)]
-        let constructor_prepared = state.snapshot();
+        let constructor_prepared = state.variables.clone();
 
         state.overlay_explicit(explicit);
         #[cfg(test)]
-        let overrides_applied = state.snapshot();
+        let overrides_applied = state.variables.clone();
         state.theme_color_iterations = theme_color_iteration_count(&state)?;
 
         match program {
@@ -689,58 +182,32 @@ impl Resolution {
             StagedProgram::Neutral => update_neutral(&mut state)?,
         }
         #[cfg(test)]
-        let after_update = state.snapshot();
+        let after_update = state.variables.clone();
 
         state.replay_explicit(explicit);
         #[cfg(test)]
-        let explicit_replay = state.snapshot();
+        let explicit_replay = state.variables.clone();
 
         if program == StagedProgram::Base
             && explicit.contains_key("nodeBorder")
             && !explicit.contains_key("useGradient")
         {
-            let computed = state.computed(Value::Bool(false), &["nodeBorder"]);
-            state.commit_computed("useGradient", computed);
+            state
+                .variables
+                .insert("useGradient".to_string(), Value::Bool(false));
         }
-        #[cfg(test)]
-        let final_resolved = state.snapshot();
-        #[cfg(test)]
-        let work = state
-            .authority
-            .as_ref()
-            .map_or_else(AuthorityWork::default, |authority| authority.work.get());
 
         Ok(Self {
-            variables: state.variables,
-            authority: state.authority.map(AuthorityState::finish),
             #[cfg(test)]
             trace: ResolutionTrace {
                 constructor_prepared,
                 overrides_applied,
                 after_update,
                 explicit_replay,
-                final_resolved,
+                final_resolved: state.variables.clone(),
             },
-            #[cfg(test)]
-            work,
+            variables: state.variables,
         })
-    }
-
-    pub(super) fn materialize_into(self, config: &mut SourcePresentationConfig) {
-        config.set_value_preserving_theme_compatibility(
-            "themeVariables",
-            Value::Object(self.variables),
-        );
-        if let Some(authority) = self.authority {
-            for (target, owners) in authority.dependencies {
-                for owner in owners.0 {
-                    let source = &authority.paths[owner];
-                    if source != &target {
-                        config.propagate_theme_variable_ownership(source, &target);
-                    }
-                }
-            }
-        }
     }
 
     #[cfg(test)]
@@ -756,34 +223,38 @@ fn missing_value_error(key: &str) -> ColorError {
 }
 
 fn transform_color(
-    computed: ComputedValue,
+    value: Value,
     transform: impl FnOnce(&str) -> Result<String, ColorError>,
-) -> Result<ComputedValue, ColorError> {
-    let input = computed
-        .value
+) -> Result<Value, ColorError> {
+    let input = value
         .as_str()
         .filter(|value| !value.is_empty())
         .ok_or_else(|| ColorError::UnsupportedFormat {
-            input: computed.value.to_string(),
+            input: value.to_string(),
         })?;
-    Ok(ComputedValue::with_owners(
-        Value::String(transform(input)?),
-        computed.owners,
-    ))
+    Ok(Value::String(transform(input)?))
 }
 
-fn copy(stage: &ThemeState, key: &str) -> Result<ComputedValue, ColorError> {
-    stage.computed_from(key)
+fn copy(stage: &ThemeState, key: &str) -> Result<Value, ColorError> {
+    stage
+        .variables
+        .get(key)
+        .cloned()
+        .ok_or_else(|| missing_value_error(key))
 }
 
-fn first_truthy(stage: &ThemeState, keys: &[&str]) -> Result<ComputedValue, ColorError> {
+fn first_truthy(stage: &ThemeState, keys: &[&str]) -> Result<Value, ColorError> {
     let Some((last, candidates)) = keys.split_last() else {
         return Err(missing_value_error("empty JavaScript OR chain"));
     };
-    if let Some(value) = candidates.iter().find_map(|key| stage.truthy_from(key)) {
-        Ok(value)
+    if let Some(value) = candidates
+        .iter()
+        .filter_map(|key| stage.variables.get(*key))
+        .find(|value| is_js_truthy(value))
+    {
+        Ok(value.clone())
     } else {
-        stage.computed_from(last)
+        copy(stage, last)
     }
 }
 
@@ -805,49 +276,47 @@ fn adjusted(
     stage: &ThemeState,
     key: &str,
     adjustment: ColorAdjustment,
-) -> Result<ComputedValue, ColorError> {
+) -> Result<Value, ColorError> {
     transform_color(copy(stage, key)?, |color| {
         theme_color::adjust(color, adjustment)
     })
 }
 
-fn lightened(stage: &ThemeState, key: &str, amount: f64) -> Result<ComputedValue, ColorError> {
+fn lightened(stage: &ThemeState, key: &str, amount: f64) -> Result<Value, ColorError> {
     transform_color(copy(stage, key)?, |color| {
         theme_color::lighten(color, amount)
     })
 }
 
-fn darkened(stage: &ThemeState, key: &str, amount: f64) -> Result<ComputedValue, ColorError> {
+fn darkened(stage: &ThemeState, key: &str, amount: f64) -> Result<Value, ColorError> {
     transform_color(copy(stage, key)?, |color| {
         theme_color::darken(color, amount)
     })
 }
 
-fn inverted(stage: &ThemeState, key: &str) -> Result<ComputedValue, ColorError> {
+fn inverted(stage: &ThemeState, key: &str) -> Result<Value, ColorError> {
     transform_color(copy(stage, key)?, theme_color::invert)
 }
 
 struct ObjectBuilder<'a> {
-    stage: &'a ThemeState<'a>,
+    stage: &'a ThemeState,
     source_key: &'a str,
     object: Map<String, Value>,
-    owners: BTreeMap<String, Owners>,
 }
 
 impl<'a> ObjectBuilder<'a> {
-    fn new(stage: &'a ThemeState<'a>, source_key: &'a str) -> Self {
+    fn new(stage: &'a ThemeState, source_key: &'a str) -> Self {
         Self {
             stage,
             source_key,
             object: Map::new(),
-            owners: BTreeMap::new(),
         }
     }
 
     fn truthy_or(
         &mut self,
         field: &str,
-        fallback: impl FnOnce(&ThemeState) -> Result<ComputedValue, ColorError>,
+        fallback: impl FnOnce(&ThemeState) -> Result<Value, ColorError>,
     ) -> Result<(), ColorError> {
         let current = self
             .stage
@@ -857,34 +326,20 @@ impl<'a> ObjectBuilder<'a> {
             .and_then(|object| object.get(field))
             .filter(|value| is_js_truthy(value))
             .cloned();
-        let computed = if let Some(value) = current {
-            let owners = self
-                .stage
-                .authority
-                .as_ref()
-                .map_or_else(Owners::default, |authority| {
-                    authority.read(&format!("{}.{}", self.source_key, field))
-                });
-            ComputedValue::with_owners(value, owners)
-        } else {
-            fallback(self.stage)?
+        let value = match current {
+            Some(value) => value,
+            None => fallback(self.stage)?,
         };
-        self.object.insert(field.to_string(), computed.value);
-        if !computed.owners.is_empty() {
-            self.owners.insert(field.to_string(), computed.owners);
-        }
+        self.field(field, value);
         Ok(())
     }
 
-    fn field(&mut self, field: &str, computed: ComputedValue) {
-        self.object.insert(field.to_string(), computed.value);
-        if !computed.owners.is_empty() {
-            self.owners.insert(field.to_string(), computed.owners);
-        }
+    fn field(&mut self, field: &str, value: Value) {
+        self.object.insert(field.to_string(), value);
     }
 
-    fn finish(self) -> ComputedValue {
-        ComputedValue::object(self.object, self.owners)
+    fn finish(self) -> Value {
+        Value::Object(self.object)
     }
 }
 
@@ -954,12 +409,7 @@ fn update_quadrant(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             theme_color::darken(&quadrant, f64::NAN)?
         };
-        let keys = if existing_is_truthy {
-            &["quadrantPointFill", "quadrant1Fill"][..]
-        } else {
-            &["quadrant1Fill"][..]
-        };
-        Ok(stage.computed(Value::String(value), keys))
+        Ok(Value::String(value))
     })?;
 
     for target in [
@@ -990,26 +440,28 @@ fn update_cynefin(
 ) -> Result<(), ColorError> {
     stage.assign("cynefin", |stage| {
         let mut object = ObjectBuilder::new(stage, "cynefin");
-        object.truthy_or("domainFontSize", |_| Ok(ComputedValue::number(16)))?;
-        object.truthy_or("itemFontSize", |_| Ok(ComputedValue::number(12)))?;
+        object.truthy_or("domainFontSize", |_| Ok(Value::from(16)))?;
+        object.truthy_or("itemFontSize", |_| Ok(Value::from(12)))?;
         object.truthy_or("boundaryColor", |stage| copy(stage, "lineColor"))?;
-        object.truthy_or("boundaryWidth", |_| Ok(ComputedValue::number(2)))?;
-        object.truthy_or("cliffColor", |_| Ok(ComputedValue::string(cliff_color)))?;
-        object.truthy_or("cliffWidth", |_| Ok(ComputedValue::number(4)))?;
+        object.truthy_or("boundaryWidth", |_| Ok(Value::from(2)))?;
+        object.truthy_or("cliffColor", |_| Ok(Value::String(cliff_color.to_string())))?;
+        object.truthy_or("cliffWidth", |_| Ok(Value::from(4)))?;
         object.truthy_or("arrowColor", |stage| copy(stage, "lineColor"))?;
-        object.truthy_or("arrowWidth", |_| Ok(ComputedValue::number(2)))?;
+        object.truthy_or("arrowWidth", |_| Ok(Value::from(2)))?;
         object.truthy_or("complexBg", |_| {
-            Ok(ComputedValue::string(complex_background))
+            Ok(Value::String(complex_background.to_string()))
         })?;
         object.truthy_or("complicatedBg", |_| {
-            Ok(ComputedValue::string(complicated_background))
+            Ok(Value::String(complicated_background.to_string()))
         })?;
         object.truthy_or("chaoticBg", |_| {
-            Ok(ComputedValue::string(chaotic_background))
+            Ok(Value::String(chaotic_background.to_string()))
         })?;
-        object.truthy_or("clearBg", |_| Ok(ComputedValue::string(clear_background)))?;
+        object.truthy_or("clearBg", |_| {
+            Ok(Value::String(clear_background.to_string()))
+        })?;
         object.truthy_or("confusionBg", |_| {
-            Ok(ComputedValue::string(confusion_background))
+            Ok(Value::String(confusion_background.to_string()))
         })?;
         object.truthy_or("textColor", |stage| copy(stage, "textColor"))?;
         object.truthy_or("labelColor", |stage| copy(stage, "primaryTextColor"))?;
@@ -1036,7 +488,9 @@ fn update_xy_chart(stage: &mut ThemeState, palette: &str) -> Result<(), ColorErr
         ] {
             object.truthy_or(field, |stage| copy(stage, "primaryTextColor"))?;
         }
-        object.truthy_or("plotColorPalette", |_| Ok(ComputedValue::string(palette)))?;
+        object.truthy_or("plotColorPalette", |_| {
+            Ok(Value::String(palette.to_string()))
+        })?;
         Ok(object.finish())
     })
 }
@@ -1045,19 +499,17 @@ fn update_radar(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign("radar", |stage| {
         let mut object = ObjectBuilder::new(stage, "radar");
         object.truthy_or("axisColor", |stage| copy(stage, "lineColor"))?;
-        object.truthy_or("axisStrokeWidth", |_| Ok(ComputedValue::number(2)))?;
-        object.truthy_or("axisLabelFontSize", |_| Ok(ComputedValue::number(12)))?;
-        object.truthy_or("curveOpacity", |_| {
-            Ok(ComputedValue::constant(number_value(0.5)))
+        object.truthy_or("axisStrokeWidth", |_| Ok(Value::from(2)))?;
+        object.truthy_or("axisLabelFontSize", |_| Ok(Value::from(12)))?;
+        object.truthy_or("curveOpacity", |_| Ok(number_value(0.5)))?;
+        object.truthy_or("curveStrokeWidth", |_| Ok(Value::from(2)))?;
+        object.truthy_or("graticuleColor", |_| {
+            Ok(Value::String("#DEDEDE".to_string()))
         })?;
-        object.truthy_or("curveStrokeWidth", |_| Ok(ComputedValue::number(2)))?;
-        object.truthy_or("graticuleColor", |_| Ok(ComputedValue::string("#DEDEDE")))?;
-        object.truthy_or("graticuleStrokeWidth", |_| Ok(ComputedValue::number(1)))?;
-        object.truthy_or("graticuleOpacity", |_| {
-            Ok(ComputedValue::constant(number_value(0.3)))
-        })?;
-        object.truthy_or("legendBoxSize", |_| Ok(ComputedValue::number(12)))?;
-        object.truthy_or("legendFontSize", |_| Ok(ComputedValue::number(12)))?;
+        object.truthy_or("graticuleStrokeWidth", |_| Ok(Value::from(1)))?;
+        object.truthy_or("graticuleOpacity", |_| Ok(number_value(0.3)))?;
+        object.truthy_or("legendBoxSize", |_| Ok(Value::from(12)))?;
+        object.truthy_or("legendFontSize", |_| Ok(Value::from(12)))?;
         Ok(object.finish())
     })
 }
@@ -1085,7 +537,7 @@ fn update_wardley(
     fill_source: &str,
 ) -> Result<(), ColorError> {
     stage.assign_if_falsy("wardleyEvolutionColor", |_| {
-        Ok(ComputedValue::string(evolution_color))
+        Ok(Value::String(evolution_color.to_string()))
     })?;
     stage.assign("wardley", |stage| {
         let mut object = ObjectBuilder::new(stage, "wardley");
@@ -1113,13 +565,15 @@ fn update_wardley(
 
 fn update_requirement(
     stage: &mut ThemeState,
-    relation_background: impl FnOnce(&ThemeState) -> Result<ComputedValue, ColorError>,
+    relation_background: impl FnOnce(&ThemeState) -> Result<Value, ColorError>,
 ) -> Result<(), ColorError> {
     stage.assign_if_falsy("requirementBackground", |stage| copy(stage, "primaryColor"))?;
     stage.assign_if_falsy("requirementBorderColor", |stage| {
         copy(stage, "primaryBorderColor")
     })?;
-    stage.assign_if_falsy("requirementBorderSize", |_| Ok(ComputedValue::string("1")))?;
+    stage.assign_if_falsy("requirementBorderSize", |_| {
+        Ok(Value::String("1".to_string()))
+    })?;
     stage.assign_if_falsy("requirementTextColor", |stage| {
         copy(stage, "primaryTextColor")
     })?;
@@ -1138,14 +592,18 @@ fn update_tags(stage: &mut ThemeState) -> Result<(), ColorError> {
             copy(stage, "primaryBorderColor")
         }
     })?;
-    stage.assign_if_falsy("tagLabelFontSize", |_| Ok(ComputedValue::string("10px")))?;
+    stage.assign_if_falsy("tagLabelFontSize", |_| {
+        Ok(Value::String("10px".to_string()))
+    })?;
     stage.assign_if_falsy("commitLabelColor", |stage| {
         copy(stage, "secondaryTextColor")
     })?;
     stage.assign_if_falsy("commitLabelBackground", |stage| {
         copy(stage, "secondaryColor")
     })?;
-    stage.assign_if_falsy("commitLabelFontSize", |_| Ok(ComputedValue::string("10px")))
+    stage.assign_if_falsy("commitLabelFontSize", |_| {
+        Ok(Value::String("10px".to_string()))
+    })
 }
 
 fn update_event_modeling_light(stage: &mut ThemeState) -> Result<(), ColorError> {
@@ -1163,15 +621,15 @@ fn update_event_modeling_light(stage: &mut ThemeState) -> Result<(), ColorError>
         ("emSwimlaneBackgroundOdd", "rgb(250,250,250)"),
         ("emSwimlaneBackgroundStroke", "rgb(240,240,240)"),
     ] {
-        stage.assign_if_falsy(target, |_| Ok(ComputedValue::string(value)))?;
+        stage.assign_if_falsy(target, |_| Ok(Value::String(value.to_string())))?;
     }
     stage.assign_if_falsy("emArrowhead", |stage| copy(stage, "lineColor"))?;
     stage.assign_if_falsy("emRelationStroke", |stage| copy(stage, "lineColor"))?;
     stage.assign_if_falsy("attributeBackgroundColorOdd", |_| {
-        Ok(ComputedValue::string("#ffffff"))
+        Ok(Value::String("#ffffff".to_string()))
     })?;
     stage.assign_if_falsy("attributeBackgroundColorEven", |_| {
-        Ok(ComputedValue::string("#f2f2f2"))
+        Ok(Value::String("#f2f2f2".to_string()))
     })
 }
 
@@ -1180,19 +638,27 @@ fn update_pie_text(
     title_source: &str,
     legend_source: &str,
 ) -> Result<(), ColorError> {
-    stage.assign_if_falsy("pieTitleTextSize", |_| Ok(ComputedValue::string("25px")))?;
-    stage.assign_if_falsy("pieTitleTextColor", |stage| copy(stage, title_source))?;
-    stage.assign_if_falsy("pieSectionTextSize", |_| Ok(ComputedValue::string("17px")))?;
-    stage.assign_if_falsy("pieSectionTextColor", |stage| copy(stage, "textColor"))?;
-    stage.assign_if_falsy("pieLegendTextSize", |_| Ok(ComputedValue::string("17px")))?;
-    stage.assign_if_falsy("pieLegendTextColor", |stage| copy(stage, legend_source))?;
-    stage.assign_if_falsy("pieStrokeColor", |_| Ok(ComputedValue::string("black")))?;
-    stage.assign_if_falsy("pieStrokeWidth", |_| Ok(ComputedValue::string("2px")))?;
-    stage.assign_if_falsy("pieOuterStrokeWidth", |_| Ok(ComputedValue::string("2px")))?;
-    stage.assign_if_falsy("pieOuterStrokeColor", |_| {
-        Ok(ComputedValue::string("black"))
+    stage.assign_if_falsy("pieTitleTextSize", |_| {
+        Ok(Value::String("25px".to_string()))
     })?;
-    stage.assign_if_falsy("pieOpacity", |_| Ok(ComputedValue::string("0.7")))
+    stage.assign_if_falsy("pieTitleTextColor", |stage| copy(stage, title_source))?;
+    stage.assign_if_falsy("pieSectionTextSize", |_| {
+        Ok(Value::String("17px".to_string()))
+    })?;
+    stage.assign_if_falsy("pieSectionTextColor", |stage| copy(stage, "textColor"))?;
+    stage.assign_if_falsy("pieLegendTextSize", |_| {
+        Ok(Value::String("17px".to_string()))
+    })?;
+    stage.assign_if_falsy("pieLegendTextColor", |stage| copy(stage, legend_source))?;
+    stage.assign_if_falsy("pieStrokeColor", |_| Ok(Value::String("black".to_string())))?;
+    stage.assign_if_falsy("pieStrokeWidth", |_| Ok(Value::String("2px".to_string())))?;
+    stage.assign_if_falsy("pieOuterStrokeWidth", |_| {
+        Ok(Value::String("2px".to_string()))
+    })?;
+    stage.assign_if_falsy("pieOuterStrokeColor", |_| {
+        Ok(Value::String("black".to_string()))
+    })?;
+    stage.assign_if_falsy("pieOpacity", |_| Ok(Value::String("0.7".to_string())))
 }
 
 fn update_venn_from_scales(
@@ -1312,7 +778,7 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
     .enumerate()
     {
         let target = format!("cScale{}", index + 1);
-        stage.assign_if_falsy(&target, |_| Ok(ComputedValue::string(value)))?;
+        stage.assign_if_falsy(&target, |_| Ok(Value::String(value.to_string())))?;
     }
     stage.assign_if_falsy("cScale0", |stage| copy(stage, "primaryColor"))?;
     for_theme_color_indices(stage, |stage, index| {
@@ -1335,12 +801,9 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
 
     stage.assign_if_falsy("scaleLabelColor", |stage| {
         if stage.variables.get("darkMode").is_some_and(is_js_truthy) {
-            Ok(stage.computed(Value::String("black".to_string()), &["darkMode"]))
+            Ok(Value::String("black".to_string()))
         } else {
-            copy(stage, "labelTextColor").map(|mut computed| {
-                computed.inherit(stage, "darkMode");
-                computed
-            })
+            copy(stage, "labelTextColor")
         }
     })?;
     for_theme_color_indices(stage, |stage, index| {
@@ -1368,18 +831,16 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign("classText", |stage| copy(stage, "primaryTextColor"))?;
     update_requirement(stage, |stage| {
         let dark_mode = stage.variables.get("darkMode").is_some_and(is_js_truthy);
-        let mut computed = if dark_mode {
-            darkened(stage, "secondaryColor", 30.0)?
+        if dark_mode {
+            darkened(stage, "secondaryColor", 30.0)
         } else {
-            copy(stage, "secondaryColor")?
-        };
-        computed.inherit(stage, "darkMode");
-        Ok(computed)
+            copy(stage, "secondaryColor")
+        }
     })?;
     update_git_dark(stage)?;
     update_tags(stage)?;
     update_event_modeling_dark(stage)?;
-    stage.assign_if_falsy("nodeBorder", |_| Ok(ComputedValue::string("#999")))?;
+    stage.assign_if_falsy("nodeBorder", |_| Ok(Value::String("#999".to_string())))?;
     Ok(())
 }
 
@@ -1394,14 +855,14 @@ fn update_state_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign_if_falsy("compositeBackground", |stage| {
         first_truthy(stage, &["background", "tertiaryColor"])
     })?;
-    stage.assign_if_falsy("altBackground", |_| Ok(ComputedValue::string("#555")))?;
+    stage.assign_if_falsy("altBackground", |_| Ok(Value::String("#555".to_string())))?;
     stage.assign_if_falsy("compositeTitleBackground", |stage| copy(stage, "mainBkg"))?;
     stage.assign_if_falsy("compositeBorder", |stage| copy(stage, "nodeBorder"))?;
     stage.assign("innerEndBackground", |stage| {
         copy(stage, "primaryBorderColor")
     })?;
     stage.assign("specialStateColor", |_| {
-        Ok(ComputedValue::string("#f4f4f4"))
+        Ok(Value::String("#f4f4f4".to_string()))
     })?;
     stage.assign_if_falsy("errorBkgColor", |stage| copy(stage, "tertiaryColor"))?;
     stage.assign_if_falsy("errorTextColor", |stage| copy(stage, "tertiaryTextColor"))
@@ -1456,7 +917,7 @@ fn update_event_modeling_dark(stage: &mut ThemeState) -> Result<(), ColorError> 
         ("emCommandStroke", "#5c6d8c"),
         ("emEventStroke", "#8c755c"),
     ] {
-        stage.assign_if_falsy(target, |_| Ok(ComputedValue::string(value)))?;
+        stage.assign_if_falsy(target, |_| Ok(Value::String(value.to_string())))?;
     }
     for (target, color) in [
         ("emProcessorFill", "#5a3d5c"),
@@ -1465,7 +926,7 @@ fn update_event_modeling_dark(stage: &mut ThemeState) -> Result<(), ColorError> 
         ("emEventFill", "#5a452d"),
     ] {
         stage.assign_if_falsy(target, |_| {
-            Ok(ComputedValue::string(theme_color::lighten(color, 10.0)?))
+            Ok(Value::String(theme_color::lighten(color, 10.0)?))
         })?;
     }
     stage.assign_if_falsy("emSwimlaneBackgroundOdd", |stage| {
@@ -1607,7 +1068,9 @@ fn update_state_forest(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign_if_falsy("compositeBackground", |stage| {
         first_truthy(stage, &["background", "tertiaryColor"])
     })?;
-    stage.assign_if_falsy("altBackground", |_| Ok(ComputedValue::string("#f0f0f0")))?;
+    stage.assign_if_falsy("altBackground", |_| {
+        Ok(Value::String("#f0f0f0".to_string()))
+    })?;
     stage.assign_if_falsy("compositeTitleBackground", |stage| copy(stage, "mainBkg"))?;
     stage.assign_if_falsy("compositeBorder", |stage| copy(stage, "nodeBorder"))?;
     stage.assign("innerEndBackground", |stage| {
@@ -1688,13 +1151,11 @@ fn update_git_forest(stage: &mut ThemeState) -> Result<(), ColorError> {
     for index in 0..8 {
         let target = format!("git{index}");
         stage.assign(&target, |stage| {
-            let mut computed = if dark_mode {
-                lightened(stage, &target, 25.0)?
+            if dark_mode {
+                lightened(stage, &target, 25.0)
             } else {
-                darkened(stage, &target, 25.0)?
-            };
-            computed.inherit(stage, "darkMode");
-            Ok(computed)
+                darkened(stage, &target, 25.0)
+            }
         })?;
     }
     for index in 0..8 {
@@ -1738,7 +1199,7 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
         ("noteBkgColor", "#666"),
         ("noteTextColor", "#fff"),
     ] {
-        stage.assign(target, |_| Ok(ComputedValue::string(value)))?;
+        stage.assign(target, |_| Ok(Value::String(value.to_string())))?;
     }
 
     for (index, value) in [
@@ -1749,7 +1210,7 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
     .enumerate()
     {
         let target = format!("cScale{index}");
-        stage.assign_if_falsy(&target, |_| Ok(ComputedValue::string(value)))?;
+        stage.assign_if_falsy(&target, |_| Ok(Value::String(value.to_string())))?;
     }
     let dark_mode = stage.variables.get("darkMode").is_some_and(is_js_truthy);
     for_theme_color_indices(stage, |stage, index| {
@@ -1761,23 +1222,18 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
         let scale = format!("cScale{index}");
         let peer = format!("cScalePeer{index}");
         stage.assign_if_falsy(&peer, |stage| {
-            let mut computed = if dark_mode {
-                lightened(stage, &scale, 10.0)?
+            if dark_mode {
+                lightened(stage, &scale, 10.0)
             } else {
-                darkened(stage, &scale, 10.0)?
-            };
-            computed.inherit(stage, "darkMode");
-            Ok(computed)
+                darkened(stage, &scale, 10.0)
+            }
         })
     })?;
     stage.assign_if_falsy("scaleLabelColor", |stage| {
         if dark_mode {
-            Ok(stage.computed(Value::String("black".to_string()), &["darkMode"]))
+            Ok(Value::String("black".to_string()))
         } else {
-            copy(stage, "labelTextColor").map(|mut computed| {
-                computed.inherit(stage, "darkMode");
-                computed
-            })
+            copy(stage, "labelTextColor")
         }
     })?;
     stage.assign_if_falsy("cScaleLabel0", |stage| copy(stage, "cScale1"))?;
@@ -1868,7 +1324,7 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
 }
 
 fn update_state_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
-    stage.assign_if_falsy("transitionColor", |_| Ok(ComputedValue::string("#000")))?;
+    stage.assign_if_falsy("transitionColor", |_| Ok(Value::String("#000".to_string())))?;
     stage.assign_if_falsy("transitionLabelColor", |stage| copy(stage, "textColor"))?;
     stage.assign_if_falsy("stateLabelColor", |stage| {
         first_truthy(stage, &["stateBkg", "primaryTextColor"])
@@ -1878,13 +1334,17 @@ fn update_state_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign_if_falsy("compositeBackground", |stage| {
         first_truthy(stage, &["background", "tertiaryColor"])
     })?;
-    stage.assign_if_falsy("altBackground", |_| Ok(ComputedValue::string("#f4f4f4")))?;
+    stage.assign_if_falsy("altBackground", |_| {
+        Ok(Value::String("#f4f4f4".to_string()))
+    })?;
     stage.assign_if_falsy("compositeTitleBackground", |stage| copy(stage, "mainBkg"))?;
-    stage.assign_if_falsy("stateBorder", |_| Ok(ComputedValue::string("#000")))?;
+    stage.assign_if_falsy("stateBorder", |_| Ok(Value::String("#000".to_string())))?;
     stage.assign("innerEndBackground", |stage| {
         copy(stage, "primaryBorderColor")
     })?;
-    stage.assign("specialStateColor", |_| Ok(ComputedValue::string("#222")))?;
+    stage.assign("specialStateColor", |_| {
+        Ok(Value::String("#222".to_string()))
+    })?;
     stage.assign_if_falsy("errorBkgColor", |stage| copy(stage, "tertiaryColor"))?;
     stage.assign_if_falsy("errorTextColor", |stage| copy(stage, "tertiaryTextColor"))
 }
@@ -1919,7 +1379,7 @@ fn update_git_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
     for index in 0..8 {
         let target = format!("gitBranchLabel{index}");
         if matches!(index, 1 | 3) {
-            stage.assign(&target, |_| Ok(ComputedValue::string("white")))?;
+            stage.assign(&target, |_| Ok(Value::String("white".to_string())))?;
         } else {
             stage.assign(&target, |stage| copy(stage, "branchLabelColor"))?;
         }
@@ -1930,361 +1390,29 @@ fn update_git_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::presentation::SourcePresentationConfig;
     use serde_json::json;
 
     #[test]
-    fn shallow_replay_preserves_sibling_dependencies_and_replaces_nested_children() {
-        let empty_replay = json!({"chart": {}});
-        let explicit = json!({"source": "#123456", "chart": {"nested": {"new": 2}}});
-        let explicit = explicit.as_object().unwrap();
-        let mut state =
-            ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
-        state.overlay_explicit(explicit);
-        state.commit_computed(
-            "chart",
-            ComputedValue::object(
-                json!({"retained": "#123456", "nested": {"old": 1}})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                BTreeMap::from([
-                    ("retained".to_string(), state.owners("source")),
-                    ("nested.old".to_string(), state.owners("source")),
-                ]),
-            ),
-        );
-        state.replay_explicit(explicit);
+    fn explicit_replay_preserves_siblings_and_replaces_nested_children() {
+        let values = json!({"chart": {"retained": true, "nested": {"old": 1}}});
+        let mut state = ThemeState::constructor(values.as_object().unwrap().clone());
+        let explicit = json!({"chart": {"nested": {"new": 2}}});
+        state.replay_explicit(explicit.as_object().unwrap());
         assert_eq!(
             state.variables["chart"],
-            json!({"retained": "#123456", "nested": {"new": 2}})
+            json!({"retained": true, "nested": {"new": 2}})
         );
-        assert!(state.depends_on("chart.retained", "source"));
-        assert!(!state.depends_on("chart.nested.old", "source"));
-        assert!(state.depends_on("chart.nested.new", "chart.nested.new"));
-        state.replay_explicit(empty_replay.as_object().unwrap());
-        assert!(state.depends_on("chart.retained", "source"));
-        assert!(!state.depends_on("chart", "chart"));
-        let scalar_explicit = json!({"chart": false});
-        let scalar_explicit = scalar_explicit.as_object().unwrap();
-        let mut scalar_state = ThemeState::constructor(
-            state.variables.clone(),
-            scalar_explicit,
-            Some(OwnerSource::AllExplicit),
-        );
-        scalar_state.overlay_explicit(scalar_explicit);
-        scalar_state.replay_explicit(scalar_explicit);
-        assert_eq!(scalar_state.variables["chart"], json!(false));
-        assert!(!scalar_state.depends_on("chart.retained", "source"));
-        assert!(scalar_state.depends_on("chart", "chart"));
     }
 
     #[test]
     fn javascript_or_chain_does_not_evaluate_an_unselected_last_operand() {
-        let mut variables = Map::new();
-        variables.insert("selected".to_string(), json!("value"));
-        let explicit = variables.clone();
-        let mut state =
-            ThemeState::constructor(variables, &explicit, Some(OwnerSource::AllExplicit));
-        state.overlay_explicit(&explicit);
-
-        let computed = first_truthy(&state, &["selected", "missing"]).unwrap();
-
-        assert_eq!(computed.value, json!("value"));
-        assert_eq!(computed.owners, state.owners("selected"));
-        assert!(
-            !state
-                .authority
-                .as_ref()
-                .unwrap()
-                .sources
-                .borrow()
-                .seeds
-                .contains_key("missing")
+        let variables = json!({"selected": "value"});
+        let state = ThemeState::constructor(variables.as_object().unwrap().clone());
+        assert_eq!(
+            first_truthy(&state, &["selected", "missing"]).unwrap(),
+            json!("value")
         );
-    }
-
-    /// Reference only the old authority bookkeeping, not a second theme evaluator. The value
-    /// assignments and their read operands are shared by both sides of this differential test.
-    struct EagerAuthority {
-        dependencies: BTreeMap<String, BTreeSet<String>>,
-    }
-
-    impl EagerAuthority {
-        fn new(explicit: &Map<String, Value>) -> Self {
-            let mut oracle = Self {
-                dependencies: BTreeMap::new(),
-            };
-            for (key, value) in explicit {
-                oracle.authored(key, value);
-            }
-            oracle
-        }
-
-        fn remove_subtree(&mut self, root: &str) {
-            let prefix = format!("{root}.");
-            self.dependencies
-                .retain(|path, _| path != root && !path.starts_with(&prefix));
-        }
-
-        fn authored(&mut self, root: &str, value: &Value) {
-            self.remove_subtree(root);
-            for path in explicit_dependency_leaf_paths(root, value) {
-                self.dependencies
-                    .insert(path.clone(), BTreeSet::from([path]));
-            }
-        }
-
-        fn replay(&mut self, explicit: &Map<String, Value>, before: &Map<String, Value>) {
-            for (key, value) in explicit {
-                if before.get(key).is_some_and(Value::is_object)
-                    && let Value::Object(children) = value
-                {
-                    for (child, value) in children {
-                        self.authored(&format!("{key}.{child}"), value);
-                    }
-                } else {
-                    self.authored(key, value);
-                }
-            }
-        }
-
-        fn commit(&mut self, root: &str, nested: &[(&str, &[&str])]) {
-            let sources = nested
-                .iter()
-                .map(|(path, reads)| {
-                    let sources = reads
-                        .iter()
-                        .filter_map(|read| self.dependencies.get(*read))
-                        .flat_map(|sources| sources.iter().cloned())
-                        .collect::<BTreeSet<_>>();
-                    ((*path).to_string(), sources)
-                })
-                .collect::<Vec<_>>();
-            self.remove_subtree(root);
-            for (path, sources) in sources {
-                if !sources.is_empty() {
-                    let path = if path.is_empty() {
-                        root.to_string()
-                    } else {
-                        format!("{root}.{path}")
-                    };
-                    self.dependencies.insert(path, sources);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn lazy_authority_matches_eager_bookkeeping_across_replacement_and_replay() {
-        for authored in [
-            json!(false),
-            json!(0),
-            Value::Null,
-            json!({}),
-            json!("#123456"),
-        ] {
-            let explicit = json!({
-                "source": "#123456", "other": "#123456", "authored": authored,
-                "chart": {"nested": {"new": 2}, "empty": {}, "same": "same"},
-                "chart.literal": 1, "chart.nested": {"shadow": 3},
-                "chart.same": {"shadow": 4}
-            });
-            let explicit = explicit.as_object().unwrap();
-            let mut state =
-                ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
-            state.overlay_explicit(explicit);
-            let mut oracle = EagerAuthority::new(explicit);
-            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-
-            let computed = state.computed(json!("#123456"), &["source"]);
-            state.commit_computed("authored", computed);
-            oracle.commit("authored", &[("", &["source"])]);
-            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-
-            let nested = [
-                ("retained", &["source"][..]),
-                ("nested.old", &["authored"][..]),
-            ];
-            let nested_owners = nested
-                .iter()
-                .map(|(path, reads)| {
-                    (
-                        (*path).to_string(),
-                        state.computed(Value::Null, reads).owners,
-                    )
-                })
-                .collect();
-            state.commit_computed(
-                "chart",
-                ComputedValue::object(
-                    json!({"retained": "#123456", "nested": {"old": 1}})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                    nested_owners,
-                ),
-            );
-            oracle.commit("chart", &nested);
-            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-
-            // A same-value constant write must retire the authored owner before its next read.
-            state.commit_computed("source", ComputedValue::string("#123456"));
-            oracle.commit("source", &[]);
-            let computed = state.computed(json!("#123456"), &["source", "other"]);
-            state.commit_computed("combined", computed);
-            oracle.commit("combined", &[("", &["source", "other"])]);
-            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-
-            let before_replay = state.variables.clone();
-            state.replay_explicit(explicit);
-            oracle.replay(explicit, &before_replay);
-            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-            assert!(state.depends_on("chart.retained", "source"));
-            assert!(!state.depends_on("chart.nested.old", "source"));
-        }
-    }
-
-    #[test]
-    fn replay_barriers_match_eager_authority_without_computed_writes() {
-        for ancestor in [
-            json!(false),
-            json!(0),
-            Value::Null,
-            json!([]),
-            json!({}),
-            json!({"b": false}),
-        ] {
-            for descendant in [
-                json!(false),
-                Value::Null,
-                json!([]),
-                json!({}),
-                json!({"c": {}}),
-            ] {
-                let explicit = json!({
-                    "a": ancestor, "a-ignored": 1, "a.b": descendant, "a.b.c": {}
-                });
-                let explicit = explicit.as_object().unwrap();
-                let mut state =
-                    ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
-                state.overlay_explicit(explicit);
-                let mut oracle = EagerAuthority::new(explicit);
-                assert_eq!(state.snapshot().dependencies, oracle.dependencies);
-                let before = state.variables.clone();
-                state.replay_explicit(explicit);
-                oracle.replay(explicit, &before);
-                assert_eq!(
-                    state.snapshot().dependencies,
-                    oracle.dependencies,
-                    "{explicit:?}"
-                );
-            }
-        }
-
-        let explicit = json!({"a": false, "a.b": {}});
-        let explicit = explicit.as_object().unwrap();
-        let mut state =
-            ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
-        state.overlay_explicit(explicit);
-        assert!(state.depends_on("a.b", "a.b"));
-        state.replay_explicit(explicit);
-        assert!(state.depends_on("a", "a"));
-        assert!(!state.depends_on("a.b", "a.b"));
-    }
-
-    #[test]
-    fn literal_root_insertion_order_matches_eager_overlay_and_replay() {
-        let orders = [
-            [0, 1, 2],
-            [0, 2, 1],
-            [1, 0, 2],
-            [1, 2, 0],
-            [2, 0, 1],
-            [2, 1, 0],
-        ];
-        for values in [
-            [json!(false), json!(true), json!(false)],
-            [json!(false), json!({}), json!({})],
-            [json!({}), json!(true), json!({"d": 1})],
-            [json!({"c": 1}), json!(true), json!({})],
-            [json!({"b": true}), json!({}), json!(false)],
-            [
-                json!({"b": {"c": {"d": 1}}, "other": 1}),
-                json!({"c": false}),
-                json!({"d": true}),
-            ],
-            [json!({"b.c": true}), json!({"c": {}}), json!({"d": 1})],
-        ] {
-            let keys = ["a", "a.b", "a.b.c"];
-            for order in orders {
-                // Construct the Map directly: its insertion order is the interpreter's overlay
-                // and replay order, including descendants written before their ancestors.
-                let explicit = order
-                    .map(|index| (keys[index].to_string(), values[index].clone()))
-                    .into_iter()
-                    .collect::<Map<_, _>>();
-                assert_eq!(
-                    explicit.keys().map(String::as_str).collect::<Vec<_>>(),
-                    order.map(|index| keys[index])
-                );
-                let mut state =
-                    ThemeState::constructor(Map::new(), &explicit, Some(OwnerSource::AllExplicit));
-                state.overlay_explicit(&explicit);
-                let mut oracle = EagerAuthority::new(&explicit);
-                assert_eq!(
-                    state.snapshot().dependencies,
-                    oracle.dependencies,
-                    "overlay: {explicit:?}"
-                );
-
-                // A shadowed authored leaf must not become a source at its first actual read.
-                let reads = ["a", "a.b", "a.b.c", "a.b.c.d", "a.other"];
-                let computed = state.computed(Value::Null, &reads);
-                state.commit_computed("derived", computed);
-                oracle.commit("derived", &[("", &reads)]);
-                assert_eq!(
-                    state.snapshot().dependencies,
-                    oracle.dependencies,
-                    "first read: {explicit:?}"
-                );
-
-                let before = state.variables.clone();
-                state.replay_explicit(&explicit);
-                oracle.replay(&explicit, &before);
-                assert_eq!(
-                    state.snapshot().dependencies,
-                    oracle.dependencies,
-                    "replay: {explicit:?}"
-                );
-                let computed = state.computed(Value::Null, &reads);
-                state.commit_computed("after_replay", computed);
-                oracle.commit("after_replay", &[("", &reads)]);
-                assert_eq!(
-                    state.snapshot().dependencies,
-                    oracle.dependencies,
-                    "read after replay: {explicit:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn overlay_order_indexes_only_overlapping_literal_roots() {
-        for unrelated in [0, 16, 256] {
-            let mut explicit = (0..unrelated)
-                .map(|index| (format!("unrelated{index}.leaf"), json!(true)))
-                .collect::<Map<_, _>>();
-            explicit.insert("a.b".to_string(), json!(true));
-            explicit.insert("a".to_string(), json!(false));
-            let authority = AuthorityState::new(&explicit, OwnerSource::AllExplicit);
-            assert_eq!(
-                authority.overlay_order,
-                BTreeMap::from([("a.b", unrelated), ("a", unrelated + 1)])
-            );
-            assert!(!authority.explicit_has_leaf_path("a.b"));
-            assert!(authority.sources.borrow().seeds.is_empty());
-            assert!(authority.replacements.is_empty());
-        }
     }
 
     fn staged_programs() -> [(StagedProgram, super::super::MermaidThemeId); 4] {
@@ -2302,11 +1430,10 @@ mod tests {
         use super::super::ThemeProgram;
 
         for (program, theme) in staged_programs() {
-            let expected = Resolution::execute_impl(
+            let expected = Resolution::execute(
                 program,
                 ThemeProgram::resolve(theme).prepared_constructor(),
                 &Map::new(),
-                None,
             )
             .unwrap();
             let prepared = program.resolved_without_overrides().unwrap();
@@ -2332,102 +1459,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_staged_materialization_preserves_config_bytes_and_compatibility() {
-        use super::super::{ThemeProgram, apply_theme_defaults};
-        use merman_model::presentation::ThemeCompatibilityRecipe;
-
-        for (program, theme) in staged_programs() {
-            let theme_program = ThemeProgram::resolve(theme);
-            let mut inputs = Vec::new();
-            inputs.push(SourcePresentationConfig::from_value(
-                json!({"theme": theme.as_str()}),
-            ));
-            for raw in [
-                json!({}),
-                json!({"nodeBkg": null}),
-                Value::Null,
-                json!(false),
-            ] {
-                inputs.push(SourcePresentationConfig::from_value(json!({
-                    "theme": theme.as_str(), "themeVariables": raw,
-                })));
-            }
-            let binding = ThemeCompatibilityRecipe::try_new(
-                [0x79; 32],
-                MermaidConfig::from_value(json!({"theme": theme.as_str()})),
-            )
-            .unwrap();
-            inputs.push(SourcePresentationConfig::from_theme_compatibility_recipe(
-                binding,
-            ));
-            let binding = ThemeCompatibilityRecipe::try_new(
-                [0x7a; 32],
-                MermaidConfig::from_value(json!({
-                    "theme": theme.as_str(), "themeVariables": {"nodeBkg": "#123456"},
-                })),
-            )
-            .unwrap();
-            let mut normalized_owner =
-                SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            normalized_owner
-                .set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-            assert!(normalized_owner.has_theme_variable_calculation_owners());
-            inputs.push(normalized_owner);
-            let mut explicit_owner =
-                SourcePresentationConfig::from_value(json!({"theme": theme.as_str()}));
-            explicit_owner.set_value_explicit("themeVariables", json!({}));
-            assert!(explicit_owner.has_theme_variable_calculation_owners());
-            inputs.push(explicit_owner);
-
-            for mut actual in inputs {
-                let mut expected = actual.clone();
-                let explicit = theme_program
-                    .normalize_overrides(super::super::theme_variables_map(expected.as_config()));
-                assert!(explicit.is_empty());
-                let resolution = Resolution::execute_with_owners(
-                    program,
-                    theme_program.prepared_constructor(),
-                    &explicit,
-                    &expected,
-                )
-                .unwrap();
-                expected.retain_normalized_theme_compatibility_variables(&explicit);
-                resolution.materialize_into(&mut expected);
-
-                apply_theme_defaults(&mut actual).unwrap();
-                assert_eq!(
-                    serde_json::to_vec(actual.as_value()).unwrap(),
-                    serde_json::to_vec(expected.as_value()).unwrap(),
-                    "{theme}"
-                );
-                actual.freeze_theme_compatibility();
-                expected.freeze_theme_compatibility();
-                assert_eq!(
-                    actual.mermaid_compatibility_fields(),
-                    expected.mermaid_compatibility_fields(),
-                    "{theme}"
-                );
-                assert_eq!(
-                    actual.explicit_config_owns_path("themeVariables"),
-                    expected.explicit_config_owns_path("themeVariables"),
-                    "{theme}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn custom_detector_observes_staged_executor_key_order() {
         use super::super::{MermaidThemeId, ThemeProgram};
 
         fn detector(_text: &str, config: &mut SourcePresentationConfig) -> bool {
             let theme = MermaidThemeId::parse(config.get_str("theme").unwrap()).unwrap();
             let theme_program = ThemeProgram::resolve(theme);
-            let expected = Resolution::execute_impl(
+            let expected = Resolution::execute(
                 theme_program.staged_program().unwrap(),
                 theme_program.prepared_constructor(),
                 &Map::new(),
-                None,
             )
             .unwrap();
             assert_eq!(
@@ -2454,129 +1495,6 @@ mod tests {
                 serde_json::to_vec(program.resolved_without_overrides().unwrap()).unwrap(),
                 "{theme}: metadata retains the observed order"
             );
-        }
-    }
-
-    #[test]
-    fn unread_authored_scalars_do_not_seed_authority_at_any_scale() {
-        use super::super::ThemeProgram;
-        for (program, theme) in staged_programs() {
-            let constructor = ThemeProgram::resolve(theme).prepared_constructor();
-            let mut previous: Option<(usize, AuthorityWork)> = None;
-            for count in [0, 64, 256, 1024, 4096] {
-                let explicit = (0..count)
-                    .map(|index| (format!("z{index:08}"), json!(1)))
-                    .collect::<Map<_, _>>();
-                let mut config = SourcePresentationConfig::from_value(json!({}));
-                config.deep_merge_explicit(&json!({"themeVariables": explicit}));
-                assert!(
-                    AuthorityState::new(&explicit, OwnerSource::Config(&config))
-                        .overlay_order
-                        .is_empty()
-                );
-                let resolved =
-                    Resolution::execute_with_owners(program, constructor, &explicit, &config)
-                        .unwrap();
-                assert_eq!(
-                    resolved.variables.get("z00000000"),
-                    (count > 0).then_some(&json!(1))
-                );
-                if count > 0 {
-                    let authority = resolved.authority.as_ref().unwrap();
-                    assert!(
-                        authority.paths.is_empty(),
-                        "{program:?}/{count}: unread keys are not source identities"
-                    );
-                    assert!(
-                        authority.dependencies.is_empty(),
-                        "{program:?}/{count}: no derived owners exist"
-                    );
-                    assert_eq!(resolved.work.source_queries, 0);
-                    if let Some((previous_count, previous_work)) = previous {
-                        assert_eq!(resolved.work.reads, previous_work.reads);
-                        assert_eq!(
-                            resolved.work.removed_replacements,
-                            previous_work.removed_replacements
-                        );
-                        assert_eq!(
-                            resolved.work.replacement_probes - previous_work.replacement_probes,
-                            count - previous_count
-                        );
-                    }
-                    previous = Some((count, resolved.work));
-                } else {
-                    assert!(
-                        resolved.authority.is_none(),
-                        "an owner-free execution stores no authority state"
-                    );
-                    assert_eq!(resolved.work, AuthorityWork::default());
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn equal_values_with_different_owners_keep_distinct_authority() {
-        use super::super::{MermaidThemeId, ThemeProgram};
-        let constructor = ThemeProgram::resolve(MermaidThemeId::Base).prepared_constructor();
-        let explicit = json!({"primaryColor": "#123456", "secondaryColor": "#123456"});
-        let explicit = explicit.as_object().unwrap();
-        let mut resolved_values = Vec::new();
-        for (owned, should_own_main, should_own_activation) in [
-            ("primaryColor", true, false),
-            ("secondaryColor", false, true),
-        ] {
-            let mut config =
-                SourcePresentationConfig::from_value(json!({"themeVariables": explicit}));
-            config.deep_merge_explicit(&json!({"themeVariables": {(owned): "#123456"}}));
-            let resolved = Resolution::execute_with_owners(
-                StagedProgram::Base,
-                constructor,
-                explicit,
-                &config,
-            )
-            .unwrap();
-            resolved_values.push(resolved.variables.clone());
-            resolved.materialize_into(&mut config);
-            assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.mainBkg"),
-                should_own_main
-            );
-            assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.activationBkgColor"),
-                should_own_activation
-            );
-        }
-        assert_eq!(resolved_values[0], resolved_values[1]);
-    }
-
-    #[test]
-    fn ownership_mode_preserves_values_errors_and_color_limit() {
-        use super::super::ThemeProgram;
-        for (program, theme) in staged_programs() {
-            let constructor = ThemeProgram::resolve(theme).prepared_constructor();
-            for overrides in [
-                json!({}),
-                json!({"primaryColor": "#123456", "radar": {"axisColor": null}, "venn1": 0, "darkMode": false}),
-                json!({"primaryColor": "not-a-color", "background": "also-invalid"}),
-                json!({"THEME_COLOR_LIMIT": 64}),
-                json!({"THEME_COLOR_LIMIT": 65}),
-            ] {
-                let explicit = overrides.as_object().unwrap();
-                let owner_free = Resolution::execute_impl(program, constructor, explicit, None);
-                let owner_bearing = Resolution::execute(program, constructor, explicit);
-                match (owner_free, owner_bearing) {
-                    (Ok(left), Ok(right)) => {
-                        assert_eq!(left.variables, right.variables, "{program:?}/{overrides}");
-                        assert!(left.authority.is_none());
-                        assert_eq!(left.work, AuthorityWork::default());
-                    }
-                    (Err(left), Err(right)) => {
-                        assert_eq!(format!("{left:?}"), format!("{right:?}"))
-                    }
-                    _ => panic!("ownership changed execution outcome: {program:?}/{overrides}"),
-                }
-            }
         }
     }
 }

@@ -283,24 +283,14 @@ mod tests {
     #[test]
     fn rendered_vertical_timeline_finalizes_through_public_output_policy() {
         use crate::LayoutOptions;
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-        };
         use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+        use merman_core::presentation::SourcePresentationConfig;
         use merman_core::{MermaidEngine, ParseOptions};
 
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default().with_family_style(
-                        DiagramFamilyId::TIMELINE,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("Cousine").unwrap()),
-                    ),
-                ),
-            )
-            .unwrap();
-        let parsed = crate::test_support::install_parse_compatibility(&theme, MermaidEngine::new())
+        let parsed = MermaidEngine::new()
+            .with_site_config(SourcePresentationConfig::from_value(
+                serde_json::json!({"fontFamily":"Cousine"}),
+            ))
             .parse_diagram_for_render_model_sync(
                 "timeline TD\nsection Work\nToday : Ship\n",
                 ParseOptions::strict(),
@@ -317,9 +307,7 @@ mod tests {
             let artifact = crate::family::prepare(
                 &parsed,
                 &LayoutOptions::headless_svg_defaults(),
-                RenderEnvironment::deterministic()
-                    .begin_session_with_theme(&theme)
-                    .unwrap(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
             )
             .unwrap();
             let rendered = artifact

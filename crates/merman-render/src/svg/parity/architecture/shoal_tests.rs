@@ -7,9 +7,17 @@ use std::str::FromStr;
 use crate::environment::RenderEnvironment;
 use crate::model::{ArchitectureDiagramLayout, LayoutPoint};
 use crate::svg::SvgRenderOptions;
+use crate::theme::{NativeTheme, ThemeCompiler};
 use crate::{LayoutOptions, family};
 
 fn render(source: &str) -> (ArchitectureDiagramLayout, String) {
+    render_with_theme(source, None)
+}
+
+fn render_with_theme(
+    source: &str,
+    theme: Option<NativeTheme>,
+) -> (ArchitectureDiagramLayout, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             &format!("---\nconfig:\n  layout: shoal\n---\n{source}"),
@@ -18,7 +26,12 @@ fn render(source: &str) -> (ArchitectureDiagramLayout, String) {
         .unwrap()
         .unwrap()
         .into_presentation();
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
+    let session = match theme {
+        Some(theme) => environment.begin_session_with_native_theme(theme),
+        None => environment.begin_session(),
+    }
+    .unwrap();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     let json = artifact.layout_json().unwrap();
@@ -196,6 +209,76 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
         (client_left.y..=client_left.y + number(client_body, "height")).contains(&client_tip.y)
     );
     check_both_arrows(outer_route, junction, client_tip);
+}
+
+#[test]
+fn architecture_shoal_open_markers_keep_canonical_contacts_under_theme_v2() {
+    let source = "architecture-beta\n\
+        group root[Network]\n\
+        service api[Application Gateway] in root\n\
+        service store(database)[Cold storage] in root\n\
+        api:B <-[synchronize]-> L:store\n";
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,"extends":"studio",
+                "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0"},
+                "typography":{"sans":["Architecture Text","sans-serif"],"base_size_px":24},
+                "form":{"radius":7,"container_radius":11,"connector_width":4,
+                        "edge_style":"orthogonal","marker_style":"open","elevation":"flat"}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let (classic, _) = render(source);
+    let (layout, svg) = render_with_theme(source, Some(NativeTheme::new(theme)));
+    let doc = Document::parse(&svg).unwrap();
+
+    let group = element(&doc, "cluster", "root");
+    assert_eq!(group.attribute("rx"), Some("11"));
+    assert!(group.attribute("style").unwrap().contains("fill:#E0E8F0"));
+    let api = element(&doc, "node", "api");
+    let card = api
+        .children()
+        .find(|node| node.attribute("class") == Some("architecture-native-service-card"))
+        .unwrap();
+    assert_eq!(card.attribute("rx"), Some("7"));
+    assert_eq!(card.attribute("fill"), Some("#DDEEFF"));
+    let css = doc
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains("font-family:\"Architecture Text\", sans-serif;font-size:24px;"));
+    assert!(css.contains(".edge{stroke-width:4px;"));
+    assert!(
+        layout.edges[0].label.as_ref().unwrap().width
+            > classic.edges[0].label.as_ref().unwrap().width
+    );
+    element(&doc, "edge-label", "edge-0");
+
+    let path = element(&doc, "edge", "edge-0");
+    let points = contacts(path);
+    let legs = shaft(path);
+    let start = points[0];
+    let end = *points.last().unwrap();
+    assert!(near(legs[0].start(), start));
+    assert!(near(legs.last().unwrap().end(), end));
+    let markers: Vec<_> = path
+        .parent_element()
+        .unwrap()
+        .children()
+        .filter(|node| node.has_tag_name("polyline"))
+        .collect();
+    assert_eq!(markers.len(), 2);
+    for (marker, tip) in markers.into_iter().zip([start, end]) {
+        assert_eq!(marker.attribute("class"), Some("arrow arrow-open"));
+        let (x, y) = svgtypes::PointsParser::from(marker.attribute("points").unwrap())
+            .nth(1)
+            .unwrap();
+        assert!(near(transform(marker) * Point::new(x, y), tip));
+    }
 }
 
 #[test]

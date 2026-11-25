@@ -12,7 +12,6 @@ readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 exclude = [
-    "src/theme_acceptance.rs",
     "tests/mindmap_br_variants_031.rs",
     "tests/resvg_safe_fixture_smoke.rs",
     "tests/zed_mermaid_issue_fixtures.rs",
@@ -367,7 +366,7 @@ system-fonts = ["native-fonts", "merman-export/system-fonts"]
 experimental-system-font-query = ["system-fonts", "merman-export/experimental-system-font-query"]
 analysis = ["dep:merman-analysis"]
 editor = ["analysis", "dep:merman-editor-core"]
-ascii = ["dep:merman-ascii"]
+ascii = ["dep:merman-ascii", "dep:merman-theme-contract"]
 layout-cytoscape = ["svg", "merman-render/layout-cytoscape"]
 layout-dagre = ["svg", "merman-render/layout-dagre"]
 layout-elk = ["svg", "merman-render/layout-elk"]
@@ -388,13 +387,13 @@ merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
 merman-export = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
-merman-theme-contract = { workspace = true, optional = true }
+merman-theme-contract = { workspace = true, optional = true, features = ["presets"] }
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 data-encoding.workspace = true
-merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }
 base64.workspace = true
 criterion = "0.8.2"
 merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
@@ -432,14 +431,6 @@ name = "render_operation"
 required-features = ["svg", "compat-json", "layout-dagre"]
 
 [[test]]
-name = "theme_composed_effects"
-required-features = ["svg", "png", "pdf", "layout-cytoscape", "layout-dagre"]
-
-[[test]]
-name = "theme_authoring"
-required-features = ["svg"]
-
-[[test]]
 name = "feature_surface_smoke"
 required-features = ["analysis", "editor"]
 
@@ -475,7 +466,7 @@ required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-elk
 [[bench]]
 name = "native_export"
 harness = false
-required-features = ["png", "pdf"]
+required-features = ["png", "pdf", "diagram-flowchart", "diagram-sequence", "diagram-xychart", "layout-dagre"]
 
 [[bench]]
 name = "ascii_pipeline"
@@ -594,16 +585,8 @@ name = "deterministic_gantt"
 required-features = ["compat-json", "diagram-gantt"]
 
 [[example]]
-name = "theme_preset"
-required-features = ["svg", "diagram-flowchart", "layout-dagre"]
-
-[[example]]
-name = "theme_recipe"
-required-features = ["svg", "diagram-flowchart", "layout-dagre"]
-
-[[example]]
 name = "custom_diagram_theme"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "custom_svg_pipeline"
@@ -620,6 +603,3 @@ required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 [[example]]
 name = "layout_work_calibration"
 required-features = ["svg", "compat-json", "layout-cytoscape", "layout-dagre", "layout-elk", "math"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

@@ -2,8 +2,8 @@ use super::SequenceLayoutCheckpoints;
 use super::constants::SEQUENCE_FRAME_GEOM_PAD_PX;
 use super::metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
-    measure_note_label_for_layout, measure_sequence_label_for_layout_with_prepared,
-    measure_svg_like_with_html_br, wrap_sequence_label_like_mermaid_lines,
+    measure_sequence_label_for_layout_with_prepared, measure_svg_like_with_html_br,
+    wrap_sequence_label_like_mermaid_lines,
 };
 use crate::Result;
 use crate::model::LayoutNode;
@@ -30,7 +30,6 @@ pub(super) struct SequenceNoteHorizontalContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
-    pub(super) note_non_normal_typed_terminal_style: Option<&'a TextStyle>,
     pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
@@ -59,102 +58,6 @@ struct NoteHorizontalGeometry {
     width: f64,
 }
 
-pub(crate) struct SequenceWrappedSideNoteLabelContext<'a> {
-    pub(crate) measurer: &'a dyn TextMeasurer,
-    pub(crate) measurement_style: &'a TextStyle,
-    pub(crate) terminal_style: &'a TextStyle,
-    pub(crate) config: &'a PresentationConfig,
-    pub(crate) default_width: f64,
-    pub(crate) note_margin: f64,
-    pub(crate) wrap_padding: f64,
-    pub(crate) checkpoints: super::SequenceTextCheckpoints<'a>,
-}
-
-pub(crate) struct SequenceWrappedSideNoteLabel {
-    pub(crate) effective_text: String,
-    pub(super) width: f64,
-    pub(super) text_metrics: (f64, f64),
-}
-
-pub(crate) fn typed_wrapped_side_note_style<'a>(
-    msg: &SequenceMessage,
-    non_normal_typed_terminal_style: Option<&'a TextStyle>,
-) -> Option<&'a TextStyle> {
-    let terminal_style = non_normal_typed_terminal_style?;
-    (msg.wrap
-        && matches!(msg.placement, Some(0 | 1))
-        && !msg.message_text().is_empty()
-        && !msg.message_text().contains("$$"))
-    .then_some(terminal_style)
-}
-
-/// Compatibility geometry chooses the final lines once. Terminal ink may enlarge the body,
-/// but that enlarged width must never feed back into the wrapping decision.
-pub(crate) fn prepare_wrapped_side_note_label(
-    text: &str,
-    placement: i32,
-    ctx: SequenceWrappedSideNoteLabelContext<'_>,
-) -> Result<SequenceWrappedSideNoteLabel> {
-    let preliminary_text = wrap_sequence_label_like_mermaid_lines(
-        text,
-        ctx.measurer,
-        ctx.measurement_style,
-        ctx.default_width.max(1.0),
-        ctx.checkpoints,
-    )?
-    .join("<br/>");
-    let (bound_width, _) = measure_svg_like_with_html_br(
-        ctx.measurer,
-        &preliminary_text,
-        ctx.measurement_style,
-        ctx.checkpoints,
-    )?;
-    let compatibility_width = wrapped_side_note_compatibility_width(
-        placement,
-        ctx.default_width,
-        ctx.note_margin,
-        bound_width,
-    );
-    let effective_text = sequence_note_final_wrapped_lines(
-        text,
-        compatibility_width,
-        2.0 * ctx.wrap_padding,
-        ctx.measurer,
-        ctx.measurement_style,
-        ctx.checkpoints,
-    )?
-    .join("<br/>");
-    let text_metrics = measure_note_label_for_layout(
-        ctx.measurer,
-        &effective_text,
-        ctx.measurement_style,
-        Some(ctx.terminal_style),
-        ctx.config,
-        ctx.checkpoints,
-    )?;
-    Ok(SequenceWrappedSideNoteLabel {
-        effective_text,
-        width: compatibility_width.max(text_metrics.0 + 2.0 * ctx.note_margin),
-        text_metrics,
-    })
-}
-
-fn wrapped_side_note_compatibility_width(
-    placement: i32,
-    default_width: f64,
-    note_margin: f64,
-    text_width: f64,
-) -> f64 {
-    default_width.max(
-        text_width
-            + if placement == 0 {
-                2.0 * note_margin
-            } else {
-                0.0
-            },
-    )
-}
-
 pub(super) fn sequence_note_horizontal_model(
     msg: &SequenceMessage,
     ctx: SequenceNoteHorizontalContext<'_>,
@@ -181,44 +84,8 @@ pub(super) fn sequence_note_horizontal_model(
         return Ok(None);
     };
     let text = msg.message_text();
-    if let Some(terminal_style) =
-        typed_wrapped_side_note_style(msg, ctx.note_non_normal_typed_terminal_style)
-    {
-        let placement = msg.placement.expect("wrapped side note placement");
-        let label = prepare_wrapped_side_note_label(
-            text,
-            placement,
-            SequenceWrappedSideNoteLabelContext {
-                measurer: ctx.measurer,
-                measurement_style: ctx.note_text_style,
-                terminal_style,
-                config: ctx.math_config,
-                default_width: ctx.note_default_width,
-                note_margin: ctx.note_margin,
-                wrap_padding: ctx.wrap_padding,
-                checkpoints: ctx.checkpoints.text(),
-            },
-        )?;
-        let start_x = if placement == 1 {
-            from_center_x + ctx.actor_margin / 2.0
-        } else {
-            from_center_x - label.width - ctx.actor_margin / 2.0
-        };
-        return Ok(Some(SequenceNoteHorizontalModel {
-            start_x,
-            width: label.width,
-            effective_text: label.effective_text,
-        }));
-    }
     let should_wrap = msg.wrap && !text.is_empty();
     let is_math_note = text.contains("$$");
-    // Wrapping can split math delimiters. Keep the original source's math owner even when
-    // an intermediate wrapped string no longer contains an adjacent delimiter pair.
-    let non_normal_typed_terminal_style = if is_math_note {
-        None
-    } else {
-        ctx.note_non_normal_typed_terminal_style
-    };
     let placement = msg.placement.unwrap_or(2);
     let mut text_width = if is_math_note && !should_wrap {
         let prepared_math = ctx.math_sidecar.prepare_or_get(
@@ -246,22 +113,18 @@ pub(super) fn sequence_note_horizontal_model(
             ctx.checkpoints.text(),
         )?
         .join("<br/>");
-        measure_note_label_for_layout(
+        measure_svg_like_with_html_br(
             ctx.measurer,
             &wrapped,
             ctx.note_text_style,
-            non_normal_typed_terminal_style,
-            ctx.math_config,
             ctx.checkpoints.text(),
         )?
         .0
     } else {
-        measure_note_label_for_layout(
+        measure_svg_like_with_html_br(
             ctx.measurer,
             text,
             ctx.note_text_style,
-            non_normal_typed_terminal_style,
-            ctx.math_config,
             ctx.checkpoints.text(),
         )?
         .0
@@ -280,12 +143,10 @@ pub(super) fn sequence_note_horizontal_model(
         } else {
             text.to_string()
         };
-        text_width = measure_note_label_for_layout(
+        text_width = measure_svg_like_with_html_br(
             ctx.measurer,
             &measured_text,
             ctx.note_text_style,
-            non_normal_typed_terminal_style,
-            ctx.math_config,
             ctx.checkpoints.text(),
         )?
         .0;
@@ -329,6 +190,20 @@ pub(super) fn sequence_note_horizontal_model(
         width: geometry.width,
         effective_text,
     }))
+}
+
+fn wrapped_side_note_compatibility_width(
+    placement: i32,
+    default_width: f64,
+    note_margin: f64,
+    text_width: f64,
+) -> f64 {
+    let padding = if placement == 0 {
+        2.0 * note_margin
+    } else {
+        0.0
+    };
+    default_width.max(text_width + padding)
 }
 
 fn note_horizontal_model_from_request(req: NoteHorizontalRequest) -> NoteHorizontalGeometry {
@@ -397,7 +272,6 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_terminal_text_style: &'a TextStyle,
-    pub(super) note_non_normal_typed_terminal_style: Option<&'a TextStyle>,
     pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
@@ -407,7 +281,6 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
 
 pub(super) struct SequenceNoteLayout {
     pub(super) node: LayoutNode,
-    pub(super) wrapped_text: Option<String>,
     pub(super) rect_min_x: f64,
     pub(super) rect_max_x: f64,
     pub(super) rect_max_y: f64,
@@ -430,7 +303,6 @@ pub(super) fn layout_sequence_note(
             wrap_padding: ctx.wrap_padding,
             measurer: ctx.measurer,
             note_text_style: ctx.note_text_style,
-            note_non_normal_typed_terminal_style: ctx.note_non_normal_typed_terminal_style,
             math_config: ctx.math_config,
             math_terminal_style: ctx.math_terminal_style,
             math_sidecar: ctx.math_sidecar,
@@ -474,9 +346,6 @@ pub(super) fn layout_sequence_note(
     let note_y = ctx.cursor_y + ctx.box_margin;
 
     Ok(Some(SequenceNoteLayout {
-        wrapped_text: typed_wrapped_side_note_style(msg, ctx.note_non_normal_typed_terminal_style)
-            .is_some()
-            .then_some(horizontal.effective_text),
         node: LayoutNode {
             id: format!("note-{}", msg.id),
             x: note_x + note_w / 2.0,
@@ -606,13 +475,10 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &FontSizeMeasurer,
                 note_text_style: &note_style,
-                note_non_normal_typed_terminal_style: None,
                 math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_index: 0,
@@ -715,13 +581,10 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
-                note_non_normal_typed_terminal_style: Some(&style),
                 math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &store,
                 message_index: 3,
@@ -768,13 +631,10 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
-                note_non_normal_typed_terminal_style: Some(&style),
                 math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &store,
                 message_index: 7,

@@ -15,6 +15,23 @@ pub(super) struct ArchitectureRenderSettings {
 }
 
 impl ArchitectureRenderSettings {
+    pub(super) fn apply_native(
+        &mut self,
+        diagram_id: SvgDiagramId<'_>,
+        native: &crate::architecture::ArchitectureNativeStyle,
+        binding: &crate::architecture::ArchitectureCssBinding,
+    ) {
+        use std::fmt::Write;
+        self.compound_text_style.clone_from(&native.layout_text);
+        let _ = write!(
+            self.css,
+            "#{diagram_id} .architecture-services text,#{diagram_id} .architecture-groups text,#{diagram_id} .architecture-edges text{{fill:{};}}\
+             #{diagram_id} .node-icon-text>div{{color:{};}}\
+             #{diagram_id} .arrow-open{{fill:none;stroke:{};stroke-width:1.5px;stroke-linejoin:round;stroke-linecap:round;}}",
+            native.text_ink, native.icon_ink, binding.arrow_color,
+        );
+    }
+
     pub(super) fn from_prepared(
         diagram_id: SvgDiagramId<'_>,
         typography: &crate::architecture::ArchitectureTypographyThemePlan,
@@ -23,7 +40,7 @@ impl ArchitectureRenderSettings {
         let mut css = String::new();
         binding
             .common
-            .write_prefix_with_font_emission(&mut css, diagram_id)
+            .write_prefix(&mut css, diagram_id)
             .expect("String-backed Architecture base CSS emission cannot fail");
         use std::fmt::Write;
         write!(css,
@@ -35,7 +52,7 @@ impl ArchitectureRenderSettings {
         ).expect("String-backed Architecture visual CSS emission cannot fail");
         binding
             .common
-            .write_root_with_font_emission(&mut css, diagram_id, diagram_id)
+            .write_root(&mut css, diagram_id, diagram_id)
             .expect("String-backed Architecture root CSS emission cannot fail");
         Self {
             css,
@@ -58,8 +75,7 @@ mod tests {
 
     fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
         let config = crate::test_support::presentation_config(config.clone());
-        let typography =
-            crate::architecture::ArchitectureTypographyThemePlan::resolve(None, &config);
+        let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(&config);
         let request = crate::svg::SvgRenderOptions {
             diagram_id: Some(id.to_owned()),
             ..Default::default()

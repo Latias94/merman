@@ -1328,16 +1328,12 @@ fn build_state_diagram_dagre_input(
         {
             continue;
         }
-        let edge_style = style_plan.edge(&e.id);
-        let edge_label_typography = edge_style
-            .map(super::StateEdgeStylePlan::resolved_label_typography)
-            .unwrap_or_else(|| style_plan.transition_label_typography());
         let canonical_label = e.label.trim();
         let (lw, lh) = edge_label_metrics(
             &e.id,
             canonical_label,
             measurer,
-            edge_label_typography,
+            style_plan.transition_label_typography(),
             wrap_mode,
             label_sidecar,
         );
@@ -1875,7 +1871,6 @@ pub fn debug_build_state_diagram_dagre_graph(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;

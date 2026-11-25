@@ -1,0 +1,76 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "cyberpunk",
+  "name": "Cyberpunk",
+  "description": "High-contrast tactical HUD with warning-yellow contours, dark panels, cyan signals, and dual chromatic registration edges.",
+  "category": "art",
+  "typography": {
+    "sans": ["Space Grotesk", "Inter", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Cascadia Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 700,
+    "label_weight": 600
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 0,
+    "container_radius": 0,
+    "stroke_width": 1.5,
+    "connector_width": 1.6,
+    "edge_style": "orthogonal",
+    "marker_style": "stealth",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 0,
+      "line_markers": true,
+      "pie_gap_px": 2,
+      "pie_opacity": 0.90
+    }
+  },
+  "appearances": {
+    "dark": {
+      "seed": {
+        "canvas": "#080D11",
+        "surface": "#161F25",
+        "ink": "#EAF4F0",
+        "accent": "#F3E600",
+        "callout": "#351C29"
+      },
+      "roles": {
+        "surface.container": "#10181E",
+        "surface.emphasis": "#232F38",
+        "stroke.border": "#F3E600",
+        "stroke.connector": "#29F3EC",
+        "stroke.guide": "#1F3640",
+        "text.muted": "#A5BCC0",
+        "text.title": "#F3E600",
+        "text.callout": "#FFE9EF",
+        "text.on_emphasis": "#F3E600"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "radial_wash", "color": "#F3E600", "opacity": 0.04, "cx": 0.5, "cy": 0.4, "radius": 0.7 },
+          { "kind": "grid", "step_px": 28, "color": "#29F3EC", "opacity": 0.05 }
+        ]
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": -3, "dy": 0, "blur": 0, "color": "#FF4564", "opacity": 0.85 },
+          { "dx": 4, "dy": 4, "blur": 0, "color": "#29F3EC", "opacity": 0.85 }
+        ]
+      },
+      "data": {
+        "ink":  ["#29F3EC", "#F3E600", "#FF5C7C", "#B68CFF", "#52FA9B", "#FF9A4D"],
+        "fill": ["#0F4A52", "#524C06", "#5E1929", "#3B2366", "#134D32", "#5C3110"],
+        "fill_ink": "#F2FAF7"
+      }
+    }
+  }
+}

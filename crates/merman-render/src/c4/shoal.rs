@@ -19,6 +19,7 @@ use crate::model::{Bounds, C4DiagramLayout, LayoutEdge, LayoutPoint};
 use crate::{Error, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
 use merman_model::families::c4::C4DiagramModel;
+use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 
@@ -31,7 +32,6 @@ const MARKER: Marker = Marker {
     depth: 10.0,
     width: 11.0,
 };
-const STROKE_OUTSET: f64 = 0.5;
 
 #[derive(Debug)]
 pub(crate) struct C4ShoalGeometry {
@@ -64,11 +64,11 @@ fn index(value: usize, work: &OperationLayoutWorkControl) -> Result<u32> {
     u32::try_from(value).map_err(|_| work.record_arithmetic_overflow().into())
 }
 
-fn include_ink(bounds: &mut Bounds, ink: &Bounds) {
-    bounds.min_x = bounds.min_x.min(ink.min_x - STROKE_OUTSET);
-    bounds.min_y = bounds.min_y.min(ink.min_y - STROKE_OUTSET);
-    bounds.max_x = bounds.max_x.max(ink.max_x + STROKE_OUTSET);
-    bounds.max_y = bounds.max_y.max(ink.max_y + STROKE_OUTSET);
+fn include_ink(bounds: &mut Bounds, ink: &Bounds, stroke_outset: f64) {
+    bounds.min_x = bounds.min_x.min(ink.min_x - stroke_outset);
+    bounds.min_y = bounds.min_y.min(ink.min_y - stroke_outset);
+    bounds.max_x = bounds.max_x.max(ink.max_x + stroke_outset);
+    bounds.max_y = bounds.max_y.max(ink.max_y + stroke_outset);
 }
 
 pub(crate) fn layout_c4_shoal(
@@ -166,6 +166,14 @@ pub(crate) fn layout_c4_shoal(
 
     let padding = conf.c4_shape_padding.max(C4_ROUNDED_RADIUS);
     let spacing = conf.c4_shape_margin.max(2.0 * C4_ROUNDED_RADIUS);
+    let native = typography.native_style();
+    let node_radius = native.map_or(C4_ROUNDED_RADIUS, |theme| theme.radius);
+    let stroke_outset = native.map_or(0.5, |theme| theme.connector_width / 2.0);
+    let route_style = match native.map(|theme| theme.edge_style) {
+        Some(EdgeStyle::Curved) => RouteStyle::Curved,
+        Some(EdgeStyle::Straight) => RouteStyle::Linear,
+        Some(EdgeStyle::Orthogonal | EdgeStyle::Sketch) | None => RouteStyle::Step,
+    };
     let mut graph = MeasuredGraph {
         direction: Direction::Right,
         routing: RoutingStyle::Orthogonal,
@@ -198,6 +206,7 @@ pub(crate) fn layout_c4_shoal(
                 width: layout.width,
                 height: layout.height,
             },
+            node_radius,
         );
         graph.nodes.push(MeasuredNode {
             size,
@@ -372,17 +381,17 @@ pub(crate) fn layout_c4_shoal(
             end_marker: None,
             stroke_dasharray: None,
         };
-        let painted = routes.paint(&edge, Vec2::ZERO, STROKE_OUTSET, RouteStyle::Step)?;
+        let painted = routes.paint(&edge, Vec2::ZERO, stroke_outset, route_style)?;
         let [start, .., end] = painted.data_points.as_slice() else {
             return Err(invalid("c4: missing canonical relation contacts"));
         };
         rel.start_point = start.clone();
         rel.end_point = end.clone();
-        include_ink(&mut bounds, &painted.path.bounds);
+        include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
         let label_origin = label
             .as_ref()
             .zip(edge.label.as_ref())
-            .map(|(label, placed)| label.origin(placed, &painted, &mut work))
+            .map(|(label, placed)| label.origin(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
         geometry.push(C4ShoalRelation {
             id: edge.id,

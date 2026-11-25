@@ -1016,7 +1016,8 @@ mod tests {
             let mut input = wrapper
                 .map(|wrapper| serde_json::json!({ wrapper: analysis.clone() }))
                 .unwrap_or(analysis);
-            input["version"] = serde_json::Value::from(3);
+            input["version"] =
+                serde_json::Value::from(merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION);
             input["parse"] = serde_json::json!({ "suppress_errors": true });
             let input = input.to_string();
             let options = parse_analysis_options(Some(&input)).expect(
@@ -1479,7 +1480,7 @@ mod tests {
             uri,
             1,
             Some(
-                r#"{"version":3,"parse":{"suppress_errors":true},"analysis":{"lint":{"profile":"recommended"},"resources":{"profile":"constrained"}}}"#,
+                r#"{"version":4,"parse":{"suppress_errors":true},"analysis":{"lint":{"profile":"recommended"},"resources":{"profile":"constrained"}}}"#,
             ),
         )
         .expect("analysis context");
