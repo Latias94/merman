@@ -51,7 +51,7 @@ impl FlowchartSteps {
         #[cfg(feature = "benchmark-stages")]
         let _stage =
             merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::CssEmit);
-        let scope = super::css::FlowchartCssSelectorDiagramId::new(diagram_id);
+        let scope = css_selector_diagram_id(diagram_id);
         let _ = write!(
             out,
             r#"<style class="edge-step-style">@media (prefers-reduced-motion: reduce) {{ #{scope} .edge-step-dot, #{scope} .edge-step-highlight {{ display: none; }} }}</style>"#,

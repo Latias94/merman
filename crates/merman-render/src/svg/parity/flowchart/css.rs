@@ -2,41 +2,6 @@
 
 use super::*;
 
-/// One Flowchart CSS selector identity that preserves the operation-owned SVG ID projection.
-///
-/// Production callers pass the already normalized [`SvgDiagramId`], so every selector occurrence
-/// is formatted through its projection. Test-only raw strings retain the historical CSS escaping
-/// behavior without weakening the production boundary.
-#[derive(Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct FlowchartCssSelectorDiagramId<I>(I);
-
-impl<I> FlowchartCssSelectorDiagramId<I> {
-    pub(in crate::svg::parity::flowchart) const fn new(value: I) -> Self {
-        Self(value)
-    }
-}
-
-impl<I> std::fmt::Display for FlowchartCssSelectorDiagramId<I>
-where
-    I: SvgDiagramIdValue,
-{
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let semantic = self.0.semantic_value();
-        let normalized = semantic
-            .as_bytes()
-            .first()
-            .is_some_and(u8::is_ascii_alphabetic)
-            && semantic
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
-        if normalized {
-            std::fmt::Display::fmt(&self.0, formatter)
-        } else {
-            formatter.write_str(&crate::svg::escape_css_identifier(semantic))
-        }
-    }
-}
-
 pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
     declarations: &[String],
 ) -> (String, String) {
@@ -137,7 +102,7 @@ where
     DropShadowSmallId: std::fmt::Display,
     GradientId: std::fmt::Display,
 {
-    let id = FlowchartCssSelectorDiagramId(diagram_id);
+    let id = css_selector_diagram_id(diagram_id);
     let stroke = theme.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
     let node_border = theme.node_border.as_str();

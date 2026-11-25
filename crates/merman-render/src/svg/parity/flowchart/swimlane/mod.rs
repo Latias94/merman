@@ -474,7 +474,7 @@ pub(super) fn write_swimlane_css<DiagramId>(
 ) where
     DiagramId: crate::svg::parity::SvgDiagramIdValue,
 {
-    let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
+    let id = css_selector_diagram_id(diagram_id);
     let _ = write!(
         out,
         r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,

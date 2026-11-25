@@ -315,7 +315,7 @@ pub(super) fn render_flowchart_svg_model(
                                 slots.as_ref(),
                             )
                         } else {
-                            let id = super::css::FlowchartCssSelectorDiagramId::new(diagram_id);
+                            let id = css_selector_diagram_id(diagram_id);
                             match slots {
                                 Some(slots) => super::agentflow::write_flowchart_container_css(
                                     &mut css_out,
