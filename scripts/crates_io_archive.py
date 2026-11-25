@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import http.client
@@ -151,19 +152,40 @@ def load_candidate(
     return FrozenCrate(receipt_bytes, archive, metadata)
 
 
-def upload(candidate: FrozenCrate, *, token: str, intent_path: Path) -> None:
+def has_receipt(candidate: FrozenCrate, path: Path) -> bool:
+    if not path.exists() and not path.is_symlink():
+        return False
+    if _read_member(path.parent, path.name) != candidate.receipt_bytes:
+        raise CrateArchiveError(f"{path.name} belongs to a different frozen candidate")
+    return True
+
+
+def retain_receipt(candidate: FrozenCrate, path: Path) -> bool:
+    try:
+        with path.open("xb") as receipt:
+            receipt.write(candidate.receipt_bytes)
+            receipt.flush()
+            os.fsync(receipt.fileno())
+    except FileExistsError:
+        if has_receipt(candidate, path):
+            return False
+        raise
+    return True
+
+
+def upload(
+    candidate: FrozenCrate, *, token: str, intent_path: Path,
+    retain_shared_intent: Callable[[], None] | None = None,
+) -> None:
     if not token or not token.isascii() or not token.isprintable() or any(char.isspace() for char in token):
         raise CrateArchiveError("invalid crates.io upload token")
     # Cargo's Registry Web API frames each original byte string with its u32 length.
     body = (struct.pack("<I", len(candidate.metadata)) + candidate.metadata
             + struct.pack("<I", len(candidate.archive)) + candidate.archive)
-    try:
-        with intent_path.open("xb") as intent:
-            intent.write(candidate.receipt_bytes)
-            intent.flush()
-            os.fsync(intent.fileno())
-    except FileExistsError:
-        raise CrateArchiveError("this candidate has an upload intent; observe registry propagation") from None
+    if retain_shared_intent is not None:
+        retain_shared_intent()
+    if not retain_receipt(candidate, intent_path):
+        raise CrateArchiveError("this candidate has an upload intent; observe registry propagation")
     connection = http.client.HTTPSConnection("crates.io", timeout=60)
     try:
         connection.request("PUT", "/api/v1/crates/new", body, {

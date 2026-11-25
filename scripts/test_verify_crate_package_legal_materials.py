@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import io
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,9 +25,20 @@ class PackageLegalMaterialTests(unittest.TestCase):
     def package(self, license_expression: str = "MIT OR Apache-2.0") -> dict[str, object]:
         return {
             "name": "demo",
+            "version": "0.1.0",
             "manifest_path": str(self.manifest),
             "license": license_expression,
         }
+
+    def archive(self, package: dict[str, object], files: dict[str, bytes]) -> Path:
+        archive = self.root / f"{package['name']}.crate"
+        prefix = f"{package['name']}-{package['version']}/"
+        with tarfile.open(archive, "w:gz") as crate:
+            for name, data in files.items():
+                member = tarfile.TarInfo(prefix + name)
+                member.size = len(data)
+                crate.addfile(member, io.BytesIO(data))
+        return archive
 
     def test_dual_license_package_requires_both_texts(self) -> None:
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "LICENSE-APACHE"):
@@ -49,6 +62,36 @@ class PackageLegalMaterialTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "icc/LICENSE"):
             verify.verify_package_listing(package, files)
         verify.verify_package_listing(package, files | {"icc/LICENSE"})
+
+    def test_pinned_archive_licenses_require_upstream_bytes(self) -> None:
+        for crate_name, expression, pinned in (
+            ("resvg", "(MIT OR Apache-2.0) AND BSD-2-Clause", "LICENSE-BSD-2-Clause"),
+            ("krilla", "MIT OR Apache-2.0", "icc/LICENSE"),
+        ):
+            with self.subTest(crate=crate_name):
+                package = self.package(expression) | {"name": f"merman-{crate_name}"}
+                vendor = verify.ROOT / "vendor" / crate_name
+                original = {
+                    path: (vendor / path).read_bytes()
+                    for path in ("LICENSE-MIT", "LICENSE-APACHE", pinned)
+                }
+                truncated = original | {pinned: b"x"}
+                for path, data in truncated.items():
+                    source = self.root / path
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    source.write_bytes(data)
+                with self.assertRaisesRegex(
+                    verify.PackageLegalMaterialError, f"pinned upstream SHA-256: {pinned}$"
+                ):
+                    verify.verify_package_archive(package, self.archive(package, truncated))
+                verify.verify_package_archive(package, self.archive(package, original))
+
+    def test_unpinned_archive_license_must_match_checkout(self) -> None:
+        package = self.package("MIT")
+        (self.root / "LICENSE").write_bytes(b"MIT\n")
+        verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT\n"}))
+        with self.assertRaisesRegex(verify.PackageLegalMaterialError, "differs from source: LICENSE$"):
+            verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT!"}))
 
     def test_apache_only_package_cannot_omit_its_license_text(self) -> None:
         with self.assertRaisesRegex(

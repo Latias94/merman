@@ -398,9 +398,11 @@ class CratesIoReceiptTests(unittest.TestCase):
                     metadata = package_metadata(name)
                     [package] = metadata["packages"]
                     package.update(license=expression, manifest_path=str(prepared.package.manifest_path))
-                    expected = b"test license"
                     with tarfile.open(prepared.artifact_path, "w:gz") as crate:
                         for filename in ("LICENSE-MIT", "LICENSE-APACHE", extra):
+                            vendored = "krilla" if name == "merman-krilla" else "resvg"
+                            expected = ((ROOT / "vendor" / vendored / filename).read_bytes()
+                                        if filename == extra else b"test license")
                             source = prepared.package.manifest_path.parent / filename
                             source.parent.mkdir(parents=True, exist_ok=True)
                             source.write_bytes(expected)
@@ -1020,6 +1022,7 @@ class FrozenIndependentCrateTests(unittest.TestCase):
     version = "0.50.1"
     source = {"commit": "a" * 40, "tree": "b" * 40}
     publication = {"run_id": "42", "attempt": 1}
+    repository = "example/project"
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
@@ -1028,24 +1031,44 @@ class FrozenIndependentCrateTests(unittest.TestCase):
         self.original = self.root / f"{self.name}-{self.version}.crate"
         self.original.write_bytes(b"verified archive with the original dependency lockfile")
         self.directory = self.root / "frozen"
-        self.candidate = crates_io_archive.freeze_candidate(
-            self.directory, self.original, json.dumps({"name": self.name, "vers": self.version}).encode(),
+        self.candidate = self.freeze(self.directory, self.publication)
+        self.shared = None
+        self.enterContext(mock.patch.object(
+            release.release_attempt_history, "read_independent_receipt", side_effect=lambda *_args: self.shared,
+        ))
+        self.shared_writes = self.enterContext(mock.patch.object(
+            release.release_attempt_history, "record_independent_receipt", side_effect=self.record,
+        ))
+
+    def freeze(self, directory, publication):
+        return crates_io_archive.freeze_candidate(
+            directory, self.original, json.dumps({"name": self.name, "vers": self.version}).encode(),
             archive_sha256=release.sha256_file(self.original), name=self.name, version=self.version,
-            source=self.source, publication=self.publication,
+            source=self.source, publication=publication,
         )
 
-    def command(self, action: str, *, current_attempt: str = "1") -> int:
+    def record(self, repository, package, version, receipt):
+        self.assertEqual((repository, package, version), (self.repository, self.name, self.version))
+        self.shared = receipt
+
+    def command(
+        self, action: str, *, current_attempt: str = "1", manual: bool = False, share_receipts: bool = False,
+    ) -> int:
+        provenance = [] if manual else ["--publication-run-id", "42", "--publication-attempt", "1"]
+        if share_receipts:
+            provenance += ["--publication-repository", self.repository]
         with (
             mock.patch("sys.argv", [
                 "release", action, "--candidate-dir", str(self.directory),
                 "--package", self.name, "--version", self.version,
                 "--source-sha", self.source["commit"], "--source-tree", self.source["tree"],
-                "--publication-run-id", "42", "--publication-attempt", "1",
                 "--sha256", self.candidate.archive_sha256, "--receipt-sha256", self.candidate.receipt_sha256,
+                *provenance,
             ]),
             mock.patch.dict(os.environ, {
                 "CARGO_REGISTRY_TOKEN": "dummy-token", "GITHUB_OUTPUT": str(self.root / "outputs"),
-                "GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": current_attempt,
+                "GITHUB_ACTIONS": "false" if manual else "true", "GITHUB_RUN_ID": "42",
+                "GITHUB_RUN_ATTEMPT": current_attempt, "GITHUB_REPOSITORY": self.repository,
             }),
         ):
             return release.main()
@@ -1103,9 +1126,9 @@ image-webp = { package = "webp", version = "0.2", optional = true }
                 try:
                     with (
                         mock.patch.object(release, "independent_version_exists") as registry,
+                        mock.patch.object(release, "assert_release_source"),
                         mock.patch.object(crates_io_archive.http.client, "HTTPSConnection") as connection,
                     ):
-                        self.assertEqual(self.command("verify-independent-candidate"), 1)
                         self.assertEqual(self.command("publish-independent"), 1)
                     registry.assert_not_called()
                     connection.assert_not_called()
@@ -1160,6 +1183,7 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             registry.assert_called_once()
         self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
         self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+        self.assertEqual(self.shared.state, "registry-confirmed")
 
     def test_failed_registry_check_does_not_authorize_upload_and_can_be_retried(self) -> None:
         with (
@@ -1170,15 +1194,13 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None) as index,
             mock.patch.object(crates_io_archive, "upload") as upload,
         ):
-            self.assertEqual(self.command("authorize-independent-upload"), 1)
-            self.assertFalse((self.directory / "upload-authorized.json").exists())
-            self.assertFalse((self.directory / "upload-attempted.json").exists())
             self.assertEqual(self.command("publish-independent"), 1)
+            self.assertFalse((self.directory / "upload-attempted.json").exists())
+            self.shared_writes.assert_not_called()
             api.assert_called_once()
             index.assert_not_called()
             upload.assert_not_called()
 
-            self.assertEqual(self.command("authorize-independent-upload"), 0)
             self.assertEqual(self.command("publish-independent", current_attempt="2"), 1)
             upload.assert_not_called()
             self.assertEqual(self.command("publish-independent"), 0)
@@ -1187,16 +1209,65 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             upload.assert_called_once()
 
     def test_final_registry_check_that_confirms_archive_never_authorizes_upload(self) -> None:
+        for manual in (False, True):
+            with self.subTest(manual=manual):
+                if manual:
+                    self.shared = None
+                    self.directory = self.root / "manual"
+                    self.candidate = self.freeze(self.directory, None)
+                with (
+                    mock.patch.object(release, "assert_release_source"),
+                    mock.patch.object(release, "independent_version_exists", side_effect=[True, False]),
+                    mock.patch.object(crates_io_archive, "upload") as upload,
+                ):
+                    self.assertEqual(self.command("publish-independent", manual=manual), 0)
+                    self.assertEqual((self.directory / "registry-confirmed.json").read_bytes(),
+                                     self.candidate.receipt_bytes)
+                    self.assertEqual(self.command("publish-independent", manual=manual), 1)
+                    upload.assert_not_called()
+
+    def test_failed_receipt_write_prevents_crates_io_put(self) -> None:
         with (
             mock.patch.object(release, "assert_release_source"),
-            mock.patch.object(release, "independent_version_exists", return_value=True) as registry,
+            mock.patch.object(release, "independent_version_exists", return_value=False),
+            mock.patch.object(crates_io_archive.http.client, "HTTPSConnection") as connect,
+        ):
+            self.shared_writes.side_effect = OSError("receipt store not reachable")
+            self.assertEqual(self.command("publish-independent"), 1)
+            connect.assert_not_called()
+            self.assertFalse((self.directory / "upload-attempted.json").exists())
+
+    def test_shared_manual_confirmation_blocks_a_later_workflow_send(self) -> None:
+        workflow_directory, workflow_candidate = self.directory, self.candidate
+        self.directory = self.root / "manual"
+        self.candidate = self.freeze(self.directory, None)
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "independent_version_exists", side_effect=[True, False]),
             mock.patch.object(crates_io_archive, "upload") as upload,
         ):
-            self.assertEqual(self.command("authorize-independent-upload"), 0)
+            self.assertEqual(self.command("publish-independent", manual=True, share_receipts=True), 0)
+            self.directory, self.candidate = workflow_directory, workflow_candidate
             self.assertEqual(self.command("publish-independent"), 1)
-            registry.assert_called_once()
             upload.assert_not_called()
-        self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+        self.assertEqual(self.shared.state, "registry-confirmed")
+
+    def test_registry_observation_confirms_the_intent_without_requiring_the_archive(self) -> None:
+        self.shared = release.release_attempt_history.IndependentCrateReceipt(
+            self.candidate.archive_sha256, self.source["commit"], "upload-intent",
+        )
+        args = ["release", "registry-independent", "--observe-only", "--package", self.name,
+                "--version", self.version, "--sha256", self.shared.sha256,
+                "--publication-repository", self.repository]
+        with (
+            mock.patch("sys.argv", args),
+            mock.patch.object(release, "independent_version_exists", return_value=True),
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(release.main(), 0)
+            upload.assert_not_called()
+        self.assertEqual(self.shared.state, "registry-confirmed")
+        self.assertEqual(self.shared.source_sha, self.source["commit"])
 
     def test_lost_upload_response_retains_intent_and_never_repackages_or_resends(self) -> None:
         requests = []
@@ -1207,10 +1278,12 @@ image-webp = { package = "webp", version = "0.2", optional = true }
                 requests.append((
                     self.path, self.headers.get("Authorization"), self.headers.get("Content-Type"),
                     self.rfile.read(int(self.headers["Content-Length"])), intent_path.read_bytes(),
+                    self.server.receipt_state(),
                 ))
                 # The registry can receive all the bytes and lose the reply.
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Registry)
+        server.receipt_state = lambda: self.shared.state
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -1225,11 +1298,16 @@ image-webp = { package = "webp", version = "0.2", optional = true }
                     side_effect=lambda *_args, **_kwargs: http.client.HTTPConnection(*server.server_address),
                 ) as connect,
             ):
-                self.assertEqual(self.command("authorize-independent-upload"), 0)
                 self.assertEqual(self.command("publish-independent"), 1)
+                self.directory = self.root / "new-run-local-state"
+                self.directory.mkdir()
+                for archived in intent_path.parent.iterdir():
+                    if archived != intent_path:
+                        (self.directory / archived.name).write_bytes(archived.read_bytes())
                 self.assertEqual(self.command("publish-independent"), 1)
-            api.assert_called_once()
-            index.assert_called_once()
+            self.assertEqual(api.call_count, 2)
+            self.assertEqual(index.call_count, 2)
+            self.shared_writes.assert_called_once()
             connect.assert_called_once()
             cargo.assert_not_called()
         finally:
@@ -1237,7 +1315,7 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             server.server_close()
             thread.join(2)
         self.assertEqual(len(requests), 1)
-        path, token, content_type, body, intent = requests[0]
+        path, token, content_type, body, intent, shared = requests[0]
         self.assertEqual((path, token, content_type), ("/api/v1/crates/new", "dummy-token", "application/octet-stream"))
         stream = io.BytesIO(body)
         [metadata_size] = struct.unpack("<I", stream.read(4))
@@ -1246,6 +1324,7 @@ image-webp = { package = "webp", version = "0.2", optional = true }
         self.assertEqual(stream.read(archive_size), self.candidate.archive)
         self.assertFalse(stream.read())
         self.assertEqual(intent, self.candidate.receipt_bytes)
+        self.assertEqual(shared, "upload-intent")
 
     def test_cargo_error_in_success_response_fails_without_resending(self) -> None:
         connection = mock.MagicMock()

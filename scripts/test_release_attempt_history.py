@@ -163,35 +163,23 @@ class IndependentCrateHistoryTests(unittest.TestCase):
     version = "0.50.1"
     sha = "a" * 40
     old_sha = "b" * 40
-    owner = "independent-crate"
+    digest = "c" * 64
 
     def run_record(self, run_id=42, attempt=1, **fields) -> dict:
         return {
-            "id": run_id, "run_number": 2 if run_id == 42 else 1, "run_attempt": attempt,
-            "status": "completed" if run_id < 42 else "in_progress",
-            "path": ".github/workflows/release-independent-crate.yml", "event": "workflow_dispatch",
-            "repository": {"full_name": self.repository}, "head_sha": self.sha if run_id == 42 else self.old_sha,
-            "display_title": f"Release independent crate {self.name} {self.version}", **fields,
+            "id": run_id, "run_attempt": attempt, "head_sha": self.sha if run_id == 42 else self.old_sha,
+            "run_number": 2 if run_id == 42 else 1,
+            "display_title": f"{history.INDEPENDENT_RECEIPT_RUN}{self.name} {self.version}", **fields,
         }
 
-    def select(self, runs, *, attempt=1, jobs=(), artifacts=(), legacy_version=None):
-        def pages(field, records):
-            return [{"total_count": len(records), field: list(records)}]
-
+    def select(self, runs=(), *, attempt=1, deployments=(), legacy_version=None):
         def read(path, *, paginate):
             self.assertTrue(paginate)
-            if "/workflows/" in path:
-                return pages("workflow_runs", runs)
-            subpath = path.split("/runs/")[1].split("?")[0]
-            if "/artifacts?" in path:
-                return pages("artifacts", artifacts.get(subpath, ()) if isinstance(artifacts, dict) else artifacts)
-            outcome = dict(jobs)[subpath.removesuffix("/jobs")]
-            if isinstance(outcome, list):
-                return pages("jobs", outcome)
-            return pages("jobs", [{
-                "id": 11, "name": "publish", "status": "completed", "conclusion": "failure",
-                "steps": [{"name": history.OWNERS[self.owner][2], "status": "completed", "conclusion": outcome}],
-            }])
+            if "/deployments?" in path:
+                self.assertIn("task=independent-crate%3Amerman-resvg%3A0.50.1", path)
+                return [list(deployments)]
+            self.assertIn(f"/workflows/{history.INDEPENDENT_WORKFLOW}/runs?", path)
+            return [{"total_count": len(runs), "workflow_runs": list(runs)}]
 
         with (
             mock.patch.object(history, "read_api", side_effect=read),
@@ -202,209 +190,60 @@ class IndependentCrateHistoryTests(unittest.TestCase):
                 source_sha=self.sha, repo_root=Path.cwd(), manifest="vendor/resvg/Cargo.toml",
             )
 
-    def intent(self, attempt=1, **values) -> dict:
-        return {"id": 101, "name": f"crates-io-independent-upload-intent-attempt-{attempt}",
-                "expired": False, **values}
-
-    def test_missing_predecessor_does_not_allow_a_new_send(self) -> None:
-        for runs in ([self.run_record()], [self.run_record(run_number=3), self.run_record(40)]):
-            with self.subTest(runs=runs):
-                jobs = [("40/attempts/1", "skipped")] if len(runs) == 2 else []
-                self.assertEqual(self.select(runs, jobs=jobs), history.IndependentCrateHistory())
-
-    def test_missing_predecessor_still_allows_observing_a_retained_intent(self) -> None:
-        runs = [self.run_record(run_number=3), self.run_record(41)]
-        selected = self.select(runs, jobs=[("41/attempts/1", "failure")], artifacts=[self.intent()])
-        self.assertEqual(selected, history.IndependentCrateHistory(True, 101, 41, 1, self.old_sha))
-
-    def test_other_versions_and_other_packages_do_not_block_a_fresh_send(self) -> None:
-        runs = [self.run_record(run_number=3),
-                self.run_record(41, run_number=2, status="in_progress",
-                                display_title="Release independent crate merman-resvg 0.50.0"),
-                self.run_record(40, status="queued", display_title="Release independent crate roughr-merman 0.12.7")]
-        self.assertEqual(self.select(runs), history.IndependentCrateHistory(observe_only=False))
-
-    def test_proven_skipped_uploads_allow_full_rerun_or_new_dispatch(self) -> None:
-        runs = [self.run_record(attempt=2), self.run_record(41)]
-        self.assertEqual(
-            self.select(runs, attempt=2, jobs=[("42/attempts/1", "skipped"), ("41/attempts/1", "skipped")],
-                        artifacts=[self.intent(expired=True)]),
-            history.IndependentCrateHistory(observe_only=False),
-        )
-
-    def test_registry_check_failure_before_upload_allows_full_rerun_or_new_dispatch(self) -> None:
-        failed_before_send = [{
-            "id": 11, "name": "publish", "status": "completed", "conclusion": "failure",
-            "steps": [
-                {"name": "Authorize sending the frozen independent candidate",
-                 "status": "completed", "conclusion": "failure"},
-                {"name": history.OWNERS[self.owner][2], "status": "completed", "conclusion": "skipped"},
-            ],
-        }]
-        for run_id in (41, 42):
-            with self.subTest(run=run_id):
-                attempt = 2 if run_id == 42 else 1
-                runs = [self.run_record(attempt=2, run_number=1)] if run_id == 42 else [self.run_record(), self.run_record(41)]
-                self.assertEqual(
-                    self.select(runs, attempt=attempt, jobs=[(f"{run_id}/attempts/1", failed_before_send)]),
-                    history.IndependentCrateHistory(observe_only=False),
-                )
-
-    def test_matching_version_stays_observation_only_even_without_a_prior_send(self) -> None:
-        for stage in ("preflight", "publish"):
-            with self.subTest(stage=stage):
-                confirmation = self.intent(name=f"crates-io-independent-confirmation-{stage}-attempt-1")
-                attempts = [
-                    ([self.run_record(attempt=2, run_number=1)], 2, 42, self.sha),
-                    ([self.run_record(), self.run_record(41)], 1, 41, self.old_sha),
-                ]
-                for runs, attempt, run_id, sha in attempts:
-                    selected = self.select(runs, attempt=attempt, jobs=[(f"{run_id}/attempts/1", "skipped")],
-                                           artifacts=[confirmation])
-                    self.assertEqual(selected, history.IndependentCrateHistory(True, 101, run_id, 1, sha))
-
-    def test_lost_confirmation_artifact_does_not_authorize_upload(self) -> None:
-        for name, label in (
-            ("verify-published", "Verify exact published archive and registry consumers"),
-            ("preflight", "Retain the independent preflight registry confirmation"),
-        ):
-            with self.subTest(job=name):
-                jobs = [{
-                    "id": 11, "name": "publish", "status": "completed", "conclusion": "skipped", "steps": [],
-                }, {
-                    "id": 12, "name": name, "status": "completed", "conclusion": "success",
-                    "steps": [{"name": label, "status": "completed", "conclusion": "success",
-                               "started_at": "2026-11-25T00:00:00Z"}],
-                }]
-                selected = self.select([self.run_record(), self.run_record(41)], jobs=[("41/attempts/1", jobs)])
-                self.assertEqual(selected, history.IndependentCrateHistory())
-
-    def test_cancelled_preflight_after_registry_check_does_not_assume_absence(self) -> None:
-        jobs = [{
-            "id": 11, "name": "publish", "status": "completed", "conclusion": "skipped", "steps": [],
-        }, {
-            "id": 12, "name": "preflight", "status": "completed", "conclusion": "cancelled", "steps": [
-                {"name": "Verify registry bytes or dry-run independent crate publication", "conclusion": "success"},
-                {"name": "Retain the frozen independent candidate", "conclusion": "skipped"},
-                {"name": "Retain the independent preflight registry confirmation", "conclusion": "skipped"},
-            ],
-        }]
-        runs = [self.run_record(), self.run_record(41)]
-        self.assertEqual(self.select(runs, jobs=[("41/attempts/1", jobs)]), history.IndependentCrateHistory())
-
-    def test_legacy_confirmation_survives_failed_final_verification(self) -> None:
-        for preflight_publish in (True, False):
-            with self.subTest(preflight_publish=preflight_publish):
-                jobs = [{
-                    "id": 10, "name": "preflight", "status": "completed", "conclusion": "success", "steps": [
-                        {"name": "Verify registry bytes or dry-run independent crate publication",
-                         "conclusion": "success"},
-                        {"name": "Retain the frozen independent candidate",
-                         "conclusion": "success" if preflight_publish else "skipped"},
-                    ],
-                }, {
-                    "id": 11, "name": "publish", "status": "completed",
-                    "conclusion": "success" if preflight_publish else "skipped",
-                    "steps": [
-                        {"name": "Inspect independent crate publication state", "conclusion": "success"},
-                        {"name": "Download the frozen independent candidate", "conclusion": "skipped"},
-                        {"name": history.OWNERS[self.owner][2], "status": "completed", "conclusion": "skipped"},
-                    ] if preflight_publish else [],
-                }, {
-                    "id": 12, "name": "verify-published", "status": "completed", "conclusion": "failure",
-                    "steps": [{"name": "Verify exact published archive and registry consumers",
-                               "status": "completed", "conclusion": "failure"}],
-                }]
-                runs = [self.run_record(), self.run_record(41)]
-                self.assertEqual(self.select(runs, jobs=[("41/attempts/1", jobs)]), history.IndependentCrateHistory())
-
-    def test_full_rerun_preserves_original_attempt_even_after_a_skipped_rerun(self) -> None:
-        runs = [self.run_record(attempt=3, run_number=1)]
-        result = self.select(runs, attempt=3, jobs=[("42/attempts/1", "failure"), ("42/attempts/2", "skipped")],
-                             artifacts=[self.intent()])
-        self.assertEqual(result, history.IndependentCrateHistory(True, 101, 42, 1, self.sha))
-
-    def test_new_dispatch_on_a_different_source_preserves_original_attempt(self) -> None:
-        runs = [self.run_record(), self.run_record(41)]
-        intent = self.intent(workflow_run={"id": 41, "head_sha": self.old_sha})
-        result = self.select(runs, jobs=[("41/attempts/1", "failure")], artifacts=[intent])
-        self.assertEqual(result, history.IndependentCrateHistory(True, 101, 41, 1, self.old_sha))
-
-    def test_verification_only_rerun_does_not_hide_original_intent(self) -> None:
-        publish = {
-            "id": 11, "name": "publish", "status": "completed", "conclusion": "success",
-            "started_at": "2026-11-25T00:00:00Z", "completed_at": "2026-11-25T00:01:00Z",
+    def receipt(self, state, **fields) -> dict:
+        return {
+            "task": f"independent-crate:{self.name}:{self.version}",
+            "environment": history.INDEPENDENT_RECEIPT_ENV, "sha": self.old_sha,
+            "payload": {
+                "schema_version": 1, "name": self.name, "version": self.version,
+                "state": state, "archive_sha256": self.digest, **fields,
+            },
         }
-        for second_attempt in ([dict(publish, id=12, run_attempt=2)], []):
-            with self.subTest(second_attempt=second_attempt):
-                same_run = [self.run_record(attempt=3, run_number=1)]
-                selected = self.select(
-                    same_run, attempt=3, jobs=[("42/attempts/1", [publish]), ("42/attempts/2", second_attempt)],
-                    artifacts=[self.intent()],
-                )
-                self.assertEqual(selected, history.IndependentCrateHistory(True, 101, 42, 1, self.sha))
 
-                new_dispatch = [self.run_record(), self.run_record(41, attempt=2)]
-                selected = self.select(
-                    new_dispatch, jobs=[("41/attempts/1", [publish]), ("41/attempts/2", second_attempt)],
-                    artifacts=[self.intent()],
-                )
-                self.assertEqual(selected, history.IndependentCrateHistory(True, 101, 41, 1, self.old_sha))
+    def test_cancelled_frozen_candidate_does_not_require_observation(self) -> None:
+        cancelled = self.run_record(41, status="completed", conclusion="cancelled")
+        self.assertIsNone(self.select([self.run_record(), cancelled]))
+        self.assertIsNone(self.select([self.run_record(attempt=2, run_number=1)], attempt=2))
 
-    def test_cancelled_pending_dispatch_does_not_hide_original_intent(self) -> None:
-        runs = [self.run_record(run_number=3), self.run_record(41, run_number=2, conclusion="cancelled"), self.run_record(40)]
-        selected = self.select(
-            runs, jobs=[("41/attempts/1", []), ("40/attempts/1", "failure")],
-            artifacts={"40/artifacts": [self.intent()]},
-        )
-        self.assertEqual(selected, history.IndependentCrateHistory(True, 101, 40, 1, self.old_sha))
+    def test_intent_and_confirmation_recover_the_digest_without_runs_or_artifacts(self) -> None:
+        for state in ("upload-intent", "registry-confirmed"):
+            with self.subTest(state=state):
+                self.assertEqual(self.select(deployments=[self.receipt(state)]),
+                                 history.IndependentCrateReceipt(self.digest, self.old_sha, state))
 
-    def test_cancelled_pending_dispatch_alone_does_not_block_first_send(self) -> None:
-        runs = [self.run_record(), self.run_record(41, conclusion="cancelled")]
-        self.assertEqual(
-            self.select(runs, jobs=[("41/attempts/1", [])]),
-            history.IndependentCrateHistory(observe_only=False),
-        )
+    def test_conflicting_receipts_or_wrong_identity_are_not_absence(self) -> None:
+        for fields in ({"name": "merman-usvg"}, {"version": "0.50.2"}, {"archive_sha256": "d" * 64}):
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                self.select(deployments=[self.receipt("upload-intent"), self.receipt("registry-confirmed", **fields)])
 
-    def test_intent_must_belong_to_the_selected_run_and_source(self) -> None:
-        runs = [self.run_record(), self.run_record(41)]
-        for origin in ({"id": 40, "head_sha": self.old_sha}, {"id": 41, "head_sha": self.sha}, {}):
-            with self.subTest(origin=origin):
-                result = self.select(
-                    runs, jobs=[("41/attempts/1", "failure")], artifacts=[self.intent(workflow_run=origin)],
-                )
-                self.assertEqual(result, history.IndependentCrateHistory())
+    def test_manifest_of_the_durable_receipt_round_trips_through_the_api(self) -> None:
+        response = self.receipt("upload-intent")
+        record = history.IndependentCrateReceipt(self.digest, self.old_sha, "upload-intent")
+        response["payload"] = json.dumps(response["payload"])
+        completed = subprocess.CompletedProcess([], 0, stdout=json.dumps(response))
+        with mock.patch.object(history.subprocess, "run", return_value=completed) as api:
+            history.record_independent_receipt(self.repository, self.name, self.version, record)
+        self.assertEqual(json.loads(api.call_args.kwargs["input"]), {
+            "ref": self.old_sha, "task": response["task"], "environment": response["environment"],
+            "auto_merge": False, "required_contexts": [], "production_environment": False,
+            "payload": json.loads(response["payload"]),
+        })
+        self.assertEqual(self.select(deployments=[response]), record)
 
-    def test_missing_expired_duplicate_or_ambiguous_intent_allows_only_observation(self) -> None:
-        for artifacts in ([], [self.intent(expired=True)], [self.intent(), self.intent(id=102)]):
-            with self.subTest(artifacts=artifacts):
-                runs = [self.run_record(attempt=2, run_number=1)]
-                self.assertEqual(
-                    self.select(runs, attempt=2, jobs=[("42/attempts/1", "failure")], artifacts=artifacts),
-                    history.IndependentCrateHistory(),
-                )
-        runs = [self.run_record(attempt=3, run_number=1)]
-        self.assertEqual(
-            self.select(runs, attempt=3, jobs=[("42/attempts/1", "failure"), ("42/attempts/2", "failure")],
-                        artifacts=[self.intent(), self.intent(2, id=102, expired=True)]),
-            history.IndependentCrateHistory(),
-        )
+    def test_only_matching_legacy_runs_without_a_receipt_require_manual_reconciliation(self) -> None:
+        named = self.run_record(41, display_title=f"Release independent crate {self.name} {self.version}")
+        unnamed = self.run_record(41, display_title="Release Independent Crate (crates.io)")
+        other = self.run_record(41, display_title="Release independent crate merman-resvg 0.50.0")
+        for legacy in (named, unnamed):
+            with self.subTest(legacy=legacy), self.assertRaisesRegex(ValueError, "reconcile it manually"):
+                self.select([self.run_record(), legacy], legacy_version=self.version)
+        self.assertIsNone(self.select([self.run_record(), other]))
 
-    def test_legacy_dispatch_with_same_manifest_version_remains_observation_only(self) -> None:
-        runs = [
-            self.run_record(),
-            self.run_record(41, display_title="Release Independent Crate (crates.io)"),
-        ]
-        self.assertEqual(
-            self.select(runs, legacy_version=self.version, jobs=[("41/attempts/1", "success")]),
-            history.IndependentCrateHistory(),
-        )
-        self.assertEqual(self.select(runs, legacy_version="0.50.0"), history.IndependentCrateHistory(observe_only=False))
-
-    def test_missing_current_run_and_unresolved_cross_run_fail_closed(self) -> None:
-        self.assertEqual(self.select([]), history.IndependentCrateHistory())
-        runs = [self.run_record(), self.run_record(41, status="in_progress")]
-        self.assertEqual(self.select(runs), history.IndependentCrateHistory())
+    def test_current_run_identity_is_verified_before_a_first_send(self) -> None:
+        with self.assertRaisesRegex(ValueError, "run identity"):
+            self.select([self.run_record(attempt=2)])
+        with self.assertRaisesRegex(ValueError, "history is incomplete"):
+            self.select([self.run_record()])
 
 
 class NpmRecoverySelectionTests(unittest.TestCase):
