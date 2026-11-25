@@ -107,18 +107,22 @@ pub(super) fn pairs(
     let mut active: Vec<usize> = Vec::new();
     for (index, s) in segments.iter().enumerate() {
         work.visit(active.len() + 1)?;
-        let start = s.interval(horizontal).0;
-        active.retain(|&i| segments[i].interval(horizontal).1 >= start);
+        let (start, _) = s.interval(horizontal);
         let (low, high) = s.interval(!horizontal);
-        for &i in &active {
+        retain_with(&mut active, |i| {
             let t = &segments[i];
+            let live = t.interval(horizontal).1 >= start;
+            if !live {
+                return Ok(false);
+            }
             let (l, h) = t.interval(!horizontal);
             if s.edge != t.edge && l <= high && h >= low && s.straddles(t) && t.straddles(s) {
                 let key = (s.edge.min(t.edge), s.edge.max(t.edge));
                 work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
                 pairs.insert(key);
             }
-        }
+            Ok(true)
+        })?;
         crate::work::push(&mut active, index)?;
     }
     Ok(pairs.len() as u64)
@@ -130,14 +134,17 @@ fn shared_pairs(segments: &[Segment], horizontal: bool, work: &mut Work<'_>) -> 
     for owners in segments.chunk_by(|a, b| a.coordinates() == b.coordinates()) {
         let s = &owners[0];
         work.visit(active.len() + owners.len())?;
-        let start = s.interval(horizontal).0;
-        active.retain(|neighbors| neighbors[0].interval(horizontal).1 >= start);
+        let (start, _) = s.interval(horizontal);
         let (low, high) = s.interval(!horizontal);
-        for &neighbors in &active {
+        retain_with(&mut active, |neighbors| {
             let t = &neighbors[0];
+            let live = t.interval(horizontal).1 >= start;
+            if !live {
+                return Ok(false);
+            }
             let (l, h) = t.interval(!horizontal);
             if !(l <= high && h >= low && s.straddles(t) && t.straddles(s)) {
-                continue;
+                return Ok(true);
             }
             for first in owners {
                 for second in neighbors {
@@ -147,10 +154,31 @@ fn shared_pairs(segments: &[Segment], horizontal: bool, work: &mut Work<'_>) -> 
                     }
                 }
             }
-        }
+            Ok(true)
+        })?;
         crate::work::push(&mut active, owners)?;
     }
     Ok(pairs.len() as u64)
+}
+
+/// Evict expired entries while visiting surviving candidates in their original order.
+/// The sweep owns the list and discards it if a visitor's work charge fails.
+fn retain_with<T: Copy>(
+    active: &mut Vec<T>,
+    mut visit: impl FnMut(T) -> LayoutResult<bool>,
+) -> LayoutResult<()> {
+    let mut kept = 0;
+    for index in 0..active.len() {
+        let entry = active[index];
+        if visit(entry)? {
+            if kept != index {
+                active[kept] = entry;
+            }
+            kept += 1;
+        }
+    }
+    active.truncate(kept);
+    Ok(())
 }
 
 #[cfg(test)]
