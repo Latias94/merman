@@ -3353,7 +3353,7 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
         return Ok(false);
     }
     let scan = barycenter_scan_work(graph)?;
-    // SweepCopy always retains fallback port IDs, including when numeric IDs are available.
+    // Retain the conservative snapshot reservation, including the bytes of all port IDs.
     let snapshot = checked_add(
         scan,
         checked_sum(

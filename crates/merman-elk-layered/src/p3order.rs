@@ -78,9 +78,9 @@ pub struct SweepCopy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PortOrderKey {
-    crossing_minimization_id: Option<usize>,
-    fallback_id: String,
+pub enum PortOrderKey {
+    CrossingId(usize),
+    FallbackId(String),
 }
 
 impl SweepCopy {
@@ -96,9 +96,10 @@ impl SweepCopy {
                             graph.layerless_nodes[*node]
                                 .ports
                                 .iter()
-                                .map(|port| PortOrderKey {
-                                    crossing_minimization_id: port.crossing_minimization_id,
-                                    fallback_id: port.id.clone(),
+                                .map(|port| match port.crossing_minimization_id {
+                                    // A saved crossing ID always looks up in the numeric namespace.
+                                    Some(id) => PortOrderKey::CrossingId(id),
+                                    None => PortOrderKey::FallbackId(port.id.clone()),
                                 })
                                 .collect()
                         })
@@ -166,10 +167,10 @@ fn port_order_indices_by_id(
 
     let use_crossing_ids = port_ids
         .iter()
-        .any(|key| key.crossing_minimization_id.is_some());
+        .any(|key| matches!(key, PortOrderKey::CrossingId(_)));
     let use_fallback_ids = port_ids
         .iter()
-        .any(|key| key.crossing_minimization_id.is_none());
+        .any(|key| matches!(key, PortOrderKey::FallbackId(_)));
     let mut by_crossing_id = HashMap::<usize, Vec<usize>>::new();
     let mut by_fallback_id = HashMap::<&str, Vec<usize>>::new();
     // Pop the smallest current index first, preserving the original first-unused match.
@@ -188,10 +189,9 @@ fn port_order_indices_by_id(
     let mut order = Vec::with_capacity(port_ids.len());
     let mut used = vec![false; ports.len()];
     for port_key in port_ids {
-        let candidates = if let Some(id) = port_key.crossing_minimization_id {
-            by_crossing_id.get_mut(&id)?
-        } else {
-            by_fallback_id.get_mut(port_key.fallback_id.as_str())?
+        let candidates = match port_key {
+            PortOrderKey::CrossingId(id) => by_crossing_id.get_mut(id)?,
+            PortOrderKey::FallbackId(id) => by_fallback_id.get_mut(id.as_str())?,
         };
         let index = loop {
             let index = candidates.pop()?;
@@ -216,18 +216,17 @@ fn port_order_lookup_work_units(
     let mut work = checked_mul(ports.len(), 8)?;
     if keys
         .iter()
-        .any(|key| key.crossing_minimization_id.is_none())
+        .any(|key| matches!(key, PortOrderKey::FallbackId(_)))
     {
         // Numeric crossing IDs need no string hashing. Fallback keys additionally read
         // the current IDs once during indexing and the saved IDs once during lookup.
         work = checked_sum([
             work,
             checked_sum(ports.iter().map(|port| port.id.len()))?,
-            checked_sum(
-                keys.iter()
-                    .filter(|key| key.crossing_minimization_id.is_none())
-                    .map(|key| key.fallback_id.len()),
-            )?,
+            checked_sum(keys.iter().filter_map(|key| match key {
+                PortOrderKey::CrossingId(_) => None,
+                PortOrderKey::FallbackId(id) => Some(id.len()),
+            }))?,
         ])?;
     }
     Ok(work)
@@ -2828,9 +2827,9 @@ mod tests {
             graph.layerless_nodes[0].ports[port.port].crossing_minimization_id = crossing_id;
             graph.layerless_nodes[0].ports[port.port].id = id.to_string();
         }
-        let key = |crossing_minimization_id, fallback_id: &str| PortOrderKey {
-            crossing_minimization_id,
-            fallback_id: fallback_id.to_string(),
+        let key = |crossing_minimization_id, fallback_id: &str| match crossing_minimization_id {
+            Some(id) => PortOrderKey::CrossingId(id),
+            None => PortOrderKey::FallbackId(fallback_id.to_string()),
         };
         let mixed = [
             key(None, "same"),
@@ -2862,6 +2861,42 @@ mod tests {
             port_order_indices_by_id(&graph, 0, &missing),
             None,
             "a saved numeric ID must never fall back to the external ID"
+        );
+    }
+
+    #[test]
+    fn sweep_copy_restores_a_cloned_mixed_snapshot_and_prices_fallback_bytes() {
+        let mut graph = graph(vec![node("A")], vec![]);
+        graph.set_node_layer(0, 0);
+        graph.layerless_nodes[0].ports.clear();
+        let ports = [
+            (Some(7), "duplicate"),
+            (None, "fallback🦀"),
+            (Some(8), "duplicate"),
+            (None, "last"),
+        ];
+        for (crossing_id, id) in ports {
+            let reference = graph
+                .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+                .unwrap();
+            let port = &mut graph.layerless_nodes[0].ports[reference.port];
+            port.crossing_minimization_id = crossing_id;
+            port.id = id.to_owned();
+        }
+        let copy = SweepCopy::new(&graph, &[vec![0]]).clone();
+        let keys = &copy.port_orders[0][0];
+        assert!(matches!(keys[0], PortOrderKey::CrossingId(7)));
+        assert!(matches!(&keys[1], PortOrderKey::FallbackId(id) if id == "fallback🦀"));
+        assert!(graph.reorder_node_ports(0, [3, 2, 1, 0]));
+        assert_eq!(port_order_lookup_work_units(&graph, 0, keys), Ok(82));
+        assert!(copy.transfer_node_and_port_orders_to_graph(&mut graph, false));
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| (port.crossing_minimization_id, port.id.as_str()))
+                .collect::<Vec<_>>(),
+            ports
         );
     }
 }
