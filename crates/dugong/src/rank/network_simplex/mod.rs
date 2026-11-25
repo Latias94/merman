@@ -34,16 +34,23 @@ struct DenseTreeEdge {
 }
 
 fn capture_dense_tree_edge(
-    tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    v_t_ix: usize,
-    w_t_ix: usize,
+    t_ix_by_g_ix: &[Option<usize>],
+    v_g_ix: usize,
+    w_g_ix: usize,
 ) -> Option<DenseTreeEdge> {
-    if v_t_ix == w_t_ix {
+    if v_g_ix == w_g_ix {
         return None;
     }
-    let v = tree.node_id_by_ix(v_t_ix)?;
-    let w = tree.node_id_by_ix(w_t_ix)?;
+    let mut v_t_ix = t_ix_by_g_ix.get(v_g_ix).copied().flatten()?;
+    let mut w_t_ix = t_ix_by_g_ix.get(w_g_ix).copied().flatten()?;
+    let mut v = graph.node_id_by_ix(v_g_ix)?;
+    let mut w = graph.node_id_by_ix(w_g_ix)?;
+    // The old undirected Graph canonicalized endpoints by ID, independently of discovery order.
+    if v > w {
+        std::mem::swap(&mut v, &mut w);
+        std::mem::swap(&mut v_t_ix, &mut w_t_ix);
+    }
     let (tail_t_ix, head_t_ix, label) = graph
         .edge(v, w, None)
         .map(|label| (v_t_ix, w_t_ix, label))
@@ -289,6 +296,7 @@ struct TreeState {
 }
 
 impl TreeState {
+    #[cfg(test)]
     fn new(
         t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -296,62 +304,56 @@ impl TreeState {
         if t.is_directed() || t.is_multigraph() {
             return Err(RankError::InvalidNetworkSimplexTree);
         }
-        let t_len = t.node_slot_count();
-        let g_len = g.node_slot_count();
+        let mut state = Self::from_slots(
+            g,
+            t.node_slot_count(),
+            t.node_count(),
+            t.edge_count(),
+            t.nodes().filter_map(|id| t.node_ix(id).zip(g.node_ix(id))),
+            t.edges()
+                .map(|edge| g.node_ix(&edge.v).zip(g.node_ix(&edge.w))),
+        )?;
+        state.has_array_index_nodes = t.array_index_node_count() != 0;
+        Ok(state)
+    }
 
+    fn from_slots(
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        t_len: usize,
+        live_nodes: usize,
+        live_edges: usize,
+        ordered_nodes: impl Iterator<Item = (usize, usize)>,
+        ordered_edges: impl Iterator<Item = Option<(usize, usize)>>,
+    ) -> Result<Self, RankError> {
+        let g_len = g.node_slot_count();
         let mut g_ix_by_t_ix: Vec<Option<usize>> = vec![None; t_len];
         let mut t_ix_by_g_ix: Vec<Option<usize>> = vec![None; g_len];
-        let mut node_ixs = Vec::with_capacity(t.node_count());
+        let mut node_ixs = Vec::with_capacity(live_nodes);
         let mut array_index_by_t_ix = vec![None; t_len];
-        t.for_each_node_ix(|t_ix, id, _lbl| {
-            let Some(g_ix) = g.node_ix(id) else {
-                return;
-            };
+        let mut has_array_index_nodes = false;
+        for (t_ix, g_ix) in ordered_nodes {
             g_ix_by_t_ix[t_ix] = Some(g_ix);
             t_ix_by_g_ix[g_ix] = Some(t_ix);
             node_ixs.push(t_ix);
-            array_index_by_t_ix[t_ix] = t.javascript_array_index_by_node_ix(t_ix);
-        });
-
-        let mut tree_edges_in_order = Vec::with_capacity(t.edge_count());
-        let mut array_index_adjacency_entry_count = 0usize;
-        let mut tree_error = None;
-        t.for_each_edge_ix(|v_ix, w_ix, _key, _lbl| {
-            if tree_error.is_some() {
-                return;
-            }
-            let Some(dense_edge) = capture_dense_tree_edge(t, g, v_ix, w_ix) else {
-                tree_error = Some(RankError::InvalidNetworkSimplexTree);
-                return;
-            };
-            tree_edges_in_order.push(dense_edge);
-            let Some(v_array_index) = array_index_by_t_ix.get(v_ix) else {
-                tree_error = Some(RankError::InvalidNetworkSimplexTree);
-                return;
-            };
-            let Some(w_array_index) = array_index_by_t_ix.get(w_ix) else {
-                tree_error = Some(RankError::InvalidNetworkSimplexTree);
-                return;
-            };
-            let Ok(next_count) = checked_add(
-                array_index_adjacency_entry_count,
-                usize::from(v_array_index.is_some()),
-            ) else {
-                tree_error = Some(RankError::Work(WorkError::ArithmeticOverflow));
-                return;
-            };
-            let Ok(next_count) = checked_add(next_count, usize::from(w_array_index.is_some()))
-            else {
-                tree_error = Some(RankError::Work(WorkError::ArithmeticOverflow));
-                return;
-            };
-            array_index_adjacency_entry_count = next_count;
-        });
-
-        if let Some(error) = tree_error {
-            return Err(error);
+            let array_index = g.javascript_array_index_by_node_ix(g_ix);
+            array_index_by_t_ix[t_ix] = array_index;
+            has_array_index_nodes |= array_index.is_some();
         }
 
+        let mut tree_edges_in_order = Vec::with_capacity(live_edges);
+        let mut array_index_adjacency_entry_count = 0usize;
+        for ends in ordered_edges {
+            let (v_g_ix, w_g_ix) = ends.ok_or(RankError::InvalidNetworkSimplexTree)?;
+            let dense_edge = capture_dense_tree_edge(g, &t_ix_by_g_ix, v_g_ix, w_g_ix)
+                .ok_or(RankError::InvalidNetworkSimplexTree)?;
+            let v_array_index = array_index_by_t_ix[dense_edge.v_t_ix];
+            let w_array_index = array_index_by_t_ix[dense_edge.w_t_ix];
+            array_index_adjacency_entry_count = checked_add(
+                array_index_adjacency_entry_count,
+                usize::from(v_array_index.is_some()) + usize::from(w_array_index.is_some()),
+            )?;
+            tree_edges_in_order.push(dense_edge);
+        }
         let lim_slots = checked_add(t_len, 1)?;
 
         Ok(Self {
@@ -365,7 +367,7 @@ impl TreeState {
             node_ixs,
             roots_to_visit: Vec::new(),
             visited: vec![false; t_len],
-            has_array_index_nodes: t.array_index_node_count() != 0,
+            has_array_index_nodes,
             array_index_by_t_ix,
             array_index_adjacency_entry_count,
             neighbors: PinnedUndirectedNeighbors::default(),
@@ -855,14 +857,12 @@ pub(crate) fn network_simplex_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<(), RankError> {
-    // These graph and tree owners are deliberately boxed. In debug builds their aggregate return
+    // These owners are deliberately boxed. In debug builds their aggregate return
     // places otherwise remain live together across the whole network-simplex coordinator, which
     // can exhaust small worker stacks even though every topology traversal is iterative.
     let mut simplified = build_simplified_graph_boxed(g, work_control)?;
     util::longest_path_controlled(&mut simplified, work_control)?;
-    let t = build_feasible_tree_boxed_controlled(&mut simplified, work_control)?;
-    let mut t_state = build_tree_state_boxed_controlled(&t, &simplified, None, work_control)?;
-    drop(t);
+    let mut t_state = build_initial_tree_state_controlled(&mut simplified, work_control)?;
 
     work_control.charge(simplified.node_slot_count())?;
     let mut rank_by_ix = vec![0_i128; simplified.node_slot_count()];
@@ -935,29 +935,62 @@ fn build_simplified_graph_boxed(
     Ok(Box::new(crate::util::simplify(g)))
 }
 
-fn build_feasible_tree_boxed_controlled(
+fn build_initial_tree_state_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
-) -> Result<Box<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>>, RankError> {
-    Ok(Box::new(feasible_tree::feasible_tree_controlled(
+) -> Result<Box<TreeState>, RankError> {
+    let seed = feasible_tree::feasible_tree_seed_controlled(g, work_control)?;
+    let nodes = seed.discovery_order.len();
+    let edges = seed.edges.len();
+    // The forest is append-only, so both old Graph node slot counts equal its live node count.
+    work_control.charge(tree_state_construction_work_units(
+        g.node_slot_count(),
+        nodes,
+        nodes,
+        edges,
+    )?)?;
+    let mut state = Box::new(TreeState::from_slots(
         g,
-        work_control,
-    )?))
+        nodes,
+        nodes,
+        edges,
+        seed.ordered_nodes(),
+        seed.edges.iter().copied().map(Some),
+    )?);
+    drop(seed);
+    rebuild_initial_state_controlled(&mut state, g, None, work_control)?;
+    Ok(state)
 }
 
+#[cfg(test)]
 fn tree_state_new_work_units(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
 ) -> Result<usize, WorkError> {
-    checked_add(
+    tree_state_construction_work_units(
         g.node_slot_count(),
+        tree.node_slot_count(),
+        tree.node_order_slot_count(),
+        tree.edge_slot_count(),
+    )
+}
+
+fn tree_state_construction_work_units(
+    graph_slots: usize,
+    tree_slots: usize,
+    tree_order_slots: usize,
+    tree_edge_slots: usize,
+) -> Result<usize, WorkError> {
+    checked_add(
+        graph_slots,
         checked_add(
-            checked_add(tree.node_slot_count(), tree.node_order_slot_count())?,
-            checked_mul(tree.edge_slot_count(), 2)?,
+            checked_add(tree_slots, tree_order_slots)?,
+            checked_mul(tree_edge_slots, 2)?,
         )?,
     )
 }
 
+#[cfg(test)]
 fn build_tree_state_controlled(
     tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -966,28 +999,23 @@ fn build_tree_state_controlled(
 ) -> Result<TreeState, RankError> {
     work_control.charge(tree_state_new_work_units(g, tree)?)?;
     let mut state = TreeState::new(tree, g)?;
+    rebuild_initial_state_controlled(&mut state, g, root, work_control)?;
+    Ok(state)
+}
+
+fn rebuild_initial_state_controlled(
+    state: &mut TreeState,
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    root: Option<&str>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), RankError> {
     work_control.charge(dense_tree_state_rebuild_work_units(
         g,
         state.node_slot_count(),
         state.edge_count(),
         state.array_index_adjacency_entry_count,
     )?)?;
-    state.rebuild(g, root)?;
-    Ok(state)
-}
-
-fn build_tree_state_boxed_controlled(
-    tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    root: Option<&str>,
-    work_control: &mut dyn WorkControl,
-) -> Result<Box<TreeState>, RankError> {
-    Ok(Box::new(build_tree_state_controlled(
-        tree,
-        g,
-        root,
-        work_control,
-    )?))
+    state.rebuild(g, root)
 }
 
 fn dense_tree_state_rebuild_work_units(

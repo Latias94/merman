@@ -1137,6 +1137,82 @@ fn network_simplex_initial_longest_path_owns_cold_csr_once() {
 }
 
 #[test]
+fn compact_feasible_tree_matches_graph_with_late_numeric_nodes_and_a_second_root() {
+    let make_graph = || {
+        let mut graph = Graph::new(GraphOptions::default());
+        for id in ["10", "other", "2", "1", "last"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for (v, w) in [("1", "10"), ("10", "2"), ("other", "last")] {
+            graph.set_edge(v, w);
+        }
+        util::longest_path(&mut graph);
+        graph
+    };
+    let mut reference = make_graph();
+    let mut reference_work = RecordingWorkControl::default();
+    let forest = feasible_tree::feasible_tree_controlled(&mut reference, &mut reference_work)
+        .expect("the public Graph path selects a feasible forest");
+    assert_eq!(forest.node_ids(), ["1", "2", "10", "other", "last"]);
+    assert_eq!(forest.node_ix("10"), Some(1));
+    assert_eq!(forest.node_ix("2"), Some(2));
+    let expected = build_tree_state_controlled(&forest, &reference, None, &mut reference_work)
+        .expect("the reference state accepts the forest");
+    assert_eq!(expected.roots.len(), 2);
+
+    let mut compact = make_graph();
+    let mut compact_work = RecordingWorkControl::default();
+    let actual = build_initial_tree_state_controlled(&mut compact, &mut compact_work)
+        .expect("the compact seed produces a feasible forest");
+    assert_eq!(*actual, expected);
+    assert_eq!(rank_snapshot(&compact), rank_snapshot(&reference));
+    assert_eq!(compact_work.charges, reference_work.charges);
+}
+
+#[test]
+fn compact_feasible_tree_uses_the_canonical_direction_for_a_bidirectional_edge() {
+    let make_graph = || {
+        let mut graph = Graph::new(GraphOptions::default());
+        for (id, rank) in [("2", 0), ("10", 1)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    ..NodeLabel::default()
+                },
+            );
+        }
+        graph.set_edge_with_label("2", "10", EdgeLabel::default());
+        graph.set_edge_with_label(
+            "10",
+            "2",
+            EdgeLabel {
+                minlen: 2,
+                weight: 7.0,
+                ..EdgeLabel::default()
+            },
+        );
+        graph
+    };
+
+    let mut reference = make_graph();
+    let forest = feasible_tree::feasible_tree_controlled(&mut reference, &mut NoopWorkControl)
+        .expect("the tight edge spans both nodes");
+    let expected = TreeState::new(&forest, &reference).expect("the forest uses graph edges");
+    let mut graph = make_graph();
+    let compact = build_initial_tree_state_controlled(&mut graph, &mut NoopWorkControl)
+        .expect("the compact forest uses graph edges");
+    assert_eq!(compact.tree_edges_in_order, expected.tree_edges_in_order);
+
+    let [edge] = compact.tree_edges_in_order.as_slice() else {
+        panic!("a two-node tree must have one edge");
+    };
+    assert_eq!(tree_node_id(&compact, &graph, edge.tail_t_ix), "10");
+    assert_eq!(tree_node_id(&compact, &graph, edge.head_t_ix), "2");
+    assert_eq!((edge.minlen, edge.weight), (2, 7.0));
+}
+
+#[test]
 fn dense_tree_matches_the_pinned_six_pivot_trace_without_slot_growth() {
     let source = multi_pivot_graph();
     let mut work_control = NoopWorkControl;
@@ -1144,10 +1220,8 @@ fn dense_tree_matches_the_pinned_six_pivot_trace_without_slot_growth() {
         .expect("the fixture simplify step succeeds");
     util::longest_path_controlled(&mut graph, &mut work_control)
         .expect("the fixture ranks fit i32");
-    let spanning_tree = feasible_tree::feasible_tree_controlled(&mut graph, &mut work_control)
-        .expect("the fixture feasible tree succeeds");
-    let mut state =
-        TreeState::new(&spanning_tree, &graph).expect("the tree is a graph-edge subset");
+    let mut state = build_initial_tree_state_controlled(&mut graph, &mut work_control)
+        .expect("the compact forest produces the initial pinned tree state");
     let edge_capacity = state.tree_edges_in_order.capacity();
     assert_eq!(state.edge_count(), 8);
     assert_eq!(
@@ -1164,11 +1238,6 @@ fn dense_tree_matches_the_pinned_six_pivot_trace_without_slot_growth() {
         ]
         .map(|(v, w)| (v.to_string(), w.to_string()))
     );
-    drop(spanning_tree);
-    state
-        .rebuild(&graph, None)
-        .expect("the initial pinned tree rebuild succeeds");
-
     let mut rank_by_ix = vec![0_i128; graph.node_slot_count()];
     graph.for_each_node_ix(|g_ix, _id, label| {
         rank_by_ix[g_ix] = i128::from(label.rank.unwrap_or(0));
