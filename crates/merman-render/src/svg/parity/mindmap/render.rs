@@ -1002,7 +1002,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             .encode(json_stringify_points(&points_for_data_points));
 
         let d = if backend == GraphLayoutBackend::Swimlane {
-            curve::curve_rounded_path_d_and_bounds(&points_for_data_points, 10.0, false, None).0
+            curve::curve_rounded_path_d(&points_for_data_points, 10.0)
         } else if e.curve.trim() == "basis" {
             curve::curve_basis_path_d(&points_for_data_points)
         } else {

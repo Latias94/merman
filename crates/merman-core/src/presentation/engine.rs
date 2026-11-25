@@ -1,4 +1,4 @@
-use crate::config::presentation::SourcePresentationConfig;
+use crate::config::presentation::{SiteAppearance, SourcePresentationConfig};
 use crate::{
     DetectorRegistry, Error, MermaidConfig, MermaidThemeId, OperationControl,
     OperationControlResult, ParsedDiagramRender, RenderDiagramRegistry, Result, generated, theme,
@@ -12,6 +12,7 @@ use crate::{
 #[cfg(feature = "compat-json")]
 use crate::{DiagramRegistry, ParsedDiagram};
 use merman_model::presentation::PresentationMetadata;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[path = "parse_pipeline.rs"]
@@ -19,19 +20,16 @@ pub(crate) mod parse_pipeline;
 
 type ResolvedSiteConfig =
     std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>;
+type SiteAppearanceCache = BTreeMap<
+    (&'static str, MermaidThemeId),
+    std::result::Result<Arc<SiteAppearance>, theme::ThemeResolutionError>,
+>;
 
 #[derive(Clone, Debug)]
 struct SiteConfigInitialization {
     site_config: SourcePresentationConfig,
     default_effective_config: ResolvedSiteConfig,
-    materialized_appearance: Arc<Mutex<Option<SiteAppearance>>>,
-}
-
-#[derive(Debug)]
-struct SiteAppearance {
-    section: &'static str,
-    theme: MermaidThemeId,
-    effective_config: ResolvedSiteConfig,
+    materialized_appearances: Arc<Mutex<SiteAppearanceCache>>,
 }
 
 impl SiteConfigInitialization {
@@ -42,7 +40,7 @@ impl SiteConfigInitialization {
         Self {
             site_config,
             default_effective_config,
-            materialized_appearance: Arc::default(),
+            materialized_appearances: Arc::default(),
         }
     }
 
@@ -55,7 +53,7 @@ impl SiteConfigInitialization {
                 Self {
                     site_config,
                     default_effective_config,
-                    materialized_appearance: Arc::default(),
+                    materialized_appearances: Arc::default(),
                 }
             })
             .clone()
@@ -67,24 +65,21 @@ impl SiteConfigInitialization {
         theme: MermaidThemeId,
         materialize: impl FnOnce() -> ResolvedSiteConfig,
     ) -> ResolvedSiteConfig {
-        // Keep one site-derived result across engine clones. A competing operation can
-        // perform its own calculation without waiting for another render's theme.
-        let Ok(mut slot) = self.materialized_appearance.try_lock() else {
+        let Ok(mut appearances) = self.materialized_appearances.try_lock() else {
             return materialize();
         };
-        if let Some(cached) = slot.as_ref()
-            && cached.section == section
-            && cached.theme == theme
+        let key = (section, theme);
+        if appearances.len() >= merman_model::family::diagram_family_selectors().len()
+            && !appearances.contains_key(&key)
         {
-            return cached.effective_config.clone();
+            return materialize();
         }
-        let effective_config = materialize();
-        *slot = Some(SiteAppearance {
-            section,
-            theme,
-            effective_config: effective_config.clone(),
-        });
-        effective_config
+        appearances
+            .entry(key)
+            .or_insert_with(|| materialize().map(|config| Arc::new(SiteAppearance::new(config))))
+            .as_ref()
+            .map(SiteAppearance::fork)
+            .map_err(Clone::clone)
     }
 }
 

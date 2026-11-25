@@ -1,7 +1,7 @@
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
-    BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
+    BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus, LightSvgOverride,
     binding_resource_policy, binding_site_config, css_declaration_value, finite_positive,
     internal_json_error, no_diagram_error, normalize_option, runtime_policy_error,
 };
@@ -100,12 +100,13 @@ impl RenderRequestPlan {
         input: RenderInput<'_>,
         control: OperationControl,
         include_metadata: bool,
+        overlay: Option<LightSvgOverride>,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let target = merman::RenderTarget::Svg(self.svg_request()?);
+        let mut request = self.svg_request()?;
+        if let Some(overlay) = overlay {
+            request.options.diagram_id = overlay.diagram_id;
+        }
         if !include_metadata {
-            let merman::RenderTarget::Svg(request) = target else {
-                unreachable!("SVG output target");
-            };
             let svg = match input {
                 RenderInput::Source(source) => self
                     .renderer
@@ -125,7 +126,9 @@ impl RenderRequestPlan {
                 svg.into_bytes(),
             ));
         }
-        let RenderOutput::Svg(svg) = self.render_input(input, target, control)? else {
+        let RenderOutput::Svg(svg) =
+            self.render_input(input, merman::RenderTarget::Svg(request), control)?
+        else {
             return Err(unexpected_render_output("svg"));
         };
         let output = svg.ok_or_else(no_diagram_error)?;

@@ -131,14 +131,15 @@ pub(crate) fn select_family_parser_source_controlled(
 ) -> OperationControlResult<PreprocessedSource> {
     control.checkpoint()?;
     if matches!(diagram_type, "agentflow" | "eventmodeling")
-        && let Some(with_comments) = with_comments
+        && let Some(mut with_comments) = with_comments
     {
         let max_text_size = config
             .get("maxTextSize")
             .and_then(Value::as_u64)
             .unwrap_or(50_000);
         if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
-            return prepare_parser_text_controlled(with_comments, control);
+            encode_mermaid_entities_like_upstream_controlled(&mut with_comments, control)?;
+            return Ok(with_comments);
         }
     }
     Ok(source)
@@ -171,6 +172,47 @@ pub struct FrontmatterBlock<'a> {
 const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
 const CONTROLLED_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
 const MAX_DIRECTIVE_CONFIG_PARSE_BYTES: usize = 1024 * 1024;
+
+#[derive(Clone, Copy)]
+struct PreprocessMarkers(u8);
+
+impl PreprocessMarkers {
+    const CARRIAGE_RETURN: u8 = 1 << 0;
+    const TAG_OPEN: u8 = 1 << 1;
+    const PERCENT: u8 = 1 << 2;
+    const HASH: u8 = 1 << 3;
+    const SEMICOLON: u8 = 1 << 4;
+    const ENTITY: u8 = Self::HASH | Self::SEMICOLON;
+    const ALL: u8 = Self::CARRIAGE_RETURN | Self::TAG_OPEN | Self::PERCENT | Self::ENTITY;
+    const MASKS: [u8; 256] = {
+        let mut masks = [0; 256];
+        masks[b'\r' as usize] = Self::CARRIAGE_RETURN;
+        masks[b'<' as usize] = Self::TAG_OPEN;
+        masks[b'%' as usize] = Self::PERCENT;
+        masks[b'#' as usize] = Self::HASH;
+        masks[b';' as usize] = Self::SEMICOLON;
+        masks
+    };
+
+    fn scan(input: &str, control: &OperationControl) -> OperationControlResult<Self> {
+        control.checkpoint()?;
+        let mut found = 0;
+        for chunk in input.as_bytes().chunks(CONTROLLED_SCAN_CHECKPOINT_BYTES) {
+            for &byte in chunk {
+                found |= Self::MASKS[usize::from(byte)];
+            }
+            control.checkpoint()?;
+            if found == Self::ALL {
+                break;
+            }
+        }
+        Ok(Self(found))
+    }
+
+    fn contains(self, markers: u8) -> bool {
+        self.0 & markers == markers
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DirectiveRecoveryMode {
@@ -252,11 +294,17 @@ fn preprocess_source_capture_controlled(
     PREPROCESS_COUNT.set(PREPROCESS_COUNT.get() + 1);
 
     // Mermaid 12 passes the complete DiagramCode to Diagram.fromText on both public paths.
-    let mut source = PreprocessedSource::new_controlled(input, control)?;
-    control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    let capture_spans = capture_mode.collects();
+    #[cfg(not(feature = "editor-facts"))]
+    let capture_spans = false;
+    let mut source = PreprocessedSource::new_controlled(input, capture_spans, control)?;
+    // The cleanup passes add only newlines and single quotes. Later config and comment
+    // removal passes delete text, so the original marker set covers all of their inputs.
+    let markers = PreprocessMarkers::scan(input, control)?;
     #[cfg(feature = "editor-facts")]
     let capture_editor_evidence = capture_mode.collects_editor();
-    cleanup_text_controlled(&mut source, control)?;
+    cleanup_text_controlled(&mut source, markers, control)?;
     #[cfg(feature = "editor-facts")]
     let mut source_config = SourceConfigEvidence::empty();
     #[cfg(feature = "editor-facts")]
@@ -334,10 +382,15 @@ fn preprocess_source_capture_controlled(
     }
 
     control.checkpoint()?;
+    let directive_blocks = if markers.contains(PreprocessMarkers::PERCENT) {
+        directive_blocks_controlled(source.text(), directive_recovery, control)?
+    } else {
+        Vec::new()
+    };
     let processed_directives = process_directives_controlled(
         source.text(),
         detector,
-        directive_recovery,
+        directive_blocks,
         #[cfg(feature = "editor-facts")]
         capture_mode,
         first_error.is_none(),
@@ -435,18 +488,23 @@ fn preprocess_source_capture_controlled(
     let with_comments = preserve_comments.then(|| source.clone());
     #[cfg(feature = "editor-facts")]
     let mut with_comments = with_comments;
-    remove_mermaid_comments_controlled(
-        &mut source,
-        #[cfg(feature = "editor-facts")]
-        capture_editor_evidence,
-        control,
-    )?;
+    if markers.contains(PreprocessMarkers::PERCENT) {
+        remove_mermaid_comments_controlled(
+            &mut source,
+            #[cfg(feature = "editor-facts")]
+            capture_editor_evidence,
+            control,
+        )?;
+    }
+    trim_source_start_controlled(&mut source, control)?;
     #[cfg(feature = "editor-facts")]
     if let Some(with_comments) = &mut with_comments {
         with_comments.copy_global_editor_evidence_from(&source);
     }
     control.checkpoint()?;
-    let source = prepare_parser_text_controlled(source, control)?;
+    if markers.contains(PreprocessMarkers::ENTITY) {
+        encode_mermaid_entities_like_upstream_controlled(&mut source, control)?;
+    }
     control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
         outcome: PreprocessCaptureResult::Ready(Box::new(PreprocessResult {
@@ -586,24 +644,21 @@ fn append_directive_evidence(
     control.checkpoint()
 }
 
-pub(crate) fn prepare_parser_text_controlled(
-    mut source: PreprocessedSource,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessedSource> {
-    encode_mermaid_entities_like_upstream_controlled(&mut source, control)?;
-    Ok(source)
-}
-
 fn cleanup_text_controlled(
     source: &mut PreprocessedSource,
+    markers: PreprocessMarkers,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
     control.checkpoint()?;
     strip_leading_utf8_bom(source, control)?;
-    normalize_crlf_controlled(source, control)?;
+    if markers.contains(PreprocessMarkers::CARRIAGE_RETURN) {
+        normalize_crlf_controlled(source, control)?;
+    }
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
-    normalize_html_tag_attributes_like_upstream_controlled(source, control)?;
+    if markers.contains(PreprocessMarkers::TAG_OPEN) {
+        normalize_html_tag_attributes_like_upstream_controlled(source, control)?;
+    }
     control.checkpoint()
 }
 
@@ -688,9 +743,14 @@ fn remove_mermaid_comments_controlled(
         }
         source.record_global_expected_syntax(EditorExpectedSyntaxKind::Directive, expected_span);
     }
-    source.apply_edits(edits, control)?;
-    source.set_first_line_column_offset(0);
+    source.apply_edits(edits, control)
+}
 
+fn trim_source_start_controlled(
+    source: &mut PreprocessedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    source.set_first_line_column_offset(0);
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut leading_whitespace = 0usize;
     for ch in source.text().chars() {
@@ -1315,7 +1375,7 @@ fn dedented_frontmatter_yaml_input_controlled<'a>(
             return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
         }
 
-        let mut source = PreprocessedSource::new_controlled(body, control)?;
+        let mut source = PreprocessedSource::new_controlled(body, true, control)?;
         let mut checkpoints = ControlledScanCheckpoints::new(control)?;
         let mut edits = Vec::new();
         let mut line_start = 0usize;
@@ -1759,7 +1819,7 @@ struct LocalDirectiveEvidence {
 fn process_directives_controlled(
     input: &str,
     detector: &DiagramTypeDetector<'_>,
-    directive_recovery: DirectiveRecoveryMode,
+    blocks: Vec<DirectiveBlock<'_>>,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     evaluate_config: bool,
     control: &OperationControl,
@@ -1769,7 +1829,6 @@ fn process_directives_controlled(
     let mut appearance_capture = SourceAppearanceCapture::default();
     #[cfg(feature = "editor-facts")]
     let mut appearance_complete = true;
-    let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
@@ -3156,6 +3215,8 @@ mod tests {
                 &OperationControl::new(),
             )
             .expect("active operation");
+            trim_source_start_controlled(&mut source, &OperationControl::new())
+                .expect("active operation");
             assert_eq!(source.text(), expected, "{input:?}");
         }
     }
@@ -3183,8 +3244,50 @@ mod tests {
                 &OperationControl::new(),
             )
             .expect("active operation");
+            trim_source_start_controlled(&mut source, &OperationControl::new())
+                .expect("active operation");
             assert_eq!(source.text(), expected, "{input:?}");
         }
+    }
+
+    #[test]
+    fn preprocessing_keeps_unicode_spans_across_scan_chunks() {
+        let prefix = " \u{3000}\nflowchart TD\nA[\"";
+        let padding = "x".repeat(CONTROLLED_SCAN_CHECKPOINT_BYTES - prefix.len() - 1);
+        for (suffix, expected_suffix) in [
+            ("雪\"];\n", "雪\"];\n"),
+            (
+                "雪<br title=\"call\">#alpha;\"]\r\n%% trailing comment\n",
+                "雪<br title='call'>ﬂ°alpha¶ß\"]\n",
+            ),
+        ] {
+            let input = format!("{prefix}{padding}{suffix}");
+            let result = preprocess_builtin_semantic_controlled(
+                &input,
+                Some("flowchart-v2"),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                result.code(),
+                format!("flowchart TD\nA[\"{padding}{expected_suffix}")
+            );
+            let start = result.code().find('雪').unwrap();
+            let original = input.find('雪').unwrap();
+            let len = '雪'.len_utf8();
+            assert_eq!(
+                result
+                    .source
+                    .try_map_span(crate::SourceSpan::new(start, start + len)),
+                Some(crate::SourceSpan::new(original, original + len)),
+            );
+        }
+
+        let source = "x".repeat(CONTROLLED_SCAN_CHECKPOINT_BYTES * 4);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(PreprocessMarkers::scan(&source, &control).is_err());
     }
 
     #[test]

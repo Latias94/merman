@@ -37,7 +37,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
             origin_x,
             origin_y,
             label,
-            elk_endpoint_adapters: super::ElkEndpointAdapterCorners::default(),
         });
     }
     if le.points.len() < 2 {
@@ -59,7 +58,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     let points_after_intersect = &mut scratch.tmp_points_b;
     points_after_intersect.clone_from(base_points);
 
-    let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
     if is_swimlane_layout {
         let layout_from = le.from.as_str();
         let layout_to = le.to.as_str();
@@ -101,7 +99,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
             );
         }
     } else if is_elk_layout {
-        elk_endpoint_adapters = apply_flowchart_elk_endpoint_cutter(
+        apply_flowchart_elk_endpoint_cutter(
             ctx,
             edge,
             origin_x,
@@ -185,7 +183,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         origin_x,
         origin_y,
         label,
-        elk_endpoint_adapters,
     })
 }
 
@@ -209,7 +206,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         base_points,
         points,
         label,
-        elk_endpoint_adapters,
         ..
     } = route;
     let missing_section = is_elk_layout && le.points.is_empty();
@@ -315,7 +311,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let (d, pb, skipped_bounds_for_viewbox) = {
+    let geometry = {
         let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
             .iter()
             .filter(|p| !p.y.is_nan())
@@ -332,47 +328,13 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         // Mermaid shortens edge paths so markers don't render on top of the line (see
         // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-        let target_boundary = if is_elk_layout {
-            boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
-        } else {
-            None
-        };
-        let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
-            collapse_short_terminal_marker_stub(
-                &mut line_data,
-                edge.edge_type.as_deref(),
-                target_boundary,
-            )
-        } else {
-            false
-        };
-
-        let mut rounded_corner_mask = vec![true; line_data.len()];
-        if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
-            if elk_endpoint_adapters.source && le.from_cluster.is_none() {
-                rounded_corner_mask[1] = false;
-            }
-            if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
-                let target_anchor = line_data.len() - 2;
-                rounded_corner_mask[target_anchor] = false;
-            }
-        }
-        let rounded_corner_mask =
-            (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
-
         let line_data = if is_rounded {
             rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
         } else {
             line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
         };
 
-        curve_path_d_and_bounds(
-            &line_data,
-            interpolate,
-            ctx.edge_corner_radius,
-            ctx.compact_edge_corners,
-            rounded_corner_mask.as_deref(),
-        )
+        curve_path_geometry(&line_data, interpolate, ctx.edge_corner_radius)
     };
     if trace_enabled {
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
@@ -389,8 +351,8 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     }
 
     Some(FlowchartEdgePathGeom {
-        d,
-        pb,
+        d: geometry.d,
+        pb: geometry.bounds,
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,
@@ -402,6 +364,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }),
         label_path_was_explicitly_updated: is_cluster_edge,
         emitted_d_for_label: None,
-        bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
+        bounds_skipped_for_viewbox: false,
     })
 }

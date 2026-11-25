@@ -20,12 +20,7 @@ pub(crate) trait TerminalRoute {
     /// Main labels share the route's coordinate system and move with an accepted candidate.
     fn reproject_main_label(&mut self, _runs: &[StraightenedRun]) {}
 
-    fn replace_terminal_points(
-        &mut self,
-        points: Vec<LayoutPoint>,
-        source_changed: bool,
-        target_changed: bool,
-    );
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>);
 }
 
 impl TerminalRoute for Vec<LayoutPoint> {
@@ -33,7 +28,7 @@ impl TerminalRoute for Vec<LayoutPoint> {
         self
     }
 
-    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>, _: bool, _: bool) {
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>) {
         *self = points;
     }
 }
@@ -53,7 +48,7 @@ impl TerminalRoute for crate::model::LayoutEdge {
         }
     }
 
-    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>, _: bool, _: bool) {
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>) {
         self.points = points;
     }
 }
@@ -79,7 +74,7 @@ impl TerminalRoute for LabeledTerminalRoute<'_> {
         }
     }
 
-    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>, _: bool, _: bool) {
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>) {
         *self.points = points;
     }
 }
@@ -99,8 +94,6 @@ pub(crate) struct StraightenedSegment {
 
 struct StraightenedCandidate {
     points: Vec<LayoutPoint>,
-    source_changed: bool,
-    target_changed: bool,
     runs: Vec<StraightenedRun>,
 }
 
@@ -292,8 +285,6 @@ fn straighten_terminal_jogs(points: &[LayoutPoint]) -> Option<StraightenedCandid
     }
     Some(StraightenedCandidate {
         points: candidate,
-        source_changed: front.is_some(),
-        target_changed: back.is_some(),
         runs: front.into_iter().chain(back).collect(),
     })
 }
@@ -403,8 +394,6 @@ pub(crate) fn straighten_edge_terminals<R: TerminalRoute>(
         charge(routes[index].points().len().saturating_add(3))?;
         let Some(StraightenedCandidate {
             points: candidate,
-            source_changed,
-            target_changed,
             runs,
         }) = straighten_terminal_jogs(routes[index].points())
         else {
@@ -472,7 +461,7 @@ pub(crate) fn straighten_edge_terminals<R: TerminalRoute>(
         }
         if after <= before && covered_after <= covered_before {
             charge(runs.len().saturating_add(1))?;
-            routes[index].replace_terminal_points(candidate, source_changed, target_changed);
+            routes[index].replace_terminal_points(candidate);
             routes[index].reproject_main_label(&runs);
         }
     }
@@ -488,7 +477,6 @@ mod tests {
     struct Route {
         points: Vec<LayoutPoint>,
         origin: (f64, f64),
-        changed: (bool, bool),
     }
 
     impl TerminalRoute for Route {
@@ -498,14 +486,8 @@ mod tests {
         fn origin(&self) -> (f64, f64) {
             self.origin
         }
-        fn replace_terminal_points(
-            &mut self,
-            points: Vec<LayoutPoint>,
-            source: bool,
-            target: bool,
-        ) {
+        fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>) {
             self.points = points;
-            self.changed = (source, target);
         }
     }
 
@@ -516,7 +498,6 @@ mod tests {
         Route {
             points: points(input),
             origin: offset,
-            changed: (false, false),
         }
     }
     fn coords(points: &[LayoutPoint]) -> Vec<(f64, f64)> {
@@ -992,7 +973,6 @@ mod tests {
                 let mut routes = [Route {
                     points: input,
                     origin: (500.0, -100.0),
-                    changed: (false, false),
                 }];
                 let candidate = straighten_terminal_jogs(&routes[0].points).unwrap();
                 let work = meter();
@@ -1004,7 +984,7 @@ mod tests {
                     project_label_onto_straightened_run(&old_label, &candidate.runs).unwrap();
                 assert_eq!((projected.x, projected.y), (expected.x, expected.y));
                 assert_eq!(routes[0].origin, (500.0, -100.0));
-                assert_eq!(routes[0].changed, (!reverse, reverse));
+                assert_eq!(coords(&routes[0].points), coords(&candidate.points));
             }
         }
     }

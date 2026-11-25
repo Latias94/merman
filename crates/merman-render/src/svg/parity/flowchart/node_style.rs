@@ -1,7 +1,7 @@
 //! Source CSS and native defaults for node SVG.
 
 use super::*;
-use crate::flowchart::FlowchartShape;
+use crate::flowchart::{FlowchartCompatibilityBinding, FlowchartShape};
 
 #[derive(Debug)]
 pub(super) struct PreparedNodeTerminal {
@@ -16,10 +16,9 @@ pub(super) struct PreparedNodeSelection {
     pub(super) inline_style: Option<String>,
     pub(super) junction_style: Option<String>,
     pub(super) theme_style: String,
-    pub(super) fill: String,
-    pub(super) stroke: String,
+    native_fill: Option<String>,
+    collapsed_agentflow: bool,
     pub(super) stroke_width: f32,
-    pub(super) stroke_dasharray: String,
     pub(super) native_radius: Option<f32>,
     pub(super) source_radii: [Option<f64>; 2],
     pub(super) configured_radius: Option<f64>,
@@ -128,80 +127,61 @@ impl NodeSourcePaint {
 
 impl PreparedNodeSelection {
     fn prepare(ctx: &NodeSelectionInputs<'_>, source: &FlowchartCompiledStyles) -> Self {
+        let compatibility = ctx.compatibility;
         let width = source.admitted_stroke_width_value().or_else(|| {
             ctx.node_stroke_width_config_override
-                .then_some(ctx.node_stroke_width)
+                .then_some(compatibility.node_stroke_width)
         });
         Self {
-            junction_style: source
-                .node_style
-                .trim()
-                .is_empty()
-                .then(|| format!("fill: {} !important;", ctx.node_border_color)),
+            junction_style: None,
             inline_style: None,
             theme_style: String::new(),
-            fill: source
-                .fill
-                .as_deref()
-                .unwrap_or(ctx.node_fill_color)
-                .to_owned(),
-            stroke: source
-                .stroke
-                .as_deref()
-                .unwrap_or(ctx.node_border_color)
-                .to_owned(),
+            native_fill: None,
+            collapsed_agentflow: ctx.collapsed_agentflow,
             stroke_width: width.unwrap_or(1.3),
-            stroke_dasharray: source
-                .stroke_dasharray
-                .as_deref()
-                .unwrap_or("0 0")
-                .trim()
-                .to_owned(),
             native_radius: None,
             source_radii: source.rectangle_source_radii(),
-            configured_radius: (ctx.look.is_neo() && ctx.node_corner_radius_config_override)
-                .then_some(ctx.node_corner_radius),
+            configured_radius: (compatibility.look.is_neo()
+                && ctx.node_corner_radius_config_override)
+                .then_some(compatibility.node_corner_radius),
             native_label_color: None,
+        }
+    }
+
+    fn default_stroke<'a>(&self, compatibility: &'a FlowchartCompatibilityBinding) -> &'a str {
+        if self.collapsed_agentflow {
+            &compatibility.collapsed_agentflow_stroke
+        } else {
+            &compatibility.node_border
         }
     }
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct NodeSelectionInputs<'a> {
-    classdef_html_labels: bool,
+    compatibility: &'a FlowchartCompatibilityBinding,
     node_stroke_width_config_override: bool,
     node_corner_radius_config_override: bool,
-    node_fill_color: &'a str,
-    node_border_color: &'a str,
-    agentflow_container_stroke: &'a str,
-    node_stroke_width: f32,
-    node_corner_radius: f64,
-    look: crate::config::DiagramLook<'static>,
+    collapsed_agentflow: bool,
     native: Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
 }
 impl<'a> NodeSelectionInputs<'a> {
     pub(super) fn new(
-        compatibility: &'a crate::flowchart::FlowchartCompatibilityBinding,
+        compatibility: &'a FlowchartCompatibilityBinding,
         render_config: &super::render_config::FlowchartRenderConfig,
         native: Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
     ) -> Self {
         Self {
-            // Class selectors follow the CSS writer's mode, which can differ from node labels.
-            classdef_html_labels: compatibility.html_labels,
+            compatibility,
             node_stroke_width_config_override: render_config.node_stroke_width_config_override,
             node_corner_radius_config_override: render_config.node_corner_radius_config_override,
-            node_fill_color: &compatibility.main_bkg,
-            node_border_color: &compatibility.node_border,
-            agentflow_container_stroke: &compatibility.collapsed_agentflow_stroke,
-            node_stroke_width: compatibility.node_stroke_width,
-            node_corner_radius: compatibility.node_corner_radius,
-            look: compatibility.look,
+            collapsed_agentflow: false,
             native,
         }
     }
 
     pub(super) fn for_collapsed_agentflow(mut self) -> Self {
-        self.node_border_color = self.agentflow_container_stroke;
+        self.collapsed_agentflow = true;
         self
     }
 }
@@ -224,8 +204,9 @@ impl PreparedNodeTerminal {
         let terminal_sources = NodeSourcePaint::prepare_shape(
             terminal_shape.filter(|_| inputs.native.is_some()),
             class_defs,
-            inputs.classdef_html_labels,
-            inputs.look.is_hand_drawn(),
+            // Class selectors follow the CSS writer's mode, which can differ from node labels.
+            inputs.compatibility.html_labels,
+            inputs.compatibility.look.is_hand_drawn(),
             work,
         )?;
         // Geometry queries admit structural style work before returning their layout. The
@@ -243,15 +224,15 @@ impl PreparedNodeTerminal {
             let shape = terminal_shape.and_then(|name| FlowchartShape::resolve(name).ok());
             if let Some((fill, text)) = native.node_colors(shape, ordinal, classes) {
                 if source.fill.is_none() && !terminal_sources.fill {
-                    selection.fill = fill.to_string();
-                    selection.theme_style = format!("fill:{}", selection.fill);
+                    let fill = fill.to_string();
+                    selection.theme_style = format!("fill:{fill}");
+                    selection.native_fill = Some(fill);
                     let mut inline = source.node_style.clone();
                     if !inline.is_empty() {
                         inline.push(';');
                     }
                     inline.push_str(&selection.theme_style);
                     selection.inline_style = Some(inline);
-                    selection.junction_style = None;
                 }
                 if !source.has_source_label_foreground() && structural.foreground.is_none() {
                     selection.native_label_color = Some(text.to_string());
@@ -269,7 +250,17 @@ impl PreparedNodeTerminal {
                 selection.stroke_width = native.form.stroke_width as f32;
             }
         }
-        let rough_group_style = if inputs.look.is_hand_drawn() {
+        // Only the no-label junction writer consumes this fallback.
+        if matches!(
+            terminal_shape,
+            Some("f-circ" | "junction" | "filled-circle")
+        ) && selection.inline_style.is_none()
+            && source.node_style.trim().is_empty()
+        {
+            let border = selection.default_stroke(inputs.compatibility);
+            selection.junction_style = Some(format!("fill: {border} !important;"));
+        }
+        let rough_group_style = if inputs.compatibility.look.is_hand_drawn() {
             prepare_hand_drawn_shape_group_style(inline_styles)
         } else {
             String::new()
@@ -280,6 +271,35 @@ impl PreparedNodeTerminal {
             rough_group_style,
             selection,
         }))
+    }
+
+    // The terminal owns the compiled declarations and shares the operation's compatibility paint.
+    pub(super) fn fill_color<'a>(
+        &'a self,
+        compatibility: &'a FlowchartCompatibilityBinding,
+    ) -> &'a str {
+        self.selection
+            .native_fill
+            .as_deref()
+            .or(self.source.fill.as_deref())
+            .unwrap_or(&compatibility.main_bkg)
+    }
+
+    pub(super) fn stroke_color<'a>(
+        &'a self,
+        compatibility: &'a FlowchartCompatibilityBinding,
+    ) -> &'a str {
+        self.source
+            .stroke
+            .as_deref()
+            .unwrap_or_else(|| self.selection.default_stroke(compatibility))
+    }
+
+    pub(super) fn stroke_dasharray(&self) -> &str {
+        self.source
+            .stroke_dasharray
+            .as_deref()
+            .map_or("0 0", str::trim)
     }
 }
 

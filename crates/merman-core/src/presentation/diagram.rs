@@ -9,8 +9,8 @@ use crate::json_value::ManagedJson as ManagedSemanticJson;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::preprocess::SourceConfigEvidence;
 use crate::{
-    MermaidConfig, OperationControl, OperationControlResult, PresentationMetadata, Result,
-    SourcePresentationMetadata,
+    MermaidConfig, OperationControl, OperationControlResult, PreprocessedSource,
+    PresentationMetadata, Result, SourcePresentationMetadata,
 };
 use merman_model::warnings::DiagramWarningFact;
 use serde::Deserialize;
@@ -611,62 +611,55 @@ pub(crate) fn offset_parser_diagnostic_positions(
     }
 }
 
-pub(crate) fn remap_warning_fact_spans(
+pub(crate) fn remap_warning_fact_spans_controlled(
     model: &mut RenderSemanticModel,
-    mut remap: impl FnMut(&mut DiagramWarningFact),
-) {
-    match model {
+    source: &PreprocessedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    let facts: &mut [DiagramWarningFact] = match model {
         RenderSemanticModel::CustomJson(v) => {
-            remap_json_warning_fact_spans(v.json_mut().as_value_mut(), &mut remap);
+            return remap_json_warning_fact_spans_controlled(
+                v.json_mut().as_value_mut(),
+                source,
+                control,
+            );
         }
         #[cfg(feature = "diagram-agentflow")]
-        RenderSemanticModel::Agentflow(v) => {
-            remap_warning_fact_slice(&mut v.warning_facts, &mut remap)
-        }
+        RenderSemanticModel::Agentflow(v) => &mut v.warning_facts,
         #[cfg(any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
             feature = "diagram-agentflow"
         ))]
-        RenderSemanticModel::Flowchart(v) => {
-            remap_warning_fact_slice(&mut v.warning_facts, &mut remap)
-        }
+        RenderSemanticModel::Flowchart(v) => &mut v.warning_facts,
         #[cfg(feature = "diagram-block")]
-        RenderSemanticModel::Block(v) => remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+        RenderSemanticModel::Block(v) => &mut v.warning_facts,
         #[cfg(feature = "diagram-git-graph")]
-        RenderSemanticModel::GitGraph(v) => {
-            remap_warning_fact_slice(&mut v.warning_facts, &mut remap)
-        }
-        _ => {}
-    }
+        RenderSemanticModel::GitGraph(v) => &mut v.warning_facts,
+        _ => &mut [],
+    };
+    source.remap_warning_facts_controlled(facts, control)
 }
 
-fn remap_warning_fact_slice(
-    facts: &mut [DiagramWarningFact],
-    remap: &mut impl FnMut(&mut DiagramWarningFact),
-) {
-    for fact in facts {
-        remap(fact);
-    }
-}
-
-fn remap_json_warning_fact_spans(
+pub(super) fn remap_json_warning_fact_spans_controlled(
     model: &mut Value,
-    remap: &mut impl FnMut(&mut DiagramWarningFact),
-) {
+    source: &PreprocessedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let Some(warning_facts_value) = model.get_mut("warningFacts") else {
-        return;
+        return Ok(());
     };
     let Ok(mut warning_facts) = Vec::<DiagramWarningFact>::deserialize(&*warning_facts_value)
     else {
-        return;
+        return Ok(());
     };
 
-    remap_warning_fact_slice(&mut warning_facts, remap);
+    source.remap_warning_facts_controlled(&mut warning_facts, control)?;
     crate::config::replace_value_nonrecursive(
         warning_facts_value,
         serde_json::json!(warning_facts),
     );
+    Ok(())
 }
 
 /// Registry for typed render-model parsers keyed by Mermaid diagram type id.

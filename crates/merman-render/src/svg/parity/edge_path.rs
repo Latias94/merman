@@ -205,26 +205,13 @@ pub(super) fn render_path(
     end_marker: Option<&str>,
 ) -> String {
     use super::curve;
-    if kind == "rounded" {
-        let points = rounded_line_with_marker_offsets_points(points, start_marker, end_marker);
-        return curve::curve_rounded_path_d_and_bounds(&points, 5.0, false, None).0;
-    }
-    maybe_fix_corners(points);
-    let points = line_with_offset_points(points, start_marker, end_marker);
-    match kind {
-        "linear" => curve::curve_linear_path_d(&points),
-        "natural" => curve::curve_natural_path_d_and_bounds(&points).0,
-        "bumpX" => curve::curve_bump_x_path_d_and_bounds(&points).0,
-        "bumpY" => curve::curve_bump_y_path_d_and_bounds(&points).0,
-        "catmullRom" => curve::curve_catmull_rom_path_d_and_bounds(&points).0,
-        "step" => curve::curve_step_path_d_and_bounds(&points).0,
-        "stepAfter" => curve::curve_step_after_path_d_and_bounds(&points).0,
-        "stepBefore" => curve::curve_step_before_path_d_and_bounds(&points).0,
-        "cardinal" => curve::curve_cardinal_path_d_and_bounds(&points, 0.0).0,
-        "monotoneX" => curve::curve_monotone_path_d_and_bounds(&points, false).0,
-        "monotoneY" => curve::curve_monotone_path_d_and_bounds(&points, true).0,
-        _ => curve::curve_basis_path_d(&points),
-    }
+    let points = if kind == "rounded" {
+        rounded_line_with_marker_offsets_points(points, start_marker, end_marker)
+    } else {
+        maybe_fix_corners(points);
+        line_with_offset_points(points, start_marker, end_marker)
+    };
+    curve::interpolated_path_d(&points, kind)
 }
 
 #[cfg(test)]

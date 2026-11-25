@@ -155,13 +155,30 @@ pub(crate) fn detector_error(txt: &str) -> bool {
 }
 
 pub(crate) fn detector_c4(txt: &str) -> bool {
-    // Matches Mermaid's upstream regex exactly (note the missing grouping in JS).
-    txt.trim_start_matches(char::is_whitespace)
-        .starts_with("C4Context")
-        || txt.contains("C4Container")
-        || txt.contains("C4Component")
-        || txt.contains("C4Dynamic")
-        || txt.contains("C4Deployment")
+    // Only C4Context is anchored in Mermaid's ungrouped detector expression.
+    let txt = txt.trim_start_matches(char::is_whitespace);
+    txt.starts_with("C4Context")
+        || txt.match_indices("C4").any(|(index, prefix)| {
+            let suffix = &txt[index + prefix.len()..];
+            match suffix.as_bytes().first() {
+                Some(b'C') => suffix.starts_with("Container") || suffix.starts_with("Component"),
+                Some(b'D') => suffix.starts_with("Dynamic") || suffix.starts_with("Deployment"),
+                _ => false,
+            }
+        })
+}
+
+#[cfg(test)]
+#[test]
+fn c4_detector_preserves_upstream_alternative_anchoring() {
+    assert!(detector_c4(" \t\nC4Context"));
+    assert!(!detector_c4("flowchart TD\nA[C4Context]"));
+    assert!(!detector_c4("C4C4c4Dynamic C4Comp C4Deploymen"));
+    for keyword in ["C4Container", "C4Component", "C4Dynamic", "C4Deployment"] {
+        assert!(detector_c4(&format!(
+            "flowchart TD\n A[ΩC4C4{keyword}Suffix]"
+        )));
+    }
 }
 
 pub(crate) fn detector_kanban(txt: &str) -> bool {

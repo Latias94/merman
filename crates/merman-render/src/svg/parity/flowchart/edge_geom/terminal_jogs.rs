@@ -24,20 +24,8 @@ impl TerminalRoute for ClippedEdgeRoute {
         }
     }
 
-    fn replace_terminal_points(
-        &mut self,
-        points: Vec<LayoutPoint>,
-        source_changed: bool,
-        target_changed: bool,
-    ) {
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>) {
         self.points = points;
-        // Connector removal invalidates only its own rounded-corner adapter mask.
-        if source_changed {
-            self.elk_endpoint_adapters.source = false;
-        }
-        if target_changed {
-            self.elk_endpoint_adapters.target = false;
-        }
     }
 }
 
@@ -99,10 +87,6 @@ mod tests {
                 width: 20.0,
                 height: 10.0,
             }),
-            elk_endpoint_adapters: super::super::ElkEndpointAdapterCorners {
-                source: true,
-                target: true,
-            },
         }
     }
 
@@ -143,8 +127,6 @@ mod tests {
                 assert_eq!(updated.origin(), (700.0, 300.0));
                 assert_eq!(coords(&updated.base_points), original);
                 assert_eq!(updated.points.len(), 3);
-                assert_eq!(updated.elk_endpoint_adapters.source, reverse);
-                assert_eq!(updated.elk_endpoint_adapters.target, !reverse);
             }
         }
     }
@@ -197,7 +179,6 @@ mod tests {
             straighten_edge_terminals(&mut routes, &work).unwrap();
             assert_eq!(coords(&routes[0].points), original);
             assert_eq!(routes[0].origin(), (700.0, 300.0));
-            assert!(routes[0].elk_endpoint_adapters.source);
             if let Some(label) = routes[0].label.as_ref() {
                 assert_eq!((label.x, label.y), (60.0, 10.0));
             }

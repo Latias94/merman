@@ -94,7 +94,34 @@ impl NativeEngine {
                 execute_direct_svg(
                     engine,
                     &source,
-                    options_json.as_deref(),
+                    wire::DirectSvgOptions::Json(options_json.as_deref()),
+                    control,
+                    timeout_ms,
+                )
+            },
+        )?;
+        Ok(env.spawn(task)?.promise_object())
+    }
+
+    #[napi(js_name = "executeSvgWithId")]
+    pub fn execute_svg_with_id(
+        &self,
+        env: Env,
+        source: JsString<'_>,
+        diagram_id: JsString<'_>,
+        signal: Option<AbortSignal>,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<PromiseRaw<'_, Either<String, SvgOperationFailure>>> {
+        self.engine()?;
+        let (source, diagram_id) = read_svg_id_input(source, diagram_id)?;
+        let task = self.admit_task(
+            signal,
+            timeout_ms,
+            move |engine: &BindingEngine, control| {
+                execute_direct_svg(
+                    engine,
+                    &source,
+                    wire::DirectSvgOptions::DiagramId(&diagram_id),
                     control,
                     timeout_ms,
                 )
@@ -142,7 +169,25 @@ impl NativeEngine {
         Ok(execute_direct_svg(
             engine.as_ref(),
             &source,
-            options_json.as_deref(),
+            wire::DirectSvgOptions::Json(options_json.as_deref()),
+            wire::admitted_operation_control(timeout_ms),
+            timeout_ms,
+        ))
+    }
+
+    #[napi(js_name = "executeSvgWithIdSync")]
+    pub fn execute_svg_with_id_sync(
+        &self,
+        source: JsString<'_>,
+        diagram_id: JsString<'_>,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<Either<String, SvgOperationFailure>> {
+        let engine = self.engine()?;
+        let (source, diagram_id) = read_svg_id_input(source, diagram_id)?;
+        Ok(execute_direct_svg(
+            engine.as_ref(),
+            &source,
+            wire::DirectSvgOptions::DiagramId(&diagram_id),
             wire::admitted_operation_control(timeout_ms),
             timeout_ms,
         ))
@@ -189,10 +234,24 @@ fn read_svg_input(
     Ok((source, options_json))
 }
 
+fn read_svg_id_input(
+    source: JsString<'_>,
+    diagram_id: JsString<'_>,
+) -> napi::Result<(String, String)> {
+    let (source_limit, options_limit) = wire::direct_svg_field_limits();
+    let source = read_svg_text(source, "operation request source", source_limit)?;
+    let diagram_id = read_svg_text(diagram_id, "operation request diagram_id", options_limit)?;
+    Ok((source, diagram_id))
+}
+
 fn read_svg_text(value: JsString<'_>, field: &str, limit: usize) -> napi::Result<String> {
-    wire::ensure_field_bytes(value.utf8_len()?, field, limit)
-        .map_err(wire::caller_options_error)
-        .map_err(napi_binding_error)?;
+    // Each UTF-16 code unit contributes at most three UTF-8 bytes, even for a replacement
+    // scalar. When the unit count is inconclusive, check the exact byte size before copying.
+    if value.utf16_len()? > limit / 3 {
+        wire::ensure_field_bytes(value.utf8_len()?, field, limit)
+            .map_err(wire::caller_options_error)
+            .map_err(napi_binding_error)?;
+    }
     // UTF-8 conversion in N-API can replace lone UTF-16 surrogates. Decode those units strictly,
     // including for callers invoking the private addon without going through the facade.
     value.into_utf16()?.as_str().map_err(|_| {
@@ -209,14 +268,14 @@ fn napi_binding_error(error: BindingError) -> napi::Error {
 fn execute_direct_svg(
     engine: &BindingEngine,
     source: &str,
-    options_json: Option<&str>,
+    options: wire::DirectSvgOptions<'_>,
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Either<String, SvgOperationFailure> {
     match wire::execute_svg_with_admitted_control(
         engine,
         source,
-        options_json,
+        options,
         control,
         admitted_timeout_ms,
     ) {

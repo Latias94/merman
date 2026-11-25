@@ -10,7 +10,6 @@ import {
   nodeWasmModuleSpecifier,
 } from "../src/candidates/wasm.mjs";
 import {
-  assertRuntimePackageVersion,
   loadNativeBinding,
   nodeLoaderPackageVersion,
   nativePackageName,
@@ -258,23 +257,46 @@ test("the native SVG transport forwards source, options, and controls separately
   );
 });
 
-test("the native version preflight accepts bounded catalog text only", () => {
-  assert.throws(
-    () => assertRuntimePackageVersion({
-      package_version: nodeLoaderPackageVersion(),
-    }),
-    MermanInvalidTransportError,
+test("candidate version preflight accepts bounded catalog text only", async () => {
+  const catalog = { package_version: nodeLoaderPackageVersion() };
+  const text = JSON.stringify(catalog);
+  const exactCatalog = text + " ".repeat(
+    NODE_TRANSPORT_LIMITS.runtime_catalog.max_utf8_bytes - Buffer.byteLength(text),
   );
+  for (const kind of ["napi", "wasm"]) {
+    let value = exactCatalog;
+    let disposeCalls = 0;
+    class CandidateEngine {
+      execute() {}
+      executeSync() {}
+      metadataJson() {}
+      runtimeCatalogJson() { return value; }
+      dispose() { disposeCalls += 1; }
+    }
+    const binding = {
+      NativeEngine: CandidateEngine,
+      WasmEngine: CandidateEngine,
+      transportIdentityJson: () => transportIdentityJson(kind),
+    };
+    const load = () => kind === "napi"
+      ? loadNativeTransport("{}", { loadPackage: () => binding })
+      : loadNodeWasmTransport("{}", {
+        modulePath: "candidate:node-wasm", loadModule: async () => binding,
+      });
 
-  const catalog = JSON.stringify({ package_version: nodeLoaderPackageVersion() });
-  const exactCatalog = catalog + " ".repeat(
-    NODE_TRANSPORT_LIMITS.runtime_catalog.max_utf8_bytes - Buffer.byteLength(catalog),
-  );
-  assert.equal(assertRuntimePackageVersion(exactCatalog), exactCatalog);
-  assert.throws(
-    () => assertRuntimePackageVersion(`${exactCatalog} `),
-    /wire limit/i,
-  );
+    const transport = await load();
+    assert.equal(transport.runtimeCatalogJson(), exactCatalog);
+    await transport.dispose();
+    assert.equal(transport.runtimeCatalogJson(), exactCatalog);
+
+    value = catalog;
+    await assert.rejects(load, MermanInvalidTransportError);
+    value = "{";
+    await assert.rejects(load, /invalid runtime catalog JSON/i);
+    value = `${exactCatalog} `;
+    await assert.rejects(load, /wire limit/i);
+    assert.equal(disposeCalls, 4);
+  }
 });
 
 test("candidate identity is a strict transport and contract preflight", async () => {
