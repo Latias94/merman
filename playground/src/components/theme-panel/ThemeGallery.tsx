@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { DiagramThemeChoice } from "@/src/lib/diagram-appearance";
 import type { WorkspaceSnapshot } from "@/src/lib/workspace-snapshot";
 import type { ThemeCatalog } from "@mermanjs/web";
+import { ThemeBrowserLauncher } from "./ThemeBrowserLauncher";
 
 const CATEGORIES = ["reading", "editor", "art", "custom"] as const;
 
@@ -15,6 +16,7 @@ export default function ThemeGallery({ catalog, workspace, onSelect }: {
 }) {
   const { t } = useTranslation();
   return <div className="space-y-4" data-testid="theme-gallery">
+    <ThemeBrowserLauncher placement="panel" />
     {CATEGORIES.map((category) => {
       const presets = catalog.presets.filter((preset) => preset.category === category);
       if (!presets.length) return null;
@@ -33,7 +35,7 @@ export default function ThemeGallery({ catalog, workspace, onSelect }: {
               <span className="grid h-4 grid-cols-6 overflow-hidden rounded border" aria-hidden="true">
                 {preset.swatches.map((color, index) => <span key={index} data-preset-swatch style={{ backgroundColor: color }} />)}
               </span>
-              <span className="block text-xs leading-snug text-muted-foreground">{preset.description}</span>
+              <span className="block text-xs leading-snug text-muted-foreground">{t(`themeWorkshop.presetDescriptions.${preset.id}`, { defaultValue: preset.description })}</span>
               <span className="flex flex-wrap items-center gap-1 text-[10px]">
                 <span className="rounded border px-1.5 py-0.5">{t(`themeWorkshop.categories.${category}`)}</span>
                 {preset.appearances.map((appearance) => <span key={appearance} className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
