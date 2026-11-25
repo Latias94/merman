@@ -27,7 +27,10 @@ class ReleaseScopeTests(unittest.TestCase):
         scopes = verify.validate_scopes(contract["artifact_scopes"], components)
         self.assertEqual(
             set(scopes["pdf-export"]["resolved_components"]),
-            {"krilla", "krilla-icc-profiles", "krilla-svg", "resvg", "resvg-iir-blur", "usvg"},
+            {
+                "krilla", "krilla-icc-profiles", "krilla-svg", "resvg", "resvg-iir-blur",
+                "roxmltree-ego-tree", "usvg",
+            },
         )
 
 
