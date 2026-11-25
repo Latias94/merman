@@ -3,18 +3,19 @@ use super::{
     TitleKind,
 };
 use crate::{OperationControl, OperationControlResult};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-pub(super) struct FlowchartBuildState {
+pub(super) struct FlowchartBuildState<'ast> {
     pub(super) nodes: Vec<Node>,
     pub(super) node_index: HashMap<String, usize>,
     pub(super) edges: Vec<Edge>,
-    pub(super) used_edge_ids: HashSet<String>,
+    used_edge_ids: HashSet<Cow<'ast, str>>,
     pub(super) subgraph_ids: HashSet<String>,
-    pub(super) edge_pair_counts: HashMap<(String, String), usize>,
+    edge_pair_counts: HashMap<(&'ast str, &'ast str), usize>,
 }
 
-impl FlowchartBuildState {
+impl<'ast> FlowchartBuildState<'ast> {
     pub(super) fn new(subgraph_ids: HashSet<String>) -> Self {
         Self {
             nodes: Vec::new(),
@@ -28,7 +29,7 @@ impl FlowchartBuildState {
 
     pub(super) fn add_statements(
         &mut self,
-        ast: &FlowchartAst,
+        ast: &'ast FlowchartAst,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         for (visited, event) in ast.walk().enumerate() {
@@ -52,7 +53,7 @@ impl FlowchartBuildState {
                         if let Some(next_group) = node_groups.get(segment_index + 1) {
                             self.reserve_group(next_group, true, control)?;
                         }
-                        for (edge_index, edge) in edges.iter().cloned().enumerate() {
+                        for (edge_index, edge) in edges.iter().enumerate() {
                             if edge_index % 128 == 0 {
                                 control.checkpoint()?;
                             }
@@ -61,18 +62,18 @@ impl FlowchartBuildState {
                     }
                 }
                 Stmt::Node(n) => {
-                    if self.used_edge_ids.contains(&n.id) {
+                    if self.used_edge_ids.contains(n.id.as_str()) {
                         continue;
                     }
                     self.reserve_node(&n.id, FlowNodeProvenance::Authored);
                 }
                 Stmt::ShapeData { target, .. } => {
-                    if !self.used_edge_ids.contains(target) {
+                    if !self.used_edge_ids.contains(target.as_str()) {
                         self.reserve_node(target, FlowNodeProvenance::Authored);
                     }
                 }
                 Stmt::Style(style) => {
-                    if !self.used_edge_ids.contains(&style.target) {
+                    if !self.used_edge_ids.contains(style.target.as_str()) {
                         self.reserve_node(&style.target, FlowNodeProvenance::Authored);
                     }
                 }
@@ -98,7 +99,7 @@ impl FlowchartBuildState {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            if self.used_edge_ids.contains(&node.id) {
+            if self.used_edge_ids.contains(node.id.as_str()) {
                 continue;
             }
             let provenance =
@@ -144,40 +145,34 @@ impl FlowchartBuildState {
         });
     }
 
-    fn push_edge(&mut self, mut edge: EdgeAction) {
-        let key = (edge.from.clone(), edge.to.clone());
-        let existing = *self.edge_pair_counts.get(&key).unwrap_or(&0);
-
-        let mut final_id = edge.id.clone();
-        let mut is_user_defined_id = false;
-        if let Some(user_id) = edge.id.clone() {
-            if !self.used_edge_ids.contains(&user_id) {
-                is_user_defined_id = true;
-                self.used_edge_ids.insert(user_id);
-            } else {
-                final_id = None;
+    fn push_edge(&mut self, edge: &'ast EdgeAction) {
+        let from = edge.from.as_str();
+        let to = edge.to.as_str();
+        let count = self.edge_pair_counts.entry((from, to)).or_default();
+        let (id, is_user_defined_id) = match edge.id.as_deref() {
+            Some(id) if self.used_edge_ids.insert(Cow::Borrowed(id)) => (id.to_owned(), true),
+            _ => {
+                let counter = if *count == 0 { 0 } else { *count + 1 };
+                let id = format!("L_{from}_{to}_{counter}");
+                self.used_edge_ids.insert(Cow::Owned(id.clone()));
+                (id, false)
             }
-        }
+        };
+        *count += 1;
 
-        if final_id.is_none() {
-            let counter = if existing == 0 { 0 } else { existing + 1 };
-            final_id = Some(format!("L_{}_{}_{}", edge.from, edge.to, counter));
-            if let Some(id) = final_id.clone() {
-                self.used_edge_ids.insert(id);
-            }
-        }
-
-        self.edge_pair_counts.insert(key, existing + 1);
-
-        edge.link.length = edge.link.length.min(10);
-        let (label, label_type) = edge.label.map_or((None, TitleKind::Text), |label| {
-            (Some(label.text), label.kind)
-        });
+        let mut link = edge.link.clone();
+        link.length = link.length.min(10);
+        let (label, label_type) = edge
+            .label
+            .as_ref()
+            .map_or((None, TitleKind::Text), |label| {
+                (Some(label.text.clone()), label.kind.clone())
+            });
         self.edges.push(Edge {
-            from: edge.from,
-            to: edge.to,
-            id: final_id,
-            link: edge.link,
+            from: from.to_owned(),
+            to: to.to_owned(),
+            id: Some(id),
+            link,
             label,
             label_type,
             style: Vec::new(),
