@@ -889,6 +889,34 @@ fn unsupported_native_treatments_are_quiet_in_best_effort_and_rejected_in_portab
     }
 }
 
+#[cfg(all(feature = "svg", feature = "diagram-info"))]
+#[test]
+fn custom_native_treatments_report_unsupported_features() {
+    use merman::theme::{ThemeCompiler, ThemeOutcomeNotice};
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"elevation":"soft"}}"#,
+            None,
+        )
+        .unwrap();
+    let request = merman::SvgRequest::default().with_native_theme(ThemeSelection::compiled(theme));
+    let RenderOutput::Svg(Some(output)) = Renderer::new()
+        .render(RenderRequest::svg("info", OperationControl::new(), request))
+        .unwrap()
+    else {
+        panic!("expected a best-effort SVG")
+    };
+    assert!(
+        output
+            .theme_outcome()
+            .notices
+            .contains(&ThemeOutcomeNotice::Rendering(
+                "This diagram family does not support theme elevation."
+            ))
+    );
+}
+
 #[cfg(all(feature = "svg", feature = "diagram-packet"))]
 #[test]
 fn portable_packet_rejects_a_requested_corner_radius() {

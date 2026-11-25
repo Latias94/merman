@@ -145,15 +145,33 @@ impl PreparedGraphicalOutput {
         self
     }
 
-    pub(super) fn target(&self, svg: merman::SvgRequest) -> merman::RenderTarget {
+    #[allow(
+        unused_mut,
+        reason = "Encoded formats alone supply an export backdrop."
+    )]
+    pub(super) fn target(&self, mut svg: merman::SvgRequest) -> merman::RenderTarget {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
             #[cfg(feature = "png")]
-            Self::Png { .. } => merman::RenderTarget::Document(svg),
+            Self::Png { options } => {
+                svg.environment
+                    .set_export_backdrop(options.matte.as_deref(), None);
+                merman::RenderTarget::Document(svg)
+            }
             #[cfg(feature = "jpeg")]
-            Self::Jpeg { .. } => merman::RenderTarget::Document(svg),
+            Self::Jpeg { options } => {
+                svg.environment.set_export_backdrop(
+                    options.matte.as_deref(),
+                    Some(merman::svg::export::ExportRgbaColor::WHITE),
+                );
+                merman::RenderTarget::Document(svg)
+            }
             #[cfg(feature = "pdf")]
-            Self::Pdf { .. } => merman::RenderTarget::Document(svg),
+            Self::Pdf { options } => {
+                svg.environment
+                    .set_export_backdrop(options.page_paint.as_deref(), None);
+                merman::RenderTarget::Document(svg)
+            }
         }
     }
 }

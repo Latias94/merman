@@ -8,7 +8,7 @@ use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
 #[cfg(feature = "svg")]
-use crate::theme::ThemeOutcome;
+use crate::theme::{ThemeOutcome, ThemeOutcomeNotice};
 use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 use merman_core::{ParseOptions, SemanticParser};
 #[cfg(any(feature = "ascii", feature = "svg"))]
@@ -583,7 +583,7 @@ impl RenderTarget {
     }
 
     #[cfg(feature = "native-fonts")]
-    fn native_font_svg_request(&self) -> Option<&SvgRequest> {
+    fn native_font_svg_request_mut(&mut self) -> Option<&mut SvgRequest> {
         let request = match self {
             Self::Svg(request)
             | Self::Document(request)
@@ -592,11 +592,11 @@ impl RenderTarget {
             | Self::EdgeGeometryJson(request)
             | Self::SvgPlan(request) => request,
             #[cfg(feature = "png")]
-            Self::Png(request) => &request.svg,
+            Self::Png(request) => &mut request.svg,
             #[cfg(feature = "jpeg")]
-            Self::Jpeg(request) => &request.svg,
+            Self::Jpeg(request) => &mut request.svg,
             #[cfg(feature = "pdf")]
-            Self::Pdf(request) => &request.svg,
+            Self::Pdf(request) => &mut request.svg,
             _ => return None,
         };
         request.environment.native_fonts.as_ref()?;
@@ -1224,7 +1224,7 @@ impl Renderer {
 #[cfg(feature = "native-fonts")]
 fn ensure_native_font_theme_typography(
     diagram_type: &str,
-    config: &serde_json::Value,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> Result<(), RenderError> {
     let family = match diagram_type {
         "flowchart" | "flowchart-v2" | "flowchart-elk" | "agentflow" => "Flowchart",
@@ -1233,7 +1233,7 @@ fn ensure_native_font_theme_typography(
     };
     // These families measure explicit px sizes but preserve the theme value in root CSS.
     // Other families resolve or override their sizes independently before SVG emission.
-    if let Some(size) = config.pointer("/themeVariables/fontSize") {
+    if let Some(size) = config.get_path(&["themeVariables", "fontSize"]) {
         let supported = size.as_str().is_some_and(|size| {
             let size = size.trim();
             let size = if family == "Class" {
@@ -1256,8 +1256,7 @@ fn ensure_native_font_theme_typography(
     }
     if family == "Flowchart"
         && config
-            .get("fontWeight")
-            .and_then(serde_json::Value::as_str)
+            .get_str("fontWeight")
             .is_some_and(|weight| !matches!(weight.trim(), "" | "normal" | "400"))
     {
         return Err(merman_export::NativeFontError::Measurement(
@@ -1340,25 +1339,29 @@ impl PresentationArtifact {
 
     fn admit_target(&self, target: RenderTarget) -> Result<RenderTarget, RenderError> {
         #[cfg(feature = "native-fonts")]
-        let target = target
+        let mut target = target
             .normalize_native_font_context()?
             .activate_native_font_context(self.control());
         #[cfg(feature = "native-fonts")]
-        if let Some(request) = target.native_font_svg_request() {
+        if let Some(request) = target.native_font_svg_request_mut() {
             let metadata = self.parsed().metadata();
-            let native_config = match &request.environment.native_theme {
+            request.environment.native_render_config = match &request.environment.native_theme {
                 Some(selection)
                     if !selection.prefer_source(&metadata.config, &metadata.diagram_type) =>
                 {
-                    merman_render::theme::native_render_config(
+                    merman_render::theme::NativeRenderConfig::prepare(
                         &metadata.effective_config,
                         self.control(),
                     )?
                 }
                 _ => None,
             };
-            let config = native_config.as_ref().unwrap_or(&metadata.effective_config);
-            ensure_native_font_theme_typography(&metadata.diagram_type, config.as_value())?;
+            let config = request
+                .environment
+                .native_render_config
+                .as_ref()
+                .map_or(&metadata.effective_config, |projected| projected.config());
+            ensure_native_font_theme_typography(&metadata.diagram_type, config)?;
             if config
                 .get_str("themeCSS")
                 .is_some_and(|css| !css.trim().is_empty())
@@ -1734,7 +1737,17 @@ fn prepare_rendered_family_svg(
     )?;
     let theme_outcome = match &request.environment.native_theme {
         Some(selection) if include_theme_outcome => {
-            selection.outcome(session.native_theme().map(|theme| theme.resolved()))
+            let resolved = session.native_theme().map(|theme| theme.resolved());
+            let mut outcome = selection.outcome(resolved);
+            if outcome.preset_id.is_none()
+                && let (Some(theme), Some(family_id)) = (resolved, parsed.family_id())
+            {
+                outcome.notices.extend(
+                    merman_render::theme::unsupported_features(theme, family_id)
+                        .map(ThemeOutcomeNotice::Rendering),
+                );
+            }
+            outcome
         }
         _ => ThemeOutcome::default(),
     };
@@ -1892,8 +1905,12 @@ fn render_presentation_ascii_target(
 #[cfg(feature = "png")]
 fn render_png_target(
     semantic: PresentationArtifact,
-    request: PngRequest,
+    mut request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
+    request
+        .svg
+        .environment
+        .set_export_backdrop(request.options.matte.as_deref(), None);
     let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
@@ -1915,8 +1932,12 @@ fn render_png_target(
 #[cfg(feature = "jpeg")]
 fn render_jpeg_target(
     semantic: PresentationArtifact,
-    request: JpegRequest,
+    mut request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
+    request.svg.environment.set_export_backdrop(
+        request.options.matte.as_deref(),
+        Some(merman_export::ExportRgbaColor::WHITE),
+    );
     let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
@@ -1938,8 +1959,12 @@ fn render_jpeg_target(
 #[cfg(feature = "pdf")]
 fn render_pdf_target(
     semantic: PresentationArtifact,
-    request: PdfRequest,
+    mut request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
+    request
+        .svg
+        .environment
+        .set_export_backdrop(request.options.page_paint.as_deref(), None);
     let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(

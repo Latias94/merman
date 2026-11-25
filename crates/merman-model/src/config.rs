@@ -264,6 +264,48 @@ impl MermaidConfig {
         Some((entries.base.len() + additions, entries))
     }
 
+    #[cfg(feature = "presentation-data")]
+    pub(crate) fn without_root_keys_controlled(
+        &self,
+        keys: &[&str],
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<Self>> {
+        if keys.iter().all(|key| self.get(key).is_none()) {
+            return Ok(None);
+        }
+        let mut retained = Self::empty_object();
+        let object = retained
+            .as_value_mut()
+            .as_object_mut()
+            .expect("empty object");
+        let mut retain = |key: &String, value: &Value| -> OperationControlResult<()> {
+            control.checkpoint()?;
+            if !keys.contains(&key.as_str()) {
+                object.insert(
+                    key.clone(),
+                    crate::json::clone_value_nonrecursive_with_control(value, control)?,
+                );
+            }
+            Ok(())
+        };
+        match &self.value.storage {
+            ConfigStorage::Sections(sections) => {
+                for (key, value) in sections.entries() {
+                    retain(key, value)?;
+                }
+            }
+            ConfigStorage::Json(json) => {
+                let Some(object) = json.as_value().as_object() else {
+                    return Ok(None);
+                };
+                for (key, value) in object {
+                    retain(key, value)?;
+                }
+            }
+        }
+        Ok(Some(retained))
+    }
+
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
     ///
     /// `Ok(None)` means the owned value would exceed either budget. Cancellation remains distinct
@@ -1561,6 +1603,42 @@ mod tests {
                 .clone_value_bounded_controlled(bytes, 3, &control)
                 .is_err()
         );
+        assert!(sections.flattened.get().is_none());
+    }
+
+    #[cfg(feature = "presentation-data")]
+    #[test]
+    fn removing_root_keys_uses_live_sections_and_leaves_the_flattened_cache_empty() {
+        let mut config = MermaidConfig::from_value(json!({
+            "themeVariables": { "large": "x".repeat(128 * 1024) },
+            "flowchart": { "htmlLabels": true }
+        }))
+        .with_shared_sections();
+        let original = config.clone();
+        config.set_value("flowchart.htmlLabels", json!(false));
+        config.set_value("themeCSS", json!("text { fill: red; }"));
+        let ConfigStorage::Sections(sections) = &config.value.storage else {
+            panic!("expected a section fork");
+        };
+
+        let control = OperationControl::new();
+        let retained = config
+            .without_root_keys_controlled(&["themeVariables"], &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            retained.as_value(),
+            &json!({
+                "flowchart": { "htmlLabels": false }, "themeCSS": "text { fill: red; }"
+            })
+        );
+        control.cancel();
+        assert!(
+            config
+                .without_root_keys_controlled(&["themeVariables"], &control)
+                .is_err()
+        );
+        assert!(original.get("themeVariables").is_some());
         assert!(sections.flattened.get().is_none());
     }
 }

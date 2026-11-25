@@ -1350,6 +1350,11 @@ impl ExportRgbaColor {
         alpha: 255,
     };
 
+    /// Reads a solid color using the native export color grammar.
+    pub fn parse(text: &str) -> Option<Self> {
+        parse_export_color(text).ok()
+    }
+
     pub const fn red(self) -> u8 {
         self.red
     }

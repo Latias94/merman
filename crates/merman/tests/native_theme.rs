@@ -1,3 +1,54 @@
+#[cfg(all(feature = "png", feature = "native-fonts", feature = "diagram-pie"))]
+#[test]
+fn direct_png_uses_the_matte_to_pair_automatic_ink_with_translucent_pie_slices() {
+    use merman::svg::export::{NativeFontContext, NativeFontLimits, RasterOptions};
+    use merman::theme::{ThemeCompiler, ThemeSelection};
+    use merman::{OperationControl, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+    let fonts = NativeFontContext::from_font_bytes(
+        [include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").to_vec()],
+        NativeFontLimits::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    let source = "pie\n  \"One\": 1\n  \"Two\": 1\n";
+    let render = |mode: &str| {
+        let document = format!(
+            r##"{{
+            "schema_version":2,"extends":"studio",
+            "roles":{{"canvas":"#00000000"}},
+            "typography":{{"sans":["Cousine","sans-serif"]}},
+            "form":{{"chart":{{"pie_opacity":0.65}}}},
+            "appearances":{{"light":{{"data":{{
+                "fill":["#777777","#777777","#777777","#777777"],"fill_ink":"{mode}"
+            }}}}}}
+        }}"##
+        );
+        let theme = ThemeCompiler::new()
+            .compile_json(document.as_bytes(), None)
+            .unwrap();
+        let RenderOutput::Png(Some(png)) = Renderer::new()
+            .render(RenderRequest::png(
+                source,
+                OperationControl::new(),
+                PngRequest {
+                    svg: SvgRequest::default().with_native_theme(ThemeSelection::compiled(theme)),
+                    options: RasterOptions::default()
+                        .with_matte("black")
+                        .with_font_context(fonts.clone()),
+                },
+            ))
+            .unwrap()
+        else {
+            panic!("expected a rendered PNG")
+        };
+        png.bytes().to_vec()
+    };
+
+    assert_eq!(render("auto"), render("#F8FAFC"));
+    assert_ne!(render("#F8FAFC"), render("#0F172A"));
+}
+
 #[cfg(all(feature = "svg", feature = "diagram-info"))]
 #[test]
 fn native_svg_theme_obeys_source_precedence_and_survives_prepared_source_reuse() {

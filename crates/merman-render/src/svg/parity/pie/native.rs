@@ -85,11 +85,17 @@ pub(crate) fn render_native_pie_svg(
         out.checkpoint()?;
     }
 
-    let host_canvas = background.zip(
-        session
-            .native_theme()
-            .map(|theme| theme.resolved().appearance()),
-    );
+    let host_canvas = session.native_theme().and_then(|theme| {
+        let canvas = match theme.export_backdrop() {
+            Some(backdrop) => Some(
+                background
+                    .unwrap_or_else(|| style.canvas.first_color())
+                    .composite(backdrop, 1.0),
+            ),
+            None => background,
+        };
+        canvas.map(|canvas| (canvas, theme.resolved().appearance()))
+    });
     for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
         let _ = write!(
             &mut out,

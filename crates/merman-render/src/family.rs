@@ -2628,11 +2628,11 @@ fn prepare_for<'parsed>(
     let _stage =
         merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutPrepare);
     let mut context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
-    if context.session().native_theme().is_some() {
+    if let Some(theme) = context.session().native_theme() {
         let metadata = parsed.metadata();
         let control = context.session().work_meter().control();
         if let Some(effective_config) =
-            crate::theme::native_render_config(&metadata.effective_config, control)?
+            theme.render_config_for(&metadata.effective_config, control)?
         {
             context.native_metadata = Some(Box::new(PresentationMetadata {
                 effective_config,
