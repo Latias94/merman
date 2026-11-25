@@ -1,4 +1,4 @@
-# merman-usvg 0.50.0
+# merman-usvg 0.50.1
 
 The crates.io `usvg` 0.50.0 archive has SHA-256
 `bdb896f04730b97805bbc3191fc57e4bf03face0f14577dd42e783c4d8c98802` and was built from
@@ -45,8 +45,10 @@ Relative positions accumulate in source order, including offsets inside ligature
 anchors the positioned chunk before sampling nonmonotonic distances and uses the limiting tangent
 at repeated curve endpoints.
 `textLength` adjusts each element once across its positioning chunks and resolves nested ranges
-from the inside out. Resolved descendant ranges retain their rendered extents.
+from the inside out. Resolved descendant ranges retain their rendered extents when the enclosing
+range reserves space for following text. Length calculations include CSS letter and word spacing.
 `spacingAndGlyphs` scales along the SVG inline axis, including for rotated characters.
+Text preserved by the writer carries variation settings and optical sizing as CSS declarations.
 
 Text conversion records visible spans without a usable primary face and missing glyphs in
 text nodes that are dropped during conversion. The exporter combines these omissions with

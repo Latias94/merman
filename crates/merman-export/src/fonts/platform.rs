@@ -35,7 +35,20 @@ pub(super) const MAX_FVAR_TABLE_BYTES: usize = 1024 * 1024;
 pub(super) struct DwriteFileIdentity {
     pub(super) last_write_time: u64,
     pub(super) hmtx_len: usize,
-    pub(super) hmtx_digest: [u8; 32],
+    pub(super) hvar_len: Option<usize>,
+    pub(super) avar_len: Option<usize>,
+    pub(super) metrics_digest: [u8; 32],
+}
+
+#[cfg(windows)]
+impl DwriteFileIdentity {
+    pub(super) fn metric_tables(self) -> [(&'static [u8; 4], Option<usize>); 3] {
+        [
+            (b"hmtx", Some(self.hmtx_len)),
+            (b"HVAR", self.hvar_len),
+            (b"avar", self.avar_len),
+        ]
+    }
 }
 
 #[derive(Clone)]
@@ -53,8 +66,12 @@ pub(super) struct PlatformFace {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub(super) named_instance: Option<u16>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    // An empty list requires any non-default UVS. Otherwise each listed pair must map.
+    // An empty list requires any exact UVS. Otherwise each listed pair needs a variant glyph.
     pub(super) required_uvs: Option<Vec<(char, char)>>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub(super) unmapped_uvs_marks: Vec<char>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub(super) allowed_symbol_pages: Option<[bool; 2]>,
 }
 
 impl PlatformFace {
@@ -889,6 +906,10 @@ mod tests {
             named_instance: None,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             required_uvs: None,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            unmapped_uvs_marks: Vec::new(),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            allowed_symbol_pages: None,
         }
     }
 

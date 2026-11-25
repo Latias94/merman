@@ -142,6 +142,7 @@ pub trait SvgPostprocessor: Send + Sync {
 #[derive(Clone)]
 pub struct ResvgCompatibleSvg {
     svg: String,
+    inline_raster_sources: Box<[(usize, final_validation::InlineRasterHref)]>,
 
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
@@ -218,8 +219,9 @@ impl SvgFinalizationReport {
         &self.resource_closure
     }
 
-    /// Returns the number of terminal SVG `<text>` elements with character content,
-    /// including character data copied from local `<tref>` targets.
+    /// Returns the number of terminal SVG `<text>` sources with character content,
+    /// including character data copied from local `<tref>` targets. Copied spaces count when
+    /// preserved in the source or a `<use>` instance, but not when trimmed from a lone fragment.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
     }
@@ -282,7 +284,7 @@ impl ResvgCompatibleSvg {
                 |message| Error::svg_postprocess("prepared-math-terminal-receipt", message),
             )?
         };
-        let terminal = match terminal {
+        let mut terminal = match terminal {
             Some(terminal) => terminal,
             None => {
                 final_validation::validate_resvg_compatible_svg_with_execution(&svg, execution)?
@@ -294,6 +296,7 @@ impl ResvgCompatibleSvg {
         execution.checkpoint()?;
         Ok(Self {
             svg,
+            inline_raster_sources: std::mem::take(&mut terminal.inline_raster_sources),
 
             prepared_math_evidence,
             prepared_math_terminal_receipt,
@@ -335,6 +338,17 @@ impl ResvgCompatibleSvg {
     /// Returns the terminal same-document and inline-resource inventory.
     pub const fn resource_closure(&self) -> &SvgResourceClosure {
         self.finalization_report.resource_closure()
+    }
+
+    /// Yields each effective inline raster href with its reference-expanded occurrence count.
+    #[doc(hidden)]
+    pub fn inline_raster_sources(&self) -> impl Iterator<Item = (&str, usize)> {
+        self.inline_raster_sources.iter().map(|(element, href)| {
+            (
+                href.as_str(self.as_str()),
+                self.reference_plan().raw_element_occurrences()[*element],
+            )
+        })
     }
 
     /// Returns the exact font catalog authorized by the render session.
@@ -1237,6 +1251,47 @@ mod tests {
                 .process_resvg_compatible(invalid, &session)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn blocked_resource_links_do_not_activate_lower_priority_fragments() {
+        let svg = r##"<svg xmlns:q="http://www.w3.org/1999/xlink" xmlns:other="urn:other"><defs><filter id="filter"><feImage q:href="#hidden" href="blocked.png"/></filter><linearGradient href="blocked.svg" q:href="#hidden"/></defs><use q:href="#hidden" href="blocked.svg"/><text><tref href="#hidden" q:href="blocked.svg"/><tref other:href="blocked.svg" href="#hidden"/></text></svg>"##;
+        let session = render_session();
+        let sealed = finalize_resvg_svg(svg, &session).unwrap();
+        assert!(!sealed.as_str().contains("blocked."));
+        assert!(sealed.as_str().contains(r#"other:href="""#));
+        assert!(
+            sealed
+                .resource_closure()
+                .referenced_fragment_ids()
+                .is_empty()
+        );
+        assert_eq!(sealed.finalization_report().text_element_count(), 0);
+        let again = finalize_resvg_svg(sealed.as_str(), &session).unwrap();
+        assert_eq!(again.as_str(), sealed.as_str());
+    }
+
+    #[test]
+    fn whitespace_inherited_by_use_does_not_bypass_expansion_limits() {
+        let svg = r##"<svg><defs><g id="spaces">     </g><g id="label"><text><tref href="#spaces"/></text></g></defs><use href="#label" xml:space="preserve"/><use href="#label" xml:space="preserve"/></svg>"##;
+        let session = |max_elements| {
+            crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    crate::resources::RenderResourcePolicy::trusted_native()
+                        .with_limit(
+                            crate::resources::ResourceLimitId::MaxSvgElements,
+                            max_elements,
+                        )
+                        .unwrap(),
+                )
+                .begin_session()
+                .unwrap()
+        };
+        let error = finalize_resvg_svg(svg, &session(13)).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+        let sealed = finalize_resvg_svg(svg, &session(14)).unwrap();
+        assert_eq!(sealed.reference_plan().expanded_elements(), 14);
+        assert_eq!(sealed.finalization_report().text_element_count(), 1);
     }
 
     #[test]

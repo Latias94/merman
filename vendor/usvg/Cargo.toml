@@ -2,7 +2,7 @@
 edition = "2024"
 rust-version = "1.87.0"
 name = "merman-usvg"
-version = "0.50.0"
+version = "0.50.1"
 autobins = false
 autotests = false
 description = "Merman's SVG parser and text shaping library, based on usvg."

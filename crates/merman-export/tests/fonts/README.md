@@ -57,6 +57,12 @@ covers U+E000, Partial adds U+2713, and Full adds U+2713 and U+4E2D. This exerci
 both retrying after incompatible partial shaping and replacing a missing cluster
 while keeping the original face for the rest of the run.
 
+`MermanProbeVariationOverlay.ttf` derives from Full. Its Unicode cmap adds
+U+2764 and the U+2764 U+FE0F variation, both pointing to `f`. It has no U+0301
+mapping. Its `ccmp` feature uses `sub f .notdef by i` to exercise coverage of a
+complete variation cluster despite the missing nominal mark. The fixture was
+built with fontTools `CmapSubtable` and `feaLib`.
+
 ## Variable Weight Regression
 
 `MermanVariableWeight.ttf` is a synthetic Merman test font with a `wght` axis

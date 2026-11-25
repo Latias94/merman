@@ -54,6 +54,11 @@ boundaries. Explicit readable/native conversion performs the parsing its consume
 pipeline. Native export checks reference expansion and target allocations before its backend runs.
 Browser publication retains the Web package's DOM admission and mount checks.
 
+Native export uses the same effective SVG references for validation and resource admission.
+An image contributes the bytes of its selected source for each rendered instance. An empty
+higher-priority link retains precedence over its alternate attribute. A `<tref>` that contributes
+visible text requires a text environment even when its source is elsewhere in the document.
+
 Native-font typography admission inspects canonical typed declaration owners; it does not expand
 compatibility JSON to discover styles. Layout JSON projects its semantic payload from the exact
 family artifact owning that layout, under the active operation control.

@@ -715,10 +715,21 @@ fn file_face(
     if hmtx.is_empty() || hmtx.len() > 4 * usize::from(u16::MAX) {
         return None;
     }
+    let hvar = FontTable::try_read(face, b"HVAR").ok()?;
+    let hvar = hvar.as_ref().map(FontTable::bytes);
+    let avar = FontTable::try_read(face, b"avar").ok()?;
+    let avar = avar.as_ref().map(FontTable::bytes);
     let dwrite_identity = Some(DwriteFileIdentity {
         last_write_time,
         hmtx_len: hmtx.len(),
-        hmtx_digest: Sha256::digest(hmtx).into(),
+        hvar_len: hvar.map(<[u8]>::len),
+        avar_len: avar.map(<[u8]>::len),
+        metrics_digest: Sha256::new()
+            .chain_update(hmtx)
+            .chain_update(hvar.unwrap_or_default())
+            .chain_update(avar.unwrap_or_default())
+            .finalize()
+            .into(),
     });
     let (variations, fvar_digest) = variations(matched)?;
     Some((
@@ -1062,6 +1073,10 @@ impl Drop for FontTable<'_> {
 
 impl<'a> FontTable<'a> {
     fn read(face: &'a IDWriteFontFace, tag: &[u8; 4]) -> Option<Self> {
+        Self::try_read(face, tag).ok().flatten()
+    }
+
+    fn try_read(face: &'a IDWriteFontFace, tag: &[u8; 4]) -> WinResult<Option<Self>> {
         let mut data = ptr::null_mut();
         let mut size = 0;
         let mut context = ptr::null_mut();
@@ -1074,11 +1089,10 @@ impl<'a> FontTable<'a> {
                 &mut size,
                 &mut context,
                 &mut exists,
-            )
-            .ok()?;
+            )?;
         }
         if !exists.as_bool() {
-            return None;
+            return Ok(None);
         }
         let table = Self {
             face,
@@ -1086,7 +1100,10 @@ impl<'a> FontTable<'a> {
             data: data.cast(),
             size: size as usize,
         };
-        (!table.data.is_null() && table.size <= isize::MAX as usize).then_some(table)
+        if table.data.is_null() || table.size > isize::MAX as usize {
+            return Err(Error::from_hresult(DWRITE_E_FILEFORMAT));
+        }
+        Ok(Some(table))
     }
 
     fn bytes(&self) -> &[u8] {
@@ -1246,6 +1263,64 @@ mod tests {
         database
             .load_font_data(include_bytes!("../../../tests/fonts/MermanProbeBase.ttf").to_vec());
         database.faces().next().unwrap().clone()
+    }
+
+    fn variable_weight_with_avar() -> Vec<u8> {
+        let fixture = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let mut avar: Vec<_> = [
+            1_i16, 0, 0, 1, 5, -0x4000, -0x4000, -0x2000, -0x2000, 0, 0, 0x2000, 0x2000, 0x4000,
+            0x4000,
+        ]
+        .into_iter()
+        .flat_map(i16::to_be_bytes)
+        .collect();
+        let avar_len = avar.len() as u32;
+        avar.resize(avar.len().next_multiple_of(4), 0);
+        let checksum = |bytes: &[u8]| {
+            bytes
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|word| u32::from_be_bytes(*word))
+                .fold(0, u32::wrapping_add)
+        };
+        let count = u16::from_be_bytes(fixture[4..6].try_into().unwrap()) + 1;
+        let directory_end = 12 + usize::from(count - 1) * 16;
+        let split = fixture[12..directory_end]
+            .as_chunks::<16>()
+            .0
+            .partition_point(|record| &record[..4] < b"avar");
+        let avar_entry = 12 + split * 16;
+        let mut font = fixture.to_vec();
+        drop(font.splice(avar_entry..avar_entry, [0; 16]));
+        let selector = count.ilog2() as u16;
+        let search_range = 16_u16 << selector;
+        font[4..6].copy_from_slice(&count.to_be_bytes());
+        font[6..8].copy_from_slice(&search_range.to_be_bytes());
+        font[8..10].copy_from_slice(&selector.to_be_bytes());
+        font[10..12].copy_from_slice(&(16 * count - search_range).to_be_bytes());
+        let mut head_offset = None;
+        let avar_offset = font.len() as u32;
+        for record in font[12..directory_end + 16].as_chunks_mut::<16>().0 {
+            if record[..4] == [0; 4] {
+                record[..4].copy_from_slice(b"avar");
+                record[4..8].copy_from_slice(&checksum(&avar).to_be_bytes());
+                record[8..12].copy_from_slice(&avar_offset.to_be_bytes());
+                record[12..16].copy_from_slice(&avar_len.to_be_bytes());
+            } else {
+                let offset = u32::from_be_bytes(record[8..12].try_into().unwrap()) + 16;
+                record[8..12].copy_from_slice(&offset.to_be_bytes());
+                if &record[..4] == b"head" {
+                    head_offset = Some(offset as usize);
+                }
+            }
+        }
+        font.extend_from_slice(&avar);
+        let adjustment_offset = head_offset.unwrap() + 8;
+        font[adjustment_offset..adjustment_offset + 4].fill(0);
+        let adjustment = 0xb1b0_afba_u32.wrapping_sub(checksum(&font));
+        font[adjustment_offset..adjustment_offset + 4].copy_from_slice(&adjustment.to_be_bytes());
+        font
     }
 
     fn physical_face(candidate: FontCandidate) -> (PathBuf, PlatformFace, FaceInfo) {
@@ -1677,123 +1752,177 @@ mod tests {
     #[test]
     fn directwrite_rejects_changed_horizontal_metrics_with_the_same_path_and_timestamp() {
         use crate::fonts::{NativeFontLimits, registry::FontSourceRegistry};
-        use std::{fs, sync::Arc};
+        use std::{collections::BTreeMap, fs, io::Write, sync::Arc};
 
-        let variable = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
-        let parsed = ttf_parser::Face::parse(variable, 0).unwrap();
+        let variable = variable_weight_with_avar();
+        let mut parsed = ttf_parser::Face::parse(&variable, 0).unwrap();
         let glyph = parsed.glyph_index('A').unwrap();
-        let hmtx = parsed
-            .raw_face()
-            .table(ttf_parser::Tag::from_bytes(b"hmtx"))
-            .unwrap();
-        let offset = hmtx.as_ptr() as usize - variable.as_ptr() as usize + usize::from(glyph.0) * 4;
-        let mut replacement = variable.to_vec();
-        replacement[offset..offset + 2]
-            .copy_from_slice(&(parsed.glyph_hor_advance(glyph).unwrap() + 1).to_be_bytes());
-        let replaced = ttf_parser::Face::parse(&replacement, 0).unwrap();
-        assert_ne!(
-            parsed.glyph_hor_advance(glyph),
-            replaced.glyph_hor_advance(glyph)
+        let raw = parsed.raw_face();
+        let hmtx = raw.table(ttf_parser::Tag::from_bytes(b"hmtx")).unwrap();
+        let hvar = raw.table(ttf_parser::Tag::from_bytes(b"HVAR")).unwrap();
+        let avar = raw.table(ttf_parser::Tag::from_bytes(b"avar")).unwrap();
+        let hmtx_offset =
+            hmtx.as_ptr() as usize - variable.as_ptr() as usize + usize::from(glyph.0) * 4;
+        // The fixture's single HVAR region has a short delta per glyph, with no index map.
+        // A and V are the last two glyphs, both with a delta of 240 at maximum weight.
+        let hvar_offset = hvar.as_ptr() as usize - variable.as_ptr() as usize + hvar.len() - 4;
+        assert_eq!(
+            &variable[hvar_offset..hvar_offset + 2],
+            &240_i16.to_be_bytes()
         );
+        let avar_offset = avar.as_ptr() as usize - variable.as_ptr() as usize;
+        let avar_half_to_offset = avar_offset + 24;
+        let avar_negative_half_to_offset = avar_offset + 16;
+        assert_eq!(avar[22..26], [0x20, 0, 0x20, 0]);
+        assert_eq!(avar[14..18], [0xe0, 0, 0xe0, 0]);
+        let default_advance = parsed.glyph_hor_advance(glyph).unwrap();
+        let weight = 500;
+        parsed
+            .set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(weight))
+            .unwrap();
+        assert_eq!(parsed.glyph_hor_advance(glyph), Some(630));
 
         let path =
-            std::env::temp_dir().join(format!("merman-dwrite-hmtx-{}.ttf", std::process::id()));
+            std::env::temp_dir().join(format!("merman-dwrite-metrics-{}.ttf", std::process::id()));
         let original = path.with_extension("variable.ttf");
-        fs::write(&path, variable).unwrap();
+        fs::write(&path, &variable).unwrap();
         let modified = fs::metadata(&path).unwrap().modified().unwrap();
         let control = OperationControl::new();
         let candidates = {
             let name = "Merman Variable Weight";
             let mut catalog =
-                fixture_catalog(&[&path], &[('A', w!("Merman Variable Weight"), 1.0)]);
-            let mut candidates = Vec::new();
-            if catalog.modern_fallback.is_some() {
-                let query =
-                    FamilyQuery::new(name, Weight(510), Stretch::Normal, Style::Normal, None);
-                let named = catalog.family_candidates(&query, &control, &mut 0).unwrap();
-                let candidate = named.into_iter().next().unwrap().candidate;
+                fixture_catalog(&[&path], &[('A', w!("Merman Variable Weight"), 1.125)]);
+            let modern = catalog.modern_fallback.is_some();
+            let coordinates = vec![FontVariation::new(*b"wght", f32::from(weight))];
+            let capture_fallback = |catalog: &Catalog, weight| {
+                let mut base = base_face();
+                base.weight = Weight(weight);
+                let mut selected = None;
+                let found = catalog.fallback("A".into(), &base, &control, &mut |candidate| {
+                    selected = Some(candidate);
+                    Ok(Some(ID::dummy()))
+                });
+                assert!(found.unwrap().is_some());
+                selected.unwrap()
+            };
+            let query =
+                FamilyQuery::new(name, Weight(weight), Stretch::Normal, Style::Normal, None);
+            let named = catalog.family_candidates(&query, &control, &mut 0).unwrap();
+            let named = named.into_iter().next().unwrap().candidate;
+            let named_axes = modern.then(|| coordinates.clone());
+            let mut candidates = vec![("named", named, 1.0, named_axes)];
+            if modern {
                 candidates.push((
-                    "modern named",
-                    candidate,
-                    vec![FontVariation::new(*b"wght", 510.0)],
+                    "modern fallback",
+                    capture_fallback(&catalog, weight),
+                    1.125,
+                    Some(coordinates),
                 ));
             }
             catalog.modern_fallback = None;
-            let mut base = base_face();
-            base.weight = Weight(100);
-            let mut selected = None;
-            catalog
-                .fallback("A".into(), &base, &control, &mut |candidate| {
-                    selected = Some(candidate);
-                    Ok(Some(ID::dummy()))
-                })
-                .unwrap();
-            candidates.push(("classic fallback", selected.unwrap(), Vec::new()));
+            candidates.push((
+                "classic fallback",
+                capture_fallback(&catalog, 100),
+                1.125,
+                Some(Vec::new()),
+            ));
             candidates
         };
 
-        let admit = |candidate, limits: &NativeFontLimits| {
-            let registry = FontSourceRegistry::new(Default::default(), Default::default(), 0, 0);
+        let admit = |candidate, fallback, limits: &NativeFontLimits, initial| {
+            let registry = FontSourceRegistry::new(initial, Default::default(), 0, 0);
+            let initial_bytes = registry.resident_bytes();
             let mut database = Arc::new(Database::new());
-            let result =
-                registry.materialize(candidate, Some('A'), &mut database, limits, &control);
+            let result = registry.materialize(candidate, fallback, &mut database, limits, &control);
             (
                 result,
                 registry.admitted_faces(),
-                registry.resident_bytes(),
+                registry.resident_bytes() - initial_bytes,
                 database.is_empty(),
             )
         };
-        let mut replacement_db = Database::new();
-        replacement_db.load_font_data(replacement.clone());
-        for (kind, candidate, coordinates) in &candidates {
+        for (kind, candidate, scale, coordinates) in &candidates {
             let (_, expected, _) = physical_face(candidate.clone());
-            expected
-                .validate(replacement_db.faces().next().unwrap(), &path)
-                .unwrap();
-            assert_eq!(&expected.variations, coordinates, "{kind}");
-            let observed_fvar = replaced
-                .raw_face()
-                .table(ttf_parser::Tag::from_bytes(b"fvar"))
-                .unwrap();
-            assert_eq!(
-                expected.fvar_digest,
-                Some(Sha256::digest(observed_fvar).into())
+            assert_eq!(expected.fallback_scale, *scale, "{kind}");
+            if let Some(coordinates) = coordinates {
+                assert_eq!(&expected.variations, coordinates, "{kind}");
+            }
+            let (result, faces, bytes, _) = admit(
+                candidate.clone(),
+                (*kind != "named").then_some('A'),
+                &NativeFontLimits::default(),
+                BTreeMap::new(),
             );
-            let (result, faces, bytes, _) = admit(candidate.clone(), &NativeFontLimits::default());
             assert!(result.unwrap().is_some(), "{kind}");
             assert_eq!((faces, bytes), (1, variable.len()), "{kind}");
         }
 
         fs::rename(&path, &original).unwrap();
-        fs::write(&path, &replacement).unwrap();
-        fs::File::options()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        let metadata = fs::metadata(&path).unwrap();
-        assert_eq!(metadata.modified().unwrap(), modified);
-        assert_eq!(metadata.len(), variable.len() as u64);
         // A replaced table should fail the bounded probe before any full-file budget check.
         let limits = NativeFontLimits {
             max_files: 0,
             max_bytes: 0,
             ..Default::default()
         };
-        let rejected: Vec<_> = candidates
-            .into_iter()
-            .map(|(kind, candidate, _)| (kind, admit(candidate, &limits)))
-            .collect();
-        fs::remove_file(path).unwrap();
+        let mut rejected = Vec::new();
+        for (tag, offset, value, mutated_advance) in [
+            (b"hmtx", hmtx_offset, default_advance + 1, 631),
+            (b"HVAR", hvar_offset, 360, 690),
+            (b"avar", avar_half_to_offset, 0x3000, 690),
+        ] {
+            let mut replacement = variable.clone();
+            replacement[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+            if tag == b"avar" {
+                replacement[avar_negative_half_to_offset..avar_negative_half_to_offset + 2]
+                    .copy_from_slice(&(-0x3000_i16).to_be_bytes());
+            }
+            let mut replaced = ttf_parser::Face::parse(&replacement, 0).unwrap();
+            let raw = replaced.raw_face();
+            for record in parsed.raw_face().table_records {
+                if record.tag.to_bytes() != *tag {
+                    assert_eq!(raw.table(record.tag), parsed.raw_face().table(record.tag));
+                }
+            }
+            replaced
+                .set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(weight))
+                .unwrap();
+            assert_eq!(replaced.glyph_hor_advance(glyph), Some(mutated_advance));
+
+            let mut file = fs::File::create(&path).unwrap();
+            file.write_all(&replacement).unwrap();
+            file.set_times(fs::FileTimes::new().set_modified(modified))
+                .unwrap();
+            drop(file);
+            let metadata = fs::metadata(&path).unwrap();
+            assert_eq!(metadata.modified().unwrap(), modified);
+            assert_eq!(metadata.len(), variable.len() as u64);
+            let snapshot =
+                BTreeMap::from([(fs::canonicalize(&path).unwrap(), Arc::new(replacement))]);
+            for (source, initial) in [("file", BTreeMap::new()), ("snapshot", snapshot)] {
+                rejected.extend(candidates.iter().map(|(kind, candidate, ..)| {
+                    let fallback = (*kind != "named").then_some('A');
+                    (
+                        tag,
+                        kind,
+                        source,
+                        admit(candidate.clone(), fallback, &limits, initial.clone()),
+                    )
+                }));
+            }
+            fs::remove_file(&path).unwrap();
+        }
         fs::remove_file(original).unwrap();
-        for (kind, (result, faces, bytes, database_empty)) in rejected {
+        for (tag, kind, source, (result, faces, bytes, database_empty)) in rejected {
+            let tag = std::str::from_utf8(tag).unwrap();
             assert!(
                 matches!(&result, Err(NativeFontError::Source { message, .. }) if message.contains("horizontal metrics changed")),
-                "{kind}: {result:?}"
+                "{kind}, {tag}, {source}: {result:?}"
             );
-            assert_eq!((faces, bytes, database_empty), (0, 0, true), "{kind}");
+            assert_eq!(
+                (faces, bytes, database_empty),
+                (0, 0, true),
+                "{kind}, {tag}, {source}"
+            );
         }
     }
 

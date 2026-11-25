@@ -1520,23 +1520,34 @@ fn write_span(
         xml.write_svg_attribute(AId::FontStretch, name);
     }
 
+    // These font properties are CSS declarations in browser SVG consumers.
+    let mut font_css = String::new();
+    if !span.apply_kerning {
+        font_css.push_str("font-kerning:none;");
+    }
     if span.font_optical_sizing == FontOpticalSizing::None {
-        xml.write_svg_attribute(AId::FontOpticalSizing, "none");
+        font_css.push_str("font-optical-sizing:none;");
     }
     if !span.font.explicit_variations().is_empty() {
-        let settings = span
-            .font
-            .explicit_variations()
-            .iter()
-            .map(|axis| {
-                let tag = String::from_utf8_lossy(&axis.tag);
-                let quote = if tag.contains('\'') { '"' } else { '\'' };
-                let tag = tag.replace('&', "&amp;").replace('<', "&lt;");
-                format!("{quote}{tag}{quote} {}", axis.value)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        xml.write_svg_attribute(AId::FontVariationSettings, &settings);
+        use std::fmt::Write;
+
+        font_css.push_str("font-variation-settings:");
+        for (index, axis) in span.font.explicit_variations().iter().enumerate() {
+            if index != 0 {
+                font_css.push_str(", ");
+            }
+            font_css.push('\'');
+            for byte in axis.tag {
+                match byte {
+                    b'\\' | b'\'' | b'&' | b'<' => write!(font_css, "\\{byte:x} ").unwrap(),
+                    _ => font_css.push(char::from(byte)),
+                }
+            }
+            write!(font_css, "' {}", axis.value).unwrap();
+        }
+    }
+    if !font_css.is_empty() {
+        xml.write_svg_attribute(AId::Style, &font_css);
     }
     xml.write_svg_attribute(AId::FontSize, &span.font_size);
 
@@ -1560,10 +1571,6 @@ fn write_span(
 
     if span.paint_order == PaintOrder::StrokeAndFill {
         xml.write_svg_attribute(AId::PaintOrder, "stroke fill");
-    }
-
-    if !span.apply_kerning {
-        xml.write_attribute("style", "font-kerning:none");
     }
 
     if span.dominant_baseline != DominantBaseline::Auto {

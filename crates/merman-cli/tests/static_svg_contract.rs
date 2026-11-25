@@ -8,6 +8,10 @@ use support::run_with_stdin;
 const FLAT: &str =
     "---\nconfig:\n  theme: redux-color\n  look: classic\n---\nflowchart LR\nA --> B\n";
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+const BLUE_PIXEL: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+
 fn render(format: &str, extra: &[&str], source: &str) -> Output {
     let mut args = vec!["render", "-", "--format", format, "--output", "-"];
     args.extend(extra);
@@ -116,7 +120,6 @@ fn static_generation_preserves_target_quotas() {
 #[cfg(feature = "png")]
 #[test]
 fn embedded_image_byte_limit_suggests_a_working_export_option() {
-    const BLUE_PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
     let source = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20" height="20"><image xlink:href="data:image/png;base64,{BLUE_PIXEL}" width="20" height="20"/></svg>"#
     );
@@ -132,4 +135,96 @@ fn embedded_image_byte_limit_suggests_a_working_export_option() {
     assert!(
         success(render("png", &["--input-kind=svg", flag, value], &source)).starts_with(b"\x89PNG")
     );
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn embedded_image_budget_charges_the_effective_href_in_each_encoder() {
+    let href = format!("data:image/png;base64,{BLUE_PIXEL}");
+    let ignored_href = format!("data:image/png,{}", "x".repeat(70));
+    let image = |attributes: &str| format!(r#"<image {attributes} width="20" height="20"/>"#);
+    let single = image(&format!(r#"href="{href}""#));
+    let dual = image(&format!(r#"href="{href}" q:href="{href}""#));
+    let distinct_alias = image(&format!(r#"q:href="{ignored_href}" href="{href}""#));
+    let two = dual.repeat(2);
+    let svg = |image| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="http://www.w3.org/1999/xlink" width="20" height="20">{image}</svg>"#,
+        )
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    let flag = "--embedded-image-max-total-bytes";
+    for format in formats {
+        let render_image =
+            |image, max| render(format, &["--input-kind=svg", flag, max], &svg(image));
+        let baseline = success(render_image(&single, "69"));
+        for image in [&dual, &distinct_alias] {
+            let output = success(render_image(image, "69"));
+            assert!(
+                output == baseline,
+                "{format}: the unprefixed href must paint"
+            );
+        }
+        success(render_image(&two, "138"));
+        for (image, max) in [(&dual, "68"), (&two, "137")] {
+            let output = render_image(image, max);
+            assert_eq!(output.status.code(), Some(1), "{format}: {output:?}");
+            assert!(output.stdout.is_empty(), "{format}");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains("max_total_embedded_image_bytes"),
+                "{format}"
+            );
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn blocked_image_href_does_not_activate_or_charge_the_xlink_fallback() {
+    let blue = format!(r#"link:href="data:image/png;base64,{BLUE_PIXEL}""#);
+    let blocked = r#"href="not-present.png""#;
+    let svg = |attributes: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:link="http://www.w3.org/1999/xlink" width="20" height="20"><image {attributes} width="20" height="20"/></svg>"#
+        )
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let render_image = |attributes: &str, max: &str| {
+            render(
+                format,
+                &["--input-kind=svg", "--embedded-image-max-total-bytes", max],
+                &svg(attributes),
+            )
+        };
+        let blank = success(render_image("", "68"));
+        for attributes in [format!("{blocked} {blue}"), format!("{blue} {blocked}")] {
+            assert_eq!(success(render_image(&attributes, "68")), blank, "{format}");
+        }
+        let visible = success(render_image(&blue, "69"));
+        assert!(visible != blank, "{format}: the active alias must paint");
+        let limited = render_image(&blue, "68");
+        assert_eq!(limited.status.code(), Some(1), "{format}: {limited:?}");
+        assert!(limited.stdout.is_empty(), "{format}");
+        let stderr = String::from_utf8_lossy(&limited.stderr);
+        assert!(
+            stderr.contains("max_total_embedded_image_bytes")
+                && stderr.contains("actual=69 maximum=68"),
+            "{format}: {stderr}"
+        );
+    }
 }

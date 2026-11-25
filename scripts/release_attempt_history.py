@@ -9,10 +9,13 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
+import tomllib
 
 
 OWNERS = {
     "crates": ("release-crates.yml", "publish", "Upload crates to crates.io"),
+    "independent-crate": ("release-independent-crate.yml", "publish", "Upload independent crate to crates.io"),
     "web": ("release-web.yml", "publish", "Publish npm package group"),
     "node": ("release-node.yml", "publish npm package group", "Publish npm package group"),
     "flutter": ("release-flutter.yml", "publish", "Publish to pub.dev"),
@@ -53,13 +56,19 @@ def paginated_records(path: str, field: str) -> list[dict]:
 
 
 def upload_was_skipped(repository: str, run_id: int, attempt: int, owner: str) -> bool:
-    """A completed skip or cancellation before runner assignment proves no send."""
+    """Check a complete attempt listing for evidence that the upload was skipped."""
+    return _upload_was_skipped(_attempt_jobs(repository, run_id, attempt), owner)
 
-    _, job_name, step_name = OWNERS[owner]
-    jobs = paginated_records(
+
+def _attempt_jobs(repository: str, run_id: int, attempt: int) -> list[dict]:
+    return paginated_records(
         f"repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
         "jobs",
     )
+
+
+def _upload_was_skipped(jobs: list[dict], owner: str) -> bool:
+    _, job_name, step_name = OWNERS[owner]
     matches = [job for job in jobs if job.get("name") == job_name]
     if len(matches) != 1 or matches[0].get("status") != "completed":
         return False
@@ -101,6 +110,181 @@ def prior_publish_state(repository: str, run_id: int, before_attempt: int, owner
         print(f"Cannot prove that the previous upload was skipped: {exc}", file=sys.stderr)
         return "unknown"
     return "never-attempted"
+
+
+@dataclass(frozen=True)
+class IndependentCrateHistory:
+    observe_only: bool = True
+    artifact_id: int | None = None
+    run_id: int | None = None
+    attempt: int | None = None
+    source_sha: str | None = None
+
+
+def _independent_evidence(
+    repository: str, run_id: int, sha: str, names: dict[str, int],
+) -> dict[str, IndependentCrateHistory]:
+    evidence = {}
+    for artifact in paginated_records(
+        f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100", "artifacts",
+    ):
+        name = artifact.get("name")
+        if not isinstance(name, str):
+            raise ValueError("Invalid independent workflow artifact name")
+        if name not in names:
+            continue
+        if name in evidence:
+            raise ValueError(f"Duplicate independent workflow artifact: {name}")
+        producing_run = artifact.get("workflow_run")
+        if producing_run is not None and (
+            not isinstance(producing_run, dict)
+            or producing_run.get("id") != run_id or producing_run.get("head_sha") != sha
+        ):
+            raise ValueError("Independent evidence has a different producing run or source")
+        evidence[name] = (
+            IndependentCrateHistory(
+                artifact_id=artifact["id"], run_id=run_id, attempt=names[name], source_sha=sha,
+            ) if artifact.get("expired") is False else IndependentCrateHistory()
+        )
+    return evidence
+
+
+def _independent_confirmation_recorded(jobs: list[dict]) -> bool:
+    for job in jobs:
+        name = job.get("name")
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        conclusions = {}
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            label = step.get("name")
+            if isinstance(label, str):
+                conclusions[label] = step.get("conclusion")
+            if (name == "verify-published" and label == "Verify exact published archive and registry consumers"
+                    and step.get("conclusion") == "success"):
+                return True
+            if ((name, label) in (
+                ("preflight", "Retain the independent preflight registry confirmation"),
+                ("publish", "Retain the independent publisher registry confirmation"),
+            ) and (step.get("conclusion") in {"failure", "success"}
+                   or (step.get("started_at") and step.get("conclusion") != "skipped"))):
+                return True
+        if name == "preflight" and conclusions.get(
+            "Verify registry bytes or dry-run independent crate publication"
+        ) == "success":
+            candidate = conclusions.get("Retain the frozen independent candidate")
+            if candidate == "skipped" or (
+                candidate not in {"success", "failure"} and job.get("conclusion") in {"cancelled", "timed_out"}
+            ):
+                return True
+        if (name == "publish" and conclusions.get("Inspect independent crate publication state") == "success"
+                and conclusions.get("Download the frozen independent candidate") == "skipped"):
+            return True
+    return False
+
+
+def _legacy_independent_version(repo_root: Path, sha: str, manifest: str, package: str) -> str | None:
+    # Earlier dispatches did not include their inputs in the title. Their source
+    # manifest limits the version the old workflow could have published.
+    listed = subprocess.run(
+        ["git", "ls-tree", sha, "--", manifest], cwd=repo_root,
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    if not listed.stdout:
+        return None
+    contents = subprocess.run(
+        ["git", "show", f"{sha}:{manifest}"], cwd=repo_root,
+        check=True, capture_output=True, encoding="utf-8", timeout=30,
+    )
+    entry = tomllib.loads(contents.stdout).get("package", {})
+    if not isinstance(entry, dict) or entry.get("name") != package or not isinstance(entry.get("version"), str):
+        raise ValueError("Cannot establish the independent package version at a legacy run's source")
+    return entry["version"]
+
+
+def independent_crate_history(
+    repository: str, run_id: int, before_attempt: int, *, name: str, version: str,
+    source_sha: str, repo_root: Path, manifest: str,
+) -> IndependentCrateHistory:
+    """Prove a first send, or select the original archive for observation only."""
+    owner = "independent-crate"
+    workflow, _, _ = OWNERS[owner]
+    title = f"Release independent crate {name} {version}"
+    try:
+        if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+                or run_id < 1 or not 1 <= before_attempt <= 100):
+            raise ValueError("Invalid independent crate publication identity")
+        runs = paginated_records(
+            f"repos/{repository}/actions/workflows/{workflow}/runs?per_page=100", "workflow_runs",
+        )
+        current = next((run for run in runs if run["id"] == run_id), None)
+        if (current is None or current.get("run_attempt") != before_attempt
+                or current.get("display_title") != title or current.get("head_sha") != source_sha):
+            raise ValueError("Current independent crate run identity is missing or changed")
+
+        numbers = [run.get("run_number") for run in runs]
+        if any(type(number) is not int or number < 1 for number in numbers) or len(set(numbers)) != len(numbers):
+            raise ValueError("Invalid or duplicate independent workflow run numbers")
+        incomplete_runs = max(numbers) != len(numbers)
+        if incomplete_runs:
+            print("Independent crate run history has missing run numbers", file=sys.stderr)
+
+        possibly_sent = False
+        previously_confirmed = False
+        intents = []
+        confirmations = []
+        for run in sorted(runs, key=lambda run: run["run_number"]):
+            sha = run.get("head_sha")
+            run_title = run.get("display_title")
+            attempt = run.get("run_attempt")
+            if (run.get("path") != f".github/workflows/{workflow}"
+                    or not isinstance(run.get("repository"), dict)
+                    or run["repository"].get("full_name") != repository
+                    or run.get("event") != "workflow_dispatch"
+                    or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                    or not isinstance(run_title, str)
+                    or type(attempt) is not int or not 1 <= attempt <= 100):
+                raise ValueError("Invalid independent crate workflow history")
+            if run_title != title:
+                if re.fullmatch(r"Release independent crate [a-z0-9_-]+ [0-9A-Za-z.+-]+", run_title):
+                    continue
+                if _legacy_independent_version(repo_root, sha, manifest, name) != version:
+                    continue
+
+            if run["id"] == run_id:
+                attempt -= 1
+            elif run.get("status") != "completed":
+                incomplete_runs = True
+                attempt -= 1
+
+            intent_names = {}
+            confirmation_names = {}
+            for past_attempt in range(1, attempt + 1):
+                jobs = _attempt_jobs(repository, run["id"], past_attempt)
+                if not jobs and run.get("run_attempt") == 1 and run.get("conclusion") == "cancelled":
+                    continue
+                if not _upload_was_skipped(jobs, owner):
+                    intent_names[f"crates-io-independent-upload-intent-attempt-{past_attempt}"] = past_attempt
+                for stage in ("preflight", "publish"):
+                    confirmation_names[f"crates-io-independent-confirmation-{stage}-attempt-{past_attempt}"] = past_attempt
+                previously_confirmed |= _independent_confirmation_recorded(jobs)
+            if not confirmation_names:
+                continue
+            evidence = _independent_evidence(repository, run["id"], sha, intent_names | confirmation_names)
+            possibly_sent |= bool(intent_names)
+            intents.extend(evidence[name] for name in intent_names if name in evidence)
+            confirmations.extend(evidence[name] for name in confirmation_names if name in evidence)
+
+        if intents:
+            return intents[0] if len(intents) == 1 else IndependentCrateHistory()
+        if confirmations:
+            return confirmations[0]
+        return IndependentCrateHistory(observe_only=incomplete_runs or possibly_sent or previously_confirmed)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"Cannot establish independent crate publication history: {exc}", file=sys.stderr)
+    return IndependentCrateHistory()
 
 
 @dataclass(frozen=True)

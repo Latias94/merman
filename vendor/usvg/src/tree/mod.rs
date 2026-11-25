@@ -580,7 +580,7 @@ impl Default for LineJoin {
 }
 
 /// A stroke style.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Stroke {
     pub(crate) paint: Paint,
     pub(crate) dasharray: Option<Vec<f32>>,
@@ -696,7 +696,7 @@ pub(crate) enum ContextElement {
 }
 
 /// A fill style.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Fill {
     pub(crate) paint: Paint,
     pub(crate) opacity: Opacity,

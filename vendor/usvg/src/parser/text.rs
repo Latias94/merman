@@ -567,88 +567,77 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
 /// Syntax: `normal | [ <string> <number> ]#`
 /// Example: `"wght" 700, "wdth" 50`
 fn parse_font_variation_settings(node: SvgNode) -> Vec<FontVariation> {
-    let value = if let Some(n) = node
+    let Some(mut value) = node
         .ancestors()
-        .find(|n| n.has_attribute(AId::FontVariationSettings))
-    {
-        let v = n.attribute(AId::FontVariationSettings).unwrap_or("");
-        log::debug!("Found font-variation-settings: '{}'", v);
-        v
-    } else {
+        .find_map(|ancestor| ancestor.attribute::<&str>(AId::FontVariationSettings))
+    else {
         return Vec::new();
     };
-
-    // "normal" means no variations
-    if value.eq_ignore_ascii_case("normal") || value.is_empty() {
-        return Vec::new();
-    }
-
     let mut variations = Vec::new();
-
-    // Parse comma-separated list of "tag" value pairs
-    for part in value.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-
-        // Find the tag (quoted string) and value
-        // Format: "wght" 700 or 'wght' 700
-        let mut chars = part.chars().peekable();
-
-        // Skip whitespace
-        while chars.peek().map_or(false, |c| c.is_whitespace()) {
-            chars.next();
-        }
-
-        // Parse quoted tag
-        let quote = match chars.next() {
-            Some('"') => '"',
-            Some('\'') => '\'',
-            _ => continue, // Invalid format
-        };
-
-        let mut tag_str = String::new();
-        for c in chars.by_ref() {
-            if c == quote {
-                break;
+    while !value.is_empty() {
+        let tag = parse_axis_tag(value.trim_start());
+        let rest = tag.map_or(value, |(_, rest)| rest);
+        let (number, next) = rest.split_once(',').unwrap_or((rest, ""));
+        if let (Some((tag, _)), Ok(coordinate)) = (tag, number.trim().parse::<f32>()) {
+            if coordinate.is_finite() {
+                variations.push(FontVariation::new(tag, coordinate));
             }
-            tag_str.push(c);
         }
-
-        // Tag must be exactly 4 characters
-        if tag_str.len() != 4 {
-            log::warn!(
-                "Invalid font-variation-settings tag: '{}' (must be 4 characters)",
-                tag_str
-            );
-            continue;
-        }
-
-        // Skip whitespace before value
-        while chars.peek().map_or(false, |c| c.is_whitespace()) {
-            chars.next();
-        }
-
-        // Parse the numeric value
-        let value_str: String = chars.collect();
-        let value_str = value_str.trim();
-
-        let value = match value_str.parse::<f32>() {
-            Ok(v) if v.is_finite() => v,
-            _ => {
-                log::warn!("Invalid font-variation-settings value: '{}'", value_str);
-                continue;
-            }
-        };
-
-        let tag_bytes = tag_str.as_bytes();
-        let tag = [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]];
-
-        variations.push(FontVariation::new(tag, value));
+        value = next;
     }
-
     variations
+}
+
+fn parse_axis_tag(input: &str) -> Option<([u8; 4], &str)> {
+    let quote = input.chars().next().filter(|ch| matches!(ch, '\'' | '"'))?;
+    let input = input.strip_prefix(quote)?;
+    parse_css_axis_tag(input, quote).or_else(|| {
+        let (raw, rest) = input.split_at_checked(4)?;
+        let tag: [u8; 4] = raw.as_bytes().try_into().ok()?;
+        if tag.contains(&b'\\')
+            && !raw.contains(quote)
+            && raw.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+        {
+            Some((tag, rest.strip_prefix(quote)?))
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_css_axis_tag(input: &str, quote: char) -> Option<([u8; 4], &str)> {
+    let mut chars = input.chars();
+    let mut tag = [0; 4];
+    for byte in &mut tag {
+        let mut ch = chars.next()?;
+        if ch == quote {
+            return None;
+        }
+        if ch == '\\' {
+            let rest = chars.as_str();
+            let digits = rest
+                .bytes()
+                .take(6)
+                .take_while(u8::is_ascii_hexdigit)
+                .count();
+            if digits == 0 {
+                ch = chars.next()?;
+            } else {
+                ch = char::from(u8::from_str_radix(&rest[..digits], 16).ok()?);
+                let rest = &rest[digits..];
+                chars = rest
+                    .strip_prefix("\r\n")
+                    .or_else(|| rest.strip_prefix([' ', '\n', '\r', '\t', '\x0c']))
+                    .unwrap_or(rest)
+                    .chars();
+            }
+        }
+        if !(' '..='~').contains(&ch) {
+            return None;
+        }
+        *byte = ch as u8;
+    }
+    Some((tag, chars.as_str().strip_prefix(quote)?))
 }
 
 // TODO: properly resolve narrower/wider
