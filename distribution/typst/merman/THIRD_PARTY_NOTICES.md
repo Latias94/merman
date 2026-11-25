@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-sankey`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-ego-tree`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -81,8 +81,20 @@ The Pie SVG renderer translates D3 path rounding and arc serialization, includin
 - Source path: `src/path.js`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render/src/svg/parity/pie/render.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/util.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-path/LICENSE`
+
+### d3-sankey
+
+The Sankey layout translates D3's link alignment, relaxation, and collision resolution in Rust.
+
+- Version: `0.12.3`
+- Source: https://github.com/d3/d3-sankey.git @ `bb7233ea0004669878d922e55fe83084ef3cb555`
+- Source path: `src/sankey.js`
+- Relationship: `modified`, `translated`
+- License: `BSD-3-Clause`
+- Local evidence: `crates/merman-render-charts/src/sankey/layout.rs`
+- Legal file: `THIRD_PARTY_LICENSES/d3-sankey/LICENSE`
 
 ### d3-shape
 
@@ -93,7 +105,7 @@ The SVG parity layer translates D3 curve algorithms, including basis, natural, s
 - Source path: `src/curve`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render/src/svg/parity/curve.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/curve.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-shape/LICENSE`
 
 ### Dagre
@@ -215,6 +227,18 @@ The roughr fork aligns its randomization and drawing-operation semantics with Ro
 - License: `MIT`
 - Local evidence: `crates/roughr`
 - Legal file: `THIRD_PARTY_LICENSES/roughjs/LICENSE`
+
+### ego-tree code in roxmltree
+
+Both roxmltree releases identify their tree structure as derived from ego-tree under ISC. This notice supplements the roxmltree crate licenses listed in the Rust dependency report.
+
+- Version: `roxmltree 0.20.0 and 0.21.2`
+- Source: https://github.com/RazrFalcon/roxmltree @ `b04f75f6a0d17c6248de3eb1b1013bf1bbac44ae`
+- Source path: `src/lib.rs`
+- Relationship: `linked`
+- License: `ISC`
+- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ### sanitize-url
 

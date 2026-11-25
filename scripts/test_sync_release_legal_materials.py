@@ -29,6 +29,22 @@ GENERATOR_SPEC.loader.exec_module(generator)
 
 
 class ReleaseLegalMaterialTests(unittest.TestCase):
+    def test_sdk_scopes_include_linked_and_translated_attribution(self) -> None:
+        root = MODULE_PATH.resolve().parents[1]
+        contract = sync.load_component_contract(root)
+        for prefix in ("sdk", "sdk-native"):
+            for flavor in ("standard", "math", "full"):
+                scope_id = f"{prefix}-{flavor}"
+                with self.subTest(scope=scope_id):
+                    _, components = sync.resolve_artifact_components(contract, scope_id)
+                    license_paths = {
+                        entry["path"]
+                        for component in components
+                        for entry in component["license_files"]
+                    }
+                    self.assertIn("THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC", license_paths)
+                    self.assertIn("THIRD_PARTY_LICENSES/d3-sankey/LICENSE", license_paths)
+
     def test_native_report_sources_match_generator_outputs(self) -> None:
         generated_reports = {
             spec.output.parents[1].as_posix(): spec.output

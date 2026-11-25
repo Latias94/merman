@@ -104,6 +104,7 @@
         "cytoscape-cose-bilkent",
         "cytoscape-fcose",
         "d3-path",
+        "d3-sankey",
         "d3-shape",
         "dagre",
         "dompurify",
@@ -115,6 +116,7 @@
         "non-layered-tidy-tree-layout",
         "rough-rs",
         "roughjs",
+        "roxmltree-ego-tree",
         "sanitize-url",
         "unicode-linebreak",
         "venn-js",
@@ -137,7 +139,7 @@
       "id": "raster-export",
       "description": "Raster output using the Merman resvg and usvg forks.",
       "extends": [],
-      "components": ["resvg", "resvg-iir-blur", "usvg"]
+      "components": ["resvg", "resvg-iir-blur", "roxmltree-ego-tree", "usvg"]
     },
     {
       "id": "pdf-export",
@@ -205,6 +207,7 @@
       "extends": [],
       "components": [
         "d3-path",
+        "d3-sankey",
         "d3-shape",
         "dompurify",
         "elkjs",
@@ -400,7 +403,7 @@
         "path": "src/path.js"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/svg/parity/pie/render.rs"],
+      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/util.rs"],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -423,6 +426,39 @@
       "notice": "The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs."
     },
     {
+      "id": "d3-sankey",
+      "name": "d3-sankey",
+      "version": "0.12.3",
+      "source": {
+        "repository": "https://github.com/d3/d3-sankey.git",
+        "ref": "v0.12.3",
+        "commit": "bb7233ea0004669878d922e55fe83084ef3cb555",
+        "path": "src/sankey.js"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render-charts/src/sankey/layout.rs"],
+      "license_expression": "BSD-3-Clause",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-sankey/LICENSE",
+          "sha256": "2bf785e778d67a4f5266cffcd4f2cc5bb98cde73791666e7efeb8002ba32dfa5",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-sankey/bb7233ea0004669878d922e55fe83084ef3cb555/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/d3-sankey",
+          "version": "0.12.3",
+          "integrity": "sha512-nQhsBRmM19Ax5xEIPLMY9ZmJ/cDvd1BG3UVvt5h3WRxKg5zGRbvnteTyWAbzeSvlh3tW7ZEmq4VwR5mB3tutmQ=="
+        }
+      ],
+      "notice": "The Sankey layout translates D3's link alignment, relaxation, and collision resolution in Rust."
+    },
+    {
       "id": "d3-shape",
       "name": "d3-shape",
       "version": "3.2.0",
@@ -433,7 +469,7 @@
         "path": "src/curve"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/svg/parity/curve.rs"],
+      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/curve.rs"],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -1630,6 +1666,34 @@
         }
       ],
       "notice": "Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes follow the admitted ZenUML Core 3.50.1 source baseline."
+    },
+    {
+      "id": "roxmltree-ego-tree",
+      "name": "ego-tree code in roxmltree",
+      "version": "roxmltree 0.20.0 and 0.21.2",
+      "source": {
+        "repository": "https://github.com/RazrFalcon/roxmltree",
+        "ref": "crates.io:roxmltree@0.21.2",
+        "commit": "b04f75f6a0d17c6248de3eb1b1013bf1bbac44ae",
+        "path": "src/lib.rs"
+      },
+      "relationships": ["linked"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "vendor/usvg/Cargo.toml"],
+      "license_expression": "ISC",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC",
+          "sha256": "c6a4ae2a0565d17ac7fccae808275596fc5959ffdf507107d001bc4669189e45",
+          "source_url": "https://raw.githubusercontent.com/causal-agent/ego-tree/v0.6.3/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "cargo", "path": "Cargo.lock", "package": "roxmltree", "version": "0.20.0", "checksum": "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "roxmltree", "version": "0.21.2", "checksum": "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"}
+      ],
+      "notice": "Both roxmltree releases identify their tree structure as derived from ego-tree under ISC. This notice supplements the roxmltree crate licenses listed in the Rust dependency report."
     },
     {
       "id": "usvg",

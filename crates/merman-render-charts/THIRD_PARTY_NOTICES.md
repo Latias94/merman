@@ -13,6 +13,16 @@ The Pie SVG renderer translates D3 path rounding and arc serialization, includin
 - License: `ISC`
 - Legal file: `THIRD_PARTY_LICENSES/d3-path/LICENSE`
 
+## d3-sankey
+
+The Sankey layout translates D3's link alignment, relaxation, and collision resolution in Rust.
+
+- Version: `0.12.3`
+- Source: https://github.com/d3/d3-sankey.git @ `bb7233ea0004669878d922e55fe83084ef3cb555`
+- Relationship: `modified`, `translated`
+- License: `BSD-3-Clause`
+- Legal file: `THIRD_PARTY_LICENSES/d3-sankey/LICENSE`
+
 ## d3-shape
 
 The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants. The current reference graph uses d3-shape 3.2.1, whose curve source is unchanged from this translation baseline.
