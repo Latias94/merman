@@ -23,6 +23,7 @@ diagram-venn = [
     "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
     "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
 ]
+diagram-wardley = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley"]
 diagram-xychart = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",

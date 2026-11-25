@@ -1152,7 +1152,6 @@ dependencies = [
  "imagesize 0.14.0",
  "indexmap",
  "kurbo",
- "libm",
  "manatee",
  "memchr",
  "merman-layout-elk",
@@ -1207,6 +1206,7 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "dugong",
+ "kurbo",
  "manatee",
  "memchr",
  "merman-layout-elk",
@@ -1229,8 +1229,10 @@ dependencies = [
 name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
+ "dugong",
  "kurbo",
  "merman-render-core",
+ "serde_json",
 ]
 
 [[package]]

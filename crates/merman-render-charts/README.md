@@ -18,6 +18,9 @@ The `diagram-treemap` feature provides hierarchy construction and Treemap layout
 The `diagram-venn` feature provides the Venn solver and typed layout. `merman-render` binds the
 theme and supplies the operation's work meter and SVG writer.
 
+The `diagram-wardley` feature provides typed layout, geometry projection, and annotation box
+sizing. `merman-render` resolves the theme, measures annotation labels, and writes the SVG.
+
 The `diagram-xychart` feature provides typed XY Chart layout, plot geometry, and bar label
 placement. `merman-render` supplies text measurement and writes the SVG.
 

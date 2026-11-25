@@ -32,9 +32,10 @@ Use `merman_model::families::<family>` as the canonical family namespace. Core r
 
 `merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
 line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
-and declaration terminals. Core retains frontmatter and directive
-interpretation, `PreprocessedSource`, and the projection of parser diagnostics and editor facts
-back to the original source.
+and declaration terminals. Core's preprocessing orchestrator combines the frontmatter and
+directive modules, which own their configuration admission and source evidence. Core also owns
+`PreprocessedSource` and the projection of parser diagnostics and editor facts back to the
+original source.
 
 Move pure value/model operations with the types. Keep source sanitization, detector effects,
 preprocessing orchestration, source errors, and engine initialization in Core. Replace
@@ -54,7 +55,9 @@ Core and Render use the same markup implementation. This avoids putting expensiv
 the geometry that turns a solved route into an SVG path, including marker setback, bounds, and
 obstacle clearance. Diagram families bind semantic data and project it into the layout solver.
 The shared layout adapters connect each solver's work and interruption hooks to the same
-operation meter. Shoal and the path builder exchange the same route point types.
+operation meter. Render Core projects shared measured graphs into Shoal and maps solved geometry
+back into the route point types used by the path builder. The renderer selects the operation's
+placement policy and owns layout dispatch.
 
 Render Core also owns shared font stacks, label tokenization and line breaking, SVG XML structure
 admission, and Iconify pack admission and lookup. `merman-render` selects the text measurement
@@ -69,13 +72,16 @@ diagnostics, and editor recovery.
 
 `merman-render-flow` owns Flowchart, Swimlane, and Agentflow shape geometry. It resolves shape
 aliases and image and icon dimensions, and supplies organic outlines and BPMN connector
-intersections. `merman-render` owns traversal, work accounting, asset policy, and SVG emission.
+intersections. Its Dagre adapter owns compound graph assembly, cluster anchor selection and
+extraction, and the associated work accounting. `merman-render` owns diagram traversal, text
+measurement, asset policy, layout output projection, and SVG emission.
 
 ### Structured diagrams
 
-`merman-core-structured` owns Info syntax, Packet field scanning and bounded row expansion, and
-the Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares the source and
-maps each parser's model, diagnostics, and optional syntax spans into the public parse result.
+`merman-core-structured` owns Info and Ishikawa syntax, Packet field scanning and bounded row
+expansion, and the Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares
+the source, builds Ishikawa's semantic tree from the syntax records, and maps each parser's model,
+diagnostics, and optional syntax spans into the public parse result.
 
 `merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad. It
 consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
@@ -110,8 +116,9 @@ operation's output policy. For XY Chart, the chart crate owns typed layout, plot
 bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
 supplies text metrics and emits the SVG for both families.
 The chart crate owns Quadrant Chart geometry and paint binding, Radar layout and its point and
-radius codecs, Treemap hierarchy layout, and Venn layout and its solver. `merman-render` supplies
-theme precedence, the operation work meter, and SVG emission for these families.
+radius codecs, Treemap hierarchy layout, Venn layout and its solver, and Wardley layout and
+annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and SVG
+emission for these families.
 
 ### Frozen presentation is distinct from engine initialization
 

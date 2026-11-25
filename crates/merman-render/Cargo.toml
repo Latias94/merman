@@ -91,7 +91,7 @@ diagram-timeline = ["merman-model/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap", "dep:merman-render-charts", "merman-render-charts/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn", "dep:merman-render-charts", "merman-render-charts/diagram-venn"]
-diagram-wardley = ["merman-model/diagram-wardley"]
+diagram-wardley = ["merman-model/diagram-wardley", "dep:merman-render-charts", "merman-render-charts/diagram-wardley"]
 diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "cssparser/fast_match_color", "dep:pulldown-cmark"]
 default = []
@@ -102,9 +102,9 @@ system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchmark-stages"]
 layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape"]
-layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre"]
+layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre", "merman-render-flow?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
-layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal", "merman-render-graph?/layout-shoal"]
+layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-graph?/layout-shoal"]
 math = [
   "dep:ratex-font",
   "dep:ratex-layout",
@@ -118,7 +118,7 @@ math = [
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["icon-registry", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }
@@ -131,7 +131,6 @@ dugong = { workspace = true, optional = true }
 euclid.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 kurbo.workspace = true
-libm.workspace = true
 manatee = { workspace = true, optional = true }
 memchr.workspace = true
 merman-layout-elk = { workspace = true, optional = true }

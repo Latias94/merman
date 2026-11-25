@@ -2695,7 +2695,6 @@ dependencies = [
  "imagesize 0.14.0",
  "indexmap",
  "kurbo 0.13.1",
- "libm",
  "manatee",
  "memchr",
  "merman-core",
@@ -2779,8 +2778,10 @@ dependencies = [
 name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
+ "dugong",
  "kurbo 0.13.1",
  "merman-render-core",
+ "serde_json",
 ]
 
 [[package]]

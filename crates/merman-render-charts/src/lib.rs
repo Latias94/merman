@@ -26,6 +26,10 @@ pub mod treemap;
 #[doc(hidden)]
 pub mod venn;
 
+#[cfg(feature = "diagram-wardley")]
+#[doc(hidden)]
+pub mod wardley;
+
 #[cfg(feature = "diagram-xychart")]
 #[doc(hidden)]
 pub mod xychart;

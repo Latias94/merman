@@ -15,6 +15,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-info = ["dep:merman-core-preprocess"]
+diagram-ishikawa = []
 diagram-packet = ["merman-model/diagram-packet"]
 diagram-railroad = ["merman-model/diagram-railroad"]
 editor-facts = []

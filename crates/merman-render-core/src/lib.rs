@@ -9,6 +9,9 @@ pub mod config;
 #[doc(hidden)]
 pub mod entities;
 mod geometry;
+#[cfg(feature = "graph-layout")]
+#[doc(hidden)]
+pub mod graph_layout;
 #[cfg(feature = "icon-registry")]
 #[doc(hidden)]
 pub mod icon_registry;

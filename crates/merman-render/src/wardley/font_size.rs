@@ -1,7 +1,8 @@
 use merman_model::presentation::PresentationConfig;
+use merman_render_charts::wardley::WardleyLayoutFontSizes;
 use serde_json::Value;
 
-use super::{WardleyDiagramLayout, WardleyTextRole};
+use super::WardleyTextRole;
 
 /// The four configurable SVG font-size expressions in the pinned Wardley renderer.
 #[derive(Debug)]
@@ -141,47 +142,13 @@ impl WardleyFontSizes {
         }
     }
 
-    pub(super) fn apply_known_sizes(&self, layout: &mut WardleyDiagramLayout) {
-        if let Some(size) = self.title.used_px
-            && let Some(title) = &mut layout.title
-        {
-            title.font_size = size;
-        }
-        if let Some(size) = self.axis.used_px {
-            layout.axes.x_label.font_size = size;
-            layout.axes.y_label.font_size = size;
-        }
-        if let Some(size) = self.stage.used_px {
-            for stage in &mut layout.stages {
-                stage.label.font_size = size;
-            }
-        }
-        if let Some(size) = self.label.used_px {
-            for node in &mut layout.nodes {
-                node.label_layout.font_size = size;
-            }
-            for link in &mut layout.links {
-                if let Some(label) = &mut link.label {
-                    label.font_size = size;
-                }
-            }
-        }
-        if let Some(size) = self.native_base.as_ref().and_then(|font| font.used_px) {
-            for annotation in &mut layout.annotations {
-                for point in &mut annotation.points {
-                    point.label.font_size = size;
-                }
-            }
-            for note in &mut layout.notes {
-                note.text.font_size = size;
-            }
-            for arrow in layout
-                .accelerators
-                .iter_mut()
-                .chain(&mut layout.deaccelerators)
-            {
-                arrow.label.font_size = size;
-            }
+    pub(super) fn layout_sizes(&self) -> WardleyLayoutFontSizes {
+        WardleyLayoutFontSizes {
+            title_px: self.title.used_px,
+            axis_px: self.axis.used_px,
+            stage_px: self.stage.used_px,
+            label_px: self.label.used_px,
+            fixed_px: self.native_base.as_ref().and_then(|font| font.used_px),
         }
     }
 }
