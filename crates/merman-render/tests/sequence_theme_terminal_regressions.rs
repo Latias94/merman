@@ -301,7 +301,7 @@ fn native_sequence_paints_control_frames_and_measures_actor_labels_with_the_them
 }
 
 #[test]
-fn studio_sequence_paints_nested_block_backgrounds_in_source_order() {
+fn studio_sequence_paints_nested_block_backgrounds_over_their_parents() {
     let theme = NativeTheme::new(
         ThemeCompiler::new()
             .compile_preset(BuiltinPreset::Studio, None)
@@ -366,5 +366,29 @@ fn studio_sequence_paints_nested_block_backgrounds_in_source_order() {
         assert!(inner_rect.range().end <= control.range().start);
         assert!(border.range().end <= label.range().start);
         assert!(control.range().end <= first_message.range().start);
+    }
+}
+
+#[test]
+fn earlier_sequence_rect_keeps_priority_over_an_overlapping_sibling() {
+    let source = "sequenceDiagram\nrect rgb(237, 18, 8)\nA->>B: First\nend\nrect rgb(8, 150, 70)\nA->>B: Second\nend\n";
+    for theme in [None, Some(native_fixture())] {
+        let svg = render(
+            source,
+            json!({"sequence":{"boxMargin":2}}),
+            theme.as_ref(),
+            RenderEnvironment::deterministic(),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let [second, first]: [_; 2] = document
+            .root_element()
+            .children()
+            .filter(|node| has_class(*node, "rect"))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        assert_eq!(first.attribute("fill"), Some("rgb(237, 18, 8)"));
+        assert_eq!(second.attribute("fill"), Some("rgb(8, 150, 70)"));
+        assert!(number(first, "y") + number(first, "height") > number(second, "y"));
     }
 }

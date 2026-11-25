@@ -115,29 +115,15 @@ pub(super) fn render_sequence_backgrounds(
     }
 
     if let Some((native, frames)) = options.native_frames {
-        // Frames are ordered by their opening message. Merge them with rect starts so each
-        // background is painted before its descendants, beneath all control lines and labels.
-        let mut frames = frames.iter().peekable();
-        for (index, message) in model.messages.iter().enumerate() {
-            checkpoints.checkpoint_loop(index)?;
-            if let Some(frame) = frames.next_if(|frame| frame.id == message.id) {
-                let _ = write!(
-                    out,
-                    r#"<rect class="merman-sequence-frame-surface" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}"/>"#,
-                    fmt(frame.x),
-                    fmt(frame.y),
-                    fmt(frame.width),
-                    fmt(frame.height),
-                    fmt(native.form.container_radius),
-                    native.container,
-                );
-            } else if let Some(rect) =
-                RectBlock::for_message(message, nodes_by_id, options.rect_default_fill)
-            {
-                rect.write(out);
-            }
-        }
-        return checkpoints.checkpoint();
+        return render_native_backgrounds(
+            out,
+            model,
+            nodes_by_id,
+            options.rect_default_fill,
+            native,
+            frames,
+            checkpoints,
+        );
     }
 
     let mut rects = Vec::with_capacity(model.messages.len());
@@ -167,6 +153,94 @@ pub(super) fn render_sequence_backgrounds(
     for (index, rect) in rects.into_iter().enumerate() {
         checkpoints.checkpoint_loop(index)?;
         rect.write(out);
+    }
+    checkpoints.checkpoint()
+}
+
+enum Background<'a> {
+    Control(&'a SequenceFrameLayout),
+    Rect(RectBlock<'a>),
+}
+
+#[derive(Default)]
+struct BackgroundLayer<'a> {
+    background: Option<Background<'a>>,
+    previous_sibling: Option<usize>,
+    last_child: Option<usize>,
+}
+
+fn render_native_backgrounds(
+    out: &mut impl SvgOutput,
+    model: &SequenceSvgModel,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    rect_default_fill: &str,
+    native: &SequenceNativeStyle,
+    frames: &[SequenceFrameLayout],
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
+    let mut frames = frames.iter().peekable();
+    let mut layers = vec![BackgroundLayer::default()];
+    let mut parents = vec![0];
+    for (index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        let Some(control) = message.control_semantics() else {
+            continue;
+        };
+        match control.role {
+            SequenceControlRole::Start => {
+                let background = if control.kind == SequenceControlKind::Rect {
+                    RectBlock::for_message(message, nodes_by_id, rect_default_fill)
+                        .map(Background::Rect)
+                } else {
+                    frames
+                        .next_if(|frame| frame.id == message.id)
+                        .map(Background::Control)
+                };
+                let parent = *parents.last().expect("background root");
+                let layer = if background.is_some() {
+                    let layer = layers.len();
+                    let previous_sibling = layers[parent].last_child.replace(layer);
+                    layers.push(BackgroundLayer {
+                        background,
+                        previous_sibling,
+                        last_child: None,
+                    });
+                    layer
+                } else {
+                    parent
+                };
+                parents.push(layer);
+            }
+            SequenceControlRole::End if parents.len() > 1 => {
+                parents.pop();
+            }
+            _ => {}
+        }
+    }
+
+    // Paint a parent before its children. Paint siblings from last to first so an earlier
+    // rect keeps priority where two adjacent backgrounds overlap.
+    let mut pending: Vec<_> = layers[0].last_child.into_iter().collect();
+    while let Some(index) = pending.pop() {
+        checkpoints.checkpoint()?;
+        let layer = &mut layers[index];
+        match layer.background.take().expect("visible background layer") {
+            Background::Control(frame) => {
+                let _ = write!(
+                    out,
+                    r#"<rect class="merman-sequence-frame-surface" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}"/>"#,
+                    fmt(frame.x),
+                    fmt(frame.y),
+                    fmt(frame.width),
+                    fmt(frame.height),
+                    fmt(native.form.container_radius),
+                    native.container,
+                );
+            }
+            Background::Rect(rect) => rect.write(out),
+        }
+        pending.extend(layer.previous_sibling);
+        pending.extend(layer.last_child);
     }
     checkpoints.checkpoint()
 }
