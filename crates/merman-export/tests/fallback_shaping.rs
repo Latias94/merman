@@ -31,7 +31,7 @@ fn text(tree: &usvg::Tree) -> &usvg::Text {
     text
 }
 
-fn glyphs(tree: &usvg::Tree) -> Vec<(ID, u16, &str)> {
+fn glyphs(tree: &usvg::Tree) -> Vec<(ID, u32, &str)> {
     text(tree)
         .layouted()
         .iter()

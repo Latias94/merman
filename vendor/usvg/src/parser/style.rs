@@ -61,8 +61,8 @@ pub(crate) fn resolve_fill(
     }
 
     let mut resolution = PaintResolution::new();
-    let paint = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Fill)) {
-        let value: &str = n.attribute(AId::Fill)?;
+    let paint = if node.ancestors().any(|n| n.has_attribute(AId::Fill)) {
+        let value: &str = node.find_attribute(AId::Fill)?;
         convert_paint(
             node,
             value,
@@ -108,21 +108,16 @@ pub(crate) fn resolve_stroke(
     }
 
     let mut resolution = PaintResolution::new();
-    let paint = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Stroke)) {
-        let value: &str = n.attribute(AId::Stroke)?;
-
-        convert_paint(
-            node,
-            value,
-            AId::Stroke,
-            has_bbox,
-            state,
-            &mut resolution,
-            cache,
-        )
-    } else {
-        return None;
-    };
+    let value: &str = node.find_attribute(AId::Stroke)?;
+    let paint = convert_paint(
+        node,
+        value,
+        AId::Stroke,
+        has_bbox,
+        state,
+        &mut resolution,
+        cache,
+    );
 
     if paint.is_none() && !resolution.omissions.any() {
         return None;

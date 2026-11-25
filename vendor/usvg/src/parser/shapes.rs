@@ -25,11 +25,18 @@ pub(crate) fn convert(node: SvgNode, state: &converter::State) -> Option<Arc<Pat
 
 pub(crate) fn convert_path(node: SvgNode) -> Option<Arc<Path>> {
     let value: &str = node.attribute(AId::D)?;
+    convert_path_data(value)
+}
+
+pub(crate) fn convert_path_data(value: &str) -> Option<Arc<Path>> {
     let mut builder = tiny_skia_path::PathBuilder::new();
     for segment in svgtypes::SimplifyingPathParser::from(value) {
         let segment = match segment {
             Ok(v) => v,
-            Err(_) => break,
+            Err(e) => {
+                log::warn!("Error during path parsing: {e}");
+                break;
+            }
         };
 
         match segment {

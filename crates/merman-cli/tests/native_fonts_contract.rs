@@ -4,6 +4,23 @@ mod support;
 
 use support::{repo_root, run_with_stdin};
 
+#[cfg(any(
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
+    all(target_os = "linux", feature = "platform-system-font-query")
+))]
+const RAW_FONT_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><text x="10" y="40" font-family="Cousine">Native font</text></svg>"#;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+const RAW_PATH_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><path d="M10 10H40V40H10Z"/></svg>"#;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+const RAW_NESTED_FONT_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><svg x="5" y="5" width="190" height="70"><text x="10" y="40" font-family="Cousine">Native font</text></svg></svg>"#;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+const RAW_TREF_FONT_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><defs><g id="label">Native font</g></defs><text x="10" y="40" font-family="Cousine"><tref href="#label"/></text></svg>"##;
+
 fn font() -> String {
     repo_root()
         .join("crates/merman-export/tests/fonts/Cousine-Regular.ttf")
@@ -26,6 +43,13 @@ fn measurement_notices(stderr: &str) -> Vec<&str> {
         .lines()
         .filter(|line| line.starts_with("native measurement faces: "))
         .collect()
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn raw_conversion(format: &str, source: &str, options: &[&str]) -> std::process::Output {
+    let mut args = vec!["render", "-", "--input-kind=svg", "--format", format];
+    args.extend_from_slice(options);
+    run_with_stdin(&args, source)
 }
 
 #[test]
@@ -157,9 +181,10 @@ fn cumulative_font_byte_limit_preserves_output_and_gives_a_working_retry() {
 #[test]
 fn invalid_font_byte_limits_fail_before_rendering() {
     for size in ["0", "1.5MiB"] {
-        let invalid = run_with_stdin(
+        let invalid = support::run_before_stdin_close_in_dir(
             &["mmdc", "--input=-", "--output=-", "--font-max-bytes", size],
-            "flowchart LR\nA --> B\n",
+            None,
+            std::time::Duration::from_secs(10),
         );
         let stderr = String::from_utf8_lossy(&invalid.stderr);
         assert_eq!(invalid.status.code(), Some(2), "{size}: {stderr}");
@@ -258,30 +283,59 @@ fn raw_svg_rejects_native_measurement_budget() {
 #[cfg(feature = "png")]
 #[test]
 fn raw_svg_font_byte_limit_applies_to_native_painting() {
-    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="20"><text y="14" font-family="Cousine">ABC</text></svg>"#;
-    let mut args = vec![
-        "render",
-        "-",
-        "--input-kind=svg",
-        "--format=png",
-        "--output=-",
-        "--font-max-bytes=1MiB",
-    ];
-    let missing_context = run_with_stdin(&args, source);
-    let stderr = String::from_utf8_lossy(&missing_context.stderr);
-    assert_eq!(missing_context.status.code(), Some(2), "{stderr}");
-    assert!(missing_context.stdout.is_empty());
-    assert!(stderr.contains("--font-system on"), "{stderr}");
-
+    let temp = tempfile::tempdir().unwrap();
+    let destination = temp.path().join("existing.png");
+    std::fs::write(&destination, b"previous output").unwrap();
     let font = font();
-    args.extend(["--font-file", &font]);
-    let painted = run_with_stdin(&args, source);
+    let convert = |flag| {
+        raw_conversion(
+            "png",
+            RAW_FONT_SVG,
+            &[
+                "--output",
+                destination.to_str().unwrap(),
+                "--font-file",
+                &font,
+                flag,
+            ],
+        )
+    };
+    for (flag, status, detail) in [
+        ("--font-max-bytes=1", 3, "--font-max-bytes "),
+        ("--operation-timeout-ms=0", 1, "deadline_exceeded"),
+    ] {
+        let failed = convert(flag);
+        let stderr = String::from_utf8_lossy(&failed.stderr);
+        assert_eq!(failed.status.code(), Some(status), "{stderr}");
+        assert!(failed.stdout.is_empty());
+        assert!(stderr.contains(detail), "{stderr}");
+        assert_eq!(std::fs::read(&destination).unwrap(), b"previous output");
+    }
+    let painted = convert("--font-max-bytes=1MiB");
     assert!(
         painted.status.success(),
         "{}",
         String::from_utf8_lossy(&painted.stderr)
     );
-    assert!(painted.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(
+        std::fs::read(&destination)
+            .unwrap()
+            .starts_with(b"\x89PNG\r\n\x1a\n")
+    );
+
+    let path_only = raw_conversion("png", RAW_PATH_SVG, &["--font-max-bytes=1"]);
+    assert!(path_only.status.success(), "{path_only:?}");
+    assert!(path_only.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+    let explicit_path = raw_conversion(
+        "png",
+        RAW_PATH_SVG,
+        &["--font-file", &font, "--font-max-bytes=1"],
+    );
+    let stderr = String::from_utf8_lossy(&explicit_path.stderr);
+    assert_eq!(explicit_path.status.code(), Some(3), "{stderr}");
+    assert!(explicit_path.stdout.is_empty());
+    assert!(stderr.contains("--font-max-bytes "), "{stderr}");
 }
 
 #[cfg(feature = "markdown")]
@@ -369,6 +423,7 @@ fn title_overflow(svg: &str, text: &str) -> f64 {
     let ink = text
         .flattened()
         .bounding_box()
+        .expect("rendered title ink bounds")
         .transform(text.abs_transform())
         .unwrap();
     f64::from(
@@ -1308,7 +1363,7 @@ mod large_font_inventory {
         } else {
             "flowchart LR\nA[Draft] --> B[Review]\n"
         };
-        let render = |file: &str, extra: &[&str]| {
+        let command_for_catalog = || {
             let mut command = assert_cmd::Command::new(&binary);
             if cfg!(windows) {
                 // DirectWrite queries the system catalog independently of the scan roots.
@@ -1325,6 +1380,9 @@ mod large_font_inventory {
                     .env("FONTCONFIG_FILE", &fontconfig);
             }
             command
+        };
+        let render = |file: &str, extra: &[&str]| {
+            command_for_catalog()
                 // mmdc suppresses export warnings when the destination is stdout.
                 .args(["-i", "-", "-o"])
                 .arg(temp.path().join(file))
@@ -1382,15 +1440,66 @@ mod large_font_inventory {
                 "the missing Han glyph must affect the PNG"
             );
         }
-        if cfg!(any(windows, feature = "platform-system-font-default")) {
+        let platform_default = cfg!(any(windows, feature = "platform-system-font-default"));
+        if platform_default {
             let default = render_complete_png("default.png", &[]);
             assert_eq!(platform, default);
+        }
+
+        let raw = |source: &str, extra: &[&str]| {
+            command_for_catalog()
+                .args(["render", "-", "--input-kind=svg", "--format=png"])
+                .args(extra)
+                .write_stdin(source)
+                .output()
+                .unwrap()
+        };
+        let paths = raw(super::RAW_PATH_SVG, &["--font-system=bounded"]);
+        assert!(paths.status.success(), "{paths:?}");
+        assert!(paths.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let automatic_paths = raw(super::RAW_PATH_SVG, &[]);
+        assert!(automatic_paths.status.success(), "{automatic_paths:?}");
+        assert_eq!(automatic_paths.stdout, paths.stdout);
+
+        if cfg!(target_os = "linux") {
+            let bounded = raw(super::RAW_FONT_SVG, &["--font-system=bounded"]);
+            super::platform_fonts::assert_error(
+                &bounded,
+                "raw SVG with bounded discovery",
+                "native font limit system-cmap-bytes exceeded",
+            );
+            let platform = raw(super::RAW_FONT_SVG, &["--font-system=platform"]);
+            assert!(platform.status.success(), "{platform:?}");
+            let explicit = raw(super::RAW_FONT_SVG, &["--font-file", &super::font()]);
+            assert!(explicit.status.success(), "{explicit:?}");
+            assert_eq!(platform.stdout, explicit.stdout);
+
+            let budget = raw(super::RAW_FONT_SVG, &["--font-max-bytes=1"]);
+            assert!(!budget.status.success(), "{budget:?}");
+            assert!(budget.stdout.is_empty());
+            let stderr = String::from_utf8_lossy(&budget.stderr);
+            if platform_default {
+                let automatic = raw(super::RAW_FONT_SVG, &[]);
+                assert!(automatic.status.success(), "{automatic:?}");
+                assert_eq!(automatic.stdout, explicit.stdout);
+                assert!(stderr.contains("--font-max-bytes "), "{stderr}");
+            } else {
+                super::platform_fonts::assert_error(
+                    &raw(super::RAW_FONT_SVG, &[]),
+                    "raw SVG with automatic bounded discovery",
+                    "native font limit system-cmap-bytes exceeded",
+                );
+                assert!(
+                    stderr.contains("native font limit system-cmap-bytes exceeded"),
+                    "{stderr}"
+                );
+            }
         }
     }
 }
 
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
-fn check_fontconfig_fallback(render_option: &str) {
+fn check_fontconfig_fallback(render_option: &str, raw_svg: bool) {
     let temp = tempfile::tempdir().unwrap();
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
@@ -1407,8 +1516,16 @@ fn check_fontconfig_fallback(render_option: &str) {
     let fonts = temp.path().join("fonts");
     std::fs::create_dir(&fonts).unwrap();
     std::fs::copy(font(), fonts.join("Cousine-Regular.ttf")).unwrap();
-    let input = temp.path().join("input.mmd");
-    std::fs::write(&input, "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Empty font policy]\n").unwrap();
+    let (filename, source) = if raw_svg {
+        ("input.svg", RAW_FONT_SVG)
+    } else {
+        (
+            "input.mmd",
+            "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Empty font policy]\n",
+        )
+    };
+    let input = temp.path().join(filename);
+    std::fs::write(&input, source).unwrap();
     // Give only the child process an unloadable Fontconfig, keeping its other library paths.
     std::fs::write(
         temp.path().join("libfontconfig.so.1"),
@@ -1422,11 +1539,13 @@ fn check_fontconfig_fallback(render_option: &str) {
     let unavailable_path = std::env::join_paths(library_dirs).unwrap();
     let render = |mode: Option<&str>, library_path: Option<&std::ffi::OsStr>| {
         let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
-        command.arg("render").arg(&input).args([
-            "--output=-",
-            "--svg-id=fontconfig-fallback",
-            render_option,
-        ]);
+        command
+            .arg("render")
+            .arg(&input)
+            .args(["--output=-", render_option]);
+        if !raw_svg {
+            command.arg("--svg-id=fontconfig-fallback");
+        }
         if let Some(mode) = mode {
             command.args(["--font-system", mode]);
         }
@@ -1446,8 +1565,9 @@ fn check_fontconfig_fallback(render_option: &str) {
     let bounded_stderr = String::from_utf8_lossy(&bounded.stderr);
     assert!(bounded.status.success(), "{bounded_stderr}");
     assert!(!bounded.stdout.is_empty());
-    assert!(
-        !measurement_notices(&bounded_stderr).is_empty(),
+    assert_eq!(
+        measurement_notices(&bounded_stderr).is_empty(),
+        raw_svg,
         "{bounded_stderr}"
     );
     for (library_path, available) in [
@@ -1489,7 +1609,7 @@ fn fontconfig_availability_controls_automatic_fallback() {
     } else {
         "--font-measurement=native"
     };
-    check_fontconfig_fallback(option);
+    check_fontconfig_fallback(option, false);
 }
 
 #[cfg(all(
@@ -1499,7 +1619,77 @@ fn fontconfig_availability_controls_automatic_fallback() {
 ))]
 #[test]
 fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
-    check_fontconfig_fallback("--font-measurement=native");
+    check_fontconfig_fallback("--font-measurement=native", false);
+}
+
+#[cfg(all(
+    target_os = "linux",
+    feature = "platform-system-font-query",
+    feature = "png"
+))]
+#[test]
+fn fontconfig_availability_controls_raw_svg_automatic_fallback() {
+    check_fontconfig_fallback("--format=png", true);
+}
+
+#[cfg(all(
+    target_os = "linux",
+    feature = "platform-system-font-query",
+    feature = "png"
+))]
+#[test]
+fn raw_svg_platform_font_selection_uses_inherited_and_overridden_language() {
+    if platform_fonts::context_with_cousine().is_none() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let fonts = root.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    let config = root.path().join("fonts.conf");
+    std::fs::write(
+        &config,
+        r#"<fontconfig>
+          <dir prefix="xdg">fonts</dir><cachedir prefix="xdg">cache</cachedir>
+          <alias binding="strong"><family>sans-serif</family><prefer><family>Cousine</family></prefer></alias>
+          <match target="pattern"><test name="lang" compare="contains"><string>ja</string></test>
+          <edit name="family" mode="prepend_first" binding="strong"><string>Noto Sans</string></edit></match>
+        </fontconfig>"#,
+    )
+    .unwrap();
+    let latin = font();
+    let noto = repo_root().join("crates/merman-export/tests/fonts/NotoSans-Latin-subset.ttf");
+    std::fs::copy(&latin, fonts.join("Cousine-Regular.ttf")).unwrap();
+    std::fs::copy(&noto, fonts.join("NotoSans-Latin-subset.ttf")).unwrap();
+
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="180" height="80" xml:lang="en"><text x="10" y="40" font-size="24" font-family="sans-serif">AW<tspan x="90" xml:lang="ja">AW</tspan></text></svg>"#;
+    let platform = assert_cmd::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args([
+            "render",
+            "-",
+            "--input-kind=svg",
+            "--format=png",
+            "--font-system=platform",
+        ])
+        .env("FONTCONFIG_FILE", &config)
+        .env("XDG_DATA_HOME", root.path())
+        .env("XDG_DATA_DIRS", root.path())
+        .env("XDG_CACHE_HOME", root.path())
+        .env("FC_LANG", "en")
+        .write_stdin(source)
+        .output()
+        .unwrap();
+    let explicit_source = source.replace("sans-serif", "Cousine").replace(
+        r#"xml:lang="ja""#,
+        r#"xml:lang="ja" font-family="Noto Sans""#,
+    );
+    let explicit = raw_conversion(
+        "png",
+        &explicit_source,
+        &["--font-file", &latin, "--font-file", noto.to_str().unwrap()],
+    );
+    assert!(platform.status.success(), "{platform:?}");
+    assert!(explicit.status.success(), "{explicit:?}");
+    assert_eq!(platform.stdout, explicit.stdout);
 }
 
 #[cfg(all(
@@ -1630,7 +1820,7 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     assert!(replaced.stdout.is_empty());
     let diagnostic = String::from_utf8_lossy(&replaced.stderr);
     assert!(
-        diagnostic.contains("font properties changed after platform lookup"),
+        diagnostic.contains("font identity changed after platform lookup"),
         "{diagnostic}"
     );
 }
@@ -1689,6 +1879,14 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
         })
     };
     assert_eq!(native["encoded_output_defaults"], expected_encoded);
+    assert_eq!(
+        native["legacy_export_paths"],
+        if cfg!(feature = "system-fonts") {
+            "deterministic-mermaid-uses-output-environment-contract"
+        } else {
+            "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+        }
+    );
     if cfg!(feature = "platform-system-font-query") {
         assert_eq!(
             native["platform_system_query"],
@@ -2030,60 +2228,233 @@ fn native_mermaid_binary_exports_paint_with_the_font_used_for_layout() {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
 fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
-    let input = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><text x="10" y="40" font-family="Cousine">Native font</text></svg>"#;
     let font = font();
-    let mut formats = Vec::new();
-    #[cfg(feature = "png")]
-    formats.push(("png", b"\x89PNG\r\n\x1a\n".as_slice()));
-    #[cfg(feature = "jpeg")]
-    formats.push(("jpeg", b"\xff\xd8".as_slice()));
-    #[cfg(feature = "pdf")]
-    formats.push(("pdf", b"%PDF".as_slice()));
+    let blank_svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"/>"#;
+    let formats = [
+        #[cfg(feature = "png")]
+        ("png", b"\x89PNG\r\n\x1a\n".as_slice()),
+        #[cfg(feature = "jpeg")]
+        ("jpeg", b"\xff\xd8".as_slice()),
+        #[cfg(feature = "pdf")]
+        ("pdf", b"%PDF".as_slice()),
+    ];
     for (format, magic) in formats {
-        let output = run_with_stdin(
-            &[
-                "render",
-                "--input-kind",
-                "svg",
-                "--format",
-                format,
-                "--font-file",
-                &font,
-            ],
-            input,
+        let paths = raw_conversion(format, RAW_PATH_SVG, &["--font-system=off"]);
+        assert!(paths.status.success(), "{format}: {paths:?}");
+        assert!(paths.stdout.starts_with(magic), "{format}");
+        let blank = raw_conversion(format, blank_svg, &["--font-system=off"]);
+        assert!(blank.status.success(), "{format}: {blank:?}");
+        assert!(blank.stdout.starts_with(magic), "{format}");
+        for (target, link) in [
+            (r#"<g id="label"/>"#, r##"<tref href="#label"/>"##),
+            (
+                r#"<rect id="label" width="20" height="20"/>"#,
+                r##"<tref href="#label"/>"##,
+            ),
+            (
+                r#"<g id="label"/>"#,
+                r##"<tref href="#label">Ignored<tspan>Still ignored</tspan></tref>"##,
+            ),
+        ] {
+            let input = RAW_PATH_SVG.replace(
+                "</svg>",
+                &format!("<defs>{target}</defs><text>{link}</text></svg>"),
+            );
+            let output = raw_conversion(format, &input, &["--font-system=off"]);
+            assert!(output.status.success(), "{format}: {output:?}");
+            assert_eq!(output.stdout, paths.stdout, "{format}: {target} {link}");
+        }
+
+        for input in [RAW_FONT_SVG, RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {
+            let no_fonts = raw_conversion(format, input, &["--font-system=off"]);
+            let stderr = String::from_utf8_lossy(&no_fonts.stderr);
+            assert_eq!(no_fonts.status.code(), Some(2), "{format}: {stderr}");
+            assert!(no_fonts.stdout.is_empty());
+            assert!(stderr.contains("--font-system off"), "{format}: {stderr}");
+            assert!(
+                stderr.contains("--font-file or --font-dir"),
+                "{format}: {stderr}"
+            );
+
+            let automatic = raw_conversion(format, input, &["--font-file", &font]);
+            let closed =
+                raw_conversion(format, input, &["--font-file", &font, "--font-system=off"]);
+            for output in [&automatic, &closed] {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                assert!(output.status.success(), "{format}: {stderr}");
+                assert!(output.stdout.starts_with(magic), "{format}");
+                assert!(
+                    stderr.contains("raw SVG uses the selected font context for painting"),
+                    "{format}: {stderr}"
+                );
+                assert!(
+                    !stderr.contains("font resolution is incomplete"),
+                    "{format}: {stderr}"
+                );
+                assert!(
+                    measurement_notices(&stderr).is_empty(),
+                    "{format}: {stderr}"
+                );
+            }
+            assert_eq!(automatic.stdout, closed.stdout, "{format}");
+            assert_ne!(closed.stdout, blank.stdout, "{format}: text must paint");
+            if input == RAW_TREF_FONT_SVG {
+                let direct = raw_conversion(
+                    format,
+                    RAW_FONT_SVG,
+                    &["--font-file", &font, "--font-system=off"],
+                );
+                assert!(direct.status.success(), "{format}: {direct:?}");
+                assert!(
+                    direct.stdout == closed.stdout,
+                    "{format}: href text must paint identically"
+                );
+            }
+        }
+
+        #[cfg(all(
+            windows,
+            any(
+                feature = "platform-system-font-default",
+                feature = "windows-platform-font-default"
+            )
+        ))]
+        {
+            let direct = RAW_FONT_SVG.replace("Cousine", "sans-serif");
+            let direct = raw_conversion(format, &direct, &[]);
+            assert!(direct.status.success(), "{format}: {direct:?}");
+            for input in [RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {
+                let system_svg = input.replace("Cousine", "sans-serif");
+                let default = raw_conversion(format, &system_svg, &[]);
+                let platform = raw_conversion(format, &system_svg, &["--font-system=platform"]);
+                for output in [&default, &platform] {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    assert!(output.status.success(), "{format}: {stderr}");
+                    assert!(output.stdout.starts_with(magic), "{format}");
+                    assert!(
+                        measurement_notices(&stderr).is_empty(),
+                        "{format}: {stderr}"
+                    );
+                }
+                assert_eq!(default.stdout, platform.stdout, "{format}");
+                assert_ne!(default.stdout, blank.stdout, "{format}: text must paint");
+                if input == RAW_TREF_FONT_SVG {
+                    assert!(
+                        default.stdout == direct.stdout,
+                        "{format}: href text must paint identically"
+                    );
+                }
+            }
+        }
+
+        let rejected = raw_conversion(
+            format,
+            RAW_FONT_SVG,
+            &["--font-file", &font, "--font-measurement", "native"],
         );
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(output.stdout.starts_with(magic));
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("raw SVG uses the selected font context for painting"),
-            "{format}: {stderr}"
-        );
-        assert!(
-            measurement_notices(&stderr).is_empty(),
-            "{format}: {stderr}"
-        );
-        let rejected = run_with_stdin(
-            &[
-                "render",
-                "--input-kind",
-                "svg",
-                "--format",
-                format,
-                "--font-file",
-                &font,
-                "--font-measurement",
-                "native",
-            ],
-            input,
-        );
-        assert!(!rejected.status.success());
+        assert_eq!(rejected.status.code(), Some(2));
         assert!(rejected.stdout.is_empty());
     }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_resource_links_use_the_effective_href() {
+    let font = font();
+    let cases = [
+        (
+            "linearGradient",
+            r##"<defs><linearGradient id="current"><stop stop-color="black"/></linearGradient><linearGradient id="paint" HREF/></defs><rect width="30" height="30" fill="url(#paint)"/>"##,
+            &[][..],
+        ),
+        (
+            "feImage",
+            r##"<defs><rect id="current" width="30" height="30"/><filter id="effect"><feImage HREF/></filter></defs><rect width="30" height="30" filter="url(#effect)"/>"##,
+            &[][..],
+        ),
+        (
+            "textPath",
+            r##"<defs><path id="current" d="M10 40 H190"/></defs><text font-family="Cousine"><textPath HREF>Native font</textPath></text>"##,
+            &["--font-file", font.as_str()][..],
+        ),
+    ];
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for (element, template, font_options) in cases {
+        let svg = |href| {
+            let content = template.replace("HREF", href);
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" width="200" height="80">{content}</svg>"#
+            )
+        };
+        let options = [&["--font-system=off"][..], font_options].concat();
+        for format in formats {
+            let baseline = raw_conversion(format, &svg(r##"href="#current""##), &options);
+            assert!(
+                baseline.status.success(),
+                "{element}/{format}: {baseline:?}"
+            );
+            for href in [
+                r##"href="#current" x:href="#old""##,
+                r##"x:href="#old" href="#current""##,
+            ] {
+                let output = raw_conversion(format, &svg(href), &options);
+                assert!(output.status.success(), "{element}/{format}: {output:?}");
+                assert_eq!(output.stdout, baseline.stdout, "{element}/{format}: {href}");
+            }
+        }
+    }
+}
+
+#[cfg(all(
+    windows,
+    feature = "system-fonts",
+    feature = "png",
+    not(any(
+        feature = "platform-system-font-default",
+        feature = "windows-platform-font-default"
+    ))
+))]
+#[test]
+fn raw_svg_default_uses_bounded_system_font_context() {
+    let root = tempfile::tempdir().unwrap();
+    let fonts = root.path().join("Fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    std::fs::copy(font(), fonts.join("Cousine-Regular.ttf")).unwrap();
+
+    let convert = |font_root: &std::path::Path, source: &str, args: &[&str]| {
+        assert_cmd::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+            .args(["render", "-", "--input-kind=svg", "--format=png"])
+            .args(args)
+            .env("WINDIR", font_root)
+            .env("LOCALAPPDATA", font_root)
+            .write_stdin(source)
+            .output()
+            .unwrap()
+    };
+    let bounded = convert(root.path(), RAW_NESTED_FONT_SVG, &["--font-system=on"]);
+    let automatic = convert(root.path(), RAW_NESTED_FONT_SVG, &[]);
+    for output in [&bounded, &automatic] {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{stderr}");
+        assert!(output.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+    assert_eq!(automatic.stdout, bounded.stdout);
+    let empty = root.path().join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    let paths = convert(&empty, RAW_PATH_SVG, &[]);
+    assert!(paths.status.success(), "{paths:?}");
+    assert_ne!(automatic.stdout, paths.stdout);
+    let text = convert(&empty, RAW_NESTED_FONT_SVG, &[]);
+    assert_eq!(text.status.code(), Some(3), "{text:?}");
+    assert!(String::from_utf8_lossy(&text.stderr).contains("no usable font faces"));
+    assert!(text.stdout.is_empty());
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2201,7 +2572,7 @@ fn quiet_missing_glyph_exports_suppress_font_resolution_notices() {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
 fn best_effort_native_quality_residuals_warn_without_disabling_output_and_respect_quiet() {
-    let directional = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
+    let directional = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) skewX(30)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
     let fallback_css = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>tspan{font-size:64px!important}</style><foreignObject x="10" y="10" width="180" height="60"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha <b>Beta</b></p></div></foreignObject></svg>"#;
     let formats = [
         #[cfg(feature = "png")]

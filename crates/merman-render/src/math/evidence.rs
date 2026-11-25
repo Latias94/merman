@@ -256,10 +256,7 @@ impl PreparedMathTerminalReceipt {
                 return Err(format!("duplicate prepared-math SVG id `{identifier}`"));
             }
             if native_svg_element(node, "use")
-                && let Some(target) = node
-                    .attribute(("http://www.w3.org/1999/xlink", "href"))
-                    .or_else(|| node.attribute("href"))
-                    .and_then(|href| svgtypes::IRI::from_str(href).ok().map(|iri| iri.0))
+                && let Some(target) = use_target(node)
             {
                 *references.entry(target).or_default() += 1;
             }
@@ -304,13 +301,9 @@ impl PreparedMathTerminalReceipt {
                         "prepared-math instance must reference a root definition".to_owned()
                     );
                 }
-                let target = node
-                    .attribute(("http://www.w3.org/1999/xlink", "href"))
-                    .or_else(|| node.attribute("href"))
-                    .and_then(|href| svgtypes::IRI::from_str(href).ok().map(|iri| iri.0))
-                    .ok_or_else(|| {
-                        "prepared-math instance requires a local definition".to_owned()
-                    })?;
+                let target = use_target(node).ok_or_else(|| {
+                    "prepared-math instance requires a local definition".to_owned()
+                })?;
                 if references.get(target) != Some(&1) || !used_definitions.insert(target) {
                     return Err(format!(
                         "prepared-math definition `{target}` requires one instance"
@@ -440,6 +433,13 @@ fn native_svg_element(node: crate::xml_dom::Node<'_, '_>, name: &str) -> bool {
             .tag_name()
             .namespace()
             .is_none_or(|uri| uri == "http://www.w3.org/2000/svg")
+}
+
+fn use_target<'a>(node: crate::xml_dom::Node<'a, '_>) -> Option<&'a str> {
+    // Match usvg and the terminal reference plan: SVG 2 href takes precedence over XLink.
+    let href = unqualified_attribute(node, "href")
+        .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))?;
+    svgtypes::IRI::from_str(href).ok().map(|iri| iri.0)
 }
 
 fn unqualified_attribute<'a>(node: crate::xml_dom::Node<'a, '_>, name: &str) -> Option<&'a str> {
@@ -717,7 +717,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_receipt_follows_native_xlink_target_precedence() {
+    fn terminal_receipt_follows_svg_use_target_precedence() {
         let occurrence =
             PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
         let projection = r#"<g><path d="M0 0h1"/></g>"#;
@@ -726,29 +726,26 @@ mod tests {
             "<svg xmlns:xlink=\"http://www.w3.org/1999/xlink\">{}</svg>",
             terminal_occurrence(&occurrence, projection, 0)
         );
-        let redirected = valid.replace(
-            r##"href="#math-0""##,
+        for href in [
             r##"href="#math-0" xlink:href="#missing""##,
-        );
-        assert!(PreparedMathTerminalReceipt::from_terminal_svg(&redirected, &evidence).is_err());
-        let native_target = valid.replace(
-            r##"href="#math-0""##,
-            r##"href="#missing" xlink:href="#math-0""##,
-        );
-        PreparedMathTerminalReceipt::from_terminal_svg(&native_target, &evidence).unwrap();
-        let first_fallback = valid.replace(
-            r##"href="#math-0""##,
+            r##"xlink:href="#missing" href="#math-0""##,
             r##"xml:href="#missing" href="#math-0""##,
-        );
-        assert!(
-            PreparedMathTerminalReceipt::from_terminal_svg(&first_fallback, &evidence).is_err()
-        );
-        for (namespace, name) in [("http://www.w3.org/2000/svg", "s"), ("urn:other", "q")] {
-            let aliased = valid.replace(
-                r##"href="#math-0""##,
-                &format!(r##"xmlns:{name}="{namespace}" {name}:href="#math-0""##),
+            r##"xlink:href="#math-0""##,
+        ] {
+            let svg = valid.replace(r##"href="#math-0""##, href);
+            PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence).unwrap();
+        }
+        for href in [
+            r##"href="#missing" xlink:href="#math-0""##,
+            r##"xml:href="#math-0""##,
+            r##"xmlns:s="http://www.w3.org/2000/svg" s:href="#math-0""##,
+            r##"xmlns:q="urn:other" q:href="#math-0""##,
+        ] {
+            let svg = valid.replace(r##"href="#math-0""##, href);
+            assert!(
+                PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence).is_err(),
+                "{href}"
             );
-            PreparedMathTerminalReceipt::from_terminal_svg(&aliased, &evidence).unwrap();
         }
     }
 
@@ -790,13 +787,18 @@ mod tests {
             .replace("<use ", r#"<g id="carrier"><use "#)
             .replace("/></svg>", "/></g></svg>");
         PreparedMathTerminalReceipt::from_terminal_svg(&carrier, &evidence).unwrap();
-        for href in [r##"href="#carrier""##, r##"xml:href="#carrier""##] {
+        for href in [
+            r##"href="#carrier""##,
+            r##"xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#carrier""##,
+        ] {
             let copied = carrier.replace("</svg>", &format!("<use {href} x=\"20\"/></svg>"));
             assert!(
                 PreparedMathTerminalReceipt::from_terminal_svg(&copied, &evidence).is_err(),
                 "{copied}",
             );
         }
+        let ignored = carrier.replace("</svg>", r##"<use xml:href="#carrier"/></svg>"##);
+        PreparedMathTerminalReceipt::from_terminal_svg(&ignored, &evidence).unwrap();
         let identified = valid.replace("<use ", r#"<use id="instance" "#);
         let copied = identified.replace("</svg>", r##"<use href="#instance"/></svg>"##);
         assert!(PreparedMathTerminalReceipt::from_terminal_svg(&copied, &evidence).is_err());

@@ -1,7 +1,7 @@
 [advisories]
 ignore = [
-  { id = "RUSTSEC-2026-0206", reason = "Pinned usvg 0.47 and the published krilla-svg 0.8.1 dependency closure still resolve rustybuzz 0.20.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and test dependency paths." },
-  { id = "RUSTSEC-2026-0192", reason = "Pinned usvg 0.47 and the published krilla-svg 0.8.1 and ratex 0.1.15 dependency closures still resolve ttf-parser 0.25.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and math dependency paths." },
+  { id = "RUSTSEC-2026-0206", reason = "Native font coverage probes and Merman Krilla still resolve rustybuzz 0.20.1. The Merman usvg runtime now uses HarfRust." },
+  { id = "RUSTSEC-2026-0192", reason = "Native font admission, Merman Krilla, and RaTeX still resolve ttf-parser 0.25.1. The Merman usvg runtime now uses Skrifa." },
 ]
 
 [licenses]

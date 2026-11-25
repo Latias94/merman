@@ -144,10 +144,12 @@ impl From<FontStyle> for fontdb::Style {
 pub struct Font {
     pub(crate) families: Vec<FontFamily>,
     pub(crate) language: Option<String>,
-    pub(crate) style: FontStyle,
-    pub(crate) stretch: FontStretch,
-    pub(crate) weight: u16,
+    pub(crate) style: Option<FontStyle>,
+    pub(crate) stretch: Option<FontStretch>,
+    pub(crate) weight: Option<u16>,
     pub(crate) variations: Vec<FontVariation>,
+    // Authored settings precede axes derived from CSS font properties.
+    pub(crate) explicit_axis_count: usize,
 }
 
 impl Font {
@@ -165,17 +167,22 @@ impl Font {
 
     /// A font style.
     pub fn style(&self) -> FontStyle {
-        self.style
+        self.style.unwrap_or_default()
     }
 
     /// A font stretch.
     pub fn stretch(&self) -> FontStretch {
-        self.stretch
+        self.stretch.unwrap_or_default()
     }
 
     /// A font width.
     pub fn weight(&self) -> u16 {
-        self.weight
+        self.weight.unwrap_or(400)
+    }
+
+    #[cfg(any(feature = "text", feature = "writer"))]
+    pub(crate) fn explicit_variations(&self) -> &[FontVariation] {
+        &self.variations[..self.explicit_axis_count]
     }
 
     /// Font variation settings for variable fonts.
@@ -267,7 +274,7 @@ impl Default for LengthAdjust {
 ///
 /// Controls automatic adjustment of the `opsz` axis in variable fonts
 /// based on font size. Matches CSS `font-optical-sizing`.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum FontOpticalSizing {
     /// Automatically set `opsz` to match font size (browser default).
     Auto,
@@ -341,6 +348,7 @@ pub struct TextSpan {
     pub(crate) stroke: Option<Stroke>,
     pub(crate) paint_order: PaintOrder,
     pub(crate) font: Font,
+    #[cfg(any(feature = "text", feature = "writer"))]
     pub(crate) language: Option<String>,
     pub(crate) font_size: NonZeroPositiveF32,
     pub(crate) small_caps: bool,
@@ -513,7 +521,8 @@ pub struct TextPath {
 impl TextPath {
     /// Element's ID.
     ///
-    /// Taken from the SVG itself.
+    /// Taken from the SVG itself or generated internally in case the path
+    /// has no ID.
     pub fn id(&self) -> &str {
         self.id.get()
     }
@@ -540,6 +549,16 @@ pub enum TextFlow {
     Linear,
     /// A text-on-path layout.
     Path(Arc<TextPath>),
+}
+
+#[cfg(feature = "writer")]
+#[derive(Clone, Debug)]
+pub(crate) struct TextLengthAdjustment {
+    // Offsets into the concatenated chunk text.
+    pub(crate) bytes: std::ops::Range<usize>,
+    pub(crate) length: f32,
+    pub(crate) mode: LengthAdjust,
+    pub(crate) at_text_root: bool,
 }
 
 /// A text chunk.
@@ -607,6 +626,8 @@ pub struct Text {
     pub(crate) rotate: Vec<f32>,
     pub(crate) writing_mode: WritingMode,
     pub(crate) chunks: Vec<TextChunk>,
+    #[cfg(feature = "writer")]
+    pub(crate) length_adjustments: Vec<TextLengthAdjustment>,
     pub(crate) abs_transform: Transform,
     pub(crate) bounding_box: Rect,
     pub(crate) abs_bounding_box: Rect,

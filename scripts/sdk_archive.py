@@ -335,7 +335,10 @@ def _header_version(data, macro):
 
 def _legal_payload(files, repo_root, profile, report_path, descriptor):
     legal = _legal_module()
-    scope_id = profile if profile.startswith("sdk-native-") else "sdk-" + profile.rsplit("-", 1)[1]
+    scope_id = profile
+    # The WASI profiles use the SDK scopes shared by both transports. Native adds its PDF and ASCII components.
+    if profile.startswith("sdk-wasi-"):
+        scope_id = "sdk-" + profile.removeprefix("sdk-wasi-")
     contract = _json(_input(repo_root, "docs/release/THIRD_PARTY_COMPONENTS.json"))
     try:
         scope, components = legal.resolve_artifact_components(contract, scope_id)

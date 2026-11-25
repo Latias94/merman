@@ -1,65 +1,88 @@
 //! Per-family Core Text matching; generic family resolution belongs to the caller.
 
-use std::{collections::HashMap, ptr, sync::Arc};
+use std::{collections::HashMap, ptr};
 
 use objc2_core_foundation::{
     CFArray, CFBoolean, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFString,
     CFStringCompareFlags, CFType,
 };
 use objc2_core_text::{
-    CTFont, CTFontCollection, CTFontDescriptor, CTFontOptions, CTFontSymbolicTraits,
-    CTFontTableOptions, kCTFontCollectionDisallowAutoActivationOption,
-    kCTFontDownloadableAttribute, kCTFontDownloadedAttribute, kCTFontFamilyNameAttribute,
-    kCTFontNameAttribute, kCTFontWeightTrait, kCTFontWidthTrait,
+    CTFont, CTFontCollection, CTFontDescriptor, CTFontSymbolicTraits, CTFontUIFontType,
+    kCTFontCollectionDisallowAutoActivationOption, kCTFontDownloadableAttribute,
+    kCTFontDownloadedAttribute, kCTFontFamilyNameAttribute, kCTFontNameAttribute,
+    kCTFontSymbolicTrait, kCTFontTraitsAttribute, kCTFontWeightTrait, kCTFontWidthTrait,
 };
-use usvg::fontdb::{
-    Database, FaceInfo, Family, ID, Language, Query, Source, Stretch, Style, Weight,
+use usvg::fontdb::{Stretch, Style, Weight};
+
+use super::super::{css_width, ranked_axis_faces, ranked_faces};
+use super::variations::MatchingAxes;
+use super::{
+    LOCAL_FONT_OPTIONS, NAME, NativeFace, NativeFontError, OperationControl, checkpoint,
+    read_table, table_bytes,
 };
 
-use super::{NativeFace, font_covers};
-
-// Core Text already selected one family. The ranking database only needs a shared key.
-const QUERY_FAMILY: &str = "";
+type CssStyle = (Weight, Stretch, Style);
+type NativeStyle = (Option<Weight>, Stretch, Style);
 
 #[derive(Clone, Copy)]
 struct FaceAttributes {
-    table: Option<(Weight, Stretch, Style)>,
-    native: (Option<Weight>, Stretch, Style),
+    table: Option<CssStyle>,
+    native: NativeStyle,
+    axes: MatchingAxes,
 }
 
-/// Matches one named family, keeping the selected native face alive for the caller.
-/// Styles are preferences; a missing family must not select a substitute family.
-pub(super) fn match_family(
+/// Offers the local family in CSS order, stopping when the caller accepts a face.
+pub(super) fn match_family<T>(
     family: &str,
-    weight: Weight,
-    stretch: Stretch,
-    style: Style,
-    character: Option<char>,
-) -> Option<NativeFace> {
+    style: CssStyle,
+    control: Option<&OperationControl>,
+    mut accept: impl FnMut(NativeFace) -> Result<Option<T>, NativeFontError>,
+) -> Result<Option<T>, NativeFontError> {
+    checkpoint(control)?;
+    let descriptors = family_descriptors(family);
+    checkpoint(control)?;
+    let Some(descriptors) = descriptors else {
+        return Ok(None);
+    };
     let mut candidates = Vec::new();
-    for descriptor in family_descriptors(family)?.iter() {
-        let Some(font) = font_from_descriptor(&descriptor) else {
+    for descriptor in descriptors.iter() {
+        checkpoint(control)?;
+        let Some(font) = font_from_descriptor(&descriptor, control)? else {
             continue;
         };
-        if character.is_some_and(|ch| !font_covers(&font, ch)) {
-            continue;
-        }
-        let Some(face) = NativeFace::from_font(font) else {
-            continue;
-        };
-        let native = native_attributes(&face.font);
-        let table = table_attributes(&face.font, native.1, native.2);
-        candidates.push((face, FaceAttributes { table, native }));
+        let native = descriptor_attributes(&descriptor).unwrap_or_else(|| native_attributes(&font));
+        let table = table_attributes(&font, native.1, native.2, control)?;
+        candidates.push((
+            (font, descriptor),
+            FaceAttributes {
+                table,
+                native,
+                axes: MatchingAxes::default(),
+            },
+        ));
     }
-    rank_family(candidates, weight, stretch, style)
+    if candidates.len() > 1 {
+        let (weight, stretch, _) = style;
+        for ((font, _), attributes) in &mut candidates {
+            attributes.axes =
+                MatchingAxes::for_font(font, weight.0.into(), css_width(stretch), control)?;
+        }
+    }
+    rank_family(
+        candidates,
+        style,
+        |(font, descriptor)| match NativeFace::from_font(font, Some(&descriptor), control)? {
+            Some(face) => accept(face),
+            None => Ok(None),
+        },
+    )
 }
 
-fn rank_family<T>(
+fn rank_family<T, R>(
     candidates: Vec<(T, FaceAttributes)>,
-    weight: Weight,
-    stretch: Stretch,
-    style: Style,
-) -> Option<T> {
+    (weight, stretch, style): CssStyle,
+    mut accept: impl FnMut(T) -> Result<Option<R>, NativeFontError>,
+) -> Result<Option<R>, NativeFontError> {
     let mut weight_groups = HashMap::new();
     for (_, attributes) in &candidates {
         if let (Some(attributes), Some(weight)) = (attributes.table, attributes.native.0) {
@@ -68,69 +91,119 @@ fn rank_family<T>(
         }
     }
 
-    let mut database = Database::new();
-    // This database only ranks supported candidates. Its indices refer to retained faces.
-    let source = Source::Binary(Arc::new(Vec::<u8>::new()));
-    for (index, (_, attributes)) in candidates.iter().enumerate() {
-        let (native_weight, native_stretch, native_style) = attributes.native;
-        let css = attributes.table.unwrap_or((
-            native_weight.unwrap_or(Weight::NORMAL),
-            native_stretch,
-            native_style,
-        ));
-        let (mut weight, stretch, style) = css;
-        // Kaiti's Regular, Bold and Black all report OS/2 weight 400. Keep exact
-        // table weights unless Core Text distinguishes faces in the same class.
-        if weight_groups.get(&css).is_some_and(|(_, differs)| *differs) {
-            weight = native_weight.unwrap_or(weight);
+    let has_axes = candidates
+        .iter()
+        .any(|(_, attributes)| attributes.axes.weight.is_some() || attributes.axes.width.is_some());
+    let candidates = candidates
+        .into_iter()
+        .map(|(candidate, attributes)| {
+            let (native_weight, native_stretch, native_style) = attributes.native;
+            let css = attributes.table.unwrap_or((
+                native_weight.unwrap_or(Weight::NORMAL),
+                native_stretch,
+                native_style,
+            ));
+            let (mut weight, stretch, style) = css;
+            // Kaiti's Regular, Bold and Black all report OS/2 weight 400. Keep exact
+            // table weights unless Core Text distinguishes faces in the same class.
+            if weight_groups.get(&css).is_some_and(|(_, differs)| *differs) {
+                weight = native_weight.unwrap_or(weight);
+            }
+            let attainable = (
+                candidate,
+                attributes.axes.weight.unwrap_or(weight.0.into()),
+                attributes.axes.width.unwrap_or_else(|| css_width(stretch)),
+                style,
+            );
+            (attainable, weight, stretch, style)
+        })
+        .collect();
+    let ordered = ranked_faces(candidates, weight, stretch, style);
+    // Prefer the existing exact style (including named instances) on a range tie.
+    let ordered = if has_axes {
+        ranked_axis_faces(ordered, weight.0.into(), css_width(stretch), style)
+    } else {
+        ordered
+            .into_iter()
+            .map(|(candidate, ..)| candidate)
+            .collect()
+    };
+    for candidate in ordered {
+        if let Some(selected) = accept(candidate)? {
+            return Ok(Some(selected));
         }
-        database.push_face_info(FaceInfo {
-            id: ID::dummy(),
-            source: source.clone(),
-            index: u32::try_from(index).ok()?,
-            families: vec![(QUERY_FAMILY.to_owned(), Language::English_UnitedStates)],
-            post_script_name: String::new(),
-            style,
-            weight,
-            stretch,
-            monospaced: false,
-        });
     }
-    let id = database.query(&Query {
-        families: &[Family::Name(QUERY_FAMILY)],
-        weight,
-        stretch,
-        style,
-    })?;
-    let index = usize::try_from(database.face(id)?.index).ok()?;
-    candidates.into_iter().nth(index).map(|(face, _)| face)
+    Ok(None)
 }
 
-/// Core Text can return an instance whose coordinates the snapshot cannot represent.
-/// Keep its position in the cascade by trying supported faces of its actual family.
-pub(super) fn fallback_face(
-    font: CFRetained<CTFont>,
-    character: Option<char>,
-) -> Option<NativeFace> {
-    if character.is_some_and(|ch| !font_covers(&font, ch)) {
+/// A different CSS style may be available in the native choice's public family.
+pub(super) fn fallback_family(font: &CTFont, style: CssStyle, unsupported: bool) -> Option<String> {
+    let (weight, stretch, slant) = native_attributes(font);
+    if !unsupported
+        && weight.is_none_or(|weight| weight == style.0)
+        && (stretch, slant) == (style.1, style.2)
+    {
         return None;
-    }
-    if let Some(face) = NativeFace::from_font(font.clone()) {
-        return Some(face);
     }
     // SAFETY: The retained font owns its family identity independently of the descriptor.
     let family = unsafe { font.family_name() }.to_string();
-    if super::is_last_resort(&family) {
-        return None;
+    (!family.is_empty() && !family.starts_with('.') && !super::is_last_resort(&family))
+        .then_some(family)
+}
+
+pub(super) fn system_ui(
+    (weight, stretch, style): CssStyle,
+    language: Option<&str>,
+    control: Option<&OperationControl>,
+) -> Result<Option<NativeFace>, NativeFontError> {
+    let ui_type = if weight >= Weight::SEMIBOLD {
+        CTFontUIFontType::EmphasizedSystem
+    } else {
+        CTFontUIFontType::System
+    };
+    let language = language.map(CFString::from_str);
+    checkpoint(control)?;
+    // SAFETY: The language string, when provided, is retained for the call.
+    let Some(font) =
+        (unsafe { CTFont::new_ui_font_for_language(ui_type, 0.0, language.as_deref()) })
+    else {
+        return Ok(None);
+    };
+    let mut traits = match stretch {
+        Stretch::UltraCondensed
+        | Stretch::ExtraCondensed
+        | Stretch::Condensed
+        | Stretch::SemiCondensed => CTFontSymbolicTraits::TraitCondensed,
+        Stretch::SemiExpanded
+        | Stretch::Expanded
+        | Stretch::ExtraExpanded
+        | Stretch::UltraExpanded => CTFontSymbolicTraits::TraitExpanded,
+        Stretch::Normal => CTFontSymbolicTraits::empty(),
+    };
+    if style != Style::Normal {
+        traits |= CTFontSymbolicTraits::TraitItalic;
     }
-    let (weight, stretch, style) = native_attributes(&font);
-    match_family(
-        &family,
-        weight.unwrap_or(Weight::NORMAL),
-        stretch,
-        style,
-        character,
-    )
+    let styled = if traits.is_empty() {
+        None
+    } else {
+        checkpoint(control)?;
+        // SAFETY: The font is live and a null matrix preserves its transform. Core
+        // Text looks within this localized UI font's family for the requested traits.
+        unsafe { font.copy_with_symbolic_traits(0.0, ptr::null(), traits, traits) }
+    };
+    for font in styled.into_iter().chain([font]) {
+        let Some(face) = NativeFace::from_font(font, None, control)? else {
+            continue;
+        };
+        let eligible = match control {
+            Some(control) => face.check_eligibility(None, true, control)?,
+            None => face.implicit_eligible(None),
+        };
+        if eligible {
+            return Ok(Some(face));
+        }
+    }
+    Ok(None)
 }
 
 fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescriptor>>> {
@@ -163,7 +236,7 @@ fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescripto
     Some(unsafe { CFRetained::cast_unchecked(descriptors) })
 }
 
-pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFont>> {
+pub(super) fn descriptor_is_available(descriptor: &CTFontDescriptor) -> bool {
     let flag = |key| {
         // SAFETY: The descriptor and attribute key are live.
         unsafe { descriptor.attribute(key) }
@@ -171,28 +244,31 @@ pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRe
             .is_some_and(|value| value.value())
     };
     // SAFETY: These keys are immutable Core Text constants.
-    if unsafe { flag(kCTFontDownloadableAttribute) && !flag(kCTFontDownloadedAttribute) } {
-        return None;
+    unsafe { !flag(kCTFontDownloadableAttribute) || flag(kCTFontDownloadedAttribute) }
+}
+
+pub(super) fn font_from_descriptor(
+    descriptor: &CTFontDescriptor,
+    control: Option<&OperationControl>,
+) -> Result<Option<CFRetained<CTFont>>, NativeFontError> {
+    checkpoint(control)?;
+    if !descriptor_is_available(descriptor) {
+        return Ok(None);
     }
 
     // Compare the normalized descriptor's identity, not the input spelling:
     // Core Text owns case folding and recognition of localized names/aliases.
     // SAFETY: The descriptor is live; this accessor returns a retained CF object.
-    let expected_name = unsafe { descriptor.attribute(kCTFontNameAttribute) }?
-        .downcast::<CFString>()
-        .ok()?;
-    if expected_name.length() == 0 {
-        return None;
-    }
+    let Some(expected_name) = (unsafe { descriptor.attribute(kCTFontNameAttribute) })
+        .and_then(|name| name.downcast::<CFString>().ok())
+        .filter(|name| name.length() > 0)
+    else {
+        return Ok(None);
+    };
     // SAFETY: The matched descriptor is live; zero size and null matrix use its
     // defaults. The returned CTFont is retained independently of the descriptor.
     let font = unsafe {
-        CTFont::with_font_descriptor_and_options(
-            descriptor,
-            0.0,
-            ptr::null(),
-            CTFontOptions::PreventAutoDownload,
-        )
+        CTFont::with_font_descriptor_and_options(descriptor, 0.0, ptr::null(), LOCAL_FONT_OPTIONS)
     };
     // SAFETY: The font is live and the returned name is retained.
     let actual_name = unsafe { font.post_script_name() };
@@ -201,27 +277,42 @@ pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRe
         CFStringCompareFlags::CompareCaseInsensitive,
     ) != CFComparisonResult::CompareEqualTo
     {
-        // Creation can substitute a font if the matched face becomes unavailable.
-        return None;
+        // A variation can change the reported name. Require the descriptor's
+        // name in the physical SFNT to distinguish it from a substituted face.
+        let name = read_table(&font, NAME, control)?;
+        if !name
+            .as_deref()
+            .map(table_bytes)
+            .and_then(ttf_parser::name::Table::parse)
+            .is_some_and(|names| {
+                super::super::post_script_name_matches(names, &expected_name.to_string())
+            })
+        {
+            return Ok(None);
+        }
     }
-    Some(font)
+    Ok(Some(font))
 }
 
 fn table_attributes(
     font: &CTFont,
     native_stretch: Stretch,
     native_style: Style,
-) -> Option<(Weight, Stretch, Style)> {
-    // Only supported default instances reach here, so OS/2 describes the physical face.
-    // SAFETY: The live font returns immutable retained table data.
-    let data = unsafe { font.table(u32::from_be_bytes(*b"OS/2"), CTFontTableOptions::NoOptions) }?;
-    // SAFETY: The retained CFData outlives the borrowed table parser.
-    let table = ttf_parser::os2::Table::parse(unsafe { data.as_bytes_unchecked() })?;
+    control: Option<&OperationControl>,
+) -> Result<Option<CssStyle>, NativeFontError> {
+    let data = read_table(font, u32::from_be_bytes(*b"OS/2"), control)?;
+    let Some(table) = data
+        .as_deref()
+        .map(table_bytes)
+        .and_then(ttf_parser::os2::Table::parse)
+    else {
+        return Ok(None);
+    };
     // Some families mark every face as normal width in OS/2, including the
     // condensed Sukhumvit Set Thin. Preserve an explicit non-normal table width.
     let stretch = match table.width() {
-        Stretch::Normal => native_stretch,
-        stretch => stretch,
+        ttf_parser::Width::Normal => native_stretch,
+        width => stretch_from_width_class(width.to_number()),
     };
     let style = match table.style() {
         // Some legacy fonts report italic only through native/post traits.
@@ -229,21 +320,47 @@ fn table_attributes(
         ttf_parser::Style::Italic => Style::Italic,
         ttf_parser::Style::Oblique => Style::Oblique,
     };
-    Some((Weight(table.weight().to_number()), stretch, style))
+    Ok(Some((Weight(table.weight().to_number()), stretch, style)))
 }
 
-fn native_attributes(font: &CTFont) -> (Option<Weight>, Stretch, Style) {
+fn descriptor_attributes(descriptor: &CTFontDescriptor) -> Option<NativeStyle> {
+    // SAFETY: The descriptor is live and the attribute key is immutable.
+    let traits = unsafe { descriptor.attribute(kCTFontTraitsAttribute) }?
+        .downcast::<CFDictionary>()
+        .ok()?;
+    // SAFETY: A descriptor's traits use CFString keys and CF object values.
+    let traits: CFRetained<CFDictionary<CFString, CFType>> =
+        unsafe { CFRetained::cast_unchecked(traits) };
+    // SAFETY: This is an immutable Core Text key for the symbolic trait bitset.
+    let symbolic = traits
+        .get(unsafe { kCTFontSymbolicTrait })?
+        .downcast::<CFNumber>()
+        .ok()?
+        .as_i64()?;
+    Some(trait_attributes(
+        &traits,
+        CTFontSymbolicTraits::from_bits_retain(symbolic as u32),
+    ))
+}
+
+fn native_attributes(font: &CTFont) -> NativeStyle {
     // SAFETY: The font is retained and these accessors do not mutate it.
-    let native_italic =
-        unsafe { font.symbolic_traits() }.contains(CTFontSymbolicTraits::TraitItalic);
-    let native_style = if native_italic {
+    let symbolic = unsafe { font.symbolic_traits() };
+    // SAFETY: Core Text's immutable traits dictionary has CFString keys and CFType values.
+    let traits: CFRetained<CFDictionary<CFString, CFType>> =
+        unsafe { CFRetained::cast_unchecked(font.traits()) };
+    trait_attributes(&traits, symbolic)
+}
+
+fn trait_attributes(
+    traits: &CFDictionary<CFString, CFType>,
+    symbolic: CTFontSymbolicTraits,
+) -> NativeStyle {
+    let style = if symbolic.contains(CTFontSymbolicTraits::TraitItalic) {
         Style::Italic
     } else {
         Style::Normal
     };
-    // SAFETY: Core Text's immutable traits dictionary has CFString keys and CFType values.
-    let traits: CFRetained<CFDictionary<CFString, CFType>> =
-        unsafe { CFRetained::cast_unchecked(font.traits()) };
     let number = |key| {
         traits
             .get(key)?
@@ -255,7 +372,16 @@ fn native_attributes(font: &CTFont) -> (Option<Weight>, Stretch, Style) {
     // SAFETY: These are immutable Core Text trait keys.
     let (weight, width) = unsafe { (number(kCTFontWeightTrait), number(kCTFontWidthTrait)) };
     // Invert SkTypeface_mac_ct.cpp::SkCTFontCTWidthForCSSWidth's OS/2 class scale.
-    let stretch = match (width.unwrap_or(0.0) * 10.0 + 5.0).round().clamp(1.0, 9.0) as u8 {
+    let width = (width.unwrap_or(0.0) * 10.0 + 5.0).round().clamp(1.0, 9.0) as u16;
+    (
+        weight.map(css_weight),
+        stretch_from_width_class(width),
+        style,
+    )
+}
+
+fn stretch_from_width_class(width: u16) -> Stretch {
+    match width {
         1 => Stretch::UltraCondensed,
         2 => Stretch::ExtraCondensed,
         3 => Stretch::Condensed,
@@ -265,8 +391,7 @@ fn native_attributes(font: &CTFont) -> (Option<Weight>, Stretch, Style) {
         8 => Stretch::ExtraExpanded,
         9 => Stretch::UltraExpanded,
         _ => Stretch::Normal,
-    };
-    (weight.map(css_weight), stretch, native_style)
+    }
 }
 
 fn css_weight(weight: f64) -> Weight {
@@ -291,13 +416,39 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires the macOS system UI font catalog"]
+    fn system_ui_matches_core_text_for_each_requested_language() {
+        for tag in ["en", "zh-Hans", "zh-Hant", "ja", "ko"] {
+            let language = CFString::from_str(tag);
+            // SAFETY: The language is live and zero requests the system UI point size.
+            let font = unsafe {
+                CTFont::new_ui_font_for_language(CTFontUIFontType::System, 0.0, Some(&language))
+            }
+            .unwrap();
+            let expected = NativeFace::from_font(font, None, None)
+                .unwrap()
+                .filter(|face| face.implicit_eligible(None));
+            let actual = system_ui(
+                (Weight::NORMAL, Stretch::Normal, Style::Normal),
+                Some(tag),
+                None,
+            )
+            .unwrap();
+            assert_eq!(actual, expected, "{tag}");
+            if tag == "en" {
+                assert!(actual.unwrap().covers_cluster("A".into()));
+            }
+        }
+    }
+
+    #[test]
     #[ignore = "requires a registered macOS Arial face"]
     fn descriptor_matching_accepts_only_local_font_assets() {
         let face = named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal)
             .expect("registered Arial face");
         // SAFETY: The live font returns its retained descriptor.
         let descriptor = unsafe { face.font.font_descriptor() };
-        assert!(font_from_descriptor(&descriptor).is_some());
+        assert!(font_from_descriptor(&descriptor, None).unwrap().is_some());
         // SAFETY: These keys are immutable Core Text constants.
         let keys = unsafe { [kCTFontDownloadableAttribute, kCTFontDownloadedAttribute] };
         for downloaded in [true, false] {
@@ -308,7 +459,7 @@ mod tests {
             // SAFETY: The descriptor and its new boolean attributes stay live through creation.
             let asset = unsafe { descriptor.copy_with_attributes(attributes.as_opaque()) };
             assert_eq!(
-                font_from_descriptor(&asset).is_some(),
+                font_from_descriptor(&asset, None).unwrap().is_some(),
                 downloaded,
                 "asset downloaded: {downloaded}"
             );
@@ -353,7 +504,7 @@ mod tests {
 
     #[test]
     #[ignore = "optional qualification with the system STIX Two Text variable fonts installed"]
-    fn installed_stix_family_keeps_its_physical_default_faces() {
+    fn installed_stix_family_keeps_physical_identity_across_instances() {
         let root = std::path::Path::new("/System/Library/Fonts/Supplemental");
         for (style, file) in [
             (Style::Normal, "STIXTwoText.ttf"),
@@ -381,7 +532,7 @@ mod tests {
             for weight in [Weight::NORMAL, Weight::MEDIUM, Weight::BOLD] {
                 let face = named("STIX Two Text", weight, Stretch::Normal, style)
                     .expect("the installed variable face is usable");
-                assert_eq!(face.path, path);
+                assert_eq!(face.path.as_deref(), Some(path.as_path()));
                 assert_eq!(face.post_script_name, expected, "{weight:?} {style:?}");
             }
 
@@ -392,20 +543,36 @@ mod tests {
                 axis.min_value
             };
             let axis_id = CFNumber::new_i32(i32::from_be_bytes(*b"wght"));
-            // SAFETY: The live descriptor and axis identifier describe this variable font.
-            let instance = unsafe {
-                let descriptor = base
-                    .font
-                    .font_descriptor()
-                    .copy_with_variation(&axis_id, non_default.into());
-                CTFont::with_font_descriptor(&descriptor, 0.0, ptr::null())
-            };
-            // SAFETY: Core Text returns the live font's non-default coordinates.
-            assert!(unsafe { instance.variation() }.is_some_and(|values| !values.is_empty()));
-            let fallback =
-                fallback_face(instance, Some('A')).expect("the default STIX face covers A");
-            assert_eq!(fallback.path, path);
-            assert_eq!(fallback.post_script_name, expected);
+            for value in [axis.def_value, non_default] {
+                // SAFETY: The live descriptor and axis identifier describe this variable font.
+                let descriptor = unsafe {
+                    base.font
+                        .font_descriptor()
+                        .copy_with_variation(&axis_id, value.into())
+                };
+                let instance = font_from_descriptor(&descriptor, None).unwrap().unwrap();
+                let instance = NativeFace::from_font(instance, Some(&descriptor), None)
+                    .unwrap()
+                    .expect("the variable STIX instance is supported");
+                assert!(instance.covers_cluster("A".into()));
+                assert_eq!(instance.path.as_deref(), Some(path.as_path()));
+                assert_eq!(instance.post_script_name, expected);
+                // A descriptor copied from an installed font may omit a no-op axis change.
+                // The effective coordinate then comes from the physical face's default.
+                assert_eq!(
+                    instance
+                        .variations
+                        .iter()
+                        .find(|coord| coord.tag == *b"wght")
+                        .map_or(axis.def_value, |coord| coord.value),
+                    value
+                );
+                assert!(
+                    instance
+                        .matches_data(&bytes, 0, &OperationControl::new())
+                        .unwrap()
+                );
+            }
         }
     }
 
@@ -417,7 +584,14 @@ mod tests {
                 let style = Style::Normal;
                 let table = Some((Weight::NORMAL, stretch, style));
                 let native = (Some(css_weight(native_weight)), stretch, style);
-                (name, FaceAttributes { table, native })
+                (
+                    name,
+                    FaceAttributes {
+                        table,
+                        native,
+                        axes: MatchingAxes::default(),
+                    },
+                )
             });
 
         for (weight, expected) in [
@@ -429,14 +603,105 @@ mod tests {
             assert_eq!(
                 rank_family(
                     candidates.to_vec(),
-                    Weight(weight),
-                    Stretch::Normal,
-                    Style::Normal
-                ),
+                    (Weight(weight), Stretch::Normal, Style::Normal),
+                    |candidate| Ok(Some(candidate)),
+                )
+                .unwrap(),
                 Some(expected),
                 "CSS weight {weight}"
             );
         }
+
+        let mut tried = Vec::new();
+        rank_family(
+            candidates.to_vec(),
+            (Weight::BOLD, Stretch::Normal, Style::Normal),
+            |candidate| {
+                tried.push(candidate);
+                Ok(None::<()>)
+            },
+        )
+        .unwrap();
+        assert_eq!(tried, ["bold", "black", "regular"]);
+    }
+
+    #[test]
+    fn family_ranks_attainable_axes_without_overriding_style_or_named_instances() {
+        let raw = ttf_parser::RawFace::parse(
+            include_bytes!("../../../../tests/fonts/MermanVariableWeight.ttf"),
+            0,
+        )
+        .unwrap();
+        let weight_table = raw.table(ttf_parser::Tag::from_bytes(b"fvar")).unwrap();
+        let mut width_table = weight_table.to_vec();
+        let offset = usize::from(u16::from_be_bytes(width_table[4..6].try_into().unwrap()));
+        width_table[offset..offset + 4].copy_from_slice(b"wdth");
+        let regular = (Weight(100), Stretch::Normal, Style::Normal);
+        let bold = (Weight(700), Stretch::Normal, Style::Normal);
+        let select =
+            |table: &[u8], pinned, variable: CssStyle, fixed: CssStyle, request: CssStyle| {
+                let (weight, stretch, _) = request;
+                let axes = MatchingAxes::from_fvar(
+                    ttf_parser::fvar::Table::parse(table).unwrap(),
+                    weight.0.into(),
+                    css_width(stretch),
+                    |_| pinned,
+                );
+                let attributes = |(weight, stretch, style), axes| FaceAttributes {
+                    table: Some((weight, stretch, style)),
+                    native: (Some(weight), stretch, style),
+                    axes,
+                };
+                rank_family(
+                    vec![
+                        ("variable", attributes(variable, axes)),
+                        ("static", attributes(fixed, MatchingAxes::default())),
+                    ],
+                    request,
+                    |face| Ok(Some(face)),
+                )
+                .unwrap()
+                .unwrap()
+            };
+        let semibold = (Weight(600), Stretch::Normal, Style::Normal);
+        assert_eq!(
+            select(weight_table, None, regular, bold, semibold),
+            "variable"
+        );
+        assert_eq!(select(weight_table, None, regular, bold, bold), "static");
+        assert_eq!(
+            select(weight_table, Some(200.0), regular, bold, semibold),
+            "static"
+        );
+        let italic = (Weight(700), Stretch::Normal, Style::Italic);
+        assert_eq!(
+            select(
+                weight_table,
+                None,
+                regular,
+                italic,
+                (Weight(600), Stretch::Normal, Style::Italic)
+            ),
+            "static"
+        );
+        let expanded = (Weight(700), Stretch::ExtraExpanded, Style::Normal);
+        assert_eq!(
+            select(
+                &width_table,
+                None,
+                regular,
+                expanded,
+                (Weight(700), Stretch::Expanded, Style::Normal)
+            ),
+            "variable"
+        );
+        // The width fixture starts at 100%; it cannot match a condensed request.
+        let condensed = (Weight(700), Stretch::Condensed, Style::Normal);
+        let semi_condensed = (Weight(700), Stretch::SemiCondensed, Style::Normal);
+        assert_eq!(
+            select(&width_table, None, regular, semi_condensed, condensed),
+            "static"
+        );
     }
 
     #[test]
@@ -447,7 +712,7 @@ mod tests {
         };
         if !descriptors
             .iter()
-            .filter_map(|desc| font_from_descriptor(&desc))
+            .filter_map(|desc| font_from_descriptor(&desc, None).unwrap())
             .any(|font| native_attributes(&font).1 == Stretch::Condensed)
         {
             return;

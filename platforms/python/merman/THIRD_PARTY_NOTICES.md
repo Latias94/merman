@@ -21,13 +21,13 @@ Components: `beautiful-mermaid`, `grok-build`, `mermaid`, `mermaid-ascii`, `merm
 
 The source-default CLI feature closure including ELK without RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `cli-release`
 
 The published complete CLI release closure, including explicit ELK and RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `elk-render`
 
@@ -35,11 +35,23 @@ Render artifacts that include the source-translated Eclipse ELK layered implemen
 
 Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
+### `pdf-export`
+
+PDF output using the Merman Krilla and krilla-svg forks with embedded ICC profiles and resvg filter rasterization.
+
+Components: `krilla`, `krilla-icc-profiles`, `krilla-svg`, `resvg`, `resvg-iir-blur`, `usvg`.
+
 ### `playground-reference`
 
 Third-party projects loaded by or used as behavioral evidence for the deployed Playground.
 
 Components: `d3-path`, `d3-shape`, `dompurify`, `elkjs`, `mermaid`, `non-layered-tidy-tree-layout`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
+
+### `raster-export`
+
+Raster output using the Merman resvg and usvg forks.
+
+Components: `resvg`, `resvg-iir-blur`, `usvg`.
 
 ### `ratex-render`
 
@@ -55,45 +67,45 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 ### `sdk-full`
 
-Embedding SDK full legal closure.
+WASI full SDK legal closure, including RaTeX and ELK.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-math`
 
-Embedding SDK math legal closure.
+WASI math SDK legal closure, including RaTeX and its fonts.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-full`
 
-Native C full SDK, including its ASCII source notices.
+Native C full SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-math`
 
-Native C math SDK, including its ASCII source notices.
+Native C math SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-standard`
 
-Native C standard SDK, including its ASCII source notices.
+Native C standard SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-standard`
 
-Embedding SDK standard legal closure.
+WASI standard SDK legal closure, including the PNG renderer and bundled font.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `source-archive`
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `usvg`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `usvg`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
@@ -399,6 +411,58 @@ The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are l
   - [`THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt`](THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt) (notice, SHA-256 `752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e`)
   - [`THIRD_PARTY_LICENSES/katex-fonts/OFL.txt`](THIRD_PARTY_LICENSES/katex-fonts/OFL.txt) (license, SHA-256 `f19c674290e5dc79f02e8efe16139ab56a06a7128876f5b1579ffd0db5bc897e`)
 
+### Krilla (`krilla`)
+
+Merman PDF builds link the Krilla 0.8.2 fork, which assigns distinct names to CID font subsets.
+
+- Version: `0.8.2 with CID font subset naming backport`
+- Source: <https://github.com/LaurenzV/krilla>
+- Source ref: `crates.io:krilla@0.8.2`
+- Source commit: `3ffdf0588cf98050aad6edba51ca70162e1fb5b5`
+- Source path: `crates/krilla`
+- Relationship: `copied`, `linked`, `modified`
+- License expression: `Apache-2.0 OR MIT`
+- Selected license path: `MIT`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `source-archive`
+- Local evidence: `vendor/krilla`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE`](THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE) (license, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)
+  - [`THIRD_PARTY_LICENSES/krilla/LICENSE-MIT`](THIRD_PARTY_LICENSES/krilla/LICENSE-MIT) (license, SHA-256 `9d1eb142840c7acfd5511b4dd298cece3f0053f5809228906445cd8a3365592f`)
+
+### Compact ICC Profiles bundled by Krilla (`krilla-icc-profiles`)
+
+Krilla includes Compact ICC Profiles for grayscale and RGB PDF output, distributed under CC0-1.0.
+
+- Version: `krilla@0.8.2`
+- Source: <https://github.com/LaurenzV/krilla>
+- Source ref: `crates.io:krilla@0.8.2`
+- Source commit: `3ffdf0588cf98050aad6edba51ca70162e1fb5b5`
+- Source path: `crates/krilla/icc`
+- Relationship: `copied`, `embedded`
+- License expression: `CC0-1.0`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `source-archive`
+- Local evidence: `vendor/krilla/icc`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/krilla/LICENSE-ICC`](THIRD_PARTY_LICENSES/krilla/LICENSE-ICC) (license, SHA-256 `469d87b5fa48f8aaf69e25f4fcac3a309c97dbb7d561b917638abdb640e004d9`)
+
+### krilla-svg (`krilla-svg`)
+
+The Merman PDF adapter consumes the same SVG tree and resolved font instances as the rasterizer.
+
+- Version: `0.8.1 with shared font instance support`
+- Source: <https://github.com/LaurenzV/krilla>
+- Source ref: `crates.io:krilla-svg@0.8.1`
+- Source commit: `3ffdf0588cf98050aad6edba51ca70162e1fb5b5`
+- Source path: `crates/krilla-svg`
+- Relationship: `copied`, `linked`, `modified`
+- License expression: `Apache-2.0 OR MIT`
+- Selected license path: `MIT`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `source-archive`
+- Local evidence: `vendor/krilla-svg`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE`](THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE) (license, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)
+  - [`THIRD_PARTY_LICENSES/krilla/LICENSE-MIT`](THIRD_PARTY_LICENSES/krilla/LICENSE-MIT) (license, SHA-256 `9d1eb142840c7acfd5511b4dd298cece3f0053f5809228906445cd8a3365592f`)
+
 ### layout-base 1.x (`layout-base-v1`)
 
 Manatee translates shared layout-base geometry, graph, and force-layout primitives from this baseline.
@@ -543,6 +607,40 @@ Optional math rendering links the RaTeX 0.1.15 crate family; its separately lice
 - Legal files:
   - [`THIRD_PARTY_LICENSES/ratex/LICENSE`](THIRD_PARTY_LICENSES/ratex/LICENSE) (license, SHA-256 `f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0`)
   - [`THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt) (notice, SHA-256 `e3cf753ddd8012543a3297b62b4cf5450db1d5a3ae7ddd7afae593db927c2980`)
+
+### resvg (`resvg`)
+
+The Merman SVG rasterizer links the Merman usvg fork to share SVG tree and font identities.
+
+- Version: `0.50.0 with Merman usvg integration`
+- Source: <https://github.com/linebender/resvg>
+- Source ref: `v0.50.0`
+- Source commit: `5bdbae64eefadc4bf0caa56dcf91702037929086`
+- Source path: `crates/resvg`
+- Relationship: `copied`, `linked`, `modified`
+- License expression: `Apache-2.0 OR MIT`
+- Selected license path: `MIT`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
+- Local evidence: `vendor/resvg`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE`](THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE) (license, SHA-256 `a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9`)
+  - [`THIRD_PARTY_LICENSES/usvg/LICENSE-MIT`](THIRD_PARTY_LICENSES/usvg/LICENSE-MIT) (license, SHA-256 `f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d`)
+
+### Pascal Getreuer's Gaussian convolution in resvg (`resvg-iir-blur`)
+
+The resvg IIR Gaussian blur credits Pascal Getreuer's Simplified BSD implementation. The copyright notice from `gaussian_conv_am.c` and the license from `BSD_simplified.txt` come from the [original Gaussian convolution source archive](https://www.ipol.im/pub/art/2013/87/gaussian_20131215.tgz).
+
+- Version: `gaussian_20131215, as adapted in resvg 0.50.0`
+- Source: <https://github.com/linebender/resvg>
+- Source ref: `v0.50.0`
+- Source commit: `5bdbae64eefadc4bf0caa56dcf91702037929086`
+- Source path: `crates/resvg/src/filter/iir_blur.rs`
+- Relationship: `copied`, `linked`, `modified`
+- License expression: `BSD-2-Clause`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
+- Local evidence: `vendor/resvg/src/filter/iir_blur.rs`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE`](THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE) (license, SHA-256 `a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00`)
 
 ### rough-rs roughr (`rough-rs`)
 
@@ -740,17 +838,17 @@ merman-unicode-linebreak is an Apache-2.0 fork of unicode-linebreak 0.1.5, prese
 
 ### usvg (`usvg`)
 
-Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts.
+The Merman SVG parser retains the selected native font instance in shaping, outlines, and export evidence.
 
-- Version: `0.47.0 with font fallback backport`
+- Version: `0.50.0 with contextual fallback and font instances`
 - Source: <https://github.com/linebender/resvg>
-- Source ref: `v0.47.0`
-- Source commit: `3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707`
+- Source ref: `v0.50.0`
+- Source commit: `5bdbae64eefadc4bf0caa56dcf91702037929086`
 - Source path: `crates/usvg`
 - Relationship: `copied`, `linked`, `modified`
 - License expression: `Apache-2.0 OR MIT`
 - Selected license path: `MIT`
-- Artifact scopes: `cli-default`, `cli-release`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
 - Local evidence: `vendor/usvg`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE`](THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE) (license, SHA-256 `a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9`)
