@@ -374,7 +374,7 @@ The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient op
 - Relationship: `modified`, `translated`
 - License expression: `BSD-3-Clause`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/fmin/LICENSE`](THIRD_PARTY_LICENSES/fmin/LICENSE) (license, SHA-256 `e4503e78185bff178d3ee91835f082d05771da1b3a2d795f17e03a40251bab77`)
 
@@ -523,7 +523,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `ascii-render`, `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-flow/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core-flow/src`, `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-flow/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 
@@ -880,7 +880,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Relationship: `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render/src/venn/theme/css_binding.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/venn-js/LICENSE`](THIRD_PARTY_LICENSES/venn-js/LICENSE) (license, SHA-256 `6a3508febf2cfccfee96597394543a6154a4bb0b1f91f28404be42c09e9fcb54`)
 

@@ -23,16 +23,6 @@ The SVG parity layer translates D3 curve algorithms, including basis, natural, s
 - License: `ISC`
 - Legal file: `THIRD_PARTY_LICENSES/d3-shape/LICENSE`
 
-## fmin
-
-The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient optimization behavior.
-
-- Version: `0.0.4`
-- Source: https://github.com/benfred/fmin.git @ `6b155c9f4a6ecf73ea5d71666da8e5dcd418b18b`
-- Relationship: `modified`, `translated`
-- License: `BSD-3-Clause`
-- Legal file: `THIRD_PARTY_LICENSES/fmin/LICENSE`
-
 ## Mermaid
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.

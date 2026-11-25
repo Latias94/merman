@@ -141,7 +141,7 @@ The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient op
 - Source path: `.`
 - Relationship: `modified`, `translated`
 - License: `BSD-3-Clause`
-- Local evidence: `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`
 - Legal file: `THIRD_PARTY_LICENSES/fmin/LICENSE`
 
 ### Graphlib
@@ -189,7 +189,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-flow/src`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-flow/src`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -273,7 +273,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn/theme/css_binding.rs`, `crates/merman-render-charts/src/venn/solver.rs`
 - Legal file: `THIRD_PARTY_LICENSES/venn-js/LICENSE`
 
 ### ZenUML Core
