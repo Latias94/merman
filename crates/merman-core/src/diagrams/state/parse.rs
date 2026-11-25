@@ -3,6 +3,7 @@ use crate::diagrams::scan::is_ecmascript_whitespace;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
+use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
 #[cfg(feature = "editor-facts")]
 use crate::source_span::{
     has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
@@ -10,11 +11,17 @@ use crate::source_span::{
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, SourceSpan,
+    EditorSemanticSymbol,
 };
-use crate::{Error, OperationControl, OperationControlResult, ParseDiagnostic};
+use crate::{
+    Error, OperationControl, OperationControlResult, ParseDiagnostic, ParseDiagnosticSpanKind,
+    SourceSpan,
+};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "editor-facts")]
+use merman_core_graph::state::{StateLexicalEvent, StateToken as Tok};
+use merman_core_graph::state::{StateSyntax, StateSyntaxDiagnostic};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -24,11 +31,8 @@ use std::collections::HashSet;
 
 #[cfg(feature = "presentation")]
 use super::StateDiagramRenderModel;
-#[cfg(feature = "editor-facts")]
-use super::Tok;
 use super::db::StateDb;
-use super::parser::{self, LexicalEvent as StateLexicalEvent};
-use super::{Lexer, StateDiagramModel, StateDocumentScratch, StateStatement};
+use super::{StateDiagramModel, StateDocumentScratch, StateStatement};
 
 #[cfg(test)]
 thread_local! {
@@ -45,48 +49,49 @@ pub(crate) fn state_syntax_construction_count() -> usize {
     STATE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-struct StateSyntaxOutcome {
-    document: std::result::Result<StateDocumentScratch, ParseDiagnostic>,
-    #[cfg(feature = "editor-facts")]
-    editor_facts: Option<EditorSemanticFacts>,
+fn into_state_document(
+    syntax: StateSyntax,
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<StateDocumentScratch, ParseDiagnostic>> {
+    Ok(syntax
+        .into_document(control)?
+        .map(|document| StateDocumentScratch::from_parsed_parts(document.builder, document.root))
+        .map_err(state_parse_diagnostic))
 }
 
-struct StateSyntax {
-    events: Vec<StateLexicalEvent>,
+#[cfg(test)]
+pub(super) fn parse_state_document_for_test(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<StateDocumentScratch, ParseDiagnostic>> {
+    into_state_document(StateSyntax::lex(code, control)?, control)
 }
 
-impl StateSyntax {
-    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
-        #[cfg(test)]
-        STATE_SYNTAX_CONSTRUCTION_COUNT.set(STATE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+fn state_parse_diagnostic(diagnostic: StateSyntaxDiagnostic) -> ParseDiagnostic {
+    use ParseDiagnosticSpanKind::{Exact, Fallback, InsertionPoint};
 
-        let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
-        Ok(Self { events })
-    }
-
-    fn into_document(
-        self,
-        code: &str,
-        #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
-        control: &OperationControl,
-    ) -> OperationControlResult<StateSyntaxOutcome> {
-        #[cfg(feature = "editor-facts")]
-        let editor_facts = match facts_demand {
-            EditorFactsDemand::Omit => None,
-            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
-            EditorFactsDemand::Capture => Some(collect_state_editor_facts_from_events(
-                &self.events,
-                code,
-                control,
-            )?),
-        };
-        control.checkpoint()?;
-        let document = parser::parse(self.events.into_iter(), code.len(), control)?;
-        Ok(StateSyntaxOutcome {
-            document,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        })
+    match diagnostic {
+        StateSyntaxDiagnostic::Lexical {
+            error,
+            fallback_offset,
+        } => {
+            let (span, kind) = match error.span {
+                Some(span) => (span, Exact),
+                None => (SourceSpan::new(fallback_offset, fallback_offset), Fallback),
+            };
+            ParseDiagnostic::new(error.message).with_span(span, kind)
+        }
+        StateSyntaxDiagnostic::UnexpectedToken {
+            token,
+            span,
+            expected,
+            eof_separator,
+        } => ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
+            .with_span(span, if eof_separator { InsertionPoint } else { Exact }),
+        StateSyntaxDiagnostic::UnexpectedEof { offset, expected } => {
+            ParseDiagnostic::new(unexpected_eof_message(expected.names()))
+                .with_span(SourceSpan::new(offset, offset), InsertionPoint)
+        }
     }
 }
 
@@ -276,18 +281,21 @@ fn construct_state_semantic_source(
     #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<StateSemanticSource, StateSemanticFailure>> {
+    #[cfg(test)]
+    STATE_SYNTAX_CONSTRUCTION_COUNT.set(STATE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
     let syntax = StateSyntax::lex(code, control)?;
-    let StateSyntaxOutcome {
-        document,
-        #[cfg(feature = "editor-facts")]
-        editor_facts,
-    } = syntax.into_document(
-        code,
-        #[cfg(feature = "editor-facts")]
-        facts_demand,
-        control,
-    )?;
-    let mut doc = match document {
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = match facts_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+        EditorFactsDemand::Capture => Some(collect_state_editor_facts_from_events(
+            syntax.events(),
+            code,
+            control,
+        )?),
+    };
+    let mut doc = match into_state_document(syntax, control)? {
         Ok(doc) => doc,
         Err(diagnostic) => {
             return Ok(Err(StateSemanticFailure {
@@ -406,18 +414,8 @@ fn collect_state_editor_facts_from_events(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match event {
-            Ok((start, token, end)) => {
-                collector.collect_token(token.clone(), *start, *end, &mut facts, control)?;
-            }
-            Err(error) => {
-                if let Some(expected) = error.expected_syntax.as_ref() {
-                    facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        expected.kind,
-                        expected.span,
-                    ));
-                }
-            }
+        if let Ok((start, token, end)) = event {
+            collector.collect_token(token.clone(), *start, *end, &mut facts, control)?;
         }
     }
     collector.finish_statement(line_content_end(code, code.len()), &mut facts);

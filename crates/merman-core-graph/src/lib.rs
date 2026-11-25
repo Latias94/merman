@@ -4,5 +4,7 @@
 
 #[cfg(feature = "diagram-er")]
 pub mod er;
-#[cfg(feature = "diagram-er")]
+#[cfg(feature = "diagram-state")]
+pub mod state;
+#[cfg(any(feature = "diagram-er", feature = "diagram-state"))]
 use merman_core_preprocess::scan;

@@ -4,18 +4,15 @@ pub(crate) use merman_model::text::is_ecmascript_whitespace;
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-state",
     feature = "diagram-sequence"
 ))]
 pub(crate) use merman_core_preprocess::scan::TokenStream;
-#[cfg(any(feature = "diagram-class", feature = "diagram-state"))]
-pub(crate) use merman_core_preprocess::scan::consume_line_ending;
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
+#[cfg(any(feature = "diagram-class", feature = "diagram-sequence"))]
 pub(crate) use merman_core_preprocess::scan::{ScanStep, TokenScanner, collect_lexical_events};
+#[cfg(feature = "diagram-class")]
+pub(crate) use merman_core_preprocess::scan::{
+    consume_line_ending, is_ecmascript_inline_whitespace,
+};
 
 pub(crate) fn strip_line_ending(segment: &str) -> &str {
     let segment = segment.strip_suffix('\n').unwrap_or(segment);
@@ -196,10 +193,6 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
         .take_while(|ch| ch.is_whitespace())
         .map(char::len_utf8)
         .sum()
-}
-
-pub(crate) fn is_ecmascript_inline_whitespace(ch: char) -> bool {
-    is_ecmascript_whitespace(ch) && !matches!(ch, '\r' | '\n')
 }
 
 pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {

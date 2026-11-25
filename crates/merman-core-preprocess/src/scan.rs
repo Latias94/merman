@@ -2,6 +2,10 @@
 
 use merman_model::{OperationControl, OperationControlResult};
 
+pub fn is_ecmascript_inline_whitespace(ch: char) -> bool {
+    merman_model::text::is_ecmascript_whitespace(ch) && !matches!(ch, '\r' | '\n')
+}
+
 /// One rule dispatch. A skipped rule must consume input or leave its lexical state.
 /// Empty tokens are valid when they drain pending output or complete a state transition.
 pub enum ScanStep<T> {

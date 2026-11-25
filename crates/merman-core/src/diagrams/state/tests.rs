@@ -420,7 +420,7 @@ fn state_brace_errors_keep_their_source_locations() {
 
     let missing = "stateDiagram-v2\nstate Outer {\nChild\n";
     let control = OperationControl::new();
-    let diagnostic = parser::parse(Lexer::new(missing), missing.len(), &control)
+    let diagnostic = parse::parse_state_document_for_test(missing, &control)
         .unwrap()
         .unwrap_err();
     assert_eq!(
@@ -437,7 +437,7 @@ fn state_brace_errors_keep_their_source_locations() {
     );
 
     let extra = "stateDiagram-v2\nNode\n}\n";
-    let diagnostic = parser::parse(Lexer::new(extra), extra.len(), &control)
+    let diagnostic = parse::parse_state_document_for_test(extra, &control)
         .unwrap()
         .unwrap_err();
     assert_eq!(diagnostic.message(), "unexpected struct stop");
@@ -449,13 +449,53 @@ fn state_brace_errors_keep_their_source_locations() {
 }
 
 #[test]
+fn state_grammar_and_lexical_errors_keep_their_span_kinds() {
+    use crate::ParseDiagnosticSpanKind::{Exact, Fallback, InsertionPoint};
+    use crate::SourceSpan;
+
+    let unfinished = "stateDiagram-v2\nA -->";
+    let unspanned = "stateDiagram-v2\n-\nAfter\n";
+    let reserved = "stateDiagram-v2\ndefault\nAfter\n";
+    let reserved_start = reserved.find("default").unwrap();
+    let cases = [
+        (
+            unfinished,
+            "unexpected statement separator; expected node identifier, styled id, edge state",
+            SourceSpan::new(unfinished.len(), unfinished.len()),
+            InsertionPoint,
+        ),
+        (
+            unspanned,
+            "Unexpected character '-'",
+            SourceSpan::new(unspanned.len(), unspanned.len()),
+            Fallback,
+        ),
+        (
+            reserved,
+            "Unexpected reserved state keyword default",
+            SourceSpan::new(reserved_start, reserved_start + "default".len()),
+            Exact,
+        ),
+    ];
+    let control = OperationControl::new();
+    for (source, message, span, kind) in cases {
+        let diagnostic = parse::parse_state_document_for_test(source, &control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(diagnostic.message(), message, "{source:?}");
+        assert_eq!(diagnostic.span(), Some(span), "{source:?}");
+        assert_eq!(diagnostic.span_kind(), kind, "{source:?}");
+    }
+}
+
+#[test]
 fn state_divider_assignment_cancellation_releases_completed_grammar_documents() {
     let mut source = String::from("stateDiagram-v2\nstate Outer {\n");
     for index in 0..300 {
         source.push_str(&format!("S{index}\n--\n"));
     }
     source.push_str("}\n");
-    let mut document = parser::parse(Lexer::new(&source), source.len(), &OperationControl::new())
+    let mut document = parse::parse_state_document_for_test(&source, &OperationControl::new())
         .unwrap()
         .unwrap();
     let control = OperationControl::new();

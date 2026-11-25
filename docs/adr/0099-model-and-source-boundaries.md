@@ -66,9 +66,10 @@ features and supplies the operation's text measurement to Railroad.
 
 ### Graph syntax
 
-`merman-core-graph` owns ER tokenization, parsing, and construction of canonical model values.
-It reuses the controlled token cursor in `merman-core-preprocess`. `merman-core` owns source
-mapping, error messages, resource admission, and the editor and compatibility projections.
+`merman-core-graph` owns ER and State tokenization and parsing. It constructs the canonical ER
+model and the nested State syntax document using the controlled token cursor in
+`merman-core-preprocess`. `merman-core` owns State model construction, source mapping, error
+messages, resource admission, and the editor and compatibility projections.
 
 ### Chart rendering
 

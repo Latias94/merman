@@ -82,7 +82,7 @@ compatible version requirements and intentional upgrade exceptions.
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 `merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
-behind `merman-core`. `merman-core-graph` provides ER syntax parsing. `merman-core-structured`
+behind `merman-core`. `merman-core-graph` provides ER and State syntax parsing. `merman-core-structured`
 provides Packet syntax parsing and the four Railroad dialects.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
 contracts. `merman-render-structured` provides Packet and Railroad layout and SVG rendering through
