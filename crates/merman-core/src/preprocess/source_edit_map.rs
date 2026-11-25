@@ -42,6 +42,10 @@ impl PreprocessedSource {
         })
     }
 
+    pub(super) fn mapped_mut(&mut self) -> &mut MappedSource {
+        &mut self.mapped
+    }
+
     pub fn text(&self) -> &str {
         self.mapped.text()
     }

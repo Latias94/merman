@@ -6,6 +6,8 @@ use std::sync::OnceLock;
 
 #[doc(hidden)]
 pub mod scan;
+#[doc(hidden)]
+pub mod text;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS: usize = 128;

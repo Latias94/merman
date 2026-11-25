@@ -2,6 +2,9 @@
 
 use merman_model::{OperationControl, OperationControlResult};
 
+#[doc(hidden)]
+pub mod controlled;
+
 #[cfg(feature = "mermaid-unicode")]
 mod jison_unicode;
 #[cfg(feature = "mermaid-unicode")]

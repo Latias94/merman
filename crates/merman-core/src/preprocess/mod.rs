@@ -12,7 +12,6 @@ pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
 mod editor;
 #[cfg(feature = "editor-facts")]
 mod rewrite_order;
-mod scan;
 #[cfg(feature = "editor-facts")]
 mod source_config;
 mod source_edit_map;
@@ -38,10 +37,12 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
 use merman_core_preprocess::SourceEdit;
-use scan::{
+use merman_core_preprocess::scan::controlled::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, find_ascii_pattern_controlled,
-    find_line_break_controlled, find_newline_controlled, is_js_regex_whitespace,
+    find_line_break_controlled, find_newline_controlled,
 };
+use merman_core_preprocess::text::PreprocessMarkers;
+use merman_model::text::is_ecmascript_whitespace;
 use serde_json::{Map, Value};
 #[cfg(feature = "editor-facts")]
 use source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
@@ -51,7 +52,7 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use text::editor_evidence_line_end;
 use text::{
-    PreprocessMarkers, cleanup_text_controlled, encode_mermaid_entities_like_upstream_controlled,
+    cleanup_text_controlled, encode_mermaid_entities_like_upstream_controlled,
     remove_mermaid_comments_controlled, trim_source_start_controlled,
 };
 
@@ -2016,7 +2017,7 @@ fn is_valid_node_color_function(value: &str, prefix: &str) -> bool {
     let inner = &value[prefix.len()..value.len() - 1];
     !inner.is_empty()
         && inner.chars().all(|ch| {
-            ch.is_ascii_digit() || is_js_regex_whitespace(ch) || matches!(ch, '%' | ',' | '.')
+            ch.is_ascii_digit() || is_ecmascript_whitespace(ch) || matches!(ch, '%' | ',' | '.')
         })
 }
 
