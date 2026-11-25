@@ -24,6 +24,7 @@ struct EndpointDemand {
     label_height: usize,
 }
 
+#[derive(Default)]
 pub(super) struct SceneDemand<'a> {
     indices: HashMap<&'a str, usize>,
     endpoints: Vec<EndpointDemand>,

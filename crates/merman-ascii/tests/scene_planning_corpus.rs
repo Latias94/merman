@@ -3,8 +3,9 @@
 mod support;
 
 use merman_ascii::{
-    AsciiError, AsciiGraphPresentation, AsciiLayoutProfile, AsciiProjection, AsciiRenderOptions,
-    AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy, AsciiViewportPolicy, OverflowPolicy,
+    AsciiError, AsciiGraphPresentation, AsciiGraphRoutingSpace, AsciiLayoutProfile,
+    AsciiProjection, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy,
+    AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use merman_model::presentation::RenderSemanticModel;
@@ -139,6 +140,121 @@ fn dense_strict_sources_have_complete_spatial_primaries_under_trusted_native_lim
 }
 
 #[test]
+fn issue_370_fixed_routing_space_preserves_the_requested_terminal_height() {
+    use merman_model::{OperationControl, runtime::RuntimePolicy};
+
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(include_str!(
+            "testdata/local-semantic/flowchart/scene_planning/issue_370_terminal_height.mmd"
+        ))
+        .unwrap();
+    let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+    let options = AsciiRenderOptions::unicode()
+        .with_layout_profile(AsciiLayoutProfile::Auto)
+        .with_node_padding_y(0)
+        .with_graph_padding_y(2);
+    let render = |options| {
+        AsciiRenderer::new(options)
+            .unwrap()
+            .render_parsed_report(
+                &parsed,
+                AsciiViewportPolicy::with_max_width(200).overflow(OverflowPolicy::Allow),
+                &OperationControl::new(),
+                &context,
+                AsciiResourcePolicy::default(),
+            )
+            .unwrap()
+    };
+
+    let default = render(options);
+    assert_eq!(default.emitted_extent.height, 48);
+    let fixed = render(options.with_graph_routing_space(AsciiGraphRoutingSpace::Fixed));
+    assert_eq!(fixed.projection, AsciiProjection::Diagrammatic);
+    assert_eq!(fixed.layout_profile, Some(AsciiLayoutProfile::Canonical));
+    assert!(!fixed.compact_attempted);
+    assert!(!fixed.fallback.attempted);
+    assert!(fixed.emitted_extent.height <= 33, "{}", fixed.text);
+    assert!(fixed.emitted_extent.width <= 200, "{}", fixed.text);
+    assert_eq!(fixed.text.lines().count(), fixed.emitted_extent.height);
+    for label in [
+        "User",
+        "Interface",
+        "Orchestrator",
+        "Controller",
+        "Model provider",
+        "Model API",
+        "Tool runner",
+        "Worker",
+        "Sandbox",
+        "Events",
+        "prompt",
+        "JSON-RPC",
+        "request",
+        "stream",
+        "tool call",
+        "events",
+        "broadcast",
+    ] {
+        assert_eq!(fixed.text.matches(label).count(), 1, "{}", fixed.text);
+    }
+    assert!(fixed.text.contains("╰ Events ╯"), "{}", fixed.text);
+}
+
+#[test]
+fn fixed_routing_space_still_reports_resource_exhaustion_and_cancellation() {
+    use merman_model::{CancelReason, OperationControl, runtime::RuntimePolicy};
+
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(include_str!(
+            "testdata/local-semantic/flowchart/scene_planning/issue_370_terminal_height.mmd"
+        ))
+        .unwrap();
+    let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+    let viewport = AsciiViewportPolicy::with_max_width(200).overflow(OverflowPolicy::Fallback);
+    let renderer = AsciiRenderer::new(
+        AsciiRenderOptions::unicode()
+            .with_graph_padding_y(2)
+            .with_graph_routing_space(AsciiGraphRoutingSpace::Fixed),
+    )
+    .unwrap();
+    let limits = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 10_000)
+        .unwrap();
+    assert!(matches!(
+        renderer.render_parsed_report(&parsed, viewport, &OperationControl::new(), &context, limits),
+        Err(AsciiError::ResourceLimitExceeded(details))
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+    ));
+    let control = OperationControl::new();
+    control.cancel();
+    assert!(matches!(
+        renderer.render_parsed_report(&parsed, viewport, &control, &context, limits),
+        Err(AsciiError::Cancelled(details)) if details.reason == CancelReason::Requested
+    ));
+}
+
+#[test]
+fn fixed_routing_space_rejects_subgraphs_and_adaptive_presentation() {
+    let options =
+        AsciiRenderOptions::ascii().with_graph_routing_space(AsciiGraphRoutingSpace::Fixed);
+    assert!(matches!(
+        AsciiRenderer::new(options.with_graph_presentation(AsciiGraphPresentation::Adaptive)),
+        Err(AsciiError::InvalidOption {
+            field: "graph_routing_space",
+            ..
+        })
+    ));
+    let subgraph = parse_model("flowchart TD\nsubgraph Group\nA --> B\nend");
+    assert!(matches!(
+        render_model_with_resources(&subgraph, &options, AsciiResourcePolicy::default()),
+        Err(AsciiError::InvalidOption {
+            field: "graph_routing_space",
+            ..
+        })
+    ));
+}
+
+#[test]
 fn capacity_recovery_keeps_narrow_cycles_and_all_edge_labels() {
     use merman_model::{OperationControl, resources::ResourceProfile, runtime::RuntimePolicy};
 
@@ -153,6 +269,25 @@ fn capacity_recovery_keeps_narrow_cycles_and_all_edge_labels() {
             .unwrap();
         for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
             let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+            let limits = AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative);
+            let fixed =
+                AsciiRenderer::new(options.with_graph_routing_space(AsciiGraphRoutingSpace::Fixed))
+                    .unwrap()
+                    .render_parsed_report(
+                        &parsed,
+                        AsciiViewportPolicy::with_max_width(50).overflow(OverflowPolicy::Fallback),
+                        &OperationControl::new(),
+                        &context,
+                        limits,
+                    );
+            assert!(
+                matches!(
+                    fixed,
+                    Err(AsciiError::RoutingSearchExhausted { .. }
+                        | AsciiError::PortCapacityExceeded { .. })
+                ),
+                "the fixed request must surface its routing failure: {fixed:?}"
+            );
             let output =
                 AsciiRenderer::new(options.with_layout_profile(AsciiLayoutProfile::Canonical))
                     .unwrap()
@@ -161,7 +296,7 @@ fn capacity_recovery_keeps_narrow_cycles_and_all_edge_labels() {
                         AsciiViewportPolicy::with_max_width(50).overflow(OverflowPolicy::Error),
                         &OperationControl::new(),
                         &context,
-                        AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
+                        limits,
                     )
                     .expect("component recovery must preserve existing 50-column spatial results");
             assert_eq!(output.projection, AsciiProjection::Diagrammatic);

@@ -1,0 +1,11 @@
+flowchart TD
+    U[User] -->|prompt| TUI[Interface]
+    TUI -->|JSON-RPC| D[Orchestrator]
+    D --> C[Controller]
+    C -->|request| P[Model provider]
+    P -->|stream| M[Model API]
+    C -->|tool call| T[Tool runner]
+    T --> W[Worker]
+    W --> S[Sandbox]
+    C -->|events| DB[(Events)]
+    D -->|broadcast| TUI

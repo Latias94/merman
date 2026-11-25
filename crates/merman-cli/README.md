@@ -720,6 +720,16 @@ These switches apply to text rendering.
 merman-cli render diagram.mmd --format unicode --ascii-node-padding-y 0
 ```
 
+For a flat Flowchart with strict graph presentation, `--ascii-graph-routing-space fixed` attempts
+the requested node padding and rank gaps with the space required by shape and stroke geometry.
+If routing reports exhausted search or port capacity, retry with `expand` to reserve more space.
+`expand` is the default.
+
+```sh
+merman-cli render diagram.mmd --format unicode --ascii-node-padding-y 0 \
+  --ascii-graph-padding-y 2 --ascii-graph-routing-space fixed --ascii-report
+```
+
 `--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
 resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
 rejected. The report uses ASCII output schema 4 and includes `encoding`, logical primary/emitted

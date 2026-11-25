@@ -180,8 +180,8 @@ pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, Ascii
 pub use error::{AsciiError, Result};
 pub use model::{AsciiDiagram, AsciiSourceContext};
 pub use options::{
-    AsciiCharset, AsciiDirection, AsciiGraphPresentation, AsciiLayoutProfile, AsciiRenderOptions,
-    TerminalWidthProfile,
+    AsciiCharset, AsciiDirection, AsciiGraphPresentation, AsciiGraphRoutingSpace,
+    AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
 };
 pub use output::{
     ASCII_OUTPUT_SCHEMA_VERSION, AsciiExtent, AsciiFallbackCapability, AsciiFallbackReason,
@@ -702,6 +702,14 @@ fn validate_primary_request(
     let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
         return Ok(());
     };
+    if policies.options.graph_routing_space == AsciiGraphRoutingSpace::Fixed
+        && capability.diagram_type != "flowchart"
+    {
+        return Err(AsciiError::InvalidOption {
+            field: "graph_routing_space",
+            message: "fixed routing space is only available for flat Flowchart diagrams",
+        });
+    }
     if !capability.supports_graph_presentation(policies.options.graph_presentation) {
         return Err(AsciiError::InvalidOption {
             field: "graph_presentation",

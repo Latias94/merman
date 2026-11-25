@@ -516,6 +516,7 @@ mod tests {
 
     fn policy(profile: TerminalWidthProfile) -> GraphLayoutPolicy {
         GraphLayoutPolicy {
+            routing_space: Default::default(),
             node_padding_x: 1,
             node_padding_y: 0,
             rank_gap_x: 5,

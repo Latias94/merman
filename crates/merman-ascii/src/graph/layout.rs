@@ -53,7 +53,12 @@ impl<'graph> LayoutInput<'graph> {
             Some(GraphGroupTopology::try_new(graph, resources)?)
         };
         check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
-        let demand = SceneDemand::try_new(graph, policy, resources)?;
+        let demand = if policy.expands_routing_space() {
+            SceneDemand::try_new(graph, policy, resources)?
+        } else {
+            // Flat Flowchart projection has already validated all edge endpoints.
+            SceneDemand::default()
+        };
         Ok(Self {
             graph,
             policy: *policy,
@@ -275,7 +280,14 @@ fn layout_prepared_graph(
             execution,
         )?
     };
-    clearance::reserve_exterior_routing(graph, &mut nodes, &mut laid_out_groups.items, resources)?;
+    if layout_policy.expands_routing_space() {
+        clearance::reserve_exterior_routing(
+            graph,
+            &mut nodes,
+            &mut laid_out_groups.items,
+            resources,
+        )?;
+    }
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;

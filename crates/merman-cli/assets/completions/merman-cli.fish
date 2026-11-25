@@ -206,6 +206,8 @@ compact\t''
 auto\t'Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-graph-presentation -d 'Permit a complete Plain graph document when bounded routing cannot draw the graph' -r -f -a "strict\t''
 adaptive\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-graph-routing-space -d 'Use fixed node sizes and rank gaps for a flat Flowchart with strict presentation' -r -f -a "expand\t''
+fixed\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l resource-profile -d 'Resource policy for input, semantic models, output, and CLI acquisition' -r -f -a "interactive\t'General interactive applications and public binding surfaces'
 constrained\t'Constrained rendering for untrusted or publicly submitted documents'
 trusted-native\t'Local CLI and controlled native batch rendering'

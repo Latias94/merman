@@ -145,6 +145,7 @@ fn block_policy(options: &AsciiRenderOptions) -> GraphLayoutPolicy {
     // Columns are authored, so Flowchart's direction, wrapping and compact rank policy do not
     // participate. Host glyph/width choices and explicit node padding still apply.
     GraphLayoutPolicy {
+        routing_space: Default::default(),
         node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
         node_padding_y: options.node_padding_y.unwrap_or(0),
         rank_gap_x: pack::COLUMN_GAP,

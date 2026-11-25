@@ -939,6 +939,8 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) layout_profile: Option<String>,
     #[serde(default, alias = "graphPresentation")]
     pub(crate) graph_presentation: Option<String>,
+    #[serde(default, alias = "graphRoutingSpace")]
+    pub(crate) graph_routing_space: Option<String>,
 }
 
 #[cfg(feature = "ascii")]

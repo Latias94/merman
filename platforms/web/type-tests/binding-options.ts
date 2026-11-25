@@ -155,6 +155,7 @@ const primaryOverflowed: boolean | null = asciiPlan.primary_overflowed;
 const emittedOverflowed: boolean = asciiPlan.emitted_overflowed;
 const requestedPresentation: AsciiGraphPresentation = asciiPlan.requested_graph_presentation;
 renderAscii("flowchart LR\nA --> B", { ascii: { graphPresentation: "strict" } });
+renderAscii("flowchart TD\nA --> B", { ascii: { graphRoutingSpace: "fixed" } });
 renderAsciiResult("flowchart LR", '{"ascii":{"graph_presentation":"adaptive"}}');
 const unmeasuredAsciiPlan: AsciiOutputPlan = {
   ...asciiPlan,

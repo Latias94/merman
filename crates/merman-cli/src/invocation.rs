@@ -39,8 +39,8 @@ use crate::cli::{
 use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
 use crate::cli::{
-    TextCharset, TextColorMode, TextDirection, TextGraphPresentation, TextLayoutProfile,
-    TextOutputCliArgs, TextWidthProfile,
+    TextCharset, TextColorMode, TextDirection, TextGraphPresentation, TextGraphRoutingSpace,
+    TextLayoutProfile, TextOutputCliArgs, TextWidthProfile,
 };
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
@@ -1414,6 +1414,10 @@ fn resolve_text_output_options(
         TextGraphPresentation::Strict => merman::ascii::AsciiGraphPresentation::Strict,
         TextGraphPresentation::Adaptive => merman::ascii::AsciiGraphPresentation::Adaptive,
     };
+    options.graph_routing_space = match args.ascii_graph_routing_space {
+        TextGraphRoutingSpace::Expand => merman::ascii::AsciiGraphRoutingSpace::Expand,
+        TextGraphRoutingSpace::Fixed => merman::ascii::AsciiGraphRoutingSpace::Fixed,
+    };
     if let Some(charset) = args.ascii_charset {
         options.charset = match charset {
             TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
@@ -2073,6 +2077,10 @@ fn text_options_are_configured(options: &TextOutputCliArgs) -> bool {
         || !matches!(
             options.ascii_layout_profile,
             crate::cli::TextLayoutProfile::Canonical
+        )
+        || matches!(
+            options.ascii_graph_routing_space,
+            TextGraphRoutingSpace::Fixed
         )
         || options.ascii_report
 }
