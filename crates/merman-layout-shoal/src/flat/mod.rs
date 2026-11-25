@@ -20,6 +20,7 @@ mod refine;
 mod routing;
 mod validate;
 
+use crate::scratch::capacity_bytes;
 use crate::work::{LayoutResult, Work, filled};
 use crate::{Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
 
@@ -217,6 +218,30 @@ impl Expanded {
 
     pub(crate) fn order_chains(&self) -> &[Vec<u32>] {
         &self.chains
+    }
+
+    pub(crate) fn retain_empty_rows(&mut self, max_bytes: usize) {
+        let headers = capacity_bytes(&self.layers).saturating_add(capacity_bytes(&self.chains));
+        // Check the row headers first so cleanup only scans rows that could fit the idle cap.
+        let fits = max_bytes.checked_sub(headers).is_some_and(|remaining| {
+            self.layers
+                .iter()
+                .chain(&self.chains)
+                .try_fold(remaining, |left, row| left.checked_sub(capacity_bytes(row)))
+                .is_some()
+        });
+        if !fits {
+            *self = Self::default();
+            return;
+        }
+        for row in self.layers.iter_mut().chain(&mut self.chains) {
+            row.clear();
+        }
+        *self = Self {
+            layers: std::mem::take(&mut self.layers),
+            chains: std::mem::take(&mut self.chains),
+            ..Self::default()
+        };
     }
 
     pub(super) fn retained_bytes(&self) -> usize {
