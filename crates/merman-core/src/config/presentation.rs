@@ -11,7 +11,7 @@ use merman_model::resources::{InputResourcePolicy, ResourceProfile};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Mutable Mermaid configuration used by source parsing and custom detectors.
 #[derive(Clone)]
@@ -19,6 +19,36 @@ pub struct SourcePresentationConfig {
     inputs: MermaidConfig,
     authored_paths: Arc<BTreeSet<Arc<str>>>,
     detection: Option<Arc<DetectionBaseline>>,
+    site_appearance: Option<Arc<SiteAppearance>>,
+}
+
+/// An appearance that depends only on the engine's site configuration and diagram namespace.
+/// Its exact projection is validated on the first successful freeze that reuses these inputs.
+#[derive(Debug)]
+pub(crate) struct SiteAppearance {
+    inputs: MermaidConfig,
+    authored_paths: Arc<BTreeSet<Arc<str>>>,
+    frozen: OnceLock<PresentationConfig>,
+}
+
+impl SiteAppearance {
+    pub(crate) fn new(mut config: SourcePresentationConfig) -> Self {
+        config.finish_detection();
+        Self {
+            inputs: config.inputs,
+            authored_paths: config.authored_paths,
+            frozen: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn fork(self: &Arc<Self>) -> SourcePresentationConfig {
+        SourcePresentationConfig {
+            inputs: self.inputs.clone(),
+            authored_paths: Arc::clone(&self.authored_paths),
+            detection: None,
+            site_appearance: Some(Arc::clone(self)),
+        }
+    }
 }
 
 pub(crate) struct DetectionBaseline {
@@ -62,6 +92,7 @@ impl SourcePresentationConfig {
             inputs,
             authored_paths: Arc::default(),
             detection: None,
+            site_appearance: None,
         }
     }
 
@@ -118,6 +149,7 @@ impl SourcePresentationConfig {
             inputs: config.as_config().clone(),
             authored_paths: Arc::clone(config.shared_explicit_config_paths()),
             detection: None,
+            site_appearance: None,
         })
     }
 
@@ -129,9 +161,27 @@ impl SourcePresentationConfig {
     ) -> OperationControlResult<Result<PresentationConfig, PresentationConfigError>> {
         control.checkpoint()?;
         self.finish_detection();
+        // Both shared identities must survive source and detector edits. The memo uses the
+        // ordinary source parse policy. Arbitrary host policies still check the same data.
+        let site = self.site_appearance.take().filter(|site| {
+            self.inputs.shares_storage_with(&site.inputs)
+                && Arc::ptr_eq(&self.authored_paths, &site.authored_paths)
+                && *policy == source_config_construction_policy()
+        });
+        if let Some(frozen) = site.as_ref().and_then(|site| site.frozen.get()) {
+            return Ok(Ok(frozen.clone()));
+        }
+        #[cfg(test)]
+        super::record_config_work(|work| {
+            work.authored_path_validations += self.authored_paths.len()
+        });
         let parts = FrozenPresentationConfigParts::new(self.inputs)
             .with_explicit_config_paths(self.authored_paths);
-        PresentationConfig::try_from_frozen_parts_controlled(parts, policy, control)
+        let result = PresentationConfig::try_from_frozen_parts_controlled(parts, policy, control)?;
+        if let (Some(site), Ok(frozen)) = (site, &result) {
+            let _ = site.frozen.set(frozen.clone());
+        }
+        Ok(result)
     }
 
     #[cfg(test)]
@@ -411,7 +461,58 @@ pub(crate) fn presentation_config_error(error: PresentationConfigError) -> crate
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_model::resources::InputResourceLimitId;
     use serde_json::json;
+
+    #[test]
+    fn frozen_site_appearance_rechecks_ownership_and_host_limits() {
+        let mut base = SourcePresentationConfig::from_value(json!({
+            "look": "neo", "theme": "dark",
+        }));
+        base.set_value("look", json!("neo"));
+        let site = Arc::new(SiteAppearance::new(base));
+        let control = OperationControl::new();
+        let source_policy = source_config_construction_policy();
+        let baseline = site
+            .fork()
+            .into_presentation_config_controlled(&source_policy, &control)
+            .unwrap()
+            .unwrap();
+        assert!(site.frozen.get().is_some());
+
+        let limited = InputResourcePolicy::default()
+            .with_limit(InputResourceLimitId::MaxModelItems, 3)
+            .unwrap();
+        let result = site
+            .fork()
+            .into_presentation_config_controlled(&limited, &control)
+            .unwrap();
+        assert!(
+            matches!(result, Err(PresentationConfigError::ResourceLimit(error))
+            if error.limit == "max_model_items" && error.actual == 4)
+        );
+
+        let mut reassigned = site.fork();
+        reassigned.set_value("theme", json!("dark"));
+        let reassigned = reassigned
+            .into_presentation_config_controlled(&source_policy, &control)
+            .unwrap()
+            .unwrap();
+        assert!(
+            reassigned
+                .as_config()
+                .shares_storage_with(baseline.as_config())
+        );
+        assert!(reassigned.explicit_config_owns_path("theme"));
+        assert!(!baseline.explicit_config_owns_path("theme"));
+
+        control.cancel();
+        assert!(
+            site.fork()
+                .into_presentation_config_controlled(&source_policy, &control)
+                .is_err()
+        );
+    }
 
     #[test]
     fn detector_replay_keeps_literal_keys_and_leaves_unedited_values_in_the_new_palette() {

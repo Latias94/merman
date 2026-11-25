@@ -1737,6 +1737,8 @@ mod editor_parse_source_map_tests {
         assert_eq!(cold_work.json_cow_copies, 0);
         assert_eq!(warm_work.selected_theme_materializations, 0);
         assert_eq!(warm_work.json_cow_copies, 0);
+        assert!(cold_work.authored_path_validations > 0);
+        assert_eq!(warm_work.authored_path_validations, 0);
     }
 
     #[test]

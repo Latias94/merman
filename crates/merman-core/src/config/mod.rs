@@ -26,6 +26,7 @@ pub(crate) struct ConfigWork {
     pub(crate) json_cow_copies: usize,
     pub(crate) appearance_selections: usize,
     pub(crate) selected_theme_materializations: usize,
+    pub(crate) authored_path_validations: usize,
 }
 
 #[cfg(test)]
