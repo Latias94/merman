@@ -2388,6 +2388,7 @@ dependencies = [
  "merman-render",
  "merman-usvg",
  "png",
+ "quick-xml",
  "rayon",
  "reqwest",
  "roxmltree 0.21.2",
