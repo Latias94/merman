@@ -28,6 +28,7 @@ on:
       - "crates/merman-model/**"
       - "crates/merman-markup/**"
       - "crates/merman-render/**"
+      - "crates/merman-render-core/**"
       - "crates/roughr/**"
       - "crates/manatee/**"
       - "crates/dugong/**"

@@ -1,5 +1,5 @@
-use super::super::ir::Endpoint;
 use super::RoutePaintError;
+use crate::route_types::Endpoint;
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, Rect, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -25,14 +25,14 @@ impl DetourBudget {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ObstacleOwner {
+pub enum ObstacleOwner {
     Node(u32),
     GroupTitle(u32),
     EdgeLabel(usize),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Clearance {
+pub struct Clearance {
     tree: Arc<Tree>,
 }
 
@@ -81,7 +81,7 @@ impl Tree {
 }
 
 impl Clearance {
-    pub(crate) fn new(mut boxes: Vec<(Rect, ObstacleOwner)>) -> Self {
+    pub fn new(mut boxes: Vec<(Rect, ObstacleOwner)>) -> Self {
         boxes.retain(|(r, _)| r.is_finite() && r.x0 < r.x1 && r.y0 < r.y1);
         let mut tree = Tree {
             boxes,
@@ -95,7 +95,7 @@ impl Clearance {
         }
     }
 
-    pub(crate) fn for_edge(
+    pub fn for_edge(
         &self,
         edge: usize,
         endpoints: (Endpoint, Endpoint),
@@ -113,7 +113,7 @@ impl Clearance {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct EdgeClearance<'a> {
+pub struct EdgeClearance<'a> {
     tree: &'a Tree,
     edge: usize,
     endpoints: (Endpoint, Endpoint),

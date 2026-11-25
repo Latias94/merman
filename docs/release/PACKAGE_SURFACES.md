@@ -81,8 +81,8 @@ compatible version requirements and intentional upgrade exceptions.
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
-Foundational Rust implementation crates are not product entry points. For example, `merman-core`
-uses the workspace crate `merman-core-preprocess` for source editing and byte-span mapping.
+`merman-core-preprocess` provides source editing and byte-span mapping behind `merman-core`.
+`merman-render-core` provides shared layout and edge geometry behind `merman-render`.
 Homebrew/core owns formula publication; this repository only validates the external formula after
 a stable release.
 

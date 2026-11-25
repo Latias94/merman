@@ -438,7 +438,7 @@ NORMAL_BUILD_CLAIMS = tuple(
         ("rust-markup-full", ("merman-markup", "merman-model", "html5ever", "url"),
          SOURCE_INGESTION_PACKAGES),
         ("rust-ascii", ("merman-ascii", "merman-model"), MODEL_ASCII_FORBIDDEN_PACKAGES),
-        ("rust-render-native-svg", ("merman-render", "merman-model", "merman-markup"),
+        ("rust-render-native-svg", ("merman-render", "merman-render-core", "merman-model", "merman-markup"),
          SOURCE_INGESTION_PACKAGES),
         *((profile_id, ("merman-export", "merman-render", "merman-model"),
            SOURCE_INGESTION_PACKAGES) for profile_id in (

@@ -48,6 +48,7 @@ _SVG_PARITY_CRATE_PREFIXES = (
     "crates/merman-fixture-render-context/",
     "crates/merman-layout-elk/",
     "crates/merman-render/",
+    "crates/merman-render-core/",
     "crates/merman-theme-contract/",
     "crates/roughr/",
 )
@@ -136,6 +137,7 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-layout-elk/", _CORE_OWNERS),
     ("crates/merman-layout-shoal/", _CORE_OWNERS),
     ("crates/merman-render/", {"core", "fuzz", "hygiene"}),
+    ("crates/merman-render-core/", {"core", "fuzz", "hygiene"}),
     ("crates/merman-theme-contract/", _CORE_OWNERS),
     ("crates/merman-rustdoc/", _CORE_OWNERS),
     ("crates/roughr/", _CORE_OWNERS),

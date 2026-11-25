@@ -1,25 +1,24 @@
 //! Paint a boundary-to-boundary axis route in the coordinate space supplied by its caller.
 
 mod clearance;
-pub(crate) use clearance::{Clearance, EdgeClearance, ObstacleOwner};
+pub use clearance::{Clearance, EdgeClearance, ObstacleOwner};
 
-use super::{
-    Marker,
-    ir::{Axis, BorderStitch, KnotKind, RoutePoint, Side, sweep_handle_fraction},
+use crate::route_types::{
+    Axis, BorderStitch, KnotKind, Marker, RoutePoint, Side, sweep_handle_fraction,
 };
-use crate::model::Bounds;
+use crate::{Bounds, LayoutPoint};
 use kurbo::{CubicBez, Point, Shape, Vec2};
 use std::fmt::Write as _;
 
 /// Straight shaft beyond the marker setback, in layout units (v13 `shared/svg/route.ts`).
-pub(crate) const LEAD: f64 = 6.0;
+pub const LEAD: f64 = 6.0;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
 const TERMINAL_TURN_RADIUS: f64 = 24.0;
 const QUARTER_CIRCLE_HANDLE: f64 = 0.552_284_749_830_793_6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum RouteStyle {
+pub enum RouteStyle {
     Curved,
     Rounded(f64),
     Step,
@@ -29,21 +28,9 @@ pub(crate) enum RouteStyle {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) enum CurveTerminals {
+pub enum CurveTerminals {
     #[default]
     Fixed,
-    #[cfg_attr(
-        not(any(
-            test,
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        )),
-        allow(
-            dead_code,
-            reason = "Only Flowchart-family SVGs use smooth unmarked leads."
-        )
-    )]
     Smooth {
         inset: (f64, f64),
         departure_across: Option<f64>,
@@ -51,7 +38,7 @@ pub(crate) enum CurveTerminals {
 }
 
 impl RouteStyle {
-    pub(crate) fn from_interpolate(name: &str, rounded_radius: f64) -> Self {
+    pub fn from_interpolate(name: &str, rounded_radius: f64) -> Self {
         match name {
             "rounded" => Self::Rounded(rounded_radius),
             "step" => Self::Step,
@@ -68,14 +55,14 @@ impl RouteStyle {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PaintedRoute {
-    pub(crate) d: String,
+pub struct PaintedRoute {
+    pub d: String,
     /// Tight geometric bounds of `d`, excluding stroke width, markers and effects.
-    pub(crate) bounds: Bounds,
+    pub bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RoutePaintError {
+pub enum RoutePaintError {
     InvalidGeometry,
     NoClearDetour,
     DetourBudgetExceeded,
@@ -91,26 +78,6 @@ impl std::fmt::Display for RoutePaintError {
     }
 }
 
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-architecture",
-    feature = "diagram-c4",
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-requirement",
-    feature = "diagram-state",
-    feature = "diagram-swimlane",
-    feature = "diagram-usecase"
-))]
-impl RoutePaintError {
-    pub(crate) fn for_edge(self, edge_id: &str) -> crate::Error {
-        crate::Error::InvalidModel {
-            message: format!("Could not paint canonical edge `{edge_id}`: {self}"),
-        }
-    }
-}
-
 fn outward(side: Side) -> Vec2 {
     match side {
         Side::Top => Vec2::new(0.0, -1.0),
@@ -120,7 +87,7 @@ fn outward(side: Side) -> Vec2 {
     }
 }
 
-pub(crate) fn group_lead_side(side: Side, port: RoutePoint, next: RoutePoint) -> Side {
+pub fn group_lead_side(side: Side, port: RoutePoint, next: RoutePoint) -> Side {
     match side {
         Side::Top if next.y > port.y => Side::Bottom,
         Side::Right if next.x < port.x => Side::Left,
@@ -597,23 +564,7 @@ impl Terminal {
     }
 }
 
-#[cfg(all(
-    feature = "layout-shoal",
-    any(
-        feature = "diagram-architecture",
-        feature = "diagram-c4",
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-requirement",
-        feature = "diagram-state",
-        feature = "diagram-usecase"
-    )
-))]
-pub(super) fn marker_lead(
-    port: RoutePoint,
-    side: Side,
-    marker: Marker,
-) -> (crate::model::LayoutPoint, crate::model::LayoutPoint) {
+pub fn marker_lead(port: RoutePoint, side: Side, marker: Marker) -> (LayoutPoint, LayoutPoint) {
     let terminal = Terminal {
         tip: position(port),
         normal: outward(side),
@@ -622,14 +573,14 @@ pub(super) fn marker_lead(
         inset: 0.0,
         departure_across: None,
     };
-    let point = |p: Point| crate::model::LayoutPoint { x: p.x, y: p.y };
+    let point = |p: Point| LayoutPoint { x: p.x, y: p.y };
     (point(terminal.shaft_end()), point(terminal.lead_end()))
 }
 
 /// The endpoints are already on the contours. The two sides are in semantic source/target
 /// order, including on reverse-ranked edges. Trim distances refer to the SVG marker reference
 /// points, measured outward from the supplied contour contacts.
-pub(crate) fn build_svg_path(
+pub fn build_svg_path(
     points: &[RoutePoint],
     sides: (Side, Side),
     style: RouteStyle,
@@ -863,6 +814,7 @@ fn expand_terminal_sweeps(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::route_types::Endpoint;
     use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg};
 
     fn v(x: f64, y: f64) -> RoutePoint {
@@ -1009,7 +961,6 @@ mod tests {
 
     #[test]
     fn wide_corners_clear_foreign_labels_without_changing_the_other_turn_or_stitches() {
-        use super::super::ir::Endpoint;
         let points = [
             h(0., 5.),
             h(10., 5.),
@@ -1082,7 +1033,6 @@ mod tests {
 
     #[test]
     fn only_the_unsafe_sweep_changes_and_foreign_node_and_group_title_ownership_are_distinct() {
-        use super::super::ir::Endpoint;
         let points = [h(0., 0.), h(10., 0.), h(110., 50.), h(120., 50.)];
         let obstacle = kurbo::Rect::new(25., 0.75, 35., 5.);
         fn paint(points: &[RoutePoint], guard: Option<EdgeClearance<'_>>) -> PaintedRoute {
@@ -1128,7 +1078,6 @@ mod tests {
 
     #[test]
     fn a_blocked_sweep_and_chord_detour_without_moving_stitches_or_markers() {
-        use super::super::ir::Endpoint;
         let points = [h(0., 0.), h(20., 0.), h(120., 60.), h(140., 60.)];
         let stitches = [1, 2].map(|point| BorderStitch {
             edge: 0,
@@ -1183,7 +1132,6 @@ mod tests {
 
     #[test]
     fn a_fixed_sweep_point_inside_a_foreign_box_returns_an_error() {
-        use super::super::ir::Endpoint;
         let points = [h(0., 0.), h(20., 0.), h(120., 60.), h(140., 60.)];
         let tree = Clearance::new(vec![(
             kurbo::Rect::new(18., -2., 22., 2.),

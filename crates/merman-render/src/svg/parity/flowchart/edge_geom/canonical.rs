@@ -4,7 +4,7 @@ use super::*;
 use crate::graph_layout::{
     RouteTopology,
     axis_clearance::AxisClearance,
-    contour,
+    contour, edge_paint_error,
     ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
@@ -25,7 +25,7 @@ pub(super) fn paint(
         origin_y,
         trace_enabled,
     } = request;
-    let invalid = || route_paint::RoutePaintError::InvalidGeometry.for_edge(&edge.id);
+    let invalid = || edge_paint_error(&edge.id, route_paint::RoutePaintError::InvalidGeometry);
     let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
     if route.knots.len() != solved.points.len() || solved.points.len() < 2 {
         return Err(invalid());
@@ -147,7 +147,7 @@ pub(super) fn paint(
             ),
         ),
     )
-    .map_err(|error| error.for_edge(&edge.id))?;
+    .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points
         .iter()
         .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })

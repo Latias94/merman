@@ -46,6 +46,13 @@ Introduce `merman-markup` for the existing HTML/URL/sanitizer implementation, sh
 
 Core and Render use the same markup implementation. This avoids putting expensive source/output sanitization into every model consumer, a core-to-renderer dependency, or duplicated security algorithms. Render and export have no production path back to core. They still use the required HTML/XML/CSS, math and font processing for their own outputs.
 
+### Route painting is independent of diagram families
+
+`merman-render-core` owns layout coordinates and the geometry that turns a solved route into an
+SVG path, including marker setback, bounds, and obstacle clearance. Diagram families retain
+semantic bindings, work accounting, and projection into the layout solver. Shoal and the path
+builder exchange the same route point types.
+
 ### Frozen presentation is distinct from engine initialization
 
 Shared presentation data includes the pure full payloads, exact render facts, normalized theme recipe and frozen resolved configuration/ownership used by terminal or graphical output. Core retains mutable detector journals, the actual history-based freeze computation, initialization caches, theme evaluation and source construction. Equal final configuration values do not prove equal authored authority.

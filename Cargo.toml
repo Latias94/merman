@@ -24,6 +24,7 @@ members = [
     "crates/merman-layout-shoal",
     "crates/merman-rustdoc",
     "crates/merman-render",
+    "crates/merman-render-core",
     "crates/merman-unicode-linebreak",
     "crates/merman-export",
     "crates/merman-typst-plugin",
@@ -172,6 +173,7 @@ merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.11.0", d
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.11.0" }
 merman-layout-shoal = { path = "crates/merman-layout-shoal", version = "0.11.0" }
 merman-render = { path = "crates/merman-render", version = "0.11.0", default-features = false }
+merman-render-core = { path = "crates/merman-render-core", version = "0.11.0", default-features = false }
 merman-export = { path = "crates/merman-export", version = "0.11.0", default-features = false }
 dugong = { path = "crates/dugong", version = "0.11.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.11.0" }

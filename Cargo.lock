@@ -2668,6 +2668,7 @@ dependencies = [
  "merman-layout-shoal",
  "merman-markup",
  "merman-model",
+ "merman-render-core",
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",
@@ -2689,6 +2690,15 @@ dependencies = [
  "thiserror 2.0.21",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "merman-render-core"
+version = "0.11.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "merman-layout-shoal",
+ "serde",
 ]
 
 [[package]]

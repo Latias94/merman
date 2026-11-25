@@ -1,0 +1,23 @@
+[package]
+name = "merman-render-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared layout geometry and edge path construction for Merman renderers."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+route-paint = ["dep:kurbo"]
+layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
+
+[dependencies]
+kurbo = { workspace = true, optional = true }
+merman-layout-shoal = { workspace = true, optional = true }
+serde.workspace = true

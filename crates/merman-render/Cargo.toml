@@ -103,7 +103,7 @@ benchmark-stages = ["merman-model/benchmark-stages"]
 layout-cytoscape = ["dep:manatee"]
 layout-dagre = ["dep:dugong"]
 layout-elk = ["dep:merman-layout-elk"]
-layout-shoal = ["dep:merman-layout-shoal"]
+layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal"]
 math = [
   "dep:ratex-font",
   "dep:ratex-layout",
@@ -116,6 +116,7 @@ math = [
 [dependencies]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
+merman-render-core.workspace = true
 data-encoding.workspace = true
 base64.workspace = true
 cssparser.workspace = true
@@ -157,4 +158,5 @@ serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["all-diagrams", "presentation", "compat-json", "test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+merman-render-core = { workspace = true, features = ["route-paint"] }
 regex.workspace = true

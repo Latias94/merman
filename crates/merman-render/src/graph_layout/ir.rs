@@ -7,19 +7,17 @@
 
 use crate::model::LayoutLabel;
 
-/// The marker's setback and footprint in drawing units, measured before routing.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct Marker {
-    pub(crate) trim: f64,
-    pub(crate) depth: f64,
-    pub(crate) width: f64,
-}
-
 // Share plain geometry so a solver can transfer entire rectangle and route buffers to the IR.
 #[cfg(feature = "layout-shoal")]
-pub(crate) use merman_layout_shoal::{
-    Axis, Direction, KnotKind, Point, Rect, RoutePoint, RoutingStyle, Side, Size, TitlePosition,
-    sweep_handle_fraction,
+pub(crate) use merman_layout_shoal::{Direction, Point, Rect, RoutingStyle, Size, TitlePosition};
+
+#[allow(
+    unused_imports,
+    reason = "Axis and knot kinds are used by canonical routing in selected diagram families."
+)]
+pub(crate) use merman_render_core::route_types::{Axis, KnotKind};
+pub(crate) use merman_render_core::route_types::{
+    BorderStitch, Endpoint, Marker, RoutePoint, Side,
 };
 
 #[cfg(not(feature = "layout-shoal"))]
@@ -27,60 +25,6 @@ pub(crate) use geometry::*;
 
 #[cfg(not(feature = "layout-shoal"))]
 mod geometry {
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(crate) enum Axis {
-        Horizontal,
-        Vertical,
-    }
-
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(crate) enum Side {
-        Top,
-        Right,
-        Bottom,
-        Left,
-    }
-
-    impl Side {
-        pub(crate) fn axis(self) -> Axis {
-            match self {
-                Self::Top | Self::Bottom => Axis::Vertical,
-                Self::Left | Self::Right => Axis::Horizontal,
-            }
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub(crate) enum KnotKind {
-        #[default]
-        Free,
-        GapBoundary,
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    pub(crate) struct RoutePoint {
-        pub(crate) x: f64,
-        pub(crate) y: f64,
-        pub(crate) axis: Axis,
-        pub(crate) kind: KnotKind,
-    }
-
-    impl RoutePoint {
-        pub(crate) const fn new(x: f64, y: f64, axis: Axis) -> Self {
-            Self {
-                x,
-                y,
-                axis,
-                kind: KnotKind::Free,
-            }
-        }
-    }
-
-    pub(crate) fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
-        let (across, along) = (across.abs(), along.abs());
-        (0.45 + 0.12 * across.min(along) / across.max(along).max(1.0)).clamp(0.42, 0.56)
-    }
-
     #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     pub(crate) enum Direction {
         #[default]
@@ -152,13 +96,6 @@ pub(crate) fn direction_from_rank(rank: &str) -> Direction {
     }
 }
 
-/// Dense index in the graph's node or group array. Textual IDs belong to the family.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Endpoint {
-    Node(u32),
-    Group(u32),
-}
-
 #[derive(Debug)]
 #[cfg_attr(test, derive(Clone))]
 pub(crate) struct MeasuredGraph {
@@ -222,14 +159,6 @@ pub(crate) struct SolvedGraph {
     pub(crate) direction: Direction,
     /// Extent of the drawing after translation to the origin.
     pub(crate) bounds: Size,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BorderStitch {
-    pub(crate) edge: usize,
-    pub(crate) point: usize,
-    pub(crate) group: u32,
-    pub(crate) side: Side,
 }
 
 #[derive(Debug)]
