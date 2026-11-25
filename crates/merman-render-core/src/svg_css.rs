@@ -10,6 +10,8 @@ mod id;
 mod id_suffix;
 #[cfg(feature = "css-style")]
 mod prepared;
+#[cfg(feature = "svg-identity")]
+mod resource_urls;
 
 pub use id::{
     CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, scoped_drop_shadow,
@@ -19,6 +21,8 @@ pub use id::{
 pub use id_suffix::lower_id_suffix_selectors;
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
+#[cfg(feature = "svg-identity")]
+pub use resource_urls::{CssResourceScanError, CssResourceUrl, visit_css_resource_urls};
 
 /// Emits alternating literal pieces and ordinary `Display` values, in format order.
 /// Each literal stands for one nonempty `write!` piece. Values still go through `fmt::Write`.
