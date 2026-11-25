@@ -18,6 +18,8 @@ mod use_node;
 
 #[cfg(feature = "text")]
 mod text;
+#[cfg(feature = "text")]
+pub use image::ImageHrefPolicy;
 pub use image::{ImageHrefDataResolverFn, ImageHrefResolver, ImageHrefStringResolverFn};
 pub use options::{DEFAULT_MAX_DEPTH, Options};
 #[cfg(feature = "writer")]
@@ -101,19 +103,26 @@ impl crate::Tree {
     ///
     /// Can contain an SVG string or a gzip compressed data.
     pub fn from_data(data: &[u8], opt: &Options) -> Result<Self, Error> {
+        Self::parse_data_with(data, |text| Self::from_str(text, opt))
+    }
+
+    fn parse_data_with(
+        data: &[u8],
+        parse: impl FnOnce(&str) -> Result<Self, Error>,
+    ) -> Result<Self, Error> {
         if data.starts_with(&[0x1f, 0x8b]) {
             #[cfg(feature = "svgz")]
             {
                 let data = decompress_svgz(data)?;
                 let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
-                Self::from_str(text, opt)
+                parse(text)
             }
 
             #[cfg(not(feature = "svgz"))]
             Err(Error::SvgzFeatureNotEnabled)
         } else {
             let text = std::str::from_utf8(data).map_err(|_| Error::NotAnUtf8Str)?;
-            Self::from_str(text, opt)
+            parse(text)
         }
     }
 
@@ -121,7 +130,11 @@ impl crate::Tree {
     /// external files, as required by the SVG specification when SVG files are loaded
     /// for `<image href="..." />` tags.
     pub fn from_data_nested(data: &[u8], opt: &Options) -> Result<Self, Error> {
-        let nested_opt = Options {
+        Self::from_data(data, &Self::nested_options(opt))
+    }
+
+    fn nested_options<'a>(opt: &'a Options) -> Options<'a> {
+        Options {
             resources_dir: None,
             dpi: opt.dpi,
             font_family: opt.font_family.clone(),
@@ -169,9 +182,7 @@ impl crate::Tree {
             },
             max_depth: opt.max_depth,
             ..Options::default()
-        };
-
-        Self::from_data(data, &nested_opt)
+        }
     }
 
     /// Parses `Tree` from an SVG string.
@@ -186,17 +197,36 @@ impl crate::Tree {
     /// Only the font database, default font family, and text resolvers supplied by `configure`
     /// are used. If no text needs fonts, `configure` is not called. Returning `false` declines
     /// conversion and the method returns `Ok(None)` without publishing a partial tree.
+    /// Built-in SVG images share this configuration. With [`ImageHrefPolicy::Configured`],
+    /// each custom resolver supplies its finished image and controls any nested parsing.
     #[cfg(feature = "text")]
     pub fn try_from_str_with_text_fonts(
         text: &str,
         opt: &Options,
+        images: ImageHrefPolicy,
         configure: impl FnOnce(&mut Options<'static>) -> bool,
     ) -> Result<Option<Self>, Error> {
+        let configure = std::cell::Cell::new(Some(configure));
+        let initialize = || {
+            let mut options = Options::default();
+            configure.take()?(&mut options).then_some(options)
+        };
+        let session = converter::TextFontSession::new(&initialize);
+        let tree = Self::from_str_with_session(text, opt, &session, images)?;
+        Ok((!session.declined()).then_some(tree))
+    }
+
+    #[cfg(feature = "text")]
+    fn from_str_with_session(
+        text: &str,
+        opt: &Options,
+        session: &converter::TextFontSession,
+        images: ImageHrefPolicy,
+    ) -> Result<Self, Error> {
         let doc = parse_document(text, opt)?;
         let mut cache = converter::Cache::new(&doc, opt.fontdb.clone());
-        cache.configure_text_fonts = Some(Box::new(configure));
-        let tree = converter::convert_doc_with_cache(&mut cache, opt)?;
-        Ok((!cache.text_fonts_declined).then_some(tree))
+        cache.text_font_session = Some((session, images));
+        converter::convert_doc_with_cache(&mut cache, opt)
     }
 
     /// Parses a metric probe and also resolves the metric bbox x of its end-anchored twin.

@@ -50,11 +50,9 @@ pub struct Cache<'a> {
     #[cfg(feature = "text")]
     pub(super) text_anchor_probe: Option<TextAnchorProbe>,
     #[cfg(feature = "text")]
-    pub(super) configure_text_fonts: Option<ConfigureTextFonts<'a>>,
+    pub(super) text_font_session: Option<(&'a TextFontSession<'a>, ImageHrefPolicy)>,
     #[cfg(feature = "text")]
-    pub(super) text_font_options: Option<Box<Options<'static>>>,
-    #[cfg(feature = "text")]
-    pub(super) text_fonts_declined: bool,
+    pub(super) text_font_options: Option<&'a Options<'static>>,
 
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
@@ -77,7 +75,28 @@ pub struct Cache<'a> {
 }
 
 #[cfg(feature = "text")]
-type ConfigureTextFonts<'a> = Box<dyn FnOnce(&mut Options<'static>) -> bool + 'a>;
+pub(super) struct TextFontSession<'a> {
+    configure: &'a dyn Fn() -> Option<Options<'static>>,
+    options: std::cell::OnceCell<Option<Options<'static>>>,
+}
+
+#[cfg(feature = "text")]
+impl<'a> TextFontSession<'a> {
+    pub(super) fn new(configure: &'a dyn Fn() -> Option<Options<'static>>) -> Self {
+        Self {
+            configure,
+            options: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn options(&self) -> Option<&Options<'static>> {
+        self.options.get_or_init(self.configure).as_ref()
+    }
+
+    pub(super) fn declined(&self) -> bool {
+        matches!(self.options.get(), Some(None))
+    }
+}
 
 #[cfg(feature = "text")]
 pub(super) struct TextAnchorProbe {
@@ -98,11 +117,9 @@ impl<'a> Cache<'a> {
             #[cfg(feature = "text")]
             text_anchor_probe: None,
             #[cfg(feature = "text")]
-            configure_text_fonts: None,
+            text_font_session: None,
             #[cfg(feature = "text")]
             text_font_options: None,
-            #[cfg(feature = "text")]
-            text_fonts_declined: false,
 
             clip_paths: HashMap::new(),
             masks: HashMap::new(),
@@ -124,16 +141,23 @@ impl<'a> Cache<'a> {
 
     #[cfg(feature = "text")]
     pub(super) fn ensure_text_fonts(&mut self) -> bool {
-        if let Some(configure) = self.configure_text_fonts.take() {
-            let mut options = Box::new(Options::default());
-            if !configure(&mut options) {
-                self.text_fonts_declined = true;
+        if self.text_font_options.is_none() {
+            let Some((session, _)) = self.text_font_session else {
+                return true;
+            };
+            let Some(options) = session.options() else {
                 return false;
-            }
+            };
             self.fonts.fontdb = options.fontdb.clone();
             self.text_font_options = Some(options);
         }
-        !self.text_fonts_declined
+        true
+    }
+
+    #[cfg(feature = "text")]
+    pub(super) fn text_fonts_declined(&self) -> bool {
+        self.text_font_session
+            .is_some_and(|(session, _)| session.declined())
     }
 
     // TODO: macros?
@@ -420,7 +444,7 @@ pub(super) fn convert_doc_with_cache(cache: &mut Cache, opt: &Options) -> Result
     }
 
     #[cfg(feature = "text")]
-    if cache.text_fonts_declined {
+    if cache.text_fonts_declined() {
         return Ok(tree);
     }
 
@@ -572,7 +596,7 @@ pub(crate) fn convert_children(
 ) {
     for node in parent_node.children() {
         #[cfg(feature = "text")]
-        if cache.text_fonts_declined {
+        if cache.text_fonts_declined() {
             break;
         }
         convert_element(node, state, cache, parent);
@@ -678,7 +702,7 @@ pub(crate) fn convert_clip_path_elements(
 ) {
     for node in clip_node.children() {
         #[cfg(feature = "text")]
-        if cache.text_fonts_declined {
+        if cache.text_fonts_declined() {
             break;
         }
         let tag_name = match node.tag_name() {

@@ -5,8 +5,8 @@ use base64::Engine;
 use usvg::fontdb::{Database, ID, Source};
 use usvg::layout::PositionedGlyph;
 use usvg::{
-    FontFamily, FontInstance, FontOpticalSizing, FontStretch, FontStyle, FontVariation, ImageKind,
-    Node, Options, Text, Tree,
+    FontFamily, FontInstance, FontOpticalSizing, FontStretch, FontStyle, FontVariation,
+    ImageHrefPolicy, ImageKind, Node, Options, Text, Tree,
 };
 
 const COLLECTION: &[u8] = include_bytes!("fonts/instance-transport.ttc");
@@ -1523,15 +1523,7 @@ fn nested_svg_inherits_the_hooks_and_keeps_its_admitted_collection() {
         &options,
     )
     .unwrap();
-    let Some(Node::Group(group)) = tree.node_by_id("image") else {
-        panic!("expected a group for the nested SVG image");
-    };
-    let [Node::Image(image)] = group.children() else {
-        panic!("expected a nested SVG image in the group");
-    };
-    let ImageKind::SVG(nested) = image.kind() else {
-        panic!("expected an SVG image");
-    };
+    let nested = nested_image(&tree);
     let span = &text(nested).layouted()[0];
     assert_eq!(span.font_size.get(), 30.0);
     assert_eq!(span.variations, [axis(b"opsz", 30.0), axis(b"wght", 900.0)]);
@@ -1544,4 +1536,175 @@ fn nested_svg_inherits_the_hooks_and_keeps_its_admitted_collection() {
         1
     );
     assert!(options.fontdb.is_empty());
+}
+
+fn nested_image(tree: &Tree) -> &Tree {
+    let Some(Node::Group(group)) = tree.node_by_id("image") else {
+        panic!("expected a group for the nested SVG image");
+    };
+    let [Node::Image(image)] = group.children() else {
+        panic!("expected a nested SVG image in the group");
+    };
+    let ImageKind::SVG(nested) = image.kind() else {
+        panic!("expected an SVG image");
+    };
+    nested
+}
+
+fn svg_document(content: &str) -> String {
+    format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60">{content}</svg>"#)
+}
+
+fn svg_image(content: &str) -> String {
+    let data = base64::engine::general_purpose::STANDARD.encode(svg_document(content));
+    format!(r#"<image id="image" href="data:image/svg+xml;base64,{data}"/>"#)
+}
+
+#[test]
+fn lazy_fonts_shape_svg_images_in_document_order() {
+    let label = r#"<text id="label" y="30">A</text>"#;
+    let image = svg_image(label);
+    for (before, after) in [("", ""), (label, ""), ("", label)] {
+        let source = svg_document(&format!("{before}{image}{after}"));
+        let mut calls = 0;
+        let tree = Tree::try_from_str_with_text_fonts(
+            &source,
+            &Options::default(),
+            ImageHrefPolicy::DataOnly,
+            |options| {
+                calls += 1;
+                options.font_family = "Merman Instance Test".into();
+                static_face(options.fontdb_mut());
+                true
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(calls, 1);
+        let assert_letter = |tree: &Tree| {
+            let glyphs: Vec<_> = glyphs(tree).collect();
+            assert_eq!(glyphs.len(), 1);
+            assert_eq!(glyphs[0].text, "A");
+            assert_ne!(glyphs[0].id.0, 0);
+            assert!(tree.fontdb().face(glyphs[0].font).is_some());
+        };
+        assert_letter(nested_image(&tree));
+        if !before.is_empty() || !after.is_empty() {
+            assert_letter(&tree);
+        }
+    }
+}
+
+#[test]
+fn lazy_fonts_skip_empty_image_text_and_propagate_nested_decline() {
+    let blank = svg_image(r#"<rect width="5" height="5"/><text>  </text>"#);
+    let tree = Tree::try_from_str_with_text_fonts(
+        &svg_document(&blank),
+        &Options::default(),
+        ImageHrefPolicy::DataOnly,
+        |_| panic!("trimmed text does not need fonts"),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(nested_image(&tree).root().has_children());
+
+    let image = svg_image("<text>A</text>");
+    let mut calls = 0;
+    let tree = Tree::try_from_str_with_text_fonts(
+        &svg_document(&image),
+        &Options::default(),
+        ImageHrefPolicy::DataOnly,
+        |_| {
+            calls += 1;
+            false
+        },
+    )
+    .unwrap();
+    assert_eq!(calls, 1);
+    assert!(tree.is_none());
+}
+
+#[test]
+fn lazy_fonts_file_images_allow_only_embedded_descendants() {
+    let directory = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_owned();
+    let name = format!("usvg-nested-{}", std::process::id());
+    let leaf = directory.join(format!("{name}-leaf.svg"));
+    let child = directory.join(format!("{name}.svg"));
+    let external = leaf
+        .to_str()
+        .unwrap()
+        .replace('&', "&amp;")
+        .replace('"', "&quot;");
+    let label = r#"<text id="label" y="30">A</text>"#;
+    let content = format!(
+        r#"<image id="external" href="{external}"/>{}"#,
+        svg_image(label)
+    );
+    std::fs::write(&leaf, svg_document(label)).unwrap();
+    std::fs::write(&child, svg_document(&content)).unwrap();
+    let source = svg_document(&format!(r#"<image id="image" href="{name}.svg"/>"#));
+    let options = Options {
+        resources_dir: Some(directory),
+        ..Options::default()
+    };
+    let tree = Tree::try_from_str_with_text_fonts(
+        &source,
+        &options,
+        ImageHrefPolicy::DataAndFiles,
+        |fonts| {
+            fonts.font_family = "Merman Instance Test".into();
+            static_face(fonts.fontdb_mut());
+            true
+        },
+    );
+    let data_only =
+        Tree::try_from_str_with_text_fonts(&source, &options, ImageHrefPolicy::DataOnly, |_| {
+            panic!("a blocked file cannot request fonts")
+        });
+    std::fs::remove_file(child).unwrap();
+    std::fs::remove_file(leaf).unwrap();
+    let tree = tree.unwrap().unwrap();
+    let nested = nested_image(&tree);
+    assert!(nested.node_by_id("external").is_none());
+    assert_eq!(glyphs(nested_image(nested)).next().unwrap().text, "A");
+    assert!(data_only.unwrap().unwrap().node_by_id("image").is_none());
+}
+
+#[test]
+fn lazy_fonts_configured_image_resolvers_own_their_result() {
+    let calls = AtomicUsize::new(0);
+    let mut options = Options::default();
+    options.image_href_resolver.resolve_data = Box::new(|mime, _, _| {
+        assert_eq!(mime, "image/svg+xml");
+        calls.fetch_add(1, Ordering::Relaxed);
+        None
+    });
+    options.image_href_resolver.resolve_string = Box::new(|href, _| {
+        assert_eq!(href, "custom:image");
+        calls.fetch_add(1, Ordering::Relaxed);
+        Some(ImageKind::SVG(
+            Tree::from_str(
+                &svg_document(r#"<path d="M0 0h5v5z"/>"#),
+                &Options::default(),
+            )
+            .unwrap(),
+        ))
+    });
+    let source = svg_document(&format!(
+        r#"{}<image id="custom" href="custom:image"/>"#,
+        svg_image("<text>A</text>")
+    ));
+    let tree =
+        Tree::try_from_str_with_text_fonts(&source, &options, ImageHrefPolicy::Configured, |_| {
+            panic!("custom image resolvers supplied no text to convert")
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert!(tree.node_by_id("image").is_none());
+    assert!(tree.node_by_id("custom").is_some());
 }

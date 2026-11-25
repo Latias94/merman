@@ -114,7 +114,7 @@ pub(crate) fn convert(
         cache,
         &mut parent.text_font_omissions,
     );
-    if chunks.is_empty() || cache.text_fonts_declined {
+    if chunks.is_empty() || cache.text_fonts_declined() {
         return;
     }
 
@@ -157,7 +157,7 @@ pub(crate) fn convert(
     let probe_end_anchor = report_anchor && text::layout::can_probe_end_anchor(&text);
     let Some(end_x) = text::convert(
         &mut text,
-        cache.text_font_options.as_deref().unwrap_or(state.opt),
+        cache.text_font_options.unwrap_or(state.opt),
         &mut cache.fonts,
         probe_end_anchor,
         &mut parent.text_font_omissions.no_primary_face,
@@ -293,10 +293,7 @@ fn collect_text_chunks_impl(
         if !cache.ensure_text_fonts() {
             return;
         }
-        let font = convert_font(
-            parent,
-            cache.text_font_options.as_deref().unwrap_or(state.opt),
-        );
+        let font = convert_font(parent, cache.text_font_options.unwrap_or(state.opt));
 
         let raw_paint_order: svgtypes::PaintOrder =
             parent.find_attribute(AId::PaintOrder).unwrap_or_default();

@@ -2411,19 +2411,23 @@ fn parse_svg_tree(
     control: &OperationControl,
 ) -> Result<ParsedExportSvg> {
     export_checkpoint(control)?;
-    options.image_href_resolver = data_url_only_image_href_resolver();
     #[cfg(feature = "native-fonts")]
     if let SvgExportFonts::Context(context) = &fonts {
         context.check()?;
     }
     let mut fonts = Some(fonts);
     let mut configured = None;
-    let tree = usvg::Tree::try_from_str_with_text_fonts(source, &options, |options| {
-        configured = fonts
-            .take()
-            .map(|fonts| fonts.configure(true, options, control));
-        configured.as_ref().is_some_and(Result::is_ok)
-    });
+    let tree = usvg::Tree::try_from_str_with_text_fonts(
+        source,
+        &options,
+        usvg::ImageHrefPolicy::DataOnly,
+        |options| {
+            configured = fonts
+                .take()
+                .map(|fonts| fonts.configure(true, options, control));
+            configured.as_ref().is_some_and(Result::is_ok)
+        },
+    );
     #[cfg(feature = "native-fonts")]
     if let Some(Ok(configured)) = &configured
         && let Some(context) = &configured.context
@@ -3686,14 +3690,6 @@ fn raster_usvg_options(metadata: RootSvgMetadata) -> usvg::Options<'static> {
     opt
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
-    usvg::ImageHrefResolver {
-        resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
-        resolve_string: Box::new(|_, _| None),
-    }
-}
-
 #[cfg(any(
     feature = "native-fonts",
     all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
@@ -4550,22 +4546,30 @@ mod tests {
     }
 
     #[test]
-    fn exporter_image_resolver_never_reads_string_hrefs() {
-        let resolver = data_url_only_image_href_resolver();
+    fn exporter_backend_ignores_local_image_even_before_svg_sanitization() {
+        let local_image = TempFile::new("png", encode_rgba_png(1, 1, &[255, 0, 0, 255]));
+        let href = escape_xml_attr(&local_image.href_path());
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><image href="{href}" width="1" height="1"/></svg>"#
+        );
         let options = usvg::Options::default();
+        assert!(
+            !usvg::Tree::from_str(&source, &options)
+                .unwrap()
+                .root()
+                .children()
+                .is_empty()
+        );
 
-        for href in [
-            "/tmp/secret.png",
-            "../secret.png",
-            r"\\server\share\secret.png",
-            r"C:\private\secret.png",
-            "https://example.com/remote.png",
-        ] {
-            assert!(
-                (resolver.resolve_string)(href, &options).is_none(),
-                "string href unexpectedly resolved: {href}"
-            );
-        }
+        let svg = compatible_svg(&source);
+        let parsed = parse_svg_tree(
+            &source,
+            options,
+            SvgExportFonts::Retained(&svg),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.tree.root().children().is_empty());
     }
 
     #[test]
