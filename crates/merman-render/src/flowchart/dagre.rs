@@ -19,6 +19,7 @@ use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdge
 use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
@@ -1096,10 +1097,16 @@ fn set_parent_controlled(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum ClusterCopyEdge {
-    Internal,
-    Boundary { from_inside: bool },
+struct ClusterCopyDestination {
+    from_inside: bool,
+    last_source: Option<usize>,
+}
+
+#[derive(Default)]
+struct ClusterCopyEdges {
+    // Internal edges have no destination index. A one-based index keeps each slot two words.
+    slots: Vec<(usize, Option<NonZeroUsize>)>,
+    destinations: Vec<ClusterCopyDestination>,
 }
 
 fn cluster_copy_edge_snapshot(
@@ -1107,8 +1114,8 @@ fn cluster_copy_edge_snapshot(
     root_id: &str,
     descendants: &[String],
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<Vec<(usize, ClusterCopyEdge)>> {
-    let mut edges = Vec::new();
+) -> Result<ClusterCopyEdges> {
+    let mut edges = ClusterCopyEdges::default();
     if descendants.is_empty() || graph.edge_count() == 0 {
         return Ok(edges);
     }
@@ -1119,6 +1126,7 @@ fn cluster_copy_edge_snapshot(
         members.insert(descendant.as_str());
     }
 
+    let mut destinations = None;
     let slot_count = graph.edge_slot_count();
     work_control.charge_adapter(slot_count)?;
     for edge_ix in 0..slot_count {
@@ -1134,13 +1142,28 @@ fn cluster_copy_edge_snapshot(
         work_control.charge_adapter(2)?;
         let v_in = members.contains(key.v.as_str());
         let w_in = members.contains(key.w.as_str());
-        let kind = match (v_in, w_in) {
-            (true, true) => ClusterCopyEdge::Internal,
-            (true, false) | (false, true) => ClusterCopyEdge::Boundary { from_inside: v_in },
-            (false, false) => continue,
-        };
+        if !v_in && !w_in {
+            continue;
+        }
         work_control.charge_adapter(1)?;
-        edges.push((edge_ix, kind));
+        let destination = if v_in && w_in {
+            None
+        } else {
+            // With a fixed root in a directed graph, direction, outside endpoint and name
+            // identify the complete rewritten key. Keep input order independent of the map.
+            let outside = if v_in { key.w.as_str() } else { key.v.as_str() };
+            *destinations
+                .get_or_insert_with(HashMap::new)
+                .entry((v_in, outside, key.name.as_deref()))
+                .or_insert_with(|| {
+                    edges.destinations.push(ClusterCopyDestination {
+                        from_inside: v_in,
+                        last_source: None,
+                    });
+                    NonZeroUsize::new(edges.destinations.len())
+                })
+        };
+        edges.slots.push((edge_ix, destination));
     }
     Ok(edges)
 }
@@ -1222,6 +1245,8 @@ fn copy_cluster(
         );
     }
 
+    // The production caller copies the root's descendants, so no removal can delete the root.
+    let remember_boundary_sources = cluster_id == root_id && graph.options().directed;
     let mut edge_snapshot = None;
     for (node, owner_cluster) in nodes {
         work_control.charge_adapter(1)?;
@@ -1253,13 +1278,22 @@ fn copy_cluster(
         };
         // The first pass must see every eligible edge in Graphlib order. Inserting an internal
         // edge can create endpoints before their nodes are visited by this traversal.
-        for &(edge_ix, kind) in edges.iter() {
+        for &(edge_ix, destination) in &edges.slots {
             work_control.charge_adapter(2)?; // Replay this entry and retain it after removal.
+            let destination = destination.map(|index| &mut edges.destinations[index.get() - 1]);
+            // A live source still owns its outside endpoint. The root and rewritten key
+            // therefore remain live, and writing the same source label is a no-op.
+            if destination
+                .as_ref()
+                .is_some_and(|entry| entry.last_source == Some(edge_ix))
+            {
+                continue;
+            }
             let Some(edge_key) = graph.edge_key_by_ix(edge_ix) else {
                 continue;
             };
-            match kind {
-                ClusterCopyEdge::Internal => {
+            match destination {
+                None => {
                     if !new_graph.has_edge(&edge_key.v, &edge_key.w, edge_key.name.as_deref())
                         && let Some(label) = graph.edge_by_key(edge_key).cloned()
                     {
@@ -1272,11 +1306,11 @@ fn copy_cluster(
                         new_graph.set_edge_key(edge_key.clone(), label);
                     }
                 }
-                ClusterCopyEdge::Boundary { from_inside } => {
+                Some(destination) => {
                     let Some(label) = graph.edge_by_key(edge_key).cloned() else {
                         continue;
                     };
-                    let (v, w) = if from_inside {
+                    let (v, w) = if destination.from_inside {
                         (root_id, edge_key.w.as_str())
                     } else {
                         (edge_key.v.as_str(), root_id)
@@ -1284,6 +1318,9 @@ fn copy_cluster(
                     charge_edge_endpoint_insertions(graph, v, w, work_control)?;
                     let rewritten = dugong::graphlib::EdgeKey::new(v, w, edge_key.name.as_deref());
                     graph.set_edge_key(rewritten, label);
+                    if remember_boundary_sources {
+                        destination.last_source = Some(edge_ix);
+                    }
                 }
             }
         }
@@ -1293,9 +1330,8 @@ fn copy_cluster(
         let _ = graph.remove_node(&node);
         // Internal edges were installed on the first pass. Rewritten edges touch the root and
         // cannot enter the snapshot. Retire removed source slots before an append can reuse them.
-        edges.retain(|&(edge_ix, kind)| {
-            matches!(kind, ClusterCopyEdge::Boundary { .. })
-                && graph.edge_key_by_ix(edge_ix).is_some()
+        edges.slots.retain(|&(edge_ix, destination)| {
+            destination.is_some() && graph.edge_key_by_ix(edge_ix).is_some()
         });
     }
 
@@ -4939,6 +4975,62 @@ flowchart TD
             let graph = if name == "inside" { &copied } else { &graph };
             assert_eq!(graph.edge(from, to, Some(name)), Some(label));
         }
+    }
+
+    #[test]
+    fn dagre_cluster_copy_keeps_first_insertions_and_collision_fallback() {
+        let mut graph = compound_graph();
+        for id in ["root", "first", "gap", "late", "tail", "outside"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for child in ["first", "gap", "late", "tail"] {
+            graph.set_parent(child, "root");
+        }
+        let edges = [
+            ("late", "tail", "internal", 0),
+            ("root", "outside", "same", 1),
+            ("late", "outside", "same", 2),
+            ("first", "outside", "same", 3),
+            ("late", "outside", "parallel", 4),
+        ];
+        for (from, to, name, owner_index) in edges {
+            let label = EdgeLabel {
+                owner_index: Some(owner_index),
+                ..Default::default()
+            };
+            graph.set_edge_named(from, to, Some(name), Some(label));
+        }
+
+        let mut copied = compound_graph();
+        let mut work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )));
+        let descendants = extract_descendants("root", &graph, &mut work_control).unwrap();
+        copy_cluster(
+            "root",
+            &mut graph,
+            &mut copied,
+            "root",
+            &HashMap::from([("root".into(), descendants)]),
+            &mut work_control,
+        )
+        .unwrap();
+
+        assert_eq!(copied.node_ids(), ["first", "late", "tail", "gap"]);
+        let rewritten = graph
+            .edges()
+            .map(|key| {
+                assert_eq!((key.v.as_str(), key.w.as_str()), ("root", "outside"));
+                (
+                    key.name.as_deref(),
+                    graph.edge_by_key(key).unwrap().owner_index,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rewritten,
+            [(Some("same"), Some(2)), (Some("parallel"), Some(4))]
+        );
     }
 
     #[cfg(target_pointer_width = "64")]
