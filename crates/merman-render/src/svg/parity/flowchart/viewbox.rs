@@ -7,7 +7,7 @@ use super::cluster_geometry::painted_cluster_frame;
 use super::viewbox_node_bounds::include_flowchart_node_rendered_bounds;
 use super::*;
 
-const TITLE_FONT_SIZE_PX: f64 = 18.0;
+pub(super) const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderedBoundsRequest<'view, 'data> {
     pub ctx: &'view FlowchartRenderCtx<'data>,
@@ -284,19 +284,26 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     let title_anchor_x = (bbox_min_x + bbox_max_x) / 2.0;
 
     if let Some(title) = diagram_title.as_deref() {
-        let title_style = TextStyle {
-            font_family: Some(font_family.to_string()),
-            font_size: TITLE_FONT_SIZE_PX,
-            font_weight: None,
-            font_style: None,
+        let compatibility_style;
+        let title_style = match ctx.native {
+            Some(native) => &native.title_style,
+            None => {
+                compatibility_style = TextStyle {
+                    font_family: Some(font_family.to_string()),
+                    font_size: TITLE_FONT_SIZE_PX,
+                    font_weight: None,
+                    font_style: None,
+                };
+                &compatibility_style
+            }
         };
-        let (title_left, title_right) = ctx.measurer.measure_svg_title_bbox_x(title, &title_style);
+        let (title_left, title_right) = ctx.measurer.measure_svg_title_bbox_x(title, title_style);
         let baseline_y = -title_top_margin;
         let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
             ctx.measurer,
             title,
-            &title_style,
-            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+            title_style,
+            crate::text::svg_title_bbox_vertical_extents_px(title_style),
         );
 
         bbox_min_x = bbox_min_x.min(title_anchor_x - title_left);

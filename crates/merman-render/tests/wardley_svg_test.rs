@@ -241,11 +241,11 @@ fn wardley_native_roles_and_gridlines_reach_svg() {
     let doc = roxmltree::Document::parse(&svg).unwrap();
     assert_eq!(
         element_with_class(&doc, "line", "wardley-link").attribute("stroke"),
-        Some("#B04225")
+        Some("#36485A")
     );
     assert!(
         doc.descendants()
-            .any(|node| node.has_tag_name("circle") && node.attribute("fill") == Some("#FFECCD"))
+            .any(|node| node.has_tag_name("circle") && node.attribute("fill") == Some("#EEF1F2"))
     );
 }
 
@@ -301,7 +301,7 @@ const WARDLEY_ANCHOR_SOURCE: &str = concat!(
 );
 
 #[test]
-fn wardley_source_font_and_anchor_colors_override_native_roles() {
+fn wardley_native_typography_and_roles_replace_mermaid_theme_variables() {
     let theme = ThemeCompiler::new()
         .compile_json(br#"{"schema_version":2,"extends":"blueprint"}"#, None)
         .unwrap();
@@ -317,29 +317,12 @@ fn wardley_source_font_and_anchor_colors_override_native_roles() {
         "wardley-explicit-anchors",
         session,
     );
-    let document = roxmltree::Document::parse(&svg).unwrap();
-    assert_eq!(
-        element_with_class(&document, "g", "wardley-map").attribute("font-family"),
-        Some("MapSourceFont,monospace")
-    );
-    for (class, expected) in [
-        ("wardley-node--anchor", "#aabbcc"),
-        ("wardley-node--component", "#112233"),
-    ] {
-        let group = element_with_class(&document, "g", class);
-        assert_eq!(
-            group
-                .children()
-                .find(|node| node.has_tag_name("text"))
-                .unwrap()
-                .attribute("fill"),
-            Some(expected),
-        );
+    assert!(svg.contains("IBM Plex Mono"));
+    let classic = render_wardley(&source, serde_json::json!({}), "wardley-classic-anchors");
+    for configured in ["MapSourceFont", "#aabbcc", "#112233", "#445566"] {
+        assert!(classic.contains(configured));
+        assert!(!svg.contains(configured));
     }
-    assert_eq!(
-        element_with_class(&document, "line", "wardley-trend").attribute("stroke"),
-        Some("#445566"),
-    );
 }
 
 #[test]

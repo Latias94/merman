@@ -25,7 +25,7 @@ A document can extend a preset and override only the values it needs. This examp
 
 Themes may declare `light`, `dark`, or both. Set `default_appearance` to choose the default of a full document. `theme check` reports syntax, schema, and contrast issues. Add `--strict-contrast` to fail on a contrast warning.
 
-For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.theme` in bindings. When you choose a native theme, its settings provide global visual defaults. To give an explicitly authored Mermaid theme priority, pass `--theme-precedence source`. Local styles such as Flowchart `classDef`, `style`, and `linkStyle` keep their precedence over native defaults.
+For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.theme` in bindings. A native theme supplies global visual settings in place of Mermaid's `theme`, `themeVariables`, `darkMode`, and root typography. Mermaid layout settings and local styles such as Flowchart `classDef`, `style`, and `linkStyle` still apply. To use Mermaid's visual settings when a diagram explicitly selects a Mermaid theme, pass `--theme-precedence source`.
 
 ## Graphics and terminal output
 
@@ -33,7 +33,7 @@ Use `--background '#112233'` or `--background transparent` to replace the base o
 
 Set `canvas.padding_px` in an appearance to add space around the diagram inside the SVG viewport. The canvas paint and textures fill the expanded area.
 
-The terminal palette uses the same native theme when you render ASCII or Unicode with `--ascii-color truecolor` or `--ascii-color ansi256`. A binding option `ascii.theme` can supply a separate terminal palette.
+The terminal palette uses the selected family's native colors when you render ASCII or Unicode with `--ascii-color truecolor` or `--ascii-color ansi256`. A binding option `ascii.theme` can supply a separate terminal palette.
 
 ## Use a theme in an application
 

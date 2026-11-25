@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use merman_model::presentation::PresentationConfig;
+
 pub(crate) mod canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -46,6 +48,71 @@ pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Color, FamilyTheme, ResolvedThemeV2, ThemeCapabilityFlags,
     ThemeCompiler, ThemeDocumentV2, ThemeError, ThemeNotice,
 };
+
+/// Projects the configuration used by native layout, paint, and text admission.
+#[doc(hidden)]
+pub fn native_render_config(
+    config: &PresentationConfig,
+    control: &merman_model::OperationControl,
+) -> crate::Result<Option<PresentationConfig>> {
+    use merman_model::MermaidConfig;
+    use merman_model::presentation::FrozenPresentationConfigParts;
+    use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+
+    const MERMAID_VISUAL_KEYS: [&str; 6] = [
+        "theme",
+        "themeVariables",
+        "darkMode",
+        "fontFamily",
+        "fontSize",
+        "fontWeight",
+    ];
+    if MERMAID_VISUAL_KEYS
+        .iter()
+        .all(|key| config.get(key).is_none())
+    {
+        return Ok(None);
+    }
+    let Some(values) = config.as_value().as_object() else {
+        return Ok(None);
+    };
+
+    // Keep structural and family configuration and the trusted output CSS boundary. The source
+    // configuration and its authored paths remain available to compatibility projections.
+    let control = control.for_phase(merman_model::OperationPhase::Layout);
+    let mut retained = MermaidConfig::empty_object();
+    let retained_keys = retained
+        .as_value_mut()
+        .as_object_mut()
+        .expect("empty config object");
+    for (key, value) in values
+        .iter()
+        .filter(|(key, _)| !MERMAID_VISUAL_KEYS.contains(&key.as_str()))
+    {
+        retained_keys.insert(
+            key.clone(),
+            merman_model::json::clone_value_nonrecursive_with_control(value, &control)?,
+        );
+    }
+    let mut paths = std::collections::BTreeSet::new();
+    for path in config.explicit_config_paths() {
+        control.checkpoint()?;
+        if path.is_empty() {
+            paths.extend(retained_keys.keys().map(|key| Arc::from(key.as_str())));
+        } else if !MERMAID_VISUAL_KEYS
+            .contains(&path.split_once('.').map_or(path, |(root, _)| root))
+        {
+            paths.insert(Arc::from(path));
+        }
+    }
+    let parts =
+        FrozenPresentationConfigParts::new(retained).with_explicit_config_paths(Arc::new(paths));
+    // The projection only removes admitted data and preserves ownership of the retained keys.
+    let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    Ok(Some(PresentationConfig::try_from_frozen_parts_controlled(
+        parts, &policy, &control,
+    )??))
+}
 
 /// Whether rendering requires portable output for the selected target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]

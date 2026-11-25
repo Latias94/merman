@@ -41,21 +41,92 @@ fn native_svg_theme_obeys_source_precedence_and_survives_prepared_source_reuse()
 #[test]
 fn native_theme_reaches_a_truecolor_terminal_render() {
     use merman::ascii::AsciiColorMode;
-    use merman::theme::{BuiltinPreset, ThemeSelection};
+    use merman::theme::{BuiltinPreset, ThemeCompiler, ThemeSelection};
     use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 
     let mut request = AsciiRequest::default();
     request.options.color_mode = AsciiColorMode::TrueColor;
-    let RenderOutput::Ascii(Some(output)) = Renderer::new()
-        .render(
-            RenderRequest::ascii("flowchart LR\nA --> B", OperationControl::new(), request)
-                .with_native_theme(ThemeSelection::preset(BuiltinPreset::Cyberpunk, None)),
-        )
-        .unwrap()
-    else {
-        panic!("expected terminal output");
+    let render = |theme| {
+        let RenderOutput::Ascii(Some(output)) = Renderer::new()
+            .render(
+                RenderRequest::ascii(
+                    "flowchart LR\nA --> B",
+                    OperationControl::new(),
+                    request.clone(),
+                )
+                .with_native_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("expected terminal output");
+        };
+        output.text
     };
-    assert!(output.text.contains("\u{1b}[38;2;41;243;236m"));
+    let builtin = render(ThemeSelection::preset(BuiltinPreset::Cyberpunk, None));
+    assert!(builtin.contains("\u{1b}[38;2;41;243;236m"));
+
+    let custom = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+        "schema_version":2,"extends":"cyberpunk","overrides":[
+          {"families":["flowchart"],"roles":{"stroke.connector":"#ED1208"}}
+        ]
+    }"##,
+            None,
+        )
+        .unwrap();
+    let themed = render(ThemeSelection::compiled(custom));
+    assert!(themed.contains("\u{1b}[38;2;237;18;8m"));
+}
+
+#[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+#[test]
+fn native_flowchart_title_uses_theme_ink_and_title_typography() {
+    use merman::theme::{ThemeCompiler, ThemeSelection};
+    use merman::{OperationControl, RenderRequest, Renderer, SvgRequest};
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+        "schema_version":2,"extends":"studio",
+        "roles":{"text.title":"#243648"},
+        "typography":{"serif":["Title Display","serif"],"title_family":"serif",
+                      "base_size_px":24,"title_weight":650}
+    }"##,
+            None,
+        )
+        .unwrap();
+    let source = "---\ntitle: A long title with its own typography\n---\nflowchart LR\nA --> B";
+    let renderer = Renderer::new();
+    let render = |request| {
+        renderer
+            .render_svg_data(RenderRequest::svg(source, OperationControl::new(), request))
+            .unwrap()
+            .unwrap()
+    };
+    let classic = render(SvgRequest::default());
+    let themed = render(SvgRequest::default().with_native_theme(ThemeSelection::compiled(theme)));
+    let doc = roxmltree::Document::parse(&themed).unwrap();
+    let css = doc
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains(".flowchartTitleText{text-anchor:middle;font-size:30px;fill:#243648;font-family:\"Title Display\", serif;font-weight:650;}"));
+    let classic_doc = roxmltree::Document::parse(&classic).unwrap();
+    let width = |document: &roxmltree::Document| {
+        document
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_ascii_whitespace()
+            .nth(2)
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    assert!(width(&doc) > width(&classic_doc));
 }
 
 #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]

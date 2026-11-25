@@ -8,7 +8,7 @@ use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
 #[cfg(feature = "svg")]
-use crate::theme::{ThemeOutcome, ThemeOutcomeNotice};
+use crate::theme::ThemeOutcome;
 use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 use merman_core::{ParseOptions, SemanticParser};
 #[cfg(any(feature = "ascii", feature = "svg"))]
@@ -583,26 +583,7 @@ impl RenderTarget {
     }
 
     #[cfg(feature = "native-fonts")]
-    fn native_fonts_are_selected(&self) -> bool {
-        match self {
-            Self::Svg(request)
-            | Self::Document(request)
-            | Self::LayoutJson(request)
-            | Self::LayoutSnapshot(request)
-            | Self::EdgeGeometryJson(request)
-            | Self::SvgPlan(request) => request.environment.native_fonts.is_some(),
-            #[cfg(feature = "png")]
-            Self::Png(request) => request.svg.environment.native_fonts.is_some(),
-            #[cfg(feature = "jpeg")]
-            Self::Jpeg(request) => request.svg.environment.native_fonts.is_some(),
-            #[cfg(feature = "pdf")]
-            Self::Pdf(request) => request.svg.environment.native_fonts.is_some(),
-            _ => false,
-        }
-    }
-
-    #[cfg(feature = "native-fonts")]
-    fn native_font_pipeline(&self) -> Option<&SvgPipeline> {
+    fn native_font_svg_request(&self) -> Option<&SvgRequest> {
         let request = match self {
             Self::Svg(request)
             | Self::Document(request)
@@ -618,7 +599,8 @@ impl RenderTarget {
             Self::Pdf(request) => &request.svg,
             _ => return None,
         };
-        request.pipeline.as_ref()
+        request.environment.native_fonts.as_ref()?;
+        Some(request)
     }
 
     #[cfg(feature = "presentation")]
@@ -738,13 +720,25 @@ impl AsciiRequest {
     fn apply_native_palette(
         &mut self,
         config: &merman_model::MermaidConfig,
+        effective_config: &merman_model::MermaidConfig,
         diagram_type: &str,
     ) -> Result<(), RenderError> {
         if self.options.color_mode != merman_ascii::AsciiColorMode::Plain
             && let Some(selection) = &self.native_theme
             && let Some(theme) = selection.resolve(config, diagram_type)?
         {
-            self.options.color_theme = merman_ascii::AsciiColorTheme::from_resolved_v2(&theme);
+            use merman_ascii::AsciiColorTheme;
+            let family = merman_model::family::diagram_type_presentation_family_id(
+                diagram_type,
+                effective_config.get_str("layout"),
+            );
+            self.options.color_theme = match family {
+                Some(family) => AsciiColorTheme::from_family_v2(
+                    theme.family(family.as_str()),
+                    theme.appearance(),
+                ),
+                None => AsciiColorTheme::from_resolved_v2(&theme),
+            };
         }
         Ok(())
     }
@@ -1303,7 +1297,11 @@ fn render_ascii_target(
     let (parsed, operation) = semantic.into_parts();
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let metadata = &parsed.metadata;
-    request.apply_native_palette(&metadata.config, &metadata.diagram_type)?;
+    request.apply_native_palette(
+        &metadata.config,
+        &metadata.semantic_config,
+        &metadata.diagram_type,
+    )?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let result = renderer.render_parsed_report(
@@ -1346,38 +1344,51 @@ impl PresentationArtifact {
             .normalize_native_font_context()?
             .activate_native_font_context(self.control());
         #[cfg(feature = "native-fonts")]
-        if target.native_fonts_are_selected() {
+        if let Some(request) = target.native_font_svg_request() {
             let metadata = self.parsed().metadata();
-            ensure_native_font_theme_typography(
-                &metadata.diagram_type,
-                metadata.effective_config.as_value(),
-            )?;
-            if self
-                .parsed()
-                .metadata()
-                .effective_config
+            let native_config = match &request.environment.native_theme {
+                Some(selection)
+                    if !selection.prefer_source(&metadata.config, &metadata.diagram_type) =>
+                {
+                    merman_render::theme::native_render_config(
+                        &metadata.effective_config,
+                        self.control(),
+                    )?
+                }
+                _ => None,
+            };
+            let config = native_config.as_ref().unwrap_or(&metadata.effective_config);
+            ensure_native_font_theme_typography(&metadata.diagram_type, config.as_value())?;
+            if config
                 .get_str("themeCSS")
                 .is_some_and(|css| !css.trim().is_empty())
-                || target
-                    .native_font_pipeline()
+                || request
+                    .pipeline
+                    .as_ref()
                     .is_some_and(SvgPipeline::has_scoped_css)
             {
                 return Err(merman_export::NativeFontError::Measurement(
                     "native font measurement does not support themeCSS or scoped CSS applied after layout; configure fontFamily through Mermaid configuration".to_owned(),
                 ).into());
             }
-            if let Some(property) = merman_render::__private::unsupported_native_html_style(
-                self.parsed(),
-                self.control(),
-            )? {
+            if let Some(property) =
+                merman_render::__private::unsupported_native_html_style_with_config(
+                    self.parsed(),
+                    config,
+                    self.control(),
+                )?
+            {
                 return Err(merman_export::NativeFontError::Measurement(format!(
                     "native font measurement does not support the inline HTML text geometry style `{property}`; use deterministic text measurement to preserve compatibility"
                 )).into());
             }
-            if let Some(property) = merman_render::__private::unsupported_native_text_style(
-                self.parsed(),
-                self.control(),
-            )? {
+            if let Some(property) =
+                merman_render::__private::unsupported_native_text_style_with_config(
+                    self.parsed(),
+                    config,
+                    self.control(),
+                )?
+            {
                 return Err(merman_export::NativeFontError::Measurement(format!(
                     "native font measurement does not support the text geometry style `{property}`"
                 ))
@@ -1723,15 +1734,7 @@ fn prepare_rendered_family_svg(
     )?;
     let theme_outcome = match &request.environment.native_theme {
         Some(selection) if include_theme_outcome => {
-            let resolved = session.native_theme().map(|theme| theme.resolved());
-            let mut outcome = selection.outcome(resolved);
-            if let (Some(resolved), Some(family_id)) = (resolved, parsed.family_id()) {
-                outcome.notices.extend(
-                    merman_render::theme::unsupported_features(resolved, family_id)
-                        .map(ThemeOutcomeNotice::Rendering),
-                );
-            }
-            outcome
+            selection.outcome(session.native_theme().map(|theme| theme.resolved()))
         }
         _ => ThemeOutcome::default(),
     };
@@ -1848,7 +1851,11 @@ fn render_presentation_ascii_target(
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let parsed = parsed.parsed();
     let metadata = parsed.metadata();
-    request.apply_native_palette(&metadata.config, &metadata.diagram_type)?;
+    request.apply_native_palette(
+        &metadata.config,
+        metadata.effective_config.as_config(),
+        &metadata.diagram_type,
+    )?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options);
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;

@@ -165,7 +165,7 @@ fn native_theme_v2_gantt_layers_rows_and_preserves_task_states() {
             .find(|node| node.attribute("id") == Some(id))
             .unwrap()
     };
-    assert_eq!(task("schedule-ordinary").attribute("fill"), Some("#654321"));
+    assert_eq!(task("schedule-ordinary").attribute("fill"), Some("#334455"));
     assert_eq!(
         task("schedule-ordinary-text").attribute("font-size"),
         Some("17")
@@ -241,21 +241,7 @@ fn native_theme_v2_timeline_uses_unwrapped_ordinals_and_connector_paint() {
         );
 
         let authored = source.replace("    THEME_COLOR_LIMIT: 1", "    THEME_COLOR_LIMIT: 1\n    cScale0: '#123456'\n    cScaleLabel0: '#ABCDEF'\n    cScaleInv0: '#765432'");
-        let authored = render(&authored, Some(theme()));
-        let doc = roxmltree::Document::parse(&authored).unwrap();
-        assert!(
-            doc.descendants()
-                .any(|node| node.has_tag_name("rect") && node.attribute("fill") == Some("#123456"))
-        );
-        assert!(
-            doc.descendants()
-                .any(|node| node.has_tag_name("text") && node.attribute("fill") == Some("#ABCDEF"))
-        );
-        assert!(
-            doc.descendants().any(
-                |node| node.has_tag_name("line") && node.attribute("stroke") == Some("#765432")
-            )
-        );
+        assert_eq!(render(&authored, Some(theme())), svg);
     }
 }
 
@@ -306,7 +292,7 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
     assert_ne!(tasks[0].attribute("x"), parity_task.attribute("x"));
 
     let authored = format!(
-        "---\nconfig:\n  journey:\n    taskFontFamily: Georgia\n    taskFontSize: 19\n    sectionFills: ['#543210']\n    sectionColours: ['#FEDCBA']\n    actorColours: ['#123456']\n---\n{source}"
+        "---\nconfig:\n  themeVariables:\n    textColor: '#FE00FE'\n    mainBkg: '#FE00FE'\n  journey:\n    taskFontFamily: Georgia\n    taskFontSize: 19\n    sectionFills: ['#543210']\n    sectionColours: ['#FEDCBA']\n    actorColours: ['#123456']\n---\n{source}"
     );
     // Mermaid appends authored arrays to the defaults. Draw the first authored slot in each list.
     let mut authored = authored;
@@ -319,6 +305,7 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
         .unwrap();
     }
     let authored = render(&authored, Some(theme()));
+    assert!(!authored.contains("#FE00FE"));
     let authored = roxmltree::Document::parse(&authored).unwrap();
     let section = authored
         .descendants()

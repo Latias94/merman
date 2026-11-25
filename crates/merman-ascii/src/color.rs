@@ -148,36 +148,41 @@ impl Default for AsciiColorTheme {
 impl AsciiColorTheme {
     /// Projects a native theme's semantic colors into the terminal palette.
     pub fn from_resolved_v2(theme: &merman_theme_contract::v2::ResolvedThemeV2) -> Self {
-        use merman_theme_contract::v2::{Appearance, Color, Paint};
+        Self::from_v2_colors(theme.roles(), theme.data(), theme.appearance())
+    }
 
-        fn solid(paint: &Paint, under: Color) -> Color {
-            match paint {
-                Paint::Solid(color) => color.composite(under, 1.0),
-                Paint::LinearGradient(gradient) => gradient
-                    .stops
-                    .first()
-                    .map_or(under, |stop| stop.color.composite(under, stop.opacity)),
-            }
-        }
+    /// Projects the effective colors for a specific diagram family.
+    pub fn from_family_v2(
+        theme: &merman_theme_contract::v2::FamilyTheme,
+        appearance: merman_theme_contract::v2::Appearance,
+    ) -> Self {
+        Self::from_v2_colors(&theme.roles, &theme.data, appearance)
+    }
 
-        let roles = theme.roles();
-        let backdrop = match theme.appearance() {
+    fn from_v2_colors(
+        roles: &merman_theme_contract::v2::Roles,
+        data: &merman_theme_contract::v2::DataPalette,
+        appearance: merman_theme_contract::v2::Appearance,
+    ) -> Self {
+        use merman_theme_contract::v2::{Appearance, Color};
+
+        let backdrop = match appearance {
             Appearance::Light => Color::rgb(255, 255, 255),
             Appearance::Dark => Color::rgb(0, 0, 0),
         };
-        let canvas = solid(&roles.canvas, backdrop);
+        let canvas = roles.canvas.first_color().composite(backdrop, 1.0);
         let rgb = |color: Color| {
             let [r, g, b, _] = color.composite(canvas, 1.0).channels();
             AsciiRgb::new(r, g, b)
         };
         let text = rgb(roles.text_primary);
         let title = rgb(roles.text_title);
-        let connector = rgb(solid(&roles.stroke_connector, canvas));
-        let guide = rgb(solid(&roles.stroke_guide, canvas));
-        let border = rgb(solid(&roles.stroke_border, canvas));
+        let connector = rgb(roles.stroke_connector.first_color());
+        let guide = rgb(roles.stroke_guide.first_color());
+        let border = rgb(roles.stroke_border.first_color());
 
         Self {
-            surface: rgb(solid(&roles.surface_node, canvas)),
+            surface: rgb(roles.surface_node.first_color()),
             text,
             muted_text: rgb(roles.text_muted),
             title,
@@ -191,10 +196,10 @@ impl AsciiColorTheme {
             edge_label: text,
             junction: connector,
             sequence_lifeline: guide,
-            sequence_activation: rgb(solid(&roles.surface_emphasis, canvas)),
+            sequence_activation: rgb(roles.surface_emphasis.first_color()),
             sequence_frame: guide,
             chart_axis: connector,
-            chart_series: std::array::from_fn(|index| rgb(theme.data().ink(index))),
+            chart_series: std::array::from_fn(|index| rgb(data.ink(index))),
         }
     }
 
