@@ -876,6 +876,7 @@ impl RootedSvg {
         self,
         theme: &crate::theme::NativeTheme,
         background: Option<crate::theme::Color>,
+        diagram_id: Option<SvgId<'_>>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
         use merman_theme_contract::v2::Paint;
@@ -888,6 +889,7 @@ impl RootedSvg {
             paint,
             &resolved.canvas().textures,
             &roles.stroke_guide,
+            diagram_id,
             work_meter,
         )
     }
@@ -897,20 +899,22 @@ impl RootedSvg {
         paint: &merman_theme_contract::v2::Paint,
         textures: &[merman_theme_contract::v2::Texture],
         guide: &merman_theme_contract::v2::Paint,
+        diagram_id: Option<SvgId<'_>>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
+        let scope = match diagram_id {
+            Some(id) => id,
+            None => SvgId::new(&self.diagram_id).ok_or_else(|| Error::InvalidModel {
+                message: "SVG canvas requires a normalized diagram ID".to_owned(),
+            })?,
+        };
         let viewport = self
             .view_box
             .map(|bounds| [bounds.min_x, bounds.min_y, bounds.width, bounds.height]);
         let mut out = BoundedSvgOutput::resume(self.svg, work_meter);
         out.write_deferred_at(self.root_open_end, |out| {
             let _ = crate::theme::canvas_svg::write_canvas(
-                out,
-                &self.diagram_id,
-                viewport,
-                paint,
-                textures,
-                guide,
+                out, scope, viewport, paint, textures, guide,
             );
             out.checkpoint()
         })?;

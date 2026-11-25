@@ -55,20 +55,28 @@ builder exchange the same route point types.
 
 ### Structured diagrams
 
-`merman-core-structured` owns the Railroad lexer, four dialect parsers, and rule recovery.
-`merman-core` prepares the source and maps the parser's model, diagnostics, and optional syntax
-spans into the public parse result.
+`merman-core-structured` owns Packet field scanning and bounded row expansion, along with the
+Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares the source and
+maps each parser's model, diagnostics, and optional syntax spans into the public parse result.
 
 `merman-render-structured` owns the typed layout and SVG emission for Packet and Railroad. It
 consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
 `merman-render` dispatches to it through the existing `diagram-packet` and `diagram-railroad`
 features and supplies the operation's text measurement to Railroad.
 
+### Graph syntax
+
+`merman-core-graph` owns ER tokenization, parsing, and construction of canonical model values.
+It reuses the controlled token cursor in `merman-core-preprocess`. `merman-core` owns source
+mapping, error messages, resource admission, and the editor and compatibility projections.
+
 ### Chart rendering
 
-`merman-render-charts` owns typed layout, style binding, and geometry for Pie. `merman-render`
+`merman-render-charts` owns typed layout, style binding, and SVG content for Pie. It uses the
+shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
 supplies text metrics and assembles the chart into a scoped SVG document under the render
-operation's output policy.
+operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
+bar label placement. `merman-render` supplies text metrics and emits the SVG.
 
 ### Frozen presentation is distinct from engine initialization
 

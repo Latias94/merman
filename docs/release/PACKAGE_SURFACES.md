@@ -89,7 +89,8 @@ contracts. `merman-render-structured` provides Packet and Railroad layout and SV
 the existing `diagram-packet` and `diagram-railroad` features.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 
-`merman-render-charts` provides typed Pie layout, styles, and chart geometry through `diagram-pie`.
+`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`, and XY Chart
+layout and plot geometry through `diagram-xychart`.
 [Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
 
 Homebrew/core owns formula publication; this repository only validates the external formula after

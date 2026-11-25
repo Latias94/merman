@@ -1,12 +1,13 @@
 use super::super::*;
 use merman_model::families::pie::PieDiagramModel;
-
-pub(super) use merman_render_charts::pie::{
-    native_pie_slice_path, pie_group_offset, pie_slice_class, pie_slice_path,
-};
+use merman_render_charts::pie::write_svg_accessibility;
 
 pub(super) const EMPTY_PIE_WIDTH: f64 = 225.0;
 pub(super) const EMPTY_PIE_HEIGHT: f64 = 450.0;
+pub(super) const DEFAULT_PIE_DIAGRAM_ID: SvgId<'static> = match SvgId::new("merman") {
+    Some(id) => id,
+    None => panic!("invalid fallback Pie ID"),
+};
 
 pub(super) fn empty_pie_root_viewport_fallback(
     model: &PieDiagramModel,
@@ -59,7 +60,7 @@ pub(super) fn pie_viewport(
 pub(super) fn open_pie_svg(
     out: &mut impl SvgOutput,
     model: &PieDiagramModel,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     (root_bounds, root_max_width): (root_svg::DiagramBounds, root_svg::RootMaxWidth),
     use_max_width: bool,
     options: &SvgExecution<'_>,
@@ -94,49 +95,7 @@ pub(super) fn open_pie_svg(
             },
         )?;
 
-    if let Some(t) = model.acc_title.as_deref() {
-        let _ = write!(
-            out,
-            r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id,
-            text = escape_xml(t)
-        );
-    }
-    if let Some(d) = model.acc_descr.as_deref() {
-        let _ = write!(
-            out,
-            r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id,
-            text = escape_xml(d)
-        );
-    }
-    out.checkpoint()?;
+    write_svg_accessibility(out, model, diagram_id)?;
 
     Ok(root_document)
-}
-
-pub(super) fn write_pie_group_open(
-    out: &mut impl SvgOutput,
-    layout: &PieDiagramLayout,
-    offset: (f64, f64),
-) {
-    let _ = write!(
-        out,
-        r#"<g transform="translate({x},{y})">"#,
-        x = fmt(layout.center_x),
-        y = fmt(layout.center_y)
-    );
-
-    let (pie_offset_x, pie_offset_y) = offset;
-    let has_pie_offset = pie_offset_x != 0.0 || pie_offset_y != 0.0;
-    if has_pie_offset {
-        let _ = write!(
-            out,
-            r#"<g transform="translate({x},{y})">"#,
-            x = fmt(pie_offset_x),
-            y = fmt(pie_offset_y)
-        );
-    } else {
-        out.push_str("<g>");
-    }
 }

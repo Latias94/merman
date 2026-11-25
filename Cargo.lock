@@ -2714,9 +2714,11 @@ dependencies = [
 name = "merman-render-charts"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "rustc-hash 2.1.3",
  "ryu-js",
  "serde",
  "serde_json",
@@ -2734,6 +2736,7 @@ dependencies = [
  "merman-layout-shoal",
  "merman-markup",
  "merman-model",
+ "merman-theme-contract",
  "roxmltree 0.21.2",
  "ryu-js",
  "serde",

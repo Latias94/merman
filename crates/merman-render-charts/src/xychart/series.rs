@@ -1,8 +1,9 @@
 use merman_model::families::xy_chart::{XyChartDiagramRenderModel, XyChartPlotType};
-
-use crate::chart_palette::plot_color_from_palette;
+use merman_render_core::config::ConfigLookup;
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::css_binding::XyChartCssBinding;
+use super::layout::{ChartConfig, parse_chart_config};
 
 #[derive(Debug)]
 struct SeriesPaint {
@@ -13,9 +14,9 @@ struct SeriesPaint {
 }
 
 #[derive(Debug)]
-pub(crate) struct XyChartSeriesPaintPlan {
+pub struct XyChartSeriesPaintPlan {
     css: XyChartCssBinding,
-    chart_config: super::ChartConfig,
+    chart_config: ChartConfig,
     paints: Vec<SeriesPaint>,
 }
 
@@ -24,24 +25,25 @@ impl XyChartSeriesPaintPlan {
         &self.css
     }
 
-    pub(super) fn chart_config(&self) -> &super::ChartConfig {
+    pub(super) fn chart_config(&self) -> &ChartConfig {
         &self.chart_config
     }
 
-    pub(crate) fn into_data_label_color(self) -> String {
+    pub fn into_data_label_color(self) -> String {
         self.css.data_label_color
     }
 
-    pub(crate) fn new(
-        config: &impl crate::config::ConfigLookup,
+    /// `mermaid_plot_color` selects the host's classic palette color for a series index.
+    pub fn new(
+        config: &impl ConfigLookup,
         model: &XyChartDiagramRenderModel,
-        native: Option<&crate::theme::FamilyTheme>,
+        native: Option<&FamilyTheme>,
+        mermaid_plot_color: impl Fn(usize) -> String,
     ) -> Self {
         let css = match native {
             Some(theme) => XyChartCssBinding::native(&theme.roles),
             None => XyChartCssBinding::resolve(config),
         };
-        let palette = &css.plot_color_palette;
         Self {
             paints: model
                 .plots
@@ -70,7 +72,7 @@ impl XyChartSeriesPaintPlan {
                             (fill, ink.clone(), ink, width)
                         }
                         None => {
-                            let color = plot_color_from_palette(palette, index);
+                            let color = mermaid_plot_color(index);
                             let fill = if bar {
                                 color.clone()
                             } else {
@@ -87,26 +89,26 @@ impl XyChartSeriesPaintPlan {
                     }
                 })
                 .collect(),
-            chart_config: super::parse_chart_config(config, model),
+            chart_config: parse_chart_config(config, model),
             css,
         }
     }
 
-    pub(crate) fn plot_count(&self) -> usize {
+    pub(super) fn plot_count(&self) -> usize {
         self.paints.len()
     }
-    pub(crate) fn fill_css(&self, index: usize) -> Option<&str> {
+    pub(super) fn fill_css(&self, index: usize) -> Option<&str> {
         self.paints.get(index).map(|paint| paint.fill.as_str())
     }
-    pub(crate) fn stroke_css(&self, index: usize) -> Option<&str> {
+    pub(super) fn stroke_css(&self, index: usize) -> Option<&str> {
         self.paints.get(index).map(|paint| paint.stroke.as_str())
     }
-    pub(crate) fn point_label_fill_css(&self, index: usize) -> Option<&str> {
+    pub(super) fn point_label_fill_css(&self, index: usize) -> Option<&str> {
         self.paints
             .get(index)
             .map(|paint| paint.point_label_fill.as_str())
     }
-    pub(crate) fn stroke_width(&self, index: usize) -> Option<f64> {
+    pub(super) fn stroke_width(&self, index: usize) -> Option<f64> {
         self.paints.get(index).map(|paint| paint.stroke_width)
     }
 }

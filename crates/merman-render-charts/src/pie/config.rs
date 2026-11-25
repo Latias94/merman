@@ -44,13 +44,18 @@ impl<'a> PieConfigView<'a> {
         }
     }
 
-    pub fn render_settings(&self) -> PieRenderSettings {
+    pub fn render_settings(&self) -> PieRenderSettings<'a> {
         PieRenderSettings {
             donut_hole: self.donut_hole(),
             legend_position: self.legend_position(),
             use_max_width: self
                 .pie_bool("useMaxWidth")
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
+            highlight_slice: self
+                .pie_config
+                .get("highlightSlice")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
         }
     }
 
@@ -100,10 +105,11 @@ pub(super) struct PieLayoutSettings {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PieRenderSettings {
+pub struct PieRenderSettings<'a> {
     pub donut_hole: f64,
     pub legend_position: PieLegendPosition,
     pub use_max_width: bool,
+    pub highlight_slice: &'a str,
 }
 
 #[cfg(test)]

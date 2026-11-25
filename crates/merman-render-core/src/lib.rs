@@ -33,6 +33,9 @@ pub mod svg_output;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod text;
+#[cfg(feature = "theme-svg")]
+#[doc(hidden)]
+pub mod theme_svg;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod xml;

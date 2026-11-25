@@ -5,3 +5,7 @@
 #[cfg(feature = "diagram-pie")]
 #[doc(hidden)]
 pub mod pie;
+
+#[cfg(feature = "diagram-xychart")]
+#[doc(hidden)]
+pub mod xychart;

@@ -2,44 +2,24 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use merman_markup::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
+use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
+use merman_render_core::svg_css::CssSelectorDiagramId;
 use std::fmt::Write as _;
 
 use super::SvgOutput;
 
 #[cfg(feature = "diagram-state")]
 pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
-pub(crate) use merman_render_core::xml::escape_xml;
+pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
-    escape_xml_display, escape_xml_into, escape_xml_raw_into, escape_xml_serialized_text_into,
-    escaped_xml_len,
+    EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
+    escape_xml_raw_into, escape_xml_serialized_text_into, escaped_xml_len,
 };
+pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 
-/// CSS selector identity that preserves the renderer-owned diagram-id projection for every
-/// selector occurrence while still supporting raw test identifiers.
-#[derive(Clone, Copy)]
-pub(super) struct CssSelectorDiagramId<I>(I);
-
-impl<I> std::fmt::Display for CssSelectorDiagramId<I>
-where
-    I: super::SvgDiagramIdValue,
-{
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let semantic = self.0.semantic_value();
-        let normalized = semantic
-            .as_bytes()
-            .first()
-            .is_some_and(u8::is_ascii_alphabetic)
-            && semantic
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
-        if normalized {
-            std::fmt::Display::fmt(&self.0, formatter)
-        } else {
-            formatter.write_str(&crate::svg::escape_css_identifier(semantic))
-        }
-    }
-}
+pub(super) use merman_render_core::svg_css::{
+    scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
+};
 
 pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
     CssSelectorDiagramId(diagram_id)
@@ -74,15 +54,6 @@ pub(super) fn normalize_css_font_family(font_family: &str) -> String {
     crate::config::normalize_css_font_family(font_family)
 }
 
-pub(super) fn theme_token(
-    effective_config: &(impl crate::config::ConfigLookup + ?Sized),
-    key: &str,
-    fallback: &str,
-) -> String {
-    config_string(effective_config, &["themeVariables", key])
-        .unwrap_or_else(|| fallback.to_string())
-}
-
 pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
     let color = ThemeColor::parse(color.trim())?;
     let faded = rgba(
@@ -92,100 +63,6 @@ pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> 
         opacity,
     )?;
     Ok(faded)
-}
-
-pub(crate) fn cssom_color_value(value: &str) -> String {
-    let value = value.trim();
-    let Ok(color) = ThemeColor::parse(value) else {
-        // Preserve CSS variables and browser-supported syntaxes outside Khroma's parser surface.
-        return value.to_string();
-    };
-
-    if color.source_format() == ColorSourceFormat::Keyword {
-        return value.to_ascii_lowercase();
-    }
-
-    let red = color.channel(ColorChannel::Red).round() as i64;
-    let green = color.channel(ColorChannel::Green).round() as i64;
-    let blue = color.channel(ColorChannel::Blue).round() as i64;
-    let alpha = color.channel(ColorChannel::Alpha);
-    if alpha < 1.0 {
-        let alpha = (alpha * 1000.0).round() / 1000.0;
-        format!("rgba({red}, {green}, {blue}, {})", fmt(alpha))
-    } else {
-        format!("rgb({red}, {green}, {blue})")
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct ScopedSvgId<'a, I> {
-    diagram_id: I,
-    local_id: &'a str,
-}
-
-impl<I: std::fmt::Display> std::fmt::Display for ScopedSvgId<'_, I> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}-{}", self.diagram_id, self.local_id)
-    }
-}
-
-pub(super) fn scoped_svg_id<I>(diagram_id: I, local_id: &str) -> ScopedSvgId<'_, I> {
-    ScopedSvgId {
-        diagram_id,
-        local_id,
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct ScopedSvgUrl<'a, I> {
-    diagram_id: I,
-    local_id: &'a str,
-}
-
-impl<I: std::fmt::Display> std::fmt::Display for ScopedSvgUrl<'_, I> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "url(#{})",
-            scoped_svg_id(&self.diagram_id, self.local_id)
-        )
-    }
-}
-
-pub(super) fn scoped_svg_url<I>(diagram_id: I, local_id: &str) -> ScopedSvgUrl<'_, I> {
-    ScopedSvgUrl {
-        diagram_id,
-        local_id,
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct ScopedDropShadow<'a, I> {
-    diagram_id: I,
-    source: &'a str,
-}
-
-impl<I> std::fmt::Display for ScopedDropShadow<'_, I>
-where
-    I: Copy + std::fmt::Display,
-{
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut parts = self.source.split("url(#drop-shadow)");
-        formatter.write_str(parts.next().unwrap_or_default())?;
-        for suffix in parts {
-            write!(
-                formatter,
-                "{}",
-                scoped_svg_url(self.diagram_id, "drop-shadow")
-            )?;
-            formatter.write_str(suffix)?;
-        }
-        Ok(())
-    }
-}
-
-pub(super) fn scoped_drop_shadow<I>(diagram_id: I, source: &str) -> ScopedDropShadow<'_, I> {
-    ScopedDropShadow { diagram_id, source }
 }
 
 pub(super) fn fmt_string(v: f64) -> String {
@@ -329,87 +206,6 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
         v = 0.0;
     }
     buf.format_finite(v)
-}
-
-fn xml_attr_replacement(ch: char) -> Option<&'static str> {
-    if !crate::xml::is_xml_1_0_char(ch) {
-        return Some("");
-    }
-    match ch {
-        '\n' => Some("&#10;"),
-        '\r' => Some("&#13;"),
-        '\t' => Some("&#9;"),
-        '&' => Some("&amp;"),
-        '<' => Some("&lt;"),
-        '"' => Some("&quot;"),
-        '\'' => Some("&#39;"),
-        _ => None,
-    }
-}
-
-pub(crate) fn escape_attr(text: &str) -> String {
-    // Note: XML parsers normalize literal newlines/carriage-returns/tabs inside attribute values
-    // into spaces. Mermaid's serialized SVGs typically encode those characters as numeric
-    // character references (e.g. `&#10;`) to keep the attribute value stable across parsers.
-    //
-    // We mirror that behavior here to preserve parity for diagrams that embed newlines in IDs
-    // (e.g. backtick-quoted multiline class names).
-    let mut out = String::with_capacity(text.len());
-    escape_attr_into(&mut out, text);
-    out
-}
-
-pub(super) fn escape_attr_into(out: &mut impl SvgOutput, text: &str) {
-    let mut start = 0usize;
-    for (i, ch) in text.char_indices() {
-        let Some(replacement) = xml_attr_replacement(ch) else {
-            continue;
-        };
-        if start < i {
-            out.push_str(&text[start..i]);
-        }
-        out.push_str(replacement);
-        start = i + ch.len_utf8();
-    }
-    if start < text.len() {
-        out.push_str(&text[start..]);
-    }
-}
-
-pub(super) fn escape_attr_display<T: std::fmt::Display>(value: T) -> EscapeAttrDisplay<T> {
-    EscapeAttrDisplay(value)
-}
-
-pub(super) struct EscapeAttrDisplay<T>(T);
-
-impl<T: std::fmt::Display> std::fmt::Display for EscapeAttrDisplay<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct EscapedAttrWriter<'formatter, 'output> {
-            formatter: &'formatter mut std::fmt::Formatter<'output>,
-        }
-
-        impl std::fmt::Write for EscapedAttrWriter<'_, '_> {
-            fn write_str(&mut self, text: &str) -> std::fmt::Result {
-                let mut start = 0usize;
-                for (i, ch) in text.char_indices() {
-                    let Some(replacement) = xml_attr_replacement(ch) else {
-                        continue;
-                    };
-                    if start < i {
-                        self.formatter.write_str(&text[start..i])?;
-                    }
-                    self.formatter.write_str(replacement)?;
-                    start = i + ch.len_utf8();
-                }
-                if start < text.len() {
-                    self.formatter.write_str(&text[start..])?;
-                }
-                Ok(())
-            }
-        }
-
-        write!(EscapedAttrWriter { formatter: f }, "{}", self.0)
-    }
 }
 
 #[cfg(test)]

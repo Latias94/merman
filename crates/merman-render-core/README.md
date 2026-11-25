@@ -7,6 +7,7 @@ the solved route points to the path builder. The `resources` feature provides re
 the operation meter that shares limits and cancellation across layout and SVG emission.
 `svg-output` provides the bounded SVG writer, XML text serialization, base styles, and shared
 render errors. `css-style` provides presentation lookups, Mermaid CSS value parsing, and shared
-text style and measurement types.
+text style and measurement types. `theme-svg` writes resolved canvas paint and categorical
+patterns to SVG.
 
 Applications use `merman` for source-to-output rendering.

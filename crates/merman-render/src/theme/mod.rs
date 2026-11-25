@@ -7,7 +7,7 @@ use merman_model::presentation::PresentationConfig;
 #[allow(unused_imports, reason = "Used by enabled diagram families.")]
 pub(crate) use merman_render_core::mermaid_style::font_family_css;
 
-pub(crate) mod canvas_svg;
+pub(crate) use merman_render_core::theme_svg::canvas as canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
@@ -40,12 +40,8 @@ pub(crate) mod elevation_svg;
     feature = "diagram-state",
 ))]
 pub(crate) mod marker_svg;
-#[cfg(any(
-    feature = "diagram-pie",
-    feature = "diagram-treemap",
-    feature = "diagram-xychart"
-))]
-pub(crate) mod pattern_svg;
+#[cfg(any(feature = "diagram-treemap", feature = "diagram-xychart"))]
+pub(crate) use merman_render_core::theme_svg::pattern as pattern_svg;
 
 pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Color, FamilyTheme, ResolvedThemeV2, ThemeCapabilityFlags,

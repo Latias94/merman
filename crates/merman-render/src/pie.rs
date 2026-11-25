@@ -9,11 +9,7 @@ use crate::theme::FamilyTheme;
 
 mod theme;
 
-pub(crate) use merman_render_charts::pie::{
-    PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX, PIE_TITLE_BASELINE_Y_PX, PIE_TITLE_CLASS,
-    PieConfigView, PieLegendPosition, PieNativeStyle, PieTextRole, native_legend_baseline_y,
-    pie_legend_text,
-};
+pub(crate) use merman_render_charts::pie::PieNativeStyle;
 pub(crate) use theme::PieThemePlan;
 
 #[derive(Debug)]
@@ -129,8 +125,8 @@ mod tests {
 
     #[test]
     fn pie_legend_geometry_constants_match_mermaid() {
-        assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
-        assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+        assert_eq!(merman_render_charts::pie::PIE_LEGEND_RECT_SIZE_PX, 18.0);
+        assert_eq!(merman_render_charts::pie::PIE_LEGEND_SPACING_PX, 4.0);
     }
 
     #[test]

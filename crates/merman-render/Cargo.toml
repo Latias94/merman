@@ -92,7 +92,7 @@ diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley"]
-diagram-xychart = ["merman-model/diagram-xychart"]
+diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "cssparser/fast_match_color", "dep:pulldown-cmark"]
 default = []
 markdown-labels = ["dep:pulldown-cmark"]
@@ -118,7 +118,7 @@ math = [
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["css-style", "svg-output"] }
+merman-render-core = { workspace = true, features = ["css-style", "theme-svg"] }
 merman-render-structured = { workspace = true, optional = true }
 base64.workspace = true
 cssparser.workspace = true

@@ -5,6 +5,17 @@ use std::fmt::Write;
 
 use crate::{Result, svg_output::SvgOutput};
 
+mod id;
+#[cfg(feature = "css-style")]
+mod prepared;
+
+pub use id::{
+    CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, scoped_drop_shadow,
+    scoped_svg_id, scoped_svg_url,
+};
+#[cfg(feature = "css-style")]
+pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss, theme_token};
+
 /// Escapes one identifier for use in a CSS selector embedded in SVG XML text.
 ///
 /// This follows the CSSOM identifier serialization rules while using hexadecimal escapes for XML
@@ -62,8 +73,14 @@ pub fn escape_css_identifier(identifier: &str) -> Cow<'_, str> {
     }
 }
 
+/// The semantic text of an ID used in logical CSS, with optional operation admission.
 pub trait SvgDiagramIdValue: Copy + std::fmt::Display {
     fn semantic_value(&self) -> &str;
+
+    /// Reuses a checked spelling and its operation projection.
+    fn validated_svg_id(&self) -> Option<SvgId<'_>> {
+        None
+    }
 }
 
 impl SvgDiagramIdValue for &str {
@@ -83,6 +100,7 @@ pub struct MermaidBaseCss<'a> {
     pub error_text: &'a str,
 }
 
+/// Writes logical CSS. Use `XmlTextOutput` when embedding it in a `<style>` element.
 pub fn write_mermaid_base_css_prefix<I>(
     out: &mut impl SvgOutput,
     id: I,
@@ -138,6 +156,35 @@ fn emit_mermaid_base_css_prefix(
         out,
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
         id, css.font_family, css.font_size_css, id
+    );
+    out.checkpoint()
+}
+
+/// Writes a logical CSS rule using a selector ID already formatted for CSS.
+pub fn write_mermaid_base_css_root_rule<I>(
+    out: &mut impl SvgOutput,
+    id: I,
+    font_family: &str,
+) -> Result<()>
+where
+    I: Copy + std::fmt::Display,
+{
+    emit_mermaid_base_css_root_rule(out, &id, font_family)
+}
+
+#[inline(never)]
+fn emit_mermaid_base_css_root_rule(
+    out: &mut dyn SvgOutput,
+    id: &dyn std::fmt::Display,
+    font_family: &str,
+) -> Result<()> {
+    if font_family.is_empty() {
+        return Ok(());
+    }
+    let _ = write!(
+        out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font_family
     );
     out.checkpoint()
 }

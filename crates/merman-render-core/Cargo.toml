@@ -29,6 +29,7 @@ resources-swimlane = ["resources", "merman-model/diagram-swimlane"]
 resources-zenuml = ["resources", "merman-model/diagram-zenuml"]
 svg-output = ["resources", "dep:memchr", "dep:merman-markup", "dep:ryu-js", "dep:serde_json", "merman-model/compat-json", "merman-model/html-entities"]
 test-support = []
+theme-svg = ["svg-output", "dep:merman-theme-contract"]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
@@ -38,6 +39,7 @@ memchr = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
+merman-theme-contract = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, optional = true }

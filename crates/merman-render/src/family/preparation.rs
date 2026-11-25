@@ -840,11 +840,11 @@ fn prepare_xy_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::xychart::{XyChartSeriesPaintPlan, XyChartTypographyThemePlan};
+    use crate::xychart::{XyChartTypographyThemePlan, resolve_series_paint};
 
     let native = execution.native_family_theme();
     let config = &meta.effective_config;
-    let series_paint = XyChartSeriesPaintPlan::new(config, model, native);
+    let series_paint = resolve_series_paint(config, model, native);
     let typography_theme = native.map_or_else(
         || XyChartTypographyThemePlan::resolve(config),
         |theme| XyChartTypographyThemePlan::native(config, &theme.typography),

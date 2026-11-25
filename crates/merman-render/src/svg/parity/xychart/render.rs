@@ -90,7 +90,7 @@ fn write_native_chart_defs(
         out.push_str("<defs>");
         for (ordinal, plot) in model.plots.iter().enumerate() {
             if plot.plot_type == XyChartPlotType::Bar {
-                data_pattern(
+                let _ = data_pattern(
                     out,
                     &format!("{diagram_id}-xy-series-{ordinal}"),
                     ordinal,

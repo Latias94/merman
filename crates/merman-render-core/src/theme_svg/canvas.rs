@@ -3,11 +3,12 @@ use std::fmt::{self, Write};
 use merman_theme_contract::v2::{Color, Paint, Texture};
 
 use crate::number_format::canonical_number;
+use crate::svg_css::SvgId;
 
 /// Writes the native background and any overlays in the coordinate space of the root viewport.
-pub(crate) fn write_canvas(
+pub fn write_canvas(
     out: &mut impl Write,
-    scope: &str,
+    scope: SvgId<'_>,
     viewport: Option<[f64; 4]>,
     base: &Paint,
     textures: &[Texture],
@@ -226,12 +227,16 @@ fn write_stripe(
     out.write_str("/></pattern></defs>")
 }
 
-pub(crate) fn write_color(
+/// Writes a fill, stroke, or gradient stop color and its optional opacity.
+pub fn write_color(
     out: &mut impl Write,
     attribute: &str,
     color: Color,
     opacity: f64,
 ) -> fmt::Result {
+    if !matches!(attribute, "fill" | "stroke" | "stop-color") {
+        return Err(fmt::Error);
+    }
     let [r, g, b, alpha] = color.channels();
     write!(out, r##"{attribute}="#{r:02X}{g:02X}{b:02X}""##)?;
     let opacity = f64::from(alpha) / 255.0 * opacity;
@@ -244,4 +249,16 @@ pub(crate) fn write_color(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_writer_rejects_other_attributes_before_writing() {
+        let mut out = String::new();
+        assert!(write_color(&mut out, "style", Color::rgb(0, 0, 0), 0.5).is_err());
+        assert!(out.is_empty());
+    }
 }

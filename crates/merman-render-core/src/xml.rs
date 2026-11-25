@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
+mod attr;
 mod text;
+pub use attr::{EscapeAttrDisplay, escape_attr, escape_attr_display, escape_attr_into};
 pub use text::{
     EscapeXmlDisplay, escape_xml, escape_xml_display, escape_xml_into, escape_xml_raw_into,
     escape_xml_serialized_text_into, escaped_xml_len,
