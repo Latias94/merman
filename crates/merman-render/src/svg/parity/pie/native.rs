@@ -86,13 +86,12 @@ pub(crate) fn render_native_pie_svg(
     }
 
     let host_canvas = session.native_theme().and_then(|theme| {
-        let canvas = match theme.export_backdrop() {
-            Some(backdrop) => Some(
-                background
-                    .unwrap_or_else(|| style.canvas.first_color())
-                    .composite(backdrop, 1.0),
-            ),
-            None => background,
+        let canvas = match (background, theme.export_backdrop(), &style.canvas) {
+            (Some(canvas), Some(backdrop), _) => Some(canvas.composite(backdrop, 1.0)),
+            (None, Some(backdrop), Paint::Solid(canvas)) if canvas.channels()[3] != 255 => {
+                Some(canvas.composite(backdrop, 1.0))
+            }
+            _ => background,
         };
         canvas.map(|canvas| (canvas, theme.resolved().appearance()))
     });
