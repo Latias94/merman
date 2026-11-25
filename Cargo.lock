@@ -2694,8 +2694,11 @@ name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
  "kurbo 0.13.1",
+ "merman-core",
  "merman-layout-shoal",
+ "merman-model",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

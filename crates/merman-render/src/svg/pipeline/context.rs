@@ -4,10 +4,7 @@ use super::builtin::util::{
 use super::preset::SvgPipelinePreset;
 use crate::DiagramFamilyId;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use crate::resources::{
-    RenderResourcePolicy, ResourceLimitCause, ResourceLimitExceeded, ResourceLimitOverride,
-    ResourceLimitPhase,
-};
+use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase};
 use merman_model::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -222,20 +219,14 @@ impl<'a> SvgPostprocessExecution<'a> {
     }
 
     pub(crate) fn selector_index_limit(self, actual: usize, maximum: usize) -> crate::Error {
-        let policy = self.resource_policy();
-        ResourceLimitExceeded {
-            cause: ResourceLimitCause::Ceiling,
-            phase: ResourceLimitPhase::SvgPostprocess,
-            limit: "svg_fallback_selector_index",
-            actual,
-            max: maximum,
-            profile: policy.profile(),
-            explicit_overrides: policy
-                .explicit_overrides()
-                .map(|(id, value)| ResourceLimitOverride { id, value })
-                .collect(),
-        }
-        .into()
+        self.resource_policy()
+            .ceiling_error(
+                ResourceLimitPhase::SvgPostprocess,
+                "svg_fallback_selector_index",
+                actual,
+                maximum,
+            )
+            .into()
     }
 
     pub(crate) fn svg_byte_count_overflow(self) -> crate::Error {

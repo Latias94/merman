@@ -417,7 +417,7 @@ mod tests {
     use crate::Error;
     use crate::resources::{
         OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile, ResourceLimitCause,
-        ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride, ResourceLimitPhase,
+        ResourceLimitId, ResourceLimitOverride, ResourceLimitPhase,
     };
     use merman_layout_elk::{
         Error as ElkError, WorkControl as ElkWorkControl, WorkError as ElkWorkError,
@@ -540,26 +540,24 @@ mod tests {
         else {
             panic!("expected structured layout-work overflow");
         };
+        assert_eq!(first.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(first.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(first.limit, "max_layout_work_units");
+        assert_eq!(first.actual, usize::MAX);
+        assert_eq!(first.max, 5);
+        assert_eq!(first.profile, RenderResourceProfile::Constrained);
         assert_eq!(
-            first,
-            ResourceLimitExceeded {
-                cause: ResourceLimitCause::ArithmeticOverflow,
-                phase: ResourceLimitPhase::LayoutModel,
-                limit: "max_layout_work_units",
-                actual: usize::MAX,
-                max: 5,
-                profile: RenderResourceProfile::Constrained,
-                explicit_overrides: vec![
-                    ResourceLimitOverride {
-                        id: ResourceLimitId::MaxLayoutWorkUnits,
-                        value: 5,
-                    },
-                    ResourceLimitOverride {
-                        id: ResourceLimitId::MaxSvgBytes,
-                        value: 17,
-                    },
-                ],
-            }
+            first.explicit_overrides,
+            [
+                ResourceLimitOverride {
+                    id: ResourceLimitId::MaxLayoutWorkUnits,
+                    value: 5,
+                },
+                ResourceLimitOverride {
+                    id: ResourceLimitId::MaxSvgBytes,
+                    value: 17,
+                },
+            ]
         );
         let terminal = OperationLedgerError::ArithmeticOverflow {
             id: "max_layout_work_units",
