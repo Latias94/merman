@@ -273,6 +273,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman/src/svg/mod.rs": True,
             "crates/merman-core/src/diagram/mod.rs": True,
             "crates/merman-core-graph/src/er/mod.rs": True,
+            "crates/merman-core-flow/src/flowchart/lexer.rs": True,
             "crates/merman-core-preprocess/src/lib.rs": True,
             "crates/merman-core-sequence/src/sequence/parser.rs": True,
             "crates/merman-core-structured/src/railroad.rs": True,
@@ -340,6 +341,7 @@ class PlannerTests(unittest.TestCase):
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-graph/src/er/mod.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-flow/src/flowchart/lexer.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-preprocess/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-sequence/src/sequence/parser.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-structured/src/railroad.rs": {"core", "fuzz", "hygiene"},
@@ -1091,8 +1093,8 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         paths = workflow.split("    paths:\n", 1)[1].split("  schedule:", 1)[0]
         for root in (
-            "merman-core-graph", "merman-core-sequence", "merman-core-structured", "merman-model",
-            "merman-markup",
+            "merman-core-flow", "merman-core-graph", "merman-core-sequence", "merman-core-structured",
+            "merman-model", "merman-markup",
             "merman-render-charts", "merman-render-core", "merman-render-flow",
             "merman-render-graph", "merman-render-sequence", "merman-render-structured",
         ):

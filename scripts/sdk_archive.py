@@ -473,8 +473,8 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
     source_paths = [
         "Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-model",
         "crates/merman-markup", "crates/merman-render", "crates/merman-export",
-        "crates/merman-core-graph", "crates/merman-core-preprocess", "crates/merman-core-sequence",
-        "crates/merman-core-structured", "crates/merman-render-core",
+        "crates/merman-core-flow", "crates/merman-core-graph", "crates/merman-core-preprocess",
+        "crates/merman-core-sequence", "crates/merman-core-structured", "crates/merman-render-core",
         "crates/merman-render-charts", "crates/merman-render-flow", "crates/merman-render-graph",
         "crates/merman-render-sequence", "crates/merman-render-structured",
     ]
