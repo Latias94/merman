@@ -19,8 +19,6 @@ pub(crate) fn parse_sequence_model_for_render_controlled(
     )?;
     match construction {
         Ok(source) => Ok(Ok(source.db.into_model())),
-        Err(failure) => Ok(Err(
-            failure.into_parse_error_for_type(&meta.diagram_type, code.len())
-        )),
+        Err(failure) => Ok(Err(failure.into_parse_error_for_type(&meta.diagram_type))),
     }
 }

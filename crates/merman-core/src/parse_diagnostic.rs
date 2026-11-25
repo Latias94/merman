@@ -10,16 +10,14 @@
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence"
+    feature = "diagram-swimlane"
 ))]
 mod lalrpop;
 
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence"
+    feature = "diagram-swimlane"
 ))]
 pub(crate) use lalrpop::*;
 

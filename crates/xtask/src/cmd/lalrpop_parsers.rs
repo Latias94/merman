@@ -18,7 +18,7 @@ struct GrammarArtifact {
     generated: &'static str,
 }
 
-const GRAMMAR_ARTIFACTS: [GrammarArtifact; 3] = [
+const GRAMMAR_ARTIFACTS: [GrammarArtifact; 2] = [
     GrammarArtifact {
         source: "diagrams/class_grammar.lalrpop",
         generated: "class_grammar.rs",
@@ -26,10 +26,6 @@ const GRAMMAR_ARTIFACTS: [GrammarArtifact; 3] = [
     GrammarArtifact {
         source: "diagrams/flowchart_grammar.lalrpop",
         generated: "flowchart_grammar.rs",
-    },
-    GrammarArtifact {
-        source: "diagrams/sequence_grammar.lalrpop",
-        generated: "sequence_grammar.rs",
     },
 ];
 
@@ -531,7 +527,7 @@ mod tests {
     #[test]
     fn incomplete_parser_set_is_rejected_before_install() {
         let mut parsers = fixture_parser_set(b"parser");
-        parsers.remove("sequence_grammar.rs");
+        parsers.remove("flowchart_grammar.rs");
         let error = validate_parser_set(&parsers).unwrap_err().to_string();
         assert!(error.contains("generated parser set is incomplete"));
     }

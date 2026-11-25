@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted as the original parser strategy. ER and State now use handwritten predictive grammars over
-their stateful lexers. See [Parser Generation](../development/PARSER_GENERATION.md) for the remaining
-generated grammars.
+Accepted as the original parser strategy. ER, State, and Sequence now use handwritten predictive
+parsers over their stateful lexers. See [Parser Generation](../development/PARSER_GENERATION.md) for
+the remaining generated grammars.
 
 ## Context
 
