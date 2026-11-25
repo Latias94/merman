@@ -103,6 +103,7 @@ system-timing = ["merman-model/system-timing"]
 benchmark-stages = ["merman-model/benchmark-stages"]
 
 [dependencies]
+merman-core-preprocess.workspace = true
 merman-markup = { workspace = true, features = ["html", "url"] }
 merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true

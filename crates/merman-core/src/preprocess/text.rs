@@ -1,13 +1,14 @@
+use super::PreprocessedSource;
 use super::scan::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, find_ascii_pattern_controlled,
     find_ascii_pattern_in_range_controlled, find_newline_controlled, is_js_regex_whitespace,
 };
-use super::source_edit_map::{PreprocessedSource, ReplacementMapping, SourceEdit};
 #[cfg(feature = "editor-facts")]
 use crate::source_span::line_content_end;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorExpectedSyntaxKind, SourceSpan};
 use crate::{OperationControl, OperationControlResult};
+use merman_core_preprocess::{ReplacementMapping, SourceEdit};
 
 #[derive(Clone, Copy)]
 pub(super) struct PreprocessMarkers(u8);

@@ -30,7 +30,15 @@ Introduce `merman-model` for canonical family data and its necessary value, iden
 
 Use `merman_model::families::<family>` as the canonical family namespace. Core retains source parser/DB construction privately and depends on these types. ASCII and Render select the shared data and their own handlers without selecting core parsers. Export uses shared execution types and retains its real dependency on Render. The facade owns source-to-output orchestration and may expose an intentional `merman::model` namespace.
 
-Move pure value/model operations with the types; keep source sanitization, detector effects, preprocessing, original-source mapping, source errors and engine initialization at core. Replace source-specific inherent methods with owner functions. Preserve managed deep-value ownership, public model facts, intentional serde differences and actual full payloads. Retire compatibility-only full wrappers and obsolete import paths instead of maintaining parallel models or alias trees.
+`merman-core-preprocess` owns controlled UTF-8 edits and exact or enclosing byte-span mapping.
+Core retains Mermaid frontmatter and directive interpretation, `PreprocessedSource`, and the
+projection of parser diagnostics and editor facts back to the original source.
+
+Move pure value/model operations with the types. Keep source sanitization, detector effects,
+preprocessing orchestration, source errors, and engine initialization in Core. Replace
+source-specific inherent methods with owner functions. Preserve managed deep-value ownership,
+public model facts, intentional serde differences and actual full payloads. Retire
+compatibility-only full wrappers and obsolete import paths.
 
 ### Markup safety remains one implementation
 

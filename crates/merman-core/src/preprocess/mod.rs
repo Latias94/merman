@@ -32,6 +32,7 @@ use crate::SourceSpan;
 use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
+use merman_core_preprocess::SourceEdit;
 use scan::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, find_ascii_pattern_controlled,
     find_line_break_controlled, find_newline_controlled, is_js_regex_whitespace,
@@ -39,7 +40,6 @@ use scan::{
 use serde_json::{Map, Value};
 #[cfg(feature = "editor-facts")]
 use source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
-use source_edit_map::SourceEdit;
 use std::borrow::Cow;
 #[cfg(test)]
 use std::cell::Cell;

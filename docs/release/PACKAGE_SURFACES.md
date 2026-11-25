@@ -81,8 +81,10 @@ compatible version requirements and intentional upgrade exceptions.
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
-Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
-publication; this repository only validates the external formula after a stable release.
+Foundational Rust implementation crates are not product entry points. For example, `merman-core`
+uses the workspace crate `merman-core-preprocess` for source editing and byte-span mapping.
+Homebrew/core owns formula publication; this repository only validates the external formula after
+a stable release.
 
 Android, Python, and Flutter main-line prebuilt products select math explicitly alongside SVG,
 semantic and layout operations, Dagre, ELK, Cytoscape, ASCII, analysis, validation, and
