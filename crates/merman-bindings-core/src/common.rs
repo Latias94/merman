@@ -16,6 +16,9 @@ use crate::resource_contract::{
 };
 
 mod error;
+mod options_value;
+
+use options_value::{OptionsValue, OptionsValueRef};
 
 pub use error::{
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
@@ -257,7 +260,7 @@ pub(crate) struct ResourceOptionsJson {
 
 #[derive(Debug, Clone)]
 pub(crate) struct BaseBindingOptions {
-    normalized_wire: Arc<Value>,
+    normalized_wire: Arc<OptionsValue>,
     resource_ceiling: ResourceOptionsJson,
     #[cfg(feature = "svg")]
     has_analysis_wrapper: bool,
@@ -267,7 +270,7 @@ pub(crate) struct BaseBindingOptions {
 #[doc(hidden)]
 pub struct DecodedOperationOptions<'a> {
     pub(crate) json: &'a str,
-    value: Value,
+    value: OptionsValue,
 }
 
 impl<'a> DecodedOperationOptions<'a> {
@@ -302,7 +305,7 @@ pub(crate) enum BindingThemeOverlay {
 pub(crate) enum BindingRequestOverlay {
     Unchanged,
     Override {
-        normalized_wire: Value,
+        normalized_wire: OptionsValue,
         requested_resources: Option<ResourceOptionsJson>,
         #[cfg(any(feature = "svg", feature = "ascii"))]
         theme: BindingThemeOverlay,
@@ -532,7 +535,7 @@ fn legacy_validation_fallback_status(
 #[cfg(test)]
 pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError> {
     let wire = options_json_value(bytes)?;
-    parse_options_with_theme(bytes, &wire, &DEFAULT_ARTIFACT_SNAPSHOT)
+    parse_options_with_theme(bytes, wire.view(), &DEFAULT_ARTIFACT_SNAPSHOT)
 }
 
 #[cfg(test)]
@@ -554,24 +557,25 @@ fn parse_base_options_for_contract(
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
     let wire = options_json_value(bytes)?;
-    let typed = parse_options_with_theme(bytes, &wire, artifact_contract)?;
+    let typed = parse_options_with_theme(bytes, wire.view(), artifact_contract)?;
     let base = base_options_from_wire(wire, &typed);
     Ok((typed, base))
 }
 
-fn base_options_from_wire(wire: Value, typed: &BindingOptions) -> BaseBindingOptions {
+fn base_options_from_wire(wire: OptionsValue, typed: &BindingOptions) -> BaseBindingOptions {
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
     // Constructor decoding and overlay merging can see different fields from a wrapper.
     #[cfg(feature = "svg")]
-    let has_analysis_wrapper = wire.get("analysis").is_some() || wire.get("merman").is_some();
+    let has_analysis_wrapper =
+        wire.value.get("analysis").is_some() || wire.value.get("merman").is_some();
     let normalized_wire = normalize_analysis_wrapper(wire);
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let normalized_wire = {
         let mut normalized_wire = normalized_wire;
         normalized_wire
-            .as_object_mut()
+            .object_mut()
             .expect("validated binding options always normalize to an object")
-            .remove("theme");
+            .swap_remove("theme");
         normalized_wire
     };
     BaseBindingOptions {
@@ -584,13 +588,13 @@ fn base_options_from_wire(wire: Value, typed: &BindingOptions) -> BaseBindingOpt
 
 fn parse_options_with_theme(
     bytes: &[u8],
-    wire: &Value,
+    wire: OptionsValueRef<'_>,
     artifact: &ValidatedArtifactContract,
 ) -> Result<BindingOptions, BindingError> {
     let options = parse_options_value_for_contract(wire, artifact)?;
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let options = BindingOptions {
-        theme: crate::native_theme::binding_theme(bytes, wire)?,
+        theme: crate::native_theme::binding_theme(bytes, wire.value)?,
         ..options
     };
     #[cfg(not(any(feature = "svg", feature = "ascii")))]
@@ -599,13 +603,14 @@ fn parse_options_with_theme(
 }
 
 fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
-    parse_options_value_for_contract(value, &DEFAULT_ARTIFACT_SNAPSHOT)
+    parse_options_value_for_contract(value.into(), &DEFAULT_ARTIFACT_SNAPSHOT)
 }
 
 fn parse_options_value_for_contract(
-    value: &Value,
+    wire: OptionsValueRef<'_>,
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingOptions, BindingError> {
+    let value = wire.value;
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
     reject_removed_host_theme(value)?;
@@ -613,17 +618,25 @@ fn parse_options_value_for_contract(
     reject_unavailable_option_groups(value, artifact_contract)?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
-    reject_untrusted_binding_css_options(value)?;
+    reject_untrusted_binding_css_options(wire)?;
     #[cfg(feature = "ascii")]
     reject_removed_ascii_resource_field(value)?;
     reject_removed_nested_analysis_parse_option(value)?;
-    let mut options: BindingOptions = serde_json::from_value(binding_owned_options_value(value))
-        .map_err(|err| {
-            BindingError::new(
-                BindingStatus::OptionsJsonError,
-                format!("invalid options_json: {err}"),
-            )
-        })?;
+    let options = if value.is_object() {
+        let entries = wire.entries().filter(|(key, _)| {
+            !matches!(*key, "analysis" | "merman" | "theme")
+                && !BINDING_ANALYSIS_OPTION_KEYS.contains(key)
+        });
+        BindingOptions::deserialize(serde::de::value::MapDeserializer::new(entries))
+    } else {
+        BindingOptions::deserialize(wire)
+    };
+    let mut options = options.map_err(|err| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {err}"),
+        )
+    })?;
     options.version = Some(BINDING_OPTIONS_SCHEMA_VERSION);
     #[cfg(feature = "svg")]
     {
@@ -633,26 +646,10 @@ fn parse_options_value_for_contract(
             .and_then(Value::as_object)
             .is_some_and(|environment| environment.contains_key("text_measurement"));
     }
-    reject_unknown_options_json_fields(value)?;
-    options.analysis = binding_analysis_options_json_from_json_value(value)?;
+    reject_unknown_options_json_fields(wire)?;
+    options.analysis = binding_analysis_options_json_from_json_value(wire)?;
     validate_artifact_resource_options(options.analysis.resources.as_ref(), artifact_contract)?;
     Ok(options)
-}
-
-fn binding_owned_options_value(value: &Value) -> Value {
-    let Some(options) = value.as_object() else {
-        return value.clone();
-    };
-    Value::Object(
-        options
-            .iter()
-            .filter(|(key, _)| {
-                !matches!(key.as_str(), "analysis" | "merman" | "theme")
-                    && !BINDING_ANALYSIS_OPTION_KEYS.contains(&key.as_str())
-            })
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-    )
 }
 
 fn reject_removed_host_theme(value: &Value) -> Result<(), BindingError> {
@@ -681,27 +678,26 @@ fn reject_removed_presentation(value: &Value) -> Result<(), BindingError> {
     Ok(())
 }
 
-fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingError> {
-    let (options_value, _) = binding_analysis_options_root_value(value)?;
+fn reject_untrusted_binding_css_options(wire: OptionsValueRef<'_>) -> Result<(), BindingError> {
+    let (options_value, _) = binding_analysis_options_root_value(wire)?;
     if let Some(site_config) = options_value
-        .as_object()
-        .and_then(|options| options.get("site_config"))
-        .and_then(Value::as_object)
+        .get("site_config")
+        .filter(|site_config| site_config.value.is_object())
     {
-        if site_config.contains_key("themeCSS") {
+        if site_config.get("themeCSS").is_some() {
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
                 "site_config.themeCSS is not accepted by general bindings; use the typed `theme` schema instead, or let a trusted Rust or native CLI host own raw CSS explicitly",
             ));
         }
-        if site_config.contains_key("secure") {
+        if site_config.get("secure").is_some() {
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
                 "site_config.secure is not accepted by general bindings because callers cannot replace the host security boundary; configure it only through a trusted Rust or native CLI host",
             ));
         }
         for field in ["maxEdges", "max_edges"] {
-            if site_config.contains_key(field) {
+            if site_config.get(field).is_some() {
                 return Err(BindingError::new(
                     BindingStatus::OptionsJsonError,
                     format!(
@@ -716,7 +712,7 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
             "dompurifyConfig",
             "dompurify_config",
         ] {
-            if site_config.contains_key(field) {
+            if site_config.get(field).is_some() {
                 return Err(BindingError::new(
                     BindingStatus::OptionsJsonError,
                     format!(
@@ -734,7 +730,8 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
     }
 
     #[cfg(feature = "svg")]
-    let Some(svg) = value
+    let Some(svg) = wire
+        .value
         .as_object()
         .and_then(|options| options.get("svg"))
         .and_then(Value::as_object)
@@ -762,18 +759,24 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
     Ok(())
 }
 
-fn reject_untrusted_theme_variable_values(value: &Value, path: &str) -> Result<(), BindingError> {
-    match value {
+fn reject_untrusted_theme_variable_values(
+    wire: OptionsValueRef<'_>,
+    path: &str,
+) -> Result<(), BindingError> {
+    match wire.value {
         Value::String(value) if !is_safe_binding_css_value(value) => Err(BindingError::new(
             BindingStatus::OptionsJsonError,
             format!(
                 "{path} contains a CSS value that is not accepted by general bindings; use a typed theme value or a trusted Rust or native CLI host"
             ),
         )),
-        Value::Array(values) => values.iter().enumerate().try_for_each(|(index, value)| {
-            reject_untrusted_theme_variable_values(value, &format!("{path}[{index}]"))
-        }),
-        Value::Object(values) => values.iter().try_for_each(|(key, value)| {
+        Value::Array(values) => wire
+            .items(values)
+            .enumerate()
+            .try_for_each(|(index, value)| {
+                reject_untrusted_theme_variable_values(value, &format!("{path}[{index}]"))
+            }),
+        Value::Object(_) => wire.entries().try_for_each(|(key, value)| {
             reject_untrusted_theme_variable_values(value, &format!("{path}.{key}"))
         }),
         _ => Ok(()),
@@ -830,14 +833,10 @@ fn reject_ambiguous_analysis_wrappers(value: &Value) -> Result<(), BindingError>
     Ok(())
 }
 
-fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError> {
-    let Some(root) = value.as_object() else {
-        return Ok(());
-    };
-
-    for (key, nested) in root {
-        if matches!(key.as_str(), "analysis" | "merman") {
-            if !nested.is_object() {
+fn reject_unknown_options_json_fields(wire: OptionsValueRef<'_>) -> Result<(), BindingError> {
+    for (key, nested) in wire.entries() {
+        if matches!(key, "analysis" | "merman") {
+            if !nested.value.is_object() {
                 return Err(BindingError::new(
                     BindingStatus::OptionsJsonError,
                     format!("options JSON `{key}` wrapper must be an object"),
@@ -881,25 +880,28 @@ pub(crate) fn parse_request_overlay_for_artifact(
         BindingRequestOptions::Raw(json) => (json, options_json_value(json)?),
         BindingRequestOptions::Decoded(options) => (options.json.as_bytes(), options.value),
     };
-    if is_unchanged_request(&request_value) {
+    if is_unchanged_request(&request_value.value) {
         return Ok(BindingRequestOverlay::Unchanged);
     }
 
-    validate_output_options_for_scope(&request_value, resource_scope)?;
-    if request_selects_runtime_policy(&request_value) {
+    validate_output_options_for_scope(&request_value.value, resource_scope)?;
+    if request_selects_runtime_policy(&request_value.value) {
         return Err(BindingError::new(
             BindingStatus::OptionsJsonError,
             "request options_json cannot set runtime_policy; configure it when creating the engine",
         ));
     }
-    let options =
-        parse_options_with_theme(request_options_json, &request_value, artifact_contract)?;
+    let options = parse_options_with_theme(
+        request_options_json,
+        request_value.view(),
+        artifact_contract,
+    )?;
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let theme = if normalized_wire
-        .as_object_mut()
+        .object_mut()
         .expect("validated options normalize to an object")
-        .remove("theme")
+        .swap_remove("theme")
         .is_some()
     {
         BindingThemeOverlay::Replace(options.theme)
@@ -908,7 +910,12 @@ pub(crate) fn parse_request_overlay_for_artifact(
     };
     #[cfg(not(any(feature = "svg", feature = "ascii")))]
     let _ = options;
-    let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
+    let resources = normalized_wire
+        .object_mut()
+        .expect("validated options normalize to an object")
+        .swap_remove("resources");
+    let requested_resources =
+        parse_request_resource_options(resources.as_ref().map(OptionsValue::view), resource_scope)?;
     Ok(BindingRequestOverlay::Override {
         normalized_wire,
         requested_resources,
@@ -929,7 +936,7 @@ impl BindingRequestOverlay {
         else {
             return None;
         };
-        let options = normalized_wire.as_object_mut()?;
+        let options = normalized_wire.value.as_object_mut()?;
         if options.len() != 1 + usize::from(options.contains_key("version")) {
             return None;
         }
@@ -965,16 +972,13 @@ impl BindingRequestOverlay {
             normalized_wire, ..
         } = self
         {
-            let fields = normalized_wire
-                .as_object()
-                .expect("request overlay is normalized");
-            let disallowed = fields.keys().map(String::as_str).find(|key| {
+            let disallowed = normalized_wire.view().entries().find(|(key, _)| {
                 !matches!(
                     *key,
                     "version" | "background" | "environment" | "layout" | "svg"
                 )
             });
-            if let Some(key) = disallowed {
+            if let Some((key, _)) = disallowed {
                 return Err(BindingError::invalid_options_json(format!(
                     "prepared output cannot set `{key}`. Prepare a new source to change parse configuration"
                 )));
@@ -996,16 +1000,16 @@ impl BaseBindingOptions {
         artifact: &ValidatedArtifactContract,
     ) -> Result<(BindingOptions, Self), BindingError> {
         let mut normalized = self.normalized_wire.as_ref().clone();
-        let fields = normalized
-            .as_object_mut()
-            .expect("base options are normalized objects");
-        fields.retain(|key, _| {
-            matches!(
-                key.as_str(),
-                "version" | "resources" | "background" | "environment" | "layout" | "svg"
-            )
-        });
-        let options = parse_options_value_for_contract(&normalized, artifact)?;
+        normalized
+            .object_mut()
+            .expect("base options are normalized objects")
+            .retain(|key| {
+                matches!(
+                    key,
+                    "version" | "resources" | "background" | "environment" | "layout" | "svg"
+                )
+            });
+        let options = parse_options_value_for_contract(normalized.view(), artifact)?;
         Ok((
             options,
             Self {
@@ -1020,7 +1024,7 @@ impl BaseBindingOptions {
         &self,
         artifact_contract: &ValidatedArtifactContract,
     ) -> Result<(), BindingError> {
-        parse_options_value_for_contract(&self.normalized_wire, artifact_contract).map(drop)
+        parse_options_value_for_contract(self.normalized_wire.view(), artifact_contract).map(drop)
     }
 
     pub(crate) fn apply_overlay(
@@ -1038,18 +1042,20 @@ impl BaseBindingOptions {
         };
 
         let mut merged = self.normalized_wire.as_ref().clone();
-        merge_json_value(&mut merged, normalized_wire);
+        merged.merge(normalized_wire);
         if let Some(requested_resources) = requested_resources {
             let resources = tighten_resource_options(&self.resource_ceiling, &requested_resources)?;
             merged
-                .as_object_mut()
+                .object_mut()
                 .expect("validated binding options always normalize to an object")
                 .insert(
                     "resources".to_string(),
-                    serde_json::to_value(resources).map_err(internal_json_error)?,
+                    serde_json::to_value(resources)
+                        .map_err(internal_json_error)?
+                        .into(),
                 );
         }
-        parse_options_value_for_contract(&merged, artifact_contract)
+        parse_options_value_for_contract(merged.view(), artifact_contract)
     }
 }
 
@@ -1203,33 +1209,36 @@ pub(crate) fn validate_one_shot_resource_options(
     options_json: &[u8],
     resource_scope: BindingResourceScope,
 ) -> Result<(), BindingError> {
-    let value = options_json_value(options_json)?;
-    validate_output_options_for_scope(&value, resource_scope)?;
-    let mut value = normalize_analysis_wrapper(value);
-    let _ = take_request_resource_options(&mut value, resource_scope)?;
-    Ok(())
+    let wire = options_json_value(options_json)?;
+    validate_output_options_for_scope(&wire.value, resource_scope)?;
+    if !wire.value.is_object() {
+        return Err(BindingError::invalid_options_json(
+            "invalid request options_json: options root must be an object",
+        ));
+    }
+    // Preflight observes the same resource field as wrapper normalization. Full schema and
+    // wrapper validation still follows operation-scoped resource validation.
+    let root = wire.view();
+    let resources = normalization_wrapper(&wire.value)
+        .and_then(|wrapper| root.get(wrapper)?.get("resources"))
+        .or_else(|| root.get("resources"));
+    parse_request_resource_options(resources, resource_scope).map(drop)
 }
 
-fn take_request_resource_options(
-    value: &mut Value,
+fn parse_request_resource_options(
+    resources: Option<OptionsValueRef<'_>>,
     resource_scope: BindingResourceScope,
 ) -> Result<Option<ResourceOptionsJson>, BindingError> {
-    let root = value.as_object_mut().ok_or_else(|| {
-        BindingError::new(
-            BindingStatus::OptionsJsonError,
-            "invalid request options_json: options root must be an object",
-        )
-    })?;
-    let Some(resources) = root.remove("resources") else {
+    let Some(resources) = resources else {
         return Ok(None);
     };
-    if resources.is_null() {
+    if resources.value.is_null() {
         return Err(BindingError::new(
             BindingStatus::OptionsJsonError,
             "request options_json cannot clear the engine resource ceiling",
         ));
     }
-    let resources = serde_json::from_value::<ResourceOptionsJson>(resources).map_err(|error| {
+    let resources = ResourceOptionsJson::deserialize(resources).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             format!("invalid request options_json resources: {error}"),
@@ -1270,49 +1279,29 @@ fn request_selects_runtime_policy(value: &Value) -> bool {
     })
 }
 
-fn merge_json_object(
-    base: &mut serde_json::Map<String, Value>,
-    request: serde_json::Map<String, Value>,
-) {
-    for (key, value) in request {
-        match base.get_mut(&key) {
-            Some(base_value) => merge_json_value(base_value, value),
-            None => {
-                base.insert(key, value);
-            }
-        }
-    }
+fn normalization_wrapper(value: &Value) -> Option<&'static str> {
+    ["merman", "analysis"]
+        .into_iter()
+        .find(|wrapper| value.get(*wrapper).is_some_and(Value::is_object))
 }
 
-fn merge_json_value(base: &mut Value, request: Value) {
-    match (base, request) {
-        (Value::Object(base), Value::Object(request)) => {
-            merge_json_object(base, request);
-        }
-        (base, request) => *base = request,
-    }
-}
-
-fn normalize_analysis_wrapper(value: Value) -> Value {
-    let Value::Object(mut options) = value else {
+fn normalize_analysis_wrapper(mut value: OptionsValue) -> OptionsValue {
+    let Some(wrapper) = normalization_wrapper(&value.value) else {
         return value;
     };
-
-    let wrapper = ["merman", "analysis"]
-        .into_iter()
-        .find(|wrapper| options.get(*wrapper).is_some_and(Value::is_object));
-    let Some(wrapper) = wrapper else {
-        return Value::Object(options);
-    };
-    let Some(Value::Object(mut analysis)) = options.remove(wrapper) else {
-        unreachable!("selected wrapper has an object value");
-    };
+    let mut options = value
+        .object_mut()
+        .expect("options with an analysis wrapper");
+    let mut analysis = options.swap_remove(wrapper).expect("selected wrapper");
+    let mut analysis = analysis
+        .object_mut()
+        .expect("selected wrapper is an object");
     for key in BINDING_ANALYSIS_OPTION_KEYS {
-        if let Some(value) = analysis.remove(key) {
+        if let Some(value) = analysis.swap_remove(key) {
             options.insert(key.to_string(), value);
         }
     }
-    Value::Object(options)
+    value
 }
 
 #[cfg(feature = "svg")]
@@ -1352,15 +1341,15 @@ fn reject_removed_ascii_resource_field(value: &Value) -> Result<(), BindingError
 
 #[cfg(feature = "analysis")]
 fn binding_analysis_options_json_from_json_value(
-    value: &Value,
+    wire: OptionsValueRef<'_>,
 ) -> Result<BindingAnalysisOptionsJson, BindingError> {
-    reject_removed_nested_analysis_parse_option(value)?;
-    let (options_value, wrapped) = binding_analysis_options_root_value(value)?;
+    reject_removed_nested_analysis_parse_option(wire.value)?;
+    let (options_value, wrapped) = binding_analysis_options_root_value(wire)?;
     let resources = options_value
         .get("resources")
-        .filter(|value| !value.is_null())
+        .filter(|value| !value.value.is_null())
         .map(|value| {
-            serde_json::from_value(value.clone()).map_err(|err| {
+            ResourceOptionsJson::deserialize(value).map_err(|err| {
                 BindingError::new(
                     BindingStatus::OptionsJsonError,
                     format!("invalid analysis options JSON: {err}"),
@@ -1369,7 +1358,7 @@ fn binding_analysis_options_json_from_json_value(
         })
         .transpose()?;
 
-    let mut analysis_value = options_value.clone();
+    let mut analysis_value = options_value.value.clone();
     let analysis = analysis_value.as_object_mut().ok_or_else(|| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -1404,11 +1393,11 @@ fn binding_analysis_options_json_from_json_value(
 
 #[cfg(not(feature = "analysis"))]
 fn binding_analysis_options_json_from_json_value(
-    value: &Value,
+    wire: OptionsValueRef<'_>,
 ) -> Result<BindingAnalysisOptionsJson, BindingError> {
-    reject_removed_nested_analysis_parse_option(value)?;
-    let (options_value, _) = binding_analysis_options_root_value(value)?;
-    serde_json::from_value(options_value.clone()).map_err(|err| {
+    reject_removed_nested_analysis_parse_option(wire.value)?;
+    let (options_value, _) = binding_analysis_options_root_value(wire)?;
+    BindingAnalysisOptionsJson::deserialize(options_value).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             format!("invalid analysis options JSON: {err}"),
@@ -1416,9 +1405,11 @@ fn binding_analysis_options_json_from_json_value(
     })
 }
 
-fn binding_analysis_options_root_value(value: &Value) -> Result<(&Value, bool), BindingError> {
-    let Value::Object(map) = value else {
-        return Ok((value, false));
+fn binding_analysis_options_root_value(
+    wire: OptionsValueRef<'_>,
+) -> Result<(OptionsValueRef<'_>, bool), BindingError> {
+    let Value::Object(map) = wire.value else {
+        return Ok((wire, false));
     };
 
     let wrapper = ["merman", "analysis"]
@@ -1431,14 +1422,14 @@ fn binding_analysis_options_root_value(value: &Value) -> Result<(&Value, bool), 
                 "options JSON must not mix top-level analysis options with `analysis` or `merman` wrappers",
             ));
         }
-        return Ok((value, false));
+        return Ok((wire, false));
     }
 
     if let Some(key) = wrapper {
-        let wrapped = map
+        let wrapped = wire
             .get(key)
             .expect("selected wrapper key must exist in the options object");
-        if !wrapped.is_object() {
+        if !wrapped.value.is_object() {
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
                 format!("options JSON `{key}` wrapper must be an object"),
@@ -1447,7 +1438,7 @@ fn binding_analysis_options_root_value(value: &Value) -> Result<(&Value, bool), 
         return Ok((wrapped, true));
     }
 
-    Ok((value, false))
+    Ok((wire, false))
 }
 
 fn binding_analysis_option_keys_present(map: &Map<String, Value>) -> bool {
@@ -1983,9 +1974,9 @@ pub fn apply_resource_ceiling_json_with_allowed_overrides(
         ceiling_overrides,
         allowed_request_limit_ids,
     )?;
-    let serialized = serde_json::to_vec(&value).map_err(internal_json_error)?;
+    let serialized = serde_json::to_vec(&value.value).map_err(internal_json_error)?;
     enforce_options_json_byte_budget(&serialized)?;
-    parse_options_with_theme(options_json, &value, &DEFAULT_ARTIFACT_SNAPSHOT)?;
+    parse_options_with_theme(options_json, value.view(), &DEFAULT_ARTIFACT_SNAPSHOT)?;
     Ok(serialized)
 }
 
@@ -2004,17 +1995,21 @@ pub(crate) fn parse_one_shot_options_with_resource_ceiling(
         ceiling_overrides,
         allowed_request_limit_ids,
     )?;
-    enforce_compact_options_budget(&wire)?;
-    let mut options = parse_options_with_theme(options_json, &wire, &DEFAULT_ARTIFACT_SNAPSHOT)?;
+    enforce_compact_options_budget(&wire.value)?;
+    let mut options =
+        parse_options_with_theme(options_json, wire.view(), &DEFAULT_ARTIFACT_SNAPSHOT)?;
 
     const TRANSPORT_FIELDS: [&str; 2] = ["runtime_policy", "environment"];
-    let root = wire
-        .as_object_mut()
+    let mut root = wire
+        .object_mut()
         .expect("resource ceiling requires an object");
     let mut transport = Value::Object(
         TRANSPORT_FIELDS
             .iter()
-            .filter_map(|key| root.remove_entry(*key))
+            .filter_map(|key| {
+                let member = root.swap_remove(key)?;
+                Some(((*key).to_owned(), member.value))
+            })
             .collect(),
     );
     normalize(&mut transport)?;
@@ -2042,14 +2037,16 @@ pub(crate) fn parse_one_shot_options_with_resource_ceiling(
     let Value::Object(transport_root) = transport else {
         unreachable!()
     };
-    root.extend(transport_root);
-    enforce_compact_options_budget(&wire)?;
+    for (key, value) in transport_root {
+        root.insert(key, value.into());
+    }
+    enforce_compact_options_budget(&wire.value)?;
 
-    validate_output_options_for_scope(&wire, scope)?;
+    validate_output_options_for_scope(&wire.value, scope)?;
     if let Some(resources) = &options.analysis.resources {
         validate_resource_limits_for_scope(resources, scope)?;
     }
-    reject_unavailable_option_groups(&wire, artifact_contract)?;
+    reject_unavailable_option_groups(&wire.value, artifact_contract)?;
     validate_artifact_resource_options(options.analysis.resources.as_ref(), artifact_contract)?;
     let base = base_options_from_wire(wire, &options);
     Ok((options, base))
@@ -2094,7 +2091,7 @@ pub fn analysis_options_with_resource_ceiling(
     )?;
     artifact_analysis_options(&parse_options_with_theme(
         options_json,
-        &value,
+        value.view(),
         &DEFAULT_ARTIFACT_SNAPSHOT,
     )?)
 }
@@ -2104,7 +2101,7 @@ fn options_value_with_resource_ceiling(
     ceiling_profile_id: &str,
     ceiling_overrides: &[(&str, usize)],
     allowed_request_limit_ids: &[&str],
-) -> Result<Value, BindingError> {
+) -> Result<OptionsValue, BindingError> {
     let ceiling_value = resource_options_value(Some(ceiling_profile_id), ceiling_overrides)?;
     let mut ceiling = parse_options_value(&ceiling_value)?
         .analysis
@@ -2116,7 +2113,7 @@ fn options_value_with_resource_ceiling(
             )
         })?;
     let mut value = options_json_value(options_json)?;
-    let root = value.as_object_mut().ok_or_else(|| {
+    let root = value.value.as_object().ok_or_else(|| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             "invalid options_json: options root must be an object",
@@ -2148,18 +2145,15 @@ fn options_value_with_resource_ceiling(
         ));
     }
 
+    let root = value.view();
     let target = match wrappers.first() {
-        Some(key) => root
-            .get_mut(*key)
-            .and_then(Value::as_object_mut)
-            .expect("wrapper shape was validated"),
+        Some(key) => root.get(key).expect("wrapper shape was validated"),
         None => root,
     };
     let requested = target
         .get("resources")
-        .cloned()
         .map(|resources| {
-            serde_json::from_value::<ResourceOptionsJson>(resources).map_err(|error| {
+            ResourceOptionsJson::deserialize(resources).map_err(|error| {
                 BindingError::new(
                     BindingStatus::OptionsJsonError,
                     format!("invalid options_json resources: {error}"),
@@ -2182,18 +2176,25 @@ fn options_value_with_resource_ceiling(
         .map(|requested| tighten_resource_options(&ceiling, requested))
         .transpose()?
         .unwrap_or(ceiling);
+    let mut root = value.object_mut().expect("options root is an object");
+    let mut target = match wrappers.first() {
+        Some(key) => root.child_object(key).expect("wrapper shape was validated"),
+        None => root,
+    };
     target.insert(
         "resources".to_string(),
-        serde_json::to_value(resources).map_err(internal_json_error)?,
+        serde_json::to_value(resources)
+            .map_err(internal_json_error)?
+            .into(),
     );
 
     Ok(value)
 }
 
-fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
+fn options_json_value(options_json: &[u8]) -> Result<OptionsValue, BindingError> {
     enforce_options_json_byte_budget(options_json)?;
     if options_json.is_empty() {
-        return Ok(Value::Object(Map::new()));
+        return Ok(Value::Object(Map::new()).into());
     }
     let text = std::str::from_utf8(options_json).map_err(|error| {
         BindingError::new(
@@ -2424,7 +2425,10 @@ mod tests {
         Ok(match parse_request_overlay(request, scope)? {
             BindingRequestOverlay::Unchanged => {
                 base.validate_unchanged_request(&DEFAULT_ARTIFACT_SNAPSHOT)?;
-                parse_options_value(&base.normalized_wire)?
+                parse_options_value_for_contract(
+                    base.normalized_wire.view(),
+                    &DEFAULT_ARTIFACT_SNAPSHOT,
+                )?
             }
             overlay => base.apply_overlay(overlay, &DEFAULT_ARTIFACT_SNAPSHOT)?,
         })
@@ -3176,6 +3180,106 @@ mod tests {
         let flat = parse_options(br#"{ "resources": { "max_source_bytes": 4 } }"#).unwrap_err();
         assert_eq!(flat.status(), BindingStatus::OptionsJsonError);
         assert!(flat.message().contains("unknown field `max_source_bytes`"));
+    }
+
+    #[test]
+    fn source_order_selects_the_first_error_within_each_options_phase() {
+        for (json, expected) in [
+            (
+                r#"{"z_first":0,"a_second":0}"#,
+                "unknown options_json field `z_first`",
+            ),
+            (
+                r#"{"runtime_policy":"invalid","parse":{"a_invalid":0}}"#,
+                "unknown variant `invalid`",
+            ),
+            (
+                r#"{"a_top":0,"parse":{"z_first":0,"a_second":0}}"#,
+                "unknown field `z_first`",
+            ),
+            (
+                r#"{"parse":{"suppress_errors":true,"a_unknown":0,"\u0073uppress_errors":"last"}}"#,
+                "invalid type: string \"last\", expected a boolean",
+            ),
+        ] {
+            let raw = parse_options(json.as_bytes()).unwrap_err();
+            assert_eq!(raw.status(), BindingStatus::OptionsJsonError);
+            assert!(raw.message().contains(expected), "{raw:?}");
+        }
+
+        let json = r#"{"parse":{"z_first":0,"a_second":0}}"#;
+        let raw = parse_request_overlay(json.as_bytes(), BindingResourceScope::Model).unwrap_err();
+        let decoded = DecodedOperationOptions::decode(json, |error| {
+            BindingError::invalid_options_json(error.to_string())
+        })
+        .unwrap();
+        let decoded = parse_request_overlay_for_artifact(
+            BindingRequestOptions::Decoded(decoded),
+            BindingResourceScope::Model,
+            &DEFAULT_ARTIFACT_SNAPSHOT,
+        )
+        .unwrap_err();
+        assert_eq!(decoded, raw);
+        assert!(decoded.message().contains("unknown field `z_first`"));
+    }
+
+    #[test]
+    fn source_order_for_resource_shape_precedes_stable_id_budget_checks() {
+        let malformed = br#"{"version":3,"analysis":{"resources":{"limits":{"z_first":"wrong","a_second":[]}}}}"#;
+        let error =
+            validate_one_shot_resource_options(malformed, BindingResourceScope::Model).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("invalid request options_json resources")
+        );
+        assert!(error.message().contains("string \"wrong\""));
+
+        let error = apply_resource_ceiling_json(malformed, "constrained", &[]).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("invalid options_json resources"));
+        assert!(error.message().contains("string \"wrong\""));
+
+        let error = apply_resource_ceiling_json(
+            br#"{"resources":{"limits":{"max_source_bytes":5,"max_model_items":5}}}"#,
+            "constrained",
+            &[("max_source_bytes", 4), ("max_model_items", 4)],
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("ceiling for `max_model_items`"));
+    }
+
+    #[test]
+    fn source_order_reports_the_first_unsafe_theme_variable_in_a_wrapper() {
+        let error = parse_options(
+            br#"{"parse":{"suppress_errors":"wrong"},"merman":{"site_config":{"themeVariables":{"z_first":[{"stroke":"red;"}],"a_second":"blue;"}}}}"#,
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("site_config.themeVariables.z_first[0].stroke")
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn source_order_for_prepared_output_uses_the_normalized_slots() {
+        let overlay = parse_request_overlay(
+            br#"{"resources":{},"site_config":{},"version":4,"parse":{},"fixed_today":"2026-11-25"}"#,
+            BindingResourceScope::Svg,
+        )
+        .unwrap();
+        let error = overlay.validate_prepared_output().unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("prepared output cannot set `fixed_today`")
+        );
     }
 
     #[test]
