@@ -68,14 +68,27 @@ pub struct NodeLabel {
     pub dummy: Option<DummyKind>,
     pub labelpos: Option<LabelPos>,
     pub dummy_edge: DummyEdge,
+    pub border_type: Option<BorderSide>,
+    /// Rank and border state materialized by the compound layout stages.
+    pub compound: Option<Box<CompoundNodeLabel>>,
+    pub self_edges: Vec<OriginalEdge>,
+}
+
+impl NodeLabel {
+    pub(crate) fn compound_mut(&mut self) -> &mut CompoundNodeLabel {
+        self.compound.get_or_insert_with(Box::default)
+    }
+}
+
+/// Rank bounds and border nodes for a compound graph node.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CompoundNodeLabel {
     pub min_rank: Option<i32>,
     pub max_rank: Option<i32>,
-    pub border_type: Option<BorderSide>,
     pub border_left: Vec<Option<String>>,
     pub border_right: Vec<Option<String>>,
     pub border_top: Option<String>,
     pub border_bottom: Option<String>,
-    pub self_edges: Vec<OriginalEdge>,
 }
 
 /// The role of a temporary Dagre node.

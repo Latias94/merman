@@ -101,11 +101,12 @@ pub(crate) fn rank_plan_controlled(
     let mut nodes = Vec::with_capacity(input.node_count());
     for id in input.nodes() {
         let node = ranked_graph.node(id);
+        let compound = node.and_then(|node| node.compound.as_deref());
         nodes.push(rank::RankPlanNode {
             id: id.to_string(),
             rank: node.and_then(|label| label.rank),
-            min_rank: node.and_then(|label| label.min_rank),
-            max_rank: node.and_then(|label| label.max_rank),
+            min_rank: compound.and_then(|compound| compound.min_rank),
+            max_rank: compound.and_then(|compound| compound.max_rank),
         });
     }
 
@@ -836,12 +837,13 @@ fn assign_rank_min_max(
     work_control.charge(node_snapshot_work_units(g)?)?;
     let node_ids = g.node_ids();
     for id in node_ids {
-        let Some(node) = g.node(&id).cloned() else {
+        let Some(compound) = g.node(&id).and_then(|node| node.compound.as_deref()) else {
             continue;
         };
-        let (Some(border_top), Some(border_bottom)) =
-            (node.border_top.as_deref(), node.border_bottom.as_deref())
-        else {
+        let (Some(border_top), Some(border_bottom)) = (
+            compound.border_top.as_deref(),
+            compound.border_bottom.as_deref(),
+        ) else {
             continue;
         };
         let (Some(min_rank), Some(max_rank)) = (
@@ -850,9 +852,12 @@ fn assign_rank_min_max(
         ) else {
             continue;
         };
-        if let Some(node) = g.node_mut(&id) {
-            node.min_rank = Some(min_rank);
-            node.max_rank = Some(max_rank);
+        if let Some(compound) = g
+            .node_mut(&id)
+            .and_then(|node| node.compound.as_deref_mut())
+        {
+            compound.min_rank = Some(min_rank);
+            compound.max_rank = Some(max_rank);
         }
     }
     Ok(())

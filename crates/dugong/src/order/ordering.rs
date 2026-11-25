@@ -884,8 +884,11 @@ mod tests {
         graph.set_node(
             "x",
             NodeLabel {
-                min_rank: Some(0),
-                max_rank: Some(1),
+                compound: Some(Box::new(crate::CompoundNodeLabel {
+                    min_rank: Some(0),
+                    max_rank: Some(1),
+                    ..Default::default()
+                })),
                 ..Default::default()
             },
         );
@@ -1149,8 +1152,11 @@ mod tests {
         graph.set_node(
             "cluster",
             NodeLabel {
-                min_rank: Some(i32::MAX),
-                max_rank: Some(i32::MAX),
+                compound: Some(Box::new(crate::CompoundNodeLabel {
+                    min_rank: Some(i32::MAX),
+                    max_rank: Some(i32::MAX),
+                    ..Default::default()
+                })),
                 ..Default::default()
             },
         );

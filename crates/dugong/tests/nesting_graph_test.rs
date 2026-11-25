@@ -33,7 +33,7 @@ fn nesting_graph_adds_border_nodes_to_top_and_bottom_of_a_subgraph() {
     g.set_parent("a", "sg1");
     nesting_graph::run(&mut g);
 
-    let sg = g.node("sg1").unwrap();
+    let sg = g.node("sg1").unwrap().compound.as_deref().unwrap();
     let top = sg.border_top.clone().unwrap();
     let bottom = sg.border_bottom.clone().unwrap();
 
@@ -75,8 +75,8 @@ fn nesting_graph_adds_edges_between_borders_of_nested_subgraphs() {
     g.set_parent("a", "sg2");
     nesting_graph::run(&mut g);
 
-    let sg1 = g.node("sg1").unwrap();
-    let sg2 = g.node("sg2").unwrap();
+    let sg1 = g.node("sg1").unwrap().compound.as_deref().unwrap();
+    let sg2 = g.node("sg2").unwrap().compound.as_deref().unwrap();
     let sg1_top = sg1.border_top.clone().unwrap();
     let sg1_bottom = sg1.border_bottom.clone().unwrap();
     let sg2_top = sg2.border_top.clone().unwrap();
@@ -122,7 +122,7 @@ fn nesting_graph_adds_sufficient_weight_to_border_to_node_edges() {
     );
     nesting_graph::run(&mut g);
 
-    let sg = g.node("sg").unwrap();
+    let sg = g.node("sg").unwrap().compound.as_deref().unwrap();
     let top = sg.border_top.clone().unwrap();
     let bot = sg.border_bottom.clone().unwrap();
 
@@ -137,7 +137,15 @@ fn nesting_graph_adds_edge_from_root_to_tops_of_top_level_subgraphs() {
     nesting_graph::run(&mut g);
 
     let root = g.graph().nesting_root.clone().unwrap();
-    let top = g.node("sg1").unwrap().border_top.clone().unwrap();
+    let top = g
+        .node("sg1")
+        .unwrap()
+        .compound
+        .as_deref()
+        .unwrap()
+        .border_top
+        .clone()
+        .unwrap();
     assert_eq!(g.out_edges(&root, Some(&top)).len(), 1);
     assert!(g.has_edge(&root, &top, None));
 }
@@ -252,8 +260,8 @@ fn nesting_graph_sets_minlen_correctly_for_nested_border_to_children() {
     nesting_graph::run(&mut g);
 
     let root = g.graph().nesting_root.clone().unwrap();
-    let sg1 = g.node("sg1").unwrap();
-    let sg2 = g.node("sg2").unwrap();
+    let sg1 = g.node("sg1").unwrap().compound.as_deref().unwrap();
+    let sg2 = g.node("sg2").unwrap().compound.as_deref().unwrap();
     let sg1_top = sg1.border_top.clone().unwrap();
     let sg1_bot = sg1.border_bottom.clone().unwrap();
     let sg2_top = sg2.border_top.clone().unwrap();

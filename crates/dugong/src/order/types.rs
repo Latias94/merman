@@ -62,26 +62,31 @@ impl OrderNodeRange for crate::NodeLabel {
     }
 
     fn min_rank(&self) -> Option<i32> {
-        self.min_rank
+        self.compound
+            .as_deref()
+            .and_then(|compound| compound.min_rank)
     }
 
     fn max_rank(&self) -> Option<i32> {
-        self.max_rank
-    }
-
-    fn has_min_rank(&self) -> bool {
-        self.min_rank.is_some()
+        self.compound
+            .as_deref()
+            .and_then(|compound| compound.max_rank)
     }
 
     fn border_left_at(&self, rank: i32) -> Option<String> {
-        self.border_left.get(rank as usize).cloned().unwrap_or(None)
+        self.compound
+            .as_deref()?
+            .border_left
+            .get(rank as usize)?
+            .clone()
     }
 
     fn border_right_at(&self, rank: i32) -> Option<String> {
-        self.border_right
-            .get(rank as usize)
-            .cloned()
-            .unwrap_or(None)
+        self.compound
+            .as_deref()?
+            .border_right
+            .get(rank as usize)?
+            .clone()
     }
 
     fn subgraph_layer_label(&self, rank: i32) -> Self {
@@ -89,8 +94,11 @@ impl OrderNodeRange for crate::NodeLabel {
         let right = self.border_right_at(rank);
 
         Self {
-            border_left: vec![left],
-            border_right: vec![right],
+            compound: Some(Box::new(crate::CompoundNodeLabel {
+                border_left: vec![left],
+                border_right: vec![right],
+                ..Default::default()
+            })),
             ..Default::default()
         }
     }
@@ -119,10 +127,10 @@ impl OrderNodeLabel for crate::NodeLabel {
     }
 
     fn border_left(&self) -> Option<&str> {
-        self.border_left.first().and_then(|v| v.as_deref())
+        self.compound.as_deref()?.border_left.first()?.as_deref()
     }
 
     fn border_right(&self) -> Option<&str> {
-        self.border_right.first().and_then(|v| v.as_deref())
+        self.compound.as_deref()?.border_right.first()?.as_deref()
     }
 }

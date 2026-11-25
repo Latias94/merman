@@ -65,14 +65,17 @@ fn add_border_segments_adds_a_border_for_a_single_rank_subgraph() {
     g.set_node(
         "sg",
         NodeLabel {
-            min_rank: Some(1),
-            max_rank: Some(1),
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                min_rank: Some(1),
+                max_rank: Some(1),
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );
     add_border_segments::add_border_segments(&mut g);
 
-    let sg = g.node("sg").unwrap();
+    let sg = g.node("sg").unwrap().compound.as_deref().unwrap();
     let bl = sg.border_left[1].as_deref().unwrap();
     let br = sg.border_right[1].as_deref().unwrap();
     assert_eq!(
@@ -107,14 +110,17 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     g.set_node(
         "sg",
         NodeLabel {
-            min_rank: Some(1),
-            max_rank: Some(2),
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                min_rank: Some(1),
+                max_rank: Some(2),
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );
     add_border_segments::add_border_segments(&mut g);
 
-    let sg = g.node("sg").unwrap().clone();
+    let sg = g.node("sg").unwrap().compound.as_deref().unwrap();
     let bl1 = sg.border_left[1].clone().unwrap();
     let br1 = sg.border_right[1].clone().unwrap();
     assert_eq!(
@@ -142,7 +148,7 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     );
     assert_eq!(g.parent(&br1), Some("sg"));
 
-    let sg2 = g.node("sg").unwrap();
+    let sg2 = g.node("sg").unwrap().compound.as_deref().unwrap();
     let bl2 = sg2.border_left[2].clone().unwrap();
     let br2 = sg2.border_right[2].clone().unwrap();
     assert_eq!(
@@ -180,16 +186,22 @@ fn add_border_segments_adds_borders_for_nested_subgraphs() {
     g.set_node(
         "sg1",
         NodeLabel {
-            min_rank: Some(1),
-            max_rank: Some(1),
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                min_rank: Some(1),
+                max_rank: Some(1),
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );
     g.set_node(
         "sg2",
         NodeLabel {
-            min_rank: Some(1),
-            max_rank: Some(1),
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                min_rank: Some(1),
+                max_rank: Some(1),
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );
@@ -197,13 +209,13 @@ fn add_border_segments_adds_borders_for_nested_subgraphs() {
 
     add_border_segments::add_border_segments(&mut g);
 
-    let sg1 = g.node("sg1").unwrap();
+    let sg1 = g.node("sg1").unwrap().compound.as_deref().unwrap();
     let bl1 = sg1.border_left[1].as_deref().unwrap();
     let br1 = sg1.border_right[1].as_deref().unwrap();
     assert_eq!(g.parent(bl1), Some("sg1"));
     assert_eq!(g.parent(br1), Some("sg1"));
 
-    let sg2 = g.node("sg2").unwrap();
+    let sg2 = g.node("sg2").unwrap().compound.as_deref().unwrap();
     let bl2 = sg2.border_left[1].as_deref().unwrap();
     let br2 = sg2.border_right[1].as_deref().unwrap();
     assert_eq!(g.parent(bl2), Some("sg2"));
