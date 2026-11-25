@@ -1,25 +1,21 @@
 mod grid;
 mod sweep;
 
+pub(super) use crate::geom::Bounds;
 pub(super) use grid::{Grid, GridQuery, Node};
 
 use super::{OrthoSegment, project, zero};
 use crate::model::{Axis, Point, Rect};
 use crate::work::{LayoutError, LayoutResult, Work, push, reserved};
 
-#[derive(Clone, Copy, PartialEq)]
-pub(super) struct Bounds {
-    pub(super) x: [f64; 2],
-    pub(super) y: [f64; 2],
-}
-
 impl Bounds {
     pub(super) fn new(rect: Rect) -> LayoutResult<Self> {
+        let bounds = Self::of(rect);
         let bounds = Self {
-            x: [zero(rect.x), zero(rect.x + rect.width)],
-            y: [zero(rect.y), zero(rect.y + rect.height)],
+            x: bounds.x.map(zero),
+            y: bounds.y.map(zero),
         };
-        if rect.width < 0.0 || rect.height < 0.0 || !bounds.is_finite() {
+        if rect.width < 0.0 || rect.height < 0.0 || !bounds.finite() {
             return Err(LayoutError::InvalidInput(
                 "invalid orthogonal routing rectangle",
             ));
@@ -35,17 +31,6 @@ impl Bounds {
         match axis {
             Axis::Horizontal => (self.x, self.y),
             Axis::Vertical => (self.y, self.x),
-        }
-    }
-
-    fn is_finite(self) -> bool {
-        self.x.into_iter().chain(self.y).all(f64::is_finite)
-    }
-
-    fn union(self, other: Self) -> Self {
-        Self {
-            x: [self.x[0].min(other.x[0]), self.x[1].max(other.x[1])],
-            y: [self.y[0].min(other.y[0]), self.y[1].max(other.y[1])],
         }
     }
 
@@ -82,12 +67,12 @@ impl Obstacles {
         for &r in obstacles {
             work.visit(1)?;
             let r = Bounds::new(r)?.pad(margin);
-            if !r.is_finite() {
+            if !r.finite() {
                 return Err(LayoutError::InvalidInput(
                     "orthogonal obstacle halo overflow",
                 ));
             }
-            if r.x[0] < r.x[1] && r.y[0] < r.y[1] {
+            if r.has_area() {
                 rects.push(r);
             }
         }
@@ -99,10 +84,7 @@ impl Obstacles {
     }
 
     pub(super) fn window(&self, start: Point, end: Point, margin: f64) -> Option<Bounds> {
-        let mut b = Bounds {
-            x: [start.x.min(end.x), start.x.max(end.x)],
-            y: [start.y.min(end.y), start.y.max(end.y)],
-        };
+        let mut b = Bounds::between(start, end);
         if let Some(root) = self.tree.last() {
             b = b.union(root.bounds);
         }
@@ -117,7 +99,7 @@ impl Obstacles {
             outer.y[1].max(b.y[1].next_up()),
         ];
         let bounds = Bounds { x, y };
-        bounds.is_finite().then_some(bounds)
+        bounds.finite().then_some(bounds)
     }
 
     pub(super) fn rays(

@@ -17,13 +17,14 @@ mod obstacles;
 mod tests;
 
 use super::{Component, Drawing, Expanded, canonical_size, to_canonical_port};
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Direction, EdgeGeometry, EdgeSpec, Graph, LayoutError, MarkerMetrics, NodeSpec, Options,
     Point, PortSideHint, Rect, RoutePoint, Side, Size, WorkError,
 };
 pub(crate) use boundary::BoundaryRoutes;
-use obstacles::{Bounds, Obstacles, Owner, RouteWalls};
+use obstacles::{Obstacles, Owner, RouteWalls};
 
 pub(crate) fn route_corridor(
     start: Point,
@@ -37,7 +38,7 @@ pub(crate) fn route_corridor(
     let mut bounds = reserved(obstacles.len())?;
     for &rect in obstacles {
         work.visit(1)?;
-        bounds.push(Bounds::of(rect)?);
+        bounds.push(Bounds::checked_rect(rect)?);
     }
     corridor::path(start, end, via, &RouteWalls(bounds), gap, work)
 }
@@ -93,19 +94,18 @@ impl Port {
         let half = m.width / 2.0;
         let bounds = match self.side.axis() {
             Axis::Horizontal => Bounds {
-                x0: self.at.x.min(tip.x),
-                x1: self.at.x.max(tip.x),
-                y0: finite(self.at.y - half)?,
-                y1: finite(self.at.y + half)?,
+                x: [self.at.x.min(tip.x), self.at.x.max(tip.x)],
+                y: [finite(self.at.y - half)?, finite(self.at.y + half)?],
             },
             Axis::Vertical => Bounds {
-                x0: finite(self.at.x - half)?,
-                x1: finite(self.at.x + half)?,
-                y0: self.at.y.min(tip.y),
-                y1: self.at.y.max(tip.y),
+                x: [finite(self.at.x - half)?, finite(self.at.x + half)?],
+                y: [self.at.y.min(tip.y), self.at.y.max(tip.y)],
             },
         };
-        if m.width > 0.0 && m.length > 0.0 && (bounds.x0 >= bounds.x1 || bounds.y0 >= bounds.y1) {
+        if m.width > 0.0
+            && m.length > 0.0
+            && (bounds.x[0] >= bounds.x[1] || bounds.y[0] >= bounds.y[1])
+        {
             return Err(PRECISION);
         }
         Ok(bounds)
@@ -123,10 +123,10 @@ impl Port {
             work.visit(1)?;
             if b.blocks(self.at, tip) {
                 match self.side {
-                    Side::Right => tip.x = b.x0.max(self.at.x),
-                    Side::Left => tip.x = b.x1.min(self.at.x),
-                    Side::Bottom => tip.y = b.y0.max(self.at.y),
-                    Side::Top => tip.y = b.y1.min(self.at.y),
+                    Side::Right => tip.x = b.x[0].max(self.at.x),
+                    Side::Left => tip.x = b.x[1].min(self.at.x),
+                    Side::Bottom => tip.y = b.y[0].max(self.at.y),
+                    Side::Top => tip.y = b.y[1].min(self.at.y),
                 }
             }
         }
@@ -330,7 +330,7 @@ fn loop_label(
     walls: &Obstacles,
     work: &mut Work<'_>,
 ) -> LayoutResult<Point> {
-    if walls.fits(Bounds::centered(at, size)?, Some(id), work)? {
+    if walls.fits(Bounds::checked_centered(at, size)?, Some(id), work)? {
         return Ok(at);
     }
     let directions = match side.axis() {
@@ -353,7 +353,7 @@ fn choose_direct_label(
         x: a.x.midpoint(b.x),
         y: a.y.midpoint(b.y),
     };
-    if walls.fits(Bounds::centered(mid, size)?, Some(id), work)? {
+    if walls.fits(Bounds::checked_centered(mid, size)?, Some(id), work)? {
         return Ok(mid);
     }
     shortest_slide(mid, size, [Side::Left, Side::Right], id, walls, work).and_then(|p| {
@@ -361,7 +361,7 @@ fn choose_direct_label(
         let side = if p.x < mid.x { Side::Left } else { Side::Right };
         let padded = advance(p, side, gap)?;
         Ok(
-            if walls.fits(Bounds::centered(padded, size)?, Some(id), work)? {
+            if walls.fits(Bounds::checked_centered(padded, size)?, Some(id), work)? {
                 padded
             } else {
                 p
@@ -465,7 +465,7 @@ fn loop_waypoints(
         };
         for &r in &walls.0 {
             work.visit(1)?;
-            blocked |= r.x0 < p.x && p.x < r.x1 && r.y0 < p.y && p.y < r.y1;
+            blocked |= r.x[0] < p.x && p.x < r.x[1] && r.y[0] < p.y && p.y < r.y[1];
             far = far.max(r.along(a.side).1);
         }
         if blocked {
@@ -526,7 +526,7 @@ fn end_label(
     let mut best = None;
     for side in sides {
         let at = advance(start, side, cross)?;
-        if walls.fits(Bounds::centered(at, size)?, None, work)? {
+        if walls.fits(Bounds::checked_centered(at, size)?, None, work)? {
             return Ok(at);
         }
         let (p, d) = walls.slide(at, size, port.side, None, work)?;
@@ -594,7 +594,7 @@ pub(super) fn finish(
     }
     let mut walls = Obstacles::new();
     for &rect in &drawing.nodes {
-        walls.add(Owner::Node, Bounds::of(rect)?, work)?;
+        walls.add(Owner::Node, Bounds::checked_rect(rect)?, work)?;
     }
     for (i, (id, edge)) in drawing.edges.iter().enumerate() {
         work.visit(1)?;
@@ -604,7 +604,7 @@ pub(super) fn finish(
         {
             walls.add(
                 Owner::Middle(*id),
-                Bounds::centered(p, canonical_size(graph.direction, size))?,
+                Bounds::checked_centered(p, canonical_size(graph.direction, size))?,
                 work,
             )?;
         }
@@ -698,7 +698,7 @@ pub(super) fn finish(
             };
             let p = loop_label(*id, at, size, side, &walls, work)?;
             edge.label_center = Some(p);
-            walls.add(Owner::Middle(*id), Bounds::centered(p, size)?, work)?;
+            walls.add(Owner::Middle(*id), Bounds::checked_centered(p, size)?, work)?;
         }
     }
     let gap = options.spacing.edge;
@@ -764,7 +764,7 @@ pub(super) fn finish(
             result?;
         }
         if let (Some(size), Some(p)) = (deferred, edge.label_center) {
-            walls.add(Owner::Middle(*id), Bounds::centered(p, size)?, work)?;
+            walls.add(Owner::Middle(*id), Bounds::checked_centered(p, size)?, work)?;
         }
         if placing_labels {
             walls.add_stroke(*id, edge, work)?;
@@ -786,7 +786,7 @@ pub(super) fn finish(
                     } else {
                         edge.start_label_center = Some(p)
                     }
-                    walls.add(Owner::End, Bounds::centered(p, size)?, work)?;
+                    walls.add(Owner::End, Bounds::checked_centered(p, size)?, work)?;
                 }
             }
         }

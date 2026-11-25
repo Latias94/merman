@@ -32,18 +32,16 @@ pub(super) fn path(
             for &p in [start, end].iter().chain(via) {
                 work.visit(1)?;
                 margin = margin.min(
-                    (r.x0 - p.x)
-                        .max(p.x - r.x1)
-                        .max(r.y0 - p.y)
-                        .max(p.y - r.y1)
+                    (r.x[0] - p.x)
+                        .max(p.x - r.x[1])
+                        .max(r.y[0] - p.y)
+                        .max(p.y - r.y[1])
                         .max(0.0),
                 );
             }
             halos.push(Bounds {
-                x0: finite(r.x0 - margin)?,
-                x1: finite(r.x1 + margin)?,
-                y0: finite(r.y0 - margin)?,
-                y1: finite(r.y1 + margin)?,
+                x: [finite(r.x[0] - margin)?, finite(r.x[1] + margin)?],
+                y: [finite(r.y[0] - margin)?, finite(r.y[1] + margin)?],
             });
         }
         match build(&RouteWalls(halos), work) {
@@ -91,15 +89,13 @@ pub(super) fn connect(
             return emit(out, &path);
         }
     }
-    let (mut left, mut right, mut top, mut bottom) =
-        (a.x.min(b.x), a.x.max(b.x), a.y.min(b.y), a.y.max(b.y));
-    for r in &walls.0 {
+    let mut outer = Bounds::between(a, b);
+    for &r in &walls.0 {
         work.visit(1)?;
-        left = left.min(r.x0);
-        right = right.max(r.x1);
-        top = top.min(r.y0);
-        bottom = bottom.max(r.y1);
+        outer = outer.union(r);
     }
+    let [left, right] = outer.x;
+    let [top, bottom] = outer.y;
     let mut best = None;
     for (axis, line) in [
         (Axis::Vertical, finite(left - gap)?),
@@ -196,8 +192,8 @@ fn grid(
     ys.extend([a.y, b.y]);
     for r in &walls.0 {
         work.visit(1)?;
-        xs.extend([r.x0, r.x1]);
-        ys.extend([r.y0, r.y1]);
+        xs.extend(r.x);
+        ys.extend(r.y);
     }
     for lines in [&mut xs, &mut ys] {
         super::super::validate::charge_sort(lines.len(), work)?;
@@ -223,10 +219,10 @@ fn grid(
     for r in &walls.0 {
         work.visit(4 * (width.max(height).ilog2() as usize + 1))?;
         let (x0, x1, y0, y1) = (
-            index(&xs, r.x0),
-            index(&xs, r.x1),
-            index(&ys, r.y0),
-            index(&ys, r.y1),
+            index(&xs, r.x[0]),
+            index(&xs, r.x[1]),
+            index(&ys, r.y[0]),
+            index(&ys, r.y[1]),
         );
         block(&mut mask, stride, x0..x1, y0 + 1..y1, true);
         block(&mut mask, stride, x0 + 1..x1, y0..y1, false);

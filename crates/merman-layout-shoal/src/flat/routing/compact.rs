@@ -2,75 +2,28 @@
 
 use super::super::{Component, Drawing, Expanded, canonical_size};
 use super::{LEAD, advance};
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
-use crate::{
-    Axis, EdgeGeometry, EdgeSpec, Graph, MarkerMetrics, Options, Point, Rect, RoutePoint, Side,
-    Size,
-};
+use crate::{Axis, EdgeGeometry, EdgeSpec, Graph, MarkerMetrics, Options, Point, RoutePoint, Side};
+#[cfg(test)]
+use crate::{Rect, Size};
 
 const MAX_WORK: usize = 64 * 1024;
 
-#[derive(Clone, Copy)]
-struct Bounds {
-    left: f64,
-    right: f64,
-    top: f64,
-    bottom: f64,
-}
-
 impl Bounds {
-    fn node(rect: Rect) -> Self {
-        Self {
-            left: rect.x,
-            right: rect.x + rect.width,
-            top: rect.y,
-            bottom: rect.y + rect.height,
-        }
-    }
-
-    fn label(at: Point, size: Size) -> Self {
-        Self {
-            left: at.x - size.width * 0.5,
-            right: at.x + size.width * 0.5,
-            top: at.y - size.height * 0.5,
-            bottom: at.y + size.height * 0.5,
-        }
-    }
-
     fn terminal(at: RoutePoint, side: Side, marker: MarkerMetrics) -> Self {
-        let lead = marker.length.max(LEAD);
-        let half = marker.width * 0.5;
-        let (left, right, top, bottom) = match side {
-            Side::Top => (at.x - half, at.x + half, at.y - lead, at.y),
-            Side::Bottom => (at.x - half, at.x + half, at.y, at.y + lead),
-            Side::Left => (at.x - lead, at.x, at.y - half, at.y + half),
-            Side::Right => (at.x, at.x + lead, at.y - half, at.y + half),
-        };
-        Self {
-            left,
-            right,
-            top,
-            bottom,
-        }
-    }
-
-    fn union(self, other: Self) -> Self {
-        Self {
-            left: self.left.min(other.left),
-            right: self.right.max(other.right),
-            top: self.top.min(other.top),
-            bottom: self.bottom.max(other.bottom),
-        }
-    }
-
-    fn finite(self) -> bool {
-        [self.left, self.right, self.top, self.bottom]
-            .into_iter()
-            .all(f64::is_finite)
+        Self::marker(
+            Point { x: at.x, y: at.y },
+            side,
+            MarkerMetrics {
+                length: marker.length.max(LEAD),
+                ..marker
+            },
+        )
     }
 
     fn contains_x(self, x: f64) -> bool {
-        self.left <= x && x <= self.right
+        self.x[0] <= x && x <= self.x[1]
     }
 }
 
@@ -82,11 +35,9 @@ fn route_bounds(points: &[RoutePoint], sides: (Side, Side), spec: &EdgeSpec) -> 
     let mut envelope = Bounds::terminal(*first, sides.0, spec.start_marker)
         .union(Bounds::terminal(*last, sides.1, spec.end_marker));
     for knot in middle {
-        envelope = envelope.union(Bounds {
-            left: knot.x,
-            right: knot.x,
-            top: knot.y,
-            bottom: knot.y,
+        envelope.include(Point {
+            x: knot.x,
+            y: knot.y,
         });
     }
     envelope.finite().then_some(envelope)
@@ -131,7 +82,7 @@ impl Scene {
             ] {
                 match (at, size) {
                     (Some(at), Some(size)) => {
-                        let bounds = Bounds::label(at, canonical_size(graph.direction, size));
+                        let bounds = Bounds::centered(at, canonical_size(graph.direction, size));
                         if !bounds.finite() {
                             return Ok(None);
                         }
@@ -159,7 +110,7 @@ impl Scene {
             .iter()
             .enumerate()
             .filter(|(i, _)| *i != node)
-            .map(|(_, &rect)| Bounds::node(rect));
+            .map(|(_, &rect)| Bounds::of(rect));
         let routes = self
             .routes
             .iter()
@@ -169,14 +120,14 @@ impl Scene {
         // step above the footprint. A step already overlapping the footprint prevents the move.
         let mut floor = f64::NEG_INFINITY;
         for wall in nodes.chain(routes).chain(self.labels.iter().copied()) {
-            if wall.right + gap < footprint.left
-                || footprint.right < wall.left - gap
-                || footprint.bottom < wall.top - gap
+            if wall.x[1] + gap < footprint.x[0]
+                || footprint.x[1] < wall.x[0] - gap
+                || footprint.y[1] < wall.y[0] - gap
             {
                 continue;
             }
-            let bottom = wall.bottom + gap;
-            if bottom >= footprint.top {
+            let bottom = wall.y[1] + gap;
+            if bottom >= footprint.y[0] {
                 return None;
             }
             floor = floor.max(bottom);
@@ -257,8 +208,8 @@ pub(in crate::flat) fn compact_ranks(
             continue;
         }
         let ranks = expanded.logical_rank[b] - expanded.logical_rank[a];
-        let parent = Bounds::node(drawing.nodes[parent]);
-        let Ok(earliest) = advance(parent.bottom, ranks as f64 * options.spacing.rank) else {
+        let parent = Bounds::of(drawing.nodes[parent]);
+        let Ok(earliest) = advance(parent.y[1], ranks as f64 * options.spacing.rank) else {
             continue;
         };
         if earliest >= drawing.nodes[node].y {
@@ -308,8 +259,8 @@ fn slide(
     let (id, approach) = &drawing.edges[incoming];
     let spec = &graph.edges[*id as usize];
     let [parent, contact] = [approach.points[0], approach.points[1]];
-    let node_bounds = Bounds::node(rect);
-    if contact.y != node_bounds.top || !node_bounds.contains_x(contact.x) {
+    let node_bounds = Bounds::of(rect);
+    if contact.y != node_bounds.y[0] || !node_bounds.contains_x(contact.x) {
         return;
     }
     let up = spec.end_marker.length.max(LEAD);
@@ -323,7 +274,7 @@ fn slide(
         let (id, route) = &drawing.edges[i];
         let spec = &graph.edges[*id as usize];
         let start = route.points[0];
-        if start.y != node_bounds.bottom || !node_bounds.contains_x(start.x) {
+        if start.y != node_bounds.y[1] || !node_bounds.contains_x(start.x) {
             return;
         }
         footprint = footprint.union(Bounds::terminal(start, Side::Bottom, spec.start_marker));

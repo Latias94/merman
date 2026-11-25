@@ -349,7 +349,7 @@ fn interlocking_corridor_is_admitted_before_grid_allocation_and_clears_every_wal
         let mut w = Work::new(&mut meter);
         let mut obstacles = Obstacles::new();
         for b in boxes {
-            obstacles.add(Owner::Node, Bounds::of(b)?, &mut w)?;
+            obstacles.add(Owner::Node, Bounds::checked_rect(b)?, &mut w)?;
         }
         let mut path = Vec::new();
         let ports = [

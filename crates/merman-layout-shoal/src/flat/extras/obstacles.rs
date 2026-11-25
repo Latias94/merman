@@ -1,65 +1,52 @@
 use super::*;
 
-/// Closed rectangle bounds; crossing or overlapping the open interior is a collision.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Bounds {
-    pub x0: f64,
-    pub x1: f64,
-    pub y0: f64,
-    pub y1: f64,
-}
-
 impl Bounds {
-    pub(super) fn of(rect: Rect) -> LayoutResult<Self> {
-        let b = Self {
-            x0: rect.x,
-            x1: finite(rect.x + rect.width)?,
-            y0: rect.y,
-            y1: finite(rect.y + rect.height)?,
-        };
-        if (rect.width > 0.0 && b.x1 <= b.x0) || (rect.height > 0.0 && b.y1 <= b.y0) {
+    pub(super) fn checked_rect(rect: Rect) -> LayoutResult<Self> {
+        let b = Self::of(rect);
+        finite(b.x[1])?;
+        finite(b.y[1])?;
+        if (rect.width > 0.0 && b.x[1] <= b.x[0]) || (rect.height > 0.0 && b.y[1] <= b.y[0]) {
             return Err(PRECISION);
         }
         Ok(b)
     }
-    pub(super) fn centered(p: Point, size: Size) -> LayoutResult<Self> {
-        let b = Self {
-            x0: finite(p.x - size.width / 2.0)?,
-            x1: finite(p.x + size.width / 2.0)?,
-            y0: finite(p.y - size.height / 2.0)?,
-            y1: finite(p.y + size.height / 2.0)?,
-        };
-        if (size.width > 0.0 && (p.x <= b.x0 || b.x1 <= p.x))
-            || (size.height > 0.0 && (p.y <= b.y0 || b.y1 <= p.y))
+
+    pub(super) fn checked_centered(p: Point, size: Size) -> LayoutResult<Self> {
+        let b = Self::centered(p, size);
+        if !b.finite() {
+            return Err(WorkError::ArithmeticOverflow.into());
+        }
+        if (size.width > 0.0 && (p.x <= b.x[0] || b.x[1] <= p.x))
+            || (size.height > 0.0 && (p.y <= b.y[0] || b.y[1] <= p.y))
         {
             return Err(PRECISION);
         }
         Ok(b)
     }
+
     // A route leg can have zero width or height. Its envelope still obstructs a label
     // whenever the leg lies strictly inside the label's two axis intervals.
     pub(super) fn intersects_label(self, label: Self) -> bool {
-        label.x0 < label.x1
-            && label.y0 < label.y1
-            && self.x0 < label.x1
-            && label.x0 < self.x1
-            && self.y0 < label.y1
-            && label.y0 < self.y1
+        label.has_area() && self.overlaps_strictly(label)
     }
+
     pub(super) fn blocks(self, a: Point, b: Point) -> bool {
+        let [x0, x1] = self.x;
+        let [y0, y1] = self.y;
         if a.x == b.x {
-            self.x0 < a.x && a.x < self.x1 && a.y.min(b.y).max(self.y0) < a.y.max(b.y).min(self.y1)
+            x0 < a.x && a.x < x1 && a.y.min(b.y).max(y0) < a.y.max(b.y).min(y1)
         } else {
             debug_assert_eq!(a.y, b.y);
-            self.y0 < a.y && a.y < self.y1 && a.x.min(b.x).max(self.x0) < a.x.max(b.x).min(self.x1)
+            y0 < a.y && a.y < y1 && a.x.min(b.x).max(x0) < a.x.max(b.x).min(x1)
         }
     }
+
     pub(super) fn along(self, s: Side) -> (f64, f64) {
         match s {
-            Side::Right => (self.x0, self.x1),
-            Side::Left => (-self.x1, -self.x0),
-            Side::Bottom => (self.y0, self.y1),
-            Side::Top => (-self.y1, -self.y0),
+            Side::Right => (self.x[0], self.x[1]),
+            Side::Left => (-self.x[1], -self.x[0]),
+            Side::Bottom => (self.y[0], self.y[1]),
+            Side::Top => (-self.y[1], -self.y[0]),
         }
     }
 }
@@ -111,8 +98,8 @@ impl Obstacles {
         let (mut left, mut right) = (mid.x, mid.x);
         for (_, r) in self.iter() {
             work.visit(1)?;
-            left = left.min(r.x0);
-            right = right.max(r.x1);
+            left = left.min(r.x[0]);
+            right = right.max(r.x[1]);
         }
         let room = finite(size.width / 2.0 + gap)?;
         let at = if mid.x - left <= right - mid.x {
@@ -140,14 +127,24 @@ impl Obstacles {
                     id == edge
                         || ports.iter().any(|p| match p.side {
                             Side::Right | Side::Left => {
-                                p.at.y >= b.y0
-                                    && p.at.y <= b.y1
-                                    && p.at.x == if p.side == Side::Right { b.x0 } else { b.x1 }
+                                p.at.y >= b.y[0]
+                                    && p.at.y <= b.y[1]
+                                    && p.at.x
+                                        == if p.side == Side::Right {
+                                            b.x[0]
+                                        } else {
+                                            b.x[1]
+                                        }
                             }
                             Side::Bottom | Side::Top => {
-                                p.at.x >= b.x0
-                                    && p.at.x <= b.x1
-                                    && p.at.y == if p.side == Side::Bottom { b.y0 } else { b.y1 }
+                                p.at.x >= b.x[0]
+                                    && p.at.x <= b.x[1]
+                                    && p.at.y
+                                        == if p.side == Side::Bottom {
+                                            b.y[0]
+                                        } else {
+                                            b.y[1]
+                                        }
                             }
                         })
                 }
@@ -193,15 +190,7 @@ impl Obstacles {
         for pair in edge.points.windows(2) {
             let (a, b) = (pair[0], pair[1]);
             work.visit(1)?;
-            self.strokes.push((
-                id,
-                Bounds {
-                    x0: a.x.min(b.x),
-                    x1: a.x.max(b.x),
-                    y0: a.y.min(b.y),
-                    y1: a.y.max(b.y),
-                },
-            ));
+            self.strokes.push((id, Bounds::between(point(a), point(b))));
         }
         Ok(())
     }
@@ -233,7 +222,7 @@ impl Obstacles {
         own_stroke: Option<u32>,
         work: &mut Work<'_>,
     ) -> LayoutResult<(Point, f64)> {
-        let initial = Bounds::centered(origin, size)?;
+        let initial = Bounds::checked_centered(origin, size)?;
         let (start, half) = match side {
             Side::Top => (-origin.y, size.height / 2.0),
             Side::Bottom => (origin.y, size.height / 2.0),
@@ -253,8 +242,8 @@ impl Obstacles {
                 continue;
             }
             let across = match side.axis() {
-                Axis::Vertical => initial.x0 < b.x1 && b.x0 < initial.x1,
-                Axis::Horizontal => initial.y0 < b.y1 && b.y0 < initial.y1,
+                Axis::Vertical => initial.x[0] < b.x[1] && b.x[0] < initial.x[1],
+                Axis::Horizontal => initial.y[0] < b.y[1] && b.y[0] < initial.y[1],
             };
             if across {
                 let (lo, hi) = b.along(side);

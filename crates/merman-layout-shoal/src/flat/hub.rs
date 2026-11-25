@@ -1,6 +1,7 @@
 //! Relieve crowded automatic port rows while the drawing is still in canonical coordinates.
 
 use super::{Component, Drawing, canonical_size, validate};
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, MarkerMetrics, Options, Point, PortSideHint,
@@ -171,76 +172,14 @@ impl Run {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Bounds {
-    lo: Point,
-    hi: Point,
-}
-
 impl Bounds {
-    fn between(a: Point, b: Point) -> Self {
-        Self {
-            lo: Point {
-                x: a.x.min(b.x),
-                y: a.y.min(b.y),
-            },
-            hi: Point {
-                x: a.x.max(b.x),
-                y: a.y.max(b.y),
-            },
-        }
-    }
-
-    fn node(rect: Rect) -> Self {
-        Self::between(
-            Point {
-                x: rect.x,
-                y: rect.y,
-            },
-            Point {
-                x: rect.x + rect.width,
-                y: rect.y + rect.height,
-            },
-        )
-    }
-
-    fn label(p: Point, size: crate::Size) -> Self {
-        Self::between(
-            Point {
-                x: p.x - size.width * 0.5,
-                y: p.y - size.height * 0.5,
-            },
-            Point {
-                x: p.x + size.width * 0.5,
-                y: p.y + size.height * 0.5,
-            },
-        )
-    }
-
-    fn overlaps(self, wall: Self) -> bool {
-        self.lo.x < wall.hi.x
-            && wall.lo.x < self.hi.x
-            && self.lo.y < wall.hi.y
-            && wall.lo.y < self.hi.y
-    }
-
-    fn has_area(self) -> bool {
-        self.lo.x < self.hi.x && self.lo.y < self.hi.y
-    }
-
     fn path(points: &[RoutePoint]) -> Self {
-        let mut bounds = Self::between(point(points[0]), point(points[0]));
+        let first = point(points[0]);
+        let mut bounds = Self::between(first, first);
         for &p in &points[1..] {
             bounds.include(point(p));
         }
         bounds
-    }
-
-    fn include(&mut self, p: Point) {
-        self.lo.x = self.lo.x.min(p.x);
-        self.lo.y = self.lo.y.min(p.y);
-        self.hi.x = self.hi.x.max(p.x);
-        self.hi.y = self.hi.y.max(p.y);
     }
 }
 
@@ -490,7 +429,7 @@ impl Clearance {
                 .nodes
                 .iter()
                 .copied()
-                .map(Bounds::node)
+                .map(|rect| Bounds::of(rect).ordered())
                 .filter(|b| b.has_area()),
         );
         work.charge(drawing.edges.len())?;
@@ -505,7 +444,8 @@ impl Clearance {
                 (edge.end_label_center, spec.end_label),
             ] {
                 if let (Some(p), Some(size)) = (center, size) {
-                    let bounds = Bounds::label(p, canonical_size(graph.direction, size));
+                    let bounds =
+                        Bounds::centered(p, canonical_size(graph.direction, size)).ordered();
                     if bounds.has_area() {
                         push(&mut walls, bounds)?;
                     }
@@ -534,8 +474,8 @@ impl Clearance {
     ) -> LayoutResult<bool> {
         for &(edge, ref edit) in proposed {
             let blocked = |wall| {
-                edit.body.iter().any(|&body| body.overlaps(wall))
-                    || edit.mark.is_some_and(|mark| mark.overlaps(wall))
+                edit.body.iter().any(|&body| body.overlaps_strictly(wall))
+                    || edit.mark.is_some_and(|mark| mark.overlaps_strictly(wall))
             };
             if !visit_clearance(&mut self.remaining, self.walls.len(), work)?
                 || self.walls.iter().copied().any(blocked)
@@ -574,10 +514,10 @@ impl Clearance {
                     // The whole retained envelope also covers corners whose surrounding free
                     // knots are coalesced by the painter before interpolation.
                     let crosses = if let Some(other) = other {
-                        other.retained.overlaps(mark)
-                            || other.body.iter().any(|part| part.overlaps(mark))
+                        other.retained.overlaps_strictly(mark)
+                            || other.body.iter().any(|part| part.overlaps_strictly(mark))
                     } else {
-                        self.strokes[i].overlaps(mark)
+                        self.strokes[i].overlaps_strictly(mark)
                     };
                     if crosses {
                         return Ok(false);

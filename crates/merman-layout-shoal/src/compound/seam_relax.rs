@@ -4,10 +4,13 @@ mod projection;
 
 use super::Pass;
 use super::solve::TITLE_CLEAR;
+#[cfg(test)]
+use crate::Rect;
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Point,
-    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size,
+    PortSideHint, RoutePoint, RoutingStyle, Side, Size,
 };
 use projection::Lane;
 
@@ -53,37 +56,11 @@ impl Travel {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Bounds {
-    left: f64,
-    top: f64,
-    right: f64,
-    bottom: f64,
-}
-
 impl Bounds {
-    fn of(rect: Rect) -> Self {
-        Self {
-            left: rect.x,
-            top: rect.y,
-            right: rect.x + rect.width,
-            bottom: rect.y + rect.height,
-        }
-    }
-
-    fn around(center: Point, size: Size) -> Self {
-        Self {
-            left: center.x - size.width / 2.0,
-            top: center.y - size.height / 2.0,
-            right: center.x + size.width / 2.0,
-            bottom: center.y + size.height / 2.0,
-        }
-    }
-
     fn route(points: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<Self> {
         work.visit(points.len())?;
         let first = points[0];
-        let mut bounds = Self::around(
+        let mut bounds = Self::centered(
             Point {
                 x: first.x,
                 y: first.y,
@@ -91,35 +68,19 @@ impl Bounds {
             Size::default(),
         );
         for point in &points[1..] {
-            bounds.left = bounds.left.min(point.x);
-            bounds.top = bounds.top.min(point.y);
-            bounds.right = bounds.right.max(point.x);
-            bounds.bottom = bounds.bottom.max(point.y);
+            bounds.include(Point {
+                x: point.x,
+                y: point.y,
+            });
         }
         Ok(bounds)
     }
 
-    fn touches(self, other: Self) -> bool {
-        self.left <= other.right
-            && other.left <= self.right
-            && self.top <= other.bottom
-            && other.top <= self.bottom
-    }
-
-    fn contains(self, other: Self) -> bool {
-        self.left <= other.left
-            && self.top <= other.top
-            && self.right >= other.right
-            && self.bottom >= other.bottom
-    }
-
-    fn union(self, other: Self) -> Self {
-        Self {
-            left: self.left.min(other.left),
-            top: self.top.min(other.top),
-            right: self.right.max(other.right),
-            bottom: self.bottom.max(other.bottom),
-        }
+    fn contains_bounds(self, other: Self) -> bool {
+        self.x[0] <= other.x[0]
+            && self.y[0] <= other.y[0]
+            && self.x[1] >= other.x[1]
+            && self.y[1] >= other.y[1]
     }
 }
 
@@ -147,7 +108,7 @@ impl Obstacles {
                     width: size.width + padding,
                     height: size.height + padding,
                 };
-                push(&mut boxes, Bounds::around(center, clearance))?;
+                push(&mut boxes, Bounds::centered(center, clearance))?;
             }
         }
         let mut edges = reserved(output.edges.len())?;
@@ -160,7 +121,7 @@ impl Obstacles {
                 (edge.end_label_center, spec.end_label),
             ] {
                 if let (Some(center), Some(size)) = (center, size) {
-                    push(&mut boxes, Bounds::around(center, size))?;
+                    push(&mut boxes, Bounds::centered(center, size))?;
                 }
             }
             for (point, marker) in [
@@ -171,7 +132,7 @@ impl Obstacles {
                 if radius > 0.0 {
                     push(
                         &mut boxes,
-                        Bounds::around(
+                        Bounds::centered(
                             Point {
                                 x: point.x,
                                 y: point.y,
@@ -199,25 +160,25 @@ impl Obstacles {
     ) -> LayoutResult<bool> {
         for &obstacle in &self.boxes {
             work.visit(1)?;
-            if bounds.touches(obstacle) {
+            if bounds.overlaps(obstacle) {
                 return Ok(false);
             }
         }
         for (other, &obstacle) in self.edges.iter().enumerate() {
             work.visit(1)?;
-            if other != edge && bounds.touches(obstacle) {
+            if other != edge && bounds.overlaps(obstacle) {
                 return Ok(false);
             }
         }
         for edit in accepted {
             work.visit(1)?;
-            if edit.edge != edge && bounds.touches(edit.footprint) {
+            if edit.edge != edge && bounds.overlaps(edit.footprint) {
                 return Ok(false);
             }
         }
         for (index, group) in drawing.groups.iter().enumerate() {
             work.visit(1)?;
-            if !bounds.touches(Bounds::of(group.rect)) || groups.contains(&GroupId(index as u32)) {
+            if !bounds.overlaps(Bounds::of(group.rect)) || groups.contains(&GroupId(index as u32)) {
                 continue;
             }
             let mut ancestor = drawing.groups[groups[0].0 as usize].parent;
@@ -400,9 +361,9 @@ fn fixed_seams(
             .chain(&route[right + 1..=end])
             .any(|point| point.kind != KnotKind::Free)
         || !Bounds::of(output.groups[first.group.0 as usize].rect)
-            .contains(Bounds::route(&route[start - 1..=left], work)?)
+            .contains_bounds(Bounds::route(&route[start - 1..=left], work)?)
         || !Bounds::of(output.groups[last.group.0 as usize].rect)
-            .contains(Bounds::route(&route[right..=end + 1], work)?)
+            .contains_bounds(Bounds::route(&route[right..=end + 1], work)?)
     {
         return Ok(None);
     }
@@ -643,8 +604,8 @@ fn sliding_candidate(
     ];
     let left_sweep = old_left.union(Bounds::route(&moved[..3], work)?);
     let right_sweep = old_right.union(Bounds::route(&moved[3..], work)?);
-    if !Bounds::of(output.groups[first.group.0 as usize].rect).contains(left_sweep)
-        || !Bounds::of(output.groups[last.group.0 as usize].rect).contains(right_sweep)
+    if !Bounds::of(output.groups[first.group.0 as usize].rect).contains_bounds(left_sweep)
+        || !Bounds::of(output.groups[last.group.0 as usize].rect).contains_bounds(right_sweep)
     {
         return Ok(None);
     }
