@@ -925,13 +925,17 @@
       "local_paths": [
         "crates/merman-core/src",
         "crates/merman-core-flow/src",
+        "crates/merman-core-preprocess/src/scan/langium.rs",
+        "crates/merman-core-structured/src/info.rs",
         "crates/merman-model/src",
         "crates/merman-markup/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "crates/merman-render-charts/src/quadrantchart/layout.rs",
         "crates/merman-render-charts/src/radar/layout.rs",
         "crates/merman-render-charts/src/treemap/layout.rs",
         "crates/merman-render-charts/src/venn/layout.rs",
+        "crates/merman-render-core/src/step_animation.rs",
         "crates/merman-render-flow/src",
         "crates/merman-render-structured/src/info",
         "fixtures"
