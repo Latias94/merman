@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_fixtures::fixture_pdf_options;
+use merman_model::{OperationCancelled, OperationPhase};
 
 fn compatible_svg() -> ResvgCompatibleSvg {
     let session = merman_render::environment::RenderEnvironment::deterministic()

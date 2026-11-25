@@ -1,6 +1,11 @@
 use super::*;
+use crate::conversion::EmbeddedDataPlan;
 use crate::test_fixtures::{fixture_pdf_options, fixture_raster_options};
 use base64::Engine as _;
+use merman_model::{
+    OperationCancelled, OperationLedgerError, OperationPhase, OperationResourceDomain,
+    OperationResourceProvenance,
+};
 
 #[test]
 fn backend_tree_rechecks_preserve_the_render_owned_resource_phase() {
