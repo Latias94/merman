@@ -3,6 +3,12 @@ use crate::cmd;
 use std::process::Command;
 
 const NODE_TRANSPORT_PACKAGE: &str = "merman-node-candidate";
+const VENDORED_RENDER_PACKAGES: &[&str] = &[
+    "merman-krilla",
+    "merman-krilla-svg",
+    "merman-resvg",
+    "merman-usvg",
+];
 const STRICT_WEB_SCRIPTS: [&str; 3] = ["build", "test", "smoke"];
 const STRICT_PLAYGROUND_SCRIPTS: [&str; 8] = [
     "verify:dependencies",
@@ -82,7 +88,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         );
         println!();
         println!("Optional gates:");
-        println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
+        println!("  --clippy        lint workspace targets outside the vendored renderer packages");
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
         println!("                  the Node candidates use separate transport recipes");
@@ -132,33 +138,17 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if options.clippy {
-        println!(
-            "\n== cargo clippy --workspace --all-targets{} ==",
-            if options.all_features {
-                " --all-features (excluding Node transport)"
-            } else {
-                ""
-            }
-        );
         let mut clippy_cmd = Command::new("cargo");
-        clippy_cmd
-            .arg("clippy")
-            .arg("--workspace")
-            .arg("--all-targets");
+        clippy_cmd.args(["clippy", "--workspace", "--all-targets", "--no-deps"]);
+        for package in VENDORED_RENDER_PACKAGES {
+            clippy_cmd.args(["--exclude", package]);
+        }
         if options.all_features {
             clippy_cmd.args(["--all-features", "--exclude", NODE_TRANSPORT_PACKAGE]);
         }
-        clippy_cmd
-            .arg("--")
-            .arg("-D")
-            .arg("warnings")
-            .current_dir(&workspace_root);
-        let what = if options.all_features {
-            "cargo clippy --workspace --all-targets --all-features -- -D warnings"
-        } else {
-            "cargo clippy --workspace --all-targets -- -D warnings"
-        };
-        run_checked(what, &mut clippy_cmd)?;
+        clippy_cmd.args(["--", "-D", "warnings"]);
+        println!("\n== {clippy_cmd:?} ==");
+        run_checked("cargo clippy", clippy_cmd.current_dir(&workspace_root))?;
     }
 
     if options.feature_matrix {

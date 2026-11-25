@@ -37,6 +37,11 @@ The operation-context thread-local key already has a const initializer. Clippy 1
 `missing_const_for_thread_local` from the standard library's TLS fallback on Android. Keep the
 allowance on that declaration until an admitted compiler update handles the expansion correctly.
 
+`xtask verify --strict` compiles all four vendored renderer crates. Workspace tests follow
+their manifests, and `merman-export` integration tests cover Krilla's PDF behavior. The Clippy
+gate applies `-D warnings` to workspace-owned targets. See the separate
+[independent crate release gates](../release/RELEASING.md#independent-crate-publication-and-recovery).
+
 ## Runtime and job dependencies
 
 The core, native Node, and SVG/browser owners publish separate same-run results to `pr-gate`:

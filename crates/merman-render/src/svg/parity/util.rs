@@ -4,7 +4,6 @@
 
 use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
 use merman_render_core::svg_css::CssSelectorDiagramId;
-use std::fmt::Write as _;
 
 use super::SvgOutput;
 
@@ -17,9 +16,7 @@ pub(super) use merman_render_core::xml::{
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 
-pub(super) use merman_render_core::svg_css::{
-    scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
-};
+pub(super) use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_id, scoped_svg_url};
 
 pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
     CssSelectorDiagramId(diagram_id)

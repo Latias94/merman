@@ -14,7 +14,7 @@ pub use id::{
     scoped_svg_id, scoped_svg_url,
 };
 #[cfg(feature = "css-style")]
-pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss, theme_token};
+pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 
 /// Escapes one identifier for use in a CSS selector embedded in SVG XML text.
 ///

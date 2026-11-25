@@ -13,7 +13,7 @@ use super::{
 
 // Keep Mermaid@11.16.0 ordering quirks to preserve DOM parity.
 
-pub fn theme_token(
+fn theme_token(
     effective_config: &(impl ConfigLookup + ?Sized),
     key: &str,
     fallback: &str,
