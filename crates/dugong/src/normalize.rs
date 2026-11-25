@@ -56,6 +56,9 @@ fn add_dummy_node(
     id
 }
 
+/// Splits long edges into rank-adjacent segments.
+///
+/// The first dummy of each chain owns the original edge key and label.
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let to_normalize: Vec<_> = g
         .edges()
@@ -89,30 +92,38 @@ fn normalize_edge(
     ids: &mut DummyNodeIdGen,
     e: EdgeKey,
 ) {
-    let v = e.v.clone();
-    let w = e.w.clone();
-    let name = e.name.clone();
-
-    let v_rank = g.node(&v).and_then(|n| n.rank).unwrap_or(0);
-    let w_rank = g.node(&w).and_then(|n| n.rank).unwrap_or(0);
-    let Some(mut edge_label) = g.edge_by_key(&e).cloned() else {
+    let v_rank = g.node(&e.v).and_then(|n| n.rank).unwrap_or(0);
+    let w_rank = g.node(&e.w).and_then(|n| n.rank).unwrap_or(0);
+    let Some(label) = g.edge_mut_by_key(&e) else {
         return;
     };
-    let label_rank = edge_label.label_rank;
-
-    if w_rank == v_rank + 1 {
+    let first_rank = v_rank + 1;
+    if w_rank == first_rank {
         return;
     }
 
+    let mut original_label = std::mem::take(label);
     let _ = g.remove_edge_key(&e);
 
-    edge_label.points.clear();
+    original_label.points = Vec::new();
+    let weight = original_label.weight;
+    let label_rank = original_label.label_rank;
+    let (width, height, labelpos) = (
+        original_label.width,
+        original_label.height,
+        original_label.labelpos,
+    );
+    let mut prev = e.v.clone();
+    let w = e.w.clone();
+    let name = e.name.clone();
+    // Reparenting and undo find the original edge through GraphLabel::dummy_chains.
+    let mut original = Some((e, original_label));
 
-    let mut prev = v;
-    let mut first_dummy: Option<String> = None;
-    let mut r = v_rank + 1;
-
-    while r < w_rank {
+    for r in first_rank..w_rank {
+        let (edge_obj, edge_label) = match original.take() {
+            Some((edge, label)) => (Some(edge), Some(label)),
+            None => (None, None),
+        };
         let dummy_id = add_dummy_node(
             g,
             ids,
@@ -121,25 +132,24 @@ fn normalize_edge(
                 height: 0.0,
                 rank: Some(r),
                 dummy: Some("edge".to_string()),
-                edge_label: Some(edge_label.clone()),
-                edge_obj: Some(e.clone()),
+                edge_label,
+                edge_obj,
                 ..Default::default()
             },
             "_d",
         );
 
-        if first_dummy.is_none() {
-            first_dummy = Some(dummy_id.clone());
+        if r == first_rank {
             g.graph_mut().dummy_chains.push(dummy_id.clone());
         }
 
         if label_rank == Some(r)
             && let Some(n) = g.node_mut(&dummy_id)
         {
-            n.width = edge_label.width;
-            n.height = edge_label.height;
+            n.width = width;
+            n.height = height;
             n.dummy = Some("edge-label".to_string());
-            n.labelpos = Some(edge_label.labelpos);
+            n.labelpos = Some(labelpos);
         }
 
         g.set_edge_named(
@@ -147,12 +157,11 @@ fn normalize_edge(
             dummy_id.clone(),
             name.clone(),
             Some(EdgeLabel {
-                weight: edge_label.weight,
+                weight,
                 ..Default::default()
             }),
         );
         prev = dummy_id;
-        r += 1;
     }
 
     g.set_edge_named(
@@ -160,7 +169,7 @@ fn normalize_edge(
         w,
         name,
         Some(EdgeLabel {
-            weight: edge_label.weight,
+            weight,
             ..Default::default()
         }),
     );
