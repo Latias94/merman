@@ -1664,7 +1664,7 @@ impl HierarchySweep {
     fn transfer_node_and_port_orders_to_graph(&self, root: &mut LGraph) -> bool {
         let mut changed = false;
         for info in &self.infos {
-            let Some(best_sweep) = info.get_best_sweep(self.cross_min_type).cloned() else {
+            let Some(best_sweep) = info.get_best_sweep(self.cross_min_type) else {
                 continue;
             };
             let graph = graph_mut_at_path(root, &info.path);
