@@ -6,7 +6,6 @@ or run the LALRPOP generator. The grammar sources are:
 - `crates/merman-core/src/diagrams/class_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/flowchart_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/sequence_grammar.lalrpop`
-- `crates/merman-core/src/diagrams/state_grammar.lalrpop`
 
 Their generated Rust files live under `crates/merman-core/src/generated/lalrpop/`. Treat the
 grammar and the complete generated parser set as one change. Never edit generated Rust by hand.
@@ -51,5 +50,5 @@ behavioral surface it affects:
 4. Run the workspace and strict gates before release.
 
 Parser generation belongs to the maintainer toolchain in `xtask`. Features that select a generated
-parser compile its checked-in module with `lalrpop-util`. The ER feature uses a handwritten parser
-in `crates/merman-core/src/diagrams/er/parser.rs`.
+parser compile its checked-in module with `lalrpop-util`. ER and State use handwritten parsers in
+`crates/merman-core/src/diagrams/er/parser.rs` and `crates/merman-core/src/diagrams/state/parser.rs`.

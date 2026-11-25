@@ -25,7 +25,7 @@ pub(crate) trait TokenScanner {
 }
 
 /// A forward cursor over spanned lexical events, with one buffered lookahead.
-#[cfg(feature = "diagram-er")]
+#[cfg(any(feature = "diagram-er", feature = "diagram-state"))]
 pub(crate) struct TokenStream<'a, I: Iterator> {
     events: std::iter::Peekable<I>,
     control: &'a crate::OperationControl,
@@ -34,7 +34,7 @@ pub(crate) struct TokenStream<'a, I: Iterator> {
     previous_end: usize,
 }
 
-#[cfg(feature = "diagram-er")]
+#[cfg(any(feature = "diagram-er", feature = "diagram-state"))]
 impl<'a, I, T, E> TokenStream<'a, I>
 where
     I: Iterator<Item = Result<(usize, T, usize), E>>,

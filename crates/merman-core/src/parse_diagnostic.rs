@@ -11,8 +11,7 @@
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-sequence"
 ))]
 mod lalrpop;
 
@@ -20,8 +19,7 @@ mod lalrpop;
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-sequence"
 ))]
 pub(crate) use lalrpop::*;
 

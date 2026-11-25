@@ -4,20 +4,15 @@ use crate::diagrams::scan::is_ecmascript_whitespace;
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
-use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
-#[cfg(feature = "editor-facts")]
 use crate::source_span::{
     has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
 };
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol,
+    EditorSemanticSymbol, SourceSpan,
 };
-use crate::{
-    Error, OperationControl, OperationControlResult, ParseDiagnostic, ParseDiagnosticSpanKind,
-    SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
-};
+use crate::{Error, OperationControl, OperationControlResult, ParseDiagnostic};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
@@ -29,8 +24,11 @@ use std::collections::HashSet;
 
 #[cfg(feature = "presentation")]
 use super::StateDiagramRenderModel;
+#[cfg(feature = "editor-facts")]
+use super::Tok;
 use super::db::StateDb;
-use super::{Lexer, StateDiagramModel, StateDocumentScratch, StateStatement, Tok};
+use super::parser::{self, LexicalEvent as StateLexicalEvent};
+use super::{Lexer, StateDiagramModel, StateDocumentScratch, StateStatement};
 
 #[cfg(test)]
 thread_local! {
@@ -47,11 +45,8 @@ pub(crate) fn state_syntax_construction_count() -> usize {
     STATE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-type StateLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
-type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
-
 struct StateSyntaxOutcome {
-    document: std::result::Result<StateDocumentScratch, StateGrammarError>,
+    document: std::result::Result<StateDocumentScratch, ParseDiagnostic>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -71,7 +66,7 @@ impl StateSyntax {
 
     fn into_document(
         self,
-        #[cfg(feature = "editor-facts")] code: &str,
+        code: &str,
         #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
         control: &OperationControl,
     ) -> OperationControlResult<StateSyntaxOutcome> {
@@ -86,20 +81,7 @@ impl StateSyntax {
             )?),
         };
         control.checkpoint()?;
-        let mut emitted = 0usize;
-        let controlled_events = self.events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
-            emitted = emitted.saturating_add(1);
-            active
-        });
-        let mut document = StateDocumentScratch::default();
-        let parsed =
-            super::state_grammar::RootParser::new().parse(&mut document, controlled_events);
-        let document = parsed.map(|root| {
-            document.root = Some(root);
-            document
-        });
-        control.checkpoint()?;
+        let document = parser::parse(self.events.into_iter(), code.len(), control)?;
         Ok(StateSyntaxOutcome {
             document,
             #[cfg(feature = "editor-facts")]
@@ -115,22 +97,19 @@ struct StateSemanticSource {
 }
 
 struct StateSemanticFailure {
-    error: Box<StateGrammarError>,
+    diagnostic: ParseDiagnostic,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
 impl StateSemanticFailure {
     #[cfg(feature = "presentation")]
-    fn into_parse_error(self, meta: &SourcePresentationMetadata, fallback_offset: usize) -> Error {
-        self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
+    fn into_parse_error(self, meta: &SourcePresentationMetadata) -> Error {
+        self.into_parse_error_for_type(&meta.diagram_type)
     }
 
-    fn into_parse_error_for_type(self, diagram_type: &str, fallback_offset: usize) -> Error {
-        Error::diagram_parse_diagnostic(
-            diagram_type.to_string(),
-            state_parse_diagnostic(&self.error, fallback_offset),
-        )
+    fn into_parse_error_for_type(self, diagram_type: &str) -> Error {
+        Error::diagram_parse_diagnostic(diagram_type.to_string(), self.diagnostic)
     }
 
     #[cfg(feature = "compat-json")]
@@ -138,52 +117,27 @@ impl StateSemanticFailure {
     fn into_error_and_editor_facts(
         self,
         meta: &SourcePresentationMetadata,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type)
     }
 
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        let error = Error::diagram_parse_diagnostic(
-            diagram_type.to_string(),
-            state_parse_diagnostic(&self.error, fallback_offset),
-        );
-        let span = match self.error.as_ref() {
-            lalrpop_util::ParseError::User { error } => error
-                .span
-                .unwrap_or_else(|| SourceSpan::new(fallback_offset, fallback_offset)),
-            _ => lalrpop_recovery_span(&self.error, fallback_offset),
-        };
         let mut editor_facts = self
             .editor_facts
             .expect("State capture requests its failure journal");
         editor_facts.mark_recovered_from_parse_error(
             format!(
                 "state parser recovered after parse error: {}",
-                format_lalrpop_parse_error(self.error.as_ref())
+                self.diagnostic.message(),
             ),
-            Some(span),
+            self.diagnostic.span(),
         );
+        let error = Error::diagram_parse_diagnostic(diagram_type.to_string(), self.diagnostic);
         (error, *editor_facts)
-    }
-}
-
-fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> ParseDiagnostic {
-    let diagnostic = lalrpop_parse_diagnostic(error, fallback_offset);
-    match error {
-        lalrpop_util::ParseError::UnrecognizedToken {
-            token: (start, Tok::Newline, end),
-            ..
-        } if start == end && *end == fallback_offset => diagnostic.with_span(
-            SourceSpan::new(*start, *end),
-            ParseDiagnosticSpanKind::InsertionPoint,
-        ),
-        _ => diagnostic,
     }
 }
 
@@ -206,7 +160,7 @@ pub(crate) fn parse_state_model_for_render_controlled(
     )?;
     match construction {
         Ok(source) => source.db.into_model_controlled(meta, control),
-        Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
+        Err(failure) => Ok(Err(failure.into_parse_error(meta))),
     }
 }
 
@@ -245,8 +199,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
         }
         #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand.needs_recovery() => {
-            let (error, editor_facts) =
-                failure.into_error_and_editor_facts_for_type(diagram_type, code.len());
+            let (error, editor_facts) = failure.into_error_and_editor_facts_for_type(diagram_type);
             Ok(SemanticConstruction {
                 model: Err(error),
                 #[cfg(feature = "editor-facts")]
@@ -254,7 +207,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
             })
         }
         Err(failure) => Ok(SemanticConstruction {
-            model: Err(failure.into_parse_error_for_type(diagram_type, code.len())),
+            model: Err(failure.into_parse_error_for_type(diagram_type)),
             #[cfg(feature = "editor-facts")]
             editor_facts: None,
         }),
@@ -298,7 +251,7 @@ pub(crate) fn parse_state_json_and_editor_facts(
                 editor_facts,
             )
         },
-        |failure| failure.into_error_and_editor_facts(meta, code.len()),
+        |failure| failure.into_error_and_editor_facts(meta),
     );
     Ok(parsed)
 }
@@ -315,7 +268,7 @@ fn parse_state_semantic_source(
         &OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| failure.into_parse_error(meta, code.len()))
+    .map_err(|failure| failure.into_parse_error(meta))
 }
 
 fn construct_state_semantic_source(
@@ -329,7 +282,6 @@ fn construct_state_semantic_source(
         #[cfg(feature = "editor-facts")]
         editor_facts,
     } = syntax.into_document(
-        #[cfg(feature = "editor-facts")]
         code,
         #[cfg(feature = "editor-facts")]
         facts_demand,
@@ -337,9 +289,9 @@ fn construct_state_semantic_source(
     )?;
     let mut doc = match document {
         Ok(doc) => doc,
-        Err(error) => {
+        Err(diagnostic) => {
             return Ok(Err(StateSemanticFailure {
-                error: Box::new(error),
+                diagnostic,
                 #[cfg(feature = "editor-facts")]
                 editor_facts: editor_facts.map(Box::new),
             }));
@@ -839,7 +791,7 @@ impl StateTokenFactCollector<'_> {
             | Tok::NoteText(_)
             | Tok::Concurrent
             | Tok::HideEmptyDescription
-            | Tok::ScaleWidth(_)
+            | Tok::ScaleWidth
             | Tok::Href
             | Tok::StringLit(_) => {}
             Tok::Direction(direction) => {

@@ -21,8 +21,7 @@ pub(crate) fn source_metadata_for_test(
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-sequence"
 ))]
 macro_rules! include_checked_in_lalrpop_parser {
     ($(#[$attr:meta])* $name:ident, $file:literal) => {

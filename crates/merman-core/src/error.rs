@@ -52,8 +52,7 @@ pub struct ParseDiagnostic {
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-sequence"
 ))]
 pub(crate) trait ParseErrorSourceSpan {
     fn source_span(&self) -> Option<SourceSpan>;
@@ -63,8 +62,7 @@ pub(crate) trait ParseErrorSourceSpan {
     feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
+    feature = "diagram-sequence"
 ))]
 impl ParseErrorSourceSpan for String {
     fn source_span(&self) -> Option<SourceSpan> {
