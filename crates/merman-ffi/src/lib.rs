@@ -9,7 +9,7 @@
 use merman::OperationControl;
 #[cfg(feature = "native-fonts")]
 use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
-use merman_bindings_core::transport_handles::OperationControlRegistry;
+use merman_bindings_core::transport_handles::{HandleRegistry, OperationControlRegistry};
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
@@ -111,11 +111,7 @@ struct NativeEngineState {
     admission: Arc<BindingEngineAdmission>,
 }
 
-#[derive(Default)]
-struct NativeEngineRegistry {
-    last_counter: u64,
-    engines: BTreeMap<MermanNativeEngineToken, NativeEngineEntry>,
-}
+type NativeEngineRegistry = HandleRegistry<NativeEngineEntry>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativeEnginePublication {
@@ -128,81 +124,15 @@ struct NativeEngineEntry {
     state: Arc<NativeEngineState>,
 }
 
-impl NativeEngineRegistry {
-    fn issue_token(&mut self) -> Result<MermanNativeEngineToken, NativeFailure> {
-        issue_domain_token(
-            &mut self.last_counter,
-            MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG,
-            "native engine token space is exhausted",
-        )
+impl NativeEngineEntry {
+    fn published_state(&self) -> Option<&Arc<NativeEngineState>> {
+        (self.publication == NativeEnginePublication::Published).then_some(&self.state)
     }
+}
 
-    #[cfg(test)]
-    fn publish(&mut self, token: MermanNativeEngineToken, engine: Arc<NativeEngineState>) {
-        debug_assert!(token_has_domain(
-            token,
-            MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
-        ));
-        let previous = self.engines.insert(
-            token,
-            NativeEngineEntry {
-                publication: NativeEnginePublication::Published,
-                state: engine,
-            },
-        );
-        debug_assert!(previous.is_none(), "native engine tokens are never reused");
-    }
-
-    fn try_reserve(
-        &mut self,
-        engine: Arc<NativeEngineState>,
-    ) -> Result<MermanNativeEngineToken, (Box<NativeFailure>, Arc<NativeEngineState>)> {
-        let token = match self.issue_token() {
-            Ok(token) => token,
-            Err(failure) => return Err((Box::new(failure), engine)),
-        };
-        let previous = self.engines.insert(
-            token,
-            NativeEngineEntry {
-                publication: NativeEnginePublication::Reserved,
-                state: engine,
-            },
-        );
-        debug_assert!(previous.is_none(), "native engine tokens are never reused");
-        Ok(token)
-    }
-
-    fn acquire(&self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
-        self.engines.get(&token).and_then(|entry| {
-            (entry.publication == NativeEnginePublication::Published)
-                .then(|| Arc::clone(&entry.state))
-        })
-    }
-
-    fn cancel_reservation(
-        &mut self,
-        token: MermanNativeEngineToken,
-    ) -> Option<Arc<NativeEngineState>> {
-        if self
-            .engines
-            .get(&token)
-            .is_none_or(|entry| entry.publication != NativeEnginePublication::Reserved)
-        {
-            return None;
-        }
-        self.engines.remove(&token).map(|entry| entry.state)
-    }
-
-    fn retire(&mut self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
-        if self
-            .engines
-            .get(&token)
-            .is_none_or(|entry| entry.publication != NativeEnginePublication::Published)
-        {
-            return None;
-        }
-        self.engines.remove(&token).map(|entry| entry.state)
-    }
+fn encode_engine_token(counter: u64) -> MermanNativeEngineToken {
+    debug_assert!((1..=MERMAN_NATIVE_TOKEN_COUNTER_MAX).contains(&counter));
+    (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
 }
 
 #[derive(Default)]
@@ -261,7 +191,8 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
     token != 0 && token & MERMAN_NATIVE_TOKEN_DOMAIN_MASK == domain_tag
 }
 
-static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
+static ENGINE_REGISTRY: Mutex<NativeEngineRegistry> =
+    Mutex::new(NativeEngineRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX));
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
 static OPERATION_CONTROL_REGISTRY: Mutex<OperationControlRegistry> = Mutex::new(
     OperationControlRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX),
@@ -371,10 +302,6 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
 
 fn native_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT
-}
-
-fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
-    ENGINE_REGISTRY.get_or_init(|| Mutex::new(NativeEngineRegistry::default()))
 }
 
 fn allocation_registry() -> &'static Mutex<NativeAllocationRegistry> {
@@ -1020,15 +947,19 @@ fn acquire_engine(token: MermanNativeEngineToken) -> Result<Arc<NativeEngineStat
             "engine token is zero or belongs to a different opaque token domain",
         ));
     }
-    let registry = engine_registry()
+    let registry = ENGINE_REGISTRY
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.acquire(token).ok_or_else(|| {
-        NativeFailure::new(
-            MERMAN_NATIVE_STATUS_INVALID_ENGINE,
-            "engine token is unknown or has already been released",
-        )
-    })
+    registry
+        .get(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        .and_then(NativeEngineEntry::published_state)
+        .cloned()
+        .ok_or_else(|| {
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+                "engine token is unknown or has already been released",
+            )
+        })
 }
 
 fn resolve_executable_native_operation(
@@ -2469,47 +2400,40 @@ fn create_native_engine_state(
 
 struct PendingNativeEngine<'registry> {
     registry: &'registry Mutex<NativeEngineRegistry>,
-    token: Option<MermanNativeEngineToken>,
+    counter: Option<u64>,
 }
 
 impl<'registry> PendingNativeEngine<'registry> {
     fn reserve(
         registry: &'registry Mutex<NativeEngineRegistry>,
         state: Arc<NativeEngineState>,
-    ) -> Result<Self, NativeFailure> {
-        let publication = {
+    ) -> Result<Self, NativeEngineEntry> {
+        let counter = {
             let mut registry = registry
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry.try_reserve(state)
-        };
-        let token = match publication {
-            Ok(token) => token,
-            Err((failure, state)) => {
-                drop(state);
-                return Err(*failure);
-            }
-        };
+            registry.try_insert(NativeEngineEntry {
+                publication: NativeEnginePublication::Reserved,
+                state,
+            })
+        }?;
         Ok(Self {
             registry,
-            token: Some(token),
+            counter: Some(counter),
         })
     }
 
-    fn token(&self) -> MermanNativeEngineToken {
-        self.token
-            .expect("a pending native engine owns one reserved token")
-    }
-
     unsafe fn commit(mut self, out_engine: *mut MermanNativeEngineToken) {
-        let token = self.token();
+        let counter = self
+            .counter
+            .expect("a pending native engine owns one reserved token");
+        let token = encode_engine_token(counter);
         let mut registry = self
             .registry
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let entry = registry
-            .engines
-            .get_mut(&token)
+            .get_mut(counter)
             .expect("a pending native engine owns one reserved token");
         assert_eq!(
             entry.publication,
@@ -2521,13 +2445,13 @@ impl<'registry> PendingNativeEngine<'registry> {
         // final infallible state transition.
         unsafe { ptr::write(out_engine, token) };
         entry.publication = NativeEnginePublication::Published;
-        self.token = None;
+        self.counter = None;
     }
 }
 
 impl Drop for PendingNativeEngine<'_> {
     fn drop(&mut self) {
-        let Some(token) = self.token.take() else {
+        let Some(counter) = self.counter.take() else {
             return;
         };
         let cancelled = {
@@ -2535,11 +2459,18 @@ impl Drop for PendingNativeEngine<'_> {
                 .registry
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry.cancel_reservation(token)
+            if registry
+                .get(counter)
+                .is_some_and(|entry| entry.publication == NativeEnginePublication::Reserved)
+            {
+                registry.remove(counter)
+            } else {
+                None
+            }
         };
-        if let Some(state) = cancelled {
-            let _ = state.admission.try_close();
-            drop(state);
+        if let Some(entry) = cancelled {
+            let _ = entry.state.admission.try_close();
+            drop(entry);
         }
     }
 }
@@ -2572,7 +2503,7 @@ unsafe fn publish_native_engine_result_with_writer(
 ) -> Result<MermanNativeStatus, NativeFailure> {
     unsafe {
         publish_native_engine_result_with_writer_in_registry(
-            engine_registry(),
+            &ENGINE_REGISTRY,
             state,
             out_engine,
             out_result,
@@ -2588,7 +2519,13 @@ unsafe fn publish_native_engine_result_with_writer_in_registry(
     out_result: *mut MermanNativeResult,
     write_success: impl FnOnce(*mut MermanNativeResult) -> MermanNativeStatus,
 ) -> Result<MermanNativeStatus, NativeFailure> {
-    let pending = PendingNativeEngine::reserve(registry, state)?;
+    let pending = PendingNativeEngine::reserve(registry, state).map_err(|rejected| {
+        drop(rejected);
+        NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+            "native engine token space is exhausted",
+        )
+    })?;
     let status = write_success(out_result);
     if status != MERMAN_NATIVE_STATUS_OK {
         return Ok(status);
@@ -2604,16 +2541,20 @@ unsafe extern "C" fn native_engine_try_close(
         if !token_has_domain(engine, MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG) {
             return MERMAN_NATIVE_STATUS_INVALID_ENGINE;
         }
+        let counter = engine >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT;
         let retired = {
-            let mut registry = engine_registry()
+            let mut registry = ENGINE_REGISTRY
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let Some(state) = registry.acquire(engine) else {
+            let Some(state) = registry
+                .get(counter)
+                .and_then(NativeEngineEntry::published_state)
+            else {
                 return MERMAN_NATIVE_STATUS_INVALID_ENGINE;
             };
             match state.admission.try_close() {
                 Ok(()) => {
-                    let retired = registry.retire(engine);
+                    let retired = registry.remove(counter);
                     debug_assert!(retired.is_some(), "close retires the acquired engine token");
                     retired
                 }
@@ -5337,12 +5278,30 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         assert_eq!(result.metadata_or_error_json.len, 0);
     }
 
+    fn test_engine_state() -> Arc<NativeEngineState> {
+        Arc::new(NativeEngineState {
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
+        })
+    }
+
+    fn publish_test_engine(registry: &Mutex<NativeEngineRegistry>) -> MermanNativeEngineToken {
+        let Ok(pending) = PendingNativeEngine::reserve(registry, test_engine_state()) else {
+            panic!("test engine reservation failed");
+        };
+        let mut token = 0;
+        unsafe { pending.commit(&mut token) };
+        token
+    }
+
     #[test]
     fn engine_and_result_tokens_are_disjoint_positive_signed_64_domains() {
-        let mut engines = NativeEngineRegistry::default();
+        let engines = Mutex::new(NativeEngineRegistry::new(1));
         let mut results = NativeAllocationRegistry::default();
 
-        let engine = engines.issue_token().expect("first engine token");
+        let engine = publish_test_engine(&engines);
         let result = results.issue_token().expect("first result token");
         assert_ne!(engine, result);
         assert_eq!(
@@ -5361,37 +5320,58 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         assert!(i64::try_from(engine).is_ok());
         assert!(i64::try_from(result).is_ok());
 
-        engines.last_counter = MERMAN_NATIVE_TOKEN_COUNTER_MAX - 1;
+        let signed_max = i64::MAX as u64;
+        assert_eq!(
+            MERMAN_NATIVE_TOKEN_COUNTER_MAX,
+            signed_max >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT
+        );
+        let last_counter_bits = signed_max & !MERMAN_NATIVE_TOKEN_DOMAIN_MASK;
+        let final_engine = encode_engine_token(MERMAN_NATIVE_TOKEN_COUNTER_MAX);
+        assert_eq!(
+            final_engine,
+            last_counter_bits | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
+        );
         results.last_counter = MERMAN_NATIVE_TOKEN_COUNTER_MAX - 1;
-        let final_engine = engines.issue_token().expect("last engine token");
         let final_result = results.issue_token().expect("last result token");
-        assert!(i64::try_from(final_engine).is_ok());
-        assert!(i64::try_from(final_result).is_ok());
-        assert!(engines.issue_token().is_err());
+        assert_eq!(
+            final_result,
+            last_counter_bits | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG
+        );
         assert!(results.issue_token().is_err());
     }
 
     #[test]
     fn engine_token_exhaustion_returns_state_for_lock_free_destruction() {
-        let state = Arc::new(NativeEngineState {
-            engine: native_artifact_contract()
-                .create_engine(&[])
-                .expect("test engine"),
-            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
-        });
+        let registry = Mutex::new(NativeEngineRegistry::new(0));
+        let state = test_engine_state();
         let weak = Arc::downgrade(&state);
-        let mut registry = NativeEngineRegistry {
-            last_counter: MERMAN_NATIVE_TOKEN_COUNTER_MAX,
-            engines: BTreeMap::new(),
-        };
 
-        let (failure, returned_state) = registry
-            .try_reserve(state)
-            .expect_err("exhausted engine token space must reject publication");
-        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
-        assert!(registry.engines.is_empty());
+        let Err(rejected) = PendingNativeEngine::reserve(&registry, state) else {
+            panic!("exhausted engine token space must reject publication");
+        };
+        assert!(registry.try_lock().is_ok());
         assert!(weak.upgrade().is_some());
-        drop(returned_state);
+
+        let mut token = 0;
+        let mut result = native_result();
+        let failure = unsafe {
+            publish_native_engine_result_with_writer_in_registry(
+                &registry,
+                rejected.state,
+                &mut token,
+                &mut result,
+                |_| panic!("exhaustion must precede writing success outputs"),
+            )
+        }
+        .expect_err("exhaustion returns an engine constructor failure");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
+        assert_eq!(
+            failure.message.as_ref(),
+            "native engine token space is exhausted"
+        );
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert!(!registry.lock().unwrap().was_issued(1));
         assert!(
             weak.upgrade().is_none(),
             "the caller can destroy the complete engine graph after releasing the registry lock"
@@ -5400,33 +5380,26 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
 
     #[test]
     fn reserved_engine_is_not_acquirable_until_success_outputs_are_committed() {
-        let registry = Mutex::new(NativeEngineRegistry::default());
-        let state = Arc::new(NativeEngineState {
-            engine: native_artifact_contract()
-                .create_engine(&[])
-                .expect("test engine"),
-            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
-        });
+        let registry = Mutex::new(NativeEngineRegistry::new(1));
+        let counter = 1;
         let predicted_token =
-            (1 << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG;
+            (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG;
         let mut token = 0;
         let mut result = native_result();
 
         let status = unsafe {
             publish_native_engine_result_with_writer_in_registry(
                 &registry,
-                state,
+                test_engine_state(),
                 &mut token,
                 &mut result,
                 |_| {
                     let registry = registry
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    assert_eq!(
-                        registry.engines[&predicted_token].publication,
-                        NativeEnginePublication::Reserved
-                    );
-                    assert!(registry.acquire(predicted_token).is_none());
+                    let entry = registry.get(counter).expect("engine is reserved");
+                    assert_eq!(entry.publication, NativeEnginePublication::Reserved);
+                    assert!(entry.published_state().is_none());
                     MERMAN_NATIVE_STATUS_OK
                 },
             )
@@ -5438,26 +5411,23 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         let published = registry
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .acquire(token)
+            .get(counter)
+            .and_then(NativeEngineEntry::published_state)
+            .cloned()
             .expect("successful commit publishes the engine");
         let _ = published.admission.try_close();
         drop(published);
         let retired = registry
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .retire(token);
+            .remove(counter);
         drop(retired);
     }
 
     #[test]
     fn engine_publication_rolls_back_result_failure_and_panic_before_exposure() {
-        let registry = Mutex::new(NativeEngineRegistry::default());
-        let state = Arc::new(NativeEngineState {
-            engine: native_artifact_contract()
-                .create_engine(&[])
-                .expect("test engine"),
-            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
-        });
+        let registry = Mutex::new(NativeEngineRegistry::new(2));
+        let state = test_engine_state();
         let weak = Arc::downgrade(&state);
         let mut token = 0;
         let mut result = native_result();
@@ -5471,11 +5441,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                     let registry = registry
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    assert!(
-                        registry
-                            .acquire(registry.engines.keys().copied().next().unwrap())
-                            .is_none()
-                    );
+                    let entry = registry.get(1).expect("first engine is reserved");
+                    assert!(entry.published_state().is_none());
                     MERMAN_NATIVE_STATUS_INTERNAL_ERROR
                 },
             )
@@ -5484,22 +5451,10 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         assert_eq!(status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
         assert_eq!(token, 0);
         assert_eq!(result.allocation_token, 0);
-        assert!(
-            registry
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .engines
-                .is_empty()
-        );
+        assert!(registry.lock().unwrap().get(1).is_none());
         assert!(weak.upgrade().is_none());
 
-        let registry = Mutex::new(NativeEngineRegistry::default());
-        let state = Arc::new(NativeEngineState {
-            engine: native_artifact_contract()
-                .create_engine(&[])
-                .expect("test engine"),
-            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
-        });
+        let state = test_engine_state();
         let weak = Arc::downgrade(&state);
         let unwind = catch_unwind(AssertUnwindSafe(|| unsafe {
             let _ = publish_native_engine_result_with_writer_in_registry(
@@ -5511,24 +5466,25 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                     let registry = registry
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    assert!(
-                        registry
-                            .acquire(registry.engines.keys().copied().next().unwrap())
-                            .is_none()
-                    );
+                    let entry = registry.get(2).expect("the first counter is never reused");
+                    assert!(entry.published_state().is_none());
                     panic!("synthetic result writer panic")
                 },
             );
-        }));
-        assert!(unwind.is_err());
+        }))
+        .expect_err("the synthetic result writer must unwind");
+        assert_eq!(
+            unwind.downcast_ref::<&str>().copied(),
+            Some("synthetic result writer panic")
+        );
         assert_eq!(token, 0);
         assert_eq!(result.allocation_token, 0);
         assert!(
             registry
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .engines
-                .is_empty()
+                .get(2)
+                .is_none()
         );
         assert!(weak.upgrade().is_none());
     }
@@ -5578,15 +5534,10 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
 
     #[test]
     fn result_token_exhaustion_does_not_retire_or_poison_an_engine() {
-        let state = Arc::new(NativeEngineState {
-            engine: native_artifact_contract()
-                .create_engine(&[])
-                .expect("test engine"),
-            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
-        });
-        let mut engines = NativeEngineRegistry::default();
-        let token = engines.issue_token().expect("engine token");
-        engines.publish(token, Arc::clone(&state));
+        let mut engines = Mutex::new(NativeEngineRegistry::new(1));
+        let token = publish_test_engine(&engines);
+        let counter = token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT;
+        let engines = engines.get_mut().unwrap();
 
         let mut results = NativeAllocationRegistry {
             last_counter: MERMAN_NATIVE_TOKEN_COUNTER_MAX,
@@ -5610,13 +5561,16 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         assert!(results.results.is_empty());
         assert_eq!(result.allocation_token, 0);
 
-        let acquired = engines.acquire(token).expect("engine remains published");
+        let acquired = engines
+            .get(counter)
+            .and_then(NativeEngineEntry::published_state)
+            .expect("engine remains published");
         let operation = acquired
             .admission
             .enter_operation()
             .expect("engine remains usable");
         drop(operation);
-        assert!(engines.retire(token).is_some());
+        assert!(engines.remove(counter).is_some());
     }
 
     #[test]

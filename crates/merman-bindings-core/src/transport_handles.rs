@@ -34,6 +34,10 @@ impl<T> HandleRegistry<T> {
         self.live.get(&handle)
     }
 
+    pub fn get_mut(&mut self, handle: u64) -> Option<&mut T> {
+        self.live.get_mut(&handle)
+    }
+
     pub fn remove(&mut self, handle: u64) -> Option<T> {
         self.live.remove(&handle)
     }
