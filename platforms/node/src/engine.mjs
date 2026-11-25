@@ -16,6 +16,7 @@ import {
   parseTransportJsonText,
   sameJsonValue,
   snapshotTransportJsonValue,
+  validateOperationOptionsJson,
 } from "./errors.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
@@ -541,7 +542,7 @@ function operationRequestJson({ request, value }, includeMetadata) {
   if (!includeMetadata) request.include_metadata = false;
   const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
-    validateOperationOptionsJson(optionsJson, assertUtf8Field);
+    validateOperationOptionsJson(optionsJson);
     request.options_json = optionsJson;
   }
   return encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request);
@@ -553,7 +554,7 @@ function prepareDirectSvgOptions({ value, sourceBytes }, timeoutMs) {
   const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
     requestBytes +=
-      SVG_OPTIONS_FRAME_BYTES + validateOperationOptionsJson(optionsJson, jsonStringFieldBytes);
+      SVG_OPTIONS_FRAME_BYTES + validateOperationOptionsJson(optionsJson, true);
   }
   const max = NODE_TRANSPORT_LIMITS.request.max_utf8_bytes;
   if (requestBytes > max) {
@@ -592,16 +593,6 @@ function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
     ),
   };
   return false;
-}
-
-function validateOperationOptionsJson(optionsJson, measureField) {
-  if (typeof optionsJson !== "string") {
-    throw new TypeError("optionsJson must be a JSON string when provided.");
-  }
-  const label = "operation request optionsJson";
-  const bytes = measureField(optionsJson, label, NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes);
-  parseTransportJsonText(optionsJson, label, NODE_TRANSPORT_LIMITS.binding_options);
-  return bytes;
 }
 
 async function executeTransportOperation(execute, signal) {
