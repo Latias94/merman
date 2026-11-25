@@ -2,7 +2,9 @@
 
 use super::*;
 use crate::graph_layout::{
-    RouteTopology, contour,
+    RouteTopology,
+    axis_clearance::AxisClearance,
+    contour,
     ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
@@ -13,7 +15,7 @@ pub(super) fn paint(
     profiles: &[contour::ShapePortProfile],
     route: &RouteTopology,
     stitches: &[BorderStitch],
-    clearance: &route_paint::Clearance,
+    clearance: &AxisClearance,
 ) -> Result<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -124,6 +126,7 @@ pub(super) fn paint(
             },
         }
     };
+    let clearance = clearance.resolve(ctx.work_meter)?;
     let painted = route_paint::build_svg_path(
         &points,
         (source_lead, target_lead),

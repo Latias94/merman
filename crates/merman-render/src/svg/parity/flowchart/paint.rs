@@ -949,9 +949,10 @@ mod tests {
     fn canonical_route_failure_is_returned_by_the_svg_renderer() {
         use crate::graph_layout::{
             AxisRoutes, RouteContract, RouteTopology,
+            axis_clearance::AxisClearance,
             contour::ShapePortProfile,
             ir::{Axis, Endpoint, KnotKind, Side},
-            route_paint::{Clearance, ObstacleOwner},
+            route_paint::ObstacleOwner,
         };
         let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
             "nodes": [
@@ -969,7 +970,7 @@ mod tests {
         layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
         layout.route_contract = RouteContract::CanonicalAxis(
             AxisRoutes {
-                clearance: Clearance::new(vec![(
+                clearance: AxisClearance::new(vec![(
                     kurbo::Rect::new(18., -2., 22., 2.),
                     ObstacleOwner::GroupTitle(0),
                 )]),

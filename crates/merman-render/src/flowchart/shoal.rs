@@ -7,12 +7,13 @@ use super::{
     FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef,
     FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
 };
+use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
     SolvedGraph,
 };
-use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
+use crate::graph_layout::route_paint::ObstacleOwner;
 use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -30,9 +31,9 @@ fn paint_clearance(
     edges: &[LayoutEdge],
     owners: &[FlowchartEdgeKey],
     work: &mut OperationLayoutWorkControl,
-) -> Result<Clearance> {
+) -> Result<AxisClearance> {
     if edges.is_empty() {
-        return Ok(Clearance::default());
+        return Ok(AxisClearance::default());
     }
     let shapes = work.checked_add(nodes.len(), clusters.len())?;
     work.charge_adapter(work.checked_add(shapes, edges.len())?)?;
@@ -71,7 +72,7 @@ fn paint_clearance(
     }
     let levels = boxes.len().checked_ilog2().unwrap_or(0) as usize + 1;
     work.charge_adapter(work.checked_mul(boxes.len(), levels)?)?;
-    Ok(Clearance::new(boxes))
+    Ok(AxisClearance::new(boxes))
 }
 
 pub(crate) fn layout(
