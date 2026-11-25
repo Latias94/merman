@@ -82,16 +82,17 @@ compatible version requirements and intentional upgrade exceptions.
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 `merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
-behind `merman-core`. `merman-core-graph` provides Class, ER, and State syntax parsing. `merman-core-structured`
-provides Packet syntax parsing and the four Railroad dialects.
+behind `merman-core`. `merman-core-graph` provides Class, ER, and State syntax parsing.
+`merman-core-sequence` provides Sequence syntax parsing. `merman-core-structured` provides Packet
+syntax parsing and the four Railroad dialects.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
 contracts. `merman-render-structured` provides Packet and Railroad layout and SVG rendering through
 the existing `diagram-packet` and `diagram-railroad` features.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 
-`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`, and XY Chart
-layout and plot geometry through `diagram-xychart`. `merman-render-graph` provides ER relationship
-markers through `diagram-er`.
+`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`, Sankey layout
+through `diagram-sankey`, and XY Chart layout and plot geometry through `diagram-xychart`.
+`merman-render-graph` provides ER relationship markers through `diagram-er`.
 [Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
 
 Homebrew/core owns formula publication; this repository only validates the external formula after

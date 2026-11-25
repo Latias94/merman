@@ -75,13 +75,19 @@ admission, and the editor and compatibility projections.
 `merman-render-graph` owns ER relationship marker geometry, names, and SVG definitions.
 `merman-render` resolves source styles and provides the operation's bounded SVG sink.
 
+### Sequence syntax
+
+`merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
+facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
+
 ### Chart rendering
 
 `merman-render-charts` owns typed layout, style binding, and SVG content for Pie. It uses the
 shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
 supplies text metrics and assembles the chart into a scoped SVG document under the render
 operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
-bar label placement. `merman-render` supplies text metrics and emits the SVG.
+bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
+supplies text metrics and emits the SVG for both families.
 
 ### Frozen presentation is distinct from engine initialization
 

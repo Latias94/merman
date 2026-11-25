@@ -153,7 +153,7 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
     elk = ("merman-elk-layered", "merman-layout-elk")
     math = ("ratex-layout", "ratex-parser", "ratex-svg", "ratex-types")
     required = [root, "merman-bindings-core", "merman", "merman-core", "merman-core-graph",
-                "merman-core-structured", "merman-render", "merman-render-charts",
+                "merman-core-sequence", "merman-core-structured", "merman-render", "merman-render-charts",
                 "merman-render-graph", "merman-render-structured", "merman-export", "manatee", "fontdb"]
     forbidden = list(NATIVE_BINDING_FORBIDDEN_PACKAGES)
     omitted_features = []
@@ -418,7 +418,8 @@ SEMANTIC_CLAIMS = (
 # separate from runtime policy: a compiler-only tool is not a runtime dependency leak.
 # Render/Export recipes must satisfy these claims once the M5 source edge is removed.
 SOURCE_INGESTION_PACKAGES = (
-    "merman-core", "merman-core-graph", "merman-core-preprocess", "merman-core-structured",
+    "merman-core", "merman-core-graph", "merman-core-preprocess", "merman-core-sequence",
+    "merman-core-structured",
     "granit-parser", "json5",
     "serde-saphyr",
 ) + TREE_SITTER_FORBIDDEN_PACKAGES

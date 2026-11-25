@@ -23,6 +23,7 @@ on:
       - "crates/merman-core/**"
       - "crates/merman-core-graph/**"
       - "crates/merman-core-preprocess/**"
+      - "crates/merman-core-sequence/**"
       - "crates/merman-core-structured/**"
       - "crates/merman-elk-layered/**"
       - "crates/merman-export/**"
