@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted as the original parser strategy. ER, State, Sequence, and Class now use handwritten
-predictive parsers over their stateful lexers. See
-[Parser Generation](../development/PARSER_GENERATION.md) for Flowchart and Swimlane.
+Superseded. ER, State, Sequence, Class, and the shared Flowchart/Swimlane grammar now use
+handwritten predictive parsers over their stateful lexers. See the family ADRs for the current
+implementation.
 
 ## Context
 

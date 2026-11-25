@@ -237,28 +237,22 @@ mod tests {
             .collect();
         let mut statements = super::super::StatementArena::default();
         let construction_control = OperationControl::new();
-        let id = statements
-            .push(
-                Stmt::Chain {
-                    node_groups: vec![nodes],
-                    edge_groups: Vec::new(),
-                },
-                &construction_control,
-            )
-            .unwrap();
-        let root = statements
-            .prepend(
-                id,
-                super::super::StatementList::default(),
-                &construction_control,
-            )
-            .unwrap();
+        let mut root = super::super::ast::StatementListBuilder::default();
+        root.push(
+            Stmt::Chain {
+                node_groups: vec![nodes],
+                edge_groups: Vec::new(),
+            },
+            &mut statements,
+            &construction_control,
+        )
+        .unwrap();
         let ast = FlowchartAst {
             keyword: "flowchart".to_string(),
             direction: Some("TB".to_string()),
             header_span: crate::SourceSpan::new(0, 0),
             statements,
-            root,
+            root: root.finish(),
         };
         let mut build = FlowchartBuildState::new(HashSet::new());
         let control = OperationControl::new();

@@ -1,9 +1,4 @@
-#[cfg(any(
-    test,
-    feature = "editor-facts",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
+#[cfg(any(test, feature = "editor-facts"))]
 use super::LexError;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use super::{Edge, Node, SubgraphHeader};
@@ -216,50 +211,51 @@ pub(crate) struct StatementArena {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-// Generated grammar actions retain the original lexer token and diagnostic span in errors.
-#[allow(clippy::result_large_err)]
-impl StatementArena {
-    pub(crate) fn construction_checkpoint(
-        &mut self,
-        control: &crate::OperationControl,
-    ) -> std::result::Result<(), lalrpop_util::ParseError<usize, super::Tok, LexError>> {
-        if self.construction_steps.is_multiple_of(128) {
-            control
-                .checkpoint()
-                .map_err(|error| lalrpop_util::ParseError::User {
-                    error: LexError::new(error.to_string()),
-                })?;
-        }
-        self.construction_steps = self.construction_steps.saturating_add(1);
-        Ok(())
+#[derive(Default)]
+pub(super) struct StatementListBuilder {
+    list: StatementList,
+    tail: Option<StatementId>,
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+impl StatementListBuilder {
+    pub(super) fn finish(self) -> StatementList {
+        self.list
     }
 
-    pub(crate) fn push(
+    pub(super) fn push(
         &mut self,
         statement: Stmt,
+        arena: &mut StatementArena,
         control: &crate::OperationControl,
-    ) -> std::result::Result<StatementId, lalrpop_util::ParseError<usize, super::Tok, LexError>>
-    {
-        self.construction_checkpoint(control)?;
-        let id = StatementId(self.records.len());
-        self.records.push(StatementRecord {
+    ) -> crate::OperationControlResult<()> {
+        arena.checkpoint(control)?;
+        let id = StatementId(arena.records.len());
+        arena.records.push(StatementRecord {
             statement,
             next: None,
         });
-        Ok(id)
+        arena.checkpoint(control)?;
+        if let Some(tail) = self.tail.replace(id) {
+            arena.records[tail.0].next = Some(id);
+        } else {
+            self.list.head = Some(id);
+        }
+        Ok(())
     }
+}
 
-    /// Right-recursive reductions attach a statement without moving their suffix.
-    pub(crate) fn prepend(
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+impl StatementArena {
+    pub(super) fn checkpoint(
         &mut self,
-        id: StatementId,
-        rest: StatementList,
         control: &crate::OperationControl,
-    ) -> std::result::Result<StatementList, lalrpop_util::ParseError<usize, super::Tok, LexError>>
-    {
-        self.construction_checkpoint(control)?;
-        self.records[id.0].next = rest.head;
-        Ok(StatementList { head: Some(id) })
+    ) -> crate::OperationControlResult<()> {
+        if self.construction_steps.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        self.construction_steps = self.construction_steps.saturating_add(1);
+        Ok(())
     }
 }
 
@@ -396,37 +392,32 @@ mod tests {
 
     #[test]
     fn flowchart_nested_parser_completion_observes_cancellation_with_flat_fragments() {
-        let mut source = String::from("flowchart TB\n");
-        for index in 0..512 {
-            source.push_str(&format!("subgraph s{index}\n"));
+        use super::super::Tok;
+        use std::cell::Cell;
+
+        let mut tokens = vec![Tok::Sep; 126];
+        tokens.extend([Tok::KwFlowchart, Tok::Sep]);
+        for _ in 0..512 {
+            tokens.extend([Tok::KwSubgraph, Tok::Sep]);
         }
-        source.push_str("leaf\n");
-        source.push_str(&"end\n".repeat(512));
+        let first_close = tokens.len();
+        tokens.extend(std::iter::repeat_n(Tok::KwEnd, 512));
+        let seen = Cell::new(0);
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(2);
-        let mut statements = StatementArena::default();
+        // Arena construction checks again before the next token delivery checkpoint.
+        control.cancel_after_checkpoints(first_close / 128 + 2);
         let edge_budget = super::super::flowchart_edge_budget(&metadata());
-        let result = super::super::flowchart_grammar::FlowchartAstParser::new().parse(
-            &mut statements,
+        let result = super::super::parser::parse(
+            tokens.into_iter().enumerate().map(|(index, token)| {
+                seen.set(index + 1);
+                Ok((index, token, index + 1))
+            }),
             &control,
             &edge_budget,
-            super::super::Lexer::new(&source),
+            first_close + 512,
         );
-        assert!(matches!(result, Err(lalrpop_util::ParseError::User { .. })));
-        assert!(control.is_cancelled());
-        assert_eq!(statements.construction_steps, 256);
-        assert_eq!(statements.records.len(), 128);
-        assert_eq!(
-            statements
-                .records
-                .iter()
-                .filter(|record| matches!(record.statement, Stmt::Subgraph(_)))
-                .count(),
-            127
-        );
-        // Both the retained arena and discarded parser symbols have flat ownership.
-        drop(statements.clone());
-        drop(statements);
+        assert_eq!(result.unwrap_err().reason, crate::CancelReason::Requested);
+        assert_eq!(seen.get(), first_close + 65);
         super::super::parse_flowchart_ast("flowchart TB\nA-->B\n", &metadata()).unwrap();
     }
 }

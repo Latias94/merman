@@ -28,6 +28,8 @@ pub(crate) trait TokenScanner {
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
     feature = "diagram-state",
     feature = "diagram-sequence"
 ))]
@@ -42,6 +44,8 @@ pub(crate) struct TokenStream<'a, I: Iterator> {
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
     feature = "diagram-state",
     feature = "diagram-sequence"
 ))]

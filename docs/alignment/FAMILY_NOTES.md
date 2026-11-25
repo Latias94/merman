@@ -911,9 +911,9 @@ number labels. The existing lexical boundary still rejects a number directly fol
 semicolon. Owners: [overflow tests](../../crates/merman-core/tests/sequence_autonumber_overflow_parity_test.rs)
 and [prepared SVG](../../crates/merman-render/tests/parser_parity_render_test.rs).
 
-Completed blocks can directly precede another block, statement, branch
-or closing token; ordinary line statements still require their line boundary. Grammar sources
-and their checked-in LALRPOP projection change together, while editor facts use the same token tape.
+Completed blocks can directly precede another block, statement, branch, or closing token. Ordinary
+line statements still require their line boundary. The Sequence parser and editor facts use the
+same lexical event tape.
 
 Native Sequence scanning keeps LF as a statement boundary after inline blanks. The selected
 Jison `\s+` rule can consume that LF and reject a following statement; this input-formatting

@@ -1,4 +1,4 @@
-# ADR-0013: Flowchart Parser Technology (Lexer + LALR)
+# ADR-0013: Flowchart and Swimlane Parser Technology
 
 ## Status
 
@@ -14,31 +14,16 @@ combination is important for 1:1 compatibility because:
 - lexer state/mode switching is used to parse labels and special segments (e.g. `|edge label|`),
 - error surfaces and recovery behavior must be predictable and testable.
 
-Rust parser-combinator libraries (e.g. `nom`) are excellent for many formats, but they tend to
-encourage PEG/recursive-descent style parsing. For Mermaid-like grammars this can diverge from
-LR/Jison behavior and make exact compatibility harder, especially once the grammar grows.
-
 ## Decision
 
-- Use a deterministic, stateful lexer (hand-written) to produce a token stream with locations.
-- Use an LR parser generator (`lalrpop`) for the flowchart grammar.
-- Keep the lexer/token/span/error model shared and reusable for other large diagrams.
-- Treat `nom`/PEG-style parsing as a fallback option for small, self-contained diagrams only (not
-  for flowchart).
-
-## Current implementation
-
-- Flowchart grammar: `crates/merman-core/src/diagrams/flowchart_grammar.lalrpop`
-- Checked-in generated parser: `crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs`
-- Flowchart lexer + adapter: `crates/merman-core/src/diagrams/flowchart.rs`
-- Maintainer generation: `cargo run -p xtask -- gen-lalrpop-parsers`
-- Freshness gate: `cargo run -p xtask -- verify-lalrpop-parsers`
+- Use the shared stateful lexer for token spans and the handwritten parser in
+  `crates/merman-core/src/diagrams/flowchart/parser.rs` for Flowchart and Swimlane.
+- Keep open subgraphs on an explicit frame stack and append completed statements to the arena in
+  walk order. Apply the edge budget before expanding each accepted edge group.
+- Preserve the strict diagnostic alongside the recovery anchor used by the editor token trace.
 
 ## Consequences
 
-- Adding new flowchart syntax should primarily be “add tokens + extend grammar + add tests”.
-- Parser generation is a maintainer operation. Downstream builds compile the checked-in parser and
-  therefore require `lalrpop-util`, but not the LALRPOP generator or a crate build script.
-- The lexer becomes a critical component; it must be carefully tested because tokenization affects
-  parse results.
-- This approach scales better to full Mermaid compatibility than ad-hoc string parsing.
+- The lexer owns tokenization and exact source spans. The parser owns syntax boundaries, resource
+  admission, and statement order.
+- Existing semantic snapshots, editor facts, and deep-lifecycle tests cover the shared grammar.

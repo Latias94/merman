@@ -66,7 +66,7 @@ diagram-er = ["merman-model/diagram-er", "dep:indexmap"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "dep:rustc-hash", "dep:indexmap"]
 diagram-usecase = ["merman-model/diagram-usecase", "dep:indexmap"]
-diagram-flowchart = ["merman-model/diagram-flowchart", "dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
+diagram-flowchart = ["merman-model/diagram-flowchart", "dep:rustc-hash", "dep:indexmap"]
 diagram-gantt = ["merman-model/diagram-gantt"]
 diagram-git-graph = ["merman-model/diagram-git-graph"]
 diagram-info = ["merman-model/diagram-info"]
@@ -83,7 +83,7 @@ diagram-requirement = ["merman-model/diagram-requirement"]
 diagram-sankey = ["merman-model/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "dep:rustc-hash"]
 diagram-state = ["merman-model/diagram-state", "dep:indexmap"]
-diagram-swimlane = ["merman-model/diagram-swimlane", "dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
+diagram-swimlane = ["merman-model/diagram-swimlane", "dep:rustc-hash", "dep:indexmap"]
 diagram-timeline = ["merman-model/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap"]
@@ -108,7 +108,6 @@ merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true
 ryu-js = { workspace = true, optional = true }
 indexmap = { workspace = true, features = ["serde"], optional = true }
-lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 granit-parser.workspace = true

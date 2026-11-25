@@ -810,12 +810,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lalrpop-util"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "364b49d1c98c07972e16fe1346463becc08bcd663da04e6e37ab1bea068dce6a"
-
-[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -960,7 +954,6 @@ dependencies = [
  "granit-parser",
  "indexmap",
  "json5",
- "lalrpop-util",
  "merman-markup",
  "merman-model",
  "rustc-hash",

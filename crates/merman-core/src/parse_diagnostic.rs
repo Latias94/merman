@@ -7,12 +7,6 @@
     feature = "diagram-state"
 ))]
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-mod lalrpop;
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) use lalrpop::*;
-
 pub(crate) fn unexpected_eof_message<'a>(expected: impl Iterator<Item = &'a str>) -> String {
     with_expectations("unexpected end of input".to_string(), expected)
 }
