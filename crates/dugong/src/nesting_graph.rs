@@ -5,7 +5,7 @@
 
 use crate::graphlib::{EdgeKey, Graph};
 use crate::work::{checked_add, checked_mul, checked_unparented_leaf_parent_batch_work};
-use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{DummyKind, EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -51,12 +51,12 @@ impl DummyNodeIdGen {
 fn add_dummy_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ids: &mut DummyNodeIdGen,
-    dummy: &str,
+    dummy: DummyKind,
     mut label: NodeLabel,
     name: &'static str,
 ) -> Result<String, WorkError> {
     let id = ids.unique_id(g, name)?;
-    label.dummy = Some(dummy.to_string());
+    label.dummy = Some(dummy);
     g.set_node(id.clone(), label);
     Ok(id)
 }
@@ -69,7 +69,7 @@ fn add_border_node(
     add_dummy_node(
         g,
         ids,
-        "border",
+        DummyKind::Border,
         NodeLabel {
             width: 0.0,
             height: 0.0,
@@ -402,7 +402,7 @@ pub(crate) fn run_controlled(
     let root = add_dummy_node(
         g,
         &mut ids,
-        "root",
+        DummyKind::NestingRoot,
         NodeLabel {
             ..Default::default()
         },

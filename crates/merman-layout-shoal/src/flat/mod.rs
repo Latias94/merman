@@ -434,13 +434,29 @@ fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
     }
 }
 
+#[derive(Clone, Copy)]
+enum SolveMode {
+    Full,
+    Geometry,
+    Fold(f64),
+}
+
 pub(crate) fn run(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
-    run_packed(graph, options, g, None, work).map(|(drawing, _)| drawing)
+    run_packed(graph, options, g, SolveMode::Full, work).map(|(drawing, _)| drawing)
+}
+
+pub(crate) fn run_geometry(
+    graph: &Graph,
+    options: &Options,
+    g: &mut Expanded,
+    work: &mut Work<'_>,
+) -> LayoutResult<LayoutOutput> {
+    run_packed(graph, options, g, SolveMode::Geometry, work).map(|(drawing, _)| drawing)
 }
 
 pub(crate) fn fold(
@@ -453,7 +469,7 @@ pub(crate) fn fold(
     if !graph.groups.is_empty() || !matches!(graph.direction, Direction::Down | Direction::Up) {
         return Ok(None);
     }
-    run_packed(graph, options, g, Some(max_width), work)
+    run_packed(graph, options, g, SolveMode::Fold(max_width), work)
         .map(|(drawing, folded)| folded.then_some(drawing))
 }
 
@@ -489,10 +505,17 @@ fn run_packed(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,
-    fold_limit: Option<f64>,
+    mode: SolveMode,
     work: &mut Work<'_>,
 ) -> LayoutResult<(LayoutOutput, bool)> {
-    let components = validate::components(graph, options, work)?;
+    let (components, has_editor_hints) = validate::partition(graph, options, false, work)?;
+    // A hint in a later component can trigger a comparison of the entire drawing.
+    let mode = if matches!(mode, SolveMode::Geometry) && has_editor_hints {
+        SolveMode::Full
+    } else {
+        mode
+    };
+    let folding = matches!(mode, SolveMode::Fold(_));
     let mut stats = LayoutStats {
         components: components.len(),
         ..Default::default()
@@ -502,8 +525,8 @@ fn run_packed(
     for c in components {
         let mut local = *options;
         local.caps.max_dummies -= stats.dummy_nodes;
-        local.inline_labels &= fold_limit.is_none();
-        let cache = fold_limit.is_none() && g.component_cache.active_for(&c);
+        local.inline_labels &= !folding;
+        let cache = !folding && g.component_cache.active_for(&c);
         let previous_choice = work.editor_choice;
         let cached = if cache {
             work.editor_choice = false;
@@ -513,7 +536,7 @@ fn run_packed(
         };
         let (solution, folded_component) = match cached {
             Some(solution) => (solution, false),
-            None => solve_component(g, &c, graph, options, local, fold_limit, work)?,
+            None => solve_component(g, &c, graph, options, local, mode, work)?,
         };
         if cache {
             g.component_cache
@@ -557,7 +580,7 @@ fn solve_component(
     graph: &Graph,
     options: &Options,
     mut local: Options,
-    fold_limit: Option<f64>,
+    mode: SolveMode,
     work: &mut Work<'_>,
 ) -> LayoutResult<(component_cache::LocalLayout, bool)> {
     let editor_choice = work.editor_choice;
@@ -581,9 +604,9 @@ fn solve_component(
         } else {
             Vec::new()
         };
-        let candidate = match fold_limit {
-            Some(max_width) => fan::fold(g, c, graph, &local, max_width, work)?,
-            None => None,
+        let candidate = match mode {
+            SolveMode::Fold(max_width) => fan::fold(g, c, graph, &local, max_width, work)?,
+            _ => None,
         };
         let folded_component = candidate.is_some();
         let (mut drawing, label_gaps, dummies, fallbacks, reversed) = match candidate {
@@ -638,7 +661,11 @@ fn solve_component(
             direct_fallback_edges: fallbacks,
             reversed_edges: reversed,
             topological_crossings: crossings,
-            routed_crossings: crossings::pairs(&drawing.edges, compress_shared, work)?,
+            routed_crossings: if matches!(mode, SolveMode::Geometry) {
+                0
+            } else {
+                crossings::pairs(&drawing.edges, compress_shared, work)?
+            },
             ..LayoutStats::default()
         };
         return Ok((

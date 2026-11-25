@@ -1,6 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::config_string;
+use crate::config::{ConfigLookup, config_string};
 use crate::theme::FamilyTheme;
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ pub(crate) struct IshikawaNativePaint {
 }
 
 impl IshikawaCssBinding {
-    pub(super) fn resolve(config: &serde_json::Value) -> Self {
+    pub(super) fn resolve(config: &impl ConfigLookup) -> Self {
         let color = |key, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };

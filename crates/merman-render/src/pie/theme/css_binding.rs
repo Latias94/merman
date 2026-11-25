@@ -39,7 +39,7 @@ pub(crate) struct PieCssBinding {
     text_sizes: [PieTextSize; 3],
 }
 
-fn text_fill(config: &serde_json::Value, role: PieTextRole) -> String {
+fn text_fill(config: &impl crate::config::ConfigLookup, role: PieTextRole) -> String {
     let (paths, fallback): (&[&'static str], &str) = match role {
         PieTextRole::Title => (
             &[
@@ -103,7 +103,7 @@ impl PieTextSize {
 }
 
 impl PieCssBinding {
-    pub(super) fn new(effective_config: &serde_json::Value) -> Self {
+    pub(super) fn new(effective_config: &impl crate::config::ConfigLookup) -> Self {
         let inherited_font_size =
             crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0);
         let common = PreparedCommonCss::with_resolved_typography(

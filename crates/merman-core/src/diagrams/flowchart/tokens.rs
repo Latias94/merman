@@ -3,8 +3,6 @@ use super::{
     SubgraphHeader,
 };
 use crate::SourceSpan;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::error::ParseErrorSourceSpan;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(
@@ -74,7 +72,7 @@ pub(crate) struct NodeLabelToken {
     /// Strict parser error represented by this editor-recovery token.
     ///
     /// The combined semantic path lexes once. An incomplete label therefore carries both the
-    /// token needed for editor facts and the error projected to the strict LALRPOP parser.
+    /// token needed for editor facts and the error projected to the strict parser.
     #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }
@@ -146,12 +144,5 @@ impl LexError {
     pub(crate) fn in_directive(mut self, prefix: &'static str, span: SourceSpan) -> Self {
         self.directive_prefix = Some(prefix);
         self.expecting(crate::EditorExpectedSyntaxKind::Directive, span)
-    }
-}
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-impl ParseErrorSourceSpan for LexError {
-    fn source_span(&self) -> Option<SourceSpan> {
-        self.span
     }
 }

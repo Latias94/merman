@@ -177,7 +177,7 @@ Current parser-family diagnostic span matrix:
 
 | Family / Parser Path | Span Support | Coverage Evidence | Remaining Gap |
 | --- | --- | --- | --- |
-| LALRPOP-backed parse wrappers | Exact token spans and EOF insertion points | `lalrpop_parse_diagnostic_preserves_token_span`, `lalrpop_parse_diagnostic_preserves_eof_insertion_point` | User errors are explicit fallbacks. |
+| Family parsers | Exact token spans and EOF insertion points | `state_brace_errors_keep_their_source_locations`, `failed_class_capture_preserves_recovery_facts_and_original_source_spans` | Recovery retains each family's diagnostic spans. |
 | XY Chart | Exact invalid plot values; insertion points for missing plot syntax | `xychart_invalid_plot_number_reports_exact_token_span`, `xychart_comment_after_plot_does_not_merge_next_statement` | Broader render-validation failures still use named fallback helpers. |
 | Gantt | Exact directive-value spans for `weekday` / `weekend` validation | `gantt_weekday_rejects_unknown_values` | Date parsing and cross-statement semantic failures still use visible fallbacks unless their parser helper preserves a narrower span. |
 | GitGraph | Exact unknown command-token spans | `gitgraph_unknown_command_reports_exact_command_span` | Deeper repository-state semantic failures remain fallback diagnostics. |

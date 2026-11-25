@@ -49,8 +49,6 @@ enum XtaskError {
     ArtifactProfiles(String),
     #[error("feature matrix is invalid: {0}")]
     FeatureMatrix(String),
-    #[error("LALRPOP parser generation is invalid: {0}")]
-    LalrpopParsers(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
     MermaidReference(String),
     #[error("missing reference checkout: {0}")]
@@ -117,7 +115,6 @@ fn print_help(topic: Option<&str>) {
     );
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
-    println!("  verify-lalrpop-parsers");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -145,7 +142,6 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-binding-contract");
     println!("  gen-capability-surface");
     println!("  gen-typst-profile-constants");
-    println!("  gen-lalrpop-parsers");
     println!("  gen-text-measurement-protocol");
     println!("  gen-native-abi");
     println!("  gen-resource-contract");
@@ -212,7 +208,6 @@ fn main() -> Result<(), XtaskError> {
         "gen-binding-contract" => cmd::gen_binding_contract(args.collect()),
         "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
         "gen-typst-profile-constants" => cmd::gen_typst_profile_constants(args.collect()),
-        "gen-lalrpop-parsers" => cmd::gen_lalrpop_parsers(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-playground-ascii-capabilities" => {
             cmd::gen_playground_ascii_capabilities(args.collect())
@@ -246,7 +241,6 @@ fn main() -> Result<(), XtaskError> {
         "verify-text-measurement-protocol" => cmd::verify_text_measurement_protocol(args.collect()),
         "verify-native-abi" => cmd::verify_native_abi(args.collect()),
         "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
-        "verify-lalrpop-parsers" => cmd::verify_lalrpop_parsers(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),

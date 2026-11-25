@@ -1498,7 +1498,6 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
 #[cfg(test)]
 mod catalog_tests {
     use super::*;
-    #[cfg(feature = "presentation")]
     use serde_json::Value;
     use std::collections::{BTreeSet, HashSet};
 

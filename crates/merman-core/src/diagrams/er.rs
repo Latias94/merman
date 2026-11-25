@@ -5,8 +5,6 @@ use crate::diagrams::scan::{
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
-use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
-#[cfg(feature = "editor-facts")]
 use crate::source_span::{
     has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
 };
@@ -15,10 +13,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{
-    Error, OperationControl, OperationControlResult, SourceSpan,
-    parse_diagnostic::lalrpop_parse_diagnostic,
-};
+use crate::{Error, OperationControl, OperationControlResult, ParseDiagnostic, SourceSpan};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
 use indexmap::IndexMap;
@@ -45,11 +40,7 @@ pub(crate) fn er_syntax_construction_count() -> usize {
     ER_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-include_checked_in_lalrpop_parser!(
-    #[allow(clippy::empty_line_after_outer_attr)]
-    er_grammar,
-    "er_grammar.rs"
-);
+mod parser;
 
 pub(crate) use merman_model::families::er::{
     ErAttribute, ErClassDef, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship, ErSubgraph,
@@ -138,8 +129,11 @@ impl ErActionArena {
         }
     }
 
-    fn actions(&mut self, actions: Vec<Action>) -> ErActionList {
-        let mut list = ErActionList::default();
+    fn append_actions(
+        &mut self,
+        mut list: ErActionList,
+        actions: impl IntoIterator<Item = Action>,
+    ) -> ErActionList {
         for action in actions {
             let item = self.push(action);
             list = self.append(list, item);
@@ -516,8 +510,7 @@ fn split_styles(raw: &str) -> Vec<String> {
 }
 
 type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
-type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
-type ErParsedActions = std::result::Result<(ErActionArena, ErActionList), ErGrammarError>;
+type ErParsedActions = std::result::Result<(ErActionArena, ErActionList), ParseDiagnostic>;
 
 struct ErSyntaxOutcome {
     actions: ErParsedActions,
@@ -544,7 +537,24 @@ impl ErSyntax {
         control: &OperationControl,
     ) -> OperationControlResult<ErSyntaxOutcome> {
         #[cfg(feature = "editor-facts")]
-        let editor_facts = if editor_demand == EditorFactsDemand::Capture {
+        let editor_facts = self.collect_editor_facts(code, editor_demand, control)?;
+        control.checkpoint()?;
+        let actions = parser::parse(self.events.into_iter(), control)?;
+        Ok(ErSyntaxOutcome {
+            actions,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn collect_editor_facts(
+        &self,
+        code: &str,
+        editor_demand: EditorFactsDemand,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<EditorSemanticFacts>> {
+        if editor_demand == EditorFactsDemand::Capture {
             let mut facts = EditorSemanticFacts::new();
             #[cfg(test)]
             crate::editor::test_work::record_collection();
@@ -561,29 +571,12 @@ impl ErSyntax {
                 }
             }
             collector.finish(code, &mut facts);
-            Some(facts)
+            Ok(Some(facts))
         } else {
-            editor_demand
+            Ok(editor_demand
                 .needs_recovery()
-                .then(EditorSemanticFacts::new)
-        };
-        control.checkpoint()?;
-        let mut emitted = 0usize;
-        let controlled_events = self.events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
-            emitted = emitted.saturating_add(1);
-            active
-        });
-        let mut arena = ErActionArena::default();
-        let actions = er_grammar::ActionsParser::new()
-            .parse(&mut arena, controlled_events)
-            .map(|actions| (arena, actions));
-        control.checkpoint()?;
-        Ok(ErSyntaxOutcome {
-            actions,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        })
+                .then(EditorSemanticFacts::new))
+        }
     }
 }
 
@@ -594,59 +587,40 @@ struct ErSemanticSource {
 }
 
 struct ErSemanticFailure {
-    error: ErGrammarError,
+    diagnostic: ParseDiagnostic,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 impl ErSemanticFailure {
-    #[cfg(feature = "editor-facts")]
-    fn recovery_span(&self, fallback_offset: usize) -> SourceSpan {
-        match &self.error {
-            lalrpop_util::ParseError::User { error } => error.span,
-            _ => lalrpop_recovery_span(&self.error, fallback_offset),
-        }
+    fn into_parse_error(self, diagram_type: &str) -> Error {
+        Error::diagram_parse_diagnostic(diagram_type, self.diagnostic)
     }
 
-    fn into_parse_error(self, diagram_type: &str, fallback_offset: usize) -> Error {
-        self.parse_error(diagram_type, fallback_offset)
-    }
-
-    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
-        Error::diagram_parse_diagnostic(
-            diagram_type.to_string(),
-            lalrpop_parse_diagnostic(&self.error, fallback_offset),
-        )
-    }
-
-    #[cfg(feature = "compat-json")]
-    #[cfg(feature = "editor-facts")]
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn into_error_and_editor_facts(
         self,
         meta: &SourcePresentationMetadata,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type)
     }
 
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        let error = self.parse_error(diagram_type, fallback_offset);
-        let span = self.recovery_span(fallback_offset);
         let mut editor_facts = self
             .editor_facts
             .expect("ER capture requests its failure journal");
         editor_facts.mark_recovered_from_parse_error(
             format!(
                 "er parser recovered after parse error: {}",
-                format_lalrpop_parse_error(&self.error)
+                self.diagnostic.message()
             ),
-            Some(span),
+            self.diagnostic.span(),
         );
+        let error = Error::diagram_parse_diagnostic(diagram_type, self.diagnostic);
         (error, editor_facts)
     }
 }
@@ -670,9 +644,9 @@ fn construct_er_semantic_source(
     )?;
     let (arena, actions) = match actions {
         Ok(actions) => actions,
-        Err(error) => {
+        Err(diagnostic) => {
             return Ok(Err(Box::new(ErSemanticFailure {
-                error,
+                diagnostic,
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
@@ -717,7 +691,7 @@ pub(crate) fn parse_er_semantic_model_controlled(
         #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
-                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
+                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type);
             SemanticConstruction {
                 model: Err(error),
                 #[cfg(feature = "editor-facts")]
@@ -725,7 +699,7 @@ pub(crate) fn parse_er_semantic_model_controlled(
             }
         }
         Err(failure) => SemanticConstruction {
-            model: Err((*failure).into_parse_error(&metadata.diagram_type, code.len())),
+            model: Err((*failure).into_parse_error(&metadata.diagram_type)),
             #[cfg(feature = "editor-facts")]
             editor_facts: None,
         },
@@ -744,7 +718,7 @@ fn parse_er_semantic_source(
         &OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
+    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type))
 }
 
 #[cfg(all(test, feature = "presentation"))]
@@ -772,9 +746,7 @@ pub(crate) fn parse_er_model_for_render_controlled(
     let source = match construction {
         Ok(source) => source,
         Err(failure) => {
-            return Ok(Err(
-                (*failure).into_parse_error(&meta.diagram_type, code.len())
-            ));
+            return Ok(Err((*failure).into_parse_error(&meta.diagram_type)));
         }
     };
     control.checkpoint()?;
@@ -806,7 +778,7 @@ pub(crate) fn parse_er_json_and_editor_facts(
                 editor_facts.expect("ER combined parse requests editor facts"),
             )
         },
-        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+        |failure| (*failure).into_error_and_editor_facts(meta),
     );
     control.checkpoint()?;
     Ok(parsed)
@@ -1521,20 +1493,6 @@ impl LexError {
             message: message.into(),
             span,
         }
-    }
-}
-
-impl std::fmt::Display for LexError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for LexError {}
-
-impl crate::error::ParseErrorSourceSpan for LexError {
-    fn source_span(&self) -> Option<crate::SourceSpan> {
-        Some(self.span)
     }
 }
 
@@ -2945,7 +2903,7 @@ mod semantic_tests {
     fn er_canonical_capture_retains_success_and_grammar_failure_facts() {
         for (source, valid) in [
             ("erDiagram\nA\n", true),
-            ("erDiagram\nA {\n string\n}\n", false),
+            ("erDiagram\nA {\n string\n}\nAFTER\n", false),
         ] {
             reset_er_syntax_construction_count();
             #[cfg(feature = "editor-facts")]
@@ -2960,6 +2918,11 @@ mod semantic_tests {
             assert_eq!(parsed.model.is_ok(), valid);
             let facts = parsed.editor_facts.expect("same-pass ER facts");
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            if let Some(start) = source.find("AFTER") {
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "AFTER" && symbol.selection == SourceSpan::new(start, start + 5)
+                }));
+            }
             assert_eq!(er_syntax_construction_count(), 1);
             #[cfg(feature = "editor-facts")]
             assert_eq!(crate::editor::test_work::read().collections, 1);

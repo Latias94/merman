@@ -415,17 +415,49 @@ fn state_compatibility_projection_handles_shared_documents() {
 }
 
 #[test]
+fn state_brace_errors_keep_their_source_locations() {
+    use crate::{ParseDiagnosticSpanKind, SourceSpan};
+
+    let missing = "stateDiagram-v2\nstate Outer {\nChild\n";
+    let control = OperationControl::new();
+    let diagnostic = parser::parse(Lexer::new(missing), missing.len(), &control)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        diagnostic.message(),
+        "unexpected end of input; expected \"}\""
+    );
+    assert_eq!(
+        diagnostic.span_kind(),
+        ParseDiagnosticSpanKind::InsertionPoint
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(missing.len(), missing.len()))
+    );
+
+    let extra = "stateDiagram-v2\nNode\n}\n";
+    let diagnostic = parser::parse(Lexer::new(extra), extra.len(), &control)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(diagnostic.message(), "unexpected struct stop");
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(extra.len() - 2, extra.len() - 1))
+    );
+}
+
+#[test]
 fn state_divider_assignment_cancellation_releases_completed_grammar_documents() {
     let mut source = String::from("stateDiagram-v2\nstate Outer {\n");
     for index in 0..300 {
         source.push_str(&format!("S{index}\n--\n"));
     }
     source.push_str("}\n");
-    let mut document = StateDocumentScratch::default();
-    let root = state_grammar::RootParser::new()
-        .parse(&mut document, Lexer::new(&source))
+    let mut document = parser::parse(Lexer::new(&source), source.len(), &OperationControl::new())
+        .unwrap()
         .unwrap();
-    document.root = Some(root);
     let control = OperationControl::new();
     control.cancel_after_checkpoints(1);
     let mut count = 0;

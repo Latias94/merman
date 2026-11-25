@@ -9,6 +9,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 
 const DOCUMENT_NAMESPACE: &str = "merman-flowchart-document";
+const SCOPE_SEPARATOR: &str = "-";
+const EDGE_PREFIX: &str = "edge-";
+const EDGE_SEGMENT_SEPARATOR: &str = "-segment-";
 
 #[derive(Debug, Clone, Copy)]
 enum FlowchartDocumentIdLocal {
@@ -36,7 +39,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartDocumentId<'a> {
 impl fmt::Display for FlowchartDocumentId<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.scope)?;
-        f.write_str("-")?;
+        f.write_str(SCOPE_SEPARATOR)?;
         match self.local {
             FlowchartDocumentIdLocal::Static(suffix) => f.write_str(suffix),
             FlowchartDocumentIdLocal::Indexed(prefix, ordinal) => {
@@ -44,9 +47,35 @@ impl fmt::Display for FlowchartDocumentId<'_> {
                 fmt::Display::fmt(&ordinal, f)
             }
             FlowchartDocumentIdLocal::EdgeSegment(semantic_index, order) => {
-                write!(f, "edge-{semantic_index}-segment-{order}")
+                write!(
+                    f,
+                    "{EDGE_PREFIX}{semantic_index}{EDGE_SEGMENT_SEPARATOR}{order}"
+                )
             }
         }
+    }
+}
+
+impl FlowchartDocumentId<'_> {
+    pub(in crate::svg::parity::flowchart) fn serialized_len(self) -> usize {
+        fn decimal_len(value: usize) -> usize {
+            value.checked_ilog10().unwrap_or(0) as usize + 1
+        }
+
+        let local_bytes = match self.local {
+            FlowchartDocumentIdLocal::Static(suffix) => suffix.len(),
+            FlowchartDocumentIdLocal::Indexed(prefix, ordinal) => {
+                prefix.len() + decimal_len(ordinal)
+            }
+            FlowchartDocumentIdLocal::EdgeSegment(semantic_index, order) => {
+                EDGE_PREFIX.len()
+                    + decimal_len(semantic_index)
+                    + EDGE_SEGMENT_SEPARATOR.len()
+                    + decimal_len(usize::from(order))
+            }
+        };
+        // The scope is borrowed from a String and local fragments are fixed literals and ordinals.
+        self.scope.len() + SCOPE_SEPARATOR.len() + local_bytes
     }
 }
 
@@ -181,7 +210,7 @@ impl FlowchartDocumentIds {
     ) -> Option<FlowchartDocumentId<'_>> {
         self.edge_ids.contains(&key).then(|| {
             self.id(match key.self_loop_segment_order() {
-                None => FlowchartDocumentIdLocal::Indexed("edge-", key.semantic_index()),
+                None => FlowchartDocumentIdLocal::Indexed(EDGE_PREFIX, key.semantic_index()),
                 Some(order) => FlowchartDocumentIdLocal::EdgeSegment(key.semantic_index(), order),
             })
         })
@@ -415,6 +444,24 @@ mod tests {
             Some(expected_icon_scope.as_str()),
             "Iconify must receive the unescaped logical document id bytes"
         );
+    }
+
+    #[test]
+    fn document_id_serialized_len_matches_display_across_decimal_widths() {
+        for ordinal in [0, 9, 10, 99, 100, usize::MAX] {
+            for local in [
+                FlowchartDocumentIdLocal::Static("a11y-title"),
+                FlowchartDocumentIdLocal::Indexed(EDGE_PREFIX, ordinal),
+                FlowchartDocumentIdLocal::EdgeSegment(ordinal, 0),
+                FlowchartDocumentIdLocal::EdgeSegment(ordinal, u8::MAX),
+            ] {
+                let id = FlowchartDocumentId {
+                    scope: "diagram",
+                    local,
+                };
+                assert_eq!(id.serialized_len(), id.to_string().len(), "{id}");
+            }
+        }
     }
 
     #[test]

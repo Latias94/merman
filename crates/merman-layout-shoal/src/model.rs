@@ -462,3 +462,44 @@ pub struct LayoutOutput {
     pub bounds: Size,
     pub stats: LayoutStats,
 }
+
+/// Geometry in input order, with the same coordinate origin as [`LayoutOutput`].
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayoutGeometry {
+    pub nodes: Vec<Rect>,
+    /// Local ranks in node input order when [`crate::Options::capture_node_ranks`] is enabled.
+    pub node_ranks: Vec<u32>,
+    pub groups: Vec<GroupGeometry>,
+    pub edges: Vec<EdgeGeometry>,
+    pub truncated_routes: Vec<TruncatedRoute>,
+    pub border_stitches: Vec<BorderStitch>,
+    pub direction: Direction,
+    pub bounds: Size,
+}
+
+impl From<LayoutOutput> for LayoutGeometry {
+    fn from(output: LayoutOutput) -> Self {
+        let LayoutOutput {
+            nodes,
+            node_ranks,
+            groups,
+            edges,
+            truncated_routes,
+            border_stitches,
+            direction,
+            bounds,
+            stats: _,
+        } = output;
+        Self {
+            nodes,
+            node_ranks,
+            groups,
+            edges,
+            truncated_routes,
+            border_stitches,
+            direction,
+            bounds,
+        }
+    }
+}

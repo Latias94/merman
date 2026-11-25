@@ -426,7 +426,6 @@ enum GeneratedArtifactCheck {
     DefaultConfig,
     DompurifyDefaults,
     EditorLanguageContract,
-    LalrpopParsers,
     NativeAbi,
     PlaygroundAsciiCapabilities,
     PlaygroundExampleCatalog,
@@ -453,18 +452,13 @@ fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::ThemeSnapshot]
 }
 
-fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
-    [GeneratedArtifactCheck::LalrpopParsers]
-}
-
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 14] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
     [
         GeneratedArtifactCheck::BindingContract,
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
         GeneratedArtifactCheck::EditorLanguageContract,
-        GeneratedArtifactCheck::LalrpopParsers,
         GeneratedArtifactCheck::NativeAbi,
         GeneratedArtifactCheck::PlaygroundAsciiCapabilities,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
@@ -484,7 +478,6 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
             GeneratedArtifactCheck::EditorLanguageContract => "editor language contract",
-            GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
             GeneratedArtifactCheck::NativeAbi => "native ABI",
             GeneratedArtifactCheck::PlaygroundAsciiCapabilities => "Playground ASCII capabilities",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
@@ -547,7 +540,6 @@ fn verify_generated_artifact_check(
         GeneratedArtifactCheck::EditorLanguageContract => {
             super::verify_editor_language_contract_artifacts()
         }
-        GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
         GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
         GeneratedArtifactCheck::PlaygroundAsciiCapabilities => {
             super::verify_playground_ascii_capabilities_artifact()
@@ -662,11 +654,6 @@ pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError>
 
 pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_dompurify_defaults_checks();
-    verify_generated_artifact_checks(args, &checks)
-}
-
-pub(crate) fn verify_lalrpop_parsers(args: Vec<String>) -> Result<(), XtaskError> {
-    let checks = verify_lalrpop_parsers_checks();
     verify_generated_artifact_checks(args, &checks)
 }
 
@@ -899,8 +886,8 @@ mod tests {
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
         fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
         snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
-        verify_dompurify_defaults_checks, verify_generated_checks, verify_lalrpop_parsers_checks,
-        verify_theme_snapshot_checks, verify_web_diagram_catalog_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks, verify_theme_snapshot_checks,
+        verify_web_diagram_catalog_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -923,7 +910,6 @@ mod tests {
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
                 GeneratedArtifactCheck::EditorLanguageContract,
-                GeneratedArtifactCheck::LalrpopParsers,
                 GeneratedArtifactCheck::NativeAbi,
                 GeneratedArtifactCheck::PlaygroundAsciiCapabilities,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
@@ -933,10 +919,6 @@ mod tests {
                 GeneratedArtifactCheck::TypstProfileConstants,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
-        );
-        assert_eq!(
-            verify_lalrpop_parsers_checks(),
-            [GeneratedArtifactCheck::LalrpopParsers]
         );
         assert_eq!(
             GeneratedArtifactCheck::BindingContract.label(),
@@ -957,10 +939,6 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::EditorLanguageContract.label(),
             "editor language contract"
-        );
-        assert_eq!(
-            GeneratedArtifactCheck::LalrpopParsers.label(),
-            "checked-in LALRPOP parsers"
         );
         assert_eq!(GeneratedArtifactCheck::NativeAbi.label(), "native ABI");
         assert_eq!(

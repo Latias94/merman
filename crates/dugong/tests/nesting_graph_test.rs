@@ -1,7 +1,7 @@
 use dugong::graphlib::alg::components;
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::nesting_graph;
-use dugong::{EdgeLabel, GraphLabel, NodeLabel};
+use dugong::{DummyKind, EdgeLabel, GraphLabel, NodeLabel};
 
 fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
@@ -53,7 +53,7 @@ fn nesting_graph_adds_border_nodes_to_top_and_bottom_of_a_subgraph() {
         &NodeLabel {
             width: 0.0,
             height: 0.0,
-            dummy: Some("border".to_string()),
+            dummy: Some(DummyKind::Border),
             ..Default::default()
         }
     );
@@ -62,7 +62,7 @@ fn nesting_graph_adds_border_nodes_to_top_and_bottom_of_a_subgraph() {
         &NodeLabel {
             width: 0.0,
             height: 0.0,
-            dummy: Some("border".to_string()),
+            dummy: Some(DummyKind::Border),
             ..Default::default()
         }
     );

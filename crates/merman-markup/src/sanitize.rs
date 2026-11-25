@@ -787,13 +787,26 @@ fn effective_html_labels(config: &MermaidConfig) -> bool {
         .unwrap_or(true)
 }
 
-fn is_unformatted_ascii_paragraph(text: &str) -> bool {
+fn is_unformatted_paragraph(text: &str, extended: bool) -> bool {
     let Some(body) = text
         .strip_prefix("<p>")
         .and_then(|text| text.strip_suffix("</p>"))
     else {
         return false;
     };
+    // Within one parser chunk the literal grammar needs only a fixed-depth HTML tree,
+    // and neither serializer expands any body character. Larger inputs keep the ASCII path.
+    if extended && text.len() <= fragment::CHUNK_BYTES {
+        return !body.is_empty()
+            && body.chars().all(|ch| {
+                ch.is_alphanumeric()
+                    || matches!(
+                        ch,
+                        ' ' | '_' | '-' | '.' | ':' | '(' | ')' | '/' | ',' | '?' | '!'
+                    )
+            });
+    }
+
     let bytes = body.as_bytes();
     bytes.first().is_some_and(u8::is_ascii_alphanumeric)
         && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
@@ -802,7 +815,7 @@ fn is_unformatted_ascii_paragraph(text: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || *byte == b' ')
 }
 
-fn sanitizer_preserves_unformatted_ascii_paragraph(config: &MermaidConfig) -> bool {
+fn sanitizer_preserves_unformatted_paragraph(config: &MermaidConfig) -> bool {
     if effective_html_labels(config)
         && !matches!(
             config.get_str("securityLevel"),
@@ -858,7 +871,8 @@ fn sanitize_more<S: SanitizeOutputSink>(
 }
 
 pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
-    sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+    sanitize_label::<_, true>(text, config, &StringOutputSink, fragment::Output::Html)
+        .unwrap_or_default()
 }
 
 /// Serializes an HTML fragment as XHTML without applying a second sanitization policy.
@@ -880,7 +894,8 @@ pub fn html_fragment_to_xhtml(text: &str) -> Option<String> {
 /// Prepares sanitized HTML for direct embedding beneath an XHTML parent in SVG.
 #[doc(hidden)]
 pub fn sanitize_xhtml(text: &str, config: &MermaidConfig) -> String {
-    sanitize_xhtml_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+    sanitize_label::<_, true>(text, config, &StringOutputSink, fragment::Output::Xhtml)
+        .unwrap_or_default()
 }
 
 /// Mirrors SVG `innerHTML` fragment parsing used by Architecture icon labels.
@@ -907,19 +922,7 @@ pub fn sanitize_xhtml_with_sink<S: SanitizeOutputSink>(
     config: &MermaidConfig,
     sink: &S,
 ) -> Result<String, SanitizeFailure<S::Error>> {
-    sink.checkpoint().map_err(SanitizeFailure::Output)?;
-    if is_unformatted_ascii_paragraph(text)
-        && sanitizer_preserves_unformatted_ascii_paragraph(config)
-    {
-        return owned_output(text, sink);
-    }
-    let text = sanitize_more(text, config, sink)?;
-    fragment::sanitize(
-        &text,
-        &dompurify_effective_config(config, true),
-        sink,
-        fragment::Output::Xhtml,
-    )
+    sanitize_label::<_, false>(text, config, sink, fragment::Output::Xhtml)
 }
 
 /// Runs the shape-helper sanitization stage on serialized FlowDB labels.
@@ -956,24 +959,40 @@ pub fn sanitize_text_with_sink<S: SanitizeOutputSink>(
     config: &MermaidConfig,
     sink: &S,
 ) -> Result<String, SanitizeFailure<S::Error>> {
-    if text.is_empty() {
+    sanitize_label::<_, false>(text, config, sink, fragment::Output::Html)
+}
+
+fn sanitize_label<S: SanitizeOutputSink, const EXTENDED_PARAGRAPHS: bool>(
+    text: &str,
+    config: &MermaidConfig,
+    sink: &S,
+    output: fragment::Output,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    let xhtml = matches!(output, fragment::Output::Xhtml);
+    if xhtml {
+        sink.checkpoint().map_err(SanitizeFailure::Output)?;
+    } else if text.is_empty() {
         return Ok(String::new());
     }
-    // This grammar contains no user-controlled markup. Skip DOM parsing only when the configured
-    // policy also guarantees that the sole generated `<p>` element is preserved unchanged.
-    if is_unformatted_ascii_paragraph(text)
-        && sanitizer_preserves_unformatted_ascii_paragraph(config)
+    // Only the string wrappers opt into the extended grammar. A caller-owned sink can
+    // observe parser work, storage admission, and checkpoints for these paragraphs.
+    if is_unformatted_paragraph(text, EXTENDED_PARAGRAPHS)
+        && sanitizer_preserves_unformatted_paragraph(config)
     {
         return owned_output(text, sink);
     }
 
-    let t = sanitize_more(text, config, sink)?;
-    if !t.contains('<') {
-        return Ok(t);
+    let text = sanitize_more(text, config, sink)?;
+    if !xhtml && !text.contains('<') {
+        return Ok(text);
     }
 
-    let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&t, &cfg, sink)
+    fragment::sanitize(
+        &text,
+        &dompurify_effective_config(config, true),
+        sink,
+        output,
+    )
 }
 
 pub fn sanitize_text_or_array(
@@ -1758,6 +1777,60 @@ mod tests {
         let unknown_security =
             MermaidConfig::from_value(json!({ "securityLevel": "custom", "htmlLabels": true }));
         assert_ne!(sanitize_text(input, &unknown_security), input);
+    }
+
+    #[test]
+    fn string_paragraph_grammar_matches_the_parser_and_policy() {
+        let configs = [
+            cfg_strict(),
+            MermaidConfig::from_value(json!({
+                "securityLevel": "loose",
+                "dompurifyConfig": { "FORBID_TAGS": ["P"] }
+            })),
+            MermaidConfig::from_value(json!({ "securityLevel": "custom", "htmlLabels": true })),
+        ];
+        for (input, extended) in [
+            ("<p>(Build_42: 项目/A-B, ready?!) </p>", true),
+            ("<p>日本語 한국어 العربية Étude 𝟙</p>", true),
+            ("<p> ? </p>", true),
+            ("<p></p>", false),
+            ("<p>A &amp; B</p>", false),
+            ("<p>A > B</p>", false),
+            ("<p>e\u{301} 🧪</p>", false),
+            ("<p>A\u{a0}B</p>", false),
+            ("<p>A\r\nB</p>", false),
+            ("<p>A\0B</p>", false),
+            ("<p><b>项目</b></p>", false),
+        ] {
+            assert_eq!(is_unformatted_paragraph(input, true), extended, "{input:?}");
+            assert!(!is_unformatted_paragraph(input, false), "{input:?}");
+            for config in &configs {
+                assert_eq!(
+                    sanitize_text(input, config),
+                    sanitize_text_with_sink(input, config, &StringOutputSink).unwrap(),
+                );
+                assert_eq!(
+                    sanitize_xhtml(input, config),
+                    sanitize_xhtml_with_sink(input, config, &StringOutputSink).unwrap(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn string_paragraph_size_fallback_keeps_the_ascii_shortcut() {
+        let config = cfg_strict();
+        let fill = "a".repeat(fragment::CHUNK_BYTES - "<p>项𠀀?</p>".len());
+        let exact = format!("<p>项𠀀?{fill}</p>");
+        let oversized = format!("<p>项𠀀?{fill}a</p>");
+        assert!(is_unformatted_paragraph(&exact, true));
+        assert!(!is_unformatted_paragraph(&oversized, true));
+        assert_eq!(sanitize_text(&exact, &config), exact);
+        assert_eq!(sanitize_xhtml(&oversized, &config), oversized);
+
+        let ascii = format!("<p>{}</p>", "a".repeat(fragment::CHUNK_BYTES));
+        assert!(is_unformatted_paragraph(&ascii, true));
+        assert!(is_unformatted_paragraph(&ascii, false));
     }
 
     #[test]

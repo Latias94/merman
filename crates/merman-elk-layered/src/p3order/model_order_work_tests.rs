@@ -183,10 +183,10 @@ fn shared_port_fan_out_graph(reference_width: usize, sink_count: usize) -> LGrap
 fn node_scoring_accounts_each_comparison_and_relation_update() {
     let graph = fan_in_graph(3);
     let before = graph.clone();
-    let mut work = ScoringWork::new(27);
+    let mut work = ScoringWork::new(29);
 
     assert_eq!(count_changes(ScoringOwner::Nodes, &graph, &mut work), Ok(3));
-    assert_eq!(work.charges, vec![6, 2, 6, 2, 6, 5]);
+    assert_eq!(work.charges, vec![6, 2, 6, 2, 6, 7]);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
 }
@@ -195,10 +195,10 @@ fn node_scoring_accounts_each_comparison_and_relation_update() {
 fn port_scoring_accounts_current_relation_sets_in_source_pair_order() {
     let graph = fan_in_graph(3);
     let before = graph.clone();
-    let mut work = ScoringWork::new(19);
+    let mut work = ScoringWork::new(26);
 
     assert_eq!(count_changes(ScoringOwner::Ports, &graph, &mut work), Ok(3));
-    assert_eq!(work.charges, vec![3, 1, 6, 1, 6, 1, 1]);
+    assert_eq!(work.charges, vec![3, 1, 9, 1, 10, 1, 1]);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
 }
@@ -299,20 +299,7 @@ fn port_comparison_rejects_before_resolving_an_unadmitted_reference() {
         assert_eq!(work.remaining, 0);
         assert_eq!(work.charges[0], 3);
         assert_eq!(work.charges[1..], vec![1; admitted_prefix]);
-        assert!(
-            comparator
-                .relations
-                .bigger_than
-                .values()
-                .all(HashSet::is_empty)
-        );
-        assert!(
-            comparator
-                .relations
-                .smaller_than
-                .values()
-                .all(HashSet::is_empty)
-        );
+        assert!(comparator.relations.is_clear());
     }
 }
 
@@ -368,43 +355,44 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
                 &orders,
                 false,
             );
-            comparator.relations.bigger_than = HashMap::from([(1, HashSet::from([2, 3]))]);
-            comparator.relations.smaller_than = HashMap::from([(0, HashSet::from([4, 5, 6]))]);
-            let bigger_before = comparator.relations.bigger_than.clone();
-            let smaller_before = comparator.relations.smaller_than.clone();
+            comparator.relations = ModelOrderRelations::from_test_rows(
+                &HashMap::from([(1, HashSet::from([2, 3]))]),
+                &HashMap::from([(0, HashSet::from([4, 5, 6]))]),
+            );
+            let before = comparator.relations.facts();
             assert_eq!(
-                model_order_relation_update_work(0, 1, &bigger_before, &smaller_before),
-                Ok(29),
+                comparator.relations.update_work(0, 1, &mut NoopWorkControl),
+                Ok(16)
             );
             assert_eq!(
-                model_order_relation_update_work(1, 0, &bigger_before, &smaller_before),
-                Ok(2),
+                comparator.relations.update_work(1, 0, &mut NoopWorkControl),
+                Ok(2)
             );
             assert_eq!(
-                model_order_relation_work(first, second, &bigger_before, &smaller_before),
-                Ok(30),
+                comparator
+                    .relations
+                    .comparison_work(first, second, &mut NoopWorkControl),
+                Ok((17, None)),
             );
 
-            let mut limited = ScoringWork::new(29);
+            let mut limited = ScoringWork::new(16);
             assert_eq!(
                 comparator.compare_with_work(first, second, &mut limited),
                 Err(WorkError::Interrupted),
             );
             assert!(limited.charges.is_empty());
-            assert_eq!(limited.remaining, 29);
-            assert_eq!(comparator.relations.bigger_than, bigger_before);
-            assert_eq!(comparator.relations.smaller_than, smaller_before);
+            assert_eq!(limited.remaining, 16);
+            assert_eq!(comparator.relations.facts(), before);
 
             let expected = port_orders[first].cmp(&port_orders[second]);
-            let mut exact = ScoringWork::new(30);
+            let mut exact = ScoringWork::new(17);
             assert_eq!(
                 comparator.compare_with_work(first, second, &mut exact),
                 Ok(expected),
             );
-            assert_eq!(exact.charges, [30]);
+            assert_eq!(exact.charges, [17]);
             assert_eq!(exact.remaining, 0);
-            let bigger_after = comparator.relations.bigger_than.clone();
-            let smaller_after = comparator.relations.smaller_than.clone();
+            let after = comparator.relations.facts();
 
             let mut cached_limited = ScoringWork::new(0);
             assert_eq!(
@@ -419,8 +407,7 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
             );
             assert_eq!(cached.charges, [1]);
             assert_eq!(cached.remaining, 0);
-            assert_eq!(comparator.relations.bigger_than, bigger_after);
-            assert_eq!(comparator.relations.smaller_than, smaller_after);
+            assert_eq!(comparator.relations.facts(), after);
         }
         assert_eq!(graph, before);
     }

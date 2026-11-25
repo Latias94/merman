@@ -17,32 +17,6 @@ pub(crate) fn source_metadata_for_test(
     }
 }
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-macro_rules! include_checked_in_lalrpop_parser {
-    ($(#[$attr:meta])* $name:ident, $file:literal) => {
-        #[rustfmt::skip]
-        #[allow(clippy::extra_unused_lifetimes)]
-        #[allow(clippy::needless_lifetimes)]
-        #[allow(clippy::let_unit_value)]
-        #[allow(clippy::just_underscores_and_digits)]
-        $(#[$attr])*
-        mod $name {
-            include!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/src/generated/lalrpop/",
-                $file
-            ));
-        }
-    };
-}
-
 #[cfg(feature = "diagram-agentflow")]
 pub(crate) mod agentflow;
 #[cfg(feature = "diagram-architecture")]

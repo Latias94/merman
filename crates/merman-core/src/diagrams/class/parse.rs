@@ -4,24 +4,18 @@ use crate::SourceSpan;
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
+use crate::source_span::{
+    has_ascii_separator, keyword_value_span, line_content_end, source_value_span,
+    trailing_ascii_whitespace_slot,
+};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{
-    Error, MermaidConfig, OperationControl, OperationControlResult,
-    parse_diagnostic::lalrpop_parse_diagnostic,
-};
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, ParseDiagnostic};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
-#[cfg(feature = "editor-facts")]
-use crate::{
-    parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span},
-    source_span::{
-        has_ascii_separator, keyword_value_span, line_content_end, source_value_span,
-        trailing_ascii_whitespace_slot,
-    },
-};
 use merman_model::families::class as class_typed;
 #[cfg(feature = "editor-facts")]
 use merman_model::text::is_ecmascript_whitespace;
@@ -36,9 +30,9 @@ use std::collections::HashSet;
 
 use super::Tok;
 use super::ast::{ActionArena, Actions};
-use super::class_grammar;
 use super::db::ClassDb;
 use super::lexer::{ClassLexicalEvent, Lexer};
+use super::parser;
 
 #[cfg(test)]
 thread_local! {
@@ -57,10 +51,8 @@ pub(crate) fn class_syntax_construction_count() -> usize {
     CLASS_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
-
 struct ClassSyntaxOutcome {
-    actions: std::result::Result<Actions, ClassGrammarError>,
+    actions: std::result::Result<Actions, ParseDiagnostic>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -125,22 +117,13 @@ impl ClassSyntax {
                 &events, code, control,
             )?),
         };
-        control.checkpoint()?;
-        let mut emitted = 0usize;
-        let controlled_events = events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
-            emitted = emitted.saturating_add(1);
-            active
-        });
         let mut arena = ActionArena::default();
         #[cfg(feature = "editor-facts")]
         {
             arena.capture_ignored_statements = editor_facts.is_some();
         }
-        let actions = class_grammar::ActionsParser::new()
-            .parse(&mut arena, control, controlled_events)
+        let actions = parser::parse(&mut arena, events.into_iter(), control)?
             .map(|list| arena.into_actions(list));
-        control.checkpoint()?;
         Ok(ClassSyntaxOutcome {
             actions,
             #[cfg(feature = "editor-facts")]
@@ -157,7 +140,7 @@ struct ClassSemanticSource<'a> {
 
 enum ClassSemanticFailure {
     Grammar {
-        error: ClassGrammarError,
+        diagnostic: ParseDiagnostic,
         #[cfg(feature = "editor-facts")]
         editor_facts: Option<EditorSemanticFacts>,
     },
@@ -169,18 +152,13 @@ enum ClassSemanticFailure {
 }
 
 impl ClassSemanticFailure {
-    fn into_parse_error(self, diagram_type: &str, fallback_offset: usize) -> Error {
-        self.parse_error(diagram_type, fallback_offset)
-    }
-
-    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
+    fn into_parse_error(self, diagram_type: &str) -> Error {
         match self {
-            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
-                diagram_type.to_string(),
-                lalrpop_parse_diagnostic(error, fallback_offset),
-            ),
+            Self::Grammar { diagnostic, .. } => {
+                Error::diagram_parse_diagnostic(diagram_type.to_string(), diagnostic)
+            }
             Self::Db { message, .. } => {
-                Error::diagram_parse_fallback(diagram_type.to_string(), message.clone())
+                Error::diagram_parse_fallback(diagram_type.to_string(), message)
             }
         }
     }
@@ -190,37 +168,33 @@ impl ClassSemanticFailure {
     fn into_error_and_editor_facts(
         self,
         meta: &SourcePresentationMetadata,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type)
     }
 
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        let parse_error = self.parse_error(diagram_type, fallback_offset);
         match self {
             Self::Grammar {
-                error,
+                diagnostic,
                 editor_facts,
             } => {
-                let span = match &error {
-                    lalrpop_util::ParseError::User { error } => error.span,
-                    _ => lalrpop_recovery_span(&error, fallback_offset),
-                };
                 let mut editor_facts =
                     editor_facts.expect("Class capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!(
                         "class parser recovered after parse error: {}",
-                        format_lalrpop_parse_error(&error)
+                        diagnostic.message(),
                     ),
-                    Some(span),
+                    diagnostic.span(),
                 );
-                (parse_error, editor_facts)
+                (
+                    Error::diagram_parse_diagnostic(diagram_type.to_string(), diagnostic),
+                    editor_facts,
+                )
             }
             Self::Db {
                 message,
@@ -232,7 +206,10 @@ impl ClassSemanticFailure {
                     format!("class semantic construction failed: {message}"),
                     None,
                 );
-                (parse_error, editor_facts)
+                (
+                    Error::diagram_parse_fallback(diagram_type.to_string(), message),
+                    editor_facts,
+                )
             }
         }
     }
@@ -259,9 +236,9 @@ fn construct_class_semantic_source<'a>(
     )?;
     let actions = match actions {
         Ok(actions) => actions,
-        Err(error) => {
+        Err(diagnostic) => {
             return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
-                error,
+                diagnostic,
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
@@ -327,7 +304,7 @@ pub(crate) fn parse_class_semantic_model_controlled(
         #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
-                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
+                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type);
             SemanticConstruction {
                 model: Err(error),
                 #[cfg(feature = "editor-facts")]
@@ -335,7 +312,7 @@ pub(crate) fn parse_class_semantic_model_controlled(
             }
         }
         Err(failure) => SemanticConstruction {
-            model: Err((*failure).into_parse_error(&metadata.diagram_type, code.len())),
+            model: Err((*failure).into_parse_error(&metadata.diagram_type)),
             #[cfg(feature = "editor-facts")]
             editor_facts: None,
         },
@@ -355,7 +332,7 @@ fn parse_class_semantic_source<'a>(
         &OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
+    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type))
 }
 
 #[cfg(feature = "compat-json")]
@@ -412,9 +389,7 @@ pub(crate) fn parse_class_typed_with_render_context_controlled(
                 style_facts,
             )))
         }
-        Err(failure) => Ok(Err(
-            (*failure).into_parse_error(&meta.diagram_type, code.len())
-        )),
+        Err(failure) => Ok(Err((*failure).into_parse_error(&meta.diagram_type))),
     }
 }
 
@@ -443,7 +418,7 @@ pub(crate) fn parse_class_json_and_editor_facts(
                 editor_facts.expect("Class combined parse requests editor facts"),
             )
         },
-        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+        |failure| (*failure).into_error_and_editor_facts(meta),
     );
     control.checkpoint()?;
     Ok(parsed)
@@ -1647,9 +1622,9 @@ mod tests {
     fn assert_carrier_work(source: &str, expected: (usize, usize, usize, usize)) {
         let control = OperationControl::new();
         let mut arena = ActionArena::default();
-        let root = class_grammar::ActionsParser::new()
-            .parse(&mut arena, &control, Lexer::new(source))
-            .expect("Class grammar accepts carrier workload");
+        let root = parser::parse(&mut arena, Lexer::new(source), &control)
+            .unwrap()
+            .expect("Class parser accepts the carrier workload");
         assert_eq!(arena.carrier_counts(), expected);
         let materialized = arena.into_actions(root).count();
         assert_eq!(materialized, expected.0);
@@ -1691,43 +1666,33 @@ mod tests {
     }
 
     #[test]
-    fn grammar_carrier_reductions_observe_cancellation() {
+    fn class_action_construction_observes_cancellation() {
         let source = format!("classDiagram\n{}", "class C\n".repeat(1_024));
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(1);
+        control.cancel_after_checkpoints(2);
         let mut arena = ActionArena::default();
-        let error = class_grammar::ActionsParser::new()
-            .parse(&mut arena, &control, Lexer::new(&source))
+        let error = parser::parse(&mut arena, Lexer::new(&source), &control)
             .err()
-            .expect("construction checkpoint interrupts reductions");
-        assert!(matches!(error, lalrpop_util::ParseError::User { .. }));
+            .expect("construction checkpoint interrupts the parser");
         assert!(arena.carrier_counts().0 < 1_024);
-        assert_eq!(
-            control.checkpoint().unwrap_err().reason,
-            crate::CancelReason::Requested
-        );
+        assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
     #[test]
-    fn classdef_target_list_reductions_observe_cancellation() {
+    fn classdef_target_lists_observe_cancellation() {
         let targets = (0..1_024)
             .map(|index| format!("C{index}"))
             .collect::<Vec<_>>()
             .join(",");
         let source = format!("classDiagram\nclassDef {targets} fill:red\n");
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(1);
+        control.cancel_after_checkpoints(2);
         let mut arena = ActionArena::default();
-        let error = class_grammar::ActionsParser::new()
-            .parse(&mut arena, &control, Lexer::new(&source))
+        let error = parser::parse(&mut arena, Lexer::new(&source), &control)
             .err()
-            .expect("target list reductions must observe cancellation before expansion");
-        assert!(matches!(error, lalrpop_util::ParseError::User { .. }));
+            .expect("target list parsing must observe cancellation before expansion");
         assert_eq!(arena.carrier_counts().0, 0);
-        assert_eq!(
-            control.checkpoint().unwrap_err().reason,
-            crate::CancelReason::Requested
-        );
+        assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
     #[test]

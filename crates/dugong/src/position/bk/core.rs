@@ -6,7 +6,10 @@
 
 use crate::graphlib::{Graph, GraphOptions};
 use crate::work::{ceil_log2, checked_add, checked_mul};
-use crate::{EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, WorkControl, WorkError};
+use crate::{
+    BorderSide, DummyKind, EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, WorkControl,
+    WorkError,
+};
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 use std::collections::{BTreeMap, BTreeSet};
@@ -167,8 +170,7 @@ pub fn find_type2_conflicts(
         for (south_index, v) in south.iter().enumerate() {
             let is_border = g
                 .node(v)
-                .and_then(|n| n.dummy.as_deref())
-                .is_some_and(|d| d == "border");
+                .is_some_and(|n| n.dummy == Some(DummyKind::Border));
             if !is_border {
                 continue;
             }
@@ -183,7 +185,7 @@ pub fn find_type2_conflicts(
 
         let bounds = type2_conflict_bounds(south.len(), north.len() as isize, &boundaries);
         for (v, bounds) in south.iter().zip(bounds) {
-            if g.node(v).and_then(|node| node.dummy.as_deref()).is_none() {
+            if g.node(v).and_then(|node| node.dummy).is_none() {
                 continue;
             }
             g.for_each_predecessor(v, |u| {
@@ -272,23 +274,6 @@ where
 
 const NONE: usize = usize::MAX;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum BorderType {
-    Other,
-    Left,
-    Right,
-}
-
-impl BorderType {
-    fn from_label(label: &NodeLabel) -> Self {
-        match label.border_type.as_deref() {
-            Some("borderLeft") => Self::Left,
-            Some("borderRight") => Self::Right,
-            _ => Self::Other,
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 struct BkNode {
     graph_ix: usize,
@@ -297,7 +282,7 @@ struct BkNode {
     forward_position: usize,
     metrics: SepNodeMetrics,
     is_border: bool,
-    border_type: BorderType,
+    border_type: Option<BorderSide>,
 }
 
 #[derive(Clone, Copy)]
@@ -701,8 +686,8 @@ impl<'a> BkWorkspace<'a> {
                     layer_index,
                     forward_position: position,
                     metrics: SepNodeMetrics::from(label),
-                    is_border: label.dummy.as_deref() == Some("border"),
-                    border_type: BorderType::from_label(label),
+                    is_border: label.dummy == Some(DummyKind::Border),
+                    border_type: label.border_type,
                 });
                 *graph_ix = local_ix;
             }
@@ -1286,9 +1271,9 @@ impl<'a> BkWorkspace<'a> {
         }
 
         let excluded_border = if orientation.reverse_inner {
-            BorderType::Left
+            BorderSide::Left
         } else {
-            BorderType::Right
+            BorderSide::Right
         };
         self.scheduled[..block_count].fill(false);
         self.stack.clear();
@@ -1301,7 +1286,7 @@ impl<'a> BkWorkspace<'a> {
                     min = min.min(self.block_x[successor] - weight);
                 }
                 let root = self.block_roots[block];
-                if min.is_finite() && self.nodes[root].border_type != excluded_border {
+                if min.is_finite() && self.nodes[root].border_type != Some(excluded_border) {
                     self.block_x[block] = self.block_x[block].max(min);
                 }
                 continue;
@@ -1472,9 +1457,9 @@ fn horizontal_compaction_ref<'a>(
     let mut xs: HashMap<String, f64> = HashMap::default();
     let block_g = build_block_graph_ref(g, layering, root, reverse_sep);
     let border_type = if reverse_sep {
-        "borderLeft"
+        BorderSide::Left
     } else {
-        "borderRight"
+        BorderSide::Right
     };
 
     fn iterate_predecessors<'a, F>(block_g: &'a Graph<(), f64, ()>, mut set_xs: F)
@@ -1549,7 +1534,7 @@ fn horizontal_compaction_ref<'a>(
             let Some(node) = node else {
                 return;
             };
-            if min.is_finite() && node.border_type.as_deref() != Some(border_type) {
+            if min.is_finite() && node.border_type != Some(border_type) {
                 let cur = xs.get(elem).copied().unwrap_or(0.0);
                 xs.insert(elem.to_string(), cur.max(min));
             }
@@ -2218,7 +2203,7 @@ mod tests {
                 NodeLabel {
                     rank: Some(0),
                     order: Some(order),
-                    dummy: Some("dummy".to_string()),
+                    dummy: Some(DummyKind::Other),
                     ..Default::default()
                 },
             );
@@ -2231,16 +2216,16 @@ mod tests {
 
         for (order, id) in south.iter().enumerate() {
             let dummy = if id.starts_with("border-") {
-                "border"
+                DummyKind::Border
             } else {
-                "dummy"
+                DummyKind::Other
             };
             g.set_node(
                 id.clone(),
                 NodeLabel {
                     rank: Some(1),
                     order: Some(order),
-                    dummy: Some(dummy.to_string()),
+                    dummy: Some(dummy),
                     ..Default::default()
                 },
             );
@@ -2387,19 +2372,19 @@ mod tests {
         let mut g = Graph::new(GraphOptions::default());
         g.set_graph(GraphLabel::default());
         for (id, rank, order, dummy) in [
-            ("low", 0, 0, "dummy"),
-            ("middle", 0, 1, "dummy"),
-            ("high", 0, 5, "dummy"),
-            ("border-low", 1, 0, "border"),
-            ("south", 1, 1, "dummy"),
-            ("border-high", 1, 2, "border"),
+            ("low", 0, 0, DummyKind::Other),
+            ("middle", 0, 1, DummyKind::Other),
+            ("high", 0, 5, DummyKind::Other),
+            ("border-low", 1, 0, DummyKind::Border),
+            ("south", 1, 1, DummyKind::Other),
+            ("border-high", 1, 2, DummyKind::Border),
         ] {
             g.set_node(
                 id,
                 NodeLabel {
                     rank: Some(rank),
                     order: Some(order),
-                    dummy: Some(dummy.to_string()),
+                    dummy: Some(dummy),
                     ..Default::default()
                 },
             );

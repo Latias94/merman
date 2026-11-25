@@ -7,12 +7,13 @@ use crate::flowchart::{
     FlowchartEdgeKey, FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
 };
+use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
+use crate::graph_layout::route_paint::ObstacleOwner;
 use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -447,7 +448,7 @@ impl Bindings {
                 nodes: profiles,
                 group_parents,
                 border_stitches: solved.border_stitches,
-                clearance: Clearance::new(obstacles),
+                clearance: AxisClearance::new(obstacles),
                 routes,
             }
             .into(),

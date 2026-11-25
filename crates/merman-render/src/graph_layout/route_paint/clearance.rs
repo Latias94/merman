@@ -206,10 +206,37 @@ impl EdgeClearance<'_> {
             .max(self.stroke_outset.abs())
             .max(1.0);
         let padding = self.stroke_outset + 64.0 * f64::EPSILON * magnitude;
-        [0.0..0.0625, 0.0625..0.9375, 0.9375..1.0].map(|range| {
-            (control_bounds(curve.subsegment(range)) + self.paint_to_layout)
-                .inflate(padding, padding)
-        })
+        let padded = |hull: Rect| (hull + self.paint_to_layout).inflate(padding, padding);
+        let monotone = |a, b, c, d| (a <= b && b <= c && c <= d) || (a >= b && b >= c && c >= d);
+        if self.stroke_outset >= 0.0
+            && bounds.is_finite()
+            && monotone(curve.p0.x, curve.p1.x, curve.p2.x, curve.p3.x)
+            && monotone(curve.p0.y, curve.p1.y, curve.p2.y, curve.p3.y)
+        {
+            // Each coordinate derivative is a Bernstein sum of differences with one sign.
+            // Endpoints bound each section. Use a shorter end section when its inner
+            // cut advances more than the stroke outset on both axes.
+            let cut = |endpoint, t, fallback| {
+                let point = curve.eval(t);
+                let advance: Vec2 = point - endpoint;
+                if advance.x.abs().min(advance.y.abs()) > self.stroke_outset {
+                    point
+                } else {
+                    curve.eval(fallback)
+                }
+            };
+            let a = cut(curve.p0, 1.0 / 32.0, 1.0 / 16.0);
+            let b = cut(curve.p3, 31.0 / 32.0, 15.0 / 16.0);
+            if a.is_finite() && b.is_finite() {
+                let hull = |start, end| padded(Rect::from_points(start, end));
+                let hulls = [hull(curve.p0, a), hull(a, b), hull(b, curve.p3)];
+                if hulls.iter().all(|hull| hull.is_finite()) {
+                    return hulls;
+                }
+            }
+        }
+        [0.0..0.0625, 0.0625..0.9375, 0.9375..1.0]
+            .map(|range| padded(control_bounds(curve.subsegment(range))))
     }
 
     pub(super) fn blocks_line(self, from: Point, to: Point) -> bool {
@@ -507,18 +534,15 @@ mod tests {
             CubicBez::new(curve.p3, curve.p2, curve.p1, curve.p0),
             CubicBez::new((0., 47.), (1_000., 31.), (400., 92.), (1_200., 48.)),
         ] {
-            for (rect, owner) in
-                nodes
-                    .iter()
-                    .copied()
-                    .chain([0.0, 0.03, 0.0625, 0.5, 0.9375, 0.97, 1.0].map(|t| {
-                        let point = curve.eval(t) + offset;
-                        (
-                            Rect::from_center_size(point, (1., 1.)),
-                            ObstacleOwner::GroupTitle(0),
-                        )
-                    }))
-            {
+            for (rect, owner) in nodes.iter().copied().chain(
+                [0.0, 0.03, 0.03125, 0.0625, 0.5, 0.9375, 0.96875, 0.97, 1.0].map(|t| {
+                    let point = curve.eval(t) + offset;
+                    (
+                        Rect::from_center_size(point, (1., 1.)),
+                        ObstacleOwner::GroupTitle(0),
+                    )
+                }),
+            ) {
                 let tree = Clearance::new(vec![(rect, owner)]);
                 let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), offset, 1.);
                 assert_eq!(

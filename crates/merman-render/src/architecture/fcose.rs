@@ -170,25 +170,63 @@ const ARCHITECTURE_RELATIVE_DIRS: [(char, (i32, i32)); 4] =
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ArchitectureRelativePositionPlan {
+    vertex: usize,
     distance: usize,
     queue_multiplicity: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ArchitectureRelativeEndpoints {
+    Horizontal { left: usize, right: usize },
+    Vertical { top: usize, bottom: usize },
+}
+
+impl ArchitectureRelativeEndpoints {
+    fn with_gap(self, gap: f64) -> manatee::algo::fcose::IndexedRelativePlacementConstraint {
+        use manatee::algo::fcose::IndexedRelativePlacementConstraint;
+
+        match self {
+            Self::Horizontal { left, right } => IndexedRelativePlacementConstraint {
+                left: Some(left),
+                right: Some(right),
+                top: None,
+                bottom: None,
+                gap,
+            },
+            Self::Vertical { top, bottom } => IndexedRelativePlacementConstraint {
+                left: None,
+                right: None,
+                top: Some(top),
+                bottom: Some(bottom),
+                gap,
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
-struct ArchitectureRelativeSpatialPlan<'a> {
-    inverse: FxHashMap<(i32, i32), &'a str>,
+struct ArchitectureRelativeArc {
+    target: usize,
+    endpoints: Option<ArchitectureRelativeEndpoints>,
+}
+
+#[derive(Debug)]
+struct ArchitectureRelativeSpatialPlan {
+    forward: Vec<std::ops::Range<usize>>,
+    arcs: Vec<ArchitectureRelativeArc>,
+    layer_offsets: Vec<usize>,
     queue_entry_count: usize,
     constraint_count: usize,
 }
 
 #[derive(Debug)]
-struct ArchitectureRelativeConstraintPlan<'a> {
-    spatial: Vec<ArchitectureRelativeSpatialPlan<'a>>,
+struct ArchitectureRelativeConstraintPlan {
+    spatial: Vec<ArchitectureRelativeSpatialPlan>,
     queue_entry_count: usize,
     constraint_count: usize,
 }
 
-impl ArchitectureRelativeConstraintPlan<'_> {
+impl ArchitectureRelativeConstraintPlan {
     fn checked_materialization_work_units(&self) -> Option<usize> {
         let constraint_bytes = self.constraint_count.checked_mul(std::mem::size_of::<
             manatee::algo::fcose::IndexedRelativePlacementConstraint,
@@ -199,9 +237,8 @@ impl ArchitectureRelativeConstraintPlan<'_> {
         if constraint_bytes > isize::MAX as usize || queue_bytes > isize::MAX as usize {
             return None;
         }
-        // Each queued position is pushed, popped, marked visited, looked up, and probes all four
-        // grid directions. Constraint construction is charged separately because declared pairs
-        // still enqueue and traverse without emitting an FCoSE object.
+        // Keep admission based on the expanded Mermaid traversal, including positions that
+        // traverse declared pairs without emitting a constraint.
         self.queue_entry_count
             .checked_mul(8)?
             .checked_add(self.constraint_count)
@@ -219,11 +256,11 @@ fn checked_architecture_relative_planning_work_units(
         .checked_add(source_positions.checked_mul(6)?)
 }
 
-fn checked_architecture_relative_constraint_plan<'a>(
-    spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
-    node_index_by_id: &FxHashMap<&'a str, usize>,
+fn checked_architecture_relative_constraint_plan(
+    spatial_maps: &[IndexMap<&str, (i32, i32)>],
+    node_index_by_id: &FxHashMap<&str, usize>,
     declared_pairs: &FxHashSet<(usize, usize)>,
-) -> Option<ArchitectureRelativeConstraintPlan<'a>> {
+) -> Option<ArchitectureRelativeConstraintPlan> {
     let mut spatial = Vec::with_capacity(spatial_maps.len());
     let mut total_queue_entries = 0usize;
     let mut total_constraints = 0usize;
@@ -241,61 +278,89 @@ fn checked_architecture_relative_constraint_plan<'a>(
         positions.insert(
             (0, 0),
             ArchitectureRelativePositionPlan {
+                vertex: 0,
                 distance: 0,
                 queue_multiplicity: 1,
             },
         );
-        let mut unique_queue = std::collections::VecDeque::new();
-        unique_queue.push_back((0, 0));
+        let mut unique_queue = std::collections::VecDeque::from([(0, 0)]);
+        let mut forward = Vec::new();
+        let mut arcs = Vec::new();
+        let mut layer_offsets = Vec::new();
         let mut constraint_count = 0usize;
 
         while let Some(curr) = unique_queue.pop_front() {
             let curr_plan = *positions.get(&curr)?;
+            debug_assert_eq!(curr_plan.vertex, forward.len());
+            let arc_start = arcs.len();
+            if layer_offsets.len() == curr_plan.distance {
+                layer_offsets.push(constraint_count);
+            }
             let Some(&curr_id) = inv.get(&curr) else {
+                forward.push(arc_start..arc_start);
                 continue;
             };
+            let source_index = node_index_by_id.get(curr_id).copied();
             let next_distance = curr_plan.distance.checked_add(1)?;
-            for (_, (sx, sy)) in ARCHITECTURE_RELATIVE_DIRS {
+            for (dir, (sx, sy)) in ARCHITECTURE_RELATIVE_DIRS {
                 let new_pos = (curr.0.checked_add(sx)?, curr.1.checked_add(sy)?);
                 let Some(&new_id) = inv.get(&new_pos) else {
                     continue;
                 };
-                let is_forward = match positions.get_mut(&new_pos) {
+                let target = match positions.get_mut(&new_pos) {
                     Some(existing) if existing.distance == next_distance => {
                         existing.queue_multiplicity = existing
                             .queue_multiplicity
                             .checked_add(curr_plan.queue_multiplicity)?;
-                        true
+                        existing.vertex
                     }
-                    Some(_) => false,
+                    Some(_) => continue,
                     None => {
+                        let vertex = positions.len();
                         positions.insert(
                             new_pos,
                             ArchitectureRelativePositionPlan {
+                                vertex,
                                 distance: next_distance,
                                 queue_multiplicity: curr_plan.queue_multiplicity,
                             },
                         );
                         unique_queue.push_back(new_pos);
-                        true
+                        vertex
                     }
                 };
-                if !is_forward {
-                    continue;
-                }
-                let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
-                    continue;
+                let endpoints = match source_index.zip(node_index_by_id.get(new_id).copied()) {
+                    Some((curr_idx, new_idx))
+                        if !declared_pairs.contains(&(curr_idx, new_idx))
+                            && !declared_pairs.contains(&(new_idx, curr_idx)) =>
+                    {
+                        constraint_count =
+                            constraint_count.checked_add(curr_plan.queue_multiplicity)?;
+                        Some(match dir {
+                            'L' => ArchitectureRelativeEndpoints::Horizontal {
+                                left: new_idx,
+                                right: curr_idx,
+                            },
+                            'R' => ArchitectureRelativeEndpoints::Horizontal {
+                                left: curr_idx,
+                                right: new_idx,
+                            },
+                            'T' => ArchitectureRelativeEndpoints::Vertical {
+                                top: new_idx,
+                                bottom: curr_idx,
+                            },
+                            'B' => ArchitectureRelativeEndpoints::Vertical {
+                                top: curr_idx,
+                                bottom: new_idx,
+                            },
+                            _ => return None,
+                        })
+                    }
+                    _ => None,
                 };
-                let Some(&new_idx) = node_index_by_id.get(new_id) else {
-                    continue;
-                };
-                if declared_pairs.contains(&(curr_idx, new_idx))
-                    || declared_pairs.contains(&(new_idx, curr_idx))
-                {
-                    continue;
-                }
-                constraint_count = constraint_count.checked_add(curr_plan.queue_multiplicity)?;
+                arcs.push(ArchitectureRelativeArc { target, endpoints });
             }
+            forward.push(arc_start..arcs.len());
         }
 
         let queue_entry_count = positions.values().try_fold(0usize, |total, position| {
@@ -304,7 +369,9 @@ fn checked_architecture_relative_constraint_plan<'a>(
         total_queue_entries = total_queue_entries.checked_add(queue_entry_count)?;
         total_constraints = total_constraints.checked_add(constraint_count)?;
         spatial.push(ArchitectureRelativeSpatialPlan {
-            inverse: inv,
+            forward,
+            arcs,
+            layer_offsets,
             queue_entry_count,
             constraint_count,
         });
@@ -318,87 +385,65 @@ fn checked_architecture_relative_constraint_plan<'a>(
 }
 
 fn materialize_architecture_relative_placement_constraints(
-    plan: &ArchitectureRelativeConstraintPlan<'_>,
-    node_index_by_id: &FxHashMap<&str, usize>,
+    plan: &ArchitectureRelativeConstraintPlan,
     gap: f64,
-    declared_pairs: &FxHashSet<(usize, usize)>,
 ) -> Option<Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint>> {
+    use manatee::algo::fcose::IndexedRelativePlacementConstraint;
+
     let mut relative = Vec::with_capacity(plan.constraint_count);
-
     for spatial in &plan.spatial {
+        if spatial.constraint_count == 0 {
+            continue;
+        }
         let output_start = relative.len();
-        let mut materialized_queue_entries = 0usize;
-        let mut pos_queue = std::collections::VecDeque::new();
-        let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
-        visited_pos.reserve(spatial.inverse.len().saturating_mul(2));
-        pos_queue.push_back((0, 0));
+        let output_end = output_start.checked_add(spatial.constraint_count)?;
+        relative.resize(
+            output_end,
+            IndexedRelativePlacementConstraint {
+                left: None,
+                right: None,
+                top: None,
+                bottom: None,
+                gap,
+            },
+        );
+        let output = &mut relative[output_start..output_end];
+        let mut cursors = spatial.layer_offsets.clone();
+        let mut stack = vec![spatial.forward[0].clone()];
+        let mut replayed_entries = 1;
 
-        while let Some(curr) = pos_queue.pop_front() {
-            materialized_queue_entries = materialized_queue_entries.checked_add(1)?;
-            // Mermaid marks the current grid position as visited but does not skip duplicate
-            // queued positions on pop. Preserve both duplicate constraints and their L/R/T/B
-            // order after the linear admission planner has bounded the expansion.
-            visited_pos.insert(curr);
-            let Some(&curr_id) = spatial.inverse.get(&curr) else {
+        // Both traversals enumerate direction words in L/R/T/B order within a layer. Give each
+        // layer its own output cursor so a depth-first replay needs only one stack frame per
+        // active layer, while writing rows in exactly the original breadth-first order.
+        while let Some(forward) = stack.last_mut() {
+            let Some(arc_index) = forward.next() else {
+                stack.pop();
                 continue;
             };
-            for (dir, (sx, sy)) in ARCHITECTURE_RELATIVE_DIRS {
-                let new_pos = (curr.0.checked_add(sx)?, curr.1.checked_add(sy)?);
-                let Some(&new_id) = spatial.inverse.get(&new_pos) else {
-                    continue;
-                };
-                if visited_pos.contains(&new_pos) {
-                    continue;
-                }
-                pos_queue.push_back(new_pos);
-                let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
-                    continue;
-                };
-                let Some(&new_idx) = node_index_by_id.get(new_id) else {
-                    continue;
-                };
-                if declared_pairs.contains(&(curr_idx, new_idx))
-                    || declared_pairs.contains(&(new_idx, curr_idx))
-                {
-                    continue;
-                }
-
-                relative.push(match dir {
-                    'L' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                        left: Some(new_idx),
-                        right: Some(curr_idx),
-                        top: None,
-                        bottom: None,
-                        gap,
-                    },
-                    'R' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                        left: Some(curr_idx),
-                        right: Some(new_idx),
-                        top: None,
-                        bottom: None,
-                        gap,
-                    },
-                    'T' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                        left: None,
-                        right: None,
-                        top: Some(new_idx),
-                        bottom: Some(curr_idx),
-                        gap,
-                    },
-                    'B' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                        left: None,
-                        right: None,
-                        top: Some(curr_idx),
-                        bottom: Some(new_idx),
-                        gap,
-                    },
-                    _ => return None,
-                });
+            let arc = &spatial.arcs[arc_index];
+            if cfg!(debug_assertions) {
+                replayed_entries += 1;
+            }
+            if let Some(endpoints) = arc.endpoints {
+                let cursor = &mut cursors[stack.len() - 1];
+                output[*cursor] = endpoints.with_gap(gap);
+                *cursor += 1;
+            }
+            let next = &spatial.forward[arc.target];
+            if !next.is_empty() {
+                stack.push(next.clone());
             }
         }
 
-        debug_assert_eq!(materialized_queue_entries, spatial.queue_entry_count);
-        debug_assert_eq!(relative.len() - output_start, spatial.constraint_count);
+        debug_assert_eq!(replayed_entries, spatial.queue_entry_count);
+        debug_assert!(
+            cursors.into_iter().eq(spatial
+                .layer_offsets
+                .iter()
+                .copied()
+                .skip(1)
+                .chain([spatial.constraint_count]))
+        );
     }
 
     debug_assert_eq!(relative.len(), plan.constraint_count);
@@ -1578,9 +1623,8 @@ fn build_architecture_fcose_input_plan<'a>(
 
     // RelativePlacementConstraint (gap between borders).
     //
-    // Mermaid's visited-on-pop BFS intentionally emits duplicate constraints. Count that
-    // expansion on the unique coordinate graph before allocating the duplicate queue or output
-    // vector, then admit the complete FCoSE constraint schedule while it is still cheap to reject.
+    // Count Mermaid's visited-on-pop BFS expansion on the unique coordinate graph. Admit
+    // the same expanded work and FCoSE schedule before materializing the ordered rows.
     let relative_planning_work = checked_architecture_relative_planning_work_units(&spatial_maps)
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(relative_planning_work)?;
@@ -1629,13 +1673,9 @@ fn build_architecture_fcose_input_plan<'a>(
     )?;
     work_meter.charge(relative_materialization_work)?;
 
-    let automatic_relative = materialize_architecture_relative_placement_constraints(
-        &relative_plan,
-        &node_index_by_id,
-        gap,
-        &declared_pairs,
-    )
-    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let automatic_relative =
+        materialize_architecture_relative_placement_constraints(&relative_plan, gap)
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
     let mut relative = declared_relative;
     relative.extend(automatic_relative);
 
@@ -2984,13 +3024,9 @@ mod tests {
             &declared_pairs,
         )
         .expect("relative constraint plan");
-        let constraints = super::materialize_architecture_relative_placement_constraints(
-            &relative_plan,
-            &node_index_by_id,
-            120.0,
-            &declared_pairs,
-        )
-        .expect("relative constraints");
+        let constraints =
+            super::materialize_architecture_relative_placement_constraints(&relative_plan, 120.0)
+                .expect("relative constraints");
 
         assert_eq!(
             constraints
@@ -3096,13 +3132,9 @@ mod tests {
             &declared_pairs,
         )
         .expect("relative constraint plan");
-        let constraints = super::materialize_architecture_relative_placement_constraints(
-            &relative_plan,
-            &node_index_by_id,
-            120.0,
-            &declared_pairs,
-        )
-        .expect("relative constraints");
+        let constraints =
+            super::materialize_architecture_relative_placement_constraints(&relative_plan, 120.0)
+                .expect("relative constraints");
 
         assert_eq!(
             constraints
@@ -3764,13 +3796,9 @@ mod tests {
             &declared_pairs,
         )
         .expect("relative constraint plan");
-        let constraints = super::materialize_architecture_relative_placement_constraints(
-            &plan,
-            &node_index_by_id,
-            120.0,
-            &declared_pairs,
-        )
-        .expect("relative constraints materialize");
+        let constraints =
+            super::materialize_architecture_relative_placement_constraints(&plan, 120.0)
+                .expect("relative constraints materialize");
 
         assert_eq!(plan.constraint_count, 9);
         assert_eq!(constraints.len(), plan.constraint_count);
@@ -3778,18 +3806,19 @@ mod tests {
         assert_eq!(
             constraints
                 .iter()
-                .filter(|c| c.left == Some(6) && c.right == Some(3))
-                .count(),
-            2,
-            "Mermaid processes the duplicate queued join position before db is visited",
-        );
-        assert_eq!(
-            constraints
-                .iter()
-                .filter(|c| c.top == Some(6) && c.bottom == Some(4))
-                .count(),
-            2,
-            "Mermaid processes the duplicate queued join position before cache is visited",
+                .map(|c| (c.left.zip(c.right), c.top.zip(c.bottom)))
+                .collect::<Vec<_>>(),
+            [
+                (Some((0, 5)), None),
+                (Some((5, 1)), None),
+                (None, Some((5, 2))),
+                (None, Some((1, 6))),
+                (Some((2, 6)), None),
+                (Some((6, 3)), None),
+                (None, Some((6, 4))),
+                (Some((6, 3)), None),
+                (None, Some((6, 4))),
+            ],
         );
     }
 
@@ -3929,13 +3958,9 @@ mod tests {
                     &declared_pairs,
                 )
                 .expect("3x3 relative plan should fit");
-                let materialized = super::materialize_architecture_relative_placement_constraints(
-                    &plan,
-                    &node_index_by_id,
-                    120.0,
-                    &declared_pairs,
-                )
-                .expect("3x3 relative constraints materialize");
+                let materialized =
+                    super::materialize_architecture_relative_placement_constraints(&plan, 120.0)
+                        .expect("3x3 relative constraints materialize");
                 assert_eq!(
                     plan.constraint_count,
                     materialized.len(),

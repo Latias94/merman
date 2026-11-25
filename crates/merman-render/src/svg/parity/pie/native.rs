@@ -15,7 +15,7 @@ pub(crate) fn render_native_pie_svg(
     layout: &PieDiagramLayout,
     model: &PieDiagramModel,
     style: &PieNativeStyle,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");

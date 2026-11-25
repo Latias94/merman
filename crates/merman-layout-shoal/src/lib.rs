@@ -35,6 +35,35 @@ pub fn layout_with_control(
     scratch: &mut LayoutScratch,
     control: &mut impl WorkControl,
 ) -> Result<LayoutOutput, LayoutError> {
+    layout_impl(graph, options, scratch, control, LayoutDetail::Full)
+}
+
+/// Lays out a graph in input order and returns its geometry without statistics.
+///
+/// The solver can omit routed crossing counts for flat, natural-width layouts without
+/// editor hints, rank capture, component reuse or orthogonal routing. It still computes
+/// counts when needed to select geometry. Work limits and cancellation apply throughout.
+pub fn layout_geometry_with_control(
+    graph: &Graph,
+    options: &Options,
+    scratch: &mut LayoutScratch,
+    control: &mut impl WorkControl,
+) -> Result<LayoutGeometry, LayoutError> {
+    layout_impl(graph, options, scratch, control, LayoutDetail::Geometry).map(LayoutGeometry::from)
+}
+
+enum LayoutDetail {
+    Full,
+    Geometry,
+}
+
+fn layout_impl(
+    graph: &Graph,
+    options: &Options,
+    scratch: &mut LayoutScratch,
+    control: &mut impl WorkControl,
+    detail: LayoutDetail,
+) -> Result<LayoutOutput, LayoutError> {
     let mut frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
@@ -49,6 +78,24 @@ pub fn layout_with_control(
     }
     let mut keep_components = reuse_components && options.capture_node_ranks;
     let (output, width_trial) = match options.width_policy {
+        WidthPolicy::Natural
+            if matches!(detail, LayoutDetail::Geometry)
+                && graph.groups.is_empty()
+                && graph.lane_order.is_empty()
+                && !options.capture_node_ranks
+                && !options.reuse_unchanged_components
+                && !options.global_orthogonal
+                && matches!(
+                    options.routing,
+                    RoutingStyle::Curved | RoutingStyle::Polyline
+                )
+                && !matches!(options.packing, PackingPolicy::FitWidth { .. }) =>
+        {
+            (
+                flat::run_geometry(graph, options, frame.expanded, &mut work)?,
+                None,
+            )
+        }
         WidthPolicy::Natural => (solve(graph, options, frame.expanded, &mut work)?, None),
         WidthPolicy::FitWidth { .. } => {
             let (drawing, trial) = adaptive::run(graph, options, frame.expanded, &mut work)?;

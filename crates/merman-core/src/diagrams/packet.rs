@@ -900,7 +900,7 @@ fn packet_body_start_controlled(
 }
 
 fn config_bits_per_row(config: &MermaidConfig) -> Option<f64> {
-    config.as_value().get("packet")?.get("bitsPerRow")?.as_f64()
+    config.get_path(&["packet", "bitsPerRow"])?.as_f64()
 }
 
 #[derive(Debug, Clone)]

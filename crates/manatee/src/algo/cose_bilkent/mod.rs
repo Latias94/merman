@@ -1,3 +1,4 @@
+use super::grid_cells::{clear_dense_cells, reset_dense_cells};
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Graph, LayoutResult, Point};
 use crate::work::admit_dynamic_work;
@@ -365,11 +366,7 @@ impl SimGrid {
 
     fn clear_cells(&mut self) {
         match &mut self.cells {
-            SimGridCells::Dense(cells) => {
-                for cell in cells {
-                    cell.clear();
-                }
-            }
+            SimGridCells::Dense(cells) => clear_dense_cells(cells),
             SimGridCells::Sparse(cells) => cells.clear(),
             SimGridCells::Implicit(node_order) => node_order.clear(),
         }
@@ -392,17 +389,7 @@ impl SimGrid {
                 let SimGridCells::Dense(cells) = &mut self.cells else {
                     unreachable!("dense grid selected above")
                 };
-                if plan.total_cell_count > cells.len() {
-                    cells
-                        .try_reserve_exact(plan.total_cell_count - cells.len())
-                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
-                    cells.resize_with(plan.total_cell_count, Vec::new);
-                } else {
-                    cells.truncate(plan.total_cell_count);
-                }
-                for cell in cells {
-                    cell.clear();
-                }
+                reset_dense_cells(cells, plan.total_cell_count)?;
             }
             SimGridStorageKind::Sparse => {
                 if !matches!(self.cells, SimGridCells::Sparse(_)) {

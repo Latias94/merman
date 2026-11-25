@@ -17,24 +17,16 @@ Accepted
 
 ## Decision
 
-- Implement `sequenceDiagram` using the same approach as flowchart:
-  - a deterministic, state-machine lexer (mode switching where required),
-  - an LALR(1) grammar implemented via `lalrpop`,
-  - a DB-like semantic model builder aligned to Mermaid `SequenceDB` outputs (headless).
+- Use a deterministic state-machine lexer and a handwritten predictive parser in `merman-core`.
+- Track open fragments and boxes on a heap stack. Append actions in semantic replay order and
+  pass the completed list to the builder aligned with Mermaid `SequenceDB`.
 - Drive parity using upstream specs (`repo-ref/mermaid/.../sequenceDiagram.spec.js`) and the
   [family compatibility notes](../alignment/FAMILY_NOTES.md#sequence-and-timeline).
 
 ## Consequences
 
-Pros:
-- Closest match to upstream Jison behavior (especially token boundaries and precedence).
-- Incremental expansion without changing the crate public API.
-
-Cons:
-- Higher initial implementation effort than ad-hoc line parsing.
-- Requires careful testing around lexer precedence and comment handling to reach full parity.
-
-The grammar source remains checked in alongside the implementation, while its generated parser is
-maintainer-owned source at `crates/merman-core/src/generated/lalrpop/sequence_grammar.rs`.
-`cargo run -p xtask -- verify-lalrpop-parsers` prevents grammar and generated-parser drift without
-requiring downstream builds to compile or execute LALRPOP.
+- The lexer owns token boundaries, including mode transitions and comment handling.
+- The parser owns block and statement boundaries, expected tokens, and action order.
+- Cancellation is checked during lexical scanning, token delivery, action emission, and replay.
+- Editor recovery can inspect the full lexical event tape and reuse the parser's structured
+  diagnostic.

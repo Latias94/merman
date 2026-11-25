@@ -1433,7 +1433,7 @@ mod tests {
     #[test]
     fn state_consuming_projection_moves_owned_payloads_without_copying() {
         use super::*;
-        use crate::diagrams::state::{Lexer, render_model, state_grammar};
+        use crate::diagrams::state::{Lexer, parser, render_model};
 
         let source = concat!(
             "stateDiagram-v2\ndirection LR\naccTitle: Owned title\naccDescr: Owned description\n",
@@ -1447,11 +1447,9 @@ mod tests {
             "click Done \"https://example.com/only\" \"Only tip\"\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocumentScratch::default();
-        let root = state_grammar::RootParser::new()
-            .parse(&mut document, Lexer::new(source))
+        let document = parser::parse(Lexer::new(source), source.len(), &control)
+            .unwrap()
             .expect("real State grammar accepts the ownership fixture");
-        document.root = Some(root);
         let mut db = StateDb::new();
         db.set_root_doc(document, &control).unwrap();
         // This legacy AST slot has no authored grammar production; populate its actual DB owner.
@@ -1725,7 +1723,7 @@ mod tests {
     #[test]
     fn state_consuming_projection_compacts_vec_slack_without_copying_strings() {
         use super::*;
-        use crate::diagrams::state::{Lexer, state_grammar};
+        use crate::diagrams::state::{Lexer, parser};
 
         let source = concat!(
             "stateDiagram-v2\nstate \"Ready label\" as Ready\nReady: Owned detail\n",
@@ -1733,11 +1731,9 @@ mod tests {
             "style Ready fill:green,font-weight:bold\nReady --> Done\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocumentScratch::default();
-        let root = state_grammar::RootParser::new()
-            .parse(&mut document, Lexer::new(source))
+        let document = parser::parse(Lexer::new(source), source.len(), &control)
+            .unwrap()
             .expect("real State grammar accepts the slack fixture");
-        document.root = Some(root);
         let mut db = StateDb::new();
         db.set_root_doc(document, &control).unwrap();
         // This legacy AST slot has no authored grammar production; populate its actual DB owner.
@@ -1894,17 +1890,14 @@ mod tests {
     #[test]
     fn state_consuming_projection_preserves_programmatic_hidden_note_inputs() {
         use super::*;
-        use crate::diagrams::state::{Lexer, state_grammar};
+        use crate::diagrams::state::{Lexer, parser};
 
         let control = OperationControl::new();
-        let mut document = StateDocumentScratch::default();
-        let root = state_grammar::RootParser::new()
-            .parse(
-                &mut document,
-                Lexer::new("stateDiagram-v2\nnote right of Legacy : Hidden legacy text\n"),
-            )
+        let source = "stateDiagram-v2\nnote right of Legacy : Hidden legacy text\n";
+        let mut document = parser::parse(Lexer::new(source), source.len(), &control)
+            .unwrap()
             .unwrap();
-        document.root = Some(root);
+        let root = document.root.unwrap();
         // The legacy hidden-note representation is programmatic, not authored grammar syntax.
         let [StateStatement::State(state)] = document.get_mut(root).as_mut_slice() else {
             panic!("real grammar produces the positioned-note owner");
