@@ -2488,13 +2488,17 @@ where
     }
 
     pub fn sources(&self) -> Vec<&str> {
-        if !self.options.directed {
-            return self.nodes().collect();
-        }
-        self.node_indices_in_object_key_order()
-            .filter(|&node_ix| self.endpoint_key_adj.predecessor_count(node_ix) == 0)
+        self.source_node_ixs()
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
+    }
+
+    /// Iterates the same live sources as `sources()` in object-key order without allocating.
+    #[doc(hidden)]
+    pub fn source_node_ixs(&self) -> impl Iterator<Item = usize> + '_ {
+        self.node_indices_in_object_key_order().filter(|&node_ix| {
+            !self.options.directed || self.endpoint_key_adj.predecessor_count(node_ix) == 0
+        })
     }
 
     pub fn sinks(&self) -> Vec<&str> {

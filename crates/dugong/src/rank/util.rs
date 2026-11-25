@@ -60,11 +60,10 @@ pub(crate) fn longest_path_controlled(
         g.prepare_adjacency_cache();
     }
     struct Frame {
-        v: String,
-        edges: Vec<EdgeKey>,
+        v_ix: usize,
         next_edge: usize,
         rank: Option<i128>,
-        incoming_minlen: Option<i128>,
+        incoming_minlen: usize,
     }
 
     fn apply_candidate(rank: &mut Option<i128>, candidate: i128) {
@@ -74,48 +73,42 @@ pub(crate) fn longest_path_controlled(
         });
     }
 
-    let sources: Vec<String> = g.sources().into_iter().map(|s| s.to_string()).collect();
-    let mut visited: HashMap<String, i128> = HashMap::default();
+    let directed = g.is_directed();
+    let mut visited: HashMap<usize, i32> = HashMap::default();
     let mut staged_ranks = Vec::with_capacity(g.node_count());
-    for v in sources {
-        if visited.contains_key(&v) {
+    let mut stack = Vec::new();
+    for v_ix in g.source_node_ixs() {
+        if visited.contains_key(&v_ix) {
             continue;
         }
 
-        let mut stack = vec![Frame {
-            edges: g.out_edges(&v, None),
-            v,
+        stack.push(Frame {
+            v_ix,
             next_edge: 0,
             rank: None,
-            incoming_minlen: None,
-        }];
+            incoming_minlen: 0,
+        });
 
         while let Some(frame) = stack.last_mut() {
-            if let Some(rank) = visited.get(frame.v.as_str()).copied() {
-                let incoming_minlen = frame.incoming_minlen;
-                let _ = stack.pop();
-                if let (Some(parent), Some(minlen)) = (stack.last_mut(), incoming_minlen) {
-                    apply_candidate(&mut parent.rank, rank - minlen);
-                }
-                continue;
-            }
-
-            if frame.next_edge < frame.edges.len() {
-                let edge = frame.edges[frame.next_edge].clone();
+            let edge = if directed {
+                g.out_edge_entry_ix_at(frame.v_ix, frame.next_edge)
+            } else {
+                // Match Graphlib's undirected out_edges: follow the canonical `w` endpoint.
+                g.undirected_edge_entry_ix_at(frame.v_ix, frame.next_edge)
+            };
+            if let Some((_, w_ix, _, label)) = edge {
                 frame.next_edge += 1;
-                let minlen = g
-                    .edge_by_key(&edge)
-                    .map(|lbl| lbl.minlen as i128)
-                    .unwrap_or(1);
-                if let Some(child_rank) = visited.get(edge.w.as_str()).copied() {
-                    apply_candidate(&mut frame.rank, child_rank - minlen);
+                if let Some(child_rank) = visited.get(&w_ix).copied() {
+                    apply_candidate(
+                        &mut frame.rank,
+                        i128::from(child_rank) - label.minlen as i128,
+                    );
                 } else {
                     stack.push(Frame {
-                        edges: g.out_edges(&edge.w, None),
-                        v: edge.w,
+                        v_ix: w_ix,
                         next_edge: 0,
                         rank: None,
-                        incoming_minlen: Some(minlen),
+                        incoming_minlen: label.minlen,
                     });
                 }
                 continue;
@@ -126,12 +119,10 @@ pub(crate) fn longest_path_controlled(
             };
             let rank = frame.rank.unwrap_or(0);
             let rank_i32 = i32::try_from(rank).map_err(|_| crate::WorkError::ArithmeticOverflow)?;
-            if let Some(node_ix) = g.node_ix(&frame.v) {
-                staged_ranks.push((node_ix, rank_i32));
-            }
-            visited.insert(frame.v, rank);
-            if let (Some(parent), Some(minlen)) = (stack.last_mut(), frame.incoming_minlen) {
-                apply_candidate(&mut parent.rank, rank - minlen);
+            staged_ranks.push((frame.v_ix, rank_i32));
+            visited.insert(frame.v_ix, rank_i32);
+            if let Some(parent) = stack.last_mut() {
+                apply_candidate(&mut parent.rank, rank - frame.incoming_minlen as i128);
             }
         }
     }
