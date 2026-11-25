@@ -263,6 +263,10 @@ fn sweep_curve(
     CubicBez::new(from, from + first * scale, to - second * scale, to)
 }
 
+fn cubic_bits(curve: CubicBez) -> [[u64; 2]; 4] {
+    [curve.p0, curve.p1, curve.p2, curve.p3].map(|p| [p.x.to_bits(), p.y.to_bits()])
+}
+
 struct Pen {
     d: String,
     bounds: Bounds,
@@ -344,11 +348,17 @@ impl Pen {
         end: RoutePoint,
         departure_across: Option<f64>,
         clearance: Option<EdgeClearance<'_>>,
+        clear_sweep: Option<&CubicBez>,
     ) -> Result<(), RoutePaintError> {
         let target = position(end);
         let curve = |scale| sweep_curve(self.at, end, departure_across, scale);
-        let scale = if let Some(guard) = clearance {
-            let Some(scale) = smoothing_scale(|scale| {
+        let full = curve(1.0);
+        // Earlier turns can move the pen. Reuse a terminal check only for the exact cubic.
+        let sweep = if let Some(guard) = clearance
+            && !clear_sweep.is_some_and(|&checked| cubic_bits(checked) == cubic_bits(full))
+            && guard.blocks_cubic(full)
+        {
+            let Some(scale) = shrink_smoothing_scale(|scale| {
                 if scale == 0. {
                     guard.blocks_line(self.at, target)
                 } else {
@@ -360,16 +370,15 @@ impl Pen {
                 }
                 return Ok(());
             };
-            scale
+            if scale == 0.0 {
+                self.line(target);
+                return Ok(());
+            }
+            curve(scale)
         } else {
-            1.0
+            full
         };
-        if scale == 0.0 {
-            self.line(target);
-        } else {
-            let sweep = curve(scale);
-            self.cubic(sweep.p1, sweep.p2, sweep.p3);
-        }
+        self.cubic(sweep.p1, sweep.p2, sweep.p3);
         Ok(())
     }
 
@@ -409,6 +418,11 @@ fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
     if !blocked(1.0) {
         return Some(1.0);
     }
+    shrink_smoothing_scale(blocked)
+}
+
+fn shrink_smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
+    // The caller has already checked that scale 1.0 is blocked.
     let mut safe: f64 = 0.0;
     let mut limit: f64 = 1.0;
     for _ in 0..12 {
@@ -429,6 +443,7 @@ fn draw_body(
     terminals: (Option<&Terminal>, Option<&Terminal>),
     departure_across: Option<f64>,
     clearance: Option<EdgeClearance<'_>>,
+    clear_sweep: Option<&CubicBez>,
 ) -> Result<(), RoutePaintError> {
     for i in 1..body.len() {
         let p = position(body[i]);
@@ -510,6 +525,7 @@ fn draw_body(
                 body[i],
                 if i == 1 { departure_across } else { None },
                 clearance,
+                clear_sweep.filter(|_| i == 1 || i + 1 == body.len()),
             )?;
         } else {
             pen.line(p);
@@ -739,12 +755,20 @@ fn draw_section(
     if style.stepped() && has_offset_leg(body) {
         *body = steps(style, body, (None, None));
     }
-    let departure = if style == RouteStyle::Curved {
+    let (departure, clear_sweep) = if style == RouteStyle::Curved {
         expand_terminal_sweeps(body, terminals, clearance)
     } else {
-        None
+        (None, None)
     };
-    draw_body(pen, body, style, terminals, departure, clearance)?;
+    draw_body(
+        pen,
+        body,
+        style,
+        terminals,
+        departure,
+        clearance,
+        clear_sweep.as_ref(),
+    )?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
     }
@@ -774,9 +798,17 @@ fn expand_terminal_sweeps(
     body: &mut Vec<RoutePoint>,
     terminals: (Option<&Terminal>, Option<&Terminal>),
     clearance: Option<EdgeClearance<'_>>,
-) -> Option<f64> {
-    let clear = |first, next, departure| {
-        clearance.is_none_or(|guard| !guard.blocks_cubic(sweep_curve(first, next, departure, 1.0)))
+) -> (Option<f64>, Option<CubicBez>) {
+    let mut clear_sweep = None;
+    let mut clear = |first, next, departure| {
+        let Some(guard) = clearance else { return true };
+        let curve = sweep_curve(first, next, departure, 1.0);
+        if guard.blocks_cubic(curve) {
+            return false;
+        }
+        // Only the adjacent drawing pass sees this answer, with the same edge clearance.
+        clear_sweep = Some(curve);
+        true
     };
     let start = terminals.0.filter(|terminal| terminal.smooth);
     let end = terminals.1.filter(|terminal| terminal.smooth);
@@ -806,9 +838,9 @@ fn expand_terminal_sweeps(
         && !aligned(position(first), position(next))
         && clear(position(first), next, Some(across))
     {
-        return Some(across);
+        return (Some(across), clear_sweep);
     }
-    None
+    (None, clear_sweep)
 }
 
 #[cfg(test)]
@@ -1074,6 +1106,31 @@ mod tests {
             assert_eq!(segments(&result).first(), segments(&original).first());
             assert_eq!(segments(&result).last(), segments(&original).last());
         }
+    }
+
+    #[test]
+    fn a_clear_terminal_sweep_does_not_admit_different_control_points() {
+        let from = Point::ORIGIN;
+        let end = v(100., 100.);
+        let clear = sweep_curve(from, end, None, 1.0);
+        let bent = sweep_curve(from, end, Some(1.0), 1.0);
+        assert_eq!((clear.p0, clear.p3), (bent.p0, bent.p3));
+        let obstacle = kurbo::Rect::from_center_size(bent.eval(0.375), (0.5, 0.5));
+        let tree = Clearance::new(vec![(obstacle, ObstacleOwner::GroupTitle(0))]);
+        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.);
+        assert!(!guard.blocks_cubic(clear));
+        assert!(guard.blocks_cubic(bent));
+
+        let paint = |clear_sweep| {
+            let mut pen = Pen::new(from, false);
+            pen.sweep(end, Some(1.0), Some(guard), clear_sweep).unwrap();
+            pen.finish().unwrap()
+        };
+        let checked = paint(Some(&clear));
+        let reference = paint(None);
+        assert_eq!(checked.d, reference.d);
+        assert_eq!(checked.bounds, reference.bounds);
+        assert!(!samples_inside(&checked, obstacle));
     }
 
     #[test]
