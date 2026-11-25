@@ -21,6 +21,7 @@ on:
       - "crates/merman-bindings-core/**"
       - "crates/merman-cli/**"
       - "crates/merman-core/**"
+      - "crates/merman-core-graph/**"
       - "crates/merman-core-preprocess/**"
       - "crates/merman-core-structured/**"
       - "crates/merman-elk-layered/**"
