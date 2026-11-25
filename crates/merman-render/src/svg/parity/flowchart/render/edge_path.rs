@@ -1,11 +1,33 @@
 //! Flowchart edge path renderer.
 
 use super::super::defs::FlowchartMarkerEmissionPlan;
+use super::super::document_ids::FlowchartDocumentId;
 use super::super::*;
+use crate::svg::parity::util::escaped_xml_len;
 use std::fmt;
 
 #[cfg(test)]
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+
+const PATH_START: &str = r#"<path d=""#;
+const ID_ATTRIBUTE: &str = r#"" id=""#;
+const CLASS_ATTRIBUTE: &str = r#"" class=""#;
+const STYLE_ATTRIBUTE: &str = r#"" style=""#;
+const HAND_DRAWN_ATTRIBUTES: &str = r##"" stroke="#000" stroke-width="1" fill="none"##;
+const DATA_ID_ATTRIBUTE: &str = r#"" data-edge="true" data-et="edge" data-id=""#;
+const DATA_POINTS_ATTRIBUTE: &str = r#"" data-points=""#;
+const DATA_LOOK_ATTRIBUTE: &str = r#"" data-look=""#;
+const ATTRIBUTE_END: &str = "\"";
+const PATH_END: &str = " />";
+const FIXED_PATH_BYTES: usize = PATH_START.len()
+    + ID_ATTRIBUTE.len()
+    + CLASS_ATTRIBUTE.len()
+    + STYLE_ATTRIBUTE.len()
+    + DATA_ID_ATTRIBUTE.len()
+    + DATA_POINTS_ATTRIBUTE.len()
+    + DATA_LOOK_ATTRIBUTE.len()
+    + ATTRIBUTE_END.len()
+    + PATH_END.len();
 
 const NEO_EDGE_MASK_PREFIX: &str = "stroke-dasharray: 0 ";
 const NEO_EDGE_MASK_DASH_PAIR: &str = "2 2 ";
@@ -129,8 +151,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     Ok(())
 }
 
-struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
-    edge_dom_id: EdgeDomId,
+struct FlowchartEdgeSvgEmission<'a> {
+    edge_dom_id: FlowchartDocumentId<'a>,
     edge: &'a crate::flowchart::FlowEdge,
     d: &'a str,
     data_points_b64: &'a str,
@@ -144,10 +166,7 @@ struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
     line_hop_applied: bool,
 }
 
-impl<EdgeDomId> FlowchartEdgeSvgEmission<'_, EdgeDomId>
-where
-    EdgeDomId: fmt::Display,
-{
+impl FlowchartEdgeSvgEmission<'_> {
     fn append_to(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -217,13 +236,26 @@ where
         projected_style_bytes: usize,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<usize> {
-        let mut counter = FlowchartEdgeSvgByteCounter::default();
-        let result = self
-            .write_prefix_to(&mut counter)
-            .and_then(|()| counter.add_bytes(projected_style_bytes))
-            .and_then(|()| self.write_suffix_to(&mut counter));
-        debug_assert!(result.is_ok() || counter.overflowed);
-        counter.finish(work_meter)
+        let fixed_bytes = FIXED_PATH_BYTES
+            + if self.hand_drawn {
+                HAND_DRAWN_ATTRIBUTES.len()
+            } else {
+                0
+            };
+        let bytes = fixed_bytes
+            .checked_add(self.d.len())
+            .and_then(|bytes| bytes.checked_add(self.edge_dom_id.serialized_len()))
+            .and_then(|bytes| bytes.checked_add(self.class_attr.len()))
+            .and_then(|bytes| bytes.checked_add(projected_style_bytes))
+            .and_then(|bytes| bytes.checked_add(escaped_xml_len(&self.edge.id)))
+            .and_then(|bytes| bytes.checked_add(self.data_points_b64.len()))
+            .and_then(|bytes| bytes.checked_add(escaped_xml_len(self.data_look.as_str())))
+            .and_then(|bytes| bytes.checked_add(self.marker_attrs.len()));
+        let Some(bytes) = bytes else {
+            work_meter.check_svg_append(usize::MAX, 1)?;
+            unreachable!("overflowing Flowchart edge serialization must be rejected")
+        };
+        Ok(bytes)
     }
 
     fn write_to(&self, out: &mut impl fmt::Write, rewritten_style: Option<&str>) -> fmt::Result {
@@ -240,26 +272,28 @@ where
     }
 
     fn write_prefix_to(&self, out: &mut impl fmt::Write) -> fmt::Result {
-        write!(
-            out,
-            r#"<path d="{}" id="{}" class="{}" style=""#,
-            self.d, self.edge_dom_id, self.class_attr,
-        )
+        out.write_str(PATH_START)?;
+        out.write_str(self.d)?;
+        out.write_str(ID_ATTRIBUTE)?;
+        write!(out, "{}", self.edge_dom_id)?;
+        out.write_str(CLASS_ATTRIBUTE)?;
+        out.write_str(self.class_attr)?;
+        out.write_str(STYLE_ATTRIBUTE)
     }
 
     fn write_suffix_to(&self, out: &mut impl fmt::Write) -> fmt::Result {
         if self.hand_drawn {
-            out.write_str(r##"" stroke="#000" stroke-width="1" fill="none"##)?;
+            out.write_str(HAND_DRAWN_ATTRIBUTES)?;
         }
-        write!(
-            out,
-            r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-            escape_xml_display(&self.edge.id),
-            self.data_points_b64,
-            escape_xml_display(self.data_look.as_str()),
-        )?;
+        out.write_str(DATA_ID_ATTRIBUTE)?;
+        write!(out, "{}", escape_xml_display(&self.edge.id))?;
+        out.write_str(DATA_POINTS_ATTRIBUTE)?;
+        out.write_str(self.data_points_b64)?;
+        out.write_str(DATA_LOOK_ATTRIBUTE)?;
+        write!(out, "{}", escape_xml_display(self.data_look.as_str()))?;
+        out.write_str(ATTRIBUTE_END)?;
         out.write_str(self.marker_attrs)?;
-        out.write_str(" />")
+        out.write_str(PATH_END)
     }
 
     fn write_source_style(&self, out: &mut impl fmt::Write) -> fmt::Result {
@@ -312,37 +346,6 @@ fn write_style_joined(
         write!(out, "{}", escape_xml_display(part))?;
     }
     Ok(())
-}
-
-#[derive(Default)]
-struct FlowchartEdgeSvgByteCounter {
-    bytes: usize,
-    overflowed: bool,
-}
-
-impl FlowchartEdgeSvgByteCounter {
-    fn add_bytes(&mut self, additional: usize) -> fmt::Result {
-        let Some(bytes) = self.bytes.checked_add(additional) else {
-            self.overflowed = true;
-            return Err(fmt::Error);
-        };
-        self.bytes = bytes;
-        Ok(())
-    }
-
-    fn finish(self, work_meter: &crate::resources::OperationWorkMeter) -> crate::Result<usize> {
-        if self.overflowed {
-            work_meter.check_svg_append(usize::MAX, 1)?;
-            unreachable!("overflowing Flowchart edge serialization must be rejected")
-        }
-        Ok(self.bytes)
-    }
-}
-
-impl fmt::Write for FlowchartEdgeSvgByteCounter {
-    fn write_str(&mut self, value: &str) -> fmt::Result {
-        self.add_bytes(value.len())
-    }
 }
 
 fn flowchart_neo_edge_path_length(
@@ -462,7 +465,14 @@ fn formatted_svg_number_bytes(value: f64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use crate::svg::parity::flowchart::document_ids::{
+        FlowchartDocumentIdRequest, FlowchartDocumentIds,
+    };
+    use crate::svg::parity::flowchart::render_input::FlowchartRenderEdgeRef;
+    use crate::svg::parity::{BoundedSvgOutput, SvgOutput};
 
     fn edge(edge_type: &str, stroke: &str) -> crate::flowchart::FlowEdge {
         crate::flowchart::FlowEdge {
@@ -584,6 +594,7 @@ mod tests {
             IndexMap::from([("accent".to_string(), vec!["stroke:#2563eb".to_string()])]);
         let default_edge_style = vec!["opacity:0.5".to_string()];
         let mut edge = edge("arrow_open", "dotted");
+        edge.id = "\u{8fb9}#quot;&<]\u{1}]>".to_string();
         edge.classes.push("accent".to_string());
         edge.style.push("stroke:#ef4444".to_string());
         let emitted_styles =
@@ -593,8 +604,18 @@ mod tests {
             .projected_edge_source_style_bytes(&default_edge_style, &edge.style, false)
             .expect("finite source-style projection");
         let neo_edge_mask = neo_mask(16.0, &edge, false);
+        let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(12, 2);
+        let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: "diagram",
+            edge_order: &[FlowchartRenderEdgeRef { key, edge: &edge }],
+            node_dom_index: &FxHashMap::default(),
+            subgraph_index_by_id: &FxHashMap::default(),
+            layout_nodes: &[],
+            swimlane_nodes: None,
+            swimlane_lanes: None,
+        });
         let emission = FlowchartEdgeSvgEmission {
-            edge_dom_id: &edge.id,
+            edge_dom_id: document_ids.edge(key).unwrap(),
             edge: &edge,
             d: "M0,0L16,0",
             data_points_b64: "W3sieCI6MH1d",
@@ -608,7 +629,7 @@ mod tests {
             neo_edge_mask: Some(neo_edge_mask),
             line_hop_applied: false,
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="diagram-merman-flowchart-document-edge-12-segment-2" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444" data-edge="true" data-et="edge" data-id="边&quot;&amp;&lt;]]&gt;" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -623,34 +644,40 @@ mod tests {
             expected_edge.len()
         );
 
-        let exact_meter = meter_with_limits(initial.len() + expected_edge.len(), 4);
-        let mut exact = initial.to_string();
+        let exact_bytes = initial.len() + expected_edge.len();
+        let projected_style_bytes = source_style_svg_bytes + neo_edge_mask.serialized_bytes();
+        let exact_meter = meter_with_limits(exact_bytes, 4);
+        let mut exact = BoundedSvgOutput::new(&exact_meter);
+        exact.push_str(initial);
         emission
             .append_to(&mut exact, source_style_svg_bytes, &exact_meter)
             .expect("exact whole-edge budgets must pass");
-        assert_eq!(exact, format!("{initial}{expected_edge}"));
+        assert_eq!(exact.finish().unwrap(), format!("{initial}{expected_edge}"));
         assert_eq!(exact_meter.used(), 4);
-        assert_eq!(
-            exact_meter.projected_svg_bytes(),
-            source_style_svg_bytes + neo_edge_mask.serialized_bytes()
-        );
+        assert_eq!(exact_meter.projected_svg_bytes(), projected_style_bytes);
 
-        let short_svg_meter = meter_with_limits(initial.len() + expected_edge.len() - 1, 5);
-        let mut short_svg = initial.to_string();
-        let error = emission
-            .append_to(&mut short_svg, source_style_svg_bytes, &short_svg_meter)
-            .expect_err("short SVG budget must reject before path emission");
-        let crate::Error::ResourceLimitExceeded(error) = error else {
-            panic!("expected structured SVG resource rejection");
-        };
-        assert_eq!(error.limit, "max_svg_bytes");
-        assert_eq!(error.actual, initial.len() + expected_edge.len());
-        assert_eq!(short_svg, initial);
-        assert_eq!(short_svg_meter.used(), 0);
-        assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
+        for maximum in [exact_bytes - 1, initial.len() + expected_edge.len() / 2] {
+            let short_svg_meter = meter_with_limits(maximum, 5);
+            let mut short_svg = BoundedSvgOutput::new(&short_svg_meter);
+            short_svg.push_str(initial);
+            let error = emission
+                .append_to(&mut short_svg, source_style_svg_bytes, &short_svg_meter)
+                .expect_err("short SVG budget must reject before path emission");
+            let crate::Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected structured SVG resource rejection");
+            };
+            assert_eq!(error.limit, "max_svg_bytes");
+            assert_eq!(error.phase, ResourceLimitPhase::SvgOutput);
+            assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+            assert_eq!((error.actual, error.max), (exact_bytes, maximum));
+            assert_eq!(short_svg.finish().unwrap(), initial);
+            assert_eq!(short_svg_meter.used(), 0);
+            assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
+        }
 
-        let short_work_meter = meter_with_limits(initial.len() + expected_edge.len(), 3);
-        let mut short_work = initial.to_string();
+        let short_work_meter = meter_with_limits(exact_bytes - 1, 3);
+        let mut short_work = BoundedSvgOutput::new(&short_work_meter);
+        short_work.push_str(initial);
         let error = emission
             .append_to(&mut short_work, source_style_svg_bytes, &short_work_meter)
             .expect_err("short work budget must reject before path emission");
@@ -658,7 +685,8 @@ mod tests {
             panic!("expected structured work resource rejection");
         };
         assert_eq!(error.limit, "max_layout_work_units");
-        assert_eq!(short_work, initial);
+        assert_eq!((error.actual, error.max), (4, 3));
+        assert_eq!(short_work.as_str(), initial);
         assert_eq!(short_work_meter.used(), 0);
         assert_eq!(short_work_meter.projected_svg_bytes(), 0);
 
@@ -674,15 +702,107 @@ mod tests {
         assert!(hopped_svg.contains("stroke-dasharray: 0 0 18 2;"));
         assert!(hopped_svg.contains("stroke:#ef4444"));
         let short_hopped_meter = meter_with_limits(hopped_svg.len() - 1, usize::MAX);
-        let mut short_hopped = initial.to_string();
-        hopped
+        let mut short_hopped = BoundedSvgOutput::new(&short_hopped_meter);
+        short_hopped.push_str(initial);
+        let error = hopped
             .append_to(
                 &mut short_hopped,
                 source_style_svg_bytes,
                 &short_hopped_meter,
             )
             .expect_err("rewritten style must be admitted before path emission");
-        assert_eq!(short_hopped, initial);
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured SVG resource rejection");
+        };
+        assert_eq!(error.actual, hopped_svg.len());
+        assert_eq!(short_hopped.as_str(), initial);
+        assert_eq!(
+            short_hopped_meter.used(),
+            projected_style_bytes + hopped.d.len()
+        );
+        assert_eq!(short_hopped_meter.projected_svg_bytes(), 0);
+
+        let hand_drawn = FlowchartEdgeSvgEmission {
+            hand_drawn: true,
+            data_look: crate::config::DiagramLook::from_raw(Some("handDrawn")),
+            neo_edge_mask: None,
+            ..emission
+        };
+        let hand_drawn_style_bytes = emitted_styles
+            .projected_edge_source_style_bytes(&default_edge_style, &edge.style, true)
+            .unwrap();
+        let mut hand_drawn_svg = String::new();
+        hand_drawn
+            .append_to(&mut hand_drawn_svg, hand_drawn_style_bytes, &probe_meter)
+            .unwrap();
+        assert!(hand_drawn_svg.contains(
+            r##"style="opacity:0.5;stroke:#ef4444" stroke="#000" stroke-width="1" fill="none""##
+        ));
+        assert_eq!(
+            hand_drawn
+                .serialized_bytes(hand_drawn_style_bytes, &probe_meter)
+                .unwrap(),
+            hand_drawn_svg.len()
+        );
+
+        let overflow_meter = meter_with_limits(exact_bytes, 4);
+        let mut overflow = BoundedSvgOutput::new(&overflow_meter);
+        overflow.push_str(initial);
+        let error = hand_drawn
+            .append_to(&mut overflow, usize::MAX, &overflow_meter)
+            .expect_err("complete edge arithmetic must report overflow");
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured SVG arithmetic rejection");
+        };
+        assert_eq!(error.limit, "max_svg_bytes");
+        assert_eq!(error.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!((error.actual, error.max), (usize::MAX, exact_bytes));
+        assert_eq!(overflow.as_str(), initial);
+        assert_eq!(overflow_meter.used(), 0);
+        assert_eq!(overflow_meter.projected_svg_bytes(), 0);
+
+        let cancelled_meter = meter_with_limits(exact_bytes - 1, 3);
+        let mut cancelled = BoundedSvgOutput::new(&cancelled_meter);
+        cancelled.push_str(initial);
+        cancelled_meter.control().cancel();
+        let error = emission
+            .append_to(&mut cancelled, source_style_svg_bytes, &cancelled_meter)
+            .expect_err("cancellation at work preflight must win over both ceilings");
+        assert!(matches!(error, crate::Error::Cancelled(details)
+            if details.phase == merman_model::OperationPhase::Layout));
+        assert_eq!(cancelled.as_str(), initial);
+        assert_eq!(cancelled_meter.used(), 0);
+        assert_eq!(cancelled_meter.projected_svg_bytes(), 0);
+
+        let long_d = format!("M0,0{}", "L1,1".repeat(800));
+        let long_edge = FlowchartEdgeSvgEmission {
+            d: &long_d,
+            ..emission
+        };
+        let interrupted_meter = meter_with_limits(usize::MAX, 4);
+        let mut interrupted = BoundedSvgOutput::new(&interrupted_meter);
+        interrupted.push_str(initial);
+        // Allow the preflight, whole-path check, and both charges. The long `d` is then
+        // the first fragment to reach the sink's cancellation observation interval.
+        interrupted_meter.control().cancel_after_checkpoints(4);
+        let error = long_edge
+            .append_to(&mut interrupted, source_style_svg_bytes, &interrupted_meter)
+            .expect_err("bounded emission must observe cancellation during the path");
+        let crate::Error::Cancelled(cancellation) = error else {
+            panic!("expected structured cancellation from the bounded writer");
+        };
+        assert_eq!(cancellation.phase, merman_model::OperationPhase::Emit);
+        assert_eq!(interrupted.as_str(), format!("{initial}{PATH_START}"));
+        assert_eq!(interrupted_meter.used(), 4);
+        assert_eq!(
+            interrupted_meter.projected_svg_bytes(),
+            projected_style_bytes
+        );
+        assert!(
+            matches!(interrupted.finish(), Err(crate::Error::Cancelled(error))
+            if error == cancellation)
+        );
     }
 
     #[test]
