@@ -105,13 +105,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 182,
-      "packages_sha256": "12433680fa0ba11887fdc96331ca2b222517def4ed581832ff5871102dee9524"
+      "package_count": 183,
+      "packages_sha256": "0b081c976e77fd3ec1ce73c70e706a4f4a33d25297bcba04545f3f43c6d49fa6"
     }
   ],
   "dependency_closure": {
-    "package_count": 182,
-    "packages_sha256": "12433680fa0ba11887fdc96331ca2b222517def4ed581832ff5871102dee9524"
+    "package_count": 183,
+    "packages_sha256": "0b081c976e77fd3ec1ce73c70e706a4f4a33d25297bcba04545f3f43c6d49fa6"
   },
   "licenses": [
     {
@@ -968,6 +968,16 @@
         {
           "name": "roxmltree",
           "version": "0.20.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Yevhenii Reizner <razrfalcon@gmail.com>"
+          ],
+          "repository": "https://github.com/RazrFalcon/roxmltree"
+        },
+        {
+          "name": "roxmltree",
+          "version": "0.21.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

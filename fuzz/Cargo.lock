@@ -1131,6 +1131,7 @@ dependencies = [
  "ratex-svg",
  "ratex-types",
  "roughr-merman",
+ "roxmltree 0.21.2",
  "rustc-hash",
  "ryu-js",
  "serde",

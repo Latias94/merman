@@ -121,37 +121,37 @@
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 180,
-      "packages_sha256": "19cf8f53525dbd43bbf0d88e2235e6c793af699c57f3397f3d43e8db2943563f"
+      "package_count": 181,
+      "packages_sha256": "b8dd175d749972a19897e3ced8679b9620d60d0c752c588a5596dcb2cfbbaf4a"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios",
-      "package_count": 182,
-      "packages_sha256": "404497a47805ef09ec9aa7f9c785c505f2b10cd9d040381168ca64c17f29c100"
+      "package_count": 183,
+      "packages_sha256": "f64afffa54e9b045ac1a066882a106661f04df84af5a0b2bc2859a893276c434"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 182,
-      "packages_sha256": "404497a47805ef09ec9aa7f9c785c505f2b10cd9d040381168ca64c17f29c100"
+      "package_count": 183,
+      "packages_sha256": "f64afffa54e9b045ac1a066882a106661f04df84af5a0b2bc2859a893276c434"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 180,
-      "packages_sha256": "19cf8f53525dbd43bbf0d88e2235e6c793af699c57f3397f3d43e8db2943563f"
+      "package_count": 181,
+      "packages_sha256": "b8dd175d749972a19897e3ced8679b9620d60d0c752c588a5596dcb2cfbbaf4a"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-ios",
-      "package_count": 182,
-      "packages_sha256": "404497a47805ef09ec9aa7f9c785c505f2b10cd9d040381168ca64c17f29c100"
+      "package_count": 183,
+      "packages_sha256": "f64afffa54e9b045ac1a066882a106661f04df84af5a0b2bc2859a893276c434"
     }
   ],
   "dependency_closure": {
-    "package_count": 182,
-    "packages_sha256": "404497a47805ef09ec9aa7f9c785c505f2b10cd9d040381168ca64c17f29c100"
+    "package_count": 183,
+    "packages_sha256": "f64afffa54e9b045ac1a066882a106661f04df84af5a0b2bc2859a893276c434"
   },
   "licenses": [
     {
@@ -999,6 +999,16 @@
         {
           "name": "roxmltree",
           "version": "0.20.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Yevhenii Reizner <razrfalcon@gmail.com>"
+          ],
+          "repository": "https://github.com/RazrFalcon/roxmltree"
+        },
+        {
+          "name": "roxmltree",
+          "version": "0.21.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

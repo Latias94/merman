@@ -138,6 +138,7 @@ ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
+roxmltree.workspace = true
 rustc-hash.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
@@ -153,7 +154,6 @@ unicode-segmentation.workspace = true
 
 [dev-dependencies]
 data-encoding.workspace = true
-roxmltree.workspace = true
 # Browser geometry replays require the exact captured IEEE-754 values.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }

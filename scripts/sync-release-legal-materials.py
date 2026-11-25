@@ -112,7 +112,6 @@ CRATE_COMPONENTS = {
         "d3-shape",
         "fmin",
         "mermaid",
-        "roxmltree-dom",
         "rough-rs",
         "roughjs",
         "unicode-linebreak",

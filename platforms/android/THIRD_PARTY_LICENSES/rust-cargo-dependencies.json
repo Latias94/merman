@@ -102,19 +102,19 @@
     {
       "artifact_profile_id": "android-native",
       "target": "aarch64-linux-android",
-      "package_count": 165,
-      "packages_sha256": "aefa175a7f1cf4f70da5daf3b418b9305a840aab700338f16afa827d318ce8d5"
+      "package_count": 166,
+      "packages_sha256": "1e558321eae22fdaddfc61975450d39379fd51a6d25355262b191d6447fa3863"
     },
     {
       "artifact_profile_id": "android-native",
       "target": "x86_64-linux-android",
-      "package_count": 165,
-      "packages_sha256": "aefa175a7f1cf4f70da5daf3b418b9305a840aab700338f16afa827d318ce8d5"
+      "package_count": 166,
+      "packages_sha256": "1e558321eae22fdaddfc61975450d39379fd51a6d25355262b191d6447fa3863"
     }
   ],
   "dependency_closure": {
-    "package_count": 165,
-    "packages_sha256": "aefa175a7f1cf4f70da5daf3b418b9305a840aab700338f16afa827d318ce8d5"
+    "package_count": 166,
+    "packages_sha256": "1e558321eae22fdaddfc61975450d39379fd51a6d25355262b191d6447fa3863"
   },
   "licenses": [
     {
@@ -859,6 +859,16 @@
             "The Rust Project Developers"
           ],
           "repository": "https://github.com/rust-lang/regex"
+        },
+        {
+          "name": "roxmltree",
+          "version": "0.21.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Yevhenii Reizner <razrfalcon@gmail.com>"
+          ],
+          "repository": "https://github.com/RazrFalcon/roxmltree"
         },
         {
           "name": "scopeguard",

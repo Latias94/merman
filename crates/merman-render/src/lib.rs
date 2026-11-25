@@ -304,17 +304,7 @@ pub mod wardley;
     )
 )]
 mod xml;
-#[rustfmt::skip]
-#[allow(
-    clippy::collapsible_if,
-    clippy::filter_next,
-    reason = "Keep the pinned upstream XML implementation directly comparable to its source."
-)]
-#[allow(
-    dead_code,
-    reason = "The private XML owner retains the upstream API for source review and retirement."
-)]
-mod xml_dom;
+use roxmltree as xml_dom;
 #[cfg(feature = "diagram-xychart")]
 pub mod xychart;
 #[cfg(feature = "diagram-zenuml")]

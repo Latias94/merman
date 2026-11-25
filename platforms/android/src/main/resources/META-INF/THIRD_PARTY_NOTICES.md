@@ -21,19 +21,19 @@ Components: `beautiful-mermaid`, `grok-build`, `mermaid`, `mermaid-ascii`, `merm
 
 The source-default CLI feature closure including ELK without RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `cli-release`
 
 The published complete CLI release closure, including explicit ELK and RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `elk-render`
 
 Render artifacts that include the source-translated Eclipse ELK layered implementation.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `pdf-export`
 
@@ -57,55 +57,55 @@ Components: `resvg`, `resvg-iir-blur`, `usvg`.
 
 Render artifacts that link RaTeX and embed the KaTeX TrueType font payload.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `rust-render-base`
 
 Headless parser and renderer artifacts without optional ELK, RaTeX, ASCII, or Typst transport features.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `sdk-full`
 
 WASI full SDK legal closure, including RaTeX and ELK.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-math`
 
 WASI math SDK legal closure, including RaTeX and its fonts.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-full`
 
 Native C full SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-math`
 
 Native C math SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-standard`
 
 Native C standard SDK, including its ASCII and PDF notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `sdk-standard`
 
 WASI standard SDK legal closure, including the PNG renderer and bundled font.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `usvg`, `venn-js`, `zenuml-core`.
 
 ### `source-archive`
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `usvg`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `krilla`, `krilla-icc-profiles`, `krilla-svg`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `resvg`, `resvg-iir-blur`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `usvg`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
@@ -117,7 +117,7 @@ Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singu
 
 The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `web-analysis`
 
@@ -141,13 +141,13 @@ Components: `dompurify`, `mermaid`, `sanitize-url`, `zenuml-core`.
 
 Browser SDK including ASCII, Cytoscape, ELK and RaTeX math/font support.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `web-render`
 
 Complete browser SVG renderer with math, Cytoscape and ELK, without analysis, ASCII, or editor APIs.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ## Components
 
@@ -673,24 +673,6 @@ The roughr fork aligns its randomization and drawing-operation semantics with Ro
 - Local evidence: `crates/roughr`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/roughjs/LICENSE`](THIRD_PARTY_LICENSES/roughjs/LICENSE) (license, SHA-256 `dca9a392272606ac748ac0976a2a1133f14eef841c27beaa51a844d53c56a09d`)
-
-### roxmltree private XML DOM (`roxmltree-dom`)
-
-The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT.
-
-- Version: `0.21.1 with upstream iterative element fix`
-- Source: <https://github.com/RazrFalcon/roxmltree>
-- Source ref: `3f5c78dea57662b43a2f41961397b1f5ffe27166`
-- Source commit: `3f5c78dea57662b43a2f41961397b1f5ffe27166`
-- Source path: `src`
-- Relationship: `copied`, `modified`
-- License expression: `MIT AND ISC`
-- Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/merman-render/src/xml_dom`
-- Legal files:
-  - [`THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE`](THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE) (license, SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`)
-  - [`THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC`](THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC) (license, SHA-256 `c6a4ae2a0565d17ac7fccae808275596fc5959ffdf507107d001bc4669189e45`)
-  - [`THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT`](THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT) (license, SHA-256 `fffe218c1e349e1d482a05677f2ce850502f88298174d77f6ac7c04821db7899`)
 
 ### sanitize-url (`sanitize-url`)
 

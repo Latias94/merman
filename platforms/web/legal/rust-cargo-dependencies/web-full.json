@@ -86,8 +86,8 @@
     "artifact_profile_sha256": "f1a00eb7bd273dade4826d7595dd9dafb43f8bf5518ffec3d0fd1774b31f1ba8"
   },
   "dependency_closure": {
-    "package_count": 169,
-    "packages_sha256": "cbcae3e76621604acf4e64f6d2266b46a56f2e63e54d6d35d35ad2c73de07ab2"
+    "package_count": 170,
+    "packages_sha256": "618d77e70db16850492e1e57760f5e259d96cd845f7afccb676027eace018fd8"
   },
   "licenses": [
     {
@@ -880,6 +880,16 @@
             "The Rust Project Developers"
           ],
           "repository": "https://github.com/rust-lang/regex"
+        },
+        {
+          "name": "roxmltree",
+          "version": "0.21.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Yevhenii Reizner <razrfalcon@gmail.com>"
+          ],
+          "repository": "https://github.com/RazrFalcon/roxmltree"
         },
         {
           "name": "scopeguard",
