@@ -1,3 +1,4 @@
+use crate::config::ConfigLookup;
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -40,8 +41,8 @@ impl XyChartCssBinding {
         }
     }
 
-    fn color<'a>(config: &'a Value, channel: &str) -> &'a str {
-        let variables = &config["themeVariables"];
+    fn color<'a>(config: &'a impl ConfigLookup, channel: &str) -> &'a str {
+        let variables = config.get("themeVariables").unwrap_or(&Value::Null);
         if let Some(color) = variables["xyChart"][channel].as_str() {
             return color;
         }
@@ -53,7 +54,7 @@ impl XyChartCssBinding {
         variables[root].as_str().unwrap_or(fallback)
     }
 
-    pub(super) fn resolve(config: &Value) -> Self {
+    pub(super) fn resolve(config: &impl ConfigLookup) -> Self {
         let role = |key| Self::color(config, key).to_owned();
         let palette = crate::config::selected_config_string(
             config,

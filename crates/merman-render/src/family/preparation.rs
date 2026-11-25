@@ -624,7 +624,7 @@ fn prepare_pie_family<'parsed>(
             theme,
             model,
             meta.title.as_deref(),
-            meta.effective_config.as_value(),
+            &meta.effective_config,
             execution.text_measurer(),
         )?;
         return Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
@@ -632,11 +632,11 @@ fn prepare_pie_family<'parsed>(
             appearance: PieAppearance::Native(style),
         })));
     }
-    let theme = crate::pie::PieThemePlan::baseline(model, meta.effective_config.as_value());
+    let theme = crate::pie::PieThemePlan::baseline(model, &meta.effective_config);
     let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
+        &meta.effective_config,
         &theme,
         execution.text_measurer(),
     )?;
@@ -844,7 +844,7 @@ fn prepare_xy_chart_family<'parsed>(
 
     let native = execution.native_family_theme();
     let config = &meta.effective_config;
-    let series_paint = XyChartSeriesPaintPlan::new(config.as_value(), model, native);
+    let series_paint = XyChartSeriesPaintPlan::new(config, model, native);
     let typography_theme = native.map_or_else(
         || XyChartTypographyThemePlan::resolve(config),
         |theme| XyChartTypographyThemePlan::native(config, &theme.typography),

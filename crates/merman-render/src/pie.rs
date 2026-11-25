@@ -73,7 +73,7 @@ fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
 pub(crate) fn layout_pie_diagram_typed(
     model: &PieDiagramModel,
     diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let paint_plan = PieThemePlan::baseline(model, effective_config);
@@ -89,7 +89,7 @@ pub(crate) fn layout_pie_diagram_typed(
 pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     model: &PieDiagramModel,
     diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     paint_plan: &PieThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
@@ -138,7 +138,7 @@ struct PieLayoutGeometry {
 fn layout_pie(
     model: &PieDiagramModel,
     diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     paint: PieLayoutPaint<'_>,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieLayoutGeometry> {
