@@ -103,15 +103,15 @@ fn before_ports_feedback_stops_before_unadmitted_reverse_update() {
     assert_eq!(work.rejected, Some(10));
     assert_eq!(work.remaining, 9);
     assert_eq!(
-        comparator.relations.bigger_than[&second],
+        comparator.relations.bigger_members(second),
         HashSet::from([first])
     );
     assert_eq!(
-        comparator.relations.smaller_than[&first],
+        comparator.relations.smaller_members(first),
         HashSet::from([second])
     );
-    assert!(comparator.relations.bigger_than[&first].is_empty());
-    assert!(comparator.relations.smaller_than[&second].is_empty());
+    assert!(comparator.relations.bigger_members(first).is_empty());
+    assert!(comparator.relations.smaller_members(second).is_empty());
     assert_eq!(graph, before);
 }
 
@@ -145,33 +145,27 @@ fn model_order_work_admits_new_crossing_closure() {
     }
     for large in 0..3 {
         for small in 3..6 {
-            assert!(!relations.bigger_than[&large].contains(&small));
-            assert!(!relations.smaller_than[&small].contains(&large));
+            assert!(!relations.bigger_members(large).contains(&small));
+            assert!(!relations.smaller_members(small).contains(&large));
         }
     }
-    assert_eq!(
-        model_order_relation_update_work(2, 3, &relations.bigger_than, &relations.smaller_than),
-        Ok(22)
-    );
-    assert_eq!(
-        model_order_relation_work(2, 3, &relations.bigger_than, &relations.smaller_than),
-        Ok(23)
-    );
+    assert_eq!(relations.update_work(2, 3), Ok(22));
+    assert_eq!(relations.comparison_work(2, 3), Ok((23, None)));
 
     relations.update(2, 3);
 
     for owner in 0..6 {
         assert_eq!(
-            relations.bigger_than[&owner],
+            relations.bigger_members(owner),
             (owner + 1..6).collect::<HashSet<_>>()
         );
         assert_eq!(
-            relations.smaller_than[&owner],
+            relations.smaller_members(owner),
             (0..owner).collect::<HashSet<_>>()
         );
     }
     assert_eq!(
-        model_order_relation_work(2, 3, &relations.bigger_than, &relations.smaller_than),
-        Ok(1)
+        relations.comparison_work(2, 3),
+        Ok((1, Some(Ordering::Greater)))
     );
 }

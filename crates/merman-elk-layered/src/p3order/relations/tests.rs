@@ -1,16 +1,118 @@
 use super::*;
+use std::collections::HashSet;
+
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortSide, PortType};
 use crate::options::{LayeredOptions, OrderingStrategy};
-use crate::p3order::{
-    ModelOrderNodeComparator, ModelOrderPortComparator, model_order_relation_update_work,
-    model_order_relation_work,
-};
+use crate::p3order::{ModelOrderNodeComparator, ModelOrderPortComparator};
 use crate::work::{WorkControl, WorkError};
+
+type Facts = HashMap<usize, HashSet<usize>>;
+
+impl ModelOrderRelations {
+    pub(in crate::p3order) fn from_test_rows(bigger_than: &Facts, smaller_than: &Facts) -> Self {
+        let mut relations = Self::default();
+        for (side, rows) in [(Down, bigger_than), (Up, smaller_than)] {
+            for (&key, members) in rows {
+                for &member in members {
+                    let slot = relations.slot_for(key);
+                    let member = relations.slot_for(member);
+                    relations.rows[slot][side as usize].insert(Word::member(member));
+                }
+            }
+        }
+        relations.unpaired_fixture = relations.rows.iter().enumerate().any(|(slot, pair)| {
+            [Down, Up].into_iter().any(|side| {
+                pair[side as usize]
+                    .words()
+                    .flat_map(Word::members)
+                    .any(|member| !relations.rows[member][side.opposite() as usize].contains(slot))
+            })
+        });
+        relations
+    }
+
+    pub(in crate::p3order) fn is_clear(&self) -> bool {
+        self.slots.is_empty() && self.rows.is_empty()
+    }
+
+    pub(in crate::p3order) fn bigger_members(&self, key: usize) -> HashSet<usize> {
+        self.members(key, Down)
+    }
+
+    pub(in crate::p3order) fn smaller_members(&self, key: usize) -> HashSet<usize> {
+        self.members(key, Up)
+    }
+
+    fn members(&self, key: usize, side: Side) -> HashSet<usize> {
+        let Some(slot) = self.lookup(key) else {
+            return HashSet::new();
+        };
+        self.slots
+            .iter()
+            .filter_map(|(&member, &index)| {
+                self.rows[slot][side as usize]
+                    .contains(index)
+                    .then_some(member)
+            })
+            .collect()
+    }
+
+    pub(in crate::p3order) fn facts(&self) -> (Facts, Facts) {
+        let mut ids = vec![0; self.rows.len()];
+        for (&id, &slot) in &self.slots {
+            ids[slot] = id;
+        }
+        let collect = |side: Side| {
+            self.rows
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, pair)| {
+                    let row = &pair[side as usize];
+                    (row.len != 0).then(|| {
+                        let members = row
+                            .words()
+                            .flat_map(Word::members)
+                            .map(|i| ids[i])
+                            .collect();
+                        (ids[slot], members)
+                    })
+                })
+                .collect::<Facts>()
+        };
+        (collect(Down), collect(Up))
+    }
+
+    fn scratch_buffers(&self) -> [(*const Word, usize); 2] {
+        [
+            (
+                self.smaller_snapshot.as_ptr(),
+                self.smaller_snapshot.capacity(),
+            ),
+            (
+                self.larger_snapshot.as_ptr(),
+                self.larger_snapshot.capacity(),
+            ),
+        ]
+    }
+
+    fn snapshot_members(&self, snapshot: &[Word]) -> HashSet<usize> {
+        let mut ids = vec![0; self.rows.len()];
+        for (&id, &slot) in &self.slots {
+            ids[slot] = id;
+        }
+        snapshot
+            .iter()
+            .copied()
+            .flat_map(Word::members)
+            .map(|i| ids[i])
+            .collect()
+    }
+}
 
 #[derive(Clone, Default)]
 struct LegacyRelations {
-    bigger_than: HashMap<usize, HashSet<usize>>,
-    smaller_than: HashMap<usize, HashSet<usize>>,
+    bigger_than: Facts,
+    smaller_than: Facts,
 }
 
 impl LegacyRelations {
@@ -70,58 +172,52 @@ impl LegacyRelations {
     }
 
     fn candidate(&self) -> ModelOrderRelations {
-        ModelOrderRelations {
-            bigger_than: self.bigger_than.clone(),
-            smaller_than: self.smaller_than.clone(),
-            ..ModelOrderRelations::default()
-        }
+        ModelOrderRelations::from_test_rows(&self.bigger_than, &self.smaller_than)
+    }
+
+    fn update_work(&self, bigger: usize, smaller: usize) -> usize {
+        let a = self.bigger_than.get(&smaller).map_or(0, HashSet::len);
+        let d = self.smaller_than.get(&bigger).map_or(0, HashSet::len);
+        2 + 3 * (a + d) + 2 * a * d
     }
 }
 
 fn assert_state(candidate: &ModelOrderRelations, legacy: &LegacyRelations) {
-    assert_eq!(candidate.bigger_than, legacy.bigger_than);
-    assert_eq!(candidate.smaller_than, legacy.smaller_than);
+    // Legacy cache probes materialize empty rows. They have zero cardinality and no facts.
+    let nonempty = |rows: &Facts| {
+        rows.iter()
+            .filter(|(_, members)| !members.is_empty())
+            .map(|(&key, members)| (key, members.clone()))
+            .collect::<Facts>()
+    };
+    assert_eq!(
+        candidate.facts(),
+        (
+            nonempty(&legacy.bigger_than),
+            nonempty(&legacy.smaller_than)
+        )
+    );
 }
 
 fn assert_observations(candidate: &ModelOrderRelations, legacy: &LegacyRelations, keys: &[usize]) {
     assert_state(candidate, legacy);
+    let mut reference = legacy.clone();
     for &first in keys {
         for &second in keys {
-            assert_eq!(
-                model_order_relation_update_work(
-                    first,
-                    second,
-                    &candidate.bigger_than,
-                    &candidate.smaller_than,
-                ),
-                model_order_relation_update_work(
-                    first,
-                    second,
-                    &legacy.bigger_than,
-                    &legacy.smaller_than,
-                ),
-            );
-            assert_eq!(
-                model_order_relation_work(
-                    first,
-                    second,
-                    &candidate.bigger_than,
-                    &candidate.smaller_than,
-                ),
-                model_order_relation_work(first, second, &legacy.bigger_than, &legacy.smaller_than,),
-            );
-
-            let mut probe = ModelOrderRelations {
-                bigger_than: candidate.bigger_than.clone(),
-                smaller_than: candidate.smaller_than.clone(),
-                ..ModelOrderRelations::default()
+            let forward = reference.update_work(first, second);
+            let reverse = reference.update_work(second, first);
+            let order = reference.cached_ordering(first, second);
+            let charged = if order.is_some() {
+                1
+            } else {
+                1 + forward.max(reverse)
             };
-            let mut reference = legacy.clone();
+            assert_eq!(candidate.update_work(first, second), Ok(forward));
             assert_eq!(
-                probe.cached_ordering(first, second),
-                reference.cached_ordering(first, second),
+                candidate.comparison_work(first, second),
+                Ok((charged, order))
             );
-            assert_state(&probe, &reference);
+            assert_eq!(candidate.cached_ordering(first, second), order);
         }
     }
 }
@@ -132,13 +228,114 @@ fn update_both(
     bigger: usize,
     smaller: usize,
 ) {
-    let smaller_count = legacy.bigger_than.get(&smaller).map_or(0, HashSet::len);
-    let larger_count = legacy.smaller_than.get(&bigger).map_or(0, HashSet::len);
+    let mut downs = legacy
+        .bigger_than
+        .get(&smaller)
+        .cloned()
+        .unwrap_or_default();
+    let mut ups = legacy
+        .smaller_than
+        .get(&bigger)
+        .cloned()
+        .unwrap_or_default();
     candidate.update(bigger, smaller);
     legacy.update(bigger, smaller);
     assert_state(candidate, legacy);
-    assert_eq!(candidate.smaller_snapshot.len(), smaller_count);
-    assert_eq!(candidate.larger_snapshot.len(), larger_count);
+    if !downs.is_empty() || !ups.is_empty() {
+        downs.insert(smaller);
+        ups.insert(bigger);
+    }
+    assert_eq!(
+        candidate.snapshot_members(&candidate.smaller_snapshot),
+        downs
+    );
+    assert_eq!(candidate.snapshot_members(&candidate.larger_snapshot), ups);
+}
+
+#[test]
+fn reached_multiword_rows_match_the_entry_rectangles_through_cycles() {
+    let ids = (0..130).map(|i| usize::MAX - i * 1009).collect::<Vec<_>>();
+    let mut legacy = LegacyRelations::default();
+    let mut relations = ModelOrderRelations::default();
+    for index in (0..64).chain(65..129) {
+        update_both(&mut relations, &mut legacy, ids[index], ids[index + 1]);
+    }
+    for (a, b) in [(64, 65), (64, 65), (129, 0), (63, 63), (65, 64)] {
+        assert!(!relations.unpaired_fixture);
+        update_both(&mut relations, &mut legacy, ids[a], ids[b]);
+    }
+    assert_eq!(relations.bigger_members(ids[63]).len(), ids.len());
+    assert_eq!(relations.smaller_members(ids[64]).len(), ids.len());
+    assert_eq!(
+        relations.cached_ordering(ids[63], ids[65]),
+        Some(Ordering::Greater)
+    );
+    assert_eq!(
+        relations.cached_ordering(ids[65], ids[63]),
+        Some(Ordering::Greater)
+    );
+}
+
+#[test]
+fn false_transpose_and_full_closure_assumptions_change_seeded_facts() {
+    let mut legacy = LegacyRelations {
+        bigger_than: HashMap::from([
+            (1, HashSet::from([2])),
+            (2, HashSet::from([3])),
+            (4, HashSet::from([5])),
+        ]),
+        smaller_than: HashMap::new(),
+    };
+    let mut relations = legacy.candidate();
+    update_both(&mut relations, &mut legacy, 4, 5);
+    assert_eq!(relations.smaller_members(5), HashSet::from([4]));
+    assert!(!relations.bigger_members(1).contains(&3));
+}
+
+#[test]
+fn high_external_ids_and_cache_misses_allocate_only_observed_slots() {
+    let mut relations = ModelOrderRelations::default();
+    for first in 0..500 {
+        assert_eq!(relations.cached_ordering(first, usize::MAX), None);
+        assert_eq!(relations.comparison_work(first, usize::MAX), Ok((3, None)));
+    }
+    assert_eq!(
+        (relations.slots.capacity(), relations.rows.capacity()),
+        (0, 0)
+    );
+
+    let ids = (0..500).map(|i| (i * 997, usize::MAX - i * 1009));
+    for (first, second) in ids {
+        relations.update(first, second);
+    }
+    assert_eq!(relations.rows.len(), 1_000);
+    assert!(
+        relations
+            .rows
+            .iter()
+            .flatten()
+            .all(|row| row.additional.is_none())
+    );
+    assert_eq!(
+        (
+            relations.smaller_snapshot.capacity(),
+            relations.larger_snapshot.capacity()
+        ),
+        (0, 0)
+    );
+    let capacities = (relations.slots.capacity(), relations.rows.capacity());
+    relations.clear();
+    assert!(relations.is_clear());
+    relations.update(1, usize::MAX);
+    assert_eq!(relations.cached_ordering(0, usize::MAX), None);
+    assert_eq!(
+        relations.cached_ordering(1, usize::MAX),
+        Some(Ordering::Greater)
+    );
+    assert_eq!(
+        (relations.slots.capacity(), relations.rows.capacity()),
+        capacities
+    );
 }
 
 #[test]
@@ -216,7 +413,7 @@ fn cached_ordering_retains_all_four_priorities() {
                 legacy.smaller_than.entry(key).or_default().insert(member);
             }
         }
-        let mut candidate = legacy.candidate();
+        let candidate = legacy.candidate();
         assert_eq!(candidate.cached_ordering(11, 23), expected, "mask {mask}");
         assert_eq!(legacy.cached_ordering(11, 23), expected, "mask {mask}");
         assert_state(&candidate, &legacy);
@@ -271,25 +468,12 @@ fn entry_snapshots_reuse_capacity_without_leaking_previous_members() {
     };
     let mut candidate = legacy.candidate();
     update_both(&mut candidate, &mut legacy, 40, 50);
-    let buffers = (
-        candidate.smaller_snapshot.as_ptr(),
-        candidate.larger_snapshot.as_ptr(),
-        candidate.smaller_snapshot.capacity(),
-        candidate.larger_snapshot.capacity(),
-    );
+    let buffers = candidate.scratch_buffers();
     update_both(&mut candidate, &mut legacy, 1_000, 2_000);
-    assert_eq!(candidate.bigger_than[&1_000], HashSet::from([2_000]));
-    assert_eq!(candidate.smaller_than[&2_000], HashSet::from([1_000]));
+    assert_eq!(candidate.bigger_members(1_000), HashSet::from([2_000]));
+    assert_eq!(candidate.smaller_members(2_000), HashSet::from([1_000]));
     update_both(&mut candidate, &mut legacy, 4_000, 50);
-    assert_eq!(
-        (
-            candidate.smaller_snapshot.as_ptr(),
-            candidate.larger_snapshot.as_ptr(),
-            candidate.smaller_snapshot.capacity(),
-            candidate.larger_snapshot.capacity(),
-        ),
-        buffers,
-    );
+    assert_eq!(candidate.scratch_buffers(), buffers);
     assert_observations(&candidate, &legacy, &[0, 8, 40, 50, 1_000, 2_000, 4_000]);
 }
 
@@ -301,27 +485,14 @@ fn clear_drops_facts_and_reuses_scratch_without_carrying_members_forward() {
     };
     let mut candidate = legacy.candidate();
     update_both(&mut candidate, &mut legacy, 40, 50);
-    let buffers = (
-        candidate.smaller_snapshot.as_ptr(),
-        candidate.larger_snapshot.as_ptr(),
-        candidate.smaller_snapshot.capacity(),
-        candidate.larger_snapshot.capacity(),
-    );
+    let buffers = candidate.scratch_buffers();
     candidate.clear();
     let mut legacy = LegacyRelations::default();
     assert_state(&candidate, &legacy);
     assert!(candidate.smaller_snapshot.is_empty());
     assert!(candidate.larger_snapshot.is_empty());
     update_both(&mut candidate, &mut legacy, 1_000, 2_000);
-    assert_eq!(
-        (
-            candidate.smaller_snapshot.as_ptr(),
-            candidate.larger_snapshot.as_ptr(),
-            candidate.smaller_snapshot.capacity(),
-            candidate.larger_snapshot.capacity(),
-        ),
-        buffers,
-    );
+    assert_eq!(candidate.scratch_buffers(), buffers);
     assert_observations(&candidate, &legacy, &[40, 50, 1_000, 2_000]);
 }
 
@@ -419,32 +590,28 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
         ("reverse", reverse.clone(), 50, 40, 10),
         ("already-learned", reverse, 40, 50, 2),
     ] {
-        let smaller_members = seed.bigger_than.get(&small).cloned().unwrap_or_default();
-        let larger_members = seed.smaller_than.get(&large).cloned().unwrap_or_default();
+        let mut smaller_members = seed.bigger_than.get(&small).cloned().unwrap_or_default();
+        let mut larger_members = seed.smaller_than.get(&large).cloned().unwrap_or_default();
+        if !smaller_members.is_empty() || !larger_members.is_empty() {
+            smaller_members.insert(small);
+            larger_members.insert(large);
+        }
         for (budget, reject_charge) in [(required - 1, false), (required, true), (required, false)]
         {
             let mut comparator =
                 ModelOrderNodeComparator::new(&graph, &[], OrderingStrategy::NodesAndEdges);
             comparator.relations = seed.candidate();
-            comparator.relations.smaller_snapshot = vec![91, 92];
-            comparator.relations.larger_snapshot = vec![93];
-            let buffers = (
-                comparator.relations.smaller_snapshot.as_ptr(),
-                comparator.relations.larger_snapshot.as_ptr(),
-                comparator.relations.smaller_snapshot.capacity(),
-                comparator.relations.larger_snapshot.capacity(),
-            );
-            let map_capacities = (
-                comparator.relations.bigger_than.capacity(),
-                comparator.relations.smaller_than.capacity(),
+            let smaller_scratch = [Word::member(91), Word::member(92)];
+            let larger_scratch = [Word::member(93)];
+            comparator.relations.smaller_snapshot = smaller_scratch.to_vec();
+            comparator.relations.larger_snapshot = larger_scratch.to_vec();
+            let buffers = comparator.relations.scratch_buffers();
+            let capacities = (
+                comparator.relations.slots.capacity(),
+                comparator.relations.rows.capacity(),
             );
             assert_eq!(
-                model_order_relation_update_work(
-                    large,
-                    small,
-                    &comparator.relations.bigger_than,
-                    &comparator.relations.smaller_than,
-                ),
+                comparator.relations.update_work(large, small),
                 Ok(required),
                 "{name}",
             );
@@ -455,23 +622,15 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
                 assert_eq!(result, Err(WorkError::Interrupted), "{name}");
                 assert_eq!(work.remaining, budget);
                 assert_state(&comparator.relations, &seed);
-                assert_eq!(comparator.relations.smaller_snapshot, [91, 92]);
-                assert_eq!(comparator.relations.larger_snapshot, [93]);
+                assert_eq!(comparator.relations.smaller_snapshot, smaller_scratch);
+                assert_eq!(comparator.relations.larger_snapshot, larger_scratch);
+                assert_eq!(comparator.relations.scratch_buffers(), buffers);
                 assert_eq!(
                     (
-                        comparator.relations.smaller_snapshot.as_ptr(),
-                        comparator.relations.larger_snapshot.as_ptr(),
-                        comparator.relations.smaller_snapshot.capacity(),
-                        comparator.relations.larger_snapshot.capacity(),
+                        comparator.relations.slots.capacity(),
+                        comparator.relations.rows.capacity(),
                     ),
-                    buffers,
-                );
-                assert_eq!(
-                    (
-                        comparator.relations.bigger_than.capacity(),
-                        comparator.relations.smaller_than.capacity(),
-                    ),
-                    map_capacities,
+                    capacities,
                 );
                 let mut expected_events = vec![Check(required)];
                 if reject_charge {
@@ -488,19 +647,13 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
                 assert_eq!(
                     comparator
                         .relations
-                        .smaller_snapshot
-                        .iter()
-                        .copied()
-                        .collect::<HashSet<_>>(),
+                        .snapshot_members(&comparator.relations.smaller_snapshot),
                     smaller_members,
                 );
                 assert_eq!(
                     comparator
                         .relations
-                        .larger_snapshot
-                        .iter()
-                        .copied()
-                        .collect::<HashSet<_>>(),
+                        .snapshot_members(&comparator.relations.larger_snapshot),
                     larger_members,
                 );
             }
@@ -527,17 +680,14 @@ fn port_precharge_failure_preserves_facts_keys_and_scratch_before_graph_access()
             false,
         );
         comparator.relations = seed.candidate();
-        comparator.relations.smaller_snapshot = vec![91, 92];
-        comparator.relations.larger_snapshot = vec![93];
-        let buffers = (
-            comparator.relations.smaller_snapshot.as_ptr(),
-            comparator.relations.larger_snapshot.as_ptr(),
-            comparator.relations.smaller_snapshot.capacity(),
-            comparator.relations.larger_snapshot.capacity(),
-        );
-        let map_capacities = (
-            comparator.relations.bigger_than.capacity(),
-            comparator.relations.smaller_than.capacity(),
+        let smaller_scratch = [Word::member(91), Word::member(92)];
+        let larger_scratch = [Word::member(93)];
+        comparator.relations.smaller_snapshot = smaller_scratch.to_vec();
+        comparator.relations.larger_snapshot = larger_scratch.to_vec();
+        let buffers = comparator.relations.scratch_buffers();
+        let capacities = (
+            comparator.relations.slots.capacity(),
+            comparator.relations.rows.capacity(),
         );
         let mut work = TraceWork::new(budget);
         work.reject_charge = reject_charge;
@@ -547,23 +697,15 @@ fn port_precharge_failure_preserves_facts_keys_and_scratch_before_graph_access()
         );
         assert_eq!(work.remaining, budget);
         assert_state(&comparator.relations, &seed);
-        assert_eq!(comparator.relations.smaller_snapshot, [91, 92]);
-        assert_eq!(comparator.relations.larger_snapshot, [93]);
+        assert_eq!(comparator.relations.smaller_snapshot, smaller_scratch);
+        assert_eq!(comparator.relations.larger_snapshot, larger_scratch);
+        assert_eq!(comparator.relations.scratch_buffers(), buffers);
         assert_eq!(
             (
-                comparator.relations.smaller_snapshot.as_ptr(),
-                comparator.relations.larger_snapshot.as_ptr(),
-                comparator.relations.smaller_snapshot.capacity(),
-                comparator.relations.larger_snapshot.capacity(),
+                comparator.relations.slots.capacity(),
+                comparator.relations.rows.capacity(),
             ),
-            buffers,
-        );
-        assert_eq!(
-            (
-                comparator.relations.bigger_than.capacity(),
-                comparator.relations.smaller_than.capacity(),
-            ),
-            map_capacities,
+            capacities,
         );
         let mut expected_events = vec![Check(23)];
         if reject_charge {
@@ -649,8 +791,8 @@ fn feedback_admission_preserves_each_snapshot_prefix_and_legacy_query_result() {
         if budget == 21 {
             assert_eq!(legacy.cached_ordering(3, 4), Some(Ordering::Greater));
             assert_eq!(legacy.cached_ordering(4, 3), Some(Ordering::Greater));
-            assert!(comparator.relations.bigger_than[&3].contains(&3));
-            assert!(comparator.relations.smaller_than[&4].contains(&4));
+            assert!(comparator.relations.bigger_members(3).contains(&3));
+            assert!(comparator.relations.smaller_members(4).contains(&4));
         }
     }
 }
@@ -690,7 +832,7 @@ fn helper_continuation_records_a_node_outside_the_sorted_layer() {
     legacy.update(2, 0);
     legacy.update(2, 3);
     assert_observations(&comparator.relations, &legacy, &[0, 1, 2, 3]);
-    assert!(comparator.relations.bigger_than[&2].contains(&0));
+    assert!(comparator.relations.bigger_members(2).contains(&0));
 }
 
 #[test]

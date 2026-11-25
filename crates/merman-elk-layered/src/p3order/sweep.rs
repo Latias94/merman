@@ -1939,23 +1939,8 @@ impl BarycenterHeuristic {
         ordering
     }
 
-    fn transitive_ordering(&mut self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
-        self.relations.bigger_than.entry(first).or_default();
-        self.relations.bigger_than.entry(second).or_default();
-        self.relations.smaller_than.entry(first).or_default();
-        self.relations.smaller_than.entry(second).or_default();
-
-        if self.relations.bigger_than[&first].contains(&second)
-            || self.relations.smaller_than[&second].contains(&first)
-        {
-            Some(std::cmp::Ordering::Greater)
-        } else if self.relations.bigger_than[&second].contains(&first)
-            || self.relations.smaller_than[&first].contains(&second)
-        {
-            Some(std::cmp::Ordering::Less)
-        } else {
-            None
-        }
+    fn transitive_ordering(&self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
+        self.relations.barycenter_ordering(first, second)
     }
 
     fn update_model_order_associations(
@@ -4933,27 +4918,14 @@ mod tests {
             Some(Greater),
         ];
         for (mask, expected) in expected.into_iter().enumerate() {
-            heuristic.relations.clear();
-            for (bit, key, member) in [(0, 11, 23), (1, 23, 11)] {
-                if mask & (1 << bit) != 0 {
-                    heuristic
-                        .relations
-                        .bigger_than
-                        .entry(key)
-                        .or_default()
-                        .insert(member);
-                }
-            }
-            for (bit, key, member) in [(2, 11, 23), (3, 23, 11)] {
-                if mask & (1 << bit) != 0 {
-                    heuristic
-                        .relations
-                        .smaller_than
-                        .entry(key)
-                        .or_default()
-                        .insert(member);
-                }
-            }
+            let facts = |offset: usize| {
+                [(0usize, 11, 23), (1, 23, 11)]
+                    .into_iter()
+                    .filter(|(bit, _, _)| mask & (1usize << (bit + offset)) != 0usize)
+                    .map(|(_, key, member)| (key, HashSet::from([member])))
+                    .collect()
+            };
+            heuristic.relations = ModelOrderRelations::from_test_rows(&facts(0), &facts(2));
             assert_eq!(
                 heuristic.transitive_ordering(11, 23),
                 expected,
@@ -4982,8 +4954,7 @@ mod tests {
             let mut layer = vec![0, 1];
             heuristic.insertion_sort_by_model_order(&graph, &mut layer);
             assert_eq!(layer, [0, 1]);
-            assert!(heuristic.relations.bigger_than.is_empty());
-            assert!(heuristic.relations.smaller_than.is_empty());
+            assert!(heuristic.relations.is_clear());
         }
     }
 

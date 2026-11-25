@@ -791,41 +791,8 @@ fn sorted_nodes_with_relation_state(
     Ok(order)
 }
 
-// The comparator updates a transitive relation only when a pair is not already cached. Bound
-// both possible update directions using the sets that exist for this comparison, preserving
-// the source stable-sort call order without a second sorting pass or an owner-wide square.
-fn model_order_relation_work(
-    first: usize,
-    second: usize,
-    bigger: &HashMap<usize, HashSet<usize>>,
-    smaller: &HashMap<usize, HashSet<usize>>,
-) -> Result<usize, WorkError> {
-    if bigger.get(&first).is_some_and(|set| set.contains(&second))
-        || bigger.get(&second).is_some_and(|set| set.contains(&first))
-        || smaller.get(&first).is_some_and(|set| set.contains(&second))
-        || smaller.get(&second).is_some_and(|set| set.contains(&first))
-    {
-        return Ok(1);
-    }
-    checked_add(
-        1,
-        model_order_relation_update_work(first, second, bigger, smaller)?.max(
-            model_order_relation_update_work(second, first, bigger, smaller)?,
-        ),
-    )
-}
-
-fn model_order_relation_update_work(
-    large: usize,
-    small: usize,
-    bigger: &HashMap<usize, HashSet<usize>>,
-    smaller: &HashMap<usize, HashSet<usize>>,
-) -> Result<usize, WorkError> {
-    let smaller_relations = bigger.get(&small).map_or(0, HashSet::len);
-    let larger_relations = smaller.get(&large).map_or(0, HashSet::len);
-    model_order_relation_update_work_from_counts(smaller_relations, larger_relations)
-}
-
+// Keep the existing per-update work bound and exact admission boundary. It accounts each
+// entry-snapshot member and potential insertion even when the bitmap can apply many at once.
 fn model_order_relation_update_work_from_counts(
     smaller_relations: usize,
     larger_relations: usize,
@@ -1134,7 +1101,7 @@ impl<'a> ModelOrderNodeComparator<'a> {
         n2: usize,
         work: &mut dyn WorkControl,
     ) -> Result<NodeComparison, WorkError> {
-        if let Some(ordering) = self.cached_ordering(n1, n2) {
+        if let Some(ordering) = self.relations.cached_ordering(n1, n2) {
             return Ok(NodeComparison::Order(ordering));
         }
 
@@ -1354,22 +1321,13 @@ impl<'a> ModelOrderNodeComparator<'a> {
         Ok(None)
     }
 
-    fn cached_ordering(&mut self, first: usize, second: usize) -> Option<Ordering> {
-        self.relations.cached_ordering(first, second)
-    }
-
     fn update_bigger_smaller(
         &mut self,
         bigger: usize,
         smaller: usize,
         work: &mut dyn WorkControl,
     ) -> Result<(), WorkError> {
-        let units = model_order_relation_update_work(
-            bigger,
-            smaller,
-            &self.relations.bigger_than,
-            &self.relations.smaller_than,
-        )?;
+        let units = self.relations.update_work(bigger, smaller)?;
         work.check(units)?;
         work.charge(units)?;
         self.relations.update(bigger, smaller);
@@ -1421,19 +1379,14 @@ impl<'a> ModelOrderPortComparator<'a> {
         original_p2: usize,
         work: &mut dyn WorkControl,
     ) -> Result<Ordering, WorkError> {
-        let units = model_order_relation_work(
-            original_p1,
-            original_p2,
-            &self.relations.bigger_than,
-            &self.relations.smaller_than,
-        )?;
+        let (units, cached) = self.relations.comparison_work(original_p1, original_p2)?;
         work.check(units)?;
         work.charge(units)?;
         let p1 = original_p1;
         let p2 = original_p2;
         let p1_side = self.graph.layerless_nodes[self.node].ports[p1].side;
 
-        if let Some(ordering) = self.cached_ordering(p1, p2) {
+        if let Some(ordering) = cached {
             return Ok(ordering);
         }
 
@@ -1630,10 +1583,6 @@ impl<'a> ModelOrderPortComparator<'a> {
             self.update_bigger_smaller(p1, p2);
         }
         result
-    }
-
-    fn cached_ordering(&mut self, first: usize, second: usize) -> Option<Ordering> {
-        self.relations.cached_ordering(first, second)
     }
 
     fn update_bigger_smaller(&mut self, bigger: usize, smaller: usize) {
@@ -1873,8 +1822,8 @@ mod tests {
             assert_eq!(order, (0..length).collect::<Vec<_>>());
             // The first source comparison records port 0 < port 1. Reversing
             // the first call (as Rust sort_by can do) records the opposite.
-            assert!(comparator.relations.smaller_than[&0].contains(&1));
-            assert!(comparator.relations.bigger_than[&1].contains(&0));
+            assert!(comparator.relations.smaller_members(0).contains(&1));
+            assert!(comparator.relations.bigger_members(1).contains(&0));
         }
     }
 
@@ -2249,16 +2198,22 @@ mod tests {
 
     #[test]
     fn model_order_relation_work_tracks_current_sets_and_cached_pairs() {
-        let mut bigger = HashMap::new();
-        let mut smaller = HashMap::new();
-        assert_eq!(model_order_relation_work(0, 1, &bigger, &smaller), Ok(3));
-        bigger.insert(0, HashSet::from([1]));
-        smaller.insert(1, HashSet::from([0]));
-        assert_eq!(model_order_relation_work(0, 1, &bigger, &smaller), Ok(1));
-        assert_eq!(model_order_relation_work(1, 0, &bigger, &smaller), Ok(1));
+        let mut relations = ModelOrderRelations::default();
+        assert_eq!(relations.comparison_work(0, 1), Ok((3, None)));
+        relations.update(0, 1);
+        assert_eq!(
+            relations.comparison_work(0, 1),
+            Ok((1, Some(Ordering::Greater)))
+        );
+        assert_eq!(
+            relations.comparison_work(1, 0),
+            Ok((1, Some(Ordering::Less)))
+        );
         // Unrelated owners cannot inflate the cost of comparing this pair.
-        bigger.insert(99, (100..200).collect());
-        assert_eq!(model_order_relation_work(2, 3, &bigger, &smaller), Ok(3));
+        for member in 100..200 {
+            relations.update(99, member);
+        }
+        assert_eq!(relations.comparison_work(2, 3), Ok((3, None)));
     }
 
     #[test]
@@ -2267,20 +2222,14 @@ mod tests {
         for owner in 0..500 {
             relations.update(owner, owner + 1);
         }
-        let units = model_order_relation_update_work(
-            501,
-            0,
-            &relations.bigger_than,
-            &relations.smaller_than,
-        )
-        .unwrap();
+        let units = relations.update_work(501, 0).unwrap();
         assert!(
             units < 2_000,
             "one-sided update was charged as dense work: {units}"
         );
         relations.update(501, 0);
-        assert_eq!(relations.bigger_than[&501].len(), 501);
-        assert_eq!(relations.smaller_than[&0].len(), 1);
+        assert_eq!(relations.bigger_members(501).len(), 501);
+        assert_eq!(relations.smaller_members(0).len(), 1);
     }
 
     #[test]
@@ -2347,7 +2296,7 @@ mod tests {
             comparator.compare_with_work(258, 1, &mut measured),
             Ok(Ordering::Less)
         );
-        assert!(comparator.relations.bigger_than[&1].contains(&258));
+        assert!(comparator.relations.bigger_members(1).contains(&258));
         let required = usize::MAX - measured.0;
 
         let mut comparator =
@@ -2357,7 +2306,7 @@ mod tests {
             comparator.compare_with_work(258, 1, &mut insufficient),
             Err(WorkError::Interrupted)
         );
-        assert!(!comparator.relations.bigger_than[&1].contains(&258));
+        assert!(!comparator.relations.bigger_members(1).contains(&258));
         assert_eq!(graph, before);
     }
 

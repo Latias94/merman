@@ -299,20 +299,7 @@ fn port_comparison_rejects_before_resolving_an_unadmitted_reference() {
         assert_eq!(work.remaining, 0);
         assert_eq!(work.charges[0], 3);
         assert_eq!(work.charges[1..], vec![1; admitted_prefix]);
-        assert!(
-            comparator
-                .relations
-                .bigger_than
-                .values()
-                .all(HashSet::is_empty)
-        );
-        assert!(
-            comparator
-                .relations
-                .smaller_than
-                .values()
-                .all(HashSet::is_empty)
-        );
+        assert!(comparator.relations.is_clear());
     }
 }
 
@@ -368,21 +355,16 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
                 &orders,
                 false,
             );
-            comparator.relations.bigger_than = HashMap::from([(1, HashSet::from([2, 3]))]);
-            comparator.relations.smaller_than = HashMap::from([(0, HashSet::from([4, 5, 6]))]);
-            let bigger_before = comparator.relations.bigger_than.clone();
-            let smaller_before = comparator.relations.smaller_than.clone();
-            assert_eq!(
-                model_order_relation_update_work(0, 1, &bigger_before, &smaller_before),
-                Ok(29),
+            comparator.relations = ModelOrderRelations::from_test_rows(
+                &HashMap::from([(1, HashSet::from([2, 3]))]),
+                &HashMap::from([(0, HashSet::from([4, 5, 6]))]),
             );
+            let before = comparator.relations.facts();
+            assert_eq!(comparator.relations.update_work(0, 1), Ok(29));
+            assert_eq!(comparator.relations.update_work(1, 0), Ok(2));
             assert_eq!(
-                model_order_relation_update_work(1, 0, &bigger_before, &smaller_before),
-                Ok(2),
-            );
-            assert_eq!(
-                model_order_relation_work(first, second, &bigger_before, &smaller_before),
-                Ok(30),
+                comparator.relations.comparison_work(first, second),
+                Ok((30, None)),
             );
 
             let mut limited = ScoringWork::new(29);
@@ -392,8 +374,7 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
             );
             assert!(limited.charges.is_empty());
             assert_eq!(limited.remaining, 29);
-            assert_eq!(comparator.relations.bigger_than, bigger_before);
-            assert_eq!(comparator.relations.smaller_than, smaller_before);
+            assert_eq!(comparator.relations.facts(), before);
 
             let expected = port_orders[first].cmp(&port_orders[second]);
             let mut exact = ScoringWork::new(30);
@@ -403,8 +384,7 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
             );
             assert_eq!(exact.charges, [30]);
             assert_eq!(exact.remaining, 0);
-            let bigger_after = comparator.relations.bigger_than.clone();
-            let smaller_after = comparator.relations.smaller_than.clone();
+            let after = comparator.relations.facts();
 
             let mut cached_limited = ScoringWork::new(0);
             assert_eq!(
@@ -419,8 +399,7 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
             );
             assert_eq!(cached.charges, [1]);
             assert_eq!(cached.remaining, 0);
-            assert_eq!(comparator.relations.bigger_than, bigger_after);
-            assert_eq!(comparator.relations.smaller_than, smaller_after);
+            assert_eq!(comparator.relations.facts(), after);
         }
         assert_eq!(graph, before);
     }
