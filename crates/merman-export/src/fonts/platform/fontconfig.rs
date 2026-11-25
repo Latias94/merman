@@ -67,14 +67,18 @@ enum CoveragePass {
 
 enum Coverage {
     Nominal,
-    Variation(Vec<(char, char)>),
+    Variation {
+        required: Option<Vec<(char, char)>>,
+        unmapped_marks: Vec<char>,
+    },
+    LegacyArabic([bool; 2]),
 }
 
 impl Coverage {
     fn supported_by(&self, face: &FaceInfo, rtl: bool) -> bool {
-        let Self::Variation(required) = self else {
+        if matches!(self, Self::Nominal) {
             return true;
-        };
+        }
         let Source::Binary(data) = &face.source else {
             return false;
         };
@@ -82,6 +86,18 @@ impl Coverage {
             return false;
         };
         let table = |tag| face.raw_face().table(Tag::from_bytes(tag));
+        if let Self::LegacyArabic(pages) = self {
+            return table(b"OS/2")
+                .and_then(crate::font_selection::PlatformCmap::legacy_arabic_page)
+                .is_some_and(|page| pages[page]);
+        }
+        let Self::Variation {
+            required,
+            unmapped_marks,
+        } = self
+        else {
+            return true;
+        };
         table(b"cmap")
             .and_then(|cmap| {
                 crate::font_selection::PlatformCmap::parse_with_os2(
@@ -91,10 +107,15 @@ impl Coverage {
                 )
             })
             .is_some_and(|cmap| {
-                required
+                unmapped_marks
                     .iter()
-                    .copied()
-                    .all(cmap.maps_variation(rtl, false))
+                    .all(|&mark| !cmap.maps_directional(mark, rtl))
+                    && required
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .copied()
+                        .all(cmap.maps_variation(rtl, false))
             })
     }
 }
@@ -464,10 +485,17 @@ impl Catalog {
                 let prepared = Pattern::from_raw(self.api, raw)
                     .ok_or_else(|| failed("preparing a candidate"))?;
                 physical.variations = prepared.as_ref().variations();
-                physical.required_uvs = match coverage {
-                    Coverage::Nominal => None,
-                    Coverage::Variation(required) => Some(required),
-                };
+                match coverage {
+                    Coverage::Nominal => {}
+                    Coverage::Variation {
+                        required,
+                        unmapped_marks,
+                    } => {
+                        physical.required_uvs = required;
+                        physical.unmapped_uvs_marks = unmapped_marks;
+                    }
+                    Coverage::LegacyArabic(pages) => physical.allowed_symbol_pages = Some(pages),
+                }
                 drop(prepared);
                 let exact_name = matches!(scope, MatchScope::Named(_))
                     && query
@@ -721,6 +749,8 @@ impl Catalog {
                 fallback_scale: 1.0,
                 named_instance,
                 required_uvs: None,
+                unmapped_uvs_marks: Vec::new(),
+                allowed_symbol_pages: None,
             },
         ))
     }
@@ -1049,13 +1079,7 @@ impl<'a> PatternRef<'a> {
             return Some(Coverage::Nominal);
         };
         let first = self.charset(0);
-        let symbol = self.is_symbol();
         let maps = |ch| {
-            if symbol && crate::font_selection::PlatformCmap::may_use_arabic_symbol_page(ch) {
-                // Fontconfig advertises PUA values for legacy Arabic Symbol
-                // fonts. The OS/2-aware SFNT probe verifies the actual mapping.
-                return true;
-            }
             let has_char = |chars: NonNull<FcCharSet>| {
                 // SAFETY: The charset belongs to this borrowed scan pattern.
                 unsafe { (self.api.FcCharSetHasChar)(chars.as_ptr(), u32::from(ch)) != 0 }
@@ -1066,14 +1090,36 @@ impl<'a> PatternRef<'a> {
         };
         if cluster::has_advertised_coverage(text, rtl, maps) {
             return Some(match pass {
-                CoveragePass::ExactVariation => Coverage::Variation(Vec::new()),
+                CoveragePass::ExactVariation => Coverage::Variation {
+                    required: Some(Vec::new()),
+                    unmapped_marks: Vec::new(),
+                },
                 _ => Coverage::Nominal,
             });
         }
-        match pass {
-            CoveragePass::Nominal => None,
-            _ => cluster::unadvertised_variations(text, rtl, maps).map(Coverage::Variation),
+        if !matches!(pass, CoveragePass::ExactVariation) && self.is_symbol() {
+            // Respect scan rules for the PUA alias used by the physical OS/2 page.
+            let pages = [0, 1].map(|page| {
+                cluster::has_advertised_coverage(text, rtl, |ch| {
+                    maps(ch)
+                        || crate::font_selection::PlatformCmap::legacy_arabic_alias(ch, page)
+                            .is_some_and(maps)
+                })
+            });
+            if pages.iter().any(|&allowed| allowed) {
+                return Some(Coverage::LegacyArabic(pages));
+            }
         }
+        let missing = cluster::unadvertised_variations(text, rtl, maps)?;
+        let required = match (pass, missing.bases.is_empty()) {
+            (CoveragePass::Nominal, false) => return None,
+            (CoveragePass::ExactVariation, _) | (_, false) => Some(missing.bases),
+            _ => None,
+        };
+        Some(Coverage::Variation {
+            required,
+            unmapped_marks: missing.marks,
+        })
     }
 
     fn variations(self) -> Vec<usvg::FontVariation> {

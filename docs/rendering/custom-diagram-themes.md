@@ -25,6 +25,8 @@ A document can extend a preset and override only the values it needs. This examp
 
 Themes may declare `light`, `dark`, or both. Set `default_appearance` to choose the default of a full document. `theme check` reports syntax, schema, and contrast issues. Add `--strict-contrast` to fail on a contrast warning.
 
+In the Playground, open **Theme library** to browse the installed presets. Select a design and preview its appearances on a Flowchart, Sequence, Pie, or your current diagram. **Apply theme** uses that choice in the workspace. A `?theme-design=<preset-id>` link opens the same preview and can accompany a shared workspace URL fragment. [Preview Riso](https://frankorz.com/merman/?theme-design=riso)
+
 For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.theme` in bindings. A native theme supplies global visual settings in place of Mermaid's `theme`, `themeVariables`, `darkMode`, and root typography. Mermaid layout settings and local styles such as Flowchart `classDef`, `style`, and `linkStyle` still apply. To use Mermaid's visual settings when a diagram explicitly selects a Mermaid theme, pass `--theme-precedence source`.
 
 ## Graphics and terminal output

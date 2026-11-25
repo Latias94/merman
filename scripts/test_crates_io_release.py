@@ -4,17 +4,23 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
+from dataclasses import replace
+import http.client
+import io
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import struct
+import tarfile
 import threading
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
 
-from scripts import crates_io_release as release
+from scripts import crates_io_archive, crates_io_release as release
 from scripts import renderer_fork_consumer
+from scripts.verify_crate_package_legal_materials import PackageLegalMaterialError
 from tools import publish
 
 
@@ -256,6 +262,7 @@ class CratesIoReceiptTests(unittest.TestCase):
         metadata = package_metadata("roughr-merman")
         with (
             mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "verify_package_archive"),
             mock.patch.object(
                 release,
                 "fetch_crates_io_checksum",
@@ -281,6 +288,8 @@ class CratesIoReceiptTests(unittest.TestCase):
         }
         with (
             mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "verify_package_archive"),
+            mock.patch.object(release, "_assert_artifact_unchanged"),
             mock.patch.object(
                 release,
                 "fetch_crates_io_checksum",
@@ -294,7 +303,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                     metadata,
                     package_name="roughr-merman",
                     expected_version="1.0.0",
-                ), (True, self.DIGEST),
+                ), (True, prepared),
             )
 
     def test_independent_preflight_dry_runs_missing_version(self) -> None:
@@ -308,6 +317,8 @@ class CratesIoReceiptTests(unittest.TestCase):
 
         with (
             mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "verify_package_archive"),
+            mock.patch.object(release, "_assert_artifact_unchanged"),
             mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
             mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None),
             mock.patch.object(release, "run_command", side_effect=run),
@@ -318,7 +329,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                     metadata,
                     package_name="roughr-merman",
                     expected_version="1.0.0",
-                ), (False, self.DIGEST),
+                ), (False, prepared),
             )
         self.assertEqual(commands[0][0:4], ["cargo", "publish", "-p", "roughr-merman"])
 
@@ -333,6 +344,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                 with (
                     self.subTest(package=name),
                     mock.patch.object(release, "_prepare_crate", return_value=prepared),
+                    mock.patch.object(release, "verify_package_archive"),
                     mock.patch.object(release, "_assert_artifact_unchanged") as assert_unchanged,
                     mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
                     mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None),
@@ -341,17 +353,81 @@ class CratesIoReceiptTests(unittest.TestCase):
                 ):
                     self.assertEqual(release.preflight_independent_crate(
                         ROOT, metadata, package_name=name, expected_version="1.0.0"
-                    ), (False, self.DIGEST))
+                    ), (False, prepared))
                     verify.assert_not_called()
                     self.assertEqual(release.preflight_independent_crate(
                         ROOT, metadata, package_name=name, expected_version="1.0.0", verify_fork_consumer=True
-                    ), (False, self.DIGEST))
-                    assert_unchanged.assert_called_once_with(prepared)
+                    ), (False, prepared))
+                    self.assertEqual(assert_unchanged.call_args_list, [mock.call(prepared)] * 2)
                     verify.assert_called_once_with(
                         prepared.artifact_path, candidate=name, version="1.0.0",
                         repo_root=ROOT,
                         target_directory=ROOT / "target",
                     )
+
+    def test_independent_preflight_stops_if_the_verified_archive_changes_during_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prepared = self.prepared(Path(temporary), "merman-resvg")
+            prepared = replace(prepared, artifact_sha256=release.sha256_file(prepared.artifact_path))
+
+            def change_archive(command, **_kwargs):
+                self.assertIn("--dry-run", command)
+                prepared.artifact_path.write_bytes(b"different registry sibling lockfile")
+                return publish.subprocess.CompletedProcess(command, 0)
+
+            with (
+                mock.patch.object(release, "_prepare_crate", return_value=prepared),
+                mock.patch.object(release, "verify_package_archive"),
+                mock.patch.object(release, "independent_version_exists", return_value=False),
+                mock.patch.object(release, "run_command", side_effect=change_archive),
+                self.assertRaisesRegex(release.CratesIoPublishError, "artifact changed after receipt"),
+            ):
+                release.preflight_independent_crate(
+                    ROOT, package_metadata("merman-resvg"), package_name="merman-resvg", expected_version="1.0.0",
+                )
+
+    def test_independent_preflight_verifies_the_special_licenses_before_registry_access(self) -> None:
+        for name, expression, extra in (
+            ("merman-krilla", "MIT OR Apache-2.0", "icc/LICENSE"),
+            ("merman-resvg", "(MIT OR Apache-2.0) AND BSD-2-Clause", "LICENSE-BSD-2-Clause"),
+        ):
+            for corruption in ("missing", "truncated", "same length", "unchanged"):
+                with self.subTest(name=name, corruption=corruption), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    prepared = self.prepared(root, name)
+                    metadata = package_metadata(name)
+                    [package] = metadata["packages"]
+                    package.update(license=expression, manifest_path=str(prepared.package.manifest_path))
+                    expected = b"test license"
+                    with tarfile.open(prepared.artifact_path, "w:gz") as crate:
+                        for filename in ("LICENSE-MIT", "LICENSE-APACHE", extra):
+                            source = prepared.package.manifest_path.parent / filename
+                            source.parent.mkdir(parents=True, exist_ok=True)
+                            source.write_bytes(expected)
+                            if filename == extra and corruption == "missing":
+                                continue
+                            text = ({"truncated": b"X", "same length": b"X" * len(expected)}.get(corruption, expected)
+                                    if filename == extra else expected)
+                            member = tarfile.TarInfo(f"{name}-1.0.0/{filename}")
+                            member.size = len(text)
+                            crate.addfile(member, io.BytesIO(text))
+                    prepared = replace(prepared, artifact_sha256=release.sha256_file(prepared.artifact_path),
+                                       artifact_size=prepared.artifact_path.stat().st_size)
+                    with (
+                        mock.patch.object(release, "_prepare_crate", return_value=prepared),
+                        mock.patch.object(release, "independent_version_exists", return_value=True) as registry,
+                    ):
+                        if corruption == "unchanged":
+                            self.assertEqual(release.preflight_independent_crate(
+                                root, metadata, package_name=name, expected_version="1.0.0",
+                            ), (True, prepared))
+                            registry.assert_called_once()
+                        else:
+                            with self.assertRaisesRegex(PackageLegalMaterialError, extra):
+                                release.preflight_independent_crate(
+                                    root, metadata, package_name=name, expected_version="1.0.0",
+                                )
+                            registry.assert_not_called()
 
     def test_receipt_validation_rejects_bad_artifact_identity(self) -> None:
         receipt = {
@@ -937,6 +1013,254 @@ class CratesIoReceiptTests(unittest.TestCase):
             ):
                 self.invoke(root)
             self.assertEqual(prepared_names, ["alpha"])
+
+
+class FrozenIndependentCrateTests(unittest.TestCase):
+    name = "merman-resvg"
+    version = "0.50.1"
+    source = {"commit": "a" * 40, "tree": "b" * 40}
+    publication = {"run_id": "42", "attempt": 1}
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.original = self.root / f"{self.name}-{self.version}.crate"
+        self.original.write_bytes(b"verified archive with the original dependency lockfile")
+        self.directory = self.root / "frozen"
+        self.candidate = crates_io_archive.freeze_candidate(
+            self.directory, self.original, json.dumps({"name": self.name, "vers": self.version}).encode(),
+            archive_sha256=release.sha256_file(self.original), name=self.name, version=self.version,
+            source=self.source, publication=self.publication,
+        )
+
+    def command(self, action: str, *, current_attempt: str = "1") -> int:
+        with (
+            mock.patch("sys.argv", [
+                "release", action, "--candidate-dir", str(self.directory),
+                "--package", self.name, "--version", self.version,
+                "--source-sha", self.source["commit"], "--source-tree", self.source["tree"],
+                "--publication-run-id", "42", "--publication-attempt", "1",
+                "--sha256", self.candidate.archive_sha256, "--receipt-sha256", self.candidate.receipt_sha256,
+            ]),
+            mock.patch.dict(os.environ, {
+                "CARGO_REGISTRY_TOKEN": "dummy-token", "GITHUB_OUTPUT": str(self.root / "outputs"),
+                "GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": current_attempt,
+            }),
+        ):
+            return release.main()
+
+    def test_publish_metadata_matches_cargo_feature_and_dependency_fields(self) -> None:
+        manifest = b"""
+[package]
+name = "merman-resvg"
+version = "0.50.1"
+
+[features]
+default = ["codec"]
+codec = ["image-webp"]
+
+[dependencies]
+gif = { version = "0.14", optional = true }
+image-webp = { package = "webp", version = "0.2", optional = true }
+"""
+        with tarfile.open(self.original, "w:gz") as crate:
+            member = tarfile.TarInfo(f"{self.name}-{self.version}/Cargo.toml")
+            member.size = len(manifest)
+            crate.addfile(member, io.BytesIO(manifest))
+        package = dict.fromkeys((
+            "readme", "authors", "description", "documentation", "homepage", "keywords", "categories",
+            "license", "license_file", "repository", "links", "rust_version",
+        ))
+        common = {
+            "source": "registry+https://github.com/rust-lang/crates.io-index", "registry": None,
+            "features": [], "optional": True, "uses_default_features": True, "target": None, "kind": None,
+        }
+        package.update(
+            name=self.name, version=self.version, dependencies=[
+                dict(common, name="gif", req="^0.14", rename=None),
+                dict(common, name="webp", req="^0.2", rename="image-webp"),
+            ],
+            features={"default": ["codec"], "codec": ["image-webp"], "gif": ["dep:gif"],
+                      "image-webp": ["dep:image-webp"]},
+        )
+        result = mock.Mock(returncode=0, stdout=json.dumps({"packages": [package]}))
+        with mock.patch.object(crates_io_archive, "run_command", return_value=result):
+            metadata = json.loads(crates_io_archive.publish_metadata(ROOT, self.original, self.name, self.version))
+        self.assertEqual(metadata["features"], {"default": ["codec"], "codec": ["image-webp"]})
+        expected = {"features": [], "optional": True, "default_features": True, "target": None, "kind": "normal"}
+        self.assertEqual(metadata["deps"], [
+            dict(expected, name="gif", version_req="^0.14"),
+            dict(expected, name="webp", version_req="^0.2", explicit_name_in_toml="image-webp"),
+        ])
+
+    def test_candidate_or_receipt_digest_failure_prevents_any_registry_write(self) -> None:
+        for filename in (self.original.name, "publish-metadata.json", "receipt.json"):
+            with self.subTest(filename=filename):
+                path = self.directory / filename
+                original = path.read_bytes()
+                path.write_bytes(original + b" ")
+                try:
+                    with (
+                        mock.patch.object(release, "independent_version_exists") as registry,
+                        mock.patch.object(crates_io_archive.http.client, "HTTPSConnection") as connection,
+                    ):
+                        self.assertEqual(self.command("verify-independent-candidate"), 1)
+                        self.assertEqual(self.command("publish-independent"), 1)
+                    registry.assert_not_called()
+                    connection.assert_not_called()
+                    self.assertFalse((self.directory / "upload-attempted.json").exists())
+                    self.assertFalse((self.root / "outputs").exists())
+                finally:
+                    path.write_bytes(original)
+
+    def test_recovery_receipt_must_belong_to_original_package_source_and_attempt(self) -> None:
+        origin = {"name": self.name, "version": self.version, "source": self.source, "publication": self.publication}
+        self.assertEqual(crates_io_archive.load_candidate(self.directory, **origin), self.candidate)
+        for mismatch in (
+            {"name": "merman-usvg"}, {"version": "0.50.2"},
+            {"source": {"commit": "f" * 40, "tree": self.source["tree"]}},
+            {"publication": {"run_id": "41", "attempt": 1}},
+            {"publication": {"run_id": "42", "attempt": 2}},
+        ):
+            with self.subTest(mismatch=mismatch), self.assertRaisesRegex(
+                crates_io_archive.CrateArchiveError, "differs from its producing source or attempt",
+            ):
+                crates_io_archive.load_candidate(self.directory, **(origin | mismatch))
+
+    def test_preflight_retains_the_exact_archive_for_an_already_published_version(self) -> None:
+        self.directory = self.root / "confirmed"
+        prepared = release.PreparedCrate(
+            publish.PackageInfo(self.name, self.version, self.root / "Cargo.toml", ()),
+            self.original, self.candidate.archive_sha256, len(self.candidate.archive), "a" * 64,
+        )
+        metadata = package_metadata(self.name)
+        metadata["packages"][0]["version"] = self.version
+        identity = dict(name=self.name, version=self.version, source=self.source, publication=self.publication)
+
+        def confirm(*_args, **_kwargs):
+            self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
+            return True
+
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "require_tool"),
+            mock.patch.object(release, "cargo_metadata", return_value=metadata),
+            mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "verify_package_archive"),
+            mock.patch.object(release, "independent_version_exists", side_effect=confirm) as registry,
+            mock.patch.object(crates_io_archive, "publish_metadata", side_effect=[
+                crates_io_archive.CrateArchiveError("cannot freeze upload metadata"), self.candidate.metadata,
+            ]),
+        ):
+            self.assertEqual(self.command("preflight-independent"), 1)
+            self.assertFalse(self.directory.exists())
+            registry.assert_not_called()
+            self.assertEqual(self.command("preflight-independent"), 0)
+            registry.assert_called_once()
+        self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
+        self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+
+    def test_failed_registry_check_does_not_authorize_upload_and_can_be_retried(self) -> None:
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "fetch_crates_io_checksum", side_effect=[
+                release.CratesIoPublishError("HTTP 503"), None,
+            ]) as api,
+            mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None) as index,
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("authorize-independent-upload"), 1)
+            self.assertFalse((self.directory / "upload-authorized.json").exists())
+            self.assertFalse((self.directory / "upload-attempted.json").exists())
+            self.assertEqual(self.command("publish-independent"), 1)
+            api.assert_called_once()
+            index.assert_not_called()
+            upload.assert_not_called()
+
+            self.assertEqual(self.command("authorize-independent-upload"), 0)
+            self.assertEqual(self.command("publish-independent", current_attempt="2"), 1)
+            upload.assert_not_called()
+            self.assertEqual(self.command("publish-independent"), 0)
+            self.assertEqual(api.call_count, 2)
+            index.assert_called_once()
+            upload.assert_called_once()
+
+    def test_final_registry_check_that_confirms_archive_never_authorizes_upload(self) -> None:
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "independent_version_exists", return_value=True) as registry,
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("authorize-independent-upload"), 0)
+            self.assertEqual(self.command("publish-independent"), 1)
+            registry.assert_called_once()
+            upload.assert_not_called()
+        self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+
+    def test_lost_upload_response_retains_intent_and_never_repackages_or_resends(self) -> None:
+        requests = []
+        intent_path = self.directory / "upload-attempted.json"
+
+        class Registry(BaseHTTPRequestHandler):
+            def do_PUT(self):
+                requests.append((
+                    self.path, self.headers.get("Authorization"), self.headers.get("Content-Type"),
+                    self.rfile.read(int(self.headers["Content-Length"])), intent_path.read_bytes(),
+                ))
+                # The registry can receive all the bytes and lose the reply.
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Registry)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.original.write_bytes(b"a subsequent Cargo invocation resolved a newer compatible sibling")
+            with (
+                mock.patch.object(release, "assert_release_source"),
+                mock.patch.object(release, "fetch_crates_io_checksum", return_value=None) as api,
+                mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None) as index,
+                mock.patch.object(release, "run_command") as cargo,
+                mock.patch.object(
+                    crates_io_archive.http.client, "HTTPSConnection",
+                    side_effect=lambda *_args, **_kwargs: http.client.HTTPConnection(*server.server_address),
+                ) as connect,
+            ):
+                self.assertEqual(self.command("authorize-independent-upload"), 0)
+                self.assertEqual(self.command("publish-independent"), 1)
+                self.assertEqual(self.command("publish-independent"), 1)
+            api.assert_called_once()
+            index.assert_called_once()
+            connect.assert_called_once()
+            cargo.assert_not_called()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+        self.assertEqual(len(requests), 1)
+        path, token, content_type, body, intent = requests[0]
+        self.assertEqual((path, token, content_type), ("/api/v1/crates/new", "dummy-token", "application/octet-stream"))
+        stream = io.BytesIO(body)
+        [metadata_size] = struct.unpack("<I", stream.read(4))
+        self.assertEqual(stream.read(metadata_size), self.candidate.metadata)
+        [archive_size] = struct.unpack("<I", stream.read(4))
+        self.assertEqual(stream.read(archive_size), self.candidate.archive)
+        self.assertFalse(stream.read())
+        self.assertEqual(intent, self.candidate.receipt_bytes)
+
+    def test_cargo_error_in_success_response_fails_without_resending(self) -> None:
+        connection = mock.MagicMock()
+        response = connection.getresponse.return_value.__enter__.return_value
+        response.status = 200
+        response.read.return_value = b'{"errors":[{"detail":"rejected"}]}'
+        intent = self.directory / "upload-attempted.json"
+        with mock.patch.object(crates_io_archive.http.client, "HTTPSConnection", return_value=connection):
+            with self.assertRaisesRegex(crates_io_archive.CrateArchiveError, "registry reported crate upload errors"):
+                crates_io_archive.upload(self.candidate, token="dummy-token", intent_path=intent)
+            with self.assertRaisesRegex(crates_io_archive.CrateArchiveError, "has an upload intent"):
+                crates_io_archive.upload(self.candidate, token="dummy-token", intent_path=intent)
+        response.read.assert_called_once()
+        connection.request.assert_called_once()
+        self.assertEqual(intent.read_bytes(), self.candidate.receipt_bytes)
 
 
 class SparseIndexBoundaryTests(unittest.TestCase):

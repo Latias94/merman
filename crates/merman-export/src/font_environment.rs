@@ -388,24 +388,7 @@ impl FinalTreeFontWalk<'_> {
             if !span.visible {
                 continue;
             }
-            let has_paint = span
-                .fill
-                .as_ref()
-                .is_some_and(|fill| fill.opacity().get() != 0.0)
-                || span
-                    .stroke
-                    .as_ref()
-                    .is_some_and(|stroke| stroke.opacity().get() != 0.0)
-                || [&span.underline, &span.overline, &span.line_through]
-                    .into_iter()
-                    .flatten()
-                    .any(|path| {
-                        path.is_visible()
-                            && (path.fill().is_some_and(|fill| fill.opacity().get() != 0.0)
-                                || path
-                                    .stroke()
-                                    .is_some_and(|stroke| stroke.opacity().get() != 0.0))
-                    });
+            let has_paint = span.has_visible_paint();
             for glyph in &span.positioned_glyphs {
                 export_checkpoint(self.control)?;
                 if glyph.id.0 == 0 && has_paint {
@@ -966,6 +949,50 @@ mod tests {
         assert!(missing.unresolved_glyph_fallback());
     }
 
+    #[cfg(all(feature = "native-fonts", feature = "png"))]
+    #[test]
+    fn png_missing_glyph_counts_follow_visible_decoration_across_spans() {
+        let context = crate::NativeFontContext::from_font_bytes(
+            [include_bytes!("../tests/fonts/NotoSans-Latin-subset.ttf").to_vec()],
+            crate::NativeFontLimits::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let options = crate::RasterOptions::default().with_font_context(context);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let export = |line, text_style, content| {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="8" y="40" font-family="Noto Sans" font-size="24" text-decoration="{line}" {text_style}><tspan fill="none">{content}</tspan></text></svg>"#
+            );
+            let svg = finalize_resvg_svg(&source, &session).unwrap();
+            crate::svg_to_png_with_report(&svg, &options).unwrap()
+        };
+        for (line, whole, split) in [
+            ("underline", "AQ", "A<tspan>Q</tspan>"),
+            ("overline", "AQ", "A<tspan>Q</tspan>"),
+            ("line-through", "QA", "Q<tspan>A</tspan>"),
+        ] {
+            let (whole_png, whole_report) = export(line, "", whole);
+            let (split_png, split_report) = export(line, "", split);
+            assert_eq!(whole_png, split_png, "{line}");
+            for report in [whole_report, split_report] {
+                assert_eq!(report.fonts().notdef_glyph_count(), 1, "{line}");
+                assert!(report.fonts().unresolved_glyph_fallback(), "{line}");
+                assert!(!report.fonts().unresolved_font_request(), "{line}");
+            }
+        }
+
+        for (style, content) in [
+            ("", "A<tspan visibility='hidden'>Q</tspan>"),
+            ("fill-opacity='0'", "A<tspan>Q</tspan>"),
+            ("fill='none'", "A<tspan>Q</tspan>"),
+        ] {
+            let (_, report) = export("underline", style, content);
+            assert_eq!(report.fonts().notdef_glyph_count(), 0, "{style} {content}");
+            assert!(!report.fonts().unresolved_glyph_fallback());
+        }
+    }
+
     #[cfg(feature = "native-fonts")]
     #[test]
     fn native_export_coverage_uses_visible_text_and_omission_evidence() {
@@ -999,6 +1026,16 @@ mod tests {
                 &symbolic,
                 r#"<text id="probe" y="20" font-family="sans-serif">A<tspan font-family="Merman Symbolic Test">A</tspan></text>"#,
                 (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif" text-decoration="underline"><tspan fill="none">A</tspan></text>"#,
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif" text-decoration="underline" fill-opacity="0"><tspan fill="none">A</tspan></text>"#,
+                (false, false),
             ),
             (
                 &symbolic,

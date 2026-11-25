@@ -200,6 +200,9 @@ fn sanitized_attr_replacement<E>(
     }
 
     if should_drop_attribute_with_checkpoints(element_name, name, value, checkpoint)? {
+        if local_name(name) == "href" {
+            return Ok(AttrReplacement::Replace(format!(" {name}=\"\"")));
+        }
         return Ok(AttrReplacement::Drop);
     }
 
@@ -344,6 +347,17 @@ fn is_base_url_attribute(name: &str) -> bool {
 fn is_unsafe_url_attribute(element_name: &str, name: &str, value: &str) -> bool {
     let attribute_name = local_name(name.trim()).to_ascii_lowercase();
     match attribute_name.as_str() {
+        // An empty href still participates in usvg's link precedence, including when it
+        // replaces a blocked value. Keep the original qualified name and its position.
+        "href"
+            if value.trim().is_empty()
+                || (value.contains('&')
+                    && merman_model::text::decode_html_entities_to_unicode(value)
+                        .trim()
+                        .is_empty()) =>
+        {
+            false
+        }
         "href" => match local_name(element_name).to_ascii_lowercase().as_str() {
             "a" => is_unsafe_navigation_url_value(value),
             "image" => !is_safe_data_image_url(value),

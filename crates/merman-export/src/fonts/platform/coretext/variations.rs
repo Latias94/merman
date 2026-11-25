@@ -5,9 +5,10 @@ use objc2_core_text::{
 use ttf_parser::fvar;
 use usvg::FontVariation;
 
-use super::{NativeFontError, OperationControl, checkpoint, read_table, table_bytes};
+use super::{FVAR, NativeFontError, OperationControl, checkpoint, read_table, table_bytes};
 
 const OPSZ: [u8; 4] = *b"opsz";
+const WDTH: [u8; 4] = *b"wdth";
 // Skrifa supports heap-backed locations. Bound the native dictionary probes and
 // the renderer's linear coordinate lookup for each physical axis.
 const MAX_VARIATION_AXES: u16 = 256;
@@ -23,11 +24,12 @@ pub(super) struct MatchingAxes {
 impl MatchingAxes {
     pub(super) fn for_font(
         font: &CTFont,
+        descriptor: &CTFontDescriptor,
         weight: f32,
         width: f32,
         control: Option<&OperationControl>,
     ) -> Result<Self, NativeFontError> {
-        let table = read_table(font, u32::from_be_bytes(*b"fvar"), control)?;
+        let table = read_table(font, FVAR, control)?;
         let Some(fvar) = table
             .as_deref()
             .map(table_bytes)
@@ -37,13 +39,13 @@ impl MatchingAxes {
         };
         // SAFETY: The retained font supplies its effective design coordinates.
         let selected = unsafe { font.variation() }.map(typed_axis_values);
+        let requested = descriptor_axis_values(Some(descriptor));
         Ok(Self::from_fvar(fvar, weight, width, |tag| {
             let key = CFNumber::new_i32(i32::from_be_bytes(tag));
-            selected
-                .as_deref()?
-                .get(&key)
-                .as_deref()
-                .and_then(axis_value)
+            (
+                dictionary_axis_value(selected.as_deref(), &key),
+                dictionary_axis_value(requested.as_deref(), &key),
+            )
         }))
     }
 
@@ -51,7 +53,7 @@ impl MatchingAxes {
         table: fvar::Table<'_>,
         weight: f32,
         width: f32,
-        mut selected: impl FnMut([u8; 4]) -> Option<f32>,
+        mut native: impl FnMut([u8; 4]) -> (Option<f32>, Option<f32>),
     ) -> Self {
         let mut axes = Self::default();
         if table.axes.len() > MAX_VARIATION_AXES {
@@ -64,13 +66,8 @@ impl MatchingAxes {
                 b"wdth" => (&mut axes.width, width),
                 _ => continue,
             };
-            // An installed non-default instance keeps its own position. A base
-            // face can realize the authored CSS coordinate during usvg layout.
-            *position = Some(
-                selected(tag)
-                    .filter(|value| *value != axis.def_value)
-                    .unwrap_or_else(|| requested.clamp(axis.min_value, axis.max_value)),
-            );
+            let (selected, descriptor) = native(tag);
+            *position = Some(css_axis_position(axis, selected, descriptor, requested));
         }
         axes
     }
@@ -80,6 +77,7 @@ impl MatchingAxes {
 pub(super) fn read(
     font: &CTFont,
     selection_descriptor: Option<&CTFontDescriptor>,
+    css_width: Option<f32>,
     control: Option<&OperationControl>,
 ) -> Result<Option<Vec<FontVariation>>, NativeFontError> {
     checkpoint(control)?;
@@ -87,10 +85,11 @@ pub(super) fn read(
     let selected = unsafe { font.variation() }.map(typed_axis_values);
     let requested = descriptor_axis_values(selection_descriptor);
     let has_selected = selected.as_ref().is_some_and(|axes| !axes.is_empty());
-    if !has_selected && requested.as_ref().is_none_or(|axes| axes.is_empty()) {
+    if css_width.is_none() && !has_selected && requested.as_ref().is_none_or(|axes| axes.is_empty())
+    {
         return Ok(Some(Vec::new()));
     }
-    let table = read_table(font, u32::from_be_bytes(*b"fvar"), control)?;
+    let table = read_table(font, FVAR, control)?;
     let Some(fvar) = table
         .as_deref()
         .map(table_bytes)
@@ -113,6 +112,7 @@ pub(super) fn read(
         fvar,
         selected.as_deref(),
         requested.as_deref(),
+        css_width,
         point_size,
         explicit_optical_size,
     ))
@@ -122,6 +122,7 @@ fn physical_variations(
     fvar: fvar::Table<'_>,
     selected: Option<&AxisValues>,
     requested: Option<&AxisValues>,
+    css_width: Option<f32>,
     point_size: f32,
     explicit_optical_size: bool,
 ) -> Option<Vec<FontVariation>> {
@@ -140,18 +141,30 @@ fn physical_variations(
     for axis in axes {
         let tag = axis.tag.0.to_be_bytes();
         let key = CFNumber::new_i32(i32::from_be_bytes(tag));
-        let requested = requested
-            .and_then(|axes| axes.get(&key))
-            .as_deref()
-            .and_then(axis_value);
-        let value = if let Some(value) = selected.and_then(|axes| axes.get(&key)) {
+        let requested = dictionary_axis_value(requested, &key);
+        let selected = if let Some(value) = selected.and_then(|axes| axes.get(&key)) {
             matched += 1;
-            axis_value(&value).filter(|value| (axis.min_value..=axis.max_value).contains(value))?
-        } else if requested == Some(axis.def_value) {
-            // CTFontCopyVariation omits defaults. Keep the coordinate if the descriptor
-            // used to select the font asked for it explicitly.
-            axis.def_value
+            Some(
+                axis_value(&value)
+                    .filter(|value| (axis.min_value..=axis.max_value).contains(value))?,
+            )
         } else {
+            None
+        };
+        // Family matching ranks movable widths at their reachable CSS position.
+        // Keep that same position when the SVG does not carry a width axis of its own.
+        let css = css_width
+            .filter(|_| tag == WDTH)
+            .map(|width| css_axis_position(axis, selected, requested, width));
+        let Some(value) = css
+            .filter(|value| *value != axis.def_value)
+            .or(selected)
+            .or_else(|| {
+                // CTFontCopyVariation omits defaults. Keep the coordinate if the descriptor
+                // used to select the font asked for it explicitly.
+                requested.filter(|value| *value == axis.def_value)
+            })
+        else {
             continue;
         };
         if tag == OPSZ
@@ -166,6 +179,25 @@ fn physical_variations(
     }
     // Every selected axis must be portable to the physical face.
     (matched == selected_count).then_some(variations)
+}
+
+fn css_axis_position(
+    axis: fvar::VariationAxis,
+    selected: Option<f32>,
+    requested: Option<f32>,
+    css: f32,
+) -> f32 {
+    // Preserve the native instance and default coordinates explicitly pinned by its descriptor.
+    selected
+        .filter(|value| {
+            *value != axis.def_value && (axis.min_value..=axis.max_value).contains(value)
+        })
+        .or_else(|| requested.filter(|value| *value == axis.def_value))
+        .unwrap_or_else(|| css.clamp(axis.min_value, axis.max_value))
+}
+
+fn dictionary_axis_value(axes: Option<&AxisValues>, key: &CFNumber) -> Option<f32> {
+    axes?.get(key).as_deref().and_then(axis_value)
 }
 
 fn descriptor_axis_values(descriptor: Option<&CTFontDescriptor>) -> Option<CFRetained<AxisValues>> {
@@ -191,13 +223,26 @@ mod tests {
     use super::*;
     use objc2_core_foundation::CFString;
 
+    const VARIABLE_FONT: &[u8] = include_bytes!("../../../../tests/fonts/MermanVariableWeight.ttf");
+
     fn fixture_fvar() -> &'static [u8] {
-        let raw = ttf_parser::RawFace::parse(
-            include_bytes!("../../../../tests/fonts/MermanVariableWeight.ttf"),
-            0,
-        )
-        .unwrap();
-        raw.table(ttf_parser::Tag::from_bytes(b"fvar")).unwrap()
+        ttf_parser::RawFace::parse(VARIABLE_FONT, 0)
+            .unwrap()
+            .table(ttf_parser::Tag(FVAR))
+            .unwrap()
+    }
+
+    fn width_fixture_fvar() -> Vec<u8> {
+        let mut data = fixture_fvar().to_vec();
+        let offset = usize::from(u16::from_be_bytes(data[4..6].try_into().unwrap()));
+        data[offset..offset + 4].copy_from_slice(&WDTH);
+        for (bytes, value) in data[offset + 4..offset + 16]
+            .chunks_exact_mut(4)
+            .zip([50_i32, 50, 150])
+        {
+            bytes.copy_from_slice(&(value << 16).to_be_bytes());
+        }
+        data
     }
 
     fn values(tag: [u8; 4], value: f64) -> CFRetained<AxisValues> {
@@ -214,7 +259,7 @@ mod tests {
         // SAFETY: These retained objects supply metadata for an immutable descriptor.
         let descriptor = unsafe { CTFontDescriptor::with_name_and_size(&name, 0.0) };
         assert!(
-            physical_variations(table, None, None, 12.0, false)
+            physical_variations(table, None, None, None, 12.0, false)
                 .unwrap()
                 .is_empty()
         );
@@ -222,23 +267,168 @@ mod tests {
         let explicit = unsafe { descriptor.copy_with_variation(&weight, 100.0) };
         let requested = descriptor_axis_values(Some(&explicit)).unwrap();
         assert_eq!(
-            physical_variations(table, None, Some(&requested), 12.0, false).unwrap(),
+            physical_variations(table, None, Some(&requested), None, 12.0, false).unwrap(),
             [FontVariation::new(*b"wght", 100.0)]
         );
         assert_eq!(
-            physical_variations(table, Some(&requested), None, 12.0, false).unwrap(),
+            physical_variations(table, Some(&requested), None, None, 12.0, false).unwrap(),
             [FontVariation::new(*b"wght", 100.0)]
         );
         let selected = values(*b"wght", 700.0);
         assert_eq!(
-            physical_variations(table, Some(&selected), Some(&requested), 12.0, false).unwrap(),
+            physical_variations(table, Some(&selected), Some(&requested), None, 12.0, false)
+                .unwrap(),
             [FontVariation::new(*b"wght", 700.0)]
         );
         assert!(
-            physical_variations(table, None, Some(&selected), 12.0, false)
+            physical_variations(table, None, Some(&selected), None, 12.0, false)
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn coretext_transports_the_ranked_width_and_preserves_instance_coordinates() {
+        let data = width_fixture_fvar();
+        let table = fvar::Table::parse(&data).unwrap();
+        for (native, descriptor, width, expected) in [
+            (None, None, 100.0, 100.0),
+            (Some(50.0), None, 100.0, 100.0),
+            (Some(125.0), None, 100.0, 125.0),
+            (None, Some(50.0), 100.0, 50.0),
+            (None, None, 200.0, 150.0),
+        ] {
+            let ranked = MatchingAxes::from_fvar(table, 400.0, width, |_| (native, descriptor));
+            assert_eq!(ranked.width, Some(expected));
+            let native = native.map(|value| values(WDTH, f64::from(value)));
+            let descriptor = descriptor.map(|value| values(WDTH, f64::from(value)));
+            let selected = physical_variations(
+                table,
+                native.as_deref(),
+                descriptor.as_deref(),
+                Some(width),
+                12.0,
+                false,
+            );
+            assert_eq!(selected.unwrap(), [FontVariation::new(WDTH, expected)]);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the macOS Core Text font registry"]
+    fn coretext_omitted_and_normal_stretch_share_variable_glyph_metrics() {
+        use crate::fonts::{FontByteBudget, NativeFontOptions, sfnt};
+        use objc2_core_foundation::{CFURL, CFURLPathStyle};
+        use std::{ffi::c_void, fs, path::PathBuf, ptr};
+
+        // Use process-local registration for the fixture without enabling more production APIs.
+        unsafe extern "C-unwind" {
+            fn CTFontManagerRegisterFontsForURL(
+                url: &CFURL,
+                scope: u32,
+                error: *mut *mut c_void,
+            ) -> bool;
+            fn CTFontManagerUnregisterFontsForURL(
+                url: &CFURL,
+                scope: u32,
+                error: *mut *mut c_void,
+            ) -> bool;
+        }
+        const PROCESS_SCOPE: u32 = 1;
+        struct RegisteredFont {
+            url: CFRetained<CFURL>,
+            path: PathBuf,
+        }
+        impl Drop for RegisteredFont {
+            fn drop(&mut self) {
+                // SAFETY: The URL remains live and null discards the optional error.
+                unsafe {
+                    CTFontManagerUnregisterFontsForURL(&self.url, PROCESS_SCOPE, ptr::null_mut())
+                };
+                let _ = fs::remove_file(&self.path);
+            }
+        }
+
+        let raw = ttf_parser::RawFace::parse(VARIABLE_FONT, 0).unwrap();
+        let fvar = width_fixture_fvar();
+        let mut stat = raw
+            .table(ttf_parser::Tag::from_bytes(b"STAT"))
+            .unwrap()
+            .to_vec();
+        let axis_offset = u32::from_be_bytes(stat[8..12].try_into().unwrap()) as usize;
+        stat[axis_offset..axis_offset + 4].copy_from_slice(&WDTH);
+        let tables = raw.table_records.into_iter().map(|record| {
+            let data = match &record.tag.to_bytes() {
+                b"fvar" => fvar.as_slice(),
+                b"STAT" => stat.as_slice(),
+                _ => raw.table(record.tag).unwrap(),
+            };
+            (record.tag.0, data)
+        });
+        let path =
+            std::env::temp_dir().join(format!("merman-coretext-width-{}.ttf", std::process::id()));
+        let url = CFURL::with_file_system_path(
+            None,
+            Some(&CFString::from_str(path.to_str().unwrap())),
+            CFURLPathStyle::CFURLPOSIXPathStyle,
+            false,
+        )
+        .unwrap();
+        let control = OperationControl::new();
+        let bytes = sfnt::from_tables(
+            tables,
+            FontByteBudget::new("test-font-bytes", 0, 64 * 1024),
+            &control,
+            &path,
+        )
+        .unwrap();
+        fs::write(&path, bytes).unwrap();
+        let registered = RegisteredFont { url, path };
+        // SAFETY: The live URL points to the fixture and null discards the optional error.
+        assert!(unsafe {
+            CTFontManagerRegisterFontsForURL(&registered.url, PROCESS_SCOPE, ptr::null_mut())
+        });
+
+        let context = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .load_platform(&control)
+            .unwrap();
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let render = |attributes| {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="220" height="100">
+                <text id="label" y="80" font-family="Merman Variable Weight" font-size="100" {attributes}>AV</text>
+            </svg>"#
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            context.check().unwrap();
+            let Some(usvg::Node::Text(label)) = tree.node_by_id("label") else {
+                panic!("expected text")
+            };
+            let [span] = label.layouted() else {
+                panic!("expected one font instance")
+            };
+            let [a, v] = span.positioned_glyphs.as_slice() else {
+                panic!("expected both glyphs")
+            };
+            assert!(a.id.0 != 0 && v.id.0 != 0 && a.font == v.font);
+            assert_eq!(
+                tree.fontdb().face(a.font).unwrap().post_script_name,
+                "MermanVariableWeight-Thin"
+            );
+            (span.variations.clone(), v.transform().tx - a.transform().tx)
+        };
+        let omitted = render("");
+        let normal = render(r#"font-stretch="normal""#);
+        assert_eq!(omitted, normal);
+        assert_eq!(normal.0, [FontVariation::new(WDTH, 100.0)]);
+        assert!((normal.1 - 63.0).abs() < 0.001, "{normal:?}");
+        let condensed = render(r#"font-stretch="ultra-condensed""#);
+        assert!((condensed.1 - 51.0).abs() < 0.001, "{condensed:?}");
+        let explicit = render(r#"font-stretch="normal" font-variation-settings="'wdth' 125""#);
+        assert_eq!(explicit.0, [FontVariation::new(WDTH, 125.0)]);
+        assert!((explicit.1 - 69.0).abs() < 0.001, "{explicit:?}");
     }
 
     #[test]
@@ -250,12 +440,12 @@ mod tests {
         let optical_size = values(*b"opsz", 150.0);
         let expected = [FontVariation::new(*b"opsz", 150.0)];
         assert!(
-            physical_variations(table, Some(&optical_size), None, 150.0, false)
+            physical_variations(table, Some(&optical_size), None, None, 150.0, false)
                 .unwrap()
                 .is_empty()
         );
         assert_eq!(
-            physical_variations(table, Some(&optical_size), None, 150.0, true).unwrap(),
+            physical_variations(table, Some(&optical_size), None, None, 150.0, true).unwrap(),
             expected
         );
         assert_eq!(
@@ -263,6 +453,7 @@ mod tests {
                 table,
                 Some(&optical_size),
                 Some(&optical_size),
+                None,
                 150.0,
                 false
             )
@@ -270,7 +461,7 @@ mod tests {
             expected
         );
         assert_eq!(
-            physical_variations(table, Some(&optical_size), None, 200.0, false).unwrap(),
+            physical_variations(table, Some(&optical_size), None, None, 200.0, false).unwrap(),
             expected
         );
     }
@@ -290,12 +481,12 @@ mod tests {
             fvar[8..10].copy_from_slice(&count.to_be_bytes());
             let table = fvar::Table::parse(&fvar).unwrap();
             assert_eq!(
-                physical_variations(table, Some(&selected), None, 12.0, false).unwrap(),
+                physical_variations(table, Some(&selected), None, None, 12.0, false).unwrap(),
                 [FontVariation::new(*b"wght", 700.0)]
             );
         }
         fvar[8..10].copy_from_slice(&(MAX_VARIATION_AXES + 1).to_be_bytes());
         let table = fvar::Table::parse(&fvar).unwrap();
-        assert!(physical_variations(table, Some(&selected), None, 12.0, false).is_none());
+        assert!(physical_variations(table, Some(&selected), None, None, 12.0, false).is_none());
     }
 }

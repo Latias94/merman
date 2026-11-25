@@ -1,4 +1,5 @@
 name: Release Independent Crate (crates.io)
+run-name: Release independent crate ${{ inputs.package }} ${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -70,11 +71,17 @@ jobs:
   preflight:
     needs: validate-inputs
     runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
       attempt: ${{ steps.source.outputs.attempt }}
-      sha256: ${{ steps.candidate.outputs.sha256 }}
+      sha256: ${{ steps.candidate.outputs.sha256 || steps.recovery.outputs.sha256 }}
+      receipt_sha256: ${{ steps.candidate.outputs.receipt_sha256 }}
       publish: ${{ steps.candidate.outputs.publish }}
+      artifact_id: ${{ steps.freeze.outputs.artifact-id }}
       stable_dependent_version: ${{ steps.dependent-versions.outputs.stable_version }}
       prerelease_dependent_version: ${{ steps.dependent-versions.outputs.prerelease_version }}
     steps:
@@ -89,16 +96,66 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
-          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
-          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.100.0
+      - name: Inspect independent crate upload history
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/crates_io_release.py independent-history --package "$PACKAGE" --version "$VERSION" \
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
+            --source-sha "$SOURCE_SHA"
+
+      - name: Download the original independent release evidence
+        if: ${{ steps.history.outputs.artifact_id != '' }}
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ steps.history.outputs.artifact_id }}
+          path: target/independent-recovery
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.history.outputs.run_id }}
+          digest-mismatch: error
+
+      - name: Restore the original independent candidate for observation
+        id: recovery
+        if: ${{ steps.history.outputs.observe_only == 'true' }}
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          ORIGINAL_RUN_ID: ${{ steps.history.outputs.run_id }}
+          ORIGINAL_ATTEMPT: ${{ steps.history.outputs.attempt }}
+          ORIGINAL_SOURCE_SHA: ${{ steps.history.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ORIGINAL_RUN_ID" ]]; then
+            echo '::error::Publication history requires observation and the original receipt is unavailable. Observe the original version with its retained checksum.' >&2
+            exit 1
+          fi
+          source_tree="$(git rev-parse "${ORIGINAL_SOURCE_SHA}^{tree}")"
+          python3 scripts/crates_io_release.py verify-independent-candidate \
+            --candidate-dir target/independent-recovery --package "$PACKAGE" --version "$VERSION" \
+            --source-sha "$ORIGINAL_SOURCE_SHA" --source-tree "$source_tree" \
+            --publication-run-id "$ORIGINAL_RUN_ID" --publication-attempt "$ORIGINAL_ATTEMPT"
+
       - name: Install cargo-semver-checks
+        if: ${{ steps.history.outputs.observe_only == 'false' }}
         uses: taiki-e/install-action@v2.90.6
         with:
           tool: cargo-semver-checks@0.51.0
       - name: Verify independent crate release metadata
+        if: ${{ steps.history.outputs.observe_only == 'false' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -127,6 +184,7 @@ jobs:
           PY
 
       - name: Verify public Rust API compatibility
+        if: ${{ steps.history.outputs.observe_only == 'false' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
         run: cargo semver-checks check-release -p "$PACKAGE" --color always
@@ -134,16 +192,21 @@ jobs:
       - name: Select published dependent release tags
         if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}
         id: dependent-versions
+        env:
+          ORIGINAL_SOURCE_SHA: ${{ steps.history.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
-          prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' HEAD)"
-          printf 'stable_version=%s\n' "${stable_tag#v}" >> "$GITHUB_OUTPUT"
-          printf 'prerelease_version=%s\n' "${prerelease_tag#v}" >> "$GITHUB_OUTPUT"
+          dependent_source="${ORIGINAL_SOURCE_SHA:-HEAD}"
+          stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$dependent_source")"
+          prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' "$dependent_source")"
+          {
+            printf 'stable_version=%s\n' "${stable_tag#v}"
+            printf 'prerelease_version=%s\n' "${prerelease_tag#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Compile published dependents against the candidate
-        if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}
+        if: ${{ steps.history.outputs.observe_only == 'false' && needs.validate-inputs.outputs.package == 'roughr-merman' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -158,25 +221,48 @@ jobs:
             --dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"
 
       - name: Compile workspace native export against the implementation crates
-        if: ${{ needs.validate-inputs.outputs.package != 'roughr-merman' }}
+        if: ${{ steps.history.outputs.observe_only == 'false' && needs.validate-inputs.outputs.package != 'roughr-merman' }}
         run: cargo check --locked -p merman-export --no-default-features --features native-fonts,png,jpeg,pdf
 
       - name: Verify registry bytes or dry-run independent crate publication
         id: candidate
+        if: ${{ steps.history.outputs.observe_only == 'false' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
         shell: bash
         run: |
           set -euo pipefail
-          args=(preflight-independent --package "$PACKAGE" --version "$VERSION")
+          args=(preflight-independent --package "$PACKAGE" --version "$VERSION"
+            --candidate-dir target/independent-crate --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE"
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT")
           if [[ "$PACKAGE" != "roughr-merman" ]]; then
             args+=(--verify-fork-consumer)
           fi
           python3 scripts/crates_io_release.py "${args[@]}"
 
+      - name: Retain the frozen independent candidate
+        id: freeze
+        if: ${{ steps.candidate.outputs.publish == 'true' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: crates-io-independent-candidate-attempt-${{ github.run_attempt }}
+          path: target/independent-crate
+          if-no-files-found: error
+
+      - name: Retain the independent preflight registry confirmation
+        if: ${{ steps.candidate.outputs.publish == 'false' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: crates-io-independent-confirmation-preflight-attempt-${{ github.run_attempt }}
+          path: target/independent-crate
+          if-no-files-found: error
+
   publish:
     needs: [validate-inputs, preflight]
+    if: ${{ needs.preflight.outputs.publish == 'true' && needs.preflight.outputs.attempt == github.run_attempt }}
     runs-on: ubuntu-24.04
     environment: crates.io
     permissions:
@@ -187,62 +273,72 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
-      - name: Verify pinned independent crate source
-        env:
-          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          current_sha="$(git rev-parse HEAD)"
-          [[ "$current_sha" == "$SOURCE_SHA" ]] || {
-            echo "::error::Publish checkout $current_sha does not match preflight source $SOURCE_SHA." >&2
-            exit 1
-          }
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100.0
-      - name: Inspect independent crate publication state
-        id: crate-state
-        if: ${{ needs.preflight.outputs.publish == 'true' }}
-        env:
-          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
-          SHA256: ${{ needs.preflight.outputs.sha256 }}
-          PREFLIGHT_ATTEMPT: ${{ needs.preflight.outputs.attempt }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$PREFLIGHT_ATTEMPT" != "$GITHUB_RUN_ATTEMPT" ]]; then
-            echo "::error::Re-run all jobs to qualify the candidate against the current registry siblings."
-            exit 1
-          fi
-          python3 scripts/crates_io_release.py registry-independent \
-            --package "$PACKAGE" --version "$VERSION" --sha256 "$SHA256"
+      - name: Download the frozen independent candidate
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.preflight.outputs.artifact_id }}
+          path: target/independent-crate
+          digest-mismatch: error
 
-      - name: Match the upload archive to the read-only preflight
-        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+      - name: Authorize sending the frozen independent candidate
+        id: crate-state
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
           SHA256: ${{ needs.preflight.outputs.sha256 }}
+          RECEIPT_SHA256: ${{ needs.preflight.outputs.receipt_sha256 }}
         run: |
           set -euo pipefail
-          cargo package -p "$PACKAGE" --locked --no-verify
-          printf '%s  %s\n' "$SHA256" "${CARGO_TARGET_DIR:-target}/package/$PACKAGE-$VERSION.crate" | sha256sum --check
+          python3 scripts/crates_io_release.py authorize-independent-upload \
+            --candidate-dir target/independent-crate --package "$PACKAGE" --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" \
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
+            --sha256 "$SHA256" --receipt-sha256 "$RECEIPT_SHA256"
+
+      - name: Retain the independent publisher registry confirmation
+        if: ${{ steps.crate-state.outputs.publish == 'false' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: crates-io-independent-confirmation-publish-attempt-${{ github.run_attempt }}
+          path: target/independent-crate
+          if-no-files-found: error
 
       - name: Authenticate with crates.io
         if: ${{ steps.crate-state.outputs.publish == 'true' }}
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@v1.0.6
 
+      - name: Retain the independent upload intent before sending
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: crates-io-independent-upload-intent-attempt-${{ github.run_attempt }}
+          path: target/independent-crate
+          if-no-files-found: error
+
       - name: Upload independent crate to crates.io
         if: ${{ steps.crate-state.outputs.publish == 'true' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
-        run: cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+          RECEIPT_SHA256: ${{ needs.preflight.outputs.receipt_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 scripts/crates_io_release.py publish-independent \
+            --candidate-dir target/independent-crate --package "$PACKAGE" --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" \
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
+            --sha256 "$SHA256" --receipt-sha256 "$RECEIPT_SHA256"
 
   verify-published:
     needs: [validate-inputs, preflight, publish]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1

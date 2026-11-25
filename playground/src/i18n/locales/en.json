@@ -548,6 +548,20 @@
       "mermaidRaster": "The raster export uses the captured Mermaid SVG."
     }
   },
+  "themeBrowser": {
+    "title": "Theme library",
+    "browse": "Browse theme library",
+    "description": "Preview a preset on a sample or your current diagram, then apply it to your workspace.",
+    "close": "Close theme library",
+    "search": "Search themes",
+    "noMatches": "No matching themes.",
+    "unavailable": "“{{id}}” is unavailable in this theme catalog. Choose a preset to preview.",
+    "apply": "Apply theme",
+    "preview": "Theme preview",
+    "sample": "Preview diagram",
+    "currentDiagram": "Current diagram",
+    "previewError": "Could not preview this diagram."
+  },
   "themeWorkshop": {
     "customize": "Customize",
     "gallery": "Themes",

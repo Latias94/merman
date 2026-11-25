@@ -1179,7 +1179,7 @@ version = "0.11.0"
 
 [[package]]
 name = "merman-usvg"
-version = "0.50.0"
+version = "0.50.1"
 dependencies = [
  "base64 0.23.1",
  "data-url",

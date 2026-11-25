@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,36 @@ def verify_package_listing(package: dict[str, Any], listing: set[str]) -> None:
         raise PackageLegalMaterialError(
             f"{package['name']} package omits legal files: {', '.join(sorted(missing))}"
         )
+
+
+def verify_package_archive(package: dict[str, Any], archive: Path) -> None:
+    prefix = f"{package['name']}-{package['version']}/"
+    crate_root = Path(package["manifest_path"]).parent
+    required = required_legal_paths(package)
+    files: set[str] = set()
+    try:
+        with tarfile.open(archive, "r:gz") as crate:
+            for member in crate:
+                if not member.name.startswith(prefix):
+                    continue
+                name = member.name.removeprefix(prefix)
+                if name not in required:
+                    continue
+                if name in files or not member.isfile():
+                    raise PackageLegalMaterialError(f"{archive.name} has an invalid legal file entry: {name}")
+                expected = (crate_root / name).read_bytes()
+                if not expected or member.size != len(expected):
+                    raise PackageLegalMaterialError(f"{archive.name} legal file differs from source: {name}")
+                content = crate.extractfile(member)
+                if content is None:
+                    raise PackageLegalMaterialError(f"{archive.name} cannot read legal file: {name}")
+                with content:
+                    if content.read() != expected:
+                        raise PackageLegalMaterialError(f"{archive.name} legal file differs from source: {name}")
+                files.add(name)
+    except (OSError, tarfile.TarError) as error:
+        raise PackageLegalMaterialError(f"cannot inspect {archive.name}: {error}") from error
+    verify_package_listing(package, files)
 
 
 def cargo_json(*args: str) -> Any:
