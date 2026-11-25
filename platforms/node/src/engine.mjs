@@ -102,9 +102,11 @@ const THEME_RESULT_LIMITS = Object.freeze({
   max_string_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
 });
 const MAX_OPERATION_TIMEOUT_MS = 0xffff_ffff;
+const OPERATION_REQUEST_FIELDS = new Set(["operationId", "source", "uri", "optionsJson"]);
 const SVG_REQUEST_FRAME_BYTES = '{"operation_id":"svg","source":"","uri":null,"include_metadata":false}'.length;
 const SVG_OPTIONS_FRAME_BYTES = ',"options_json":""'.length;
 const SVG_TIMEOUT_FRAME_BYTES = ',"operation_control":{"timeout_ms":}'.length;
+const SVG_ID_OPTIONS_BYTES = '{"svg":{"diagram_id":""}}'.length;
 const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
@@ -256,6 +258,7 @@ export class MermanEngine {
       { operationId: "svg", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -264,6 +267,7 @@ export class MermanEngine {
       { operationId: "svg", source, optionsJson: options.optionsJson },
       { timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -351,7 +355,7 @@ export class MermanEngine {
     return this.#execute(request, options, true);
   }
 
-  #execute(request, { signal, timeoutMs } = {}, includeMetadata) {
+  #execute(request, { signal, timeoutMs } = {}, includeMetadata, diagramId) {
     try {
       this.#executor.assertOpen();
     } catch (error) {
@@ -361,8 +365,13 @@ export class MermanEngine {
     const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
     const { expectation } = prepared;
     if (signal?.aborted) return Promise.reject(abortError());
+    const useTypedId = diagramId !== undefined && prepareSvgDiagramId(
+      prepared, diagramId, timeoutMs, directSvg && !!this.#transport.executeSvgWithId,
+    );
     let execute;
-    if (directSvg) {
+    if (useTypedId) {
+      execute = (forwarded) => this.#transport.executeSvgWithId(request.source, diagramId, forwarded, timeoutMs);
+    } else if (directSvg) {
       const optionsJson = prepareDirectSvgOptions(prepared, timeoutMs);
       const { source } = prepared.request;
       execute = (forwarded) => this.#transport.executeSvg(source, optionsJson, forwarded, timeoutMs);
@@ -396,18 +405,26 @@ export class MermanEngine {
     return this.#executeSync(request, options, true);
   }
 
-  #executeSync(request, { timeoutMs } = {}, includeMetadata) {
+  #executeSync(request, { timeoutMs } = {}, includeMetadata, diagramId) {
     this.#executor.assertSyncAvailable();
     const directSvg = this.#usesDirectSvg(request, includeMetadata);
     const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
-    const payload = directSvg
-      ? prepareDirectSvgOptions(prepared, timeoutMs)
-      : operationRequestJson(prepared, includeMetadata);
+    const useTypedId = diagramId !== undefined && prepareSvgDiagramId(
+      prepared, diagramId, timeoutMs, directSvg && !!this.#transport.executeSvgWithIdSync,
+    );
+    let payload = diagramId;
+    if (!useTypedId) {
+      payload = directSvg ? prepareDirectSvgOptions(prepared, timeoutMs) : operationRequestJson(prepared, includeMetadata);
+    }
     let response;
     try {
-      response = directSvg
-        ? this.#transport.executeSvgSync(prepared.request.source, payload, timeoutMs)
-        : this.#transport.executeSync(payload, timeoutMs);
+      if (directSvg) {
+        response = useTypedId
+          ? this.#transport.executeSvgWithIdSync(request.source, payload, timeoutMs)
+          : this.#transport.executeSvgSync(request.source, payload, timeoutMs);
+      } else {
+        response = this.#transport.executeSync(payload, timeoutMs);
+      }
     } catch (cause) {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
@@ -457,9 +474,8 @@ function invocationCancellationReasons(signal, timeoutMs) {
 
 function prepareOperationRequest(value, { timeoutMs, directSvg }) {
   if (!isPlainObject(value)) throw new TypeError("operation request must be a plain object.");
-  const knownFields = new Set(["operationId", "source", "uri", "optionsJson"]);
   for (const field of Object.keys(value)) {
-    if (!knownFields.has(field)) {
+    if (!OPERATION_REQUEST_FIELDS.has(field)) {
       throw new TypeError(`unknown operation request field \`${field}\`.`);
     }
   }
@@ -533,10 +549,7 @@ function operationRequestJson({ request, value }, includeMetadata) {
 
 function prepareDirectSvgOptions({ value, sourceBytes }, timeoutMs) {
   // Match the former fixed request's byte budget without building or scanning the document.
-  let requestBytes = SVG_REQUEST_FRAME_BYTES + sourceBytes;
-  if (timeoutMs !== undefined) {
-    requestBytes += SVG_TIMEOUT_FRAME_BYTES + String(timeoutMs).length;
-  }
+  let requestBytes = directSvgFrameBytes(sourceBytes, timeoutMs);
   const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
     requestBytes +=
@@ -549,6 +562,36 @@ function prepareDirectSvgOptions({ value, sourceBytes }, timeoutMs) {
     );
   }
   return optionsJson;
+}
+
+function directSvgFrameBytes(sourceBytes, timeoutMs) {
+  const timeoutBytes = timeoutMs === undefined ? 0 : SVG_TIMEOUT_FRAME_BYTES + String(timeoutMs).length;
+  return SVG_REQUEST_FRAME_BYTES + sourceBytes + timeoutBytes;
+}
+
+function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
+  if (typeof diagramId !== "string") throw new TypeError("diagramId must be a string when provided.");
+  if (prepared.value.optionsJson !== undefined) {
+    throw new TypeError("diagramId and optionsJson cannot be used together.");
+  }
+
+  // A UTF-16 unit needs at most six bytes in compact JSON, and enclosing that JSON as a
+  // request field expands it by at most twice. Use the exact wire path near either limit.
+  const optionsLimit = NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes;
+  const maxOptionsBytes = SVG_ID_OPTIONS_BYTES + diagramId.length * 6;
+  if (typedTransport && maxOptionsBytes <= optionsLimit &&
+      directSvgFrameBytes(prepared.sourceBytes, timeoutMs) + SVG_OPTIONS_FRAME_BYTES + maxOptionsBytes * 2 <=
+        NODE_TRANSPORT_LIMITS.request.max_utf8_bytes) {
+    assertUtf8Field(diagramId, "operation request diagramId", optionsLimit);
+    return true;
+  }
+
+  prepared.value = {
+    optionsJson: encodeTransportJson(
+      { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
+    ),
+  };
+  return false;
 }
 
 function validateOperationOptionsJson(optionsJson, measureField) {

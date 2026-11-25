@@ -2744,7 +2744,7 @@ pub(crate) fn parse_one_shot_options_with_resource_ceiling(
     Ok((options, base))
 }
 
-fn enforce_compact_options_budget(value: &Value) -> Result<(), BindingError> {
+pub(crate) fn enforce_compact_options_budget(value: &impl Serialize) -> Result<(), BindingError> {
     struct JsonByteCounter(usize);
 
     impl std::io::Write for JsonByteCounter {

@@ -1405,12 +1405,37 @@ test("custom adapters cannot opt out of SVG envelope validation", async () => {
     executeSync() { return rawSvg; },
     async executeSvg() { assert.fail("custom adapter SVG method was called"); },
     executeSvgSync() { assert.fail("custom adapter SVG sync method was called"); },
+    async executeSvgWithId() { assert.fail("custom adapter typed SVG method was called"); },
+    executeSvgWithIdSync() { assert.fail("custom adapter typed SVG sync method was called"); },
   });
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   try {
     const source = "flowchart TD\nA";
     await assert.rejects(engine.renderSvg(source), MermanInvalidTransportError);
     assert.throws(() => engine.renderSvgSync(source), MermanInvalidTransportError);
+    await assert.rejects(engine.renderSvg(source, { diagramId: "unsafe-bypass" }), MermanInvalidTransportError);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: "unsafe-bypass" }), MermanInvalidTransportError);
+  } finally {
+    await engine.dispose();
+  }
+});
+
+test("SVG diagramId uses canonical options on the generic transport", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const source = "flowchart LR\nA --> B";
+    const diagramId = 'deployment: café 🧪 "quoted"';
+    assert.equal(await engine.renderSvg(source, { diagramId }), "<svg />");
+    assert.equal(engine.renderSvgSync(source, { diagramId }), "<svg />");
+    for (const request of factory.calls) {
+      assert.deepEqual(JSON.parse(request.options_json), { svg: { diagram_id: diagramId } });
+      assert.equal(request.include_metadata, false);
+    }
+    assert.throws(() => engine.renderSvgSync(source, { diagramId, optionsJson: "{}" }), /cannot be used together/);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: 42 }), /must be a string/);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: "\ud800" }), /isolated UTF-16 surrogate/);
+    assert.equal(factory.calls.length, 2);
   } finally {
     await engine.dispose();
   }

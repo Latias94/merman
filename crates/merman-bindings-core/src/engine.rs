@@ -275,6 +275,41 @@ impl BindingEngine {
         }
     }
 
+    #[cfg(feature = "svg")]
+    pub(crate) fn prepare_svg_diagram_id(
+        &self,
+        operation: crate::BindingOperationKind,
+        diagram_id: &str,
+    ) -> Result<PreparedRequestOverlay, BindingError> {
+        const OPTIONS_FRAME_BYTES: usize = br#"{"svg":{"diagram_id":""}}"#.len();
+        let max_json_bytes = OPTIONS_FRAME_BYTES.saturating_add(diagram_id.len().saturating_mul(6));
+        if max_json_bytes <= crate::BINDING_OPTIONS_JSON_MAX_BYTES
+            && !self.base_options.has_analysis_wrapper()
+            && self
+                .artifact_contract
+                .exposes_option_group(crate::BindingOptionGroupKey::Svg)
+        {
+            return Ok(PreparedRequestOverlay::Svg(common::LightSvgOverride {
+                diagram_id: Some(diagram_id.to_owned()),
+            }));
+        }
+
+        #[derive(serde::Serialize)]
+        struct Options<'a> {
+            svg: Svg<'a>,
+        }
+        #[derive(serde::Serialize)]
+        struct Svg<'a> {
+            diagram_id: &'a str,
+        }
+        let options = Options {
+            svg: Svg { diagram_id },
+        };
+        common::enforce_compact_options_budget(&options)?;
+        let options = serde_json::to_vec(&options).map_err(common::internal_json_error)?;
+        self.prepare_request_overlay(operation, &options)
+    }
+
     pub(crate) fn execute_request_projection(
         &self,
         admitted: AdmittedArtifactOperation,

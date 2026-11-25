@@ -1601,10 +1601,42 @@ impl BindingEngine {
             .map(BindingOperationExecution::into_data)
     }
 
+    /// Executes data-only SVG with a request-local ID from a typed transport.
+    #[cfg(feature = "svg")]
+    #[doc(hidden)]
+    pub fn execute_svg_data_with_diagram_id(
+        &self,
+        source: &[u8],
+        diagram_id: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let request =
+            BindingOperationRequest::new(OperationKey::Svg.id(), source).with_control(control);
+        self.execute_request_with_options(request, false, |operation, _| {
+            self.prepare_svg_diagram_id(operation, diagram_id)
+        })
+        .map(BindingOperationExecution::into_data)
+    }
+
     fn execute_request(
         &self,
         request: BindingOperationRequest<'_>,
         include_metadata: bool,
+    ) -> Result<BindingOperationExecution, BindingError> {
+        self.execute_request_with_options(request, include_metadata, |operation, options| {
+            self.prepare_request_overlay(operation, options)
+        })
+    }
+
+    fn execute_request_with_options(
+        &self,
+        request: BindingOperationRequest<'_>,
+        include_metadata: bool,
+        prepare_options: impl FnOnce(
+            BindingOperationKind,
+            &[u8],
+        )
+            -> Result<crate::engine::PreparedRequestOverlay, BindingError>,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = resolve_operation_request(&request)?;
         let control = request.control_or_default();
@@ -1617,7 +1649,7 @@ impl BindingEngine {
                 execute_theme_output(admitted, request.source, request.options_json, &control)?;
             return Ok(BindingOperationExecution { operation, output });
         }
-        let prepared = self.prepare_request_overlay(operation, request.options_json)?;
+        let prepared = prepare_options(operation, request.options_json)?;
         let admitted = self.admit_operation(operation)?;
         let output = match prepared {
             crate::engine::PreparedRequestOverlay::Unchanged => self.execute_admitted_output(

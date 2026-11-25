@@ -339,6 +339,8 @@ export interface RenderSvgOptions {
    * operation. Values must be integers from 0 through 4,294,967,295.
    */
   timeoutMs?: number;
+  /** Request-local SVG ID. Use optionsJson when supplying other request overrides. */
+  diagramId?: string;
   /** Raw per-request options JSON merged by the shared binding contract. */
   optionsJson?: string;
 }

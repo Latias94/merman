@@ -620,14 +620,35 @@ fn execute_wire_inner(
 }
 
 #[cfg(feature = "transport-napi")]
+#[derive(Clone, Copy)]
+pub(crate) enum DirectSvgOptions<'a> {
+    Json(Option<&'a str>),
+    DiagramId(&'a str),
+}
+
+#[cfg(feature = "transport-napi")]
 pub(crate) fn execute_svg_with_admitted_control(
     engine: &BindingEngine,
     source: &str,
-    options_json: Option<&str>,
+    options: DirectSvgOptions<'_>,
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
     binding_boundary(|| {
+        let fallback;
+        let options = match options {
+            DirectSvgOptions::DiagramId(id)
+                if !direct_svg_id_fits(source, id, admitted_timeout_ms) =>
+            {
+                fallback = serde_json::json!({"svg": {"diagram_id": id}}).to_string();
+                DirectSvgOptions::Json(Some(fallback.as_str()))
+            }
+            options => options,
+        };
+        let options_json = match options {
+            DirectSvgOptions::Json(options_json) => options_json,
+            DirectSvgOptions::DiagramId(_) => None,
+        };
         validate_direct_svg_framing(source, options_json, admitted_timeout_ms)?;
         control
             .checkpoint_at(OperationPhase::Admission)
@@ -636,10 +657,19 @@ pub(crate) fn execute_svg_with_admitted_control(
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
-        let request = BindingOperationRequest::new(OperationKey::Svg.id(), source.as_bytes())
-            .with_options_json(options_json.unwrap_or_default().as_bytes())
-            .with_control(control);
-        direct_svg_response(engine.execute_data(request)?)
+        let data = match options {
+            DirectSvgOptions::Json(options_json) => {
+                let request =
+                    BindingOperationRequest::new(OperationKey::Svg.id(), source.as_bytes())
+                        .with_options_json(options_json.unwrap_or_default().as_bytes())
+                        .with_control(control);
+                engine.execute_data(request)?
+            }
+            DirectSvgOptions::DiagramId(id) => {
+                engine.execute_svg_data_with_diagram_id(source.as_bytes(), id, control)?
+            }
+        };
+        direct_svg_response(data)
     })
 }
 
@@ -650,16 +680,39 @@ pub(crate) fn direct_svg_field_limits() -> (usize, usize) {
 }
 
 #[cfg(feature = "transport-napi")]
-fn validate_direct_svg_framing(
-    source: &str,
-    options_json: Option<&str>,
-    timeout_ms: Option<u32>,
-) -> Result<(), BindingError> {
+fn direct_svg_frame_bytes(has_options: bool, timeout_ms: Option<u32>) -> usize {
     const FRAME_BYTES: usize =
         r#"{"operation_id":"svg","source":"","uri":null,"include_metadata":false}"#.len();
     const OPTIONS_FRAME_BYTES: usize = r#","options_json":"""#.len();
     const TIMEOUT_FRAME_BYTES: usize = r#","operation_control":{"timeout_ms":}"#.len();
 
+    FRAME_BYTES
+        + usize::from(has_options) * OPTIONS_FRAME_BYTES
+        + timeout_ms.map_or(0, |timeout| {
+            TIMEOUT_FRAME_BYTES + timeout.checked_ilog10().unwrap_or(0) as usize + 1
+        })
+}
+
+#[cfg(feature = "transport-napi")]
+fn direct_svg_id_fits(source: &str, id: &str, timeout_ms: Option<u32>) -> bool {
+    const ID_OPTIONS_BYTES: usize = br#"{"svg":{"diagram_id":""}}"#.len();
+    let contract = node_wire_contract();
+    // The virtual option document expands by at most twice when escaped as a request field.
+    // Its structure and field bytes are otherwise bounded by this compact JSON shape.
+    let max_options_bytes = ID_OPTIONS_BYTES.saturating_add(id.len().saturating_mul(6));
+    let max_request_bytes = direct_svg_frame_bytes(true, timeout_ms)
+        .saturating_add(source.len().saturating_mul(6))
+        .saturating_add(max_options_bytes.saturating_mul(2));
+    max_options_bytes <= contract.fields.options_json_utf8_bytes
+        && max_request_bytes <= contract.documents.request.max_utf8_bytes
+}
+
+#[cfg(feature = "transport-napi")]
+fn validate_direct_svg_framing(
+    source: &str,
+    options_json: Option<&str>,
+    timeout_ms: Option<u32>,
+) -> Result<(), BindingError> {
     let contract = node_wire_contract();
     ensure_field(
         source,
@@ -667,11 +720,7 @@ fn validate_direct_svg_framing(
         contract.fields.source_utf8_bytes,
     )
     .map_err(caller_options_error)?;
-    let frame_bytes = FRAME_BYTES
-        + options_json.map_or(0, |_| OPTIONS_FRAME_BYTES)
-        + timeout_ms.map_or(0, |timeout| {
-            TIMEOUT_FRAME_BYTES + timeout.checked_ilog10().unwrap_or(0) as usize + 1
-        });
+    let frame_bytes = direct_svg_frame_bytes(options_json.is_some(), timeout_ms);
     let text_bytes = source
         .len()
         .saturating_add(options_json.map_or(0, str::len));
@@ -1549,6 +1598,11 @@ fn producer_error(message: String) -> BindingError {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "transport-napi")]
+    use super::{
+        DirectSvgOptions, SuccessEnvelope, direct_svg_response, execute_svg_with_admitted_control,
+        parse_operation_request_framing, success_data_envelope, validate_direct_svg_framing,
+    };
     use super::{
         NodeDocumentLimits, NodeTransportKind, admitted_operation_control, create_engine,
         create_engine_with_icon_packs, deserialize_bounded_json, error_envelope, execute_wire,
@@ -1556,11 +1610,6 @@ mod tests {
         node_artifact_contract, node_wire_contract, parse_operation_request, runtime_catalog_wire,
         scan_bounded_json_text, transport_identity_wire, validate_bounded_json_text,
         validate_runtime_catalog,
-    };
-    #[cfg(feature = "transport-napi")]
-    use super::{
-        SuccessEnvelope, direct_svg_response, execute_svg_with_admitted_control,
-        parse_operation_request_framing, success_data_envelope, validate_direct_svg_framing,
     };
 
     #[test]
@@ -2048,7 +2097,7 @@ mod tests {
                 let direct = execute_svg_with_admitted_control(
                     &engine,
                     source,
-                    Some(options),
+                    DirectSvgOptions::Json(Some(options)),
                     admitted_operation_control(None),
                     None,
                 )
@@ -2080,7 +2129,7 @@ mod tests {
                 let error = execute_svg_with_admitted_control(
                     &engine,
                     request["source"].as_str().unwrap(),
-                    Some(options),
+                    DirectSvgOptions::Json(Some(options)),
                     admitted_operation_control(None),
                     None,
                 )
@@ -2386,7 +2435,7 @@ mod tests {
         let direct = execute_svg_with_admitted_control(
             &engine,
             source,
-            Some("{"),
+            DirectSvgOptions::Json(Some("{")),
             admitted_operation_control(Some(0)),
             Some(0),
         )
@@ -2396,6 +2445,32 @@ mod tests {
             direct.status(),
             merman_bindings_core::BindingStatus::Cancelled
         );
+    }
+
+    #[cfg(feature = "transport-napi")]
+    #[test]
+    fn typed_svg_ids_preserve_json_output_and_deadlines() {
+        let engine = create_engine(r#"{"site_config":{"layout":"dagre"}}"#).unwrap();
+        let source = "flowchart LR\nA[Hello] --> B[World]";
+        for id in ["", "one:部署 😀\"\\\n"] {
+            let json = serde_json::json!({"svg": {"diagram_id": id}}).to_string();
+            for timeout in [None, Some(0)] {
+                let render = |options| {
+                    execute_svg_with_admitted_control(
+                        &engine,
+                        source,
+                        options,
+                        admitted_operation_control(timeout),
+                        timeout,
+                    )
+                };
+                let expected = render(DirectSvgOptions::Json(Some(&json)));
+                if timeout.is_none() {
+                    assert!(expected.as_ref().is_ok_and(|svg| svg.starts_with("<svg")));
+                }
+                assert_eq!(render(DirectSvgOptions::DiagramId(id)), expected);
+            }
+        }
     }
 
     #[test]

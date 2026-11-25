@@ -43,6 +43,13 @@ export function wrapCandidateEngine(
       executeSvg.call(currentEngine(), source, optionsJson, signal, timeoutMs);
     transport.executeSvgSync = (source, optionsJson, timeoutMs) =>
       executeSvgSync.call(currentEngine(), source, optionsJson, timeoutMs);
+    const { executeSvgWithId, executeSvgWithIdSync } = engine;
+    if (typeof executeSvgWithId === "function" && typeof executeSvgWithIdSync === "function") {
+      transport.executeSvgWithId = (source, diagramId, signal, timeoutMs) =>
+        executeSvgWithId.call(currentEngine(), source, diagramId, signal, timeoutMs);
+      transport.executeSvgWithIdSync = (source, diagramId, timeoutMs) =>
+        executeSvgWithIdSync.call(currentEngine(), source, diagramId, timeoutMs);
+    }
   }
   return transport;
 }
