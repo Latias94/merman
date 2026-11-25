@@ -93,7 +93,8 @@ pub(super) fn dagre(
             }),
         );
     }
-    dugong::layout_controlled(&mut graph, work).map_err(|error| work.map_dugong_error(error))?;
+    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut graph, work))
+        .map_err(|error| work.map_dugong_error(error))?;
     for node in &mut nodes {
         let placed = graph.node(&node.id).ok_or_else(|| Error::InvalidModel {
             message: format!("Dagre omitted Mindmap node {}", node.id),
@@ -192,9 +193,10 @@ pub(super) fn elk(
         config,
         &mut Some(&mut *work),
     )?;
-    let mut placed =
+    let mut placed = crate::layout_work::measure_layout_solve!(
         elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
-            .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
+    )
+    .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
     oriented.restore(&mut placed, &mut Some(&mut *work))?;
     let indices: rustc_hash::FxHashMap<_, _> = nodes
         .iter()
@@ -272,8 +274,12 @@ pub(super) fn cose_bilkent(
         }
     }
 
-    let positions = layout_indexed_with_work_control(&indexed_nodes, &indexed_edges, work)
-        .map_err(|error| work.map_manatee_error(error))?;
+    let positions = crate::layout_work::measure_layout_solve!(layout_indexed_with_work_control(
+        &indexed_nodes,
+        &indexed_edges,
+        work
+    ))
+    .map_err(|error| work.map_manatee_error(error))?;
     for (node, position) in nodes.iter_mut().zip(positions) {
         node.x = position.x;
         node.y = position.y;

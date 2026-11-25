@@ -388,6 +388,9 @@ impl BuiltinHtmlLineWidth {
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::Measure);
         #[cfg(test)]
         {
             self.pushed_chunks = self.pushed_chunks.saturating_add(1);
@@ -405,6 +408,9 @@ impl BuiltinHtmlLineWidth {
     }
 
     pub(crate) fn width_px(&self) -> f64 {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::Measure);
         let width = match &self.source {
             BuiltinHtmlLineWidthSource::Heuristic(line) => line.width_px(),
             BuiltinHtmlLineWidthSource::Uniform {
@@ -493,10 +499,16 @@ impl BuiltinSvgComputedLength {
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::Measure);
         self.line.push_text(text);
     }
 
     pub(crate) fn width_px(&self) -> f64 {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::Measure);
         let width = self.line.width_px();
         if width.is_finite() && width >= 0.0 {
             width
@@ -1098,6 +1110,9 @@ impl RoutedTextMeasurer<'_> {
         decode_host: impl FnOnce(HostTextMeasurement) -> Option<T>,
         profile_call: impl FnOnce(&(dyn TextMeasurer + Send + Sync)) -> T,
     ) -> T {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::Measure);
         let phase = request.phase;
         let operation = request.operation;
         if let Some(cancelled) = self.controlled_cancellation_value() {

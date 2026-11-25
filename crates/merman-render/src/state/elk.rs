@@ -246,10 +246,12 @@ pub(super) fn layout(
         config,
         &mut Some(&mut *work),
     )?;
-    let mut placed = elk::layout_with_operation_seed_and_work_control(
-        oriented.graph(),
-        execution.elk_operation_seed(),
-        work,
+    let mut placed = crate::layout_work::measure_layout_solve!(
+        elk::layout_with_operation_seed_and_work_control(
+            oriented.graph(),
+            execution.elk_operation_seed(),
+            work,
+        )
     )
     .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
     oriented.restore(&mut placed, &mut Some(&mut *work))?;

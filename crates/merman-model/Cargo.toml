@@ -107,6 +107,7 @@ system-timezone = [
 ]
 system-random = ["dep:getrandom", "getrandom/std"]
 system-timing = ["dep:web-time"]
+benchmark-stages = []
 
 [dependencies]
 htmlize = { workspace = true, optional = true }

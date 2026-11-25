@@ -181,6 +181,14 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check
 
+      - name: Reject compressed benchmark archives
+        run: |
+          archives=$(git ls-files -- ':(glob)docs/performance/**/*.gz')
+          if [[ -n "$archives" ]]; then
+            printf 'Upload benchmark archives as CI artifacts or keep them under target/bench.\n%s\n' "$archives" >&2
+            exit 1
+          fi
+
       - name: Check Windows checkout path lengths
         run: python3 scripts/check_path_lengths.py
 
@@ -909,7 +917,7 @@ jobs:
       - name: Install Node candidate dependencies
         run: npm ci --prefix platforms/node
 
-      - name: Verify Node candidate contracts and nested lock freshness
+      - name: Verify Node candidate contracts and root lock freshness
         run: npm test --prefix platforms/node
 
       - name: Install Rust toolchain for real Node candidates
@@ -1522,25 +1530,9 @@ jobs:
 
       - name: Check performance owner contracts
         run: |
-          python3 -m py_compile \
-            tools/bench/compare_mermaid_renderers.py \
-            tools/bench/compare_self.py \
-            tools/bench/corpus_utils.py \
-            tools/bench/freeze_perf_baseline.py \
-            tools/bench/native_memory.py \
-            tools/bench/perf_runner.py \
-            tools/bench/render_perf_comment.py \
-            tools/bench/run_layout_work_calibration.py \
-            tools/bench/run_native_memory.py \
-            tools/bench/stage_spotcheck.py \
-            tools/bench/verify_pipeline_bench_list.py
-          python3 tools/bench/test_perf_baseline_manifest.py
-          python3 -m unittest tools.bench.test_layout_work_calibration
-          python3 tools/bench/test_native_memory_contracts.py
-          python3 tools/bench/test_native_memory_driver_contracts.py
-          python3 -m venv "$RUNNER_TEMP/merman-benchmark-python"
-          "$RUNNER_TEMP/merman-benchmark-python/bin/python" -m pip install -r tools/bench/requirements-png.txt
-          "$RUNNER_TEMP/merman-benchmark-python/bin/python" tools/bench/test_perf_contracts.py
+          python3 -m compileall -q tools/bench/bench.py tools/bench/merman_bench
+          python3 -m unittest discover -s tools/bench
+          node --test tools/bench/collectors/node_runner.test.mjs
 
   pr-gate:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}

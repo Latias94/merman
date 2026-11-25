@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { realpathSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,8 +25,11 @@ async function main() {
       await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
     );
     await inspectPackageManifests(nodeRoot, descriptor);
-    const packedRoot = valueAfter(process.argv.slice(2), "--packed-root");
-    if (packedRoot) verifyPackedRoot(path.resolve(packedRoot), descriptor);
+    const args = process.argv.slice(2);
+    const packedRoot = valueAfter(args, "--packed-root");
+    const localShoal = args.includes("--local-shoal");
+    if (localShoal && !packedRoot) throw new Error("--local-shoal requires --packed-root.");
+    if (packedRoot) verifyPackedRoot(path.resolve(packedRoot), descriptor, localShoal);
     console.log("[merman-node] candidate package contracts verified");
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -34,26 +37,37 @@ async function main() {
   }
 }
 
-function verifyPackedRoot(root, descriptor) {
-  let verified = false;
-  if (existsForTarget(root, "node")) {
-    verifyPackage(path.join(root, "node"), descriptor.root.name, "loader");
-    verified = true;
-  }
-  for (const target of descriptor.targets) {
-    if (!existsForTarget(root, target.target)) continue;
-    verifyPackage(path.join(root, target.target), target.name, "platform");
-    verified = true;
-  }
+function verifyPackedRoot(root, descriptor, localShoal) {
+  const hasLoader = existsForTarget(root, "node");
+  const targets = descriptor.targets.filter((target) => existsForTarget(root, target.target));
   const wasmDirectory = descriptor.wasm?.directory?.split("/").at(-1);
-  if (descriptor.wasm && wasmDirectory && existsForTarget(root, wasmDirectory)) {
-    verifyPackage(path.join(root, wasmDirectory), descriptor.wasm.name, "wasm");
-    verified = true;
+  const hasWasm = Boolean(wasmDirectory && existsForTarget(root, wasmDirectory));
+  if (localShoal) {
+    const nativePair = hasLoader && targets.length === 1 && !hasWasm;
+    const wasmOnly = hasWasm && !hasLoader && targets.length === 0;
+    if (!nativePair && !wasmOnly) {
+      throw new Error("The local Shoal package root must contain a native pair or one Node WASM package.");
+    }
   }
-  if (!verified) throw new Error("packed Node package root contains no recognized package.");
+  if (!hasLoader && targets.length === 0 && !hasWasm) {
+    throw new Error("packed Node package root contains no recognized package.");
+  }
+  if (hasLoader) verifyPackage(path.join(root, "node"), descriptor.root.name, "loader", localShoal);
+  for (const target of targets) {
+    verifyPackage(path.join(root, target.target), target.name, "platform", localShoal);
+  }
+  if (hasWasm) verifyPackage(path.join(root, wasmDirectory), descriptor.wasm.name, "wasm", localShoal);
 }
 
-function verifyPackage(packageRoot, packageName, role) {
+function verifyPackage(packageRoot, packageName, role, localShoal) {
+  const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  if (localShoal) {
+    if (manifest.private !== true || manifest.mermanLocalShoal !== true || Object.hasOwn(manifest, "publishConfig")) {
+      throw new Error(`${packageName} must be private and marked as a local Shoal package.`);
+    }
+  } else if (manifest.private === true || Object.hasOwn(manifest, "mermanLocalShoal")) {
+    throw new Error(`${packageName} is a private package and cannot be used for release verification.`);
+  }
   const result = spawnNpmSync(["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",

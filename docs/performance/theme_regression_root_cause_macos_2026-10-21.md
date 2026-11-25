@@ -203,7 +203,7 @@ files were hash-checked, archived and returned to their exact pre-candidate byte
 safe subset is much smaller than the earlier diagnostic intervention that bypassed the whole
 XML adapter; those experiments must not be treated as equivalent or their deltas added.
 
-The [candidate archive](evidence/generated-css-serialization-2026-10-21/manifest.json) retains
+The [candidate archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/generated-css-serialization-2026-10-21/manifest.json) retains
 registrations, complete candidate patch/source, build/test/driver logs, normalized observations,
 errors and independent review. The stock helper records per-process Criterion estimates and
 stdout hashes, rather than preserving 32 physical stdout files; independent reparsing of all
@@ -249,7 +249,7 @@ probe changes (None +9 bytes; themed +529 to +2,401 bytes) include argv, paths a
 must not be described as cache-only memory. A fresh balanced public timing confirmation is the next
 step before changing any v0.9.0 latency classification.
 
-The [compact ledger evidence archive](evidence/theme-ledger-ownership-2026-10-21/manifest.json)
+The [compact ledger evidence archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/theme-ledger-ownership-2026-10-21/manifest.json)
 contains the source identity, design and correctness reviews, memory/control summaries, terminal
 receipts and failed-attempt records. Full per-site and catalog raw rows remain in the ignored
 experiment directory.
@@ -274,7 +274,7 @@ clean `f46f751f` using eight end-to-end SVG fixtures and 4 balanced AB/BA pairs 
 No row reaches the registered materiality screen. The ownership refactor remains admitted for
 warm allocation/work only; this diagnostic does not change the v0.9.0 latency classification.
 
-The [ledger latency archive](evidence/theme-ledger-latency-2026-10-21/manifest.json) retains
+The [ledger latency archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/theme-ledger-latency-2026-10-21/manifest.json) retains
 the registration, full stock report and raw normalized rows.
 
 ## ZenUML repeated selector normalization: keep the safe removal
@@ -296,9 +296,9 @@ executables were frozen and the run had no contract errors. The reduction is bel
 materiality screen, so it is retained as a
 low-risk source cleanup without changing the v0.9.0 classification or claiming full-gap recovery.
 
-The [ZenUML normalization archive](evidence/zenuml-id-normalization-2026-10-21/manifest.json)
+The [ZenUML normalization archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/zenuml-id-normalization-2026-10-21/manifest.json)
 retains the compact stock report, not a separate registration. The
-[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) records the corrected
+[correction notice](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/zenuml-diagnostic-corrections-2026-10-21.md) records the corrected
 commit and mean fields, unknown registration chronology, and actual 50 us tool threshold versus
 the 1 us advisory prose. This diagnostic does not establish formal latency admission.
 The next investigation should target the remaining ZenUML completion/layout cost rather than
@@ -319,10 +319,10 @@ hashes, element counts and input hashes matched. The frozen benchmark executable
 This is a low-risk default-path cleanup below the 10% relative materiality screen, retained without
 changing the v0.9.0 classification.
 
-The [default CSS fast-path archive](evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json)
+The [default CSS fast-path archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/zenuml-default-css-fast-path-2026-10-21/manifest.json)
 retains the stock report with SVG identity checks and executable sizes, not a separate registration
 or rich-report/error comparison. The
-[correction notice](evidence/zenuml-diagnostic-corrections-2026-10-21.md) also applies here.
+[correction notice](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/zenuml-diagnostic-corrections-2026-10-21.md) also applies here.
 Neither diagnostic certifies formal improvement or control non-regression.
 The runs use different baselines and measurement epochs; their gains must not be added.
 
@@ -354,7 +354,7 @@ The registration records nine focused release tests and formatting passing. The 
 source checks empty-report equality, exact/short SVG ceilings, zero extra work growth, and
 cancellation/deadline precedence. These are separate correctness evidence: the stock tool does
 not capture complete rich-report/error hashes, and this archive does not contain the test logs.
-The [archive](evidence/empty-root-application-2026-10-21/manifest.json) separately preserves the
+The [archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/empty-root-application-2026-10-21/manifest.json) separately preserves the
 unchanged stock report and registration snapshot, all eight diagnostic rows and executable identities.
 
 ## Revised implementation priorities
@@ -381,7 +381,7 @@ that a safe implementation is guaranteed to recover. The all-family goal remains
 
 ## Evidence
 
-The [checked-in archive](evidence/theme-root-cause-2026-10-21/manifest.json) preserves the
+The [checked-in archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/theme-root-cause-2026-10-21/manifest.json) preserves the
 source audits, exact diagnostic patches and drivers, raw logs, observations, identity receipts,
 independent reviews, and failed discovery. Physical executables remain in the ignored directory;
 no diagnostic bypass is present in production. It is evidence for this host and source revision,

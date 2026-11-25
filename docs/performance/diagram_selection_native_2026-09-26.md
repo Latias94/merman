@@ -6,7 +6,7 @@ Gantt reduce the final executable size while preserving the selected-family SVG 
 
 ## Method
 
-The harness is `tools/bench/measure_diagram_selection.py`. It archives each committed
+The [archived harness](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/tools/bench/measure_diagram_selection.py) measured the native builds. It archives each committed
 revision, builds the same small consumer with the same public `Renderer::render` API and
 runtime-fed source files, and records the executable, compiler, dependency lock, fixture,
 and corpus SVG hashes. Every build used the fixed release profile (`opt-level = "s"`, thin
@@ -20,8 +20,8 @@ The pre-change baseline is revision `72c024776`. The reviewed implementation is 
 
 ## Reproduction
 
-Use the current [probe recipe](../../tools/bench/fixtures/diagram-selection/README.md) for a new
-comparison. Pin `--fixture-revision` to the same committed probe in all three lanes, independently
+Use the [archived probe recipe](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/tools/bench/fixtures/diagram-selection/README.md) to replay
+the historical comparison. Pin `--fixture-revision` to the same committed probe in all three lanes, independently
 of the measured `--revision`; the historical baseline predates the probe. Pin `--toolchain` as well.
 The driver now records both selections and uses that toolchain for every Rust command, including
 when the evidence directory is outside the repository. The table below records the current controlled rerun for `278ae4f52`; do not combine receipts from

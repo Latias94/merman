@@ -563,6 +563,9 @@ fn handle_sequence_message(
 pub(super) fn build_sequence_layout_graph(
     ctx: SequenceLayoutGraphContext<'_>,
 ) -> Result<SequenceLayoutGraph> {
+    #[cfg(feature = "benchmark-stages")]
+    let _stage =
+        merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut edges: Vec<LayoutEdge> = Vec::new();
 

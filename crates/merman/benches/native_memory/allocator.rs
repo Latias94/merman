@@ -1,7 +1,8 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering, fence};
 
-pub(crate) struct CountingSystemAllocator {
+pub(crate) struct CountingSystemAllocator<A = System> {
+    backend: A,
     live_bytes: AtomicU64,
     allocation_count: AtomicU64,
     allocated_bytes: AtomicU64,
@@ -23,9 +24,18 @@ pub(crate) struct AllocationMetrics {
     pub(crate) counter_underflowed: bool,
 }
 
-impl CountingSystemAllocator {
-    pub(crate) const fn new() -> Self {
+#[derive(Clone, Copy)]
+pub(crate) struct AllocationCheckpoint {
+    pub(crate) allocation_count: u64,
+    pub(crate) allocated_bytes: u64,
+    pub(crate) live_bytes: u64,
+    pub(crate) peak_live_bytes: u64,
+}
+
+impl<A> CountingSystemAllocator<A> {
+    pub(crate) const fn new(backend: A) -> Self {
         Self {
+            backend,
             live_bytes: AtomicU64::new(0),
             allocation_count: AtomicU64::new(0),
             allocated_bytes: AtomicU64::new(0),
@@ -135,10 +145,12 @@ impl CountingSystemAllocator {
         self.measuring.store(false, Ordering::SeqCst);
         fence(Ordering::SeqCst);
 
-        let allocation_count = self.allocation_count.load(Ordering::SeqCst);
-        let allocated_bytes = self.allocated_bytes.load(Ordering::SeqCst);
-        let live_bytes_after = self.live_bytes.load(Ordering::SeqCst);
-        let peak_live_bytes = self.peak_live_bytes.load(Ordering::SeqCst);
+        let AllocationCheckpoint {
+            allocation_count,
+            allocated_bytes,
+            live_bytes: live_bytes_after,
+            peak_live_bytes,
+        } = self.checkpoint(false);
         let peak_growth_bytes = match peak_live_bytes.checked_sub(snapshot_live_bytes) {
             Some(value) => value,
             None => {
@@ -159,6 +171,25 @@ impl CountingSystemAllocator {
         }
     }
 
+    /// Captures the continuous counters. At a synchronous phase boundary the next interval can
+    /// start its high-water mark at the current live bytes, without resetting allocation traffic.
+    pub(crate) fn checkpoint(&self, restart_peak: bool) -> AllocationCheckpoint {
+        let allocation_count = self.allocation_count.load(Ordering::SeqCst);
+        let allocated_bytes = self.allocated_bytes.load(Ordering::SeqCst);
+        let live_bytes = self.live_bytes.load(Ordering::SeqCst);
+        let peak_live_bytes = if restart_peak {
+            self.peak_live_bytes.swap(live_bytes, Ordering::SeqCst)
+        } else {
+            self.peak_live_bytes.load(Ordering::SeqCst)
+        };
+        AllocationCheckpoint {
+            allocation_count,
+            allocated_bytes,
+            live_bytes,
+            peak_live_bytes,
+        }
+    }
+
     #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn stop_measurement(&self) {
         self.measuring.store(false, Ordering::SeqCst);
@@ -171,12 +202,12 @@ impl CountingSystemAllocator {
     }
 }
 
-// SAFETY: every operation delegates to `System` with the original allocation contract. The
-// atomic bookkeeping neither dereferences nor changes the pointer returned by the system allocator.
-unsafe impl GlobalAlloc for CountingSystemAllocator {
+// SAFETY: every operation delegates to the backend with its original allocation contract. The
+// atomic bookkeeping only uses the layout and whether the allocation succeeded.
+unsafe impl<A: GlobalAlloc + Sync> GlobalAlloc for CountingSystemAllocator<A> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: the caller supplies the `GlobalAlloc` layout contract unchanged to `System`.
-        let pointer = unsafe { System.alloc(layout) };
+        // SAFETY: the caller guarantees the layout contract forwarded to the backend.
+        let pointer = unsafe { self.backend.alloc(layout) };
         if !pointer.is_null() {
             self.record_new_allocation(layout.size());
         }
@@ -184,8 +215,8 @@ unsafe impl GlobalAlloc for CountingSystemAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: the caller supplies the `GlobalAlloc` layout contract unchanged to `System`.
-        let pointer = unsafe { System.alloc_zeroed(layout) };
+        // SAFETY: the caller guarantees the layout contract forwarded to the backend.
+        let pointer = unsafe { self.backend.alloc_zeroed(layout) };
         if !pointer.is_null() {
             self.record_new_allocation(layout.size());
         }
@@ -194,13 +225,13 @@ unsafe impl GlobalAlloc for CountingSystemAllocator {
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
         // SAFETY: the caller guarantees that `pointer` and `layout` identify a live allocation.
-        unsafe { System.dealloc(pointer, layout) };
+        unsafe { self.backend.dealloc(pointer, layout) };
         self.record_deallocation(layout.size());
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         // SAFETY: the caller supplies the original allocation and valid new size unchanged.
-        let new_pointer = unsafe { System.realloc(pointer, layout, new_size) };
+        let new_pointer = unsafe { self.backend.realloc(pointer, layout, new_size) };
         if !new_pointer.is_null() {
             self.record_reallocation(layout.size(), new_size);
         }

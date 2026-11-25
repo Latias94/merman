@@ -75,6 +75,6 @@ Zed fixture, CLI, resource/rustdoc, catalog, Clippy, formatting, minimal feature
 example checks passed. The broad `verify --strict` command was intentionally not reported: it
 expands into unrelated workspace, release/legal, Web/browser, and VS Code gates owned by CI.
 
-The compact [evidence manifest](evidence/interactive_layout_work_calibration_2026-10-01.json)
+The compact [evidence manifest](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/interactive_layout_work_calibration_2026-10-01.json)
 binds raw summaries, reports, source corpus and exploratory controls by SHA-256. Raw files remain
 ignored under `target/bench/experiments/integration-resource-policy/`.

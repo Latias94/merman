@@ -1561,7 +1561,7 @@ fn replay_stress_corpus() {
     let path = std::env::var_os("MERMAN_SHOAL_STRESS_PLAN")
         .map(PathBuf::from)
         .or_else(|| evidence_dir().map(|dir| dir.join("stress.json")))
-        .expect("set MERMAN_SHOAL_STRESS_PLAN to a workloads plan --suite full output or MERMAN_SHOAL_GALLERY to the frozen evidence directory");
+        .expect("set MERMAN_SHOAL_STRESS_PLAN to a bench.py plan --suite full output or MERMAN_SHOAL_GALLERY to the frozen evidence directory");
     let plan = read_json(&path);
     let topologies = plan["topologies"].as_array().expect("workload topologies");
     assert_eq!(topologies.len(), 32, "expected the full topology suite");

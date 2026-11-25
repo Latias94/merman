@@ -616,6 +616,9 @@ fn self_loop_route(node: &NodeGeometry) -> Vec<LayoutPoint> {
 }
 
 pub(super) fn route(layout: &mut WorkingLayout, work_budget: &mut LayoutWorkBudget) -> Result<()> {
+    #[cfg(feature = "benchmark-stages")]
+    let _stage =
+        merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
     work_budget.charge(
         layout
             .nodes

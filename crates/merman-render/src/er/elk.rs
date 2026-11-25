@@ -65,10 +65,12 @@ pub(super) fn layout(
         effective_config,
         &mut Some(&mut *work_control),
     )?;
-    let mut elk_layout = elk::layout_with_operation_seed_and_work_control(
-        oriented.graph(),
-        operation_seed,
-        work_control,
+    let mut elk_layout = crate::layout_work::measure_layout_solve!(
+        elk::layout_with_operation_seed_and_work_control(
+            oriented.graph(),
+            operation_seed,
+            work_control,
+        )
     )
     .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
     oriented.restore(&mut elk_layout, &mut Some(&mut *work_control))?;

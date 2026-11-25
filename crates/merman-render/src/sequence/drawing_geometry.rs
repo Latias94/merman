@@ -20,6 +20,9 @@ pub(super) fn prepare_sequence_frame_geometry(
     label_box_width: f64,
     checkpoints: SequenceLayoutCheckpoints<'_>,
 ) -> Result<SequenceFrameGeometry> {
+    #[cfg(feature = "benchmark-stages")]
+    let _stage =
+        merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
     let mut nodes_by_id = FxHashMap::default();
     for (index, node) in nodes.iter().enumerate() {
         checkpoints.checkpoint_loop(index)?;

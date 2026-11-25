@@ -121,9 +121,11 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.checkpoint()?;
     let common_css = point_theme.common_css();
     let selector = super::super::util::css_selector_diagram_id(diagram_id);
-    let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
-    common_css.write_prefix(&mut css_out, selector)?;
-    common_css.write_root(&mut css_out, selector, diagram_id)?;
+    {
+        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        common_css.write_prefix(&mut css_out, selector)?;
+        common_css.write_root(&mut css_out, selector, diagram_id)?;
+    }
     if let Some((title_family, title_weight, label_weight)) = point_theme.native_title_style() {
         let id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
         let _ = write!(

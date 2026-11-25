@@ -74,9 +74,11 @@ pub(crate) fn render_info_diagram_svg(
     out.push_str("<style>");
     let selector = super::super::util::css_selector_diagram_id(diagram_id.semantic_str());
     let fragment = super::super::css::FragmentDiagramId(diagram_id.semantic_str());
-    let mut css = super::super::output::XmlTextOutput::new(&mut out);
-    style.css.write_prefix(&mut css, selector)?;
-    style.css.write_root(&mut css, selector, fragment)?;
+    {
+        let mut css = super::super::output::XmlTextOutput::new(&mut out);
+        style.css.write_prefix(&mut css, selector)?;
+        style.css.write_root(&mut css, selector, fragment)?;
+    }
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str(r#"<g/>"#);

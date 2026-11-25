@@ -35,6 +35,19 @@ impl RenderCapabilityPlan {
         self.backend
     }
 
+    /// Returns the realized selector and the expected fixed engine, if the site option does not apply.
+    #[doc(hidden)]
+    #[cfg(feature = "benchmark-stages")]
+    pub fn benchmark_layout_witness(
+        &self,
+        requested: Option<&str>,
+    ) -> (&'static str, Option<&'static str>) {
+        let fixed = requested
+            .and_then(|requested| layout_backend::benchmark_fixed_layout(self.family_id, requested))
+            .map(GraphLayoutBackend::benchmark_id);
+        (self.backend.benchmark_id(), fixed)
+    }
+
     /// Placement modes supported by the selected family and backend.
     pub fn supported_layout_adaptations(&self) -> &'static [LayoutAdaptation] {
         supported_layout_adaptations(self.family_id, self.backend == GraphLayoutBackend::Shoal)

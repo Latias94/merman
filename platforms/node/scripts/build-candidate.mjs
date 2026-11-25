@@ -20,7 +20,7 @@ import { validateTransportIdentityJson } from "../src/errors.mjs";
 import { BINDING_OPTIONS_SCHEMA_VERSION } from "../src/generated/binding-contract.mjs";
 import { nodeLoaderPackageVersion, resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
-import { NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
+import { NODE_LOCAL_SHOAL_CAPABILITY, NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
@@ -38,7 +38,9 @@ const capabilityDescriptorPath = path.join(
 );
 const capabilitySurface = readJson(capabilityDescriptorPath);
 const artifactsRoot = path.join(nodeRoot, "artifacts");
-const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
+const cargoPackage = "merman-node-candidate";
+export const cargoLockPath = path.join(repositoryRoot, "Cargo.lock");
+export const localShoalRoot = path.join(repositoryRoot, "target", "bench", "node-shoal");
 const requireFromBuild = createRequire(import.meta.url);
 const WINDOWS_MSVC_REPRODUCIBLE_LINK_CONFIG =
   'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]';
@@ -53,20 +55,16 @@ if (isMainModule()) {
   }
 }
 
-export function buildCandidate({ candidate, target = null }) {
-  assertDescriptor();
-  mkdirSync(artifactsRoot, { recursive: true });
+export function buildCandidate({ candidate, target = null, localShoal = false }) {
   const resolvedTarget = candidate === "napi" ? target ?? resolveNodeTarget() : null;
-  const recipe = resolveCandidateRecipe(candidate, resolvedTarget);
+  const recipe = resolveCandidateRecipe(candidate, resolvedTarget, { localShoal });
   validateCandidateBuildHost(recipe, candidate === "napi" ? resolveNodeTarget() : null);
-  const metadata = cargoMetadata(recipe);
-  validateCandidatePackageVersions(metadata);
-  const dependencyClosure = candidateDependencyClosure(metadata, recipe);
-  const before = collectLocalInputEntries(metadata);
-  const stage = mkdtempSync(path.join(artifactsRoot, `.stage-${candidate}-`));
-  const output = candidate === "napi"
-    ? path.join(artifactsRoot, "napi", resolvedTarget)
-    : path.join(artifactsRoot, "node-wasm");
+  const dependencyClosure = resolveCargoClosure(recipe);
+  const before = collectLocalInputEntries(dependencyClosure);
+  const output = candidateArtifactDirectory(recipe);
+  const outputParent = path.dirname(output);
+  mkdirSync(outputParent, { recursive: true });
+  const stage = mkdtempSync(path.join(outputParent, `.stage-${candidate}-`));
 
   try {
     if (candidate === "napi") buildNapi(stage, recipe);
@@ -74,25 +72,28 @@ export function buildCandidate({ candidate, target = null }) {
     normalizeArtifacts(stage, candidate);
     const runtime = probeCandidateRuntime(stage, recipe);
 
-    const afterMetadata = cargoMetadata(recipe);
-    const after = collectLocalInputEntries(afterMetadata);
+    const afterClosure = resolveCargoClosure(recipe);
+    const after = collectLocalInputEntries(afterClosure);
     if (stableJson(before) !== stableJson(after)) {
       throw new Error("Node candidate source inputs changed during the build; rerun it.");
     }
-    if (
-      dependencyClosure.digest !==
-      candidateDependencyClosure(afterMetadata, recipe).digest
-    ) {
+    if (dependencyClosure.digest !== afterClosure.digest) {
       throw new Error("Node candidate dependency closure changed during the build; rerun it.");
     }
     writeBuildEnvironmentEvidence(stage, recipe);
     writeBuildReceipt(stage, recipe, before, dependencyClosure, runtime);
     replaceDirectory(stage, output);
-    console.log(`[merman-node] built ${candidate}${resolvedTarget ? ` for ${resolvedTarget}` : ""}`);
+    console.log(`[merman-node] built ${candidate} (${recipe.cargoProfile}) at ${output}`);
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });
     throw error;
   }
+}
+
+export function candidateArtifactDirectory(recipe) {
+  if (recipe.localShoal) return path.join(localShoalRoot, "artifacts", recipe.targetId ?? recipe.candidate);
+  if (recipe.candidate === "napi") return path.join(artifactsRoot, "napi", recipe.targetId);
+  return path.join(artifactsRoot, "node-wasm");
 }
 
 function buildNapi(stage, recipe) {
@@ -130,6 +131,8 @@ export function candidateBuildInvocation(recipe, stage, environment = process.en
         repositoryRoot,
         "--manifest-path",
         descriptor.cargo.manifest,
+        "--package",
+        cargoPackage,
         "--package-json-path",
         path.join(nodeRoot, "package.json"),
         "--target",
@@ -140,8 +143,8 @@ export function candidateBuildInvocation(recipe, stage, environment = process.en
         "--no-js",
         "--dts",
         "native-internal.d.ts",
-        "--release",
-        "--strip",
+        "--profile",
+        recipe.cargoProfile,
         "--no-default-features",
         "--features",
         featureArgument,
@@ -214,7 +217,7 @@ function writeBuildReceipt(
   const sourceDigest = digestJson(inputEntries);
   const bindingContractEntries = collectBindingContractEntries(inputEntries);
   const bindingContractDigest = digestJson(bindingContractEntries);
-  const cargoLockDigest = digestFile(cargoLockPath);
+  const cargoLockDigest = inputEntries.find((entry) => entry.path === "Cargo.lock").sha256;
   const tools = {
     cargo: runCapture("cargo", ["--version"]),
     node: process.version,
@@ -233,6 +236,7 @@ function writeBuildReceipt(
     rust_target: recipe.rustTarget,
     wasm_pack_target: recipe.wasmPackTarget,
     glibc_floor: recipe.glibcFloor,
+    cargo_profile: recipe.cargoProfile,
     default_features: false,
     capability_recipe: {
       descriptor: descriptor.capability_recipe.descriptor,
@@ -243,7 +247,7 @@ function writeBuildReceipt(
     diagram_families: recipe.diagramFamilies,
   };
   const receipt = {
-    schema_version: 1,
+    schema_version: 2,
     config,
     commit: runCapture("git", ["rev-parse", "HEAD"]),
     source_digest: sourceDigest,
@@ -310,6 +314,7 @@ export function probeCandidateRuntime(stage, recipe) {
   validateTransportIdentityJson(binding.transportIdentityJson(), {
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: recipe.candidate === "napi" ? "napi" : "wasm",
+    localShoal: recipe.localShoal,
   });
   const Engine = recipe.candidate === "napi"
     ? binding?.NativeEngine ?? binding?.default?.NativeEngine
@@ -331,7 +336,7 @@ export function probeCandidateRuntime(stage, recipe) {
   }));
   let disposed = false;
   try {
-    const catalog = validateRuntimeCatalog(engine.runtimeCatalogJson());
+    const catalog = validateRuntimeCatalog(engine.runtimeCatalogJson(), recipe);
     const capabilities = catalog?.capabilities;
     const capabilityIds = sortedUniqueStrings(
       capabilities?.capability_ids,
@@ -350,7 +355,7 @@ export function probeCandidateRuntime(stage, recipe) {
       "runtime system adapter IDs",
       { allowEmpty: true },
     );
-    const expectedRuntime = resolveCandidateRuntimeContract();
+    const expectedRuntime = resolveCandidateRuntimeContract(recipe);
     if (
       catalog.schema_version !== 1 ||
       catalog.transport_api_version !== NODE_WIRE_CONTRACT.transport_api_version ||
@@ -437,6 +442,27 @@ export function probeCandidateRuntime(stage, recipe) {
       if (parseWireResponse(deadline?.errorJson).error?.details?.cancellation?.reason !== "deadline_exceeded") {
         throw new Error("Native candidate direct SVG must preserve deadline errors.");
       }
+    }
+    const shoalRequest = {
+      ...svgRequest,
+      source: "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nB --> A",
+    };
+    const shoal = parseWireResponse(engine.executeSync(JSON.stringify(shoalRequest)));
+    if (recipe.localShoal) {
+      if (
+        shoal.ok !== true || shoal.result?.media_type !== "image/svg+xml" ||
+        typeof shoal.result.data !== "string" ||
+        !shoal.result.data.includes("L_A_B_0") || !shoal.result.data.includes("L_B_A_0") ||
+        (recipe.candidate === "napi" &&
+          engine.executeSvgSync(shoalRequest.source, shoalRequest.options_json) !== shoal.result.data)
+      ) {
+        throw new Error("The local Node candidate could not render the explicit Shoal layout.");
+      }
+    } else if (
+      shoal.ok !== false || shoal.error?.kind !== "missing-capability" ||
+      shoal.error?.capability_id !== NODE_LOCAL_SHOAL_CAPABILITY
+    ) {
+      throw new Error("The default Node candidate must report Shoal as a missing capability.");
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
     const math = parseWireResponse(engine.executeSync(JSON.stringify({
@@ -551,6 +577,7 @@ function probeCandidateAsyncLifecycle(artifact, recipe, requestJson) {
       recipe.candidate,
       "--request-json",
       requestJson,
+      ...(recipe.localShoal ? ["--local-shoal"] : []),
     ],
     {
       cwd: nodeRoot,
@@ -611,35 +638,42 @@ function collectBindingContractEntries(inputEntries) {
   return entries;
 }
 
-function cargoMetadata(recipe) {
-  const args = [
-    "metadata",
+function resolveCargoClosure(recipe) {
+  const sharedArgs = [
     "--locked",
-    "--format-version",
-    "1",
     "--manifest-path",
     path.join(repositoryRoot, descriptor.cargo.manifest),
-    "--filter-platform",
-    recipe.rustTarget,
+    "--no-default-features",
+    "--features",
+    recipe.cargoFeatures.join(","),
   ];
-  if (!descriptor.cargo.default_features) args.push("--no-default-features");
-  if (recipe.cargoFeatures.length > 0) {
-    args.push("--features", recipe.cargoFeatures.join(","));
-  }
-  return JSON.parse(runCapture("cargo", args));
+  const host = /^host:\s+(\S+)$/m.exec(runCapture("rustc", ["--version", "--verbose"]))?.[1];
+  if (!host) throw new Error("Rust compiler did not report its host target.");
+  // Cargo tree includes host build dependencies even for a different artifact target.
+  // Filter metadata to the union so every selected tree entry can resolve its package ID.
+  const platforms = [...new Set([recipe.rustTarget, host])];
+  const metadata = JSON.parse(runCapture("cargo", [
+    "metadata",
+    "--format-version",
+    "1",
+    ...platforms.flatMap((platform) => ["--filter-platform", platform]),
+    ...sharedArgs,
+  ]));
+  validateCandidatePackageVersions(metadata);
+  // Metadata describes the whole workspace. The selected tree excludes its unrelated members,
+  // inactive optional dependencies and dev edges while retaining build dependencies.
+  const tree = runCapture("cargo", [
+    "tree", "--package", cargoPackage, "--target", recipe.rustTarget,
+    "--edges", "normal,build", "--prefix", "none", "--format", "{p}", "--color", "never",
+    ...sharedArgs,
+  ]);
+  return candidateDependencyClosure(metadata, tree, recipe);
 }
 
-export function collectLocalInputEntries(metadata) {
-  const roots = new Set();
-  for (const item of metadata.packages) {
-    if (item.source !== null) continue;
-    const manifest = path.resolve(item.manifest_path);
-    if (!isWithin(repositoryRoot, manifest)) continue;
-    roots.add(path.dirname(manifest));
-  }
+export function collectLocalInputEntries(dependencyClosure) {
   const files = new Set([
     path.join(repositoryRoot, "Cargo.toml"),
-    path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock"),
+    cargoLockPath,
     capabilityDescriptorPath,
     path.join(nodeRoot, "candidate-builds.json"),
     packageSurfacePath,
@@ -647,12 +681,15 @@ export function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "package-lock.json"),
     path.join(nodeRoot, "scripts", "benchmark", "svg-signature.mjs"),
     path.join(nodeRoot, "scripts", "build-candidate.mjs"),
+    path.join(nodeRoot, "scripts", "probe-candidate-async.mjs"),
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
     path.join(nodeRoot, "scripts", "theme-authoring-smoke.mjs"),
   ]);
   for (const file of walkFiles(path.join(nodeRoot, "src"))) files.add(file);
-  for (const root of roots) {
+  for (const { source } of dependencyClosure.packages) {
+    if (!source.startsWith("path:")) continue;
+    const root = path.resolve(repositoryRoot, source.slice("path:".length));
     for (const file of walkFiles(root, { skipBuildOutputs: true })) files.add(file);
   }
   return [...files]
@@ -676,9 +713,9 @@ function artifactEntries(stage) {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
-export function resolveCandidateRecipe(candidate, target) {
+export function resolveCandidateRecipe(candidate, target, { localShoal = false } = {}) {
   assertDescriptor();
-  const capabilityFeatures = candidateCapabilityFeatures();
+  const capabilityFeatures = candidateCapabilityFeatures(localShoal);
   if (candidate === "node-wasm") {
     const wasm = descriptor.candidates["node-wasm"];
     return completeCandidateRecipe(
@@ -686,6 +723,8 @@ export function resolveCandidateRecipe(candidate, target) {
         candidate,
         targetId: null,
         rustTarget: wasm.rust_target,
+        cargoProfile: wasm.profile,
+        localShoal,
         transportFeature: wasm.transport_feature,
         wasmPackTarget: wasm.wasm_pack_target,
         glibcFloor: null,
@@ -701,6 +740,8 @@ export function resolveCandidateRecipe(candidate, target) {
       candidate,
       targetId: target,
       rustTarget: nativeTarget.rust_target,
+      cargoProfile: descriptor.candidates.napi.profile,
+      localShoal,
       transportFeature: descriptor.candidates.napi.transport_feature,
       wasmPackTarget: null,
       glibcFloor: nativeTarget.glibc_floor ?? null,
@@ -732,7 +773,7 @@ function completeCandidateRecipe(recipe, capabilityFeatures) {
   };
 }
 
-function candidateCapabilityFeatures() {
+function candidateCapabilityFeatures(localShoal) {
   const recipe = descriptor.capability_recipe;
   if (
     capabilitySurface.schema_version !== 1 ||
@@ -742,15 +783,17 @@ function candidateCapabilityFeatures() {
   ) {
     throw new Error("Capability surface descriptor is invalid.");
   }
-  const capabilities = recipe.capabilities;
+  const baseline = recipe.capabilities;
   if (
-    !Array.isArray(capabilities) ||
-    capabilities.length === 0 ||
-    capabilities.some((capability) => typeof capability !== "string" || capability.length === 0) ||
-    stableJson(capabilities) !== stableJson([...new Set(capabilities)].sort())
+    !Array.isArray(baseline) ||
+    baseline.length === 0 ||
+    baseline.some((capability) => typeof capability !== "string" || capability.length === 0) ||
+    stableJson(baseline) !== stableJson([...new Set(baseline)].sort()) ||
+    baseline.includes(NODE_LOCAL_SHOAL_CAPABILITY)
   ) {
-    throw new Error("Candidate capability recipe capabilities must be sorted, unique, non-empty strings.");
+    throw new Error("Default candidate capabilities must be sorted, unique, non-empty strings and exclude Shoal.");
   }
+  const capabilities = localShoal ? [...baseline, NODE_LOCAL_SHOAL_CAPABILITY].sort() : baseline;
   const known = new Map(
     capabilitySurface.capabilities.map((capability) => [capability?.id, capability]),
   );
@@ -781,8 +824,8 @@ function candidateDiagramFamilies() {
   return families;
 }
 
-export function resolveCandidateRuntimeContract() {
-  const capabilityIds = candidateCapabilityFeatures();
+export function resolveCandidateRuntimeContract({ localShoal = false } = {}) {
+  const capabilityIds = candidateCapabilityFeatures(localShoal);
   const target = descriptor.capability_recipe.target;
   if (
     !Array.isArray(capabilitySurface.outputs) ||
@@ -857,28 +900,30 @@ export function resolveCandidateRuntimeContract() {
   };
 }
 
-export function candidateDependencyClosure(metadata, recipe) {
-  if (
-    !metadata ||
-    !Array.isArray(metadata.packages) ||
-    !Array.isArray(metadata.resolve?.nodes)
-  ) {
-    throw new Error("Cargo metadata lacks a resolved dependency graph.");
+export function candidateDependencyClosure(metadata, tree, recipe) {
+  const packagesByNameVersion = new Map();
+  for (const item of metadata.packages) {
+    const key = `${item.name} v${item.version}`;
+    const matches = packagesByNameVersion.get(key) ?? [];
+    matches.push(item);
+    packagesByNameVersion.set(key, matches);
   }
-  const packageById = new Map(metadata.packages.map((item) => [item.id, item]));
-  const packages = metadata.resolve.nodes
-    .map((node) => {
-      const item = packageById.get(node.id);
-      if (!item) throw new Error(`Cargo metadata cannot resolve package ${node.id}.`);
-      const source = item.source ?? localPackageSource(item.manifest_path);
-      return {
-        name: item.name,
-        version: item.version,
-        source,
-      };
-    })
-    .sort((left, right) => comparePackageIdentities(packageIdentity(left), packageIdentity(right)));
-  validateCandidateDependencyPackages(packages, recipe.candidate);
+  const selected = new Map();
+  for (const [index, line] of tree.split(/\r?\n/).entries()) {
+    const title = line.match(/^\S+ v\S+/)?.[0];
+    const matches = packagesByNameVersion.get(title);
+    if (matches?.length !== 1) {
+      throw new Error(`Cargo tree package has no unique metadata identity: ${line}.`);
+    }
+    const { name, version, source, manifest_path: manifest } = matches[0];
+    if (index === 0 && name !== cargoPackage) {
+      throw new Error(`Cargo tree must start at ${cargoPackage}.`);
+    }
+    const item = { name, version, source: source ?? localPackageSource(manifest) };
+    selected.set(packageIdentity(item), item);
+  }
+  const packages = [...selected.keys()].sort(comparePackageIdentities).map((key) => selected.get(key));
+  validateCandidateDependencyPackages(packages, recipe);
   return {
     digest: digestJson(packages),
     packages,
@@ -886,20 +931,17 @@ export function candidateDependencyClosure(metadata, recipe) {
 }
 
 export function resolveCandidateBuildEvidence(recipe) {
-  const metadata = cargoMetadata(recipe);
-  validateCandidatePackageVersions(metadata);
-  const inputEntries = collectLocalInputEntries(metadata);
+  const dependencyClosure = resolveCargoClosure(recipe);
+  const inputEntries = collectLocalInputEntries(dependencyClosure);
   return {
     source_digest: digestJson(inputEntries),
     binding_contract_digest: digestJson(collectBindingContractEntries(inputEntries)),
-    dependency_closure_digest: candidateDependencyClosure(metadata, recipe).digest,
+    dependency_closure_digest: dependencyClosure.digest,
   };
 }
 
 export function validateCandidateCargoMetadata(recipe) {
-  const metadata = cargoMetadata(recipe);
-  validateCandidatePackageVersions(metadata);
-  candidateDependencyClosure(metadata, recipe);
+  resolveCargoClosure(recipe);
   return packageSurface.version;
 }
 
@@ -907,7 +949,7 @@ export function validateCandidatePackageVersions(metadata) {
   if (!metadata || !Array.isArray(metadata.packages)) {
     throw new Error("Cargo metadata lacks candidate package versions.");
   }
-  for (const name of ["merman-node-candidate", "merman-bindings-core"]) {
+  for (const name of [cargoPackage, "merman-bindings-core"]) {
     const matches = metadata.packages.filter((item) => item.name === name);
     if (
       matches.length !== 1 ||
@@ -919,10 +961,20 @@ export function validateCandidatePackageVersions(metadata) {
       );
     }
   }
+  const candidate = metadata.packages.find((item) => item.name === cargoPackage);
+  if (
+    typeof metadata.workspace_root !== "string" ||
+    realpathSync(metadata.workspace_root) !== realpathSync(repositoryRoot) ||
+    !Array.isArray(metadata.workspace_members) ||
+    !metadata.workspace_members.includes(candidate.id) ||
+    path.relative(repositoryRoot, candidate.manifest_path).split(path.sep).join("/") !== descriptor.cargo.manifest
+  ) {
+    throw new Error(`${cargoPackage} must use the root Cargo workspace and lockfile.`);
+  }
   return packageSurface.version;
 }
 
-export function validateCandidateDependencyPackages(packages, candidate) {
+export function validateCandidateDependencyPackages(packages, { candidate, localShoal = false }) {
   if (
     !Array.isArray(packages) ||
     packages.length === 0 ||
@@ -948,7 +1000,7 @@ export function validateCandidateDependencyPackages(packages, candidate) {
     throw new Error("Node candidate dependency closure packages must be sorted and unique.");
   }
   const names = new Set(packages.map((item) => item.name));
-  for (const name of ["merman-node-candidate", "merman-bindings-core"]) {
+  for (const name of [cargoPackage, "merman-bindings-core"]) {
     const matches = packages.filter((item) => item.name === name);
     if (matches.length !== 1) {
       throw new Error(`${name} is missing or ambiguous in the Node candidate dependency closure.`);
@@ -961,6 +1013,13 @@ export function validateCandidateDependencyPackages(packages, candidate) {
         `${name} must be the local ${packageSurface.version} package in the Node candidate dependency closure.`,
       );
     }
+  }
+  const shoal = packages.filter((item) => item.name === "merman-layout-shoal");
+  if (localShoal
+    ? shoal.length !== 1 || shoal[0].source !== "path:crates/merman-layout-shoal"
+    : shoal.length !== 0
+  ) {
+    throw new Error("The Node dependency closure must contain Shoal only for the local Shoal candidate.");
   }
   if (candidate === "node-wasm") {
     for (const forbidden of ["napi", "napi-build", "napi-derive"]) {
@@ -998,9 +1057,11 @@ function comparePackageIdentities(left, right) {
 
 function parseArgs(args) {
   if (args.includes("--help") || args.includes("-h")) {
-    console.log("usage: node scripts/build-candidate.mjs --candidate <node-wasm|napi> [--target <target-id>]");
+    console.log("usage: node scripts/build-candidate.mjs --candidate <node-wasm|napi> [--target <target-id>] [--local-shoal]");
     process.exit(0);
   }
+  const localShoal = args.includes("--local-shoal");
+  args = args.filter((arg) => arg !== "--local-shoal");
   const candidate = valueAfter(args, "--candidate");
   const target = valueAfter(args, "--target");
   const known = new Set(["--candidate", "--target"]);
@@ -1013,7 +1074,7 @@ function parseArgs(args) {
   if (candidate === "node-wasm" && target !== null) {
     throw new Error("--target applies only to the napi candidate.");
   }
-  return { candidate, target };
+  return { candidate, target, localShoal };
 }
 
 function assertDescriptor() {
@@ -1023,6 +1084,8 @@ function assertDescriptor() {
     descriptor.cargo.default_features !== false ||
     stableJson(descriptor.cargo.features) !== stableJson(["all-diagrams"]) ||
     descriptor.cargo.manifest !== "crates/merman-node/Cargo.toml" ||
+    descriptor.candidates?.napi?.profile !== "native-sdk" ||
+    descriptor.candidates?.["node-wasm"]?.profile !== "release" ||
     descriptor.capability_recipe?.descriptor !== "capabilities/feature-surface-v1.json" ||
     descriptor.capability_recipe?.target !== "native" ||
     packageSurface.schema_version !== 1 ||
@@ -1082,7 +1145,11 @@ function run(command, args, environment = {}) {
 }
 
 function runCapture(command, args) {
-  const result = spawnSync(command, args, { cwd: nodeRoot, encoding: "utf8" });
+  const result = spawnSync(command, args, {
+    cwd: nodeRoot,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (result.error) throw new Error(`Failed to run ${command}: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`${command} exited with status ${result.status ?? 1}: ${(result.stderr ?? "").trim()}`);

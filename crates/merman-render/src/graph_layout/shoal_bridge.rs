@@ -190,8 +190,10 @@ pub(crate) fn solve(
     ))]
     kernel_bench::capture(measured, options);
     let graph = project_input(measured, &placement, work)?;
-    let solved = shoal::layout_with_control(&graph, &options, scratch, work)
-        .map_err(|error| work.map_shoal_error(error))?;
+    let solved = crate::layout_work::measure_layout_solve!(shoal::layout_with_control(
+        &graph, &options, scratch, work
+    ))
+    .map_err(|error| work.map_shoal_error(error))?;
     project_output(measured, solved, work)
 }
 

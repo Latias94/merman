@@ -6,6 +6,14 @@ const contract = requireFromModule("./generated/node-wire-contract.json");
 validateContract(contract);
 
 export const NODE_WIRE_CONTRACT = deepFreeze(contract);
+export const NODE_LOCAL_SHOAL_CAPABILITY = "layout-shoal";
+export const NODE_LOCAL_SHOAL_WIRE_CONTRACT = deepFreeze({
+  ...NODE_WIRE_CONTRACT,
+  artifact: {
+    ...NODE_WIRE_CONTRACT.artifact,
+    capability_ids: [...NODE_WIRE_CONTRACT.artifact.capability_ids, NODE_LOCAL_SHOAL_CAPABILITY].sort(),
+  },
+});
 export const NODE_TRANSPORT_LIMITS = NODE_WIRE_CONTRACT.documents;
 export const NODE_TRANSPORT_FIELD_LIMITS = NODE_WIRE_CONTRACT.fields;
 

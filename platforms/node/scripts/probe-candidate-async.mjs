@@ -25,6 +25,7 @@ try {
   validateTransportIdentityJson(binding.transportIdentityJson(), {
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: transportKind,
+    localShoal: options.localShoal,
   });
   const Engine = options.candidate === "napi"
     ? binding?.NativeEngine ?? binding?.default?.NativeEngine
@@ -198,10 +199,10 @@ function parseArgs(args) {
   const requestJson = valueAfter(args, "--request-json");
   if (!artifact || !requestJson || !["napi", "node-wasm"].includes(candidate)) {
     throw new Error(
-      "usage: probe-candidate-async.mjs --artifact <path> --candidate <napi|node-wasm> --request-json <json>",
+      "usage: probe-candidate-async.mjs --artifact <path> --candidate <napi|node-wasm> --request-json <json> [--local-shoal]",
     );
   }
-  return { artifact, candidate, requestJson };
+  return { artifact, candidate, requestJson, localShoal: args.includes("--local-shoal") };
 }
 
 function valueAfter(args, flag) {

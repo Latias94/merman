@@ -41,19 +41,20 @@ cross-host speedup, a binary-export cost or a final-head benchmark.
 The previous executable was built from `7ba994e22cee89f02f7b1b75b467b96ebfba45f8`.
 The candidate is the reviewed working-tree policy change based on that commit;
 its relevant source, descriptor, lockfile, binary and font SHA-256 identities are
-recorded in [candidate raw observations](evidence/cli-font-policy-2026-10-12/after-default.json).
-[Previous raw observations](evidence/cli-font-policy-2026-10-12/before-default.json)
+recorded in [candidate raw observations](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/cli-font-policy-2026-10-12/after-default.json).
+[Previous raw observations](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/cli-font-policy-2026-10-12/before-default.json)
 retain all original timings and input/output identities. The artifacts themselves
 are local build products and are not committed. These are exploratory receipts,
 not a guarantee of reproducing identical timings.
 
-Build from a reviewed checkout and run the [saved probe](evidence/cli-font-policy-2026-10-12/probe.py)
+Build from a reviewed checkout and run the [saved probe](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/cli-font-policy-2026-10-12/probe.py)
 from the repository root:
 
 ```powershell
 $fontProbeFeatures = python scripts/artifact_profile_recipe.py cli-release
 cargo build --locked -p merman-cli --profile dist --no-default-features --features $fontProbeFeatures
-python docs/performance/evidence/cli-font-policy-2026-10-12/probe.py target/dist/merman-cli.exe target/font-policy-observations.json
+git show 0de424a568cde744f6ce7ae493edaca31f789288:docs/performance/evidence/cli-font-policy-2026-10-12/probe.py > target/cli-font-policy-probe.py
+python target/cli-font-policy-probe.py target/dist/merman-cli.exe target/font-policy-observations.json
 ```
 
 The probe stores complete source inputs, raw process timings and SVG hashes.

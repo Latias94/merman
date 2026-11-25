@@ -72,6 +72,8 @@ impl SvgOutput for String {
 pub(in crate::svg::parity) struct XmlTextOutput<'a, S> {
     out: &'a mut S,
     trailing_brackets: u8,
+    #[cfg(feature = "benchmark-stages")]
+    _stage: merman_model::benchmark_stages::Scope,
 }
 
 impl<'a, S: SvgOutput> XmlTextOutput<'a, S> {
@@ -79,6 +81,10 @@ impl<'a, S: SvgOutput> XmlTextOutput<'a, S> {
         Self {
             out,
             trailing_brackets: 0,
+            #[cfg(feature = "benchmark-stages")]
+            _stage: merman_model::benchmark_stages::enter(
+                merman_model::benchmark_stages::Stage::CssEmit,
+            ),
         }
     }
 }
@@ -843,9 +849,11 @@ mod tests {
                         continue;
                     }
                     let mut serialized = String::new();
-                    let mut out = XmlTextOutput::new(&mut serialized);
-                    out.push_str(&logical[..split]);
-                    out.push_str(&logical[split..]);
+                    {
+                        let mut out = XmlTextOutput::new(&mut serialized);
+                        out.push_str(&logical[..split]);
+                        out.push_str(&logical[split..]);
+                    }
                     assert_eq!(serialized, expected, "padding={padding}, split={split}");
                 }
             }

@@ -22,13 +22,5 @@ serde_json.workspace = true
 criterion = "0.8.2"
 
 [[bench]]
-name = "network_simplex"
-harness = false
-
-[[bench]]
-name = "feasible_tree"
-harness = false
-
-[[bench]]
-name = "layout"
+name = "dugong"
 harness = false

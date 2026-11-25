@@ -1,8 +1,8 @@
 # Merman Node transports
 
 This private crate builds the native N-API transport for `@mermanjs/node` and the explicit
-Node-targeted WASM transport for `@mermanjs/node-wasm`. It is a nested Cargo workspace and is not
-connected to the repository root workspace.
+Node-targeted WASM transport for `@mermanjs/node-wasm`. The crate inherits the root Cargo
+workspace version, profiles, and lockfile.
 
 Applications install the matching npm package; this Rust crate is not published separately.
 
@@ -19,4 +19,10 @@ obligations. Expert source builds retain
 additive feature selection; `math` is advertised only when this crate selects it. Neither
 transport accepts a JavaScript text-measurement callback.
 
-The build owner is `platforms/node/scripts/build-candidate.mjs`. Do not build this crate with an ambient default feature set or reuse the browser package's WASM output.
+`platforms/node/scripts/build-candidate.mjs` builds N-API with the `native-sdk` profile and
+Node-WASM with the `release` profile. It selects an explicit transport and verifies the root
+`Cargo.lock` against that transport's target-specific dependency tree. A workspace build with no
+transport features exports no Node transport.
+
+Use `--local-shoal` on either recipe to add the `layout-shoal` capability to a private N-API
+package pair or Node-WASM package. [Build and package the local comparison](../../platforms/node/README.md#local-shoal-comparison).

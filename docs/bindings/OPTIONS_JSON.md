@@ -695,8 +695,8 @@ override because increasing it would not make the backend stack-safe.
 Resource-policy changes require a reproducible stress run and a record of the observed boundary:
 
 ```sh
-cargo bench -p merman --bench flowchart_stress
-cargo bench -p merman --bench mindmap_layout_stress
+MERMAN_BENCH_PIPELINE_LANE=flowchart-stress cargo bench -p merman --bench pipeline
+MERMAN_BENCH_PIPELINE_LANE=mindmap-layout-stress cargo bench -p merman --features layout-cytoscape --bench pipeline
 cargo nextest run -p merman-render -p merman-bindings-core
 ```
 
@@ -707,7 +707,7 @@ the closed public fixture manifest and an adjacent typed rejection boundary:
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
   --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-dagre,layout-elk,math
 
-python3 tools/bench/run_layout_work_calibration.py \
+python3 tools/bench/bench.py calibrate-layout \
   --authoritative-date YYYY-MM-DD \
   --out-dir target/bench/layout-work-calibration-YYYY-MM-DD \
   --timeout-seconds 300 \

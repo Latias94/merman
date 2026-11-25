@@ -15,7 +15,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readBuildReceipt } from "../scripts/build-receipt.mjs";
-import { resolveCandidateRuntimeContract } from "../scripts/build-candidate.mjs";
+import { cargoLockPath, resolveCandidateRuntimeContract } from "../scripts/build-candidate.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
   computeCorpusDigest,
@@ -1115,9 +1115,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   const artifact = path.join(root, "merman.node");
   writeFileSync(artifact, "candidate-v1");
   const artifactDigest = `sha256:${createHash("sha256").update("candidate-v1").digest("hex")}`;
-  const cargoLockDigest = `sha256:${createHash("sha256")
-    .update(readFileSync(path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock")))
-    .digest("hex")}`;
+  const cargoLockDigest = `sha256:${createHash("sha256").update(readFileSync(cargoLockPath)).digest("hex")}`;
   const tools = {
     cargo: "cargo 1.95.0",
     node: "v22.0.0",
@@ -1125,13 +1123,14 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     transport_builder: "3.7.4",
   };
   const receipt = {
-    schema_version: 1,
+    schema_version: 2,
     config: {
       candidate: "napi",
       target: "darwin-arm64",
       rust_target: "aarch64-apple-darwin",
       wasm_pack_target: null,
       glibc_floor: null,
+      cargo_profile: "native-sdk",
       default_features: false,
       capability_recipe: CAPABILITY_RECIPE.capability_recipe,
       diagram_families: DIAGRAM_FAMILIES,
@@ -1256,6 +1255,47 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   forgedInputDigest.input_digest = `sha256:${"0".repeat(64)}`;
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(forgedInputDigest));
   assert.throws(() => readReceipt(), /input digest.*recorded build inputs/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const staleLock = structuredClone(receipt);
+  staleLock.cargo_lock_digest = `sha256:${"0".repeat(64)}`;
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(staleLock));
+  assert.throws(() => readReceipt(), /Cargo lock digest.*current lockfile/i);
+
+  const wrongProfile = structuredClone(receipt);
+  wrongProfile.config.cargo_profile = "release";
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(wrongProfile));
+  assert.throws(() => readReceipt(), /Cargo profile.*canonical Node recipe/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  assert.throws(() => readBuildReceipt(artifact, { localShoal: true }), /capability recipe.*canonical/i);
+  const shoalReceipt = structuredClone(receipt);
+  const shoalRuntime = resolveCandidateRuntimeContract({ localShoal: true });
+  shoalReceipt.config.capability_recipe = shoalRuntime.capabilityRecipe;
+  shoalReceipt.config.features = [...receipt.config.features, "layout-shoal"].sort();
+  shoalReceipt.runtime.catalog.capabilities.capability_ids = shoalRuntime.capabilityIds;
+  shoalReceipt.runtime.catalog_digest = digestJson(shoalReceipt.runtime.catalog);
+  shoalReceipt.dependency_closure.packages.splice(1, 0, {
+    name: "merman-layout-shoal", version: PACKAGE_VERSION, source: "path:crates/merman-layout-shoal",
+  });
+  shoalReceipt.dependency_closure.digest = digestJson(shoalReceipt.dependency_closure.packages);
+  shoalReceipt.input_digest = digestJson({
+    cargo_lock_digest: shoalReceipt.cargo_lock_digest,
+    config: shoalReceipt.config,
+    dependency_closure_digest: shoalReceipt.dependency_closure.digest,
+    source_digest: shoalReceipt.source_digest,
+    tools: shoalReceipt.tools,
+  });
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(shoalReceipt));
+  assert.throws(() => readReceipt(), /capability recipe.*canonical/i);
+  assert.equal(readBuildReceipt(artifact, {
+    localShoal: true,
+    probeCurrentRuntime: () => shoalReceipt.runtime,
+    resolveCurrentEvidence: () => ({
+      ...currentEvidence,
+      dependency_closure_digest: shoalReceipt.dependency_closure.digest,
+    }),
+  }).runtime_catalog_digest, shoalReceipt.runtime.catalog_digest);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const wrongTarget = structuredClone(receipt);

@@ -100,6 +100,7 @@ system-clock = ["merman-model/system-clock"]
 system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
+benchmark-stages = ["merman-model/benchmark-stages"]
 
 [dependencies]
 merman-markup = { workspace = true, features = ["html", "url"] }

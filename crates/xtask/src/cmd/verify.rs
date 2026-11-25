@@ -2,6 +2,7 @@ use crate::XtaskError;
 use crate::cmd;
 use std::process::Command;
 
+const NODE_TRANSPORT_PACKAGE: &str = "merman-node-candidate";
 const STRICT_WEB_SCRIPTS: [&str; 3] = ["build", "test", "smoke"];
 const STRICT_PLAYGROUND_SCRIPTS: [&str; 8] = [
     "verify:dependencies",
@@ -84,6 +85,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
+        println!("                  the Node candidates use separate transport recipes");
         println!("  --feature-matrix");
         println!(
             "                  validate public Cargo capability closures and build critical combinations"
@@ -118,12 +120,13 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if options.all_features {
-        println!("\n== cargo check --workspace --all-features ==");
+        println!("\n== cargo check --workspace --all-features (excluding Node transport) ==");
         let mut check_cmd = Command::new("cargo");
         check_cmd
             .arg("check")
             .arg("--workspace")
             .arg("--all-features")
+            .args(["--exclude", NODE_TRANSPORT_PACKAGE])
             .current_dir(&workspace_root);
         run_checked("cargo check --workspace --all-features", &mut check_cmd)?;
     }
@@ -132,7 +135,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!(
             "\n== cargo clippy --workspace --all-targets{} ==",
             if options.all_features {
-                " --all-features"
+                " --all-features (excluding Node transport)"
             } else {
                 ""
             }
@@ -143,7 +146,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             .arg("--workspace")
             .arg("--all-targets");
         if options.all_features {
-            clippy_cmd.arg("--all-features");
+            clippy_cmd.args(["--all-features", "--exclude", NODE_TRANSPORT_PACKAGE]);
         }
         clippy_cmd
             .arg("--")
