@@ -154,7 +154,7 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
     math = ("ratex-layout", "ratex-parser", "ratex-svg", "ratex-types")
     required = [root, "merman-bindings-core", "merman", "merman-core", "merman-core-graph",
                 "merman-core-structured", "merman-render", "merman-render-charts",
-                "merman-render-structured", "merman-export", "manatee", "fontdb"]
+                "merman-render-graph", "merman-render-structured", "merman-export", "manatee", "fontdb"]
     forbidden = list(NATIVE_BINDING_FORBIDDEN_PACKAGES)
     omitted_features = []
     if variant == "full":
@@ -204,7 +204,7 @@ SEMANTIC_CLAIMS = (
         claim_id="static-svg-is-environment-and-export-free",
         profile_id="rust-static-svg",
         required_packages=("merman", "merman-core", "merman-render", "merman-render-charts",
-                           "merman-render-structured"),
+                           "merman-render-graph", "merman-render-structured"),
         forbidden_packages=(
             "chrono",
             "getrandom",
@@ -248,7 +248,7 @@ SEMANTIC_CLAIMS = (
         claim_id="svg-basic-excludes-optional-engines-and-products",
         profile_id="rust-svg-basic",
         required_packages=("merman", "merman-core", "merman-render", "merman-render-charts",
-                           "merman-render-structured"),
+                           "merman-render-graph", "merman-render-structured"),
         forbidden_packages=(
             *DAGRE_PACKAGES,
             "brotli-decompressor",
@@ -330,6 +330,7 @@ SEMANTIC_CLAIMS = (
             "merman-export",
             "merman-render",
             "merman-render-charts",
+            "merman-render-graph",
             "merman-render-structured",
             "rayon",
             "reqwest",
@@ -446,12 +447,14 @@ NORMAL_BUILD_CLAIMS = tuple(
          SOURCE_INGESTION_PACKAGES),
         ("rust-ascii", ("merman-ascii", "merman-model"), MODEL_ASCII_FORBIDDEN_PACKAGES),
         ("rust-render-native-svg", (
-            "merman-render", "merman-render-charts", "merman-render-core", "merman-render-structured",
-            "merman-model", "merman-markup",
+            "merman-render", "merman-render-charts", "merman-render-core", "merman-render-graph",
+            "merman-render-structured", "merman-model", "merman-markup",
         ), SOURCE_INGESTION_PACKAGES),
         # Standalone export profiles convert pre-rendered, sealed SVG.
         *((profile_id, ("merman-export", "merman-render", "merman-model"),
-           SOURCE_INGESTION_PACKAGES + ("merman-render-charts", "merman-render-structured")) for profile_id in (
+           SOURCE_INGESTION_PACKAGES + (
+               "merman-render-charts", "merman-render-graph", "merman-render-structured",
+           )) for profile_id in (
             "rust-export-jpeg", "rust-export-png", "rust-export-pdf",
             "rust-export-native-fonts", "rust-export-native-sdk",
         )),

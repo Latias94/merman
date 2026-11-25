@@ -66,10 +66,14 @@ features and supplies the operation's text measurement to Railroad.
 
 ### Graph syntax
 
-`merman-core-graph` owns ER and State tokenization and parsing. It constructs the canonical ER
-model and the nested State syntax document using the controlled token cursor in
-`merman-core-preprocess`. `merman-core` owns State model construction, source mapping, error
-messages, resource admission, and the editor and compatibility projections.
+`merman-core-graph` owns Class, ER, and State tokenization and parsing. Its outputs are Class
+grammar actions, the canonical ER model, and the nested State syntax document. It reuses the
+controlled token cursor and pinned Mermaid Unicode rules in `merman-core-preprocess`.
+`merman-core` owns Class and State model construction, source mapping, error messages, resource
+admission, and the editor and compatibility projections.
+
+`merman-render-graph` owns ER relationship marker geometry, names, and SVG definitions.
+`merman-render` resolves source styles and provides the operation's bounded SVG sink.
 
 ### Chart rendering
 

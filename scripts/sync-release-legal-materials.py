@@ -82,6 +82,7 @@ DUAL_LICENSE_CRATE_ROOTS = (
     "crates/merman-render",
     "crates/merman-render-charts",
     "crates/merman-render-core",
+    "crates/merman-render-graph",
     "crates/merman-render-structured",
     "crates/merman-rustdoc",
     "crates/merman-typst-plugin",
@@ -109,6 +110,7 @@ CRATE_COMPONENTS = {
     ),
     "crates/merman-core": ("dompurify", "mermaid", "sanitize-url", "zenuml-core"),
     "crates/merman-core-graph": ("mermaid",),
+    "crates/merman-core-preprocess": ("mermaid",),
     "crates/merman-core-structured": ("mermaid",),
     "crates/merman-model": ("mermaid",),
     "crates/merman-markup": ("dompurify", "mermaid", "sanitize-url"),
@@ -126,6 +128,7 @@ CRATE_COMPONENTS = {
     ),
     "crates/merman-render-core": ("mermaid",),
     "crates/merman-render-charts": ("d3-path", "d3-shape", "mermaid"),
+    "crates/merman-render-graph": ("mermaid",),
     "crates/merman-render-structured": ("mermaid",),
     "crates/merman-unicode-linebreak": ("unicode-linebreak",),
 }
