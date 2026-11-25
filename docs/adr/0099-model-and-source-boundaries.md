@@ -53,7 +53,11 @@ SVG path, including marker setback, bounds, and obstacle clearance. Diagram fami
 semantic bindings, work accounting, and projection into the layout solver. Shoal and the path
 builder exchange the same route point types.
 
-### Structured diagram rendering
+### Structured diagrams
+
+`merman-core-structured` owns the Railroad lexer, four dialect parsers, and rule recovery.
+`merman-core` prepares the source and maps the parser's model, diagnostics, and optional syntax
+spans into the public parse result.
 
 `merman-render-structured` owns the typed layout and SVG emission for Packet and Railroad. It
 consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.

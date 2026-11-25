@@ -273,6 +273,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman/src/svg/mod.rs": True,
             "crates/merman-core/src/diagram/mod.rs": True,
             "crates/merman-core-preprocess/src/lib.rs": True,
+            "crates/merman-core-structured/src/railroad.rs": True,
             "crates/merman-model/src/families/gantt.rs": True,
             "crates/merman-markup/src/sanitize/fragment.rs": True,
             "crates/merman-render/src/lib.rs": True,
@@ -333,6 +334,7 @@ class PlannerTests(unittest.TestCase):
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-preprocess/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-structured/src/railroad.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-core/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-structured/src/packet/mod.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-model/src/lib.rs": {"core", "fuzz", "hygiene"},
@@ -1076,7 +1078,10 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml"
         ).read_text(encoding="utf-8")
         paths = workflow.split("    paths:\n", 1)[1].split("  schedule:", 1)[0]
-        for root in ("merman-model", "merman-markup", "merman-render-core", "merman-render-structured"):
+        for root in (
+            "merman-core-structured", "merman-model", "merman-markup", "merman-render-core",
+            "merman-render-structured",
+        ):
             self.assertIn(f'      - "crates/{root}/**"', paths)
 
     def test_manual_full_owner_verification_is_explicit_and_opt_in(self) -> None:

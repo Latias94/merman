@@ -8,6 +8,7 @@ members = [
     "crates/merman-theme-contract",
     "crates/merman-core",
     "crates/merman-core-preprocess",
+    "crates/merman-core-structured",
     "crates/merman-model",
     "crates/merman-markup",
     "crates/merman-doc",
@@ -167,6 +168,7 @@ merman-ascii = { path = "crates/merman-ascii", version = "0.11.0", default-featu
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.11.0", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.11.0", default-features = false }
 merman-core-preprocess = { path = "crates/merman-core-preprocess", version = "0.11.0" }
+merman-core-structured = { path = "crates/merman-core-structured", version = "0.11.0", default-features = false }
 merman-model = { path = "crates/merman-model", version = "0.11.0", default-features = false }
 merman-markup = { path = "crates/merman-markup", version = "0.11.0", default-features = false }
 merman-doc = { path = "crates/merman-doc", version = "0.11.0", default-features = false }

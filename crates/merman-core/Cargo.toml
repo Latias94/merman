@@ -17,7 +17,7 @@ artifact-profile-required = true
 
 [features]
 presentation = ["merman-markup/color", "merman-model/presentation-data", "serde_json/raw_value"]
-editor-facts = ["granit-parser/comments"]
+editor-facts = ["granit-parser/comments", "merman-core-structured?/editor-facts"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
 # Diagram selection is independent of output formats and optional layout engines.
@@ -78,7 +78,7 @@ diagram-packet = ["merman-model/diagram-packet", "dep:ryu-js"]
 diagram-pie = ["merman-model/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "dep:ryu-js"]
-diagram-railroad = ["merman-model/diagram-railroad"]
+diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-core-structured", "merman-core-structured/diagram-railroad"]
 diagram-requirement = ["merman-model/diagram-requirement"]
 diagram-sankey = ["merman-model/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "dep:indexmap", "dep:rustc-hash"]
@@ -104,6 +104,7 @@ benchmark-stages = ["merman-model/benchmark-stages"]
 
 [dependencies]
 merman-core-preprocess.workspace = true
+merman-core-structured = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["html", "url"] }
 merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true

@@ -949,6 +949,7 @@ dependencies = [
  "indexmap",
  "json5",
  "merman-core-preprocess",
+ "merman-core-structured",
  "merman-markup",
  "merman-model",
  "rustc-hash",
@@ -961,6 +962,13 @@ dependencies = [
 
 [[package]]
 name = "merman-core-preprocess"
+version = "0.11.0"
+dependencies = [
+ "merman-model",
+]
+
+[[package]]
+name = "merman-core-structured"
 version = "0.11.0"
 dependencies = [
  "merman-model",
