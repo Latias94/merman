@@ -7,18 +7,10 @@
     feature = "diagram-state"
 ))]
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod lalrpop;
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use lalrpop::*;
 
 pub(crate) fn unexpected_eof_message<'a>(expected: impl Iterator<Item = &'a str>) -> String {

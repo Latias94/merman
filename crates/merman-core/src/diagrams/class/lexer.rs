@@ -91,12 +91,6 @@ impl LexError {
     }
 }
 
-impl crate::error::ParseErrorSourceSpan for LexError {
-    fn source_span(&self) -> Option<crate::SourceSpan> {
-        Some(self.span)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,

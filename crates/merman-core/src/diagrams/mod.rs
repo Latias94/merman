@@ -17,11 +17,7 @@ pub(crate) fn source_metadata_for_test(
     }
 }
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 macro_rules! include_checked_in_lalrpop_parser {
     ($(#[$attr:meta])* $name:ident, $file:literal) => {
         #[rustfmt::skip]

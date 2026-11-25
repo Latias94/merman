@@ -18,16 +18,10 @@ struct GrammarArtifact {
     generated: &'static str,
 }
 
-const GRAMMAR_ARTIFACTS: [GrammarArtifact; 2] = [
-    GrammarArtifact {
-        source: "diagrams/class_grammar.lalrpop",
-        generated: "class_grammar.rs",
-    },
-    GrammarArtifact {
-        source: "diagrams/flowchart_grammar.lalrpop",
-        generated: "flowchart_grammar.rs",
-    },
-];
+const GRAMMAR_ARTIFACTS: [GrammarArtifact; 1] = [GrammarArtifact {
+    source: "diagrams/flowchart_grammar.lalrpop",
+    generated: "flowchart_grammar.rs",
+}];
 
 type GeneratedParserSet = BTreeMap<String, Vec<u8>>;
 
@@ -557,7 +551,7 @@ mod tests {
         for (name, bytes) in &expected {
             fs::write(destination.join(name), bytes).unwrap();
         }
-        fs::write(destination.join("class_grammar.rs"), b"drifted").unwrap();
+        fs::write(destination.join("flowchart_grammar.rs"), b"drifted").unwrap();
         fs::write(destination.join("unexpected.rs"), b"extra").unwrap();
 
         let drift = checked_in_drift(temporary.path(), &expected).unwrap();
@@ -610,7 +604,7 @@ mod tests {
             fs::read(destination.join("previous.rs")).unwrap(),
             b"previous"
         );
-        assert!(!destination.join("class_grammar.rs").exists());
+        assert!(!destination.join("flowchart_grammar.rs").exists());
     }
 
     #[test]

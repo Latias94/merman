@@ -3,7 +3,6 @@
 Merman checks generated LALRPOP parsers into the repository so downstream builds do not compile
 or run the LALRPOP generator. The grammar sources are:
 
-- `crates/merman-core/src/diagrams/class_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/flowchart_grammar.lalrpop`
 
 Their generated Rust files live under `crates/merman-core/src/generated/lalrpop/`. Treat the
@@ -49,5 +48,6 @@ behavioral surface it affects:
 4. Run the workspace and strict gates before release.
 
 Parser generation belongs to the maintainer toolchain in `xtask`. Features that select a generated
-parser compile its checked-in module with `lalrpop-util`. ER, State, and Sequence use handwritten
-parsers in their family modules under `crates/merman-core/src/diagrams/`.
+parser compile its checked-in module with `lalrpop-util`. Flowchart and Swimlane use the same
+generated parser. ER, State, Sequence, and Class use handwritten parsers in their family modules
+under `crates/merman-core/src/diagrams/`.

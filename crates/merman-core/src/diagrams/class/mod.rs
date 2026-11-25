@@ -1,9 +1,3 @@
-include_checked_in_lalrpop_parser!(
-    #[allow(clippy::empty_line_after_outer_attr)]
-    class_grammar,
-    "class_grammar.rs"
-);
-
 pub(crate) use merman_model::families::class::{
     LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
     REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
@@ -15,6 +9,7 @@ mod db;
 mod editor;
 mod lexer;
 mod parse;
+mod parser;
 pub(crate) mod source_data;
 
 #[cfg(all(test, feature = "presentation"))]

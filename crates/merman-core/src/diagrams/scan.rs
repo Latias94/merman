@@ -26,6 +26,7 @@ pub(crate) trait TokenScanner {
 
 /// A forward cursor over spanned lexical events, with one buffered lookahead.
 #[cfg(any(
+    feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-state",
     feature = "diagram-sequence"
@@ -39,6 +40,7 @@ pub(crate) struct TokenStream<'a, I: Iterator> {
 }
 
 #[cfg(any(
+    feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-state",
     feature = "diagram-sequence"
