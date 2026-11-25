@@ -229,7 +229,7 @@ def _rounds_markdown(report):
     return "\n".join(lines)
 
 
-def _variant_recipes(specs, layouts=()):
+def _variant_recipes(specs, layouts=(), direct_ids=()):
     recipes, labels = {}, set()
     for spec in specs:
         label, equals, selection = spec.partition("=")
@@ -252,6 +252,13 @@ def _variant_recipes(specs, layouts=()):
                               options_json=options if separator else None)
     if len(recipes) < 2:
         raise ValueError("repeat --variant at least twice")
+    for direct_id in direct_ids:
+        recipe = recipes.get(direct_id)
+        if recipe is None or recipe["engine"] != "merman" or recipe["options_json"] is not None:
+            raise ValueError(f"{direct_id!r}: --variant-direct-id requires a Merman variant without Options JSON")
+        if "direct_id" in recipe:
+            raise ValueError(f"duplicate direct diagram ID selection for Node variant {direct_id}")
+        recipe["direct_id"] = True
     for spec in layouts:
         label, _, layout = spec.partition("=")
         recipe = recipes.get(label)
@@ -283,16 +290,19 @@ def collect_node_matrix(args):
         raise ValueError("reference package.json and package-lock.json select different versions")
     variants = getattr(args, "variant", None)
     layouts = getattr(args, "variant_layout", None) or ()
+    direct_ids = getattr(args, "variant_direct_id", None) or ()
     rounds = getattr(args, "process_rounds", None)
     if variants:
         if args.peer or args.merman_module:
             raise ValueError("--variant cannot be combined with --peer or --merman-module")
-        recipes = _variant_recipes(variants, layouts)
+        recipes = _variant_recipes(variants, layouts, direct_ids)
         if rounds is None:
             rounds = 2
     else:
         if layouts:
             raise ValueError("--variant-layout requires --variant")
+        if direct_ids:
+            raise ValueError("--variant-direct-id requires --variant")
         peers = args.peer or [name for name in NODE_PRODUCTS if name != "merman"]
         if len(set(peers)) != len(peers) or any(name == "merman" or name not in NODE_PRODUCTS for name in peers):
             raise ValueError("choose distinct registered Node peers for Merman")
@@ -370,9 +380,12 @@ def _collect_round(args, plan, raw_plan, dest, order, recipes, versions, invento
     for name in order:
         recipe = recipes[name]
         engine, module = recipe["engine"], recipe["module"]
+        direct_id = recipe.get("direct_id")
         variant = dict(label=name, options_json=recipe["options_json"]) if "options_json" in recipe else None
         if variant and "site_layout" in recipe:
             variant["site_layout"] = recipe["site_layout"]
+        if variant and direct_id:
+            variant["direct_id"] = True
         report_path = dest / f"{name}.json"
         cmd = ["node", str(HERE / "collectors/node_runner.mjs"), "--engine", engine, "--plan", str(plan),
                "--samples", str(args.samples), "--timeout-seconds", str(args.timeout_seconds)]
@@ -382,6 +395,8 @@ def _collect_round(args, plan, raw_plan, dest, order, recipes, versions, invento
             cmd.extend(["--variant-label", name])
             if variant["options_json"] is not None:
                 cmd.append(f"--options-json={variant['options_json']}")
+            if direct_id:
+                cmd.append("--direct-id")
             if "site_layout" in variant:
                 cmd.extend(["--site-layout", variant["site_layout"]])
         for key, limit in warmup.items():
@@ -401,6 +416,8 @@ def _collect_round(args, plan, raw_plan, dest, order, recipes, versions, invento
                 raise ValueError("collector returned a different plan or engine")
             if report.get("variant") != variant:
                 raise ValueError("collector returned different variant settings")
+            if direct_id and report.get("diagram_id_mode") != "plan":
+                raise ValueError("collector did not apply the direct diagram IDs")
             if (check_samples and
                     (report.get("samples") != args.samples or report.get("timeout_seconds") != args.timeout_seconds)):
                 raise ValueError("collector returned a different sample count or timeout")

@@ -241,14 +241,21 @@ Use `--variant` on its own when selecting products.
 object can follow `ENGINE:` directly or use an empty module field (`::`). Pass `merman::{}` for a
 matched Merman variant. The runner inserts the frozen request's `diagram_id` into each Options JSON
 template before timing. A template with an explicit ID must match every request in the scenario.
-A named Merman variant without a JSON suffix calls `renderSvgSync(source)` and records its raw
-timings as a no-options diagnostic. These rows are ineligible for ratios because the call omits the
-plan ID. Use `--variant-layout LABEL=LAYOUT` to select a site layout when the engine is created.
-The SVG plan for a successful request must report the requested layout explicitly.
+Use repeatable `--variant-direct-id LABEL` with Merman entries that support
+`renderSvgSync(source, { diagramId })`.
+Give the selected variant no JSON suffix. The worker passes each frozen ID as `diagramId` and uses
+the same root ID check as the Options JSON path. `variants.json` and the raw worker report record
+`direct_id: true` for that variant. `report --node-rounds` replays ratios against these settings.
+A named Merman variant with neither the flag nor a JSON suffix calls `renderSvgSync(source)` and
+records a no-options diagnostic. These rows are ineligible for ratios because the call omits the plan
+ID. Use `--variant-layout LABEL=LAYOUT` to select a site layout when the engine is created. The SVG
+plan for a successful request must report the requested layout explicitly. Sequence reports no
+graph layout capability because its own layout is used in mixed-family batches. Substitute the
+same built public entry for `ENTRY` in each Merman variant to compare the call paths.
 
 ```console
 python tools/bench/bench.py plan --scenario small-svg --out target/bench/node-layout-plan.json
-python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --variant 'matched=merman::{}' --variant no-options=merman --variant-layout matched=dagre --variant-layout no-options=dagre --out-dir target/bench/node-options
+python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --variant 'matched=merman:ENTRY:{}' --variant 'direct=merman:ENTRY' --variant-direct-id direct --variant 'no-options=merman:ENTRY' --variant-layout matched=dagre --variant-layout direct=dagre --variant-layout no-options=dagre --out-dir target/bench/node-options
 ```
 
 Each worker runs the cold batch, warms the same renderer for up to 20 calls or 150 ms, then

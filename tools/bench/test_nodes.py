@@ -290,7 +290,11 @@ class ProcessRoundTests(unittest.TestCase):
             if "--site-layout" in cmd:
                 raw["variant"]["site_layout"] = cmd[cmd.index("--site-layout") + 1]
         variant = raw.get("variant")
-        omitted = engine == "merman" and variant is not None and variant["options_json"] is None
+        direct_id = "--direct-id" in cmd
+        if direct_id:
+            self.assertEqual((engine, variant["options_json"]), ("merman", None))
+            variant["direct_id"] = True
+        omitted = engine == "merman" and variant is not None and variant["options_json"] is None and not direct_id
         raw["diagram_id_mode"] = "omitted" if omitted else "plan"
         raw["warmup"] = {f"max_{key}": int(cmd[cmd.index(f"--warmup-{key}") + 1]) if f"--warmup-{key}" in cmd else default
                          for key, default in (("calls", 20), ("ms", 150))}
@@ -536,6 +540,35 @@ class ProcessRoundTests(unittest.TestCase):
         self.assertGreater(raw["scenarios"][0]["warm_samples"][0]["elapsed_ms"], 0)
         projected = [row for row in load_rounds(self.args.out_dir)["latency"] if row["peer"] == "no-options"]
         self.assertTrue(all(row["reasons"] == ["diagram-id-not-applied"] and row["ratio"] is None for row in projected))
+
+    def test_direct_id_variant_records_its_call_path_and_compares_against_json_and_pele(self):
+        variants = ["direct=merman", "matched=merman::{}", "no-options=merman", "peer=pele", "direct-elk=merman"]
+        for label in ("matched", "peer", "unknown"):
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, "--variant-direct-id requires a Merman variant"):
+                _variant_recipes(variants, direct_ids=[label])
+        args = ["node", "--plan", str(self.args.plan), "--out-dir", str(self.args.out_dir),
+                "--samples", str(self.args.samples), "--timeout-seconds", str(self.args.timeout_seconds),
+                "--variant-direct-id", "direct", "--variant-direct-id", "direct-elk",
+                "--variant-layout", "direct-elk=elk"]
+        for variant in variants:
+            args.extend(["--variant", variant])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(bench_main(args), 0)
+
+        bundle = self.args.out_dir
+        frozen = json.loads((bundle / "variants.json").read_bytes())["variants"]
+        self.assertEqual([recipe["label"] for recipe in frozen if "direct_id" in recipe], ["direct", "direct-elk"])
+        self.assertIs(frozen[0]["direct_id"], True)
+        self.assertIsNone(frozen[0]["options_json"])
+        rounds = json.loads((bundle / "process-rounds.json").read_bytes())
+        replay = {(row["peer"], row["scenario"]): row for row in load_rounds(bundle)["latency"]}
+        for label, eligible in (("matched", 2), ("peer", 2), ("no-options", 0), ("direct-elk", 2)):
+            self.assertEqual(rounds["comparisons"][label]["doc"]["eligible_pairs"], eligible)
+            self.assertEqual(replay[label, "doc"]["eligible_pairs"], eligible)
+        for round_no, label in self.calls:
+            raw = json.loads((bundle / "rounds" / f"{round_no:03}" / f"{label}.json").read_bytes())
+            self.assertIs(raw["variant"].get("direct_id"), True if label in ("direct", "direct-elk") else None)
+            self.assertEqual(raw["diagram_id_mode"], "omitted" if label == "no-options" else "plan")
 
     def test_incomplete_collectors_keep_other_rounds_peers_and_scenarios(self):
         def fail(round_no, raw):

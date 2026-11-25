@@ -9,7 +9,8 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 
-const { node_products: products } = JSON.parse(readFileSync(new URL("../workloads.json", import.meta.url), "utf8"));
+const { node_products: products, node_intrinsic_layout_types: intrinsicLayoutTypes } =
+  JSON.parse(readFileSync(new URL("../workloads.json", import.meta.url), "utf8"));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const errorMessage = (error) => String(error?.message ?? error);
 const validator = fileURLToPath(new URL("../merman_bench/svg.py", import.meta.url));
@@ -427,7 +428,7 @@ function summarizeBatch(requests, { elapsed_ms, firstReturnMs, results }, import
 }
 
 function noOptionsBridge(engine, variant) {
-  return engine === "merman" && variant?.options_json === null;
+  return engine === "merman" && variant?.options_json === null && !variant?.direct_id;
 }
 
 function fieldValueEnd(text, objectStart, key, expectedToken) {
@@ -480,12 +481,13 @@ function optionsWithPlanId(text = "{}") {
 async function runScenario({ product, engine, variant, scenario, samples, warmup, drawingDir, validationDirectory }) {
   const merman = engine === "merman";
   const siteLayout = variant?.site_layout;
+  const directId = variant?.direct_id;
   const omitId = noOptionsBridge(engine, variant);
-  const planOptions = merman && !omitId ? optionsWithPlanId(variant?.options_json) : null;
+  const planOptions = merman && !omitId && !directId ? optionsWithPlanId(variant?.options_json) : null;
   const requests = scenario.requests.map(({ source, diagram_id, expected_labels, expected_outcome }) => {
     const request = { source, diagram_id, expected_labels, expected_outcome };
-    if (planOptions) {
-      request.options = planOptions(diagram_id);
+    if (directId || planOptions) {
+      request.options = directId ? { diagramId: diagram_id } : planOptions(diagram_id);
       if (preservesRootId(diagram_id)) request.expected_root_id = diagram_id;
     }
     if (omitId) request.omits_diagram_id = true;
@@ -536,7 +538,8 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
       if (!["ok", "diagram-id-not-applied"].includes(cold_batch.results[index].status)) return null;
       const { ready, diagram_type, required_capability_ids } = JSON.parse(instance.svgPlanJsonSync(source, options));
       const layouts = required_capability_ids.filter((id) => id.startsWith("layout-"));
-      if (!ready || layouts.length !== 1 || layouts[0] !== `layout-${siteLayout}`) {
+      const expectedLayouts = intrinsicLayoutTypes.includes(diagram_type) ? [] : [`layout-${siteLayout}`];
+      if (!ready || !isDeepStrictEqual(layouts, expectedLayouts)) {
         const capabilities = required_capability_ids.join(", ") || "no required capabilities";
         throw new Error(`${diagram_id}: requested ${siteLayout}. SVG plan reports ${capabilities}.`);
       }
@@ -700,7 +703,8 @@ function isolatedScenario(input, timeoutSeconds) {
 async function main() {
   const { values } = parseArgs({ options: {
     plan: { type: "string" }, engine: { type: "string" }, module: { type: "string" },
-    "variant-label": { type: "string" }, "options-json": { type: "string" }, "site-layout": { type: "string" },
+    "variant-label": { type: "string" }, "options-json": { type: "string" }, "direct-id": { type: "boolean" },
+    "site-layout": { type: "string" },
     "drawing-dir": { type: "string" }, "all-drawings": { type: "boolean" },
     samples: { type: "string", default: "3" }, "timeout-seconds": { type: "string", default: "300" },
     "warmup-calls": { type: "string", default: String(DEFAULT_WARMUP.max_calls) },
@@ -713,11 +717,12 @@ async function main() {
       !/^[1-9]\d*$/u.test(values.samples) || !Number.isSafeInteger(samples) ||
       !["warmup-calls", "warmup-ms"].every((key) => /^\d+$/u.test(values[key]) && Number.isSafeInteger(Number(values[key]))) ||
       !(timeoutSeconds > 0 && timeoutSeconds * 1000 <= 2_147_483_647)) {
-    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nPass --options-json={} to match the plan IDs in a named Merman variant. Omitting --options-json in a named variant collects a no-options diagnostic without a timing ratio.\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
+    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON | --direct-id] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nPass --options-json={} or --direct-id to match the plan IDs in a named Merman variant. With neither flag, a named Merman variant collects a no-options diagnostic without a timing ratio.\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
   }
   if (values["all-drawings"] && !values["drawing-dir"]) throw new Error("--all-drawings requires --drawing-dir");
   const label = values["variant-label"];
   const optionsJson = values["options-json"];
+  const directId = values["direct-id"];
   const siteLayout = values["site-layout"];
   if (label !== undefined && (!/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,62}[A-Za-z0-9_-])?$/u.test(label) ||
       /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/iu.test(label.split(".")[0]))) {
@@ -726,11 +731,16 @@ async function main() {
   if (optionsJson !== undefined && (label === undefined || values.engine !== "merman" || !optionsJson.trim())) {
     throw new Error("--options-json requires a Merman variant and nonempty Options JSON text");
   }
+  if (directId && (label === undefined || values.engine !== "merman" || optionsJson !== undefined)) {
+    throw new Error("--direct-id requires a Merman variant without --options-json");
+  }
   if (siteLayout !== undefined && (label === undefined || values.engine !== "merman" || !SITE_LAYOUTS.includes(siteLayout))) {
     throw new Error("--site-layout requires a Merman variant and dagre, elk, or shoal");
   }
   const variant = label === undefined ? undefined : {
-    label, options_json: optionsJson ?? null, ...(siteLayout ? { site_layout: siteLayout } : {}),
+    label, options_json: optionsJson ?? null,
+    ...(siteLayout ? { site_layout: siteLayout } : {}),
+    ...(directId ? { direct_id: true } : {}),
   };
   const drawingDir = values["drawing-dir"] && path.resolve(values["drawing-dir"]);
   const plan = readPlan(values.plan, values["all-drawings"]);

@@ -178,6 +178,7 @@
        "orders":["canonical","declarations-reverse","declarations-1","declarations-2","declarations-3","edges-reverse","edges-1","edges-2","edges-3"]}
     ]
   },
+  "node_intrinsic_layout_types": ["sequence"],
   "node_products": {
     "merman": {
       "package": "@mermanjs/node",
