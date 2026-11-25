@@ -2290,6 +2290,108 @@ fn repulsion_grid_storage_variants_preserve_surrounding_order() {
 }
 
 #[test]
+fn repulsion_grid_scan_promotion_precedes_per_node_admission() {
+    let repulsion_range = 10.0;
+    let node_order = [0, 1];
+    // The candidate implicit charge is six. A scan total of exactly six keeps the sparse
+    // grid, while seven promotes it before either per-node admission.
+    for (width, charges, promoted) in [(1.0, &[3, 3][..], false), (11.0, &[6][..], true)] {
+        let mut nodes = [node_at(10.0, 0.0, width, 1.0), node_at(10.0, 0.0, 1.0, 1.0)];
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            40.0,
+            1.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Sparse);
+        let mut grid = RepulsionGrid::build_from_plan(
+            None,
+            plan,
+            0.0,
+            0.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap();
+        let mut control = RejectingPreflight {
+            reject_on_check: usize::MAX,
+            ..RejectingPreflight::default()
+        };
+        grid.prepare_refresh(&nodes, &node_order, true, &mut control)
+            .unwrap();
+
+        assert_eq!(control.checks, charges);
+        assert_eq!(control.charges, charges);
+        assert_eq!(
+            matches!(grid.cells, super::RepulsionGridCells::Implicit { .. }),
+            promoted
+        );
+    }
+}
+
+#[test]
+fn rejected_late_repulsion_grid_promotion_preserves_prepared_counts() {
+    let repulsion_range = 10.0;
+    let mut nodes: [SimNode; 3] = std::array::from_fn(|_| node_at(0.0, 0.0, 30.0, 1.0));
+    let node_order = [2, 0, 1];
+    let plan =
+        RepulsionGridPlan::from_geometry(0.0, 0.0, 30.0, 1.0, &nodes, repulsion_range, &node_order)
+            .unwrap()
+            .unwrap();
+    assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+    let mut grid = RepulsionGrid::build_from_plan(
+        None,
+        plan,
+        0.0,
+        0.0,
+        &mut nodes,
+        repulsion_range,
+        &node_order,
+    )
+    .unwrap();
+    grid.prepare_refresh(&nodes, &[0], false, &mut NoopWorkControl)
+        .unwrap();
+
+    let mut rejecting = RejectingPreflight {
+        reject_on_check: 4,
+        ..RejectingPreflight::default()
+    };
+    assert_eq!(
+        grid.prepare_refresh(&nodes, &node_order, true, &mut rejecting),
+        Err(WorkFailure::Interrupted)
+    );
+    assert_eq!(rejecting.checks, [3, 3, 3, 21]);
+    assert_eq!(rejecting.charges, [3, 3, 3]);
+    assert!(matches!(grid.cells, super::RepulsionGridCells::Dense(_)));
+
+    let mut after = RecordingWorkControl::default();
+    let mut seen = [0; 3];
+    let mut seen_generation = 0;
+    for idx in [2, 0] {
+        grid.refresh_node_surrounding(
+            idx,
+            &mut nodes,
+            &[0; 3],
+            1,
+            repulsion_range,
+            &mut seen,
+            &mut seen_generation,
+            &mut after,
+        )
+        .unwrap();
+    }
+    assert_eq!(after.charges, [9]);
+    assert_eq!(nodes[2].surrounding, [0, 1]);
+    assert_eq!(nodes[0].surrounding, [2, 1]);
+}
+
+#[test]
 fn repulsion_grid_promotes_cubic_materialized_queries_to_implicit() {
     fn assert_promoted(node_count: usize) {
         let repulsion_range = 10.0;
