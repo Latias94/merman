@@ -109,7 +109,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         ],
     ),
     ("merman-markup", &["html", "url", "color"]),
-    ("merman-render", &["benchmark-stages"]),
+    ("merman-render", &["benchmark-stages", "markdown-labels"]),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     (

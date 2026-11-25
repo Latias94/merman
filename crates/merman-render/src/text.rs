@@ -7,7 +7,9 @@ mod heuristic;
 pub(crate) mod html_wrap;
 mod icons;
 mod line_break;
+#[cfg(feature = "markdown-labels")]
 mod markdown;
+#[cfg(feature = "markdown-labels")]
 mod markdown_label;
 mod measure;
 mod metrics;
@@ -15,6 +17,7 @@ mod svg_metrics;
 mod types;
 mod whitespace;
 mod wrap;
+mod xhtml_label;
 
 pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::{
@@ -34,14 +37,15 @@ pub use line_break::split_html_br_lines;
 pub(crate) use line_break::{
     html_has_soft_break_opportunity, mermaid_html_breaks_to_newlines, split_mermaid_common_br_lines,
 };
+#[cfg(feature = "markdown-labels")]
 pub(crate) use markdown::{
-    MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
-    mermaid_markdown_contains_html_tags, mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
+    MermaidMarkdownAnalysis, analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
+    mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
 };
+#[cfg(feature = "markdown-labels")]
 pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
     mermaid_markdown_to_xhtml_label_fragment, mermaid_markdown_wants_paragraph_wrap,
-    mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content,
 };
 pub use measure::TextMeasurer;
 pub(crate) use measure::{
@@ -50,6 +54,9 @@ pub(crate) use measure::{
 };
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
+pub use metrics::measure_html_with_inline_styles;
+#[cfg(feature = "markdown-labels")]
+pub use metrics::measure_markdown_with_inline_styles;
 #[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
@@ -62,10 +69,13 @@ pub use metrics::unsupported_html_label_style;
 pub(crate) use metrics::{
     measure_html_with_authored_width, measure_html_with_document_root,
     measure_svg_markdown_word_lines, measure_svg_markdown_word_lines_with_origin,
-    measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment_with_terminal_fonts,
-    mermaid_markdown_to_wrapped_word_lines, svg_markdown_word_style, wrap_markdown_word_lines,
+    measure_xhtml_label_fragment_with_terminal_fonts, svg_markdown_word_style,
+    wrap_markdown_word_lines,
 };
-pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
+#[cfg(feature = "markdown-labels")]
+pub(crate) use metrics::{
+    measure_wrapped_markdown_with_inline_styles, mermaid_markdown_to_wrapped_word_lines,
+};
 
 pub(crate) use css_font::{
     ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight, xhtml_font_default,
@@ -75,7 +85,7 @@ pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,
 };
-pub(crate) use types::SvgTextEntityMode;
+pub(crate) use types::{MermaidMarkdownWordType, SvgTextEntityMode};
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,
@@ -87,6 +97,7 @@ pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even,
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
+pub(crate) use xhtml_label::{mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content};
 
 pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
     font_size_px.max(1.0) * 1.1875

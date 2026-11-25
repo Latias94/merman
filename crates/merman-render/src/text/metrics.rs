@@ -5,10 +5,12 @@ use super::line_break::{
     HtmlBreakKind, html_break_spaces_segments,
     html_break_spaces_segments_with_metadata_and_checkpoints,
 };
+#[cfg(feature = "markdown-labels")]
+use super::mermaid_markdown_to_lines;
 use super::{
     MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
-    is_html_collapsible_ascii_whitespace, mermaid_markdown_to_lines,
-    mermaid_xhtml_label_plain_text, round_to_1_64_px, trim_html_collapsible_ascii_whitespace, wrap,
+    is_html_collapsible_ascii_whitespace, mermaid_xhtml_label_plain_text, round_to_1_64_px,
+    trim_html_collapsible_ascii_whitespace, wrap,
 };
 use crate::environment::{
     BuiltinHtmlLineWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
@@ -2653,6 +2655,7 @@ mod inline_planning_tests {
         }
     }
 
+    #[cfg(feature = "markdown-labels")]
     #[test]
     fn svg_markdown_resets_parent_weight_without_changing_html_inheritance() {
         let measurer = SoftHyphenMeasurer::default();
@@ -2689,6 +2692,7 @@ mod inline_planning_tests {
         assert_eq!(html.width, 200.0);
     }
 
+    #[cfg(feature = "markdown-labels")]
     #[test]
     fn html_markdown_measurement_keeps_code_span_literals() {
         let metrics = measure_markdown_with_inline_styles(
@@ -5413,6 +5417,7 @@ pub(crate) fn wrap_markdown_word_lines(
     }
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
     measurer: &dyn TextMeasurer,
     markdown: &str,
@@ -5501,6 +5506,7 @@ pub(crate) fn measure_svg_markdown_word_lines_with_origin(
     )
 }
 
+#[cfg(feature = "markdown-labels")]
 fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
     if !markdown.contains("\n\n") && !markdown.contains("\r\n\r\n") {
         return 0;
@@ -5529,6 +5535,7 @@ fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
     paragraph_count.saturating_sub(1)
 }
 
+#[cfg(feature = "markdown-labels")]
 fn measure_markdown_with_inline_styles_impl(
     measurer: &dyn TextMeasurer,
     markdown: &str,
@@ -5782,6 +5789,10 @@ fn measure_markdown_with_inline_styles_impl(
     }
 }
 
+/// Measures a Mermaid Markdown label with the supplied text measurer and wrap mode.
+///
+/// Available with the `markdown-labels` feature.
+#[cfg(feature = "markdown-labels")]
 pub fn measure_markdown_with_inline_styles(
     measurer: &dyn TextMeasurer,
     markdown: &str,
@@ -5792,6 +5803,7 @@ pub fn measure_markdown_with_inline_styles(
     measure_markdown_with_inline_styles_impl(measurer, markdown, style, max_width, wrap_mode, false)
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn measure_wrapped_markdown_with_inline_styles(
     measurer: &dyn TextMeasurer,
     markdown: &str,

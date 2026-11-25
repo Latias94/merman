@@ -35,7 +35,7 @@ types. If another dependency widens model data, a family missing its local rende
 explicit unsupported result before backend planning. See the
 [migration guide](../../docs/FEATURES.md#select-diagram-families).
 
-Optional features add distinct backends or system adapters:
+Optional features add text support, layout backends, and system adapters.
 
 | Feature | Adds |
 | --- | --- |
@@ -43,6 +43,7 @@ Optional features add distinct backends or system adapters:
 | `layout-dagre` | Dagre compatibility adapter and Mermaid 12 loader fallback for the supported graph families. |
 | `layout-elk` | Mermaid’s registered ELK layout algorithms for the supported graph families. |
 | `layout-shoal` | Experimental layered layout and orthogonal edge routing for supported families. |
+| `markdown-labels` | Shared Markdown label parsing and `text::measure_markdown_with_inline_styles`. Diagram families that use the shared Markdown label path enable it automatically. |
 | `math` | RaTeX parsing, layout, SVG output, and embedded math fonts. |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Explicit host runtime adapters; none are selected by default. |
 

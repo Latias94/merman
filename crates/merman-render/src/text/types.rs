@@ -2,6 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MermaidMarkdownWordType {
+    Normal,
+    Strong,
+    Em,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum SvgTextEntityMode {
     DecodedModel,
