@@ -1,9 +1,9 @@
 // Run an expanded workload plan against one installed Node SVG renderer.
-import { execFileSync, fork } from "node:child_process";
+import { execFileSync, fork, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { arch, cpus, hostname, platform, release, tmpdir } from "node:os";
+import { arch, constants, cpus, hostname, platform, release, tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,6 +16,8 @@ const validator = fileURLToPath(new URL("../merman_bench/svg.py", import.meta.ur
 const DEFAULT_WARMUP = { max_calls: 20, max_ms: 150 };
 const VALIDATION_BATCH_BYTES = 32 * 1024 * 1024;
 const SITE_LAYOUTS = ["dagre", "elk", "shoal"];
+const posixProcessGroups = process.platform !== "win32";
+const SCENARIO_LIFETIME_FD = 4;
 
 function resolveImport(specifier, cwd) {
   // Let Node select the same conditional export as an import in the consumer project.
@@ -217,11 +219,23 @@ function scenarioIdentity({ index, id, origin, requests }) {
   return { index, id, origin, requests: identities };
 }
 
-function validateOutputs(jobs) {
-  const python = process.platform === "win32" ? "python" : "python3";
-  return JSON.parse(execFileSync(python, ["-B", "-X", "utf8", validator], {
+function validateOutputs(jobs, lifetimeFd) {
+  const args = ["-B", "-X", "utf8", validator];
+  const options = {
     input: JSON.stringify(jobs), encoding: "utf8", maxBuffer: Infinity, stdio: ["pipe", "pipe", "inherit"],
-  }));
+  };
+  if (!posixProcessGroups) {
+    return JSON.parse(execFileSync("python", args, options));
+  }
+
+  if (lifetimeFd !== undefined) options.stdio.push(lifetimeFd);
+  // Reap Python before returning. Its exit status takes precedence over a secondary stdin EPIPE.
+  const { status, signal, error, stdout } = spawnSync("python3", args, options);
+  if (signal || (status !== null && status !== 0)) {
+    throw new Error(`SVG validator failed (${signal ?? `exit ${status}`})`);
+  }
+  if (error) throw error;
+  return JSON.parse(stdout);
 }
 
 // Only assert literal root IDs in the subset that Merman's SVG ID sanitizer preserves.
@@ -500,7 +514,10 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     } else {
       throw new Error(`Missing ${products[engine].render_api} in ${product.entry}`);
     }
-    const options = { samples, warmup, validationDirectory, asyncSvg: engine === "mermaid-v13", importStart: start };
+    const options = {
+      samples, warmup, validationDirectory, asyncSvg: engine === "mermaid-v13", importStart: start,
+      validate: (jobs) => validateOutputs(jobs, posixProcessGroups ? SCENARIO_LIFETIME_FD : undefined),
+    };
     if (drawingDir && scenario.drawingIndices.length) {
       options.afterLastBatch = (attempts, results) => {
         mkdirSync(drawingDir, { recursive: true });
@@ -569,20 +586,86 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
   }
 }
 
+function killProcessGroup(pid) {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
+
+function forkScenario(mode, { detached = false, lifetimePipe } = {}) {
+  // Package stdout and stderr are diagnostics. Only IPC carries the measured row.
+  const stdio = ["ignore", 2, 2, "ipc"];
+  if (lifetimePipe !== undefined) stdio[SCENARIO_LIFETIME_FD] = lifetimePipe;
+  return fork(fileURLToPath(import.meta.url), [mode], { execArgv: [], stdio, detached });
+}
+
+function superviseScenario() {
+  // The group leader stays alive through worker failure, so signaling the group cannot hit a reused ID.
+  const stopGroup = () => killProcessGroup(process.pid);
+  process.once("disconnect", stopGroup);
+  process.once("message", (input) => {
+    const worker = forkScenario("--scenario-worker", { lifetimePipe: SCENARIO_LIFETIME_FD });
+    let reply;
+    let workerError;
+    worker.once("message", (message) => { reply = message; });
+    worker.once("error", (error) => { workerError = errorMessage(error); });
+    worker.once("close", (code, signal) => {
+      if (code === 0 && reply?.row) {
+        process.send(reply, (error) => {
+          if (error) stopGroup();
+          else process.off("disconnect", stopGroup);
+        });
+      } else {
+        process.send({ error: reply?.error ?? workerError ?? signal ?? `exit ${code}` }, stopGroup);
+      }
+    });
+    worker.send(input);
+  });
+}
+
 function isolatedScenario(input, timeoutSeconds) {
   const validationDirectory = mkdtempSync(path.join(tmpdir(), "merman-node-validation-"));
+  let onInterrupt;
+  let interruptedBy;
   return new Promise((resolve, reject) => {
-    // Package stdout and stderr are diagnostics. Only IPC carries the measured row.
-    const child = fork(fileURLToPath(import.meta.url), ["--scenario-worker"], {
-      execArgv: [], stdio: ["ignore", 2, 2, "ipc"],
-    });
+    const child = posixProcessGroups
+      ? forkScenario("--scenario-supervisor", { detached: true, lifetimePipe: "pipe" })
+      : forkScenario("--scenario-worker");
+    // The inherited pipe keeps `close` pending until any in-flight validator has also exited.
+    child.stdio[SCENARIO_LIFETIME_FD]?.resume();
+    const stopWorker = () => {
+      if (!posixProcessGroups) child.kill("SIGKILL");
+      else if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+        killProcessGroup(child.pid);
+      }
+    };
+    if (posixProcessGroups) {
+      // A terminal interrupt reaches the collector instead of the detached scenario group.
+      onInterrupt = (signal) => {
+        interruptedBy ??= signal;
+        stopWorker();
+      };
+      process.on("SIGINT", onInterrupt);
+      process.on("SIGTERM", onInterrupt);
+    }
     let reply;
+    let childError;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      stopWorker();
     }, Math.ceil(timeoutSeconds * 1000));
-    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("error", (error) => {
+      if (posixProcessGroups) {
+        childError = error;
+        stopWorker();
+      } else {
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
     child.once("message", (message) => { reply = message; });
     child.once("close", (code, signal) => {
       clearTimeout(timer);
@@ -590,6 +673,8 @@ function isolatedScenario(input, timeoutSeconds) {
         const error = new Error(`Scenario ${input.scenario.index} (${input.scenario.id}) timed out after ${timeoutSeconds}s`);
         error.code = "ETIMEDOUT";
         reject(error);
+      } else if (childError) {
+        reject(childError);
       } else if (code === 0 && reply?.row) {
         resolve(reply.row);
       } else {
@@ -599,11 +684,16 @@ function isolatedScenario(input, timeoutSeconds) {
     });
     child.send({ ...input, validationDirectory });
   }).finally(() => {
+    if (onInterrupt) {
+      process.off("SIGINT", onInterrupt);
+      process.off("SIGTERM", onInterrupt);
+    }
     try {
       rmSync(validationDirectory, { recursive: true, force: true, maxRetries: 3 });
     } catch (error) {
       console.error(`Could not remove the SVG validation scratch directory ${validationDirectory}: ${errorMessage(error)}`);
     }
+    if (interruptedBy) process.exit(128 + constants.signals[interruptedBy]);
   });
 }
 
@@ -708,7 +798,9 @@ async function main() {
 }
 
 if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
-  if (process.send && process.argv[2] === "--scenario-worker") {
+  if (process.send && process.argv[2] === "--scenario-supervisor") {
+    superviseScenario();
+  } else if (process.send && process.argv[2] === "--scenario-worker") {
     process.once("message", async (input) => {
       try {
         process.send({ row: await runScenario(input) });

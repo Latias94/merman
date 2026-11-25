@@ -88,7 +88,9 @@ labels. Pixel variation is evidence of content. Geometry, label placement and sh
 have their own drawing checks. A PNG above 64 MiB encoded or 16,777,216 pixels is recorded as
 `observer-limit` and its timing is excluded. An interrupted Node scenario records its worker failure and its
 unmeasured requests. The matrix continues with a new process for the next scenario and compares
-the observed common requests. The process exit status and bundle retain the collection failure.
+the observed common requests. On POSIX the collector waits for the interrupted worker and its SVG
+validator to exit before starting the next scenario. The process exit status and bundle retain the
+collection failure.
 Keep the browser comparison in its existing Chromium harness. The [runbook](RUNBOOK.md#run-an-ordered-workload)
 includes reproduction commands and external corpus imports.
 

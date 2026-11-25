@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -60,8 +60,8 @@ function plan(dir, scenarios) {
   return raw;
 }
 
-function run(dir, engine, extra = []) {
-  const result = spawnSync(process.execPath, [cli, "--plan", "plan.json", "--engine", engine, ...extra], {
+function run(dir, engine, extra = [], runner = cli) {
+  const result = spawnSync(process.execPath, [runner, "--plan", "plan.json", "--engine", engine, ...extra], {
     cwd: dir, encoding: "utf8", timeout: 20_000,
   });
   if (result.error) throw result.error;
@@ -780,6 +780,119 @@ test("mid-plan request exceptions, process exits and timeouts preserve every ind
     assert.deepEqual(row.warm_samples, []);
   }
 });
+
+function validatorScenario(t, mode) {
+  const dir = project(t);
+  const runner = path.join(dir, "collectors", "node_runner.mjs");
+  mkdirSync(path.dirname(runner));
+  mkdirSync(path.join(dir, "merman_bench"));
+  copyFileSync(cli, runner);
+  copyFileSync(new URL("../workloads.json", import.meta.url), path.join(dir, "workloads.json"));
+  writeFileSync(path.join(dir, "validator-case"), mode);
+  writeFileSync(path.join(dir, "merman_bench", "svg.py"), `
+import json, os, sys, time
+from pathlib import Path
+
+mode = Path("validator-case").read_text()
+pid = Path("validator-pid")
+
+def mark_started():
+    Path("starting").write_text(str(os.getpid()))
+    Path("starting").rename(pid)
+
+def hold():
+    deadline = time.monotonic() + 8
+    while not Path("release-validator").exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+# Close stdin without consuming the 4 MiB job so the collector encounters EPIPE.
+if mode.startswith("epipe-") and not pid.exists():
+    mark_started()
+    os.close(0)
+    if mode == "epipe-exit":
+        time.sleep(1)
+        sys.exit(7)
+    hold()
+    sys.exit(0)
+
+jobs = json.load(sys.stdin)
+if any(f"<text>{mode}</text>" in job["svg"] for job in jobs):
+    mark_started()
+    if mode != "normal":
+        hold()
+print(json.dumps([{"status": "ok", "output_class": "draw"} for _ in jobs]))
+`);
+  install(dir, "@mermanjs/node", `
+    import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+    import { Worker } from 'node:worker_threads';
+    function validatorState() {
+      const pid = readFileSync('validator-pid', 'utf8');
+      try {
+        return /^State:\\s+(\\w)/m.exec(readFileSync('/proc/' + pid + '/status', 'utf8'))[1];
+      } catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
+        return 'gone';
+      }
+    }
+    export function createNodeEngine() {
+      let source;
+      let killer;
+      return {
+        runtimeCatalog: { package_version: '1.2.3' },
+        renderSvgSync(input, { optionsJson }) {
+          source = input;
+          if (source === 'worker-exit' && !killer) {
+            killer = new Worker(
+              "const { existsSync } = require('node:fs'); setInterval(() => {" +
+              "if (existsSync('validator-pid')) process.kill(process.pid, 'SIGKILL'); }, 10);",
+              { eval: true },
+            ).unref();
+          }
+          if (source === 'after' && !existsSync('validator-state')) {
+            try { writeFileSync('validator-state', validatorState()); }
+            finally { writeFileSync('release-validator', ''); }
+          }
+          const id = JSON.parse(optionsJson).svg.diagram_id;
+          const text = source.startsWith('epipe-') ? 'x'.repeat(4 * 1024 * 1024) : source;
+          return '<svg id="' + id + '"><text>' + text + '</text></svg>';
+        },
+        dispose() {
+          if (!source.startsWith('epipe-')) return;
+          const state = validatorState();
+          writeFileSync('validator-at-dispose', state);
+          // Turn premature disposal into a failure the collector must isolate.
+          if (!['gone', 'Z', 'X'].includes(state)) process.exit(73);
+        },
+      };
+    }
+  `);
+  plan(dir, [mode, "after"].map((id) => ({ id, requests: [request(id, id)] })));
+  return { dir, ...run(dir, "merman", ["--samples", "1", "--warmup-calls", "0", "--timeout-seconds", "3"], runner) };
+}
+
+for (const [mode, expectedStatus, expectedError] of [
+  ["normal", undefined, null],
+  ["timeout", "timeout", /timed out after 3s/u],
+  ["epipe-timeout", "timeout", /timed out after 3s/u],
+  ["epipe-exit", "failed", /SVG validator failed \(exit 7\)/u],
+  ["worker-exit", "failed", /SIGKILL/u],
+]) {
+  test(`Linux retires the SVG validator before the next scenario (${mode})`, { skip: process.platform !== "linux" }, (t) => {
+    const { dir, report, status, stderr } = validatorScenario(t, mode);
+    const [first, after] = report.scenarios;
+    assert.equal(after.coverage.full_batch_comparable, true, stderr);
+    const state = readFileSync(path.join(dir, "validator-state"), "utf8");
+    assert.match(state, /^(?:gone|Z|X)$/u, `validator still alive at the next render (Linux state ${state})`);
+    assert.equal(status, expectedStatus ? 1 : 0, stderr);
+    assert.equal(first.status, expectedStatus, stderr);
+    if (expectedError) assert.match(first.error, expectedError);
+    else assert.equal(first.coverage.full_batch_comparable, true);
+    if (mode === "epipe-exit") {
+      const disposeState = readFileSync(path.join(dir, "validator-at-dispose"), "utf8");
+      assert.match(disposeState, /^(?:gone|Z|X)$/u);
+    }
+  });
+}
 
 test("module identity distinguishes Node-WASM and rejects browser entries and mismatched runtimes", (t) => {
   const dir = project(t);
