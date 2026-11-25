@@ -5,7 +5,7 @@
     "version": "0.9.3",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "48db60e91cb3e9a17287f0d50b67de2fbc1dc05c682da1aed1f109bdeff5a95b",
+    "cargo_lock_sha256": "2ecdeb3901889a38b3362a32f7d7afda0f66af3a6a21b44b6a95b7685e5d5f6e",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -142,6 +142,26 @@
           "repository": "https://github.com/dtolnay/basic-toml"
         },
         {
+          "name": "comemo",
+          "version": "0.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Laurenz <laurmaedje@gmail.com>"
+          ],
+          "repository": "https://github.com/typst/comemo"
+        },
+        {
+          "name": "comemo-macros",
+          "version": "0.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Laurenz <laurmaedje@gmail.com>"
+          ],
+          "repository": "https://github.com/typst/comemo"
+        },
+        {
           "name": "dhat",
           "version": "0.3.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -194,6 +214,26 @@
             "Yuheng Chen <yuhengchen@sensetime.com>"
           ],
           "repository": "https://github.com/bourumir-wyngs/granit-parser"
+        },
+        {
+          "name": "hayro-syntax",
+          "version": "0.7.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Laurenz Stampfl <laurenz.stampfl@gmail.com>"
+          ],
+          "repository": "https://github.com/LaurenzV/hayro"
+        },
+        {
+          "name": "hayro-write",
+          "version": "0.7.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Laurenz Stampfl <laurenz.stampfl@gmail.com>"
+          ],
+          "repository": "https://github.com/LaurenzV/hayro"
         },
         {
           "name": "image",
@@ -252,40 +292,12 @@
           "repository": "https://github.com/jni-rs/jni-sys"
         },
         {
-          "name": "krilla",
-          "version": "0.8.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Laurenz Stampfl <laurenz.stampfl@gmail.com>"
-          ],
-          "repository": "https://github.com/LaurenzV/krilla"
-        },
-        {
-          "name": "krilla-svg",
-          "version": "0.8.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Laurenz Stampfl <laurenz.stampfl@gmail.com>"
-          ],
-          "repository": "https://github.com/LaurenzV/krilla"
-        },
-        {
           "name": "libc",
           "version": "0.2.191",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/rust-lang/libc"
-        },
-        {
-          "name": "linebender_resource_handle",
-          "version": "0.1.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/linebender/raw_resource_handle"
         },
         {
           "name": "miniz_oxide",
@@ -463,14 +475,6 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/ref-cast"
-        },
-        {
-          "name": "resvg",
-          "version": "0.47.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/linebender/resvg"
         },
         {
           "name": "rustc-hash",
@@ -1883,14 +1887,6 @@
           "repository": "https://github.com/rust-lang/flate2-rs"
         },
         {
-          "name": "fontique",
-          "version": "0.12.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/linebender/parley"
-        },
-        {
           "name": "form_urlencoded",
           "version": "1.2.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -2217,14 +2213,6 @@
             "Amanieu d'Antras <amanieu@gmail.com>"
           ],
           "repository": "https://github.com/Amanieu/parking_lot"
-        },
-        {
-          "name": "parlance",
-          "version": "0.1.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/linebender/parley"
         },
         {
           "name": "percent-encoding",
@@ -3479,7 +3467,15 @@
         },
         {
           "name": "read-fonts",
-          "version": "0.41.0",
+          "version": "0.46.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/googlefonts/fontations"
+        },
+        {
+          "name": "skrifa",
+          "version": "0.49.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -4034,24 +4030,6 @@
     {
       "id": "MIT",
       "name": "MIT License",
-      "text_sha256": "10e5daea68c3ab7da6468ea51860e9d4ac87ea6a9a2d34127beff17b7193b618",
-      "text": "Copyright (c) 2015 Victor Berger\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.",
-      "packages": [
-        {
-          "name": "dlib",
-          "version": "0.5.3",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Elinor Berger <elinor@safaradeg.net>"
-          ],
-          "repository": "https://github.com/elinorbgr/dlib"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
       "text_sha256": "16692e8cee4aa06e3913787497eba2d47c42002014136f5da67be6ee640e28a3",
       "text": "MIT License\n\nCopyright (c) 2019 Acrimon\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "packages": [
@@ -4211,26 +4189,6 @@
     {
       "id": "MIT",
       "name": "MIT License",
-      "text_sha256": "2ae0635fa25509f3a5ac454f76ad21286a65714b460e55a581e457e07441bf14",
-      "text": "The MIT License (MIT)\n\nCopyright 2019 YesLogic Pty. Ltd.\nCopyright 2016 Manuel Reinhardt\nCopyright 2014 Austin Bonander\nCopyright 2013 The Servo Project Developers.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n",
-      "packages": [
-        {
-          "name": "yeslogic-fontconfig-sys",
-          "version": "6.0.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Austin Bonander <austin.bonander@gmail.com>",
-            "The Servo Project Developers",
-            "YesLogic Pty. Ltd. <info@yeslogic.com>"
-          ],
-          "repository": "https://github.com/yeslogic/fontconfig-rs"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
       "text_sha256": "2cdce1ff4ca8f455ef169691ea493407e23c32ecdea5fd9b3a6fc82be5b49b5a",
       "text": "The MIT License (MIT)\n\nCopyright (c) 2019 Reizner Evgeniy\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "packages": [
@@ -4306,6 +4264,14 @@
       "text_sha256": "3a7c3f0b887abb7c638faf022d29257418458614c6724b120ceeffb279f9c7d2",
       "text": "The MIT License (MIT)\n\nCopyright (c) HarfBuzz developers\nCopyright (c) 2020 Yevhenii Reizner\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "packages": [
+        {
+          "name": "harfrust",
+          "version": "0.15.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [],
+          "repository": "https://github.com/harfbuzz/harfrust"
+        },
         {
           "name": "rustybuzz",
           "version": "0.20.1",
@@ -4607,6 +4573,16 @@
         {
           "name": "fontdb",
           "version": "0.23.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Yevhenii Reizner <razrfalcon@gmail.com>"
+          ],
+          "repository": "https://github.com/RazrFalcon/fontdb"
+        },
+        {
+          "name": "fontdb",
+          "version": "0.24.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -5055,14 +5031,6 @@
           "repository": "https://github.com/madsmtm/objc2"
         },
         {
-          "name": "objc2-foundation",
-          "version": "0.3.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/madsmtm/objc2"
-        },
-        {
           "name": "ratex-font",
           "version": "0.1.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -5480,6 +5448,24 @@
             "Matt Brubeck <mbrubeck@limpet.net>"
           ],
           "repository": "https://github.com/mbrubeck/rust-debug-unreachable"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "fa0d694967d5c279e70a5c7b7e4b9929e4c1c8c1b8506998e66fc2f1547b200a",
+      "text": "MIT License\n\nCopyright (c) 2017 Maiddog\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "packages": [
+        {
+          "name": "imagesize",
+          "version": "0.15.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Maid Dog <maiddogsrl@gmail.com>"
+          ],
+          "repository": "https://github.com/Roughsketch/imagesize"
         }
       ]
     },

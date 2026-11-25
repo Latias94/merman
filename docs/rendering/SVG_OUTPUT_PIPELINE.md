@@ -290,9 +290,12 @@ tokenizes and sanitizes CSS, strips active SVG constructs and unsafe attributes,
 XML, removes external image, paint, filter, cursor, and structural references, and validates the
 residual compatibility contract. The source scanner treats attribute text as serialized XML and
 normalizes retained anchor navigation once; the terminal validator treats parser output as a DOM
-value and does not decode entities again. Attributes in the SVG, XLink, and XML namespaces are interpreted
-by local name, matching `usvg`; namespace aliases therefore cannot bypass the terminal contract.
-The terminal validator also resolves the same-document `<use>` graph before `usvg`, rejecting
+value and does not decode entities again. The terminal checks recognized attribute namespaces and
+uses the backend's `href` precedence for the resource inventory and expansion plan. An unprefixed
+`href` takes precedence over XLink on ordinary resource links. Legacy `<tref>` first checks XLink
+and then the first attribute with the `href` local name. The font requirement includes character
+data copied from a local `<tref>` target, including a target declared later in the SVG.
+The terminal validator resolves the same-document `<use>` graph before `usvg`, rejecting
 cycles and expanded node/depth limits while retaining occurrence counts for inline-image export
 budgets. It uses the same `svgtypes` IRI grammar as the pinned `usvg` dependency for local
 fragment references. Local `feImage` and marker references contribute to that graph; local

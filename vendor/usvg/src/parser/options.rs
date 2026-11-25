@@ -8,6 +8,9 @@ use std::sync::Arc;
 use crate::FontResolver;
 use crate::{ImageHrefResolver, ImageRendering, ShapeRendering, Size, TextRendering};
 
+/// The default nesting limit when parsing.
+pub const DEFAULT_MAX_DEPTH: u32 = 1024;
+
 /// Processing options.
 #[derive(Debug)]
 pub struct Options<'a> {
@@ -85,7 +88,7 @@ pub struct Options<'a> {
     #[cfg(feature = "text")]
     pub font_resolver: FontResolver<'a>,
 
-    /// Optional default language and missing-cluster resolver for text.
+    /// Optional shaping language and font instance or missing-cluster resolvers.
     #[cfg(feature = "text")]
     pub text_fallback: crate::TextFallback<'a>,
 
@@ -102,6 +105,10 @@ pub struct Options<'a> {
     /// A CSS stylesheet that should be injected into the SVG. Can be used to overwrite
     /// certain attributes.
     pub style_sheet: Option<String>,
+
+    /// The maximum nesting allowed while parsing. If this limit is exceeded,
+    /// the parser will return an error.
+    pub max_depth: u32,
 }
 
 #[cfg(feature = "text")]
@@ -112,7 +119,21 @@ impl<'a> Options<'a> {
         language: Option<String>,
         select: Option<crate::ClusterFallbackFn<'a>>,
     ) {
-        self.text_fallback = crate::TextFallback { language, select };
+        self.text_fallback.language = language;
+        self.text_fallback.select = select;
+    }
+
+    /// Installs instance-aware primary and missing-cluster selectors.
+    ///
+    /// Each installed selector supersedes the legacy selector for that role.
+    /// The default language is still set by [`Self::set_text_fallback`].
+    pub fn set_font_instances(
+        &mut self,
+        select: Option<crate::FontInstanceSelectionFn<'a>>,
+        fallback: Option<crate::FontInstanceFallbackFn<'a>>,
+    ) {
+        self.text_fallback.select_instance = select;
+        self.text_fallback.fallback_instance = fallback;
     }
 }
 
@@ -137,6 +158,7 @@ impl Default for Options<'_> {
             #[cfg(feature = "text")]
             fontdb: Arc::new(fontdb::Database::new()),
             style_sheet: None,
+            max_depth: DEFAULT_MAX_DEPTH,
         }
     }
 }

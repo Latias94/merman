@@ -153,6 +153,13 @@ input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
 geometry and is never relaid out. Host fonts can change wrapping, node sizes and
 image/PDF snapshots.
 
+CLI builds with `system-fonts` also use their default provider for raw SVG PNG,
+JPEG, and PDF. System discovery uses the finalized SVG's text inventory, including
+text inside nested `<svg>` elements. Path-only input skips discovery and can
+render with `--font-system off` and no font files. Use explicit fonts to paint
+text with `--font-system off`. `--font-max-bytes` applies to the conversion font
+context. With only that option, raw SVG uses the build's default provider.
+
 In the CLI `native_fonts` capability document,
 `default_policy_scope: "mermaid-svg-input"` scopes the existing
 `default_measurement: "deterministic"`, `default_font_source: "none"`, and
@@ -207,7 +214,7 @@ estimates.
 
 The optional CLI feature `platform-system-font-query` adds an explicit system
 font policy. Use `--font-system platform` to query the operating system's font
-service. The backend uses Fontique and DirectWrite on Windows, Core Text on macOS,
+service. The backend uses DirectWrite on Windows, Core Text on macOS,
 and Fontconfig on Linux and FreeBSD.
 `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
@@ -224,18 +231,21 @@ that error instead. An intentionally empty Fontconfig configuration does not tri
 fallback, and neither do font-data, resource-limit, or cancellation errors.
 
 Fontconfig ranks the requested family names together, honoring strong and weak
-aliases. Merman verifies scan-time aliases against the physical face and keeps
+aliases. For a weak `system-ui` alias, explicitly supplied fonts compete with
+installed fonts under the same Fontconfig language and family ranking. Merman
+verifies scan-time aliases against the physical face and keeps
 alternatives with overlapping coverage. A text face can therefore supply a glyph
 when a preferred face is pictorial or covers only a subset. If a font file
 disappears, measurement and painting can reuse a snapshot already admitted. For
 new selections, the resolver tries the remaining candidates and reports the first
 missing path if none succeeds.
 
-Platform queries and metadata mappings run outside Merman's scan budgets.
-Selected font bytes use bounded immutable snapshots shared by measurement and
-painting, including the default system face acquired on demand. Generic family
-lookup stops at the first accepted face. The resolver can reject non-covering
-candidates before acquiring new snapshots and verifies coverage on admitted data.
+Operating system queries have their own runtime cost. Merman's table preflight
+reads count toward a separate discovery budget. For Fontconfig variation sequences,
+preflight checks the requested base and selector before reading a full character
+map. Selected font bytes use bounded immutable snapshots shared by measurement and
+painting, including the default system face acquired on demand. The resolver
+verifies coverage on admitted data.
 
 Workspace builds repair each missing shaping cluster with one physical face,
 preserving glyphs in the surrounding clusters. Platform fallback tries the
@@ -264,8 +274,9 @@ measurement has its own per-diagram `--font-max-measurements` limit.
 A context identity includes its policy, initial font bytes, and the system default
 family name when applicable. Successful platform selections are fixed for measurement
 and its derived exports. New operations query the current system again. Selection
-metadata is bounded separately from the optional measurement cache. Native instances
-requiring non-default variation coordinates are declined during selection.
+metadata is bounded separately from the optional measurement cache. Platform discovery retains
+selected OpenType variation coordinates for measurement and painting. Authored variation settings
+take precedence over platform coordinates.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system
@@ -315,10 +326,11 @@ parser/analysis, library defaults and host-owned FFI measurement policies are
 unchanged.
 
 SVG output does not embed fonts or convert text to outlines. Consumers must have
-the same fonts to reproduce measured geometry. Raw SVG supports explicit fonts
-only for PNG/JPEG/PDF conversion and rejects `--font-measurement`; conversion
-does not relayout existing geometry. Respect font redistribution and embedding
-licenses. Cousine fixtures are test-only and are not production assets.
+the same fonts to reproduce measured geometry. Raw SVG conversion rejects
+`--font-measurement` and `--font-max-measurements`. Native export font selection
+honors `xml:lang`, including inherited tags and `<tspan>` overrides.
+Respect font redistribution and embedding licenses.
+Cousine fixtures are test-only and are not production assets.
 
 Rust hosts load `merman::svg::export::NativeFontOptions` and install the resulting
 context with `SvgEnvironment::with_native_font_context`. Typed binary rendering

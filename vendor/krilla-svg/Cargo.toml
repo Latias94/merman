@@ -1,0 +1,21 @@
+[package]
+name = "merman-krilla-svg"
+version = "0.8.1"
+edition = "2021"
+rust-version = "1.92"
+description = "Merman's SVG-to-PDF adapter, based on krilla-svg."
+documentation = "https://docs.rs/merman-krilla-svg"
+readme = "README.md"
+keywords = ["svg", "pdf"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Latias94/merman"
+
+[lib]
+name = "krilla_svg"
+
+[dependencies]
+flate2 = "1.1.0"
+krilla = { workspace = true, features = ["raster-images", "simple-text"] }
+resvg = { workspace = true, features = ["raster-images"] }
+tiny-skia = "0.12.0"
+usvg = { workspace = true, features = ["svgz", "text", "system-fonts", "memmap-fonts"] }

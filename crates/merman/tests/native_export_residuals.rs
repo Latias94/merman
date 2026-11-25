@@ -11,6 +11,8 @@ use std::borrow::Cow;
 
 #[cfg(any(feature = "png", feature = "pdf"))]
 const DIRECTIONAL: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
+#[cfg(any(feature = "png", feature = "pdf"))]
+const SKEWED: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) skewX(30)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
 #[cfg(feature = "pdf")]
 const IMPLICIT_VIEWPORT: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><rect x="-10" y="10" width="20" height="20" fill="red"/></svg>"#;
 const FALLBACK_CSS: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><g data-merman-fallback-css-residual="true"><rect width="20" height="10" fill="red"/></g></svg>"#;
@@ -71,8 +73,18 @@ fn assert_strict_reason(error: merman::RenderError, reason: TargetAdmissionReaso
 #[cfg(feature = "png")]
 #[test]
 fn raster_directional_filter_residual_keeps_default_output_and_rejects_strict_portability() {
-    for scene in [DIRECTIONAL, FALLBACK_CSS] {
-        let reason = if scene == DIRECTIONAL {
+    let rotated = document(DIRECTIONAL, false)
+        .export_png(&Default::default(), OperationControl::new())
+        .expect("a quarter-turn with directional filters is supported by raster export");
+    assert!(
+        !rotated
+            .admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::NativeDirectionalFilterTransformResidual)
+    );
+
+    for scene in [SKEWED, FALLBACK_CSS] {
+        let reason = if scene == SKEWED {
             TargetAdmissionReason::NativeDirectionalFilterTransformResidual
         } else {
             TargetAdmissionReason::FallbackCssResidual
@@ -92,9 +104,18 @@ fn raster_directional_filter_residual_keeps_default_output_and_rejects_strict_po
 #[cfg(feature = "pdf")]
 #[test]
 fn pdf_quality_residuals_keep_default_output_and_reject_strict_portability() {
+    let rotated = document(DIRECTIONAL, false)
+        .export_pdf(&Default::default(), OperationControl::new())
+        .expect("a quarter-turn with directional filters is supported by PDF export");
+    assert!(
+        !rotated
+            .admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::NativeDirectionalFilterTransformResidual)
+    );
     for (scene, reason) in [
         (
-            DIRECTIONAL,
+            SKEWED,
             TargetAdmissionReason::NativeDirectionalFilterTransformResidual,
         ),
         (

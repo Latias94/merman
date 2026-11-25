@@ -144,11 +144,6 @@ impl NativeFontOptions {
         self,
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
-        if self.system_fonts {
-            // Detect a missing service before acquiring any explicit sources. A caller
-            // choosing an automatic provider may then retry bounded discovery cleanly.
-            platform::ensure_available(control)?;
-        }
         self.load_inner(control, true)
     }
 
@@ -162,6 +157,18 @@ impl NativeFontOptions {
         if self.system_fonts {
             return Err(NativeFontError::SystemDiscoveryUnavailable);
         }
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let platform = (self.system_fonts && platform_requested)
+            .then(|| platform::PlatformCatalog::new(control).map(Arc::new))
+            .transpose()?;
+        #[cfg(not(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        )))]
+        let _ = platform_requested;
         let mut loader = FontLoader::new(self.limits, control.clone());
         for source in self.sources {
             #[cfg(not(target_family = "wasm"))]
@@ -184,7 +191,15 @@ impl NativeFontOptions {
                 }
             }
         }
-        loader.finish(self.system_fonts, platform_requested, control)
+        loader.finish(
+            self.system_fonts,
+            control,
+            #[cfg(all(
+                feature = "experimental-system-font-query",
+                not(target_family = "wasm")
+            ))]
+            platform,
+        )
     }
 }
 
@@ -252,8 +267,6 @@ pub(crate) struct NativeExportFontObserver {
     admitted_faces: Arc<Mutex<BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>>,
     family_fallback: Arc<AtomicBool>,
     glyph_fallback: Arc<AtomicBool>,
-    unresolved_font: Arc<AtomicBool>,
-    unresolved_glyph: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,8 +286,6 @@ impl NativeExportFontObserver {
             )),
             family_fallback: Arc::new(AtomicBool::new(false)),
             glyph_fallback: Arc::new(AtomicBool::new(false)),
-            unresolved_font: Arc::new(AtomicBool::new(false)),
-            unresolved_glyph: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -305,23 +316,6 @@ impl NativeExportFontObserver {
 
     pub(crate) fn glyph_fallback_used(&self) -> bool {
         self.glyph_fallback.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn mark_unresolved_font(&self) {
-        self.unresolved_font.store(true, Ordering::Relaxed);
-    }
-
-    pub(crate) fn unresolved_font_request(&self) -> bool {
-        self.unresolved_font.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn mark_unresolved_glyph(&self) {
-        self.unresolved_glyph.store(true, Ordering::Relaxed);
-    }
-
-    // Lookup misses are only coverage evidence on parsers without final omission reporting.
-    pub(crate) fn unresolved_glyph_fallback(&self) -> bool {
-        self.unresolved_glyph.load(Ordering::Relaxed)
     }
 }
 
@@ -424,7 +418,15 @@ impl NativeFontContext {
             #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
             let _ = admitted;
         }
-        loader.finish(false, false, control)
+        loader.finish(
+            false,
+            control,
+            #[cfg(all(
+                feature = "experimental-system-font-query",
+                not(target_family = "wasm")
+            ))]
+            None,
+        )
     }
 
     /// Starts an independent operation scope with the selected glyph coverage policy.
@@ -485,6 +487,8 @@ impl NativeFontContext {
         self.0.database.faces().count()
     }
 
+    /// Installs this context into the Merman SVG parser.
+    /// Use [`crate::usvg::Options`] to share the parser type with this crate.
     pub fn apply_to_usvg_options(&self, options: &mut usvg::Options<'_>) {
         self.apply_to_usvg_options_controlled(options, &self.0.control);
     }
@@ -503,6 +507,7 @@ impl NativeFontContext {
         }
         options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
         options.set_text_fallback(self.0.language.clone(), None);
+        options.set_font_instances(None, None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
     }
@@ -529,6 +534,7 @@ impl NativeFontContext {
         options.font_resolver =
             native_export_font_resolver(observer.clone(), Arc::clone(&self.0.selection));
         options.set_text_fallback(self.0.language.clone(), None);
+        options.set_font_instances(None, None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
         observer
@@ -577,16 +583,24 @@ impl NativeFontContext {
     /// not poison the source context. Existing fatal font errors are replayed before forking.
     pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Export)?;
-        if let Some(error) = self.0.fatal.get() {
-            return Err(error.clone());
-        }
+        let check_source = || {
+            if let Some(error) = self.0.fatal.get() {
+                return Err(Self::replay_failure(control, true, error));
+            }
+            control.terminal_checkpoint_at(OperationPhase::Export)?;
+            Ok(())
+        };
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let sources = self.0.sources.for_export(check_source)?;
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        check_source()?;
         let context = Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
-            sources: self.0.sources.for_export()?,
+            sources,
             default_family: self.0.default_family.clone(),
             language: self.0.language.clone(),
             identity: self.0.identity.clone(),
@@ -659,46 +673,6 @@ impl FontContextInner {
     }
 }
 
-type ClusterFallbackFn<'a> = Box<
-    dyn Fn(
-            &usvg::Font,
-            &str,
-            Option<&str>,
-            bool,
-            &[usvg::fontdb::ID],
-            &mut Arc<usvg::fontdb::Database>,
-        ) -> Option<(usvg::fontdb::ID, f32)>
-        + Send
-        + Sync
-        + 'a,
->;
-
-// Registry consumers use the public scalar resolver. In workspace builds the
-// inherent usvg method takes precedence and installs the contextual callback.
-#[allow(dead_code)]
-trait TextFallbackOptions<'a> {
-    fn set_text_fallback(
-        &mut self,
-        _language: Option<String>,
-        _select: Option<ClusterFallbackFn<'a>>,
-    ) {
-    }
-}
-
-impl<'a> TextFallbackOptions<'a> for usvg::Options<'a> {}
-
-// Published usvg lacks the workspace hook for language-aware primary selection.
-#[cfg(feature = "experimental-system-font-query")]
-#[allow(dead_code)]
-trait FontSelectionLanguage {
-    fn selection_language(&self) -> Option<&str> {
-        None
-    }
-}
-
-#[cfg(feature = "experimental-system-font-query")]
-impl FontSelectionLanguage for usvg::Font {}
-
 fn native_export_font_resolver(
     observer: NativeExportFontObserver,
     selection: Arc<FontSelectionPolicy>,
@@ -714,8 +688,6 @@ fn native_export_font_resolver(
             let selected = selection.fallback(font, fontdb.as_ref());
             if selected.is_some() {
                 select_observer.mark_family_fallback();
-            } else {
-                select_observer.mark_unresolved_font();
             }
             selected
         }),
@@ -723,8 +695,6 @@ fn native_export_font_resolver(
             let selected = fallback_selection.glyph_fallback(character, excluded, fontdb);
             if selected.is_some() {
                 fallback_observer.mark_glyph_fallback();
-            } else {
-                fallback_observer.mark_unresolved_glyph();
             }
             selected
         }),
@@ -754,8 +724,12 @@ impl FontLoader {
     fn finish(
         self,
         system_fonts: bool,
-        platform_requested: bool,
         control: &OperationControl,
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        platform: Option<Arc<platform::PlatformCatalog>>,
     ) -> Result<NativeFontContext, NativeFontError> {
         let mut loader = self;
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
@@ -764,16 +738,13 @@ impl FontLoader {
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
-        let platform = if system_fonts && platform_requested {
-            Some(Arc::new(platform::PlatformCatalog::new(control)?))
-        } else {
-            None
-        };
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        let _ = platform_requested;
+        let platform_requested = platform.is_some();
+        #[cfg(all(
+            feature = "system-fonts",
+            not(target_family = "wasm"),
+            not(feature = "experimental-system-font-query")
+        ))]
+        let platform_requested = false;
         loader.selection.configure_generics(&mut loader.database);
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let system = if system_fonts && !platform_requested {
@@ -824,7 +795,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/native/v6");
+            loader.hash.update(b"\0platform-query/native/v7");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
@@ -1158,22 +1129,7 @@ impl HostTextMeasurer for NativeFontContext {
             Ok(result) => Ok(Some(result)),
             Err(NativeFontError::MissingGlyphCoverage) if !self.strict_glyph_coverage() => Ok(None),
             Err(error) => {
-                if let Some((id, actual, maximum)) = error.resource_limit() {
-                    control.terminate_resource_limit(OperationResourceLimitExceeded {
-                        id,
-                        phase: OperationPhase::Layout,
-                        resource_phase: "native-font-measurement",
-                        limit: maximum,
-                        consumed: 0,
-                        requested: actual,
-                        provenance: OperationResourceProvenance::new(
-                            OperationResourceDomain::Render,
-                            None,
-                            [OperationResourceOverride { id, value: maximum }],
-                        ),
-                    });
-                }
-                let error = self.0.fatal.get_or_init(|| error);
+                let error = self.record_failure(control, false, error);
                 Err(HostTextMeasurementError::new(error.to_string()))
             }
         }
@@ -1181,6 +1137,71 @@ impl HostTextMeasurer for NativeFontContext {
 }
 
 impl NativeFontContext {
+    fn record_failure(
+        &self,
+        control: &OperationControl,
+        exporting: bool,
+        error: NativeFontError,
+    ) -> NativeFontError {
+        let mut recorded_here = false;
+        let error = self.0.fatal.get_or_init(|| {
+            recorded_here = true;
+            Self::replay_failure(control, exporting, &error)
+        });
+        if recorded_here {
+            error.clone()
+        } else {
+            Self::replay_failure(control, exporting, error)
+        }
+    }
+
+    fn replay_failure(
+        control: &OperationControl,
+        exporting: bool,
+        error: &NativeFontError,
+    ) -> NativeFontError {
+        let phase = if exporting {
+            OperationPhase::Export
+        } else {
+            OperationPhase::Layout
+        };
+        let current_terminal = control.terminal_checkpoint_at(phase).err();
+        let Some((id, actual, maximum)) = error.resource_limit() else {
+            return current_terminal.map_or_else(|| error.clone(), NativeFontError::Operation);
+        };
+        let (resource_phase, provenance) = if exporting {
+            (
+                "native-font-export",
+                OperationResourceProvenance::new(OperationResourceDomain::Export, None, []),
+            )
+        } else {
+            (
+                "native-font-measurement",
+                OperationResourceProvenance::new(
+                    OperationResourceDomain::Render,
+                    None,
+                    [OperationResourceOverride { id, value: maximum }],
+                ),
+            )
+        };
+        let event = OperationResourceLimitExceeded {
+            id,
+            phase,
+            resource_phase,
+            limit: maximum,
+            consumed: 0,
+            requested: actual,
+            provenance,
+        };
+        let terminal =
+            current_terminal.unwrap_or_else(|| control.terminate_resource_limit(event.clone()));
+        if terminal == OperationLedgerError::ResourceLimitExceeded(event) {
+            error.clone()
+        } else {
+            NativeFontError::Operation(terminal)
+        }
+    }
+
     fn measure_operation(
         &self,
         request: HostTextMeasurementRequest<'_>,
@@ -1326,9 +1347,8 @@ impl NativeFontContext {
     }
 
     fn checkpoint(&self, control: &OperationControl) -> Result<(), NativeFontError> {
-        self.check()?;
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        Ok(())
+        self.check()
     }
 
     #[cfg(test)]
@@ -1410,9 +1430,7 @@ impl NativeFontContext {
         );
         let cacheable = match &result {
             Ok(metrics) => Some(Some(*metrics)),
-            Err(NativeFontError::MissingGlyphCoverage) if self.cache_missing_glyph_coverage() => {
-                Some(None)
-            }
+            Err(NativeFontError::MissingGlyphCoverage) => Some(None),
             Err(_) => None,
         };
         if let Some(metrics) = cacheable {
@@ -1432,28 +1450,6 @@ impl NativeFontContext {
             }
         }
         result
-    }
-
-    fn cache_missing_glyph_coverage(&self) -> bool {
-        // Platform queries do not promise a frozen candidate set. Only fixed font inputs or
-        // bounded metadata discovery can prove that the same probe will keep missing coverage.
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
-        {
-            !matches!(
-                self.0.discovery.as_ref(),
-                Some(resolver::DiscoveryProvider::Platform { .. })
-            )
-        }
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        {
-            true
-        }
     }
 
     fn check_label(&self, text: &str, style: &TextStyle) -> Result<(), NativeFontError> {
@@ -1516,9 +1512,21 @@ impl NativeFontContext {
                 ));
             }
         };
+        let weight = style
+            .font_weight
+            .as_deref()
+            .map_or_else(String::new, |weight| {
+                format!(r#" font-weight="{}""#, escape_xml(weight))
+            });
+        let slant = style
+            .font_style
+            .as_deref()
+            .map_or_else(String::new, |style| {
+                format!(r#" font-style="{}""#, escape_xml(style))
+            });
         let svg = |nodes: &str| {
             format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}"{weight}{slant} xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
                 escape_xml(
                     style
                         .font_family
@@ -1526,8 +1534,6 @@ impl NativeFontContext {
                         .unwrap_or(&self.0.default_family)
                 ),
                 style.font_size,
-                escape_xml(style.font_weight.as_deref().unwrap_or("400")),
-                escape_xml(style.font_style.as_deref().unwrap_or("normal")),
             )
         };
         let mut options = usvg::Options::default();
@@ -1567,7 +1573,14 @@ impl NativeFontContext {
             }
         }
         let metric = start.bounding_box();
-        let ink = start.flattened().bounding_box();
+        let ink = if whitespace_only {
+            metric
+        } else {
+            start
+                .flattened()
+                .bounding_box()
+                .ok_or(NativeFontError::MissingGlyphCoverage)?
+        };
         let advance = if baseline.is_none() {
             let end_x = end_x.ok_or_else(|| {
                 NativeFontError::Measurement("missing end-anchor probe".to_owned())
@@ -1582,16 +1595,8 @@ impl NativeFontContext {
             width: f64::from(metric.width()),
             height: f64::from(metric.height()),
             x: f64::from(metric.x()),
-            ink_x: if whitespace_only {
-                f64::from(metric.x())
-            } else {
-                f64::from(ink.x())
-            },
-            ink_right: if whitespace_only {
-                f64::from(metric.right())
-            } else {
-                f64::from(ink.right())
-            },
+            ink_x: f64::from(ink.x()),
+            ink_right: f64::from(ink.right()),
             raw_y: f64::from(metric.y()),
         };
         if ![
@@ -1616,21 +1621,6 @@ impl NativeFontContext {
 }
 
 type AnchorProbe = (usvg::Tree, Option<f32>);
-
-// The workspace usvg provides an inherent method. A published Merman consumer can use the
-// same code with the public usvg 0.47 API and its two original SVG anchors.
-#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
-trait RegistryUsvg {
-    fn try_from_str_with_text_anchor_probe(
-        _source: impl FnOnce() -> String,
-        _options: &usvg::Options<'_>,
-        _id: &str,
-    ) -> Result<Option<AnchorProbe>, usvg::Error> {
-        Ok(None)
-    }
-}
-
-impl RegistryUsvg for usvg::Tree {}
 
 fn parse_text_probe(
     svg: impl Fn(&str) -> String,
@@ -1731,7 +1721,7 @@ mod tests {
             let ink = if whitespace {
                 metric
             } else {
-                start.flattened().bounding_box()
+                start.flattened().bounding_box().unwrap()
             };
             assert_eq!(
                 [
@@ -1823,7 +1813,7 @@ mod tests {
                 })
                 .collect();
             assert_eq!(faces, expected);
-            assert!(!observer.unresolved_glyph_fallback());
+            assert!(observer.glyph_fallback_used());
             context.check().unwrap();
         }
     }
@@ -1871,7 +1861,6 @@ mod tests {
                     .collect();
                 assert_eq!(selected, expected);
                 assert_eq!(observer.glyph_fallback_used(), include_text_fallback);
-                assert_eq!(observer.unresolved_glyph_fallback(), !include_text_fallback);
                 context.check().unwrap();
             }
         }
@@ -1928,15 +1917,23 @@ mod tests {
             fatal: OnceLock::new(),
         }));
         let style = TextStyle::default();
-        let result = context.measure(HostTextMeasurementRequest {
+        let request = HostTextMeasurementRequest {
             operation: TextMeasurementOperation::TitleBBoxX,
             phase: TextMeasurementPhase::SvgBBox,
             text: "long",
             style: &style,
             max_width: None,
             wrap_mode: WrapMode::SvgLike,
-        });
-        assert!(result.is_err());
+        };
+        for _ in 0..2 {
+            let control = OperationControl::new();
+            assert!(context.measure_with_control(request, &control).is_err());
+            assert!(matches!(
+                control.terminal_checkpoint_at(OperationPhase::Layout),
+                Err(OperationLedgerError::ResourceLimitExceeded(event))
+                    if event.id == "native_font_label_bytes"
+            ));
+        }
         assert!(matches!(
             context.check(),
             Err(NativeFontError::Limit {
@@ -1951,6 +1948,97 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn cancellation_at_the_label_limit_is_the_sticky_font_failure() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .with_limits(NativeFontLimits {
+                max_label_bytes: 0,
+                ..Default::default()
+            })
+            .load(&OperationControl::new())
+            .unwrap();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let result = context.measure_with_control(
+            HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::TitleBBoxX,
+                phase: TextMeasurementPhase::SvgBBox,
+                text: "label",
+                style: &TextStyle::default(),
+                max_width: None,
+                wrap_mode: WrapMode::SvgLike,
+            },
+            &control,
+        );
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        assert!(matches!(terminal, OperationLedgerError::Cancelled(_)));
+        assert!(
+            matches!(context.check(), Err(NativeFontError::Operation(error)) if error == terminal)
+        );
+        assert!(matches!(
+            context.for_export(&OperationControl::new()),
+            Err(NativeFontError::Operation(error)) if error == terminal
+        ));
+        assert_eq!(result.unwrap_err().to_string(), terminal.to_string());
+    }
+
+    #[test]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn measurement_and_export_replay_the_active_operation_terminal() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .load(&OperationControl::new())
+            .unwrap();
+        let style = TextStyle::default();
+        let request = HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::TitleBBoxX,
+            phase: TextMeasurementPhase::SvgBBox,
+            text: "label",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
+
+        let cancelled = OperationControl::new();
+        cancelled.cancel();
+        let source_error = cancelled
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        assert_eq!(
+            context
+                .measure_with_control(request, &cancelled)
+                .unwrap_err()
+                .to_string(),
+            source_error.to_string()
+        );
+
+        let expired = OperationControl::new().with_deadline(std::time::Duration::ZERO);
+        let current_error = expired
+            .terminal_checkpoint_at(OperationPhase::Parse)
+            .unwrap_err();
+        assert_ne!(current_error, source_error);
+        assert_eq!(
+            context
+                .measure_with_control(request, &expired)
+                .unwrap_err()
+                .to_string(),
+            current_error.to_string()
+        );
+        assert!(
+            matches!(context.for_export(&expired), Err(NativeFontError::Operation(error)) if error == current_error)
+        );
+        assert!(
+            matches!(context.check(), Err(NativeFontError::Operation(error)) if error == source_error)
+        );
     }
 
     #[test]

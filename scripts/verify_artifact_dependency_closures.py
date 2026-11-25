@@ -72,6 +72,10 @@ MATH_BACKEND_PACKAGES = (
     "ratex-lexer", "ratex-parser", "ratex-svg", "ratex-types",
 )
 DAGRE_PACKAGES = ("dugong", "dugong-graphlib")
+UPSTREAM_RENDERER_PACKAGES = frozenset({"krilla", "krilla-svg", "resvg", "usvg"})
+SVG_FONT_BACKEND = "merman-usvg"
+RASTER_BACKEND_PACKAGES = frozenset({"merman-resvg", SVG_FONT_BACKEND})
+PDF_BACKEND_PACKAGES = RASTER_BACKEND_PACKAGES | {"merman-krilla", "merman-krilla-svg"}
 
 
 @dataclass(frozen=True)
@@ -149,7 +153,7 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
     elk = ("merman-elk-layered", "merman-layout-elk")
     math = ("ratex-layout", "ratex-parser", "ratex-svg", "ratex-types")
     required = [root, "merman-bindings-core", "merman", "merman-core", "merman-render",
-                "merman-export", "manatee", "usvg", "fontdb"]
+                "merman-export", "manatee", "fontdb"]
     forbidden = list(NATIVE_BINDING_FORBIDDEN_PACKAGES)
     omitted_features = []
     if variant == "full":
@@ -182,7 +186,7 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
             for package in (root, "merman-bindings-core", "merman", "merman-core",
                             "merman-render", "merman-export")
         )
-        exclusions.append(PackageFeatureExclusion("usvg", ("system-fonts",)))
+        exclusions.append(PackageFeatureExclusion(SVG_FONT_BACKEND, ("system-fonts",)))
         if variant == "standard":
             exclusions.append(PackageFeatureExclusion("fontdb", ("fontconfig", "fs", "memmap")))
     return ClosureClaim(
@@ -204,12 +208,8 @@ SEMANTIC_CLAIMS = (
             "getrandom",
             "image",
             "jiff",
-            "krilla",
-            "krilla-svg",
             "merman-export",
-            "resvg",
             "tiny-skia",
-            "usvg",
             "web-time",
         ),
         forbidden_features=(
@@ -257,8 +257,6 @@ SEMANTIC_CLAIMS = (
             "getrandom",
             "image",
             "jiff",
-            "krilla",
-            "krilla-svg",
             "manatee",
             "merman-analysis",
             "merman-ascii",
@@ -270,9 +268,7 @@ SEMANTIC_CLAIMS = (
             "ratex-parser",
             "ratex-svg",
             "ratex-types",
-            "resvg",
             "tiny-skia",
-            "usvg",
             "web-time",
         ),
         forbidden_features=(
@@ -328,16 +324,12 @@ SEMANTIC_CLAIMS = (
         forbidden_packages=(
             "chrono",
             "clap_complete",
-            "krilla",
-            "krilla-svg",
             "merman-export",
             "merman-render",
             "rayon",
             "reqwest",
-            "resvg",
             "serde-saphyr",
             "tiny-skia",
-            "usvg",
         ),
         forbidden_features=(
             PackageFeatureExclusion(
@@ -365,11 +357,9 @@ SEMANTIC_CLAIMS = (
             "image",
             "merman-export",
             "merman-render",
-            "resvg",
             "tiny-skia",
-            "usvg",
         ),
-        forbidden_packages=("chrono", "krilla", "krilla-svg"),
+        forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("pdf", "png")),
         ),
@@ -380,11 +370,9 @@ SEMANTIC_CLAIMS = (
         required_packages=(
             "merman-export",
             "merman-render",
-            "resvg",
             "tiny-skia",
-            "usvg",
         ),
-        forbidden_packages=("chrono", "krilla", "krilla-svg"),
+        forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "pdf")),
         ),
@@ -392,7 +380,7 @@ SEMANTIC_CLAIMS = (
     ClosureClaim(
         claim_id="pdf-requires-krilla-and-excludes-raster-exports",
         profile_id="rust-export-pdf",
-        required_packages=("krilla", "merman-export", "merman-render"),
+        required_packages=("merman-export", "merman-render"),
         forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "png")),
@@ -857,21 +845,6 @@ def prepare_metadata_probe(case: VerificationCase, probe_dir: Path) -> Path:
     if not committed_lock.is_file():
         raise ClosureVerificationError(f"missing committed Cargo.lock at {committed_lock}")
     shutil.copyfile(committed_lock, probe_dir / "Cargo.lock")
-
-    # The probe is a separate workspace, so Cargo does not inherit the release's patches.
-    with (REPO_ROOT / "Cargo.toml").open("rb") as file:
-        patches = tomllib.load(file).get("patch", {}).get("crates-io", {})
-    if patches:
-        lines = ["\n[patch.crates-io]"]
-        for name, entry in sorted(patches.items()):
-            if not isinstance(entry, dict) or set(entry) != {"path"} or not isinstance(entry["path"], str):
-                raise ClosureVerificationError(f"unsupported crates.io patch source for {name!r}")
-            source = (REPO_ROOT / entry["path"]).resolve()
-            if not source.is_relative_to(REPO_ROOT.resolve()):
-                raise ClosureVerificationError(f"crates.io patch for {name!r} escapes the workspace")
-            lines.append(f"{json.dumps(name)} = {{ path = {json.dumps(source.as_posix())} }}")
-        with manifest.open("a", encoding="utf-8") as file:
-            file.write("\n".join(lines) + "\n")
     return manifest
 
 
@@ -1065,11 +1038,23 @@ def check_case(
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
-    explicit_dagre = not normal_build and "layout-dagre" in case.recipe.features
+    recipe_features = set(case.recipe.features)
+    renderer_packages = frozenset()
+    if "pdf" in recipe_features:
+        # The PDF adapter uses the raster backend for SVG filters.
+        renderer_packages = PDF_BACKEND_PACKAGES
+    elif recipe_features & {"jpeg", "png"}:
+        renderer_packages = RASTER_BACKEND_PACKAGES
+    elif recipe_features & {"native-fonts", "system-fonts"}:
+        renderer_packages = frozenset({SVG_FONT_BACKEND})
+    required.update(renderer_packages)
+    forbidden.update(UPSTREAM_RENDERER_PACKAGES | (PDF_BACKEND_PACKAGES - renderer_packages))
+
+    explicit_dagre = not normal_build and "layout-dagre" in recipe_features
     if explicit_dagre:
         required.update((*DAGRE_PACKAGES, "merman-render"))
     if not normal_build:
-        if "layout-shoal" in case.recipe.features:
+        if "layout-shoal" in recipe_features:
             required.add("merman-layout-shoal")
         else:
             forbidden.add("merman-layout-shoal")

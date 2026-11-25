@@ -317,6 +317,206 @@ fn fallback_scale_reaches_metrics_outlines_and_pdf_spans() {
     assert_eq!(text.bounding_box().width(), 25.0);
 }
 
+#[cfg(feature = "pdf")]
+mod variable_pdf {
+    use super::painted_text;
+    use krilla::SerializeSettings;
+    use krilla::geom::Size;
+    use krilla_svg::{SurfaceExt, SvgSettings};
+
+    const FIXTURE: &[u8] = include_bytes!("fonts/MermanVariableWeight.ttf");
+    const INSTANCES: [(&str, f32); 2] = [("en", 700.0), ("fr", 900.0)];
+    const WEIGHT: [u8; 4] = *b"wght";
+
+    fn export_instances() -> Vec<u8> {
+        let mut options = usvg::Options::default();
+        options.fontdb_mut().load_font_data(FIXTURE.to_vec());
+        let font_id = options.fontdb.faces().next().expect("fixture face").id;
+        options.set_font_instances(
+            Some(Box::new(move |font, _| {
+                let language = font.selection_language()?;
+                let (_, weight) = INSTANCES.iter().find(|(tag, _)| *tag == language)?;
+                Some((
+                    font_id,
+                    1.0,
+                    vec![usvg::FontVariation::new(WEIGHT, *weight)],
+                ))
+            })),
+            None,
+        );
+        let tree = usvg::Tree::from_str(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100">
+                <g font-family="Merman Variable Weight" font-size="32">
+                    <text id="en" xml:lang="en" x="10" y="35">AV</text>
+                    <text id="fr" xml:lang="fr" x="10" y="75">AV</text>
+                </g>
+            </svg>"#,
+            &options,
+        )
+        .expect("shape both variable instances");
+        let fixture = ttf_parser::Face::parse(FIXTURE, 0).expect("fixture face");
+        let expected_glyphs =
+            ['A', 'V'].map(|ch| (font_id, u32::from(fixture.glyph_index(ch).unwrap().0)));
+        for (id, weight) in INSTANCES {
+            let [span] = painted_text(&tree, id).layouted() else {
+                panic!("expected one span for {id}");
+            };
+            let glyphs: Vec<_> = span
+                .positioned_glyphs
+                .iter()
+                .map(|glyph| (glyph.font, glyph.id.0))
+                .collect();
+            assert_eq!(glyphs, expected_glyphs);
+            assert_eq!(span.variations, [usvg::FontVariation::new(WEIGHT, weight)]);
+        }
+
+        let size = Size::from_wh(tree.size().width(), tree.size().height()).unwrap();
+        let mut document = krilla::Document::new_with(SerializeSettings {
+            ascii_compatible: true,
+            ..SerializeSettings::default()
+        });
+        let mut page = document.start_page_with(krilla::page::PageSettings::new(size));
+        let mut surface = page.surface();
+        surface
+            .draw_svg(&tree, size, SvgSettings::default())
+            .expect("draw SVG with searchable text");
+        surface.finish();
+        page.finish();
+        document
+            .finish()
+            .expect("serialize PDF with both instances")
+    }
+
+    fn embedded_font_descriptors(pdf: &str) -> impl Iterator<Item = &str> {
+        pdf.split("\nendobj")
+            .filter(|object| object.contains("/FontFile2"))
+    }
+
+    fn dictionary_value<'a>(object: &'a str, key: &str) -> &'a str {
+        object
+            .split_once(key)
+            .unwrap_or_else(|| panic!("missing {key} in font object"))
+            .1
+            .trim_start()
+    }
+
+    fn pdf_name(value: &str) -> &str {
+        value
+            .trim_start()
+            .strip_prefix('/')
+            .expect("PDF name")
+            .split(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '/' | '>'))
+            .next()
+            .unwrap()
+    }
+
+    #[test]
+    fn embeds_effective_variable_font_geometry() {
+        let pdf = export_instances();
+        let pdf = std::str::from_utf8(&pdf).expect("ASCII-compatible PDF");
+        let mut bounds: Vec<[f32; 4]> = embedded_font_descriptors(pdf)
+            .map(|descriptor| {
+                let (coordinates, _) = dictionary_value(descriptor, "/FontBBox")
+                    .strip_prefix('[')
+                    .and_then(|value| value.split_once(']'))
+                    .expect("font bounding box array");
+                coordinates
+                    .split_whitespace()
+                    .map(|value| value.parse().expect("numeric font bound"))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("four font bounds")
+            })
+            .collect();
+        bounds.sort_by(|left, right| left[2].total_cmp(&right[2]));
+
+        let expected = INSTANCES.map(|(_, weight)| {
+            let mut fixture = ttf_parser::Face::parse(FIXTURE, 0).unwrap();
+            assert_eq!(fixture.units_per_em(), 1000);
+            fixture
+                .set_variation(ttf_parser::Tag::from_bytes(&WEIGHT), weight)
+                .unwrap();
+            let widest = fixture
+                .glyph_bounding_box(fixture.glyph_index('V').unwrap())
+                .expect("outline bounds at the selected weight");
+            let bounds = [widest.x_min, widest.y_min, widest.x_max, widest.y_max].map(f32::from);
+            let advances = ['A', 'V'].map(|ch| {
+                f32::from(
+                    fixture
+                        .glyph_hor_advance(fixture.glyph_index(ch).unwrap())
+                        .unwrap(),
+                )
+            });
+            let notdef = f32::from(fixture.glyph_hor_advance(ttf_parser::GlyphId(0)).unwrap());
+            (
+                bounds,
+                [
+                    0.0,
+                    0.0,
+                    notdef,
+                    1.0,
+                    1.0,
+                    advances[0],
+                    2.0,
+                    2.0,
+                    advances[1],
+                ],
+            )
+        });
+        assert_ne!(expected[0], expected[1], "fixture instances must differ");
+        assert_eq!(bounds, expected.map(|(bounds, _)| bounds));
+        let mut widths: Vec<[f32; 9]> = pdf
+            .split("\nendobj")
+            .filter(|object| object.contains("/CIDFontType2"))
+            .map(|object| {
+                let (numeric_widths, _) = dictionary_value(object, "/W")
+                    .strip_prefix('[')
+                    .and_then(|value| value.split_once(']'))
+                    .expect("CID width array");
+                numeric_widths
+                    .split_whitespace()
+                    .map(|value| value.parse().expect("numeric CID width"))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("three CID width ranges")
+            })
+            .collect();
+        widths.sort_by(|left, right| left[5].total_cmp(&right[5]));
+        assert_eq!(widths, expected.map(|(_, widths)| widths));
+        assert_eq!(pdf.matches("/ToUnicode").count(), INSTANCES.len());
+    }
+
+    #[test]
+    fn gives_variable_instances_distinct_subset_tags() {
+        let pdf = export_instances();
+        let pdf = std::str::from_utf8(&pdf).expect("ASCII-compatible PDF");
+        let names: Vec<_> = embedded_font_descriptors(pdf)
+            .map(|descriptor| pdf_name(dictionary_value(descriptor, "/FontName")))
+            .collect();
+        let [first, second] = names.as_slice() else {
+            panic!("expected two embedded font subsets, got {names:?}");
+        };
+        let [first_tag, second_tag] = [first, second].map(|name| {
+            let (tag, _) = name.split_once('+').expect("font subset tag");
+            assert!(tag.len() == 6 && tag.bytes().all(|byte| byte.is_ascii_uppercase()));
+            tag
+        });
+        assert_ne!(
+            first_tag, second_tag,
+            "the two instances share a subset tag"
+        );
+        for name in names {
+            let uses = pdf
+                .split("/BaseFont")
+                .skip(1)
+                .map(pdf_name)
+                .filter(|base_font| *base_font == name)
+                .count();
+            assert_eq!(uses, 2, "Type0 and CIDFont must carry the name {name}");
+        }
+    }
+}
+
 #[test]
 fn fallback_receives_and_repairs_a_complete_combining_cluster() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
@@ -676,7 +876,7 @@ fn macos_variations_share_one_primary_selection_per_css_weight() {
         let tree = usvg::Tree::from_str(&svg, &options).unwrap();
         context.check()?;
         let sample = painted_text(&tree, "sample");
-        Ok(sample.flattened().bounding_box().width())
+        Ok(sample.flattened().bounding_box().unwrap().width())
     };
 
     let thin = ink_width(400, 100).unwrap();

@@ -36,6 +36,8 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
     license_expression = package.get("license")
     if license_expression == "MIT OR Apache-2.0":
         required.update({"LICENSE-MIT", "LICENSE-APACHE"})
+    elif license_expression == "(MIT OR Apache-2.0) AND BSD-2-Clause":
+        required.update({"LICENSE-MIT", "LICENSE-APACHE", "LICENSE-BSD-2-Clause"})
     elif license_expression == "EPL-2.0":
         required.add("LICENSES/EPL-2.0.txt")
     elif license_expression in {"MIT", "Apache-2.0"}:
@@ -45,6 +47,9 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
             f"{package['name']} has an unsupported or missing license expression: "
             f"{license_expression!r}"
         )
+
+    if package["name"] == "merman-krilla":
+        required.add("icc/LICENSE")
 
     notice = crate_root / "THIRD_PARTY_NOTICES.md"
     license_root = crate_root / "THIRD_PARTY_LICENSES"
