@@ -70,8 +70,15 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
         let Some(route) = axis.routes.get(occurrence).and_then(Option::as_ref) else {
             return Ok(None);
         };
-        return canonical::paint(request, &axis.nodes, route, &tail[..count], &axis.clearance)
-            .map(Some);
+        return canonical::paint(
+            request,
+            &axis.nodes,
+            route,
+            &tail[..count],
+            &axis.clearance,
+            &mut scratch.canonical_points,
+        )
+        .map(Some);
     }
     Ok(prepare_edge_route(request, scratch)
         .and_then(|route| finish_edge_route(request, route, scratch)))

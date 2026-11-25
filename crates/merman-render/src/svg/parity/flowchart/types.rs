@@ -212,6 +212,9 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) tmp_points_b: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_c: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_rev: Vec<crate::model::LayoutPoint>,
+    #[cfg(any(feature = "layout-shoal", test))]
+    pub(in crate::svg::parity::flowchart) canonical_points:
+        Vec<crate::graph_layout::ir::RoutePoint>,
 }
 
 #[derive(Debug, Clone)]
