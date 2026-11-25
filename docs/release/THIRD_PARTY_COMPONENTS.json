@@ -103,6 +103,7 @@
         "cytoscape",
         "cytoscape-cose-bilkent",
         "cytoscape-fcose",
+        "d3-hierarchy",
         "d3-path",
         "d3-sankey",
         "d3-shape",
@@ -391,6 +392,31 @@
       ],
       "locks": [{"type": "repository", "repository_id": "cytoscape-fcose"}],
       "notice": "The headless Architecture layout is a modified Rust implementation of FCoSE behavior."
+    },
+    {
+      "id": "d3-hierarchy",
+      "name": "d3-hierarchy",
+      "version": "3.1.2",
+      "source": {
+        "repository": "https://github.com/d3/d3-hierarchy.git",
+        "ref": "v3.1.2",
+        "commit": "7bea49efdc1093b28a8d60d2f8717d8a17803564",
+        "path": "src"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render-charts/src/treemap/layout.rs"],
+      "license_expression": "ISC",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-hierarchy/LICENSE",
+          "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-hierarchy/7bea49efdc1093b28a8d60d2f8717d8a17803564/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "pinned-source", "evidence": "The v3.1.2 Git tag and npm gitHead agree with the d3-hierarchy version in the pinned Mermaid 12.3.0 pnpm lock."}],
+      "notice": "The Treemap layout translates D3 hierarchy traversal, squarify, dice, and slice algorithms in Rust with operation work accounting."
     },
     {
       "id": "d3-path",
@@ -904,6 +930,7 @@
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
         "crates/merman-render-charts/src/radar/layout.rs",
+        "crates/merman-render-charts/src/treemap/layout.rs",
         "crates/merman-render-charts/src/venn/layout.rs",
         "crates/merman-render-flow/src",
         "crates/merman-render-structured/src/info",
@@ -1687,7 +1714,7 @@
         "path": "src/lib.rs"
       },
       "relationships": ["linked"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "vendor/usvg/Cargo.toml"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "crates/merman-render-core/Cargo.toml", "vendor/usvg/Cargo.toml"],
       "license_expression": "ISC",
       "license_files": [
         {

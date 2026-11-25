@@ -3,6 +3,16 @@
 This file records source translated, copied, generated, or embedded in `crates/merman-render-charts`.
 It is generated from `docs/release/THIRD_PARTY_COMPONENTS.json`.
 
+## d3-hierarchy
+
+The Treemap layout translates D3 hierarchy traversal, squarify, dice, and slice algorithms in Rust with operation work accounting.
+
+- Version: `3.1.2`
+- Source: https://github.com/d3/d3-hierarchy.git @ `7bea49efdc1093b28a8d60d2f8717d8a17803564`
+- Relationship: `modified`, `translated`
+- License: `ISC`
+- Legal file: `THIRD_PARTY_LICENSES/d3-hierarchy/LICENSE`
+
 ## d3-path
 
 The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs.

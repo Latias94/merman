@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-sankey`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-ego-tree`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-hierarchy`, `d3-path`, `d3-sankey`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-ego-tree`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -71,6 +71,18 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - License: `MIT`
 - Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`
+
+### d3-hierarchy
+
+The Treemap layout translates D3 hierarchy traversal, squarify, dice, and slice algorithms in Rust with operation work accounting.
+
+- Version: `3.1.2`
+- Source: https://github.com/d3/d3-hierarchy.git @ `7bea49efdc1093b28a8d60d2f8717d8a17803564`
+- Source path: `src`
+- Relationship: `modified`, `translated`
+- License: `ISC`
+- Local evidence: `crates/merman-render-charts/src/treemap/layout.rs`
+- Legal file: `THIRD_PARTY_LICENSES/d3-hierarchy/LICENSE`
 
 ### d3-path
 
@@ -189,7 +201,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-flow/src`, `crates/merman-render-structured/src/info`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-flow/src`, `crates/merman-render-structured/src/info`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -237,7 +249,7 @@ Both roxmltree releases identify their tree structure as derived from ego-tree u
 - Source path: `src/lib.rs`
 - Relationship: `linked`
 - License: `ISC`
-- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `vendor/usvg/Cargo.toml`
 - Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ### sanitize-url
