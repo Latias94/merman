@@ -161,7 +161,7 @@ impl<'a> OpenPlatformFont<'a> {
             }
             let tags = platform::cluster::SHAPING_TABLES;
             let cap = platform::cluster::MAX_SHAPING_TABLE_BYTES;
-            if platform::cluster::needs_shaping_probe(fallback)
+            if platform::cluster::needs_isolated_shaping_probe(fallback)
                 && tags
                     .iter()
                     .all(|tag| directory.entry(tag).is_none_or(|(_, len)| len <= cap))
@@ -192,7 +192,7 @@ impl<'a> OpenPlatformFont<'a> {
         #[cfg(windows)]
         if let Some(identity) = expected.dwrite_identity {
             let mut digest = Sha256::new();
-            for (tag, expected_len) in identity.horizontal_tables() {
+            for (tag, expected_len) in identity.metric_tables() {
                 match (directory.entry(tag), expected_len) {
                     (None, None) => {}
                     (Some((offset, len)), Some(expected_len)) if len == expected_len => {
@@ -223,7 +223,7 @@ pub(super) fn validate_dwrite_metrics(
     path: &Path,
 ) -> Result<(), NativeFontError> {
     let mut digest = Sha256::new();
-    for (tag, expected_len) in identity.horizontal_tables() {
+    for (tag, expected_len) in identity.metric_tables() {
         let table = face.table(ttf_parser::Tag::from_bytes(tag));
         if table.map(<[u8]>::len) != expected_len {
             return Err(dwrite_metrics_changed(path));

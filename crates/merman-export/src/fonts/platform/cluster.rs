@@ -244,7 +244,7 @@ pub(in crate::fonts) fn may_shape(face: Face<'_>, request: GlyphFallback<'_>) ->
     ) {
         return false;
     }
-    if !needs_shaping_probe(request) {
+    if !needs_isolated_shaping_probe(request) {
         return true;
     }
     let tables: Vec<_> = [b"head", b"maxp", b"cmap", b"OS/2"]
@@ -267,16 +267,38 @@ fn is_sara_am(ch: char) -> bool {
     matches!(ch, '\u{0e33}' | '\u{0eb3}')
 }
 
-pub(in crate::fonts) fn needs_shaping_probe(request: GlyphFallback<'_>) -> bool {
-    request.text.chars().any(is_sara_am)
-        || (request.scalar().is_none()
-            && (!has_variation_sequence(request.text)
-                || request
-                    .text
+pub(in crate::fonts) fn needs_isolated_shaping_probe(request: GlyphFallback<'_>) -> bool {
+    let text = request.text;
+    let has_sara_am = text.chars().any(is_sara_am);
+    if !has_sara_am
+        && (request.scalar().is_some()
+            || (has_variation_sequence(text)
+                && text
                     .chars()
                     .filter(|&ch| !is_default_ignorable(ch))
                     .nth(1)
-                    .is_some()))
+                    .is_none()))
+    {
+        return false;
+    }
+
+    let script = text
+        .chars()
+        .map(|ch| harfrust::unicode::script(u32::from(ch)))
+        .find(|script| {
+            !matches!(
+                *script,
+                Script::COMMON | Script::INHERITED | Script::UNKNOWN
+            )
+        });
+    // Defer scripts that can depend on their surroundings (e.g. Arabic joining)
+    // to the renderer, which has the full run. Thai/Lao SARA AM is decomposed by
+    // the script shaper even when the original scalar has a nominal glyph.
+    match script {
+        None | Some(Script::LATIN | Script::GREEK | Script::CYRILLIC | Script::HAN) => true,
+        Some(Script::THAI | Script::LAO) => has_sara_am,
+        _ => false,
+    }
 }
 
 pub(in crate::fonts) fn may_shape_after_cmap<'a>(
@@ -286,48 +308,15 @@ pub(in crate::fonts) fn may_shape_after_cmap<'a>(
     use harfrust::font::{Blob, TableFunction};
     use read_fonts::{FontData, FontRead, tables::gsub::Gsub};
 
-    if !needs_shaping_probe(request) {
-        return true;
-    }
     let table = |tag: &[u8; 4]| {
         tables
             .iter()
             .find(|(key, _)| *key == tag)
             .map(|(_, bytes)| *bytes)
     };
-    let fill = |buffer: &mut Buffer| {
-        buffer.push_str(request.text);
-        buffer.set_direction(if request.rtl {
-            Direction::RightToLeft
-        } else {
-            Direction::LeftToRight
-        });
-        buffer.set_language(request.language.and_then(harfrust::Language::new));
-        buffer.guess_segment_properties();
-    };
-    let mut buffer = Buffer::new();
-    fill(&mut buffer);
-    // Defer scripts that can depend on their surroundings (e.g. Arabic joining)
-    // to the renderer, which has the full run. Thai/Lao SARA AM is decomposed by
-    // the script shaper even when the original scalar has a nominal glyph.
-    let standalone = match buffer.script() {
-        None
-        | Some(
-            Script::COMMON
-            | Script::INHERITED
-            | Script::UNKNOWN
-            | Script::LATIN
-            | Script::GREEK
-            | Script::CYRILLIC
-            | Script::HAN,
-        ) => true,
-        Some(Script::THAI | Script::LAO) => request.text.chars().any(is_sara_am),
-        _ => false,
-    };
-    if !standalone
-        || table(b"GSUB")
-            .and_then(|bytes| Gsub::read(FontData::new(bytes)).ok())
-            .is_some_and(|gsub| gsub.feature_variations().is_some())
+    if table(b"GSUB")
+        .and_then(|bytes| Gsub::read(FontData::new(bytes)).ok())
+        .is_some_and(|gsub| gsub.feature_variations().is_some())
     {
         // usvg resolves the effective axis coordinates for feature variations.
         return true;
@@ -355,6 +344,16 @@ pub(in crate::fonts) fn may_shape_after_cmap<'a>(
         return true;
     };
     let shaper = ShaperFont::new(&font);
+    let fill = |buffer: &mut Buffer| {
+        buffer.push_str(request.text);
+        buffer.set_direction(if request.rtl {
+            Direction::RightToLeft
+        } else {
+            Direction::LeftToRight
+        });
+        buffer.set_language(request.language.and_then(harfrust::Language::new));
+        buffer.guess_segment_properties();
+    };
     let shape = |buffer: &mut Buffer, features: &[Feature]| {
         // A shaping error is inconclusive. The renderer still gets to try.
         harfrust::shape(&shaper, buffer, ShapeOptions::new().features(features)).is_err()
@@ -363,6 +362,8 @@ pub(in crate::fonts) fn may_shape_after_cmap<'a>(
                 .iter()
                 .all(|glyph| (1..font.num_glyphs()).contains(&glyph.glyph_id))
     };
+    let mut buffer = Buffer::new();
+    fill(&mut buffer);
     if shape(&mut buffer, &[]) {
         return true;
     }
@@ -505,6 +506,26 @@ mod tests {
                 text.as_str().into()
             ));
             assert!(!harfrust_covers(font, &text, false));
+        }
+    }
+
+    #[test]
+    fn isolated_probe_preserves_sara_am_variation_and_contextual_script_rules() {
+        for (text, probe) in [
+            ("ကိ", false),
+            ("\u{200d}ကိ", false),
+            ("कि", false),
+            ("ل\u{64e}", false),
+            ("\u{0e01}\u{0e34}", false),
+            ("\u{0e81}\u{0eb4}", false),
+            ("\u{0e33}", true),
+            ("\u{0eb3}", true),
+            ("❤\u{fe0f}", false),
+            ("❤\u{fe0f}\u{301}", true),
+            ("漢\u{e0100}", false),
+            ("a\u{301}", true),
+        ] {
+            assert_eq!(needs_isolated_shaping_probe(text.into()), probe, "{text:?}");
         }
     }
 

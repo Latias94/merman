@@ -36,13 +36,18 @@ pub(super) struct DwriteFileIdentity {
     pub(super) last_write_time: u64,
     pub(super) hmtx_len: usize,
     pub(super) hvar_len: Option<usize>,
+    pub(super) avar_len: Option<usize>,
     pub(super) metrics_digest: [u8; 32],
 }
 
 #[cfg(windows)]
 impl DwriteFileIdentity {
-    pub(super) fn horizontal_tables(self) -> [(&'static [u8; 4], Option<usize>); 2] {
-        [(b"hmtx", Some(self.hmtx_len)), (b"HVAR", self.hvar_len)]
+    pub(super) fn metric_tables(self) -> [(&'static [u8; 4], Option<usize>); 3] {
+        [
+            (b"hmtx", Some(self.hmtx_len)),
+            (b"HVAR", self.hvar_len),
+            (b"avar", self.avar_len),
+        ]
     }
 }
 

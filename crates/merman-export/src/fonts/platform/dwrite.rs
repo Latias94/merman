@@ -717,13 +717,17 @@ fn file_face(
     }
     let hvar = FontTable::try_read(face, b"HVAR").ok()?;
     let hvar = hvar.as_ref().map(FontTable::bytes);
+    let avar = FontTable::try_read(face, b"avar").ok()?;
+    let avar = avar.as_ref().map(FontTable::bytes);
     let dwrite_identity = Some(DwriteFileIdentity {
         last_write_time,
         hmtx_len: hmtx.len(),
         hvar_len: hvar.map(<[u8]>::len),
+        avar_len: avar.map(<[u8]>::len),
         metrics_digest: Sha256::new()
             .chain_update(hmtx)
             .chain_update(hvar.unwrap_or_default())
+            .chain_update(avar.unwrap_or_default())
             .finalize()
             .into(),
     });
@@ -1261,6 +1265,64 @@ mod tests {
         database.faces().next().unwrap().clone()
     }
 
+    fn variable_weight_with_avar() -> Vec<u8> {
+        let fixture = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let mut avar: Vec<_> = [
+            1_i16, 0, 0, 1, 5, -0x4000, -0x4000, -0x2000, -0x2000, 0, 0, 0x2000, 0x2000, 0x4000,
+            0x4000,
+        ]
+        .into_iter()
+        .flat_map(i16::to_be_bytes)
+        .collect();
+        let avar_len = avar.len() as u32;
+        avar.resize(avar.len().next_multiple_of(4), 0);
+        let checksum = |bytes: &[u8]| {
+            bytes
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|word| u32::from_be_bytes(*word))
+                .fold(0, u32::wrapping_add)
+        };
+        let count = u16::from_be_bytes(fixture[4..6].try_into().unwrap()) + 1;
+        let directory_end = 12 + usize::from(count - 1) * 16;
+        let split = fixture[12..directory_end]
+            .as_chunks::<16>()
+            .0
+            .partition_point(|record| &record[..4] < b"avar");
+        let avar_entry = 12 + split * 16;
+        let mut font = fixture.to_vec();
+        drop(font.splice(avar_entry..avar_entry, [0; 16]));
+        let selector = count.ilog2() as u16;
+        let search_range = 16_u16 << selector;
+        font[4..6].copy_from_slice(&count.to_be_bytes());
+        font[6..8].copy_from_slice(&search_range.to_be_bytes());
+        font[8..10].copy_from_slice(&selector.to_be_bytes());
+        font[10..12].copy_from_slice(&(16 * count - search_range).to_be_bytes());
+        let mut head_offset = None;
+        let avar_offset = font.len() as u32;
+        for record in font[12..directory_end + 16].as_chunks_mut::<16>().0 {
+            if record[..4] == [0; 4] {
+                record[..4].copy_from_slice(b"avar");
+                record[4..8].copy_from_slice(&checksum(&avar).to_be_bytes());
+                record[8..12].copy_from_slice(&avar_offset.to_be_bytes());
+                record[12..16].copy_from_slice(&avar_len.to_be_bytes());
+            } else {
+                let offset = u32::from_be_bytes(record[8..12].try_into().unwrap()) + 16;
+                record[8..12].copy_from_slice(&offset.to_be_bytes());
+                if &record[..4] == b"head" {
+                    head_offset = Some(offset as usize);
+                }
+            }
+        }
+        font.extend_from_slice(&avar);
+        let adjustment_offset = head_offset.unwrap() + 8;
+        font[adjustment_offset..adjustment_offset + 4].fill(0);
+        let adjustment = 0xb1b0_afba_u32.wrapping_sub(checksum(&font));
+        font[adjustment_offset..adjustment_offset + 4].copy_from_slice(&adjustment.to_be_bytes());
+        font
+    }
+
     fn physical_face(candidate: FontCandidate) -> (PathBuf, PlatformFace, FaceInfo) {
         let FontCandidate::File {
             path,
@@ -1692,12 +1754,13 @@ mod tests {
         use crate::fonts::{NativeFontLimits, registry::FontSourceRegistry};
         use std::{collections::BTreeMap, fs, io::Write, sync::Arc};
 
-        let variable = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
-        let mut parsed = ttf_parser::Face::parse(variable, 0).unwrap();
+        let variable = variable_weight_with_avar();
+        let mut parsed = ttf_parser::Face::parse(&variable, 0).unwrap();
         let glyph = parsed.glyph_index('A').unwrap();
         let raw = parsed.raw_face();
         let hmtx = raw.table(ttf_parser::Tag::from_bytes(b"hmtx")).unwrap();
         let hvar = raw.table(ttf_parser::Tag::from_bytes(b"HVAR")).unwrap();
+        let avar = raw.table(ttf_parser::Tag::from_bytes(b"avar")).unwrap();
         let hmtx_offset =
             hmtx.as_ptr() as usize - variable.as_ptr() as usize + usize::from(glyph.0) * 4;
         // The fixture's single HVAR region has a short delta per glyph, with no index map.
@@ -1707,16 +1770,22 @@ mod tests {
             &variable[hvar_offset..hvar_offset + 2],
             &240_i16.to_be_bytes()
         );
+        let avar_offset = avar.as_ptr() as usize - variable.as_ptr() as usize;
+        let avar_half_to_offset = avar_offset + 24;
+        let avar_negative_half_to_offset = avar_offset + 16;
+        assert_eq!(avar[22..26], [0x20, 0, 0x20, 0]);
+        assert_eq!(avar[14..18], [0xe0, 0, 0xe0, 0]);
         let default_advance = parsed.glyph_hor_advance(glyph).unwrap();
+        let weight = 500;
         parsed
-            .set_variation(ttf_parser::Tag::from_bytes(b"wght"), 510.0)
+            .set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(weight))
             .unwrap();
-        let advance = parsed.glyph_hor_advance(glyph).unwrap();
+        assert_eq!(parsed.glyph_hor_advance(glyph), Some(630));
 
         let path =
             std::env::temp_dir().join(format!("merman-dwrite-metrics-{}.ttf", std::process::id()));
         let original = path.with_extension("variable.ttf");
-        fs::write(&path, variable).unwrap();
+        fs::write(&path, &variable).unwrap();
         let modified = fs::metadata(&path).unwrap().modified().unwrap();
         let control = OperationControl::new();
         let candidates = {
@@ -1724,7 +1793,7 @@ mod tests {
             let mut catalog =
                 fixture_catalog(&[&path], &[('A', w!("Merman Variable Weight"), 1.125)]);
             let modern = catalog.modern_fallback.is_some();
-            let coordinates = vec![FontVariation::new(*b"wght", 510.0)];
+            let coordinates = vec![FontVariation::new(*b"wght", f32::from(weight))];
             let capture_fallback = |catalog: &Catalog, weight| {
                 let mut base = base_face();
                 base.weight = Weight(weight);
@@ -1736,7 +1805,8 @@ mod tests {
                 assert!(found.unwrap().is_some());
                 selected.unwrap()
             };
-            let query = FamilyQuery::new(name, Weight(510), Stretch::Normal, Style::Normal, None);
+            let query =
+                FamilyQuery::new(name, Weight(weight), Stretch::Normal, Style::Normal, None);
             let named = catalog.family_candidates(&query, &control, &mut 0).unwrap();
             let named = named.into_iter().next().unwrap().candidate;
             let named_axes = modern.then(|| coordinates.clone());
@@ -1744,7 +1814,7 @@ mod tests {
             if modern {
                 candidates.push((
                     "modern fallback",
-                    capture_fallback(&catalog, 510),
+                    capture_fallback(&catalog, weight),
                     1.125,
                     Some(coordinates),
                 ));
@@ -1795,12 +1865,17 @@ mod tests {
             ..Default::default()
         };
         let mut rejected = Vec::new();
-        for (tag, offset, value) in [
-            (b"hmtx", hmtx_offset, default_advance + 1),
-            (b"HVAR", hvar_offset, 360),
+        for (tag, offset, value, mutated_advance) in [
+            (b"hmtx", hmtx_offset, default_advance + 1, 631),
+            (b"HVAR", hvar_offset, 360, 690),
+            (b"avar", avar_half_to_offset, 0x3000, 690),
         ] {
-            let mut replacement = variable.to_vec();
+            let mut replacement = variable.clone();
             replacement[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+            if tag == b"avar" {
+                replacement[avar_negative_half_to_offset..avar_negative_half_to_offset + 2]
+                    .copy_from_slice(&(-0x3000_i16).to_be_bytes());
+            }
             let mut replaced = ttf_parser::Face::parse(&replacement, 0).unwrap();
             let raw = replaced.raw_face();
             for record in parsed.raw_face().table_records {
@@ -1809,9 +1884,9 @@ mod tests {
                 }
             }
             replaced
-                .set_variation(ttf_parser::Tag::from_bytes(b"wght"), 510.0)
+                .set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(weight))
                 .unwrap();
-            assert!(replaced.glyph_hor_advance(glyph).unwrap() > advance);
+            assert_eq!(replaced.glyph_hor_advance(glyph), Some(mutated_advance));
 
             let mut file = fs::File::create(&path).unwrap();
             file.write_all(&replacement).unwrap();

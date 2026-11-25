@@ -71,7 +71,7 @@ pub(super) fn check(
     ) {
         return Ok(false);
     }
-    if !cluster::needs_shaping_probe(request) {
+    if !cluster::needs_isolated_shaping_probe(request) {
         return Ok(true);
     }
 
