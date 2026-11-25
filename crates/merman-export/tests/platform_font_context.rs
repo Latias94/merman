@@ -1399,6 +1399,32 @@ fn windows_platform_fallback_accepts_the_physical_faces_alternate_postscript_rec
 
 #[cfg(target_os = "windows")]
 #[test]
+#[ignore = "requires installed Windows Myanmar Text"]
+fn windows_platform_myanmar_fallback_fits_the_discovery_budget() {
+    let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+    if !fonts.join("mmrtext.ttf").is_file() {
+        return;
+    }
+    let context = options()
+        .with_limits(NativeFontLimits {
+            max_system_scan_bytes: 8192,
+            ..Default::default()
+        })
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    assert_text_advance_and_faces(&context, "Cousine", "ကိ");
+    assert!(
+        context
+            .selected_faces()
+            .iter()
+            .any(|face| face.starts_with("MyanmarText"))
+    );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 #[ignore = "requires Windows system Arial; run explicitly on controlled system-font hosts"]
 fn windows_platform_selected_font_limit_is_fatal_instead_of_fallback_success() {
     let context = options()

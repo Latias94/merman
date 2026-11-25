@@ -206,8 +206,8 @@ fn preserve_text_keeps_authored_axes_with_the_same_native_selector() {
     );
     let tree = render(
         &options,
-        r#"font-size='40' font-optical-sizing='none' font-variation-settings="'wght' 900, 'CSTM' 1""#,
-        r#"AB<tspan style="font-weight:normal;font-style:normal;font-stretch:normal;font-variation-settings:normal">AX</tspan>X"#,
+        r#"font-size="40" style="font-kerning:none;font-optical-sizing:none;font-variation-settings:'wght' 900, 'CSTM' 1, 'opsz' 20""#,
+        r#"AB<tspan style="font-weight:normal;font-style:normal;font-stretch:normal;font-optical-sizing:auto;font-variation-settings:normal">AX</tspan>X"#,
     );
     for use_single_quote in [false, true] {
         let svg = tree.to_string(&usvg::WriteOptions {
@@ -215,6 +215,29 @@ fn preserve_text_keeps_authored_axes_with_the_same_native_selector() {
             use_single_quote,
             ..Default::default()
         });
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let runs: Vec<_> = document
+            .descendants()
+            .filter(|n| n.has_tag_name("tspan"))
+            .collect();
+        assert_eq!(runs.len(), 3);
+        for run in runs {
+            assert!(!run.has_attribute("font-variation-settings"));
+            assert!(!run.has_attribute("font-optical-sizing"));
+            let css = simplecss::DeclarationTokenizer::from(run.attribute("style").unwrap())
+                .map(|d| (d.name, d.value))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            assert_eq!(css.get("font-kerning"), Some(&"none"));
+            if run.text() == Some("AX") {
+                assert_eq!(css.len(), 1);
+            } else {
+                assert_eq!(css.get("font-optical-sizing"), Some(&"none"));
+                assert_eq!(
+                    css.get("font-variation-settings"),
+                    Some(&"'wght' 900, 'CSTM' 1, 'opsz' 20")
+                );
+            }
+        }
         let restored = Tree::from_str(&svg, &options).unwrap();
         let axes = |t: &Tree| {
             text(t)
@@ -228,6 +251,45 @@ fn preserve_text_keeps_authored_axes_with_the_same_native_selector() {
             tree.to_string(&Default::default()),
             restored.to_string(&Default::default()),
             "{svg}"
+        );
+    }
+}
+
+#[test]
+fn preserved_variation_tags_survive_css_and_xml_escaping() {
+    let mut options = Options::default();
+    let id = variable_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let original = render(
+        &options,
+        r#"font-variation-settings="'ABC\' 1, 'wght' 800, &quot;A'B,&quot; 2, 'A&lt;&amp;&quot;' 3""#,
+        "AX",
+    );
+    let expected = [
+        axis(b"ABC\\", 1.0),
+        axis(b"wght", 800.0),
+        axis(b"A'B,", 2.0),
+        axis(b"A<&\"", 3.0),
+    ];
+    assert_eq!(
+        text(&original).chunks()[0].spans()[0].font().variations(),
+        expected
+    );
+    for use_single_quote in [false, true] {
+        let svg = original.to_string(&usvg::WriteOptions {
+            preserve_text: true,
+            use_single_quote,
+            ..Default::default()
+        });
+        let restored = Tree::from_str(&svg, &options).unwrap();
+        assert_eq!(
+            text(&restored).chunks()[0].spans()[0].font().variations(),
+            expected,
+            "{svg}"
+        );
+        assert_eq!(
+            original.to_string(&Default::default()),
+            restored.to_string(&Default::default())
         );
     }
 }
@@ -781,7 +843,7 @@ fn text_path_uses_the_limiting_direction_at_degenerate_curve_endpoints() {
 }
 
 #[test]
-fn adjusted_text_length_carries_the_end_position_into_the_next_chunk() {
+fn an_independently_anchored_chunk_starts_at_the_natural_advance() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());
     options.font_resolver.select_font = Box::new(move |_, _| Some(id));
@@ -814,7 +876,7 @@ fn adjusted_text_length_carries_the_end_position_into_the_next_chunk() {
                 200.0 - right_side_bearing,
             );
             assert_eq!(glyphs[3].text, "X");
-            assert_near(glyphs[3].transform().tx, 200.0);
+            assert_near(glyphs[3].transform().tx, 200.0 + 3.0 * natural_width);
             assert_near(glyphs[3].transform().ty, 110.0);
         }
     }
@@ -834,7 +896,7 @@ fn spacing_and_glyphs_scales_existing_spacing_and_rotates_the_scaled_glyph() {
             "A<tspan rotate='30' fill='red'>B</tspan>C",
         );
         let glyphs: Vec<_> = glyphs(&tree).collect();
-        let scale = 120.0 / (83.0 + relative_gap);
+        let scale = 120.0 / (93.0 + relative_gap);
         assert_near(
             glyphs[1].transform().tx,
             20.0 + (31.0 + relative_gap) * scale,
@@ -896,17 +958,140 @@ fn adjusted_decoration_bridges_only_continuing_lines() {
         "A<tspan text-decoration='overline'>B</tspan>CD",
     );
     let spans = text(&tree).layouted();
-    for (span, (left, right)) in spans
-        .iter()
-        .zip([(20.0, 53.0), (53.0, 86.0), (86.0, 140.0)])
-    {
-        let bbox = span.underline.as_ref().unwrap().bounding_box().unwrap();
-        assert_near(bbox.left(), left);
-        assert_near(bbox.right(), right);
-    }
+    let underline = spans[0].underline.as_ref().unwrap().bounding_box().unwrap();
+    assert_near(underline.left(), 20.0);
+    assert_near(underline.right(), 140.0);
+    assert!(spans[1..].iter().all(|span| span.underline.is_none()));
     let overline = spans[1].overline.as_ref().unwrap().bounding_box().unwrap();
     assert_near(overline.left(), 53.0);
     assert_near(overline.right(), 74.0);
+}
+
+#[test]
+fn splitting_an_underlined_ligature_preserves_its_entire_line() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let attrs = "font-size='50' text-decoration='underline' textLength='120'";
+    let reference = render(&options, attrs, "fiX");
+    let split = render(&options, attrs, "f<tspan>i</tspan>X");
+    let geometry = |tree: &Tree| {
+        glyphs(tree)
+            .map(|g| (g.id, g.transform()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(geometry(&reference), geometry(&split));
+    let lines = |tree: &Tree| {
+        text(tree)
+            .layouted()
+            .iter()
+            .filter_map(|s| s.underline.as_ref())
+            .map(|p| p.bounding_box().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let [full] = lines(&reference)[..] else {
+        panic!("expected a single underline")
+    };
+    assert_eq!(lines(&split), [full]);
+    let isolated = render(
+        &options,
+        "font-size='50' textLength='120'",
+        "f<tspan text-decoration='underline'>i</tspan>X",
+    );
+    let isolated = lines(&isolated);
+    assert_eq!(isolated.len(), 1);
+    assert_near(isolated[0].left(), 34.5);
+    assert_near(isolated[0].right(), 49.0);
+}
+
+#[test]
+fn splitting_a_stroked_ligature_adds_no_decoration_edges() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let attrs = "font-size='50' fill='white' stroke='black' stroke-width='2' text-decoration='underline' textLength='120'";
+    let reference = render(&options, attrs, "fiX");
+    let expected = text(&reference).layouted()[0].underline.as_ref().unwrap();
+    for content in [
+        "f<tspan>i</tspan>X",
+        "f<tspan fill='red'>i</tspan>X",
+        "f<tspan text-decoration='underline' stroke='#000'>i</tspan>X",
+    ] {
+        let split = render(&options, attrs, content);
+        let paths: Vec<_> = text(&split)
+            .layouted()
+            .iter()
+            .filter_map(|span| span.underline.as_ref())
+            .collect();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].data(), expected.data());
+        assert_eq!(paths[0].stroke().unwrap().width().get(), 2.0);
+    }
+
+    for (style, first_width, first_color) in [
+        ("stroke-width='4'", 4.0, usvg::Color::black()),
+        ("stroke='red'", 2.0, usvg::Color::new_rgb(255, 0, 0)),
+    ] {
+        let changed = render(
+            &options,
+            attrs,
+            &format!("<tspan text-decoration='underline' {style}>f</tspan>iX"),
+        );
+        let paths: Vec<_> = text(&changed)
+            .layouted()
+            .iter()
+            .filter_map(|span| span.underline.as_ref())
+            .collect();
+        assert_eq!(paths.len(), 2);
+        for (path, (left, right, stroke_width, color)) in paths.iter().zip([
+            (20.0, 34.5, first_width, first_color),
+            (34.5, 140.0, 2.0, usvg::Color::black()),
+        ]) {
+            assert_near(path.bounding_box().unwrap().left(), left);
+            assert_near(path.bounding_box().unwrap().right(), right);
+            assert_eq!(path.stroke().unwrap().width().get(), stroke_width);
+            assert_eq!(path.stroke().unwrap().paint(), &usvg::Paint::Color(color));
+            assert_eq!(path.data().verbs(), expected.data().verbs());
+        }
+    }
+}
+
+#[test]
+fn coalesced_decorations_keep_their_flattened_paths_and_paint_order() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let attrs = "font-size='50' fill='none' stroke='black' text-decoration='underline overline line-through'";
+    let whole = render(&options, attrs, "<tspan stroke='none'>AQ</tspan>");
+    let split = render(
+        &options,
+        attrs,
+        "<tspan stroke='none'>A<tspan>Q</tspan></tspan>",
+    );
+    let [first, last] = text(&split).layouted() else {
+        panic!("expected two positioned spans");
+    };
+    assert!(first.overline.is_some() && first.underline.is_some() && first.line_through.is_none());
+    assert!(last.overline.is_none() && last.underline.is_none() && last.line_through.is_some());
+
+    fn painted_paths(tree: &Tree) -> impl Iterator<Item = &usvg::Path> {
+        text(tree)
+            .flattened()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                Node::Path(path) if path.is_visible() && path.stroke().is_some() => {
+                    Some(path.as_ref())
+                }
+                _ => None,
+            })
+    }
+    assert_eq!(painted_paths(&whole).count(), 3);
+    assert!(
+        painted_paths(&whole)
+            .map(usvg::Path::data)
+            .eq(painted_paths(&split).map(usvg::Path::data))
+    );
 }
 
 #[test]
@@ -961,7 +1146,7 @@ fn rotated_decoration_scales_inline_and_ends_before_an_upright_glyph() {
 }
 
 #[test]
-fn text_length_preserves_external_tracking_and_measures_disjoint_visual_ranges() {
+fn text_length_measures_tracked_cells_and_disjoint_visual_ranges() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());
     options.font_resolver.select_font = Box::new(move |_, _| Some(id));
@@ -972,7 +1157,14 @@ fn text_length_preserves_external_tracking_and_measures_disjoint_visual_ranges()
             &format!("<tspan textLength='21' lengthAdjust='{mode}'>A</tspan>BX"),
         );
         let x: Vec<_> = glyphs(&tracked).map(|g| g.transform().tx).collect();
-        assert_eq!(x, [20.0, 49.0, 78.0]);
+        // A single cell has no internal spacing opportunity. Scaling, however,
+        // fits its complete 29-unit tracked advance into the requested 21 units.
+        let expected = if mode == "spacing" {
+            [20.0, 49.0, 78.0]
+        } else {
+            [20.0, 41.0, 70.0]
+        };
+        assert_eq!(x, expected);
         let control = render(&options, "font-size='50'", "A<tspan>Bא</tspan>בגX");
         let bidi = render(
             &options,
@@ -998,7 +1190,10 @@ fn one_text_length_is_shared_across_y_positioned_chunks() {
     let id = static_face(options.fontdb_mut());
     options.font_resolver.select_font = Box::new(move |_, _| Some(id));
     for (mode, step) in [("spacing", 33.0), ("spacingAndGlyphs", 30.0)] {
-        for (trailing, trailing_y) in [("X", 140.0), ("<tspan y='110'>X</tspan>", 110.0)] {
+        for (trailing, trailing_x, trailing_y) in [
+            ("X", 160.0, 140.0),
+            ("<tspan y='110'>X</tspan>", 124.0, 110.0),
+        ] {
             let tree = render(
                 &options,
                 "font-size='50'",
@@ -1014,11 +1209,23 @@ fn one_text_length_is_shared_across_y_positioned_chunks() {
                 assert_near(glyph.transform().ty, if i < 2 { 70.0 } else { 140.0 });
             }
             assert_eq!(actual[4].text, "X");
-            assert_near(actual[4].transform().tx, 160.0);
+            assert_near(actual[4].transform().tx, trailing_x);
             assert_near(actual[4].transform().ty, trailing_y);
             assert_preserved_text_geometry(&tree, &options);
         }
     }
+
+    let nested = render(
+        &options,
+        "font-size='50'",
+        "<tspan x='40' textLength='120' lengthAdjust='spacingAndGlyphs'><tspan textLength='30' lengthAdjust='spacingAndGlyphs'>AB</tspan><tspan y='110'>CD</tspan></tspan><tspan y='150'>X</tspan>",
+    );
+    let starts: Vec<_> = glyphs(&nested).map(|glyph| glyph.transform().tx).collect();
+    assert_eq!(starts.len(), 5);
+    for (actual, expected) in starts.into_iter().zip([40.0, 55.0, 100.0, 130.0, 124.0]) {
+        assert_near(actual, expected);
+    }
+    assert_preserved_text_geometry(&nested, &options);
 }
 
 #[test]
@@ -1069,7 +1276,7 @@ fn nested_text_lengths_keep_the_child_extent_and_outer_continuation() {
             for (transform, x) in
                 actual
                     .iter()
-                    .zip([40.0, expected_b, expected_b + inner_step, expected_d, 160.0])
+                    .zip([40.0, expected_b, expected_b + inner_step, expected_d, 124.0])
             {
                 assert_near(transform.tx, x);
             }
@@ -1079,16 +1286,15 @@ fn nested_text_lengths_keep_the_child_extent_and_outer_continuation() {
             assert_near(actual[2].sx, actual[1].sx);
             assert_near(actual[2].tx + 420.0 * actual[2].sx - actual[1].tx, 30.0);
             let inner_spans = &text(&tree).layouted()[1..3];
-            let [b, c] = [0, 1].map(|i| {
-                inner_spans[i]
-                    .underline
-                    .as_ref()
-                    .unwrap()
-                    .bounding_box()
-                    .unwrap()
-            });
-            assert_near(b.left(), expected_b);
-            assert_near(c.right(), expected_b + 30.0);
+            let underline = inner_spans[0]
+                .underline
+                .as_ref()
+                .unwrap()
+                .bounding_box()
+                .unwrap();
+            assert_near(underline.left(), expected_b);
+            assert_near(underline.right(), expected_b + 30.0);
+            assert!(inner_spans[1].underline.is_none());
 
             let svg = assert_preserved_text_geometry(&tree, &options);
             let document = roxmltree::Document::parse(&svg).unwrap();
@@ -1109,6 +1315,109 @@ fn nested_text_lengths_keep_the_child_extent_and_outer_continuation() {
     assert_eq!(actual.len(), 4);
     assert_near(actual[2].tx + 420.0 * actual[2].sx - actual[1].tx, 30.0);
     assert_near(actual[3].tx, 160.0);
+}
+
+#[test]
+fn end_anchor_uses_the_extent_of_the_only_resolved_child() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for mode in ["spacing", "spacingAndGlyphs"] {
+        let tree = render(
+            &options,
+            "font-size='50'",
+            &format!(
+                "<tspan x='220' text-anchor='end' textLength='120' lengthAdjust='spacingAndGlyphs'><tspan textLength='30' lengthAdjust='{mode}'>BC</tspan></tspan>"
+            ),
+        );
+        let gs: Vec<_> = glyphs(&tree).map(|g| g.transform()).collect();
+        assert_eq!(gs.len(), 2);
+        assert_near(gs[0].tx, 190.0);
+        assert_near(gs[1].tx + 420.0 * gs[1].sx, 220.0);
+        let bounds = text(&tree).bounding_box();
+        assert_near(bounds.left(), 190.0);
+        assert_near(bounds.width(), 30.0);
+        let ink = text(&tree).stroke_bounding_box();
+        assert_near(ink.left(), 190.0);
+        assert_near(ink.right(), 220.0 - 40.0 * gs[1].sx);
+        assert_preserved_text_geometry(&tree, &options);
+        let continued = render(
+            &options,
+            "font-size='50'",
+            &format!(
+                "<tspan x='220' text-anchor='end' textLength='120' lengthAdjust='spacingAndGlyphs'><tspan textLength='30' lengthAdjust='{mode}'>BC</tspan></tspan><tspan y='90'>X</tspan>"
+            ),
+        );
+        let continued_glyphs: Vec<_> = glyphs(&continued).map(|g| g.transform()).collect();
+        assert_eq!(&continued_glyphs[..2], &gs);
+        assert_near(continued_glyphs[2].tx, 262.0);
+        assert_near(continued_glyphs[2].ty, 90.0);
+        assert_preserved_text_geometry(&continued, &options);
+    }
+}
+
+#[test]
+fn text_length_matches_the_natural_tracked_chunk_at_each_anchor() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for (anchor, first_x) in [("start", 20.0), ("middle", -9.0), ("end", -38.0)] {
+        let attrs = format!("font-size='50' letter-spacing='8' text-anchor='{anchor}'");
+        let natural = render(&options, &attrs, "AB");
+        let adjusted = render(
+            &options,
+            &format!("{attrs} textLength='58' lengthAdjust='spacingAndGlyphs'"),
+            "AB",
+        );
+        for tree in [&natural, &adjusted] {
+            let transforms: Vec<_> = glyphs(tree).map(|glyph| glyph.transform()).collect();
+            assert_eq!(transforms.len(), 2);
+            assert_near(transforms[0].tx, first_x);
+            assert_near(transforms[1].tx, first_x + 29.0);
+            assert_near(transforms[1].sx, 0.05);
+        }
+        assert_eq!(
+            adjusted.to_string(&Default::default()),
+            natural.to_string(&Default::default())
+        );
+    }
+}
+
+#[test]
+fn text_length_includes_css_spacing_at_the_trailing_edge() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let attrs = "font-size='50' xml:space='preserve'";
+    let natural = render(&options, attrs, "<tspan word-spacing='20'>A </tspan>X");
+    for (mode, b, scale) in [
+        ("spacing", 71.0, 1.0),
+        ("spacingAndGlyphs", 60.0, 80.0 / 58.0),
+    ] {
+        let tracked = render(
+            &options,
+            attrs,
+            &format!("<tspan letter-spacing='8' textLength='80' lengthAdjust='{mode}'>AB</tspan>X"),
+        );
+        let gs: Vec<_> = glyphs(&tracked).map(|g| g.transform()).collect();
+        assert_eq!(gs.len(), 3);
+        assert_near(gs[1].tx, b);
+        assert_near(gs[0].sx, 0.05 * scale);
+        assert_near(gs[2].tx, 100.0);
+
+        let spaced = render(
+            &options,
+            attrs,
+            &format!(
+                "<tspan word-spacing='20' textLength='53.5' lengthAdjust='{mode}'>A </tspan>X"
+            ),
+        );
+        assert_near(glyphs(&spaced).last().unwrap().transform().tx, 73.5);
+        assert_eq!(
+            spaced.to_string(&Default::default()),
+            natural.to_string(&Default::default())
+        );
+    }
 }
 
 #[test]

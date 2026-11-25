@@ -1904,9 +1904,8 @@ fn prepare_raster_source_on_backend_stack(
     let mut usvg_options = usvg::Options::default();
     let font_plan =
         configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg, options, control)?;
-    let data_plan = plan_embedded_data_resources_with_occurrences(
-        source,
-        svg.reference_plan().raw_element_occurrences(),
+    let data_plan = plan_embedded_data_resource_bytes(
+        svg.inline_raster_sources(),
         options.embedded_image_limit,
         control,
     )?;
@@ -1992,9 +1991,8 @@ fn prepare_pdf_on_backend_stack(
         .map(parse_export_color)
         .transpose()
         .map_err(|_| ExportError::InvalidPdfPagePaint)?;
-    let data_plan = plan_embedded_data_resources_with_occurrences(
-        source,
-        svg.reference_plan().raw_element_occurrences(),
+    let data_plan = plan_embedded_data_resource_bytes(
+        svg.inline_raster_sources(),
         options.embedded_image_limit,
         control,
     )?;
@@ -2873,123 +2871,62 @@ struct EmbeddedDataPlan {
     total_bytes: u64,
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
-fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<EmbeddedDataPlan> {
-    plan_embedded_data_resources_with_occurrences(svg, &[], limit, &OperationControl::new())
-}
-
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn plan_embedded_data_resources_with_occurrences(
-    svg: &str,
-    raw_element_occurrences: &[usize],
+fn plan_embedded_data_resource_bytes<'a>(
+    sources: impl Iterator<Item = (&'a str, usize)>,
     limit: EmbeddedImageLimit,
     control: &OperationControl,
 ) -> Result<EmbeddedDataPlan> {
-    use quick_xml::XmlVersion;
-    use quick_xml::events::Event;
-
     validate_embedded_image_limit(limit)?;
-    let mut reader = quick_xml::Reader::from_str(svg);
     let mut plan = EmbeddedDataPlan::default();
-    let mut element_index = 0usize;
-    loop {
+    for (href, occurrences) in sources {
         export_checkpoint(control)?;
-        let event = reader.read_event().map_err(|_| ExportError::SvgParse)?;
-        let (element, occurrences) = match event {
-            Event::Start(element) | Event::Empty(element) => {
-                let occurrences = if raw_element_occurrences.is_empty() {
-                    1
-                } else {
-                    raw_element_occurrences
-                        .get(element_index)
-                        .copied()
-                        .ok_or(ExportError::SvgParse)?
-                };
-                element_index = element_index.saturating_add(1);
-                if is_embedded_image_element(element.local_name().as_ref()) {
-                    (element, occurrences)
-                } else {
-                    continue;
-                }
+        let data_url = data_url::DataUrl::process(href).map_err(|_| ExportError::SvgParse)?;
+        let mut resource_bytes = 0_u64;
+        let mut limit_error = None;
+        let _ = data_url.decode(|chunk| {
+            if let Err(error) = export_checkpoint(control) {
+                limit_error = Some(error);
+                return Err(());
             }
-            Event::Eof => break,
-            _ => continue,
-        };
-
-        for attribute in element.attributes() {
-            export_checkpoint(control)?;
-            let attribute = attribute.map_err(|_| ExportError::SvgParse)?;
-            if !attribute
-                .key
-                .local_name()
-                .as_ref()
-                .eq_ignore_ascii_case("href")
-            {
-                continue;
-            }
-            let value = attribute
-                .normalized_value(XmlVersion::Implicit1_0)
-                .map_err(|_| ExportError::SvgParse)?;
-            let Ok(data_url) = data_url::DataUrl::process(value.as_ref()) else {
-                continue;
-            };
-
-            let mut resource_bytes = 0_u64;
-            let mut limit_error = None;
-            let occurrences = occurrences as u64;
-            let _ = data_url.decode(|chunk| {
-                if let Err(error) = export_checkpoint(control) {
-                    limit_error = Some(error);
-                    return Err(());
-                }
-                resource_bytes = resource_bytes.saturating_add(chunk.len() as u64);
-                let aggregate = plan
-                    .total_bytes
-                    .saturating_add(resource_bytes.saturating_mul(occurrences));
-                if let Some(max) = limit.max_bytes_per_image
-                    && resource_bytes > max
-                {
-                    limit_error = Some(ExportError::EmbeddedImageLimit {
-                        limit_name: "max_bytes_per_image",
-                        actual: resource_bytes,
-                        max,
-                    });
-                    return Err(());
-                }
-                if let Some(max) = limit.max_total_bytes
-                    && aggregate > max
-                {
-                    limit_error = Some(ExportError::EmbeddedImageLimit {
-                        limit_name: "max_total_bytes",
-                        actual: aggregate,
-                        max,
-                    });
-                    return Err(());
-                }
-                Ok(())
-            });
-            if let Some(error) = limit_error {
-                return Err(error);
-            }
-
-            plan.resources = plan.resources.saturating_add(occurrences as usize);
-            plan.largest_bytes = plan.largest_bytes.max(resource_bytes);
-            plan.total_bytes = plan
+            resource_bytes = resource_bytes.saturating_add(chunk.len() as u64);
+            let aggregate = plan
                 .total_bytes
-                .saturating_add(resource_bytes.saturating_mul(occurrences));
+                .saturating_add(resource_bytes.saturating_mul(occurrences as u64));
+            if let Some(max) = limit.max_bytes_per_image
+                && resource_bytes > max
+            {
+                limit_error = Some(ExportError::EmbeddedImageLimit {
+                    limit_name: "max_bytes_per_image",
+                    actual: resource_bytes,
+                    max,
+                });
+                return Err(());
+            }
+            if let Some(max) = limit.max_total_bytes
+                && aggregate > max
+            {
+                limit_error = Some(ExportError::EmbeddedImageLimit {
+                    limit_name: "max_total_bytes",
+                    actual: aggregate,
+                    max,
+                });
+                return Err(());
+            }
+            Ok(())
+        });
+        if let Some(error) = limit_error {
+            return Err(error);
         }
-    }
-    if !raw_element_occurrences.is_empty() && element_index != raw_element_occurrences.len() {
-        return Err(ExportError::SvgParse);
-    }
-    Ok(plan)
-}
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn is_embedded_image_element(local_name: &str) -> bool {
-    // usvg resolves both elements through the same image resolver. Match qualified-name aliases
-    // conservatively so namespace spelling cannot turn the preflight into a false-negative gate.
-    local_name.eq_ignore_ascii_case("image") || local_name.eq_ignore_ascii_case("feImage")
+        plan.resources = plan.resources.saturating_add(occurrences);
+        plan.largest_bytes = plan.largest_bytes.max(resource_bytes);
+        plan.total_bytes = plan
+            .total_bytes
+            .saturating_add(resource_bytes.saturating_mul(occurrences as u64));
+    }
+    export_checkpoint(control)?;
+    Ok(plan)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -4287,6 +4224,18 @@ mod tests {
         merman_render::svg::finalize_resvg_svg(svg, &session).unwrap()
     }
 
+    fn plan_embedded_data_resources(
+        svg: &str,
+        limit: EmbeddedImageLimit,
+    ) -> Result<EmbeddedDataPlan> {
+        let svg = compatible_svg(svg);
+        plan_embedded_data_resource_bytes(
+            svg.inline_raster_sources().map(|(href, _)| (href, 1)),
+            limit,
+            &OperationControl::new(),
+        )
+    }
+
     #[test]
     fn backend_failure_observes_cancellation_before_returning_the_backend_error() {
         let control = OperationControl::new();
@@ -5314,6 +5263,44 @@ mod tests {
     }
 
     #[test]
+    fn raster_and_pdf_charge_each_effective_inline_image_source_once() {
+        let href = png_data_uri_with_declared_size(1, 1);
+        let image = format!(r#"<image x:href="{href}" href="{href}" width="10" height="10"/>"#);
+        for (image_count, byte_limit) in [(1, 68), (2, 136)] {
+            let svg = compatible_svg(&format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" viewBox="0 0 10 10">{}</svg>"#,
+                image.repeat(image_count)
+            ));
+            let limit = EmbeddedImageLimit::new(Some(68), Some(byte_limit), None, None);
+            let raster = super::prepare_raster(
+                &svg,
+                &RasterOptions {
+                    embedded_image_limit: limit,
+                    ..fixture_raster_options()
+                },
+            )
+            .unwrap();
+            let pdf = super::prepare_pdf(
+                &svg,
+                &PdfOptions {
+                    embedded_image_limit: limit,
+                    ..fixture_pdf_options()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                svg.resource_closure().inline_data_resource_count(),
+                image_count
+            );
+            for plan in [raster.report.embedded_images, pdf.report.embedded_images] {
+                assert_eq!(plan.data_resources, image_count);
+                assert_eq!(plan.largest_data_bytes, 68);
+                assert_eq!(plan.total_data_bytes, byte_limit);
+            }
+        }
+    }
+
+    #[test]
     fn namespaced_image_and_filter_image_share_href_byte_limits() {
         let href = png_data_uri_with_declared_size(1, 1);
         let single_svg =
@@ -5325,7 +5312,7 @@ mod tests {
         assert!(bytes_per_resource > 0);
         let total_bytes = bytes_per_resource * 2;
         let svg = format!(
-            r#"<svg:svg xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><svg:image href="{href}"/><svg:defs><svg:filter id="f"><svg:feImage xlink:href="{href}"/></svg:filter></svg:defs></svg:svg>"#
+            r#"<svg:svg xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><svg:image xlink:href="{href}"/><svg:defs><svg:filter id="f"><svg:feImage xlink:href="{href}" href="{href}"/></svg:filter></svg:defs></svg:svg>"#
         );
 
         let plan = plan_embedded_data_resources(

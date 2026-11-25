@@ -560,6 +560,31 @@ fn an_unrelated_ideographic_uvs_does_not_read_the_full_cmap() {
 }
 
 #[test]
+fn variation_fallback_can_shape_a_mark_without_an_advertised_glyph() {
+    const RULE: &str = r#"
+        <match target="scan"><test name="family"><string>Cousine</string></test>
+        <edit name="charset" mode="assign"><charset><int>10084</int></charset></edit>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>"#;
+    with_catalog(&["MermanProbeVariationOverlay.ttf"], RULE, |root| {
+        let mut ordinary = fs::read(fixture("Cousine-Regular.ttf")).unwrap();
+        let mut cmap = variant_cmap(&['❤', '\u{301}'], Some(('❤', '\u{fe0f}', true)), 10);
+        // Give both scalars an outlined glyph. The scan rule then removes the mark.
+        for glyph in [44, 56] {
+            cmap[glyph..glyph + 4].copy_from_slice(&4u32.to_be_bytes());
+        }
+        ordinary = replace_table(ordinary, b"cmap", &cmap);
+        fs::write(root.join("fonts/Ordinary.ttf"), ordinary).unwrap();
+        let context = catalog(Some("MermanProbeBase.ttf"));
+        for stack in ["MermanProbeBase, Cousine", "MermanProbeBase"] {
+            assert_eq!(
+                selected(&context, stack, "❤\u{fe0f}\u{301}", "en"),
+                ["MermanProbeFull"]
+            );
+        }
+    });
+}
+
+#[test]
 fn variation_covers_canonically_equivalent_scan_charsets() {
     with_catalog(
         &[],
@@ -641,24 +666,86 @@ fn mongolian_selector_is_context_for_shaping_and_not_scan_coverage() {
 #[test]
 fn legacy_arabic_symbol_font_can_supply_ordinary_arabic_text() {
     with_catalog(&[], "", |root| {
-        let font = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
-        let mut cmap = coverage_cmap(&['\u{f141}'], None);
-        cmap[6..8].fill(0); // Microsoft Symbol encoding.
-        let record = table_record(&font, b"OS/2");
-        let offset = table_offset(&font, record);
-        let mut os2 = font[offset..offset + 78].to_vec();
-        os2[..2].fill(0);
-        os2[62] = 0xb2;
-        let font = replace_table(font, b"OS/2", &os2);
-        fs::write(
-            root.join("fonts/Legacy.ttf"),
-            replace_table(font, b"cmap", &cmap),
-        )
-        .unwrap();
+        fs::write(root.join("fonts/Legacy.ttf"), legacy_arabic_symbol_font()).unwrap();
         let context = catalog(Some("MermanProbeBase.ttf"));
         assert_eq!(
             selected(&context, "MermanProbeBase", "ا", "ar"),
             ["MermanProbeFull"]
+        );
+    });
+}
+
+#[test]
+fn a_scan_rule_can_exclude_a_legacy_arabic_symbol_alias() {
+    with_catalog(
+        &[],
+        r#"
+        <match target="scan"><test name="family"><string>MermanProbeFull</string></test>
+        <edit name="charset" mode="assign"><charset><int>61762</int></charset></edit></match>"#,
+        |root| {
+            fs::write(root.join("fonts/Legacy.ttf"), legacy_arabic_symbol_font()).unwrap();
+            let ordinary = fs::read(fixture("Cousine-Regular.ttf")).unwrap();
+            let mut cmap = coverage_cmap(&['ا'], None);
+            let len = cmap.len();
+            // The fixture's first glyph has no outline. Use its exclamation mark.
+            cmap[len - 4..].copy_from_slice(&4u32.to_be_bytes());
+            fs::write(
+                root.join("fonts/Ordinary.ttf"),
+                replace_table(ordinary, b"cmap", &cmap),
+            )
+            .unwrap();
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            assert_eq!(
+                selected(&context, "MermanProbeBase, MermanProbeFull", "ا", "ar"),
+                ["Cousine-Regular"]
+            );
+        },
+    );
+}
+
+fn legacy_arabic_symbol_font() -> Vec<u8> {
+    let font = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+    let record = table_record(&font, b"OS/2");
+    let offset = table_offset(&font, record);
+    let mut os2 = font[offset..offset + 78].to_vec();
+    os2[..2].fill(0);
+    os2[62] = 0xb2;
+    replace_table(
+        replace_table(font, b"OS/2", &os2),
+        b"cmap",
+        &variant_cmap(&['\u{f141}'], None, 0),
+    )
+}
+
+#[test]
+fn a_nominal_sara_am_candidate_does_not_spend_the_snapshot_budget() {
+    with_catalog(&[], "", |root| {
+        let incomplete = fs::read(fixture("Cousine-Regular.ttf")).unwrap();
+        fs::write(
+            root.join("fonts/Nominal.ttf"),
+            replace_table(incomplete, b"cmap", &coverage_cmap(&['\u{0e33}'], None)),
+        )
+        .unwrap();
+        let complete = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+        let complete = replace_table(
+            complete,
+            b"cmap",
+            &coverage_cmap(&['\u{0e32}', '\u{0e4d}'], None),
+        );
+        fs::write(root.join("fonts/Complete.ttf"), &complete).unwrap();
+        let primary = fixture("MermanProbeBase.ttf");
+        let context = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .with_limits(NativeFontLimits {
+                max_bytes: primary.metadata().unwrap().len() as usize + complete.len(),
+                ..NativeFontLimits::default()
+            })
+            .with_font_file(primary)
+            .load_platform(&OperationControl::new())
+            .unwrap();
+        assert_eq!(
+            selected(&context, "MermanProbeBase, Cousine", "\u{0e33}", "th"),
+            ["MermanProbeFull", "MermanProbeFull"]
         );
     });
 }

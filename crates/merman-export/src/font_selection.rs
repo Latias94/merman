@@ -278,20 +278,7 @@ impl<'a> PlatformCmap<'a> {
                     .as_ref()
                     .is_some_and(|(record, _)| record.is_symbol())
             })
-            .and_then(|os2| {
-                use harfrust::font::{Blob, TableFunction};
-                // Reuse HarfRust's legacy PUA maps, which depend on the OS/2
-                // encoding page and are not part of the Unicode cmap.
-                let cmap = Blob::from(data.to_vec());
-                let os2 = Blob::from(os2.to_vec());
-                let tables =
-                    TableFunction::new(std::sync::Arc::new(move |tag| match &tag.to_be_bytes() {
-                        b"cmap" => Some(cmap.clone()),
-                        b"OS/2" => Some(os2.clone()),
-                        _ => None,
-                    }));
-                harfrust::Font::new(tables, 0)
-            });
+            .and_then(|os2| Self::legacy_symbol_font(data, os2));
         Some(Self {
             cmap,
             nominal,
@@ -301,8 +288,61 @@ impl<'a> PlatformCmap<'a> {
     }
 
     fn is_legacy_arabic_os2(os2: &[u8]) -> bool {
+        Self::legacy_arabic_page(os2).is_some()
+    }
+
+    fn legacy_symbol_font(cmap: &[u8], os2: &[u8]) -> Option<harfrust::Font> {
+        use harfrust::font::{Blob, TableFunction};
+
+        // The shaper's legacy maps are selected by OS/2 and are not part of cmap.
+        let cmap = Blob::from(cmap.to_vec());
+        let os2 = Blob::from(os2.to_vec());
+        let tables = TableFunction::new(std::sync::Arc::new(move |tag| match &tag.to_be_bytes() {
+            b"cmap" => Some(cmap.clone()),
+            b"OS/2" => Some(os2.clone()),
+            _ => None,
+        }));
+        harfrust::Font::new(tables, 0)
+    }
+
+    pub(crate) fn legacy_arabic_page(os2: &[u8]) -> Option<usize> {
         // OS/2 version 0 stores the legacy symbol encoding in fsSelection.
-        os2.starts_with(&[0, 0]) && matches!(os2.get(62), Some(0xb2 | 0xb3))
+        if !os2.starts_with(&[0, 0]) {
+            return None;
+        }
+        match os2.get(62) {
+            Some(0xb2) => Some(0),
+            Some(0xb3) => Some(1),
+            _ => None,
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub(crate) fn legacy_arabic_alias(ch: char, page: usize) -> Option<char> {
+        use std::sync::OnceLock;
+
+        static FONTS: [OnceLock<Option<harfrust::Font>>; 2] = [const { OnceLock::new() }; 2];
+        if !Self::may_use_arabic_symbol_page(ch) {
+            return None;
+        }
+        let font = FONTS
+            .get(page)?
+            .get_or_init(|| {
+                // Fontconfig advertises the legacy PUA character. An identity
+                // symbol cmap lets HarfRust return that character as a glyph ID,
+                // using the same OS/2-dependent mapping as the production shaper.
+                const CMAP: [u8; 40] = [
+                    0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 0, 12, // Microsoft Symbol
+                    0, 12, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 1, // format 12
+                    0, 0, 0xe0, 0, 0, 0, 0xf8, 0xff, 0, 0, 0xe0, 0, // PUA identity
+                ];
+                let mut os2 = [0; 78];
+                os2[62] = 0xb2 + page as u8;
+                Self::legacy_symbol_font(&CMAP, &os2)
+            })
+            .as_ref()?;
+        let glyph = harfrust::ShaperFont::new(font).default_nominal_glyph(u32::from(ch))?;
+        char::from_u32(glyph.to_u32()).filter(|ch| ('\u{e000}'..='\u{f8ff}').contains(ch))
     }
 
     pub(crate) fn is_symbol(&self) -> bool {

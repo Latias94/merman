@@ -294,7 +294,7 @@ impl Default for FontOpticalSizing {
 /// So you can have black text and green underline.
 ///
 /// Also, in SVG you can specify text decoration stroking.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextDecorationStyle {
     pub(crate) fill: Option<Fill>,
     pub(crate) stroke: Option<Stroke>,
@@ -757,6 +757,9 @@ impl Text {
     /// This should only be used if you need more low-level access
     /// to the glyphs that make up the text. If you just need the
     /// outlines of the text, you should use `flattened` instead.
+    ///
+    /// Continuous decoration paths are stored only once. Use [`Span::has_visible_paint`]
+    /// to test paint coverage on each span, including spans without an owned path.
     #[cfg(feature = "text")]
     pub fn layouted(&self) -> &[Span] {
         &self.layouted

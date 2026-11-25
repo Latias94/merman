@@ -137,7 +137,7 @@ getrandom = { version = "0.4.3", default-features = false }
 resvg = { package = "merman-resvg", path = "vendor/resvg", version = "0.50.0", default-features = false }
 serde-wasm-bindgen = "0.6.5"
 syn = { version = "3.0.9", features = ["full", "parsing"] }
-usvg = { package = "merman-usvg", path = "vendor/usvg", version = "0.50.0", default-features = false }
+usvg = { package = "merman-usvg", path = "vendor/usvg", version = "0.50.1", default-features = false }
 svgtypes = "0.16.2"
 tiny-skia = "0.12.0"
 krilla = { package = "merman-krilla", path = "vendor/krilla", version = "0.8.2", default-features = false }

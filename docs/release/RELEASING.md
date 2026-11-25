@@ -95,6 +95,7 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `release-cli-container.yml` | CLI images assembled from the verified release archives | GitHub Container Registry |
 | `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
+| `release-independent-crate.yml` | Frozen SVG and PDF implementation crates or `roughr-merman`, one exact version per dispatch | crates.io |
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | Seven assets: binary ZIP, complete local SwiftPM ZIP, thin remote tree ZIP, three checksum sidecars and remote manifest | Actions candidates by default; existing GitHub Release with `publish=true` |
 | `release-python.yml` | Five `merman` wheels: macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64 MSVC | Actions candidates by default; existing GitHub Release with `publish=true`, plus PyPI with `publish_to_pypi=true` |
@@ -272,8 +273,8 @@ separate: Trusted Publishing does not authorize incident yanks.
 
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
 the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from that same immutable tag.
-A GitHub rerun downloads the prior attempt's receipts; a new manual recovery must pass
-the prior workflow id as `recovery_run_id`. The publisher recreates every `.crate` and requires the
+A GitHub rerun downloads the prior workspace attempt's receipts. A new manual workspace recovery
+must pass the prior workflow id as `recovery_run_id`. The publisher recreates every `.crate` and requires the
 prior prepared/result receipts to match the source, tree, toolchain, graph, manifests, and artifacts
 before it observes or mutates the registry. Matching versions are skipped, missing versions continue
 in topological order, and a different registry checksum stops before further publication. A mismatch
@@ -476,7 +477,9 @@ Missing, expired, older-workflow, or unverifiable evidence falls back to the ori
 An accepted upload can remain absent from a registry replica or its consumer index. npm publication records upload intent before sending and keeps the original manifest-bound package group; crates.io completes a batch only after both its API and Cargo sparse index expose matching, non-yanked checksums. Observation has a bounded wall-clock budget. A propagation timeout is a recoverable observation result, not permission to rebuild the artifact or resend an uncertain upload.
 
 Recovery reports bind their producing run and attempt. Cargo requires the preceding attempt's
-receipts or the explicitly selected source run's current attempt. Node and Web share the report
+receipts or the explicitly selected source run's current attempt for workspace publication.
+Independent Cargo crates retain the original archive, upload intent or registry confirmation through the
+[independent crate owner](#independent-crate-publication-and-recovery). Node and Web share the report
 selector in `scripts/release_attempt_history.py`: select the nearest valid report only when every
 intervening upload is proven not to have run. A completed skipped job or skipped upload step
 qualifies, as does a completed cancelled job with explicitly null runner identity and no steps.
@@ -696,12 +699,36 @@ PDF case where two instances of one variable face have distinct CID subset tags.
 standalone upstream resvg embedding example, which exchanges SVG bytes with Merman.
 
 For a selected initial publication, upload `merman-usvg` and `merman-krilla` first, then
-`merman-resvg`, then `merman-krilla-svg`. Run `scripts/crates_io_release.py preflight-independent`
-for each package once its required dependencies are visible in the registry. This manual bootstrap
-uses the ordinary preflight without `--verify-fork-consumer`. Publish that package
-with `cargo publish --locked -p <package> --registry crates-io` and verify the exact version
-and checksum before proceeding. After the group is visible, build a fresh registry consumer
-with all three output features before releasing `merman-export` and its workspace dependents.
+`merman-resvg`, then `merman-krilla-svg`. Wait until each package's required dependencies are
+visible in the registry. The manual bootstrap uses the ordinary preflight without
+`--verify-fork-consumer` and retains one candidate directory per package and version.
+
+```sh
+CANDIDATE="target/independent-bootstrap/$PACKAGE-$VERSION"
+SOURCE_SHA="$(git rev-parse HEAD)"
+SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
+python3 scripts/crates_io_release.py preflight-independent \
+  --package "$PACKAGE" --version "$VERSION" --candidate-dir "$CANDIDATE" \
+  --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE"
+```
+
+If the exact version is missing, record the archive and receipt SHA-256 values printed by
+preflight as `ARCHIVE_SHA256` and `RECEIPT_SHA256`. Use the maintainer's crates.io token in
+`CARGO_REGISTRY_TOKEN` for the single upload command and clear it immediately afterwards.
+
+```sh
+python3 scripts/crates_io_release.py publish-independent \
+  --package "$PACKAGE" --version "$VERSION" --candidate-dir "$CANDIDATE" \
+  --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" \
+  --sha256 "$ARCHIVE_SHA256" --receipt-sha256 "$RECEIPT_SHA256"
+python3 scripts/crates_io_release.py registry-independent --observe-only \
+  --package "$PACKAGE" --version "$VERSION" --sha256 "$ARCHIVE_SHA256"
+```
+
+Retain the candidate directory and its `upload-attempted.json` after an uncertain response.
+Continue the registry observation with the same checksum before proceeding. Once the group is
+visible, build a fresh registry consumer with all three output features before releasing
+`merman-export` and its workspace dependents.
 Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
 
 After the first upload, configure each implementation crate's Trusted Publisher for
@@ -731,18 +758,45 @@ one running and one pending dispatch. A newer dispatch replaces the pending one.
 releases in order and wait for each run to finish before dispatching the next.
 [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 
-The read-only preflight records the candidate archive's SHA-256. Before uploading a missing
-version, the publisher rechecks the crates.io API and Cargo sparse index and compares its package
-bytes to that digest. Both endpoints must report absence to authorize an upload. A matching
-published version proceeds to verification. A partial observation, conflicting checksum or yank
-stops the release. If an upload response is lost, check propagation before attempting recovery.
-When retrying the upload job, re-run **all jobs** so the candidate is checked against the siblings
-visible in that attempt.
+### Independent Crate Publication And Recovery
+
+For all five packages, the read-only preflight compares the legal files in the actual `.crate`
+with the source files, including Krilla's ICC license and resvg's BSD license. It freezes the
+archive and its Cargo upload metadata before observing the registry. The receipt binds their
+SHA-256 values to the package, version, source commit and tree, and producing run attempt. A
+missing version must also pass a credential-free locked dry run without changing the archive.
+
+The protected publisher downloads the artifact by ID, verifies both digests, and queries the
+crates.io API and sparse index. Both must report absence to authorize the same frozen receipt for
+this run and attempt. A partial observation, conflicting checksum, yank or query failure stops
+before the upload step. After authentication, the workflow retains the bundle as an immutable
+`crates-io-independent-upload-intent-attempt-<N>` artifact. The sender does not query again. It
+sends the frozen archive and metadata in one `PUT`.
+
+If either the preflight or the protected publisher confirms an existing version with a matching
+checksum, it retains the verified bundle as a registry confirmation instead of sending. A
+later run uses that evidence for observation only, including after a manual first publication.
+
+If the preflight ran in an earlier attempt, the protected publisher is skipped and the read-only
+verification job observes the original digest. Rerun all jobs to qualify a first upload after an
+earlier job or upload step was proven skipped. A full rerun and a new dispatch on the current owner
+both check prior attempts for the exact package and version across source refs. Keep the independent
+workflow runs. A gap in the run numbers blocks new uploads rather than treating a missing run as a
+skipped send.
+
+When a prior upload may have run, the workflow can recover a unique retained intent by run,
+attempt, and artifact ID for observation only. It can also recover the original registry
+confirmation when no upload occurred. A verification-only rerun may repeat the old publish job
+result, but it does not create a new intent. If the original evidence is missing, expired, or
+ambiguous, observe the registry manually with the original digest. Legacy attempts may have no
+frozen evidence. A double 404, lost response, or new dispatch does not authorize another send
+after an uncertain attempt or a confirmed release.
 
 After upload or a matching existing release, a read-only job waits for both endpoints to report
 the exact checksum. For a renderer fork it then compiles a fresh consumer with all four packages
-from crates.io and the released fork pinned to its exact version. This verification job can be
-retried on its own after registry propagation.
+from crates.io and the released fork pinned to its exact version. For `roughr-merman` it compiles
+the selected stable and prerelease dependents. The verification job can be retried on its own after
+registry propagation.
 
 ## Release Preflight
 

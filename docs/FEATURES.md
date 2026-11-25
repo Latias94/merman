@@ -243,9 +243,11 @@ missing path if none succeeds.
 Operating system queries have their own runtime cost. Merman's table preflight
 reads count toward a separate discovery budget. For Fontconfig variation sequences,
 preflight checks the requested base and selector before reading a full character
-map. Selected font bytes use bounded immutable snapshots shared by measurement and
-painting, including the default system face acquired on demand. The resolver
-verifies coverage on admitted data.
+map. Fontconfig's scan character set also governs legacy Arabic symbol aliases.
+When a character map alone cannot establish coverage, the resolver can use bounded
+HarfRust shaping before acquiring the font file. Selected font bytes use immutable
+snapshots shared by measurement and painting, including the default system face
+acquired on demand. The resolver verifies coverage on admitted data.
 
 Workspace builds repair each missing shaping cluster with one physical face,
 preserving glyphs in the surrounding clusters. Platform fallback tries the
