@@ -132,6 +132,10 @@ impl<'a> OpenPlatformFont<'a> {
         } else {
             None
         };
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if !matches_symbol_page(expected, os2.as_deref()) {
+            return Ok(None);
+        }
         if request.implicit {
             if !crate::font_selection::allows_font_tables(
                 &head,
@@ -155,54 +159,51 @@ impl<'a> OpenPlatformFont<'a> {
             ) {
                 return Ok(None);
             }
-            if fallback.scalar().is_none()
-                && !platform::cluster::has_variation_sequence(fallback.text)
+            let tags = platform::cluster::SHAPING_TABLES;
+            let cap = platform::cluster::MAX_SHAPING_TABLE_BYTES;
+            if platform::cluster::needs_shaping_probe(fallback)
+                && tags
+                    .iter()
+                    .all(|tag| directory.entry(tag).is_none_or(|(_, len)| len <= cap))
             {
-                // Only small substitution tables participate in the speculative shape.
-                // Defer expensive or variation-dependent shaping to the admitted face.
-                const MAX_PROBE_LAYOUT_TABLE: usize = 256 * 1024;
-                let tags = [b"GSUB", b"GPOS", b"GDEF", b"morx", b"feat"];
-                if directory.entry(b"fvar").is_none()
-                    && tags.iter().all(|tag| {
-                        directory
-                            .entry(tag)
-                            .is_none_or(|(_, len)| len <= MAX_PROBE_LAYOUT_TABLE)
-                    })
-                {
-                    let gsub = probe.table(&directory, b"GSUB", MAX_PROBE_LAYOUT_TABLE)?;
-                    let gpos = probe.table(&directory, b"GPOS", MAX_PROBE_LAYOUT_TABLE)?;
-                    let gdef = probe.table(&directory, b"GDEF", MAX_PROBE_LAYOUT_TABLE)?;
-                    let morx = probe.table(&directory, b"morx", MAX_PROBE_LAYOUT_TABLE)?;
-                    let feat = probe.table(&directory, b"feat", MAX_PROBE_LAYOUT_TABLE)?;
-                    if let Ok(face) = Face::from_raw_tables(RawFaceTables {
-                        head: &head,
-                        hhea: &hhea,
-                        maxp: &maxp,
-                        cmap: Some(&cmap),
-                        gsub: gsub.as_deref(),
-                        gpos: gpos.as_deref(),
-                        gdef: gdef.as_deref(),
-                        morx: morx.as_deref(),
-                        feat: feat.as_deref(),
-                        ..Default::default()
-                    }) && !platform::cluster::may_shape_after_cmap(face, fallback)
-                    {
-                        return Ok(None);
-                    }
+                // A speculative shape uses bounded layout tables and no outlines.
+                let layout = tags
+                    .into_iter()
+                    .map(|tag| probe.table(&directory, tag, cap))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let mut tables = vec![
+                    (b"head", head.as_slice()),
+                    (b"maxp", maxp.as_slice()),
+                    (b"cmap", cmap.as_slice()),
+                ];
+                if let Some(os2) = os2.as_deref() {
+                    tables.push((b"OS/2", os2));
+                }
+                tables.extend(
+                    tags.into_iter()
+                        .zip(layout.iter())
+                        .filter_map(|(tag, table)| table.as_deref().map(|table| (tag, table))),
+                );
+                if !platform::cluster::may_shape_after_cmap(fallback, &tables) {
+                    return Ok(None);
                 }
             }
         }
         #[cfg(windows)]
         if let Some(identity) = expected.dwrite_identity {
-            let hmtx = if directory
-                .entry(b"hmtx")
-                .is_some_and(|(_, len)| len == identity.hmtx_len)
-            {
-                probe.table(&directory, b"hmtx", identity.hmtx_len)?
-            } else {
-                None
-            };
-            validate_dwrite_metrics(identity, hmtx.as_deref(), probe.source.path)?;
+            let mut digest = Sha256::new();
+            for (tag, expected_len) in identity.horizontal_tables() {
+                match (directory.entry(tag), expected_len) {
+                    (None, None) => {}
+                    (Some((offset, len)), Some(expected_len)) if len == expected_len => {
+                        probe.hash_table(offset, len, &mut digest)?;
+                    }
+                    _ => return Err(dwrite_metrics_changed(probe.source.path)),
+                }
+            }
+            if <[u8; 32]>::from(digest.finalize()) != identity.metrics_digest {
+                return Err(dwrite_metrics_changed(probe.source.path));
+            }
         }
         let fvar = if expected.has_variations() {
             probe.table(&directory, b"fvar", platform::MAX_FVAR_TABLE_BYTES)?
@@ -218,33 +219,52 @@ impl<'a> OpenPlatformFont<'a> {
 #[cfg(windows)]
 pub(super) fn validate_dwrite_metrics(
     identity: platform::DwriteFileIdentity,
-    hmtx: Option<&[u8]>,
+    face: &ttf_parser::RawFace<'_>,
     path: &Path,
 ) -> Result<(), NativeFontError> {
-    if !hmtx.is_some_and(|hmtx| {
-        hmtx.len() == identity.hmtx_len
-            && <[u8; 32]>::from(Sha256::digest(hmtx)) == identity.hmtx_digest
-    }) {
-        return Err(source_error(
-            path,
-            "font horizontal metrics changed after DirectWrite lookup; retry the operation",
-        ));
+    let mut digest = Sha256::new();
+    for (tag, expected_len) in identity.horizontal_tables() {
+        let table = face.table(ttf_parser::Tag::from_bytes(tag));
+        if table.map(<[u8]>::len) != expected_len {
+            return Err(dwrite_metrics_changed(path));
+        }
+        digest.update(table.unwrap_or_default());
+    }
+    if <[u8; 32]>::from(digest.finalize()) != identity.metrics_digest {
+        return Err(dwrite_metrics_changed(path));
     }
     Ok(())
 }
 
+#[cfg(windows)]
+fn dwrite_metrics_changed(path: &Path) -> NativeFontError {
+    source_error(
+        path,
+        "font horizontal metrics changed after DirectWrite lookup; retry the operation",
+    )
+}
+
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-pub(super) fn has_required_variation(
+pub(super) fn matches_fontconfig_coverage(
     expected: &platform::PlatformFace,
     face: &Face<'_>,
     request: &CandidateRequest<'_>,
 ) -> bool {
-    required_variation_matches(
-        expected,
-        face.raw_face().table(Tag::from_bytes(b"cmap")),
-        face.number_of_glyphs(),
-        request.fallback,
-    )
+    matches_symbol_page(expected, face.raw_face().table(Tag::from_bytes(b"OS/2")))
+        && required_variation_matches(
+            expected,
+            face.raw_face().table(Tag::from_bytes(b"cmap")),
+            face.number_of_glyphs(),
+            request.fallback,
+        )
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn matches_symbol_page(expected: &platform::PlatformFace, os2: Option<&[u8]>) -> bool {
+    expected.allowed_symbol_pages.is_none_or(|pages| {
+        os2.and_then(crate::font_selection::PlatformCmap::legacy_arabic_page)
+            .is_some_and(|page| pages[page])
+    })
 }
 
 fn required_variation_matches(
@@ -254,18 +274,24 @@ fn required_variation_matches(
     fallback: Option<GlyphFallback<'_>>,
 ) -> bool {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    if let Some(required) = &expected.required_uvs {
+    if expected.required_uvs.is_some() || !expected.unmapped_uvs_marks.is_empty() {
         return mapping.zip(fallback).is_some_and(|(cmap, request)| {
             crate::font_selection::PlatformCmap::parse(cmap, glyph_count).is_some_and(|cmap| {
-                if required.is_empty() {
-                    platform::cluster::variation_sequences(request.text)
-                        .any(cmap.maps_variation(request.rtl, true))
-                } else {
-                    required
-                        .iter()
-                        .copied()
-                        .all(cmap.maps_variation(request.rtl, false))
-                }
+                expected
+                    .unmapped_uvs_marks
+                    .iter()
+                    .all(|&mark| !cmap.maps_directional(mark, request.rtl))
+                    && expected.required_uvs.as_ref().is_none_or(|required| {
+                        if required.is_empty() {
+                            platform::cluster::variation_sequences(request.text)
+                                .any(cmap.maps_variation(request.rtl, true))
+                        } else {
+                            required
+                                .iter()
+                                .copied()
+                                .all(cmap.maps_variation(request.rtl, false))
+                        }
+                    })
             })
         });
     }
@@ -348,6 +374,32 @@ impl Probe<'_, '_> {
             .seek(SeekFrom::Start(offset))
             .and_then(|_| self.source.file.read_exact(data))
             .map_err(|error| source_error(self.source.path, error))
+    }
+
+    #[cfg(windows)]
+    fn hash_table(
+        &mut self,
+        offset: u64,
+        len: usize,
+        digest: &mut Sha256,
+    ) -> Result<(), NativeFontError> {
+        self.reserve_read(offset, len)?;
+        let mut buffer = [0; 8192];
+        let mut remaining = len;
+        let file = &mut self.source.file;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|error| source_error(self.source.path, error))?;
+        while remaining > 0 {
+            self.source
+                .control
+                .terminal_checkpoint_at(OperationPhase::Admission)?;
+            let count = remaining.min(buffer.len());
+            file.read_exact(&mut buffer[..count])
+                .map_err(|error| source_error(self.source.path, error))?;
+            digest.update(&buffer[..count]);
+            remaining -= count;
+        }
+        Ok(())
     }
 
     fn directory(&mut self, index: u32) -> Result<Option<Directory>, NativeFontError> {

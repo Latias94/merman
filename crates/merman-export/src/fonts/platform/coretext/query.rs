@@ -61,17 +61,23 @@ pub(super) fn match_family<T>(
             },
         ));
     }
+    let (weight, stretch, _) = style;
+    let width = css_width(stretch);
     if candidates.len() > 1 {
-        let (weight, stretch, _) = style;
-        for ((font, _), attributes) in &mut candidates {
+        for ((font, descriptor), attributes) in &mut candidates {
             attributes.axes =
-                MatchingAxes::for_font(font, weight.0.into(), css_width(stretch), control)?;
+                MatchingAxes::for_font(font, descriptor, weight.0.into(), width, control)?;
         }
     }
     rank_family(
         candidates,
         style,
-        |(font, descriptor)| match NativeFace::from_font(font, Some(&descriptor), control)? {
+        |(font, descriptor)| match NativeFace::from_font(
+            font,
+            Some(&descriptor),
+            Some(width),
+            control,
+        )? {
             Some(face) => accept(face),
             None => Ok(None),
         },
@@ -192,7 +198,8 @@ pub(super) fn system_ui(
         unsafe { font.copy_with_symbolic_traits(0.0, ptr::null(), traits, traits) }
     };
     for font in styled.into_iter().chain([font]) {
-        let Some(face) = NativeFace::from_font(font, None, control)? else {
+        let Some(face) = NativeFace::from_font(font, None, Some(css_width(stretch)), control)?
+        else {
             continue;
         };
         let eligible = match control {
@@ -425,9 +432,10 @@ mod tests {
                 CTFont::new_ui_font_for_language(CTFontUIFontType::System, 0.0, Some(&language))
             }
             .unwrap();
-            let expected = NativeFace::from_font(font, None, None)
-                .unwrap()
-                .filter(|face| face.implicit_eligible(None));
+            let expected =
+                NativeFace::from_font(font, None, Some(css_width(Stretch::Normal)), None)
+                    .unwrap()
+                    .filter(|face| face.implicit_eligible(None));
             let actual = system_ui(
                 (Weight::NORMAL, Stretch::Normal, Style::Normal),
                 Some(tag),
@@ -551,7 +559,7 @@ mod tests {
                         .copy_with_variation(&axis_id, value.into())
                 };
                 let instance = font_from_descriptor(&descriptor, None).unwrap().unwrap();
-                let instance = NativeFace::from_font(instance, Some(&descriptor), None)
+                let instance = NativeFace::from_font(instance, Some(&descriptor), None, None)
                     .unwrap()
                     .expect("the variable STIX instance is supported");
                 assert!(instance.covers_cluster("A".into()));
@@ -645,7 +653,7 @@ mod tests {
                     ttf_parser::fvar::Table::parse(table).unwrap(),
                     weight.0.into(),
                     css_width(stretch),
-                    |_| pinned,
+                    |_| (pinned, None),
                 );
                 let attributes = |(weight, stretch, style), axes| FaceAttributes {
                     table: Some((weight, stretch, style)),

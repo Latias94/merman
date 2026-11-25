@@ -27,6 +27,7 @@ mod query;
 mod variations;
 
 const DSIG: u32 = u32::from_be_bytes(*b"DSIG");
+const FVAR: u32 = u32::from_be_bytes(*b"fvar");
 const HVGL: u32 = u32::from_be_bytes(*b"hvgl");
 const HEAD: u32 = u32::from_be_bytes(*b"head");
 const NAME: u32 = u32::from_be_bytes(*b"name");
@@ -129,6 +130,7 @@ impl NativeFace {
     fn from_font(
         font: CFRetained<CTFont>,
         selection_descriptor: Option<&CTFontDescriptor>,
+        css_width: Option<f32>,
         control: Option<&OperationControl>,
     ) -> Result<Option<Self>, NativeFontError> {
         checkpoint(control)?;
@@ -180,7 +182,9 @@ impl NativeFace {
                 .or_else(|| sfnt_name(names, ttf_parser::name_id::FAMILY))
                 .unwrap_or(family)
         };
-        let Some(variations) = variations::read(&font, selection_descriptor, control)? else {
+        let css_width = css_width.filter(|_| tags.contains(&FVAR));
+        let Some(variations) = variations::read(&font, selection_descriptor, css_width, control)?
+        else {
             return Ok(None);
         };
 
@@ -357,7 +361,7 @@ pub(in crate::fonts) fn fallback_candidates(
     };
     checkpoint(control)?;
     let font = fallback_from_font(base_font, request.text, language.as_deref());
-    let direct = NativeFace::from_font(font.clone(), None, control)?;
+    let direct = NativeFace::from_font(font.clone(), None, None, control)?;
     // Refine a static native result within its actual family when CSS calls for
     // another style. Keep the native result as an alternative, including when
     // it is the only covering face or Core Text selected a variable instance.
@@ -400,7 +404,7 @@ pub(in crate::fonts) fn fallback_candidates(
         let Some(font) = query::font_from_descriptor(&descriptor, control)? else {
             continue;
         };
-        let Some(candidate) = NativeFace::from_font(font, Some(&descriptor), control)? else {
+        let Some(candidate) = NativeFace::from_font(font, Some(&descriptor), None, control)? else {
             continue;
         };
         if let Some(id) = consider(candidate)? {
@@ -445,7 +449,7 @@ pub(in crate::fonts) fn registered_base(
     let Some(font) = registered_base_font(base) else {
         return Ok(None);
     };
-    let Some(candidate) = NativeFace::from_font(font, None, Some(control))? else {
+    let Some(candidate) = NativeFace::from_font(font, None, None, Some(control))? else {
         return Ok(None);
     };
     // A registered face can share the PostScript name of a caller's subset or replacement.
@@ -617,7 +621,7 @@ pub(super) fn fallback(character: char, base: &FaceInfo) -> Option<NativeFace> {
     let mut text = [0; 4];
     let text = character.encode_utf8(&mut text);
     let font = fallback_from_font(&base_font, text, None);
-    NativeFace::from_font(font, None, None)
+    NativeFace::from_font(font, None, None, None)
         .ok()
         .flatten()
         .filter(|face| face.covers_cluster(GlyphFallback::from(&*text)))
@@ -811,7 +815,7 @@ mod tests {
         );
 
         let font = fallback_from_font(&first.font, "✓", None);
-        let fallback = NativeFace::from_font(font, None, None)
+        let fallback = NativeFace::from_font(font, None, None, None)
             .unwrap()
             .expect("Arial fallback for check mark");
         assert!(fallback.covers_cluster("✓".into()));
@@ -936,8 +940,12 @@ mod tests {
         let small = unsafe { CTFont::with_name(&name, 12.0, ptr::null()) };
         let large = unsafe { small.copy_with_attributes(24.0, ptr::null(), None) };
         assert_ne!(small, large, "Core Text distinguishes these point sizes");
-        let small = NativeFace::from_font(small, None, None).unwrap().unwrap();
-        let large = NativeFace::from_font(large, None, None).unwrap().unwrap();
+        let small = NativeFace::from_font(small, None, None, None)
+            .unwrap()
+            .unwrap();
+        let large = NativeFace::from_font(large, None, None, None)
+            .unwrap()
+            .unwrap();
         assert_eq!(small.post_script_name, "ArialMT");
         assert_eq!(small.path, large.path);
         assert!(CascadeAttempt::from(&small) == CascadeAttempt::from(&large));

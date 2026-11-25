@@ -2252,6 +2252,14 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
                 r##"<tref href="#label"/>"##,
             ),
             (
+                "<g id=\"label\">\n  <rect width=\"20\" height=\"20\"/>\n</g>",
+                r##"<tref href="#label"/>"##,
+            ),
+            (
+                "<rect id=\"label\" width=\"20\" height=\"20\">\n&#x20;&#x9;\n</rect>",
+                r##"<tref href="#label"/>"##,
+            ),
+            (
                 r#"<g id="label"/>"#,
                 r##"<tref href="#label">Ignored<tspan>Still ignored</tspan></tref>"##,
             ),
@@ -2359,6 +2367,83 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
+fn raw_svg_empty_resource_links_shadow_nonempty_aliases() {
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let options = ["--font-system=off"];
+        let baseline = raw_conversion(format, RAW_PATH_SVG, &options);
+        assert!(baseline.status.success(), "{format}: {baseline:?}");
+        for defs in [
+            "",
+            r#"<defs><rect id="old-shape" width="60" height="60"/><g id="old-label">Old text</g></defs>"#,
+        ] {
+            let links = [
+                r##"<use href="" q:href="#old-shape"/><text><tref q:href="" href="#old-label"/></text>"##,
+                r##"<use q:href="#old-shape" href="&#x20;"/><text><tref href="#old-label" q:href="&#x9;"/></text>"##,
+            ];
+            for link in links {
+                let svg = RAW_PATH_SVG
+                    .replace("<svg ", r#"<svg xmlns:q="http://www.w3.org/1999/xlink" "#)
+                    .replace("</svg>", &format!("{defs}{link}</svg>"));
+                let output = raw_conversion(format, &svg, &options);
+                assert!(output.status.success(), "{format}: {output:?}");
+                assert_eq!(output.stdout, baseline.stdout, "{format}: {svg}");
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_tref_preserves_collapsed_spacing_between_text_fragments() {
+    let font = font();
+    let options = ["--font-system=off", "--font-file", font.as_str()];
+    let svg = |separator| {
+        RAW_FONT_SVG
+            .replace(
+                "<text ",
+                "<defs><g id=\"spaces\">\n  <rect width=\"1\" height=\"1\"/>\n</g></defs><text ",
+            )
+            .replace(
+                "Native font",
+                &format!("<tspan>Native</tspan>{separator}<tspan>font</tspan>"),
+            )
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let plain_space = raw_conversion(format, &svg("<tspan> </tspan>"), &options);
+        let copied_space = raw_conversion(format, &svg(r##"<tref href="#spaces"/>"##), &options);
+        let adjacent = raw_conversion(format, &svg(""), &options);
+        for output in [&plain_space, &copied_space, &adjacent] {
+            assert!(output.status.success(), "{format}: {output:?}");
+        }
+        assert!(
+            copied_space.stdout == plain_space.stdout,
+            "{format}: copy changed the space"
+        );
+        assert!(
+            copied_space.stdout != adjacent.stdout,
+            "{format}: the space must affect layout"
+        );
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
 fn raw_svg_resource_links_use_the_effective_href() {
     let font = font();
     let cases = [
@@ -2409,6 +2494,68 @@ fn raw_svg_resource_links_use_the_effective_href() {
                 assert_eq!(output.stdout, baseline.stdout, "{element}/{format}: {href}");
             }
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_text_path_uses_href_only_when_inline_path_is_unusable() {
+    let font = font();
+    let options = ["--font-system=off", "--font-file", font.as_str()];
+    let svg = |attributes: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="http://www.w3.org/1999/xlink" width="200" height="80"><defs><path id="linked" d="M10 60 H190"/></defs><text font-family="Cousine"><textPath {attributes}>Native font</textPath></text></svg>"#,
+        )
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let inline = raw_conversion(format, &svg(r#"path="M10 40 H190""#), &options);
+        let linked = raw_conversion(format, &svg(r##"href="#linked""##), &options);
+        assert!(inline.status.success(), "{format}: {inline:?}");
+        assert!(linked.status.success(), "{format}: {linked:?}");
+        assert!(
+            inline.stdout != linked.stdout,
+            "{format}: the fixtures must use different paths"
+        );
+        let with_inactive_link = raw_conversion(
+            format,
+            &svg(r##"path="M10 40 H190 Q" q:href="#old""##),
+            &options,
+        );
+        assert!(
+            with_inactive_link.status.success(),
+            "{format}: {with_inactive_link:?}"
+        );
+        assert!(
+            with_inactive_link.stdout == inline.stdout,
+            "{format}: the valid prefix must paint"
+        );
+        for path in ["", "M10 40", "M10 40 L1e40 40"] {
+            let fallback = raw_conversion(
+                format,
+                &svg(&format!(r##"path="{path}" href="#linked""##)),
+                &options,
+            );
+            assert!(fallback.status.success(), "{format}/{path}: {fallback:?}");
+            assert!(
+                fallback.stdout == linked.stdout,
+                "{format}/{path}: the fallback must paint"
+            );
+        }
+        let missing = raw_conversion(format, &svg(r##"path="M10 40" href="#old""##), &options);
+        assert_eq!(missing.status.code(), Some(1), "{format}: {missing:?}");
+        assert!(missing.stdout.is_empty(), "{format}");
+        assert!(
+            String::from_utf8_lossy(&missing.stderr).contains("fragment #old"),
+            "{format}"
+        );
     }
 }
 

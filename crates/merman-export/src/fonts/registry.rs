@@ -791,16 +791,10 @@ impl FontSourceRegistry {
                 };
                 #[cfg(windows)]
                 if let Some(identity) = face.dwrite_identity {
-                    platform_file::validate_dwrite_metrics(
-                        identity,
-                        parsed
-                            .raw_face()
-                            .table(ttf_parser::Tag::from_bytes(b"hmtx")),
-                        &path,
-                    )?;
+                    platform_file::validate_dwrite_metrics(identity, parsed.raw_face(), &path)?;
                 }
                 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                if !platform_file::has_required_variation(face, &parsed, &request) {
+                if !platform_file::matches_fontconfig_coverage(face, &parsed, &request) {
                     return Ok(None);
                 }
                 if !eligible_parsed_face(parsed, &request) {

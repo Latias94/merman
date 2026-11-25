@@ -27,23 +27,66 @@ impl SvgFontSeal {
 #[derive(Debug, Default)]
 pub(super) struct SvgTextContentTracker {
     open_text: Vec<OpenText>,
-    references: Vec<String>,
+    references: Vec<TextReference>,
     pending_text: Vec<Range<usize>>,
     count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum SvgTextContent {
+    #[default]
+    Empty,
+    Whitespace,
+    Characters,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SvgCharacterEvents {
+    nonempty: usize,
+    non_whitespace: usize,
+}
+
+impl SvgCharacterEvents {
+    pub(super) fn observe(&mut self, content: &str) {
+        self.nonempty += usize::from(!content.is_empty());
+        self.non_whitespace += usize::from(
+            content
+                .bytes()
+                .any(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n')),
+        );
+    }
+
+    pub(super) fn content_since(self, start: Self) -> SvgTextContent {
+        if self.non_whitespace != start.non_whitespace {
+            SvgTextContent::Characters
+        } else if self.nonempty != start.nonempty {
+            SvgTextContent::Whitespace
+        } else {
+            SvgTextContent::Empty
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TextReference {
+    target: String,
+    preserve_space: bool,
 }
 
 #[derive(Debug)]
 struct OpenText {
     depth: usize,
+    preserve_space: bool,
     open_tref_depth: Option<usize>,
     first_reference: usize,
     has_content: bool,
 }
 
 impl SvgTextContentTracker {
-    pub(super) fn observe_start(&mut self, depth: usize) {
+    pub(super) fn observe_start(&mut self, depth: usize, preserve_space: bool) {
         self.open_text.push(OpenText {
             depth,
+            preserve_space,
             open_tref_depth: None,
             first_reference: self.references.len(),
             has_content: false,
@@ -74,11 +117,22 @@ impl SvgTextContentTracker {
         }
     }
 
-    pub(super) fn observe_tref(&mut self, target: Option<String>, open_depth: Option<usize>) {
+    pub(super) fn observe_tref(
+        &mut self,
+        target: Option<String>,
+        preserve_space: bool,
+        open_depth: Option<usize>,
+    ) {
         if let Some(text) = self.open_text.last_mut()
             && text.open_tref_depth.is_none()
         {
-            self.references.extend(target);
+            if let Some(target) = target {
+                self.references.push(TextReference {
+                    target,
+                    // A single copied text node also inherits edge trimming from its text root.
+                    preserve_space: preserve_space || text.preserve_space,
+                });
+            }
             // The renderer uses the referenced text in place of any children of this element.
             text.open_tref_depth = open_depth;
         }
@@ -98,7 +152,7 @@ impl SvgTextContentTracker {
 
     pub(super) fn text_element_count(
         self,
-        target_has_text: impl Fn(&str) -> bool,
+        target_content: impl Fn(&str) -> SvgTextContent,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<usize> {
         let mut count = self.count;
@@ -110,7 +164,11 @@ impl SvgTextContentTracker {
             checkpoint_loop(iteration, &mut checkpoint)?;
             for index in examined..range.end {
                 checkpoint_loop(index, &mut checkpoint)?;
-                if target_has_text(&self.references[index]) {
+                let reference = &self.references[index];
+                let content = target_content(&reference.target);
+                if content == SvgTextContent::Characters
+                    || (content == SvgTextContent::Whitespace && reference.preserve_space)
+                {
                     last_match = Some(index);
                 }
             }
@@ -135,7 +193,7 @@ mod tests {
             match reader.read_event().unwrap() {
                 Event::Start(element) => {
                     if element.local_name().as_ref() == "text" {
-                        tracker.observe_start(depth);
+                        tracker.observe_start(depth, false);
                     }
                     depth += 1;
                 }
@@ -150,7 +208,9 @@ mod tests {
                 _ => {}
             }
         }
-        tracker.text_element_count(|_| false, || Ok(())).unwrap()
+        tracker
+            .text_element_count(|_| SvgTextContent::Empty, || Ok(()))
+            .unwrap()
     }
 
     #[test]

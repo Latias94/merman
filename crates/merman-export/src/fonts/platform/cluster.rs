@@ -1,6 +1,6 @@
 use harfrust::unicode::{Decomposed, decompose};
-use rustybuzz::{Direction, Feature, UnicodeBuffer, script};
-use ttf_parser::{Face, Tag};
+use harfrust::{Buffer, Direction, Feature, Script, ShapeOptions, ShaperFont, Tag};
+use ttf_parser::Face;
 use unicode_general_category::{GeneralCategory, get_general_category};
 use unicode_normalization::UnicodeNormalization;
 
@@ -36,15 +36,7 @@ pub(in crate::fonts) fn variation_sequences(text: &str) -> impl Iterator<Item = 
 fn variation_clusters(text: &str) -> impl Iterator<Item = (usize, &str)> {
     text.char_indices()
         .skip(1)
-        .filter_map(|(index, ch)| {
-            (!matches!(
-                get_general_category(ch),
-                GeneralCategory::NonspacingMark
-                    | GeneralCategory::SpacingMark
-                    | GeneralCategory::EnclosingMark
-            ))
-            .then_some(index)
-        })
+        .filter_map(|(index, ch)| (!is_mark(ch)).then_some(index))
         .chain(std::iter::once(text.len()))
         .scan(0, move |start, end| {
             let cluster = &text[*start..end];
@@ -53,6 +45,15 @@ fn variation_clusters(text: &str) -> impl Iterator<Item = (usize, &str)> {
             Some((index, cluster))
         })
         .filter(|(_, cluster)| has_variation_sequence(cluster))
+}
+
+fn is_mark(ch: char) -> bool {
+    matches!(
+        get_general_category(ch),
+        GeneralCategory::NonspacingMark
+            | GeneralCategory::SpacingMark
+            | GeneralCategory::EnclosingMark
+    )
 }
 
 fn has_complete_nominal_coverage(
@@ -131,12 +132,19 @@ pub(super) fn has_advertised_coverage(
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct UnadvertisedVariationCoverage {
+    pub(super) bases: Vec<(char, char)>,
+    pub(super) marks: Vec<char>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(super) fn unadvertised_variations(
     text: &str,
     rtl: bool,
     mut maps: impl FnMut(char) -> bool,
-) -> Option<Vec<(char, char)>> {
-    let mut missing = Vec::new();
+) -> Option<UnadvertisedVariationCoverage> {
+    let mut missing = UnadvertisedVariationCoverage::default();
     let mut start = 0;
     for (index, cluster) in variation_clusters(text) {
         // Canonical composition is possible outside the selector's cluster.
@@ -145,18 +153,25 @@ pub(super) fn unadvertised_variations(
         }
         let mut chars = cluster.chars().peekable();
         while let Some(ch) = chars.next() {
-            if !is_default_ignorable(ch) && !scalar_may_map(ch, rtl, &mut maps) {
+            if is_default_ignorable(ch) || scalar_may_map(ch, rtl, &mut maps) {
+                continue;
+            }
+            if let Some(&selector) = chars.peek().filter(|&&ch| is_variation_selector(ch)) {
                 // A true non-default glyph can cover an unadvertised base.
-                let selector = chars
-                    .peek()
-                    .copied()
-                    .filter(|&ch| is_variation_selector(ch))?;
-                missing.push((ch, selector));
+                missing.bases.push((ch, selector));
+            } else if is_mark(ch) {
+                // The bounded shaping probe can determine if a missing physical
+                // mark is consumed by a substitution. A scan-only omission stays excluded.
+                missing.marks.push(ch);
+            } else {
+                return None;
             }
         }
         start = index + cluster.len();
     }
-    (!missing.is_empty() && has_advertised_coverage(&text[start..], rtl, maps)).then_some(missing)
+    ((!missing.bases.is_empty() || !missing.marks.is_empty())
+        && has_advertised_coverage(&text[start..], rtl, maps))
+    .then_some(missing)
 }
 
 /// Check for any relevant Unicode mapping, including explicit variant glyphs.
@@ -190,23 +205,24 @@ fn cmap_may_cover_text(cmap: &PlatformCmap<'_>, text: &str, rtl: bool) -> bool {
     }
 
     let maps_variant = cmap.maps_variation(rtl, false);
-    // HarfRust skips normalization in a cluster containing a selector. Each
-    // remaining mark needs its own mapping, even if the base uses a UVS.
+    // HarfRust skips normalization in a cluster containing a selector. A base
+    // still needs a mapping, but GSUB can consume a mark that maps to glyph zero.
     let mut start = 0;
     for (index, cluster) in variation_clusters(text) {
         if !has_complete_nominal_coverage(&text[start..index], rtl, |ch| cmap.maps(ch)) {
             return false;
         }
         let mut chars = cluster.chars().peekable();
-        while let Some(ch) = chars.next() {
-            if !is_default_ignorable(ch)
-                && !cmap.maps_directional(ch, rtl)
-                && !chars.peek().is_some_and(|&selector| {
-                    is_variation_selector(selector) && maps_variant((ch, selector))
-                })
-            {
-                return false;
-            }
+        if !chars
+            .find(|&ch| !is_default_ignorable(ch))
+            .is_some_and(|ch| {
+                cmap.maps_directional(ch, rtl)
+                    || chars.peek().is_some_and(|&selector| {
+                        is_variation_selector(selector) && maps_variant((ch, selector))
+                    })
+            })
+        {
+            return false;
         }
         start = index + cluster.len();
     }
@@ -215,79 +231,153 @@ fn cmap_may_cover_text(cmap: &PlatformCmap<'_>, text: &str, rtl: bool) -> bool {
 
 /// Reject only clusters known to produce missing glyphs before snapshot acquisition.
 pub(in crate::fonts) fn may_shape(face: Face<'_>, request: GlyphFallback<'_>) -> bool {
-    let Some(cmap) = face.raw_face().table(Tag::from_bytes(b"cmap")) else {
+    let Some(cmap) = face.raw_face().table(ttf_parser::Tag::from_bytes(b"cmap")) else {
         return false;
     };
-    cmap_may_cover_with_os2(
+    let os2 = face.raw_face().table(ttf_parser::Tag::from_bytes(b"OS/2"));
+    if !cmap_may_cover_with_os2(
         cmap,
-        face.raw_face().table(Tag::from_bytes(b"OS/2")),
+        os2,
         face.number_of_glyphs(),
         request.text,
         request.rtl,
-    ) && may_shape_after_cmap(face, request)
+    ) {
+        return false;
+    }
+    if !needs_shaping_probe(request) {
+        return true;
+    }
+    let tables: Vec<_> = [b"head", b"maxp", b"cmap", b"OS/2"]
+        .into_iter()
+        .chain(SHAPING_TABLES)
+        .filter_map(|tag| {
+            face.raw_face()
+                .table(ttf_parser::Tag::from_bytes(tag))
+                .map(|table| (tag, table))
+        })
+        .collect();
+    may_shape_after_cmap(request, &tables)
 }
 
-pub(in crate::fonts) fn may_shape_after_cmap(face: Face<'_>, request: GlyphFallback<'_>) -> bool {
-    if request.scalar().is_some() || has_variation_sequence(request.text) {
-        // Rustybuzz and HarfRust can select different variation subtables.
-        return true;
-    }
-    let gsub = face.tables().gsub;
-    if gsub.is_some_and(|table| table.variations.is_some()) {
-        // usvg has the effective variation coordinates, including automatic optical size.
-        return true;
-    }
-    let direction = if request.rtl {
-        Direction::RightToLeft
-    } else {
-        Direction::LeftToRight
-    };
-    let language = request
-        .language
-        .and_then(|tag| tag.parse::<rustybuzz::Language>().ok());
-    let fill = |buffer: &mut UnicodeBuffer| {
-        buffer.push_str(request.text);
-        buffer.set_direction(direction);
-        if let Some(language) = &language {
-            buffer.set_language(language.clone());
-        }
-    };
-    let mut buffer = UnicodeBuffer::new();
-    fill(&mut buffer);
-    buffer.guess_segment_properties();
-    // Common and inherited marks alone leave the script unknown. Other shapers
-    // can use the surrounding run (e.g. Arabic joining), which only usvg has.
-    if !matches!(
-        buffer.script(),
-        script::UNKNOWN | script::LATIN | script::GREEK | script::CYRILLIC | script::HAN
-    ) {
-        return true;
-    }
+pub(in crate::fonts) const SHAPING_TABLES: [&[u8; 4]; 5] =
+    [b"GSUB", b"GPOS", b"GDEF", b"morx", b"feat"];
+pub(in crate::fonts) const MAX_SHAPING_TABLE_BYTES: usize = 256 * 1024;
 
-    let face = rustybuzz::Face::from_face(face);
-    let mut shaped = rustybuzz::shape(&face, &[], buffer);
-    let glyph_count = u32::from(face.number_of_glyphs());
-    let covered = |shaped: &rustybuzz::GlyphBuffer| {
-        shaped
-            .glyph_infos()
+fn is_sara_am(ch: char) -> bool {
+    matches!(ch, '\u{0e33}' | '\u{0eb3}')
+}
+
+pub(in crate::fonts) fn needs_shaping_probe(request: GlyphFallback<'_>) -> bool {
+    request.text.chars().any(is_sara_am)
+        || (request.scalar().is_none()
+            && (!has_variation_sequence(request.text)
+                || request
+                    .text
+                    .chars()
+                    .filter(|&ch| !is_default_ignorable(ch))
+                    .nth(1)
+                    .is_some()))
+}
+
+pub(in crate::fonts) fn may_shape_after_cmap<'a>(
+    request: GlyphFallback<'_>,
+    tables: &'a [(&'static [u8; 4], &'a [u8])],
+) -> bool {
+    use harfrust::font::{Blob, TableFunction};
+    use read_fonts::{FontData, FontRead, tables::gsub::Gsub};
+
+    if !needs_shaping_probe(request) {
+        return true;
+    }
+    let table = |tag: &[u8; 4]| {
+        tables
             .iter()
-            .all(|glyph| (1..glyph_count).contains(&glyph.glyph_id))
+            .find(|(key, _)| *key == tag)
+            .map(|(_, bytes)| *bytes)
     };
-    if covered(&shaped) {
+    let fill = |buffer: &mut Buffer| {
+        buffer.push_str(request.text);
+        buffer.set_direction(if request.rtl {
+            Direction::RightToLeft
+        } else {
+            Direction::LeftToRight
+        });
+        buffer.set_language(request.language.and_then(harfrust::Language::new));
+        buffer.guess_segment_properties();
+    };
+    let mut buffer = Buffer::new();
+    fill(&mut buffer);
+    // Defer scripts that can depend on their surroundings (e.g. Arabic joining)
+    // to the renderer, which has the full run. Thai/Lao SARA AM is decomposed by
+    // the script shaper even when the original scalar has a nominal glyph.
+    let standalone = match buffer.script() {
+        None
+        | Some(
+            Script::COMMON
+            | Script::INHERITED
+            | Script::UNKNOWN
+            | Script::LATIN
+            | Script::GREEK
+            | Script::CYRILLIC
+            | Script::HAN,
+        ) => true,
+        Some(Script::THAI | Script::LAO) => request.text.chars().any(is_sara_am),
+        _ => false,
+    };
+    if !standalone
+        || table(b"GSUB")
+            .and_then(|bytes| Gsub::read(FontData::new(bytes)).ok())
+            .is_some_and(|gsub| gsub.feature_variations().is_some())
+    {
+        // usvg resolves the effective axis coordinates for feature variations.
         return true;
     }
 
-    // The fallback request lacks the span's small-caps and kerning flags.
-    let small_caps = Feature::new(Tag::from_bytes(b"smcp"), 1, ..);
-    let no_kerning = Feature::new(Tag::from_bytes(b"kern"), 0, ..);
-    let optional_substitutions =
-        gsub.is_some() || (face.tables().morx.is_some() && face.tables().feat.is_some());
-    if optional_substitutions {
-        for features in [&[small_caps][..], &[no_kerning], &[small_caps, no_kerning]] {
-            let mut buffer = shaped.clear();
+    let has_substitutions = table(b"GSUB").is_some() || table(b"morx").is_some();
+    if SHAPING_TABLES
+        .into_iter()
+        .any(|tag| table(tag).is_some_and(|bytes| bytes.len() > MAX_SHAPING_TABLE_BYTES))
+    {
+        return true;
+    }
+    let tables: Vec<_> = [b"head", b"maxp", b"cmap", b"OS/2"]
+        .into_iter()
+        .chain(SHAPING_TABLES)
+        .filter_map(|tag| table(tag).map(|bytes| (Tag::new(tag), Blob::from(bytes.to_vec()))))
+        .collect();
+    let source = TableFunction::new(std::sync::Arc::new(move |tag| {
+        tables
+            .iter()
+            .find(|(key, _)| *key == tag)
+            .map(|(_, table)| table.clone())
+    }));
+    let Some(font) = harfrust::Font::new(source, 0) else {
+        return true;
+    };
+    let shaper = ShaperFont::new(&font);
+    let shape = |buffer: &mut Buffer, features: &[Feature]| {
+        // A shaping error is inconclusive. The renderer still gets to try.
+        harfrust::shape(&shaper, buffer, ShapeOptions::new().features(features)).is_err()
+            || buffer
+                .glyph_infos()
+                .iter()
+                .all(|glyph| (1..font.num_glyphs()).contains(&glyph.glyph_id))
+    };
+    if shape(&mut buffer, &[]) {
+        return true;
+    }
+
+    // The fallback request lacks the span's small-caps and spacing settings.
+    if has_substitutions {
+        let small_caps = Feature::new(Tag::new(b"smcp"), 1, ..);
+        let no_ligatures = [b"liga", b"clig", b"dlig", b"hlig", b"cala"]
+            .map(|tag| Feature::new(Tag::new(tag), 0, ..));
+        let mut both = [small_caps; 6];
+        both[1..].copy_from_slice(&no_ligatures);
+        for features in [&[small_caps][..], &no_ligatures, &both] {
+            buffer.clear();
             fill(&mut buffer);
-            shaped = rustybuzz::shape(&face, features, buffer);
-            if covered(&shaped) {
+            if shape(&mut buffer, features) {
                 return true;
             }
         }
@@ -349,7 +439,7 @@ mod tests {
         assert!(cmap_may_cover(cmap, 2, "❤\u{fe0f}", false));
         assert!(!cmap_may_cover(cmap, 1, "❤\u{fe0f}", false));
         assert!(!cmap_may_cover(cmap, 2, "❤\u{fe0e}", false));
-        assert!(!cmap_may_cover(cmap, 2, "❤\u{fe0f}\u{301}", false));
+        assert!(cmap_may_cover(cmap, 2, "❤\u{fe0f}\u{301}", false));
         assert!(!cmap_may_cover(cmap, 2, "x❤\u{fe0f}", false));
         assert!(!cmap_may_cover(cmap, 2, "❤\u{fe0f}\u{200d}x", false));
         assert!(!has_variation_sequence("❤\u{200d}\u{fe0f}"));
@@ -380,13 +470,56 @@ mod tests {
         let cmap = fixture_cmap(&['\u{f141}'], false, 0);
         let mut font = font_with_table(b"cmap", &cmap);
         let face = Face::parse(&font, 0).unwrap();
-        let mut os2 = face.raw_face().table(Tag::from_bytes(b"OS/2")).unwrap()[..78].to_vec();
+        let mut os2 = face
+            .raw_face()
+            .table(ttf_parser::Tag::from_bytes(b"OS/2"))
+            .unwrap()[..78]
+            .to_vec();
         os2[..2].fill(0);
         os2[62] = 0xb2;
         assert!(cmap_may_cover_with_os2(&cmap, Some(&os2), 6, "ا", true));
         assert!(!cmap_may_cover_with_os2(&cmap, Some(&os2), 6, "A", false));
         replace_table(&mut font, b"OS/2", &os2);
         assert!(harfrust_covers(font, "ا", true));
+    }
+
+    #[test]
+    fn a_ligature_can_consume_a_mark_without_a_nominal_mapping_after_a_selector() {
+        let text = "❤\u{fe0f}\u{301}";
+        let font = include_bytes!("../../../tests/fonts/MermanProbeVariationOverlay.ttf");
+        let face = Face::parse(font, 0).unwrap();
+        assert_eq!(face.glyph_index('\u{301}'), None);
+        assert!(may_shape(face, text.into()));
+        assert!(harfrust_covers(font.to_vec(), text, false));
+    }
+
+    #[test]
+    fn a_nominal_sara_am_glyph_does_not_prove_coverage() {
+        for ch in ['\u{0e33}', '\u{0eb3}'] {
+            let text = ch.to_string();
+            let cmap = fixture_cmap(&[ch], false, 10);
+            let font = font_with_table(b"cmap", &cmap);
+            assert!(cmap_may_cover(&cmap, 6, &text, false));
+            assert!(!may_shape(
+                Face::parse(&font, 0).unwrap(),
+                text.as_str().into()
+            ));
+            assert!(!harfrust_covers(font, &text, false));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires Windows Segoe UI Emoji with the negated arrow substitution"]
+    fn segoe_ui_emoji_shapes_a_variation_with_an_unmapped_overlay_mark() {
+        let path = std::path::PathBuf::from(std::env::var_os("WINDIR").unwrap())
+            .join("Fonts/seguiemj.ttf");
+        let font = std::fs::read(path).unwrap();
+        let face = Face::parse(&font, 0).unwrap();
+        let text = "\u{2194}\u{fe0f}\u{0338}";
+        assert_eq!(face.glyph_index('\u{0338}'), None);
+        assert!(may_shape(face, text.into()));
+        assert!(harfrust_covers(font, text, false));
     }
 
     #[cfg(windows)]
@@ -539,11 +672,17 @@ mod tests {
         let maps = |ch| ch == 'A';
         assert_eq!(
             unadvertised_variations("A\u{fe0f}\u{200d}B\u{fe0e}", false, maps),
-            Some(vec![('B', '\u{fe0e}')])
+            Some(UnadvertisedVariationCoverage {
+                bases: vec![('B', '\u{fe0e}')],
+                marks: Vec::new(),
+            })
         );
         assert_eq!(
             unadvertised_variations("A\u{fe0f}\u{301}", false, maps),
-            None
+            Some(UnadvertisedVariationCoverage {
+                bases: Vec::new(),
+                marks: vec!['\u{301}'],
+            })
         );
     }
 }

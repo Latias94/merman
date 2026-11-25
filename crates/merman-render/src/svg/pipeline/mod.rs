@@ -142,6 +142,7 @@ pub trait SvgPostprocessor: Send + Sync {
 #[derive(Clone)]
 pub struct ResvgCompatibleSvg {
     svg: String,
+    inline_raster_sources: Box<[(usize, final_validation::InlineRasterHref)]>,
 
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
@@ -219,7 +220,8 @@ impl SvgFinalizationReport {
     }
 
     /// Returns the number of terminal SVG `<text>` elements with character content,
-    /// including character data copied from local `<tref>` targets.
+    /// including character data copied from local `<tref>` targets. Collapsible spaces from
+    /// those targets can separate adjacent text runs without requiring a font on their own.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
     }
@@ -282,7 +284,7 @@ impl ResvgCompatibleSvg {
                 |message| Error::svg_postprocess("prepared-math-terminal-receipt", message),
             )?
         };
-        let terminal = match terminal {
+        let mut terminal = match terminal {
             Some(terminal) => terminal,
             None => {
                 final_validation::validate_resvg_compatible_svg_with_execution(&svg, execution)?
@@ -294,6 +296,7 @@ impl ResvgCompatibleSvg {
         execution.checkpoint()?;
         Ok(Self {
             svg,
+            inline_raster_sources: std::mem::take(&mut terminal.inline_raster_sources),
 
             prepared_math_evidence,
             prepared_math_terminal_receipt,
@@ -335,6 +338,17 @@ impl ResvgCompatibleSvg {
     /// Returns the terminal same-document and inline-resource inventory.
     pub const fn resource_closure(&self) -> &SvgResourceClosure {
         self.finalization_report.resource_closure()
+    }
+
+    /// Yields each effective inline raster href with its reference-expanded occurrence count.
+    #[doc(hidden)]
+    pub fn inline_raster_sources(&self) -> impl Iterator<Item = (&str, usize)> {
+        self.inline_raster_sources.iter().map(|(element, href)| {
+            (
+                href.as_str(self.as_str()),
+                self.reference_plan().raw_element_occurrences()[*element],
+            )
+        })
     }
 
     /// Returns the exact font catalog authorized by the render session.

@@ -1,10 +1,8 @@
-use objc2_core_text::CTFont;
-use ttf_parser::{Face, RawFaceTables};
-
 use super::super::cluster;
 use super::{
     GlyphFallback, NativeFontError, OperationControl, read_table, read_tables, table_bytes,
 };
+use objc2_core_text::CTFont;
 
 pub(super) fn has_minimum_tables(
     font: &CTFont,
@@ -73,7 +71,7 @@ pub(super) fn check(
     ) {
         return Ok(false);
     }
-    if request.scalar().is_some() || cluster::has_variation_sequence(request.text) {
+    if !cluster::needs_shaping_probe(request) {
         return Ok(true);
     }
 
@@ -81,32 +79,19 @@ pub(super) fn check(
         Some(head) => Some(head),
         None => read_table(font, u32::from_be_bytes(*b"head"), control)?,
     };
-    let shaping = read_tables(
-        font,
-        [b"hhea", b"GDEF", b"GSUB", b"GPOS", b"morx", b"feat"],
-        control,
-    )?;
-    let [Some(hhea), gdef, gsub, gpos, morx, feat] = shaping
-        .each_ref()
-        .map(|table| table.as_deref().map(table_bytes))
-    else {
-        return Ok(false);
-    };
     let Some(head) = head.as_deref().map(table_bytes) else {
         return Ok(false);
     };
-    let face = Face::from_raw_tables(RawFaceTables {
-        head,
-        hhea,
-        maxp,
-        cmap: Some(cmap),
-        os2: os2.as_deref().map(table_bytes),
-        gdef,
-        gsub,
-        gpos,
-        morx,
-        feat,
-        ..Default::default()
-    });
-    Ok(face.is_ok_and(|face| cluster::may_shape_after_cmap(face, request)))
+    let tags = cluster::SHAPING_TABLES;
+    let layout = read_tables(font, tags, control)?;
+    let mut tables = vec![(b"head", head), (b"maxp", maxp), (b"cmap", cmap)];
+    if let Some(os2) = os2.as_deref() {
+        tables.push((b"OS/2", table_bytes(os2)));
+    }
+    tables.extend(
+        tags.into_iter()
+            .zip(layout.iter())
+            .filter_map(|(tag, table)| table.as_deref().map(table_bytes).map(|table| (tag, table))),
+    );
+    Ok(cluster::may_shape_after_cmap(request, &tables))
 }
