@@ -395,8 +395,9 @@ fn proper_intersections_preserve_tiny_and_large_scales_and_reject_nonfinite_rout
 
 fn suggested(
     direction: Direction,
-    positions: [f64; 2],
-    turns: [Option<f64>; 2],
+    origin: (f64, f64),
+    far_ports: &[(f64, Option<f64>)],
+    own_endpoint: bool,
     hints: &[Option<f64>],
 ) -> Option<Vec<Option<f64>>> {
     let mut graph = Graph {
@@ -409,10 +410,16 @@ fn suggested(
         node.parent = parent.map(GroupId);
         graph.nodes.push(node);
     }
-    for (source, target) in [(0, 3), (1, 3), (3, 2), (1, 3)] {
+    let transit = [(1, 3), (3, 2)].into_iter().cycle().take(far_ports.len());
+    for (source, target) in [(0, 3), (1, 3)].into_iter().chain(transit) {
         graph
             .edges
             .push(EdgeSpec::new(NodeId(source).into(), NodeId(target).into()));
+    }
+    if own_endpoint {
+        graph
+            .edges
+            .push(EdgeSpec::new(NodeId(1).into(), GroupId(0).into()));
     }
     let options = Options::default();
     let mut control = NoopWorkControl;
@@ -420,28 +427,9 @@ fn suggested(
     let hierarchy = hierarchy::build(&graph, &options, &mut work).unwrap();
     let (near, far) = flow_sides(direction);
     let mut sides = vec![far; hierarchy.borders.len()];
-    let mut frames: Vec<_> = hierarchy
-        .levels
-        .iter()
-        .map(|level| {
-            Some(Frame {
-                lane_shells: Vec::new(),
-                bounds: Size {
-                    width: 100.,
-                    height: 100.,
-                },
-                ports: vec![Point::default(); level.ports.len()],
-                legs: vec![],
-                items: vec![],
-                item_ranks: vec![],
-                stats: Default::default(),
-                title: None,
-            })
-        })
-        .collect();
     let rect = Rect {
-        x: 120.,
-        y: 250.,
+        x: origin.0,
+        y: origin.1,
         width: 100.,
         height: 100.,
     };
@@ -460,13 +448,12 @@ fn suggested(
     };
     for (id, border) in hierarchy.borders.iter().enumerate() {
         let (cross, turn) = match border.edge {
-            1 => (positions[0], turns[0]),
-            2 => (positions[1], turns[1]),
-            3 => {
+            0 => (10., None),
+            1 => {
                 sides[id] = near;
                 (30., Some(-100.))
             }
-            _ => (10., Some(10.)),
+            edge => far_ports.get(edge - 2).copied().unwrap_or((90., None)),
         };
         let side = sides[id];
         let at = |cross: f64, depth: f64| {
@@ -479,10 +466,6 @@ fn suggested(
             RoutePoint::new(x + rect.x, y + rect.y, side.axis())
         };
         let port = at(cross, 0.);
-        frames[border.level].as_mut().unwrap().ports[border.slot] = Point {
-            x: port.x - rect.x,
-            y: port.y - rect.y,
-        };
         let mut inner = vec![at(75., -25.), port, at(65., -10.), port];
         let mut outer = vec![port, at(cross, 10.), at(cross + 0.25, 15.)];
         if let Some(turn) = turn {
@@ -520,13 +503,14 @@ fn suggested(
         items: &[],
         ports: hints,
     };
-    port_hints(&ctx, &frames, &output, &mut work).unwrap()
+    port_hints(&ctx, &output, &mut work).unwrap()
 }
 
 #[test]
 fn inverted_far_ports_read_the_first_outer_turn_in_either_semantic_direction() {
-    let previous = [Some(91.), None, None, Some(92.)];
-    let adjusted = [Some(91.), Some(80.), Some(10.), Some(92.)];
+    let previous = [Some(91.), Some(92.), None, None];
+    let adjusted = [Some(91.), Some(92.), Some(80.), Some(10.)];
+    let ports = [(20., Some(80.)), (60., Some(10.))];
     for dir in [
         Direction::Down,
         Direction::Up,
@@ -534,26 +518,85 @@ fn inverted_far_ports_read_the_first_outer_turn_in_either_semantic_direction() {
         Direction::Right,
     ] {
         assert_eq!(
-            suggested(dir, [20., 60.], [Some(80.), Some(10.)], &previous),
+            suggested(dir, (0., 0.), &ports, false, &previous),
             Some(adjusted.to_vec())
         );
-        assert_eq!(
-            suggested(dir, [20., 60.], [Some(80.), Some(10.)], &adjusted),
-            None
-        );
+        assert_eq!(suggested(dir, (0., 0.), &ports, false, &adjusted), None);
     }
 }
 
 #[test]
+fn a_retry_orders_straight_ports_between_inverted_turns_in_drawing_coordinates() {
+    let previous = [Some(91.), Some(92.), Some(180.), Some(310.), Some(250.)];
+    let ports = [(20., Some(80.)), (60., Some(10.)), (40., None)];
+    for dir in [
+        Direction::Down,
+        Direction::Up,
+        Direction::Left,
+        Direction::Right,
+    ] {
+        for origin in [(0., 0.), (120., 250.)] {
+            let cross = if dir.axis() == Axis::Vertical {
+                origin.0
+            } else {
+                origin.1
+            };
+            let adjusted = [
+                previous[0],
+                previous[1],
+                Some(cross + 80.),
+                Some(cross + 10.),
+                Some(cross + 40.),
+            ];
+            assert_eq!(
+                suggested(dir, origin, &ports, false, &previous),
+                Some(adjusted.to_vec()),
+                "{dir:?} at {origin:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_straight_port_can_invert_with_a_turning_port() {
+    assert_eq!(
+        suggested(
+            Direction::Down,
+            (0., 0.),
+            &[(20., None), (60., Some(10.))],
+            false,
+            &[None; 4],
+        ),
+        Some(vec![None, None, Some(20.), Some(10.)])
+    );
+}
+
+#[test]
+fn a_group_endpoint_without_an_outer_leg_blocks_a_partial_face_update() {
+    let previous = [Some(91.), Some(92.), Some(180.), Some(310.), Some(350.)];
+    assert_eq!(
+        suggested(
+            Direction::Down,
+            (120., 250.),
+            &[(20., Some(80.)), (60., Some(10.))],
+            true,
+            &previous,
+        ),
+        None
+    );
+}
+
+#[test]
 fn tied_ports_tied_turns_straight_exits_and_ordered_faces_do_not_trigger_a_retry() {
-    for (positions, turns) in [
-        ([20., 20.], [Some(80.), Some(10.)]),
-        ([20., 60.], [Some(50.), Some(50.)]),
-        ([20., 60.], [None, Some(10.)]),
-        ([20., 60.], [Some(10.), Some(80.)]),
+    for ports in [
+        [(20., Some(80.)), (20., Some(10.))],
+        [(20., Some(50.)), (60., Some(50.))],
+        [(20., None), (60., None)],
+        [(20., None), (60., Some(80.))],
+        [(20., Some(10.)), (60., Some(80.))],
     ] {
         assert_eq!(
-            suggested(Direction::Down, positions, turns, &[None; 4]),
+            suggested(Direction::Down, (0., 0.), &ports, false, &[None; 4]),
             None
         );
     }

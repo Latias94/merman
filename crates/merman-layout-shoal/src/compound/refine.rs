@@ -1,7 +1,7 @@
 //! Compare stitched routing centerlines in drawing coordinates. The linear interpolation error
 //! of a cubic on an interval of width `h` is at most `max(abs(B'')) * h² / 8` per coordinate.
 
-use super::{Pass, sides::flow_sides, solve::Frame};
+use super::{Pass, sides::flow_sides};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Endpoint, Graph, KnotKind, LayoutError, LayoutOutput, Point, Rect, RoutePoint,
@@ -589,35 +589,31 @@ pub(crate) fn crossings(
     Ok(count)
 }
 
-fn across(at: Point, axis: Axis) -> f64 {
+fn across(at: RoutePoint, axis: Axis) -> f64 {
     match axis {
         Axis::Vertical => at.x,
         Axis::Horizontal => at.y,
     }
 }
 
-fn first_outer_turn(
-    mut route: impl Iterator<Item = RoutePoint>,
+fn outer_cross(
+    seam: f64,
+    route: impl Iterator<Item = RoutePoint>,
     axis: Axis,
     work: &mut Work<'_>,
-) -> LayoutResult<Option<f64>> {
-    let first = route
-        .next()
-        .ok_or(LayoutError::InvalidInput("missing compound port seam"))?;
-    let start = across(point(first), axis);
+) -> LayoutResult<f64> {
     for knot in route {
         work.visit(1)?;
-        let cross = across(point(knot), axis);
-        if (cross - start).abs() >= IN_LINE {
-            return Ok(Some(cross));
+        let cross = across(knot, axis);
+        if (cross - seam).abs() >= IN_LINE {
+            return Ok(cross);
         }
     }
-    Ok(None)
+    Ok(seam)
 }
 
 pub(super) fn port_hints(
     ctx: &Pass<'_>,
-    frames: &[Option<Frame>],
     output: &LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Vec<Option<f64>>>> {
@@ -638,19 +634,14 @@ pub(super) fn port_hints(
     let mut result = None;
     let mut positions = Vec::new();
     let mut sorted = Vec::new();
-    for (level_id, group) in output.groups.iter().enumerate() {
+    'face: for level_id in 0..output.groups.len() {
         work.visit(1)?;
         let level = &ctx.hierarchy.levels[level_id];
         if level.ports.len() < 2 {
             continue;
         }
-        let frame = frames[level_id].as_ref().expect("solved compound frame");
         let side = flow_sides(level.direction).1;
         let axis = side.axis();
-        let origin = Point {
-            x: group.rect.x,
-            y: group.rect.y,
-        };
         positions.clear();
         sorted.clear();
         for &id in &level.ports {
@@ -661,42 +652,43 @@ pub(super) fn port_hints(
             let border = &ctx.hierarchy.borders[id];
             work.visit(lookup_cost)?;
             let Ok(index) = by_border.binary_search_by_key(&(level_id, border.edge), key) else {
-                continue;
+                // Group endpoints can have only an inner leg. Keep that face's original keys.
+                continue 'face;
             };
             let seam = stitches[by_border[index]].point;
-            let local = frame.ports[border.slot];
             let route = &output.edges[border.edge].points;
-            if seam >= route.len() {
+            let Some(&port) = route.get(seam) else {
                 return Err(LayoutError::InvalidInput("missing compound port seam"));
-            }
-            let turn = if border.outgoing {
-                first_outer_turn(route[seam..].iter().copied(), axis, work)?
-            } else {
-                first_outer_turn(route[..=seam].iter().rev().copied(), axis, work)?
             };
-            if let Some(turn) = turn {
-                let hint = turn - across(origin, axis);
-                if !hint.is_finite() || !across(local, axis).is_finite() {
-                    return Err(WorkError::ArithmeticOverflow.into());
-                }
-                push(&mut sorted, positions.len())?;
-                push(&mut positions, (across(local, axis), hint, id))?;
+            let at = across(port, axis);
+            let hint = if border.outgoing {
+                outer_cross(at, route[seam + 1..].iter().copied(), axis, work)?
+            } else {
+                outer_cross(at, route[..seam].iter().rev().copied(), axis, work)?
+            };
+            if !at.is_finite() || !hint.is_finite() {
+                return Err(WorkError::ArithmeticOverflow.into());
             }
+            push(&mut sorted, positions.len())?;
+            push(&mut positions, (at, hint, id))?;
         }
+        // At each boundary between distinct seams, compare the largest and smallest outer keys.
         work.sort(&mut sorted, |&a, &b| {
             let (left, right) = (positions[a], positions[b]);
             left.0
                 .partial_cmp(&right.0)
                 .unwrap()
-                .then_with(|| left.1.total_cmp(&right.1))
+                .then_with(|| left.1.partial_cmp(&right.1).unwrap())
                 .then(left.2.cmp(&right.2))
         })?;
+        work.visit(sorted.len().saturating_sub(1))?;
         let inverted = sorted.windows(2).any(|pair| {
             let (left, right) = (positions[pair[0]], positions[pair[1]]);
             left.0 < right.0 && left.1 > right.1
         });
         if inverted {
             for &(_, hint, id) in &positions {
+                work.visit(1)?;
                 if ctx.ports[id] == Some(hint) {
                     continue;
                 }
