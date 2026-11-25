@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,21 @@ def verify_package_listing(package: dict[str, Any], listing: set[str]) -> None:
         raise PackageLegalMaterialError(
             f"{package['name']} package omits legal files: {', '.join(sorted(missing))}"
         )
+
+
+def verify_package_archive(package: dict[str, Any], archive: Path) -> None:
+    prefix = f"{package['name']}-{package['version']}/"
+    try:
+        with tarfile.open(archive, "r:gz") as crate:
+            files = {
+                member.name.removeprefix(prefix)
+                for member in crate
+                if member.name.startswith(prefix) and member.isfile() and member.size > 0
+                and "\\" not in member.name
+            }
+    except (OSError, tarfile.TarError) as error:
+        raise PackageLegalMaterialError(f"cannot inspect {archive.name}: {error}") from error
+    verify_package_listing(package, files)
 
 
 def cargo_json(*args: str) -> Any:

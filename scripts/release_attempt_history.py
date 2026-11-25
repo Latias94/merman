@@ -9,10 +9,13 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
+import tomllib
 
 
 OWNERS = {
     "crates": ("release-crates.yml", "publish", "Upload crates to crates.io"),
+    "independent-crate": ("release-independent-crate.yml", "publish", "Upload independent crate to crates.io"),
     "web": ("release-web.yml", "publish", "Publish npm package group"),
     "node": ("release-node.yml", "publish npm package group", "Publish npm package group"),
     "flutter": ("release-flutter.yml", "publish", "Publish to pub.dev"),
@@ -53,13 +56,19 @@ def paginated_records(path: str, field: str) -> list[dict]:
 
 
 def upload_was_skipped(repository: str, run_id: int, attempt: int, owner: str) -> bool:
-    """A completed skip or cancellation before runner assignment proves no send."""
+    """Check a complete attempt listing for evidence that the upload was skipped."""
+    return _upload_was_skipped(_attempt_jobs(repository, run_id, attempt), owner)
 
-    _, job_name, step_name = OWNERS[owner]
-    jobs = paginated_records(
+
+def _attempt_jobs(repository: str, run_id: int, attempt: int) -> list[dict]:
+    return paginated_records(
         f"repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
         "jobs",
     )
+
+
+def _upload_was_skipped(jobs: list[dict], owner: str) -> bool:
+    _, job_name, step_name = OWNERS[owner]
     matches = [job for job in jobs if job.get("name") == job_name]
     if len(matches) != 1 or matches[0].get("status") != "completed":
         return False
@@ -101,6 +110,135 @@ def prior_publish_state(repository: str, run_id: int, before_attempt: int, owner
         print(f"Cannot prove that the previous upload was skipped: {exc}", file=sys.stderr)
         return "unknown"
     return "never-attempted"
+
+
+@dataclass(frozen=True)
+class IndependentCrateHistory:
+    observe_only: bool = True
+    artifact_id: int | None = None
+    run_id: int | None = None
+    attempt: int | None = None
+    source_sha: str | None = None
+
+
+def _independent_upload_intent(
+    repository: str, possible_uploads: dict[int, tuple[str, set[int]]],
+) -> IndependentCrateHistory:
+    intents = []
+    for run_id, (sha, attempts) in possible_uploads.items():
+        names = {f"crates-io-independent-upload-intent-attempt-{attempt}": attempt for attempt in attempts}
+        artifacts = paginated_records(
+            f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100", "artifacts",
+        )
+        for artifact in artifacts:
+            name = artifact.get("name")
+            if not isinstance(name, str):
+                raise ValueError("Invalid independent workflow artifact name")
+            if name in names:
+                intents.append((run_id, names[name], sha, artifact))
+    if len(intents) != 1:
+        return IndependentCrateHistory()
+    run_id, attempt, sha, artifact = intents[0]
+    if artifact.get("expired") is not False:
+        return IndependentCrateHistory()
+    producing_run = artifact.get("workflow_run")
+    if producing_run is not None and (
+        not isinstance(producing_run, dict)
+        or producing_run.get("id") != run_id or producing_run.get("head_sha") != sha
+    ):
+        raise ValueError("Independent upload intent has a different producing run or source")
+    return IndependentCrateHistory(
+        artifact_id=artifact["id"], run_id=run_id, attempt=attempt, source_sha=sha,
+    )
+
+
+def _legacy_independent_version(repo_root: Path, sha: str, manifest: str, package: str) -> str | None:
+    # Earlier dispatches did not include their inputs in the title. Their source
+    # manifest limits the version the old workflow could have published.
+    listed = subprocess.run(
+        ["git", "ls-tree", sha, "--", manifest], cwd=repo_root,
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    if not listed.stdout:
+        return None
+    contents = subprocess.run(
+        ["git", "show", f"{sha}:{manifest}"], cwd=repo_root,
+        check=True, capture_output=True, encoding="utf-8", timeout=30,
+    )
+    entry = tomllib.loads(contents.stdout).get("package", {})
+    if not isinstance(entry, dict) or entry.get("name") != package or not isinstance(entry.get("version"), str):
+        raise ValueError("Cannot establish the independent package version at a legacy run's source")
+    return entry["version"]
+
+
+def independent_crate_history(
+    repository: str, run_id: int, before_attempt: int, *, name: str, version: str,
+    source_sha: str, repo_root: Path, manifest: str,
+) -> IndependentCrateHistory:
+    """Prove a first send across dispatches, or select the original upload intent."""
+    owner = "independent-crate"
+    workflow, _, _ = OWNERS[owner]
+    title = f"Release independent crate {name} {version}"
+    try:
+        if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+                or run_id < 1 or not 1 <= before_attempt <= 100):
+            raise ValueError("Invalid independent crate publication identity")
+        runs = paginated_records(
+            f"repos/{repository}/actions/workflows/{workflow}/runs?per_page=100", "workflow_runs",
+        )
+        current = next((run for run in runs if run["id"] == run_id), None)
+        if (current is None or current.get("run_attempt") != before_attempt
+                or current.get("display_title") != title or current.get("head_sha") != source_sha):
+            raise ValueError("Current independent crate run identity is missing or changed")
+
+        numbers = [run.get("run_number") for run in runs]
+        if any(type(number) is not int or number < 1 for number in numbers) or len(set(numbers)) != len(numbers):
+            raise ValueError("Invalid or duplicate independent workflow run numbers")
+        incomplete_runs = max(numbers) != len(numbers)
+        if incomplete_runs:
+            print("Independent crate run history has missing run numbers", file=sys.stderr)
+
+        possible_uploads: dict[int, tuple[str, set[int]]] = {}
+        for run in runs:
+            sha = run.get("head_sha")
+            run_title = run.get("display_title")
+            attempt = run.get("run_attempt")
+            if (run.get("path") != f".github/workflows/{workflow}"
+                    or not isinstance(run.get("repository"), dict)
+                    or run["repository"].get("full_name") != repository
+                    or run.get("event") != "workflow_dispatch"
+                    or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                    or not isinstance(run_title, str)
+                    or type(attempt) is not int or not 1 <= attempt <= 100):
+                raise ValueError("Invalid independent crate workflow history")
+            if run_title != title:
+                if re.fullmatch(r"Release independent crate [a-z0-9_-]+ [0-9A-Za-z.+-]+", run_title):
+                    continue
+                if _legacy_independent_version(repo_root, sha, manifest, name) != version:
+                    continue
+
+            if run["id"] == run_id:
+                attempt -= 1
+            elif run.get("status") != "completed":
+                incomplete_runs = True
+                attempt -= 1
+
+            attempts = set()
+            for past_attempt in range(1, attempt + 1):
+                jobs = _attempt_jobs(repository, run["id"], past_attempt)
+                if not jobs and run.get("run_attempt") == 1 and run.get("conclusion") == "cancelled":
+                    continue
+                if not _upload_was_skipped(jobs, owner):
+                    attempts.add(past_attempt)
+            if attempts:
+                possible_uploads[run["id"]] = (sha, attempts)
+
+        if not possible_uploads:
+            return IndependentCrateHistory(observe_only=incomplete_runs)
+        return _independent_upload_intent(repository, possible_uploads)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"Cannot establish independent crate publication history: {exc}", file=sys.stderr)
+    return IndependentCrateHistory()
 
 
 @dataclass(frozen=True)
