@@ -70,7 +70,7 @@ impl Constraints {
 fn validate_axis_constraint_graph(
     node_count: usize,
     alignment_groups: &[Vec<usize>],
-    relative: impl Iterator<Item = (usize, usize, f64)>,
+    relative: impl Iterator<Item = (usize, usize, f64)> + Clone,
     axis: &'static str,
 ) -> Result<()> {
     let mut parent: Vec<usize> = (0..node_count).collect();
@@ -106,13 +106,14 @@ fn validate_axis_constraint_graph(
         parent[node] = root;
     }
 
-    let edges = relative
+    // The original constraints remain available for the final positive-gap check.
+    // Build the SCC adjacency directly from a copy of the borrowed iterator.
+    let mut edges = relative
         .filter(|(from, to, _)| *from < node_count && *to < node_count)
-        .map(|(from, to, gap)| (parent[from], parent[to], gap.max(0.0)))
-        .collect::<Vec<_>>();
+        .map(|(from, to, gap)| (parent[from], parent[to], gap.max(0.0)));
     let mut outgoing = vec![Vec::new(); node_count];
     let mut incoming = vec![Vec::new(); node_count];
-    for &(from, to, _) in &edges {
+    for (from, to, _) in edges.clone() {
         outgoing[from].push(to);
         incoming[to].push(from);
     }
@@ -157,7 +158,7 @@ fn validate_axis_constraint_graph(
         component_id += 1;
     }
 
-    if edges.iter().any(|&(from, to, gap)| {
+    if edges.any(|(from, to, gap)| {
         gap > 0.0 && component[from] != usize::MAX && component[from] == component[to]
     }) {
         return Err(Error::InfeasibleConstraints { axis });
