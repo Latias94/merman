@@ -334,6 +334,9 @@ export interface AsciiRenderOptions {
   /** Defaults to strict. Adaptive recovery is Plain-only for Flowchart, Swimlane, and State. */
   graph_presentation?: AsciiGraphPresentationOption;
   graphPresentation?: AsciiGraphPresentationOption;
+  /** Fixed routing space requires a flat Flowchart and strict presentation. */
+  graph_routing_space?: "expand" | "fixed";
+  graphRoutingSpace?: AsciiRenderOptions["graph_routing_space"];
   width_profile?: AsciiWidthProfileOption;
   widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;

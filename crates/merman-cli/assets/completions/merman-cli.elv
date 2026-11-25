@@ -213,6 +213,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --ascii-overflow 'Width overflow behavior for ASCII/Unicode output'
             cand --ascii-layout-profile 'Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width)'
             cand --ascii-graph-presentation 'Permit a complete Plain graph document when bounded routing cannot draw the graph'
+            cand --ascii-graph-routing-space 'Use fixed node sizes and rank gaps for a flat Flowchart with strict presentation'
             cand --resource-profile 'Resource policy for input, semantic models, output, and CLI acquisition'
             cand --resource-limit 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated'
             cand --operation-timeout-ms 'Cancel the complete command operation after this many milliseconds'

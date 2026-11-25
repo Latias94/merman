@@ -193,6 +193,18 @@ fn ascii_options_from_json(
             }
         };
     }
+    if let Some(space) = ascii.graph_routing_space.as_deref() {
+        render_options.graph_routing_space = match option_key(space).as_str() {
+            "expand" => merman::ascii::AsciiGraphRoutingSpace::Expand,
+            "fixed" => merman::ascii::AsciiGraphRoutingSpace::Fixed,
+            _ => {
+                return Err(invalid_ascii_option(
+                    "ascii.graph_routing_space",
+                    "expected `expand` or `fixed`",
+                ));
+            }
+        };
+    }
     if let Some(charset) = ascii.charset.as_deref() {
         render_options.charset = ascii_charset(charset)?;
     }
@@ -613,6 +625,22 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-flowchart")]
+    fn render_ascii_binding_applies_fixed_routing_space_from_both_json_spellings() {
+        for key in ["graph_routing_space", "graphRoutingSpace"] {
+            let options = format!(r#"{{"ascii":{{"{key}":"fixed","graphPaddingY":2}}}}"#);
+            let bytes = render_ascii(
+                b"flowchart TD\nA[Load] -->|submit| B[Save]",
+                options.as_bytes(),
+            )
+            .unwrap();
+            let text = String::from_utf8(bytes).unwrap();
+            assert_eq!(text.lines().count(), 8, "{text}");
+            assert!(text.contains("submit"));
+        }
     }
 
     #[test]

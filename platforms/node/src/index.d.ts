@@ -11,6 +11,9 @@ export interface MermanAsciiRenderOptions {
   /** Defaults to strict. Adaptive is Plain-only for Flowchart, Swimlane, and State. */
   graph_presentation?: MermanAsciiGraphPresentation;
   graphPresentation?: MermanAsciiGraphPresentation;
+  /** Fixed routing space requires a flat Flowchart and strict presentation. */
+  graph_routing_space?: "expand" | "fixed";
+  graphRoutingSpace?: MermanAsciiRenderOptions["graph_routing_space"];
   /** State supports Canonical only; Auto requires a maximum width. */
   layout_profile?: "canonical" | "compact" | "auto";
   layoutProfile?: "canonical" | "compact" | "auto";

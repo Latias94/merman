@@ -73,6 +73,27 @@ impl AsciiGraphPresentation {
     }
 }
 
+/// Controls whether a flat Flowchart may reserve extra geometry for routing.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AsciiGraphRoutingSpace {
+    /// Reserve routing capacity and allow bounded geometry rebuilds.
+    #[default]
+    Expand,
+    /// Route at the requested spacing, with intrinsic content, shape, and stroke minima.
+    Fixed,
+}
+
+impl AsciiGraphRoutingSpace {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Expand => "expand",
+            Self::Fixed => "fixed",
+        }
+    }
+}
+
 impl TerminalWidthProfile {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -90,6 +111,7 @@ pub struct AsciiRenderOptions {
     pub terminal_width_profile: TerminalWidthProfile,
     pub layout_profile: AsciiLayoutProfile,
     pub graph_presentation: AsciiGraphPresentation,
+    pub graph_routing_space: AsciiGraphRoutingSpace,
     pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
@@ -134,6 +156,7 @@ pub(crate) struct AsciiOutputPolicy {
 /// graph-scene policy only after Flowchart semantics have been projected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FlowchartLayoutPolicy {
+    pub routing_space: AsciiGraphRoutingSpace,
     /// Padding inside a node frame, measured in terminal cells.
     pub node_padding_x: usize,
     pub node_padding_y: usize,
@@ -159,6 +182,7 @@ impl FlowchartLayoutPolicy {
 
     pub(crate) const fn graph_policy(self) -> GraphLayoutPolicy {
         GraphLayoutPolicy {
+            routing_space: self.routing_space,
             node_padding_x: self.node_padding_x,
             node_padding_y: self.node_padding_y,
             rank_gap_x: self.rank_gap_x,
@@ -177,6 +201,7 @@ impl FlowchartLayoutPolicy {
 /// State construct this policy independently so profile experiments cannot cross family bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GraphLayoutPolicy {
+    pub routing_space: AsciiGraphRoutingSpace,
     pub node_padding_x: usize,
     pub node_padding_y: usize,
     pub rank_gap_x: usize,
@@ -191,6 +216,10 @@ pub(crate) struct GraphLayoutPolicy {
 
 impl GraphLayoutPolicy {
     pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize = 4;
+
+    pub(crate) fn expands_routing_space(&self) -> bool {
+        self.routing_space == AsciiGraphRoutingSpace::Expand
+    }
 }
 
 /// Sequence-owned geometry policy.
@@ -264,6 +293,7 @@ impl Default for AsciiRenderOptions {
             terminal_width_profile: TerminalWidthProfile::Unicode,
             layout_profile: AsciiLayoutProfile::Canonical,
             graph_presentation: AsciiGraphPresentation::Strict,
+            graph_routing_space: AsciiGraphRoutingSpace::Expand,
             default_direction: AsciiDirection::LeftRight,
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
@@ -317,6 +347,13 @@ impl AsciiRenderOptions {
     #[must_use]
     pub fn with_graph_presentation(mut self, presentation: AsciiGraphPresentation) -> Self {
         self.graph_presentation = presentation;
+        self
+    }
+
+    /// Selects the graph's routing space independently of viewport layout selection.
+    #[must_use]
+    pub fn with_graph_routing_space(mut self, space: AsciiGraphRoutingSpace) -> Self {
+        self.graph_routing_space = space;
         self
     }
 
@@ -412,6 +449,7 @@ impl AsciiRenderOptions {
             layout: AsciiLayoutPolicies {
                 profile: self.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
+                    routing_space: self.graph_routing_space,
                     node_padding_x: self.node_padding_x.unwrap_or(self.box_border_padding),
                     node_padding_y: self.resolved_graph_node_padding_y(),
                     rank_gap_x: self.resolved_flowchart_rank_gap_x(),
@@ -547,6 +585,15 @@ impl AsciiRenderOptions {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if self.graph_routing_space == AsciiGraphRoutingSpace::Fixed
+            && self.graph_presentation == AsciiGraphPresentation::Adaptive
+        {
+            return Err(AsciiError::InvalidOption {
+                field: "graph_routing_space",
+                message: "fixed routing space requires strict graph presentation",
+            });
+        }
+
         if self.flowchart_node_label_wrap_width == 0 {
             return Err(AsciiError::InvalidOption {
                 field: "flowchart_node_label_wrap_width",
@@ -591,6 +638,7 @@ fn terminal_graph_layout_policy(
     host: AsciiHostPolicy,
 ) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
+        routing_space: AsciiGraphRoutingSpace::Expand,
         node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
         node_padding_y: options.resolved_graph_node_padding_y(),
         rank_gap_x: options.graph_padding_x,

@@ -51,10 +51,17 @@ approximations. These mappings are product behavior once shipped and should be s
 | Document shapes | Supported approximation. | Rendered as a box with a folded bottom edge. |
 | Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts are covered by parser/model tests and local semantic fixtures. Copied `mermaid-ascii` fixtures remain immutable; implicit isolated groups intentionally differ where the narrow renderer inherits the root axis instead of the pinned Mermaid baseline's perpendicular default. |
 
-Preferred graph gaps can grow to fit a retained edge label's complete height, endpoint markers,
-and visible connections, including when the preferred padding is zero. Edge spacing and loop
-envelopes use the same whitespace trimming as routed text; omitted blank labels reserve no label
-space.
+With the default `AsciiGraphRoutingSpace::Expand`, preferred graph gaps can grow to fit a retained
+edge label's complete height, endpoint markers, and visible connections. Blank edge labels are
+removed before reserving label space.
+
+For a Flowchart without subgraphs, `AsciiGraphRoutingSpace::Fixed` keeps node geometry and rank
+spacing at the resolved sizes, including the shape and the minimum cells for visible strokes and
+markers. Labels and detours still contribute to the emitted extent. Fixed requires Strict
+presentation. The compact cylinder uses its two inner side cells to show the lid when the first
+interior row is occupied by text. A host can retry with Expand after a typed routing miss. The
+issue #370 diagram renders in 33 rows with Fixed and 48 rows with Expand at a two-cell rank gap
+and zero vertical node padding. [#370](https://github.com/Latias94/merman/issues/370)
 
 Labeled reciprocal parallel edges retain independent target heads. Opposite-directed edges may
 cross perpendicularly while keeping their collinear transit strokes separate.
