@@ -1420,22 +1420,34 @@ test("custom adapters cannot opt out of SVG envelope validation", async () => {
   }
 });
 
-test("SVG diagramId uses canonical options on the generic transport", async () => {
+test("SVG diagramId reuses validated options on the generic transport", async (context) => {
   const factory = transportFactory();
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   try {
     const source = "flowchart LR\nA --> B";
-    const diagramId = 'deployment: café 🧪 "quoted"';
+    const diagramId = 'deployment: café 🧪 "quoted" \\ \r\n'.repeat(1024);
+    const optionsJson = JSON.stringify({ svg: { diagram_id: diagramId } });
+    const parse = JSON.parse;
+    let optionParses = 0;
+    context.mock.method(JSON, "parse", (text, reviver) => {
+      if (text === optionsJson) optionParses += 1;
+      return parse(text, reviver);
+    });
+
     assert.equal(await engine.renderSvg(source, { diagramId }), "<svg />");
     assert.equal(engine.renderSvgSync(source, { diagramId }), "<svg />");
+    assert.equal(optionParses, 0);
+
+    assert.equal(engine.renderSvgSync(source, { optionsJson }), "<svg />");
+    assert.equal(optionParses, 1);
     for (const request of factory.calls) {
-      assert.deepEqual(JSON.parse(request.options_json), { svg: { diagram_id: diagramId } });
+      assert.equal(request.options_json, optionsJson);
       assert.equal(request.include_metadata, false);
     }
     assert.throws(() => engine.renderSvgSync(source, { diagramId, optionsJson: "{}" }), /cannot be used together/);
     assert.throws(() => engine.renderSvgSync(source, { diagramId: 42 }), /must be a string/);
     assert.throws(() => engine.renderSvgSync(source, { diagramId: "\ud800" }), /isolated UTF-16 surrogate/);
-    assert.equal(factory.calls.length, 2);
+    assert.equal(factory.calls.length, 3);
   } finally {
     await engine.dispose();
   }

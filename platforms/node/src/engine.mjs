@@ -535,26 +535,38 @@ function prepareOperationRequest(value, { timeoutMs, directSvg }) {
     }
     request.operation_control = { timeout_ms: timeoutMs };
   }
-  return { expectation, request, value, sourceBytes };
+  return { expectation, request, value, sourceBytes, diagramIdOptionsJson: undefined };
 }
 
-function operationRequestJson({ request, value }, includeMetadata) {
+function operationOptionsJsonBytes(optionsJson, fromDiagramId, countJsonEscapes = false) {
+  if (!fromDiagramId) return validateOperationOptionsJson(optionsJson, countJsonEscapes);
+
+  // The diagram ID fallback already encoded and checked the binding options document.
+  const measureField = countJsonEscapes ? jsonStringFieldBytes : assertUtf8Field;
+  return measureField(
+    optionsJson,
+    "operation request optionsJson",
+    NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes,
+  );
+}
+
+function operationRequestJson({ request, value, diagramIdOptionsJson }, includeMetadata) {
   if (!includeMetadata) request.include_metadata = false;
-  const optionsJson = value.optionsJson;
+  const optionsJson = diagramIdOptionsJson ?? value.optionsJson;
   if (optionsJson !== undefined) {
-    validateOperationOptionsJson(optionsJson);
+    operationOptionsJsonBytes(optionsJson, diagramIdOptionsJson !== undefined);
     request.options_json = optionsJson;
   }
   return encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request);
 }
 
-function prepareDirectSvgOptions({ value, sourceBytes }, timeoutMs) {
+function prepareDirectSvgOptions({ value, sourceBytes, diagramIdOptionsJson }, timeoutMs) {
   // Match the former fixed request's byte budget without building or scanning the document.
   let requestBytes = directSvgFrameBytes(sourceBytes, timeoutMs);
-  const optionsJson = value.optionsJson;
+  const optionsJson = diagramIdOptionsJson ?? value.optionsJson;
   if (optionsJson !== undefined) {
-    requestBytes +=
-      SVG_OPTIONS_FRAME_BYTES + validateOperationOptionsJson(optionsJson, true);
+    const optionsBytes = operationOptionsJsonBytes(optionsJson, diagramIdOptionsJson !== undefined, true);
+    requestBytes += SVG_OPTIONS_FRAME_BYTES + optionsBytes;
   }
   const max = NODE_TRANSPORT_LIMITS.request.max_utf8_bytes;
   if (requestBytes > max) {
@@ -587,11 +599,9 @@ function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
     return true;
   }
 
-  prepared.value = {
-    optionsJson: encodeTransportJson(
-      { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
-    ),
-  };
+  prepared.diagramIdOptionsJson = encodeTransportJson(
+    { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
+  );
   return false;
 }
 
