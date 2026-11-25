@@ -15,4 +15,7 @@ This guide covers `merman-model 0.11.0`. The package was introduced in `0.10.0`.
 
 `presentation-data` includes immutable configuration, metadata, full family values, output context, and checked `PresentationDiagram` construction. `compat-json` selects pure Mermaid-compatible data projection. These APIs do not authenticate source history or evaluate visual themes; source producers retain that responsibility. Existing model and output admission still applies.
 
+Insert links into the Sequence model's `SequenceActor.links` in menu display order. Its
+`IndexMap<String, Value>` retains that order and serializes as a JSON object.
+
 See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports, direct output consumers, configuration construction, and requested analysis fixes.

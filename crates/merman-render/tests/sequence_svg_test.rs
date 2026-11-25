@@ -3769,7 +3769,7 @@ end"#;
 fn sequence_popup_without_typed_fonts_keeps_legacy_row_geometry() {
     let svg = render_sequence_svg_from_text_with_engine(
         MermaidEngine::new(),
-        "---\nconfig: {sequence: {forceMenus: true, mirrorActors: false}}\n---\nsequenceDiagram\nparticipant A\nlinks A: {\"First\": \"https://example.com/first\", \"Second\": \"https://example.com/second\"}",
+        "---\nconfig: {sequence: {forceMenus: true, mirrorActors: false}}\n---\nsequenceDiagram\nparticipant A\nlinks A: {\"Second\": \"https://example.com/second\", \"First\": \"https://example.com/first\"}",
     );
     let document = roxmltree::Document::parse(&svg).unwrap();
     let popup = document
@@ -3785,9 +3785,14 @@ fn sequence_popup_without_typed_fonts_keeps_legacy_row_geometry() {
     let rows = popup
         .descendants()
         .filter(|node| node.has_tag_name("text"))
-        .map(|node| node.attribute("y").unwrap().parse::<f64>().unwrap() - top)
+        .map(|node| {
+            (
+                node.first_element_child().and_then(|span| span.text()),
+                node.attribute("y").unwrap().parse::<f64>().unwrap() - top,
+            )
+        })
         .collect::<Vec<_>>();
-    assert_eq!(rows, [30.0, 60.0]);
+    assert_eq!(rows, [(Some("Second"), 30.0), (Some("First"), 60.0)]);
 }
 
 #[test]

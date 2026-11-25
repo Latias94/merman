@@ -18,7 +18,7 @@ fn parse_sequence(source: &str) -> SequenceDiagramModel {
 fn menu_json_keys_are_literal_in_links_and_nested_properties() {
     let model = parse_sequence(concat!(
         "sequenceDiagram\nparticipant A\n",
-        r#"links A: {"$serde_json::private::RawValue":"https://example.test/raw", "Guide":"https://example.test/guide", "Ignore":null, "\u0024serde_json::private::RawValue":"https://example.test/updated"}"#,
+        r#"links A: {"$serde_json::private::RawValue":"https://example.test/raw", "Zebra":"https://example.test/zebra", "Guide":"https://example.test/guide", "Ignore":null, "\u0024serde_json::private::RawValue":"https://example.test/updated"}"#,
         "\n",
         r#"properties A: {"nested":[{"\u0024serde_json::private::RawValue":"true", "fraction":0.12345678901234567}, {"$serde_json::private::Number":"123", "integer":18446744073709551615}]}"#,
         "\n",
@@ -26,7 +26,7 @@ fn menu_json_keys_are_literal_in_links_and_nested_properties() {
     let actor = &model.actors["A"];
     assert_eq!(
         actor.links.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["$serde_json::private::RawValue", "Guide"]
+        ["$serde_json::private::RawValue", "Zebra", "Guide"]
     );
     assert_eq!(
         actor.links["$serde_json::private::RawValue"],

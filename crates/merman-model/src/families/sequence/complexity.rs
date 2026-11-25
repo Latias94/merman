@@ -1,5 +1,6 @@
 use super::SequenceDiagramModel;
 use crate::resources::{JsonValueComplexity, ModelComplexity, json_value_complexity};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SequenceComplexity {
@@ -43,8 +44,9 @@ impl SequenceComplexity {
             .fold(0usize, |total, value| total.saturating_add(value.len()));
         let mut arbitrary_json = JsonValueComplexity::default();
         let actor_text_bytes = model.actors.iter().fold(0usize, |total, (key, actor)| {
-            let links = json_map_complexity(&actor.links, ACTOR_PROPERTY_VALUE_DEPTH);
-            let properties = json_map_complexity(&actor.properties, ACTOR_PROPERTY_VALUE_DEPTH);
+            let links = json_entries_complexity(actor.links.iter(), ACTOR_PROPERTY_VALUE_DEPTH);
+            let properties =
+                json_entries_complexity(actor.properties.iter(), ACTOR_PROPERTY_VALUE_DEPTH);
             arbitrary_json.merge(links);
             arbitrary_json.merge(properties);
             total
@@ -108,19 +110,16 @@ impl SequenceComplexity {
     }
 }
 
-fn json_map_complexity(
-    map: &serde_json::Map<String, serde_json::Value>,
+fn json_entries_complexity<'a>(
+    entries: impl ExactSizeIterator<Item = (&'a String, &'a Value)>,
     value_depth: usize,
 ) -> JsonValueComplexity {
     let mut complexity = JsonValueComplexity {
-        items: map.len(),
-        text_bytes: map
-            .keys()
-            .fold(0usize, |total, key| total.saturating_add(key.len())),
-        nesting_depth: 0,
-        container_depth: 0,
+        items: entries.len(),
+        ..JsonValueComplexity::default()
     };
-    for value in map.values() {
+    for (key, value) in entries {
+        complexity.text_bytes = complexity.text_bytes.saturating_add(key.len());
         complexity.merge(json_value_complexity(value, value_depth));
     }
     complexity

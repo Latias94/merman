@@ -1,5 +1,6 @@
 //! Canonical Sequence data, message semantics, and borrowed compatibility serialization.
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -176,8 +177,9 @@ pub struct SequenceActor {
     pub actor_type: String,
     #[serde(default)]
     pub wrap: bool,
+    /// Actor menu entries in display order.
     #[serde(default)]
-    pub links: serde_json::Map<String, Value>,
+    pub links: IndexMap<String, Value>,
     #[serde(default)]
     pub properties: serde_json::Map<String, Value>,
 }

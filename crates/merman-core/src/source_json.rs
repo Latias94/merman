@@ -89,12 +89,14 @@ pub(crate) use strict::parse_json_object;
 #[cfg(feature = "diagram-sequence")]
 mod strict {
     use super::{Deserialize, Map, Value};
+    use indexmap::IndexMap;
 
-    pub(crate) fn parse_json_object(input: &str) -> Option<Map<String, Value>> {
+    pub(crate) fn parse_json_object(input: &str) -> Option<IndexMap<String, Value>> {
         let mut cursor = JsonCursor { remaining: input };
-        let Value::Object(object) = cursor.value(0)? else {
-            return None;
-        };
+        let mut object = IndexMap::new();
+        cursor.object(0, |key, value| {
+            object.insert(key, value);
+        })?;
         cursor.skip_whitespace();
         cursor.remaining.is_empty().then_some(object)
     }
@@ -112,15 +114,9 @@ mod strict {
             match self.remaining.as_bytes().first()? {
                 b'{' | b'[' if depth == Self::MAX_CONTAINER_DEPTH => None,
                 b'{' => {
-                    self.remaining = &self.remaining[1..];
                     let mut values = Map::new();
-                    self.items('}', |cursor| {
-                        let key = cursor.scalar::<String>()?;
-                        if !cursor.take(':') {
-                            return None;
-                        }
-                        values.insert(key, cursor.value(depth + 1)?);
-                        Some(())
+                    self.object(depth, |key, value| {
+                        values.insert(key, value);
                     })?;
                     Some(Value::Object(values))
                 }
@@ -135,6 +131,20 @@ mod strict {
                 }
                 _ => self.scalar(),
             }
+        }
+
+        fn object(&mut self, depth: usize, mut member: impl FnMut(String, Value)) -> Option<()> {
+            if !self.take('{') {
+                return None;
+            }
+            self.items('}', |cursor| {
+                let key = cursor.scalar::<String>()?;
+                if !cursor.take(':') {
+                    return None;
+                }
+                member(key, cursor.value(depth + 1)?);
+                Some(())
+            })
         }
 
         fn scalar<T: Deserialize<'source>>(&mut self) -> Option<T> {

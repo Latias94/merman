@@ -134,7 +134,7 @@ fn complexity_retains_arbitrary_actor_json_depth() {
             description: "A".into(),
             actor_type: "participant".into(),
             wrap: false,
-            links: serde_json::Map::new(),
+            links: Default::default(),
             properties: serde_json::Map::from_iter([("payload".into(), payload)]),
         },
     );

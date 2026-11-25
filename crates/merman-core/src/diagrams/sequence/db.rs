@@ -1,4 +1,5 @@
 use crate::{OperationControl, OperationControlResult, source_json::parse_json_object};
+use indexmap::IndexMap;
 use merman_model::text::is_ecmascript_whitespace;
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
@@ -27,7 +28,7 @@ struct Actor {
     wrap: bool,
     actor_type: String,
     box_index: Option<usize>,
-    links: serde_json::Map<String, Value>,
+    links: IndexMap<String, Value>,
     properties: serde_json::Map<String, Value>,
     lifecycle: SequenceActorLifecycle,
 }
@@ -119,7 +120,7 @@ impl SequenceDb {
                 wrap: self.auto_wrap(),
                 actor_type: "participant".to_string(),
                 box_index: None,
-                links: serde_json::Map::new(),
+                links: IndexMap::new(),
                 properties: serde_json::Map::new(),
                 lifecycle: SequenceActorLifecycle::default(),
             },
@@ -203,7 +204,7 @@ impl SequenceDb {
                 wrap,
                 actor_type,
                 box_index: assigned_box,
-                links: serde_json::Map::new(),
+                links: IndexMap::new(),
                 properties: serde_json::Map::new(),
                 lifecycle,
             },
