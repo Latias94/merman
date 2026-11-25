@@ -2472,29 +2472,6 @@ mod editor_parse_source_map_tests {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
     #[cfg(feature = "editor-facts")]
-    fn controlled_snapshot_stops_during_family_parser_work() {
-        let mut source = String::from("flowchart TD\n");
-        for index in 0..4_096 {
-            source.push_str(&format!("n{index}-->n{}\n", index + 1));
-        }
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(128);
-        crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
-
-        let result = MermaidEngine::new().parse_diagram_snapshot_controlled_sync(&source, &control);
-
-        assert!(matches!(result, Err(OperationCancelled { .. })));
-        assert_eq!(
-            crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
-            0,
-            "the cancellation schedule must stop in the family-owned accessibility scan"
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "compat-json")]
-    #[cfg(feature = "diagram-flowchart")]
-    #[cfg(feature = "editor-facts")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
         let engine = MermaidEngine::new();

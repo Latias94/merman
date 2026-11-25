@@ -1309,10 +1309,8 @@ fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
 #[test]
 #[cfg(feature = "all-diagrams")]
 fn controlled_render_model_parse_stops_inside_family_parser() {
-    let mut source = String::from("flowchart TD\n");
-    for index in 0..4_096 {
-        source.push_str(&format!("n{index}-->n{}\n", index + 1));
-    }
+    // Each label exercises the Flowchart lexer without exhausting the default edge budget.
+    let source = format!("flowchart TD\n{}", "A[Node]\n".repeat(4_096));
     let operation = OperationControl::new();
     operation.cancel_after_checkpoints(128);
 
@@ -1321,10 +1319,7 @@ fn controlled_render_model_parse_stops_inside_family_parser() {
         .expect_err("scheduled cancellation must stop family parsing");
 
     assert_eq!(error.reason, CancelReason::Requested);
-    assert!(matches!(
-        error.phase,
-        OperationPhase::Parse | OperationPhase::Semantic
-    ));
+    assert_eq!(error.phase, OperationPhase::Parse);
 }
 
 #[test]
