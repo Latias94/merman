@@ -1,3 +1,4 @@
+use super::geometry::{self, Rect};
 use super::grid_cells::{clear_dense_cells, reset_dense_cells};
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Graph, LayoutResult, Point};
@@ -138,6 +139,10 @@ struct SimNode {
 }
 
 impl SimNode {
+    fn rect(&self) -> Rect {
+        Rect::new(self.left, self.top, self.width, self.height)
+    }
+
     fn set_center(&mut self, cx: f64, cy: f64) {
         self.left = cx - self.half_width;
         self.top = cy - self.half_height;
@@ -1918,405 +1923,28 @@ impl SimGraph {
     }
 }
 
+#[inline]
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
-    // Match `layout-base` `RectangleD.intersects` semantics:
-    // - touching borders counts as intersection (uses `<`, not `<=`, in early-exit checks)
-    if a.right() < b.left {
-        return false;
-    }
-    if a.bottom() < b.top {
-        return false;
-    }
-    if b.right() < a.left {
-        return false;
-    }
-    if b.bottom() < a.top {
-        return false;
-    }
-    true
+    a.rect().intersects(b.rect())
 }
 
-/// Port of `layout-base` `IGeometry.getIntersection2(rectA, rectB, result)`.
-///
-/// Returns `(ax, ay, bx, by, overlapped)` where `(ax,ay)` is rectA's clip point and `(bx,by)` is
-/// rectB's clip point on the line segment between their centers.
 fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bool) {
-    let p1x = a.center_x();
-    let p1y = a.center_y();
-    let p2x = b.center_x();
-    let p2y = b.center_y();
-
-    if rects_intersect(a, b) {
-        return (p1x, p1y, p2x, p2y, true);
-    }
-
-    // NOTE: This intentionally mirrors the upstream `IGeometry.getIntersection2` implementation
-    // from `layout-base` (including its branching structure) rather than a mathematically
-    // equivalent closed-form intersection. Downstream convergence is sensitive to these
-    // conditionals due to floating-point comparisons.
-
-    // rectA corners
-    let top_left_ax = a.left;
-    let top_left_ay = a.top;
-    let top_right_ax = a.right();
-    let bottom_left_ax = a.left;
-    let bottom_left_ay = a.bottom();
-    let bottom_right_ax = a.right();
-    let half_width_a = a.width / 2.0;
-    let half_height_a = a.height / 2.0;
-
-    // rectB corners
-    let top_left_bx = b.left;
-    let top_left_by = b.top;
-    let top_right_bx = b.right();
-    let bottom_left_bx = b.left;
-    let bottom_left_by = b.bottom();
-    let bottom_right_bx = b.right();
-    let half_width_b = b.width / 2.0;
-    let half_height_b = b.height / 2.0;
-
-    // Line is vertical.
-    if p1x == p2x {
-        if p1y > p2y {
-            return (p1x, top_left_ay, p2x, bottom_left_by, false);
-        } else if p1y < p2y {
-            return (p1x, bottom_left_ay, p2x, top_left_by, false);
-        } else {
-            return (p1x, p1y, p2x, p2y, false);
-        }
-    }
-
-    // Line is horizontal.
-    if p1y == p2y {
-        if p1x > p2x {
-            return (top_left_ax, p1y, top_right_bx, p2y, false);
-        } else if p1x < p2x {
-            return (top_right_ax, p1y, top_left_bx, p2y, false);
-        } else {
-            return (p1x, p1y, p2x, p2y, false);
-        }
-    }
-
-    #[inline]
-    fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
-        if slope > slope_prime {
-            line
-        } else {
-            1 + (line % 4)
-        }
-    }
-
-    let slope_a = a.height / a.width;
-    let slope_b = b.height / b.width;
-    let slope_prime = (p2y - p1y) / (p2x - p1x);
-
-    let mut ax = 0.0;
-    let mut ay = 0.0;
-    let mut bx = 0.0;
-    let mut by = 0.0;
-    let mut clip_a_found = false;
-    let mut clip_b_found = false;
-
-    // Determine whether clipping point is the corner of rectA.
-    if -slope_a == slope_prime {
-        if p1x > p2x {
-            ax = bottom_left_ax;
-            ay = bottom_left_ay;
-            clip_a_found = true;
-        } else {
-            ax = top_right_ax;
-            ay = top_left_ay;
-            clip_a_found = true;
-        }
-    } else if slope_a == slope_prime {
-        if p1x > p2x {
-            ax = top_left_ax;
-            ay = top_left_ay;
-            clip_a_found = true;
-        } else {
-            ax = bottom_right_ax;
-            ay = bottom_left_ay;
-            clip_a_found = true;
-        }
-    }
-
-    // Determine whether clipping point is the corner of rectB.
-    if -slope_b == slope_prime {
-        if p2x > p1x {
-            bx = bottom_left_bx;
-            by = bottom_left_by;
-            clip_b_found = true;
-        } else {
-            bx = top_right_bx;
-            by = top_left_by;
-            clip_b_found = true;
-        }
-    } else if slope_b == slope_prime {
-        if p2x > p1x {
-            bx = top_left_bx;
-            by = top_left_by;
-            clip_b_found = true;
-        } else {
-            bx = bottom_right_bx;
-            by = bottom_left_by;
-            clip_b_found = true;
-        }
-    }
-
-    if clip_a_found && clip_b_found {
-        return (ax, ay, bx, by, false);
-    }
-
-    let (card_a, card_b) = if p1x > p2x {
-        if p1y > p2y {
-            (
-                get_cardinal_direction(slope_a, slope_prime, 4),
-                get_cardinal_direction(slope_b, slope_prime, 2),
-            )
-        } else {
-            (
-                get_cardinal_direction(-slope_a, slope_prime, 3),
-                get_cardinal_direction(-slope_b, slope_prime, 1),
-            )
-        }
-    } else if p1y > p2y {
-        (
-            get_cardinal_direction(-slope_a, slope_prime, 1),
-            get_cardinal_direction(-slope_b, slope_prime, 3),
-        )
-    } else {
-        (
-            get_cardinal_direction(slope_a, slope_prime, 2),
-            get_cardinal_direction(slope_b, slope_prime, 4),
-        )
-    };
-
-    if !clip_a_found {
-        match card_a {
-            1 => {
-                ay = top_left_ay;
-                ax = p1x + (-half_height_a) / slope_prime;
-            }
-            2 => {
-                ax = bottom_right_ax;
-                ay = p1y + half_width_a * slope_prime;
-            }
-            3 => {
-                ay = bottom_left_ay;
-                ax = p1x + half_height_a / slope_prime;
-            }
-            _ => {
-                ax = bottom_left_ax;
-                ay = p1y + (-half_width_a) * slope_prime;
-            }
-        }
-    }
-
-    if !clip_b_found {
-        match card_b {
-            1 => {
-                by = top_left_by;
-                bx = p2x + (-half_height_b) / slope_prime;
-            }
-            2 => {
-                bx = bottom_right_bx;
-                by = p2y + half_width_b * slope_prime;
-            }
-            3 => {
-                by = bottom_left_by;
-                bx = p2x + half_height_b / slope_prime;
-            }
-            _ => {
-                bx = bottom_left_bx;
-                by = p2y + (-half_width_b) * slope_prime;
-            }
-        }
-    }
-
-    (ax, ay, bx, by, false)
+    geometry::clip_points(
+        a.rect(),
+        b.rect(),
+        (a.center_x(), a.center_y()),
+        (b.center_x(), b.center_y()),
+    )
 }
 
 #[inline]
 fn rect_intersection_points_no_overlap_check(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
-    // Fast path for callers that already know `rects_intersect(a, b) == false`.
-    let p1x = a.center_x();
-    let p1y = a.center_y();
-    let p2x = b.center_x();
-    let p2y = b.center_y();
-
-    // rectA corners
-    let top_left_ax = a.left;
-    let top_left_ay = a.top;
-    let top_right_ax = a.right();
-    let bottom_left_ax = a.left;
-    let bottom_left_ay = a.bottom();
-    let bottom_right_ax = a.right();
-    let half_width_a = a.width / 2.0;
-    let half_height_a = a.height / 2.0;
-
-    // rectB corners
-    let top_left_bx = b.left;
-    let top_left_by = b.top;
-    let top_right_bx = b.right();
-    let bottom_left_bx = b.left;
-    let bottom_left_by = b.bottom();
-    let bottom_right_bx = b.right();
-    let half_width_b = b.width / 2.0;
-    let half_height_b = b.height / 2.0;
-
-    if p1x == p2x {
-        if p1y > p2y {
-            return (p1x, top_left_ay, p2x, bottom_left_by);
-        } else if p1y < p2y {
-            return (p1x, bottom_left_ay, p2x, top_left_by);
-        } else {
-            return (p1x, p1y, p2x, p2y);
-        }
-    }
-
-    if p1y == p2y {
-        if p1x > p2x {
-            return (top_left_ax, p1y, top_right_bx, p2y);
-        } else if p1x < p2x {
-            return (top_right_ax, p1y, top_left_bx, p2y);
-        } else {
-            return (p1x, p1y, p2x, p2y);
-        }
-    }
-
-    #[inline]
-    fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
-        if slope > slope_prime {
-            line
-        } else {
-            1 + (line % 4)
-        }
-    }
-
-    let slope_a = a.height / a.width;
-    let slope_b = b.height / b.width;
-    let slope_prime = (p2y - p1y) / (p2x - p1x);
-
-    let mut ax = 0.0;
-    let mut ay = 0.0;
-    let mut bx = 0.0;
-    let mut by = 0.0;
-    let mut clip_a_found = false;
-    let mut clip_b_found = false;
-
-    if -slope_a == slope_prime {
-        if p1x > p2x {
-            ax = bottom_left_ax;
-            ay = bottom_left_ay;
-            clip_a_found = true;
-        } else {
-            ax = top_right_ax;
-            ay = top_left_ay;
-            clip_a_found = true;
-        }
-    } else if slope_a == slope_prime {
-        if p1x > p2x {
-            ax = top_left_ax;
-            ay = top_left_ay;
-            clip_a_found = true;
-        } else {
-            ax = bottom_right_ax;
-            ay = bottom_left_ay;
-            clip_a_found = true;
-        }
-    }
-
-    if -slope_b == slope_prime {
-        if p2x > p1x {
-            bx = bottom_left_bx;
-            by = bottom_left_by;
-            clip_b_found = true;
-        } else {
-            bx = top_right_bx;
-            by = top_left_by;
-            clip_b_found = true;
-        }
-    } else if slope_b == slope_prime {
-        if p2x > p1x {
-            bx = top_left_bx;
-            by = top_left_by;
-            clip_b_found = true;
-        } else {
-            bx = bottom_right_bx;
-            by = bottom_left_by;
-            clip_b_found = true;
-        }
-    }
-
-    if !(clip_a_found && clip_b_found) {
-        let (card_a, card_b) = if p1x > p2x {
-            if p1y > p2y {
-                (
-                    get_cardinal_direction(slope_a, slope_prime, 4),
-                    get_cardinal_direction(slope_b, slope_prime, 2),
-                )
-            } else {
-                (
-                    get_cardinal_direction(-slope_a, slope_prime, 3),
-                    get_cardinal_direction(-slope_b, slope_prime, 1),
-                )
-            }
-        } else if p1y > p2y {
-            (
-                get_cardinal_direction(-slope_a, slope_prime, 1),
-                get_cardinal_direction(-slope_b, slope_prime, 3),
-            )
-        } else {
-            (
-                get_cardinal_direction(slope_a, slope_prime, 2),
-                get_cardinal_direction(slope_b, slope_prime, 4),
-            )
-        };
-
-        if !clip_a_found {
-            match card_a {
-                1 => {
-                    ay = top_left_ay;
-                    ax = p1x + (-half_height_a) / slope_prime;
-                }
-                2 => {
-                    ax = bottom_right_ax;
-                    ay = p1y + half_width_a * slope_prime;
-                }
-                3 => {
-                    ay = bottom_left_ay;
-                    ax = p1x + half_height_a / slope_prime;
-                }
-                _ => {
-                    ax = bottom_left_ax;
-                    ay = p1y + (-half_width_a) * slope_prime;
-                }
-            }
-        }
-
-        if !clip_b_found {
-            match card_b {
-                1 => {
-                    by = top_left_by;
-                    bx = p2x + (-half_height_b) / slope_prime;
-                }
-                2 => {
-                    bx = bottom_right_bx;
-                    by = p2y + half_width_b * slope_prime;
-                }
-                3 => {
-                    by = bottom_left_by;
-                    bx = p2x + half_height_b / slope_prime;
-                }
-                _ => {
-                    bx = bottom_left_bx;
-                    by = p2y + (-half_width_b) * slope_prime;
-                }
-            }
-        }
-    }
-
-    (ax, ay, bx, by)
+    geometry::clip_points_disjoint(
+        a.rect(),
+        b.rect(),
+        (a.center_x(), a.center_y()),
+        (b.center_x(), b.center_y()),
+    )
 }
 
 fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (f64, f64) {

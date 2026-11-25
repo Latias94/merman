@@ -1,5 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 
+use super::geometry::{self, Rect};
 use crate::algo::FcoseOptions;
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
@@ -714,6 +715,10 @@ struct SimNode {
 }
 
 impl SimNode {
+    fn rect(&self) -> Rect {
+        Rect::new(self.left, self.top, self.width, self.height)
+    }
+
     fn center_x(&self) -> f64 {
         self.left + self.width / 2.0
     }
@@ -1712,9 +1717,9 @@ impl Mulberry32 {
 #[cfg(test)]
 mod tests;
 
+#[inline]
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
-    // Mirror layout-base `RectangleD.intersects`: touching edges count as intersection.
-    !(a.right() < b.left || a.bottom() < b.top || b.right() < a.left || b.bottom() < a.top)
+    a.rect().intersects(b.rect())
 }
 
 #[inline]
@@ -1725,14 +1730,6 @@ fn definitely_less(a: f64, b: f64) -> bool {
 #[inline]
 fn nearly_equal(a: f64, b: f64) -> bool {
     (a - b).abs() <= GEOMETRY_EPSILON
-}
-
-fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
-    if slope > slope_prime {
-        line
-    } else {
-        1 + (line % 4)
-    }
 }
 
 #[cfg(test)]
@@ -1747,184 +1744,22 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
 #[cfg(test)]
 #[inline]
 fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bool) {
-    let p1x = a.center_x();
-    let p1y = a.center_y();
-    let p2x = b.center_x();
-    let p2y = b.center_y();
-
-    if rects_intersect(a, b) {
-        return (p1x, p1y, p2x, p2y, true);
-    }
-
-    let (ax, ay, bx, by) = rect_intersection_points_no_overlap_check(a, b);
-    (ax, ay, bx, by, false)
+    geometry::clip_points(
+        a.rect(),
+        b.rect(),
+        (a.center_x(), a.center_y()),
+        (b.center_x(), b.center_y()),
+    )
 }
 
 #[inline]
 fn rect_intersection_points_no_overlap_check(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
-    // Port of layout-base `IGeometry.getIntersection2(rectA, rectB, result)`.
-    //
-    // result[0-1] contains clip point on rectA; result[2-3] contains clip point on rectB.
-    let p1x = a.center_x();
-    let p1y = a.center_y();
-    let p2x = b.center_x();
-    let p2y = b.center_y();
-
-    let left_a = a.left;
-    let right_a = a.right();
-    let top_a = a.top;
-    let bottom_a = a.bottom();
-    let half_width_a = a.half_w();
-    let half_height_a = a.half_h();
-
-    let left_b = b.left;
-    let right_b = b.right();
-    let top_b = b.top;
-    let bottom_b = b.bottom();
-    let half_width_b = b.half_w();
-    let half_height_b = b.half_h();
-
-    let mut clip_ax = p1x;
-    let mut clip_ay = p1y;
-    let mut clip_bx = p2x;
-    let mut clip_by = p2y;
-
-    if p1x == p2x {
-        if p1y > p2y {
-            return (p1x, top_a, p2x, bottom_b);
-        } else if p1y < p2y {
-            return (p1x, bottom_a, p2x, top_b);
-        }
-    } else if p1y == p2y {
-        if p1x > p2x {
-            return (left_a, p1y, right_b, p2y);
-        } else if p1x < p2x {
-            return (right_a, p1y, left_b, p2y);
-        }
-    } else {
-        let slope_a = a.height / a.width;
-        let slope_b = b.height / b.width;
-        let slope_prime = (p2y - p1y) / (p2x - p1x);
-
-        let mut clip_a_found = false;
-        let mut clip_b_found = false;
-
-        if -slope_a == slope_prime {
-            if p1x > p2x {
-                clip_ax = left_a;
-                clip_ay = bottom_a;
-                clip_a_found = true;
-            } else {
-                clip_ax = right_a;
-                clip_ay = top_a;
-                clip_a_found = true;
-            }
-        } else if slope_a == slope_prime {
-            if p1x > p2x {
-                clip_ax = left_a;
-                clip_ay = top_a;
-                clip_a_found = true;
-            } else {
-                clip_ax = right_a;
-                clip_ay = bottom_a;
-                clip_a_found = true;
-            }
-        }
-
-        if -slope_b == slope_prime {
-            if p2x > p1x {
-                clip_bx = left_b;
-                clip_by = bottom_b;
-                clip_b_found = true;
-            } else {
-                clip_bx = right_b;
-                clip_by = top_b;
-                clip_b_found = true;
-            }
-        } else if slope_b == slope_prime {
-            if p2x > p1x {
-                clip_bx = left_b;
-                clip_by = top_b;
-                clip_b_found = true;
-            } else {
-                clip_bx = right_b;
-                clip_by = bottom_b;
-                clip_b_found = true;
-            }
-        }
-
-        if !clip_a_found || !clip_b_found {
-            let (card_a, card_b) = if p1x > p2x {
-                if p1y > p2y {
-                    (
-                        get_cardinal_direction(slope_a, slope_prime, 4),
-                        get_cardinal_direction(slope_b, slope_prime, 2),
-                    )
-                } else {
-                    (
-                        get_cardinal_direction(-slope_a, slope_prime, 3),
-                        get_cardinal_direction(-slope_b, slope_prime, 1),
-                    )
-                }
-            } else if p1y > p2y {
-                (
-                    get_cardinal_direction(-slope_a, slope_prime, 1),
-                    get_cardinal_direction(-slope_b, slope_prime, 3),
-                )
-            } else {
-                (
-                    get_cardinal_direction(slope_a, slope_prime, 2),
-                    get_cardinal_direction(slope_b, slope_prime, 4),
-                )
-            };
-
-            if !clip_a_found {
-                match card_a {
-                    1 => {
-                        clip_ay = top_a;
-                        clip_ax = p1x + -half_height_a / slope_prime;
-                    }
-                    2 => {
-                        clip_ax = right_a;
-                        clip_ay = p1y + half_width_a * slope_prime;
-                    }
-                    3 => {
-                        clip_ay = bottom_a;
-                        clip_ax = p1x + half_height_a / slope_prime;
-                    }
-                    4 => {
-                        clip_ax = left_a;
-                        clip_ay = p1y + -half_width_a * slope_prime;
-                    }
-                    _ => {}
-                }
-            }
-
-            if !clip_b_found {
-                match card_b {
-                    1 => {
-                        clip_by = top_b;
-                        clip_bx = p2x + -half_height_b / slope_prime;
-                    }
-                    2 => {
-                        clip_bx = right_b;
-                        clip_by = p2y + half_width_b * slope_prime;
-                    }
-                    3 => {
-                        clip_by = bottom_b;
-                        clip_bx = p2x + half_height_b / slope_prime;
-                    }
-                    4 => {
-                        clip_bx = left_b;
-                        clip_by = p2y + -half_width_b * slope_prime;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    (clip_ax, clip_ay, clip_bx, clip_by)
+    geometry::clip_points_disjoint(
+        a.rect(),
+        b.rect(),
+        (a.center_x(), a.center_y()),
+        (b.center_x(), b.center_y()),
+    )
 }
 
 #[inline]
