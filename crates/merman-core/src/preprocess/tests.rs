@@ -3,6 +3,7 @@ use super::text::{
     normalize_html_tag_attributes_like_upstream,
 };
 use super::*;
+use merman_core_preprocess::scan::controlled::CONTROLLED_SCAN_CHECKPOINT_BYTES;
 use serde_json::{Map, json};
 
 #[test]

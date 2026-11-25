@@ -103,3 +103,25 @@ pub fn find_line_break_controlled(
     }
     Ok(None)
 }
+
+pub fn push_str_controlled(
+    out: &mut String,
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> OperationControlResult<()> {
+    let mut chunk_start = 0usize;
+    let mut chunk_len = 0usize;
+    for (idx, ch) in text.char_indices() {
+        let ch_len = ch.len_utf8();
+        checkpoints.scanned(ch_len)?;
+        chunk_len += ch_len;
+        if chunk_len >= CONTROLLED_SCAN_CHECKPOINT_BYTES {
+            let chunk_end = idx + ch_len;
+            out.push_str(&text[chunk_start..chunk_end]);
+            chunk_start = chunk_end;
+            chunk_len = 0;
+        }
+    }
+    out.push_str(&text[chunk_start..]);
+    Ok(())
+}
