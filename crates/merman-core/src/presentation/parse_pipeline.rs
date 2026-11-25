@@ -161,12 +161,10 @@ impl OperationConfigBuilder {
                                 selected,
                             )
                         })
-                        .map(|config| {
-                            if source_is_empty {
-                                return config;
+                        .map(|mut config| {
+                            if !source_is_empty {
+                                config.deep_merge(source.as_value());
                             }
-                            let mut config = config.with_shared_sections();
-                            config.deep_merge(source.as_value());
                             config
                         })
                 } else {
@@ -202,10 +200,11 @@ impl OperationConfigBuilder {
         let _stage = merman_model::benchmark_stages::enter(
             merman_model::benchmark_stages::Stage::ThemePrepare,
         );
-        let mut raw_config = engine.initialization.site_config.clone();
-        if !source_config.is_empty_object() {
-            raw_config = raw_config.with_shared_sections();
-        }
+        let mut raw_config = engine
+            .initialization
+            .site_config
+            .clone()
+            .with_shared_sections();
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
         let initial_variables = engine
@@ -1726,6 +1725,45 @@ mod editor_parse_source_map_tests {
             metadata.unwrap().effective_config.as_value()["flowchart"]["nodeSpacing"],
             61
         );
+    }
+
+    #[test]
+    fn alternating_families_reuse_site_appearance_storage() {
+        let site = SourcePresentationConfig::from_value(serde_json::json!({
+            "flowchart": {"theme": "redux-color"},
+            "sequence": {"theme": "dark"},
+            "class": {"theme": "forest"},
+        }));
+        let sources = [
+            ("flowchart TD\nA-->B", "redux-color"),
+            ("sequenceDiagram\nAlice->>Bob: Hello", "dark"),
+            ("classDiagram\nA <|-- B", "forest"),
+        ];
+        let engine = MermaidEngine::new().with_exact_site_config(Some(site));
+        let (cold, cold_work) = crate::config::measure_config_work(|| {
+            sources.map(|(source, theme)| {
+                let config = engine.parse_metadata_sync(source).unwrap().effective_config;
+                assert_eq!(config.get_str("theme"), Some(theme));
+                config
+            })
+        });
+        let (_, warm_work) = crate::config::measure_config_work(|| {
+            for _ in 0..32 {
+                for ((source, _), reference) in sources.iter().zip(&cold) {
+                    let config = engine.parse_metadata_sync(source).unwrap().effective_config;
+                    assert_eq!(&config, reference);
+                    assert!(
+                        config
+                            .as_config()
+                            .shares_storage_with(reference.as_config())
+                    );
+                }
+            }
+        });
+        assert_eq!(cold_work.selected_theme_materializations, 3);
+        assert_eq!(cold_work.json_cow_copies, 0);
+        assert_eq!(warm_work.selected_theme_materializations, 0);
+        assert_eq!(warm_work.json_cow_copies, 0);
     }
 
     #[test]

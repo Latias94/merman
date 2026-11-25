@@ -12,6 +12,7 @@ use crate::{
 #[cfg(feature = "compat-json")]
 use crate::{DiagramRegistry, ParsedDiagram};
 use merman_model::presentation::PresentationMetadata;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[path = "parse_pipeline.rs"]
@@ -19,19 +20,13 @@ pub(crate) mod parse_pipeline;
 
 type ResolvedSiteConfig =
     std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>;
+type SiteAppearanceCache = BTreeMap<(&'static str, MermaidThemeId), ResolvedSiteConfig>;
 
 #[derive(Clone, Debug)]
 struct SiteConfigInitialization {
     site_config: SourcePresentationConfig,
     default_effective_config: ResolvedSiteConfig,
-    materialized_appearance: Arc<Mutex<Option<SiteAppearance>>>,
-}
-
-#[derive(Debug)]
-struct SiteAppearance {
-    section: &'static str,
-    theme: MermaidThemeId,
-    effective_config: ResolvedSiteConfig,
+    materialized_appearances: Arc<Mutex<SiteAppearanceCache>>,
 }
 
 impl SiteConfigInitialization {
@@ -42,7 +37,7 @@ impl SiteConfigInitialization {
         Self {
             site_config,
             default_effective_config,
-            materialized_appearance: Arc::default(),
+            materialized_appearances: Arc::default(),
         }
     }
 
@@ -55,7 +50,7 @@ impl SiteConfigInitialization {
                 Self {
                     site_config,
                     default_effective_config,
-                    materialized_appearance: Arc::default(),
+                    materialized_appearances: Arc::default(),
                 }
             })
             .clone()
@@ -67,23 +62,19 @@ impl SiteConfigInitialization {
         theme: MermaidThemeId,
         materialize: impl FnOnce() -> ResolvedSiteConfig,
     ) -> ResolvedSiteConfig {
-        // Keep one site-derived result across engine clones. A competing operation can
-        // perform its own calculation without waiting for another render's theme.
-        let Ok(mut slot) = self.materialized_appearance.try_lock() else {
+        // Clones share the site-owned values and their cached construction complexity. Each
+        // parse still freezes its own config under the active resource policy after detector replay.
+        let Ok(mut appearances) = self.materialized_appearances.try_lock() else {
             return materialize();
         };
-        if let Some(cached) = slot.as_ref()
-            && cached.section == section
-            && cached.theme == theme
-        {
-            return cached.effective_config.clone();
+        let key = (section, theme);
+        if let Some(cached) = appearances.get(&key) {
+            return cached.clone();
         }
         let effective_config = materialize();
-        *slot = Some(SiteAppearance {
-            section,
-            theme,
-            effective_config: effective_config.clone(),
-        });
+        if appearances.len() < merman_model::family::diagram_family_selectors().len() {
+            appearances.insert(key, effective_config.clone());
+        }
         effective_config
     }
 }
