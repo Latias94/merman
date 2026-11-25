@@ -818,7 +818,6 @@ fn compact_facts_from_legacy_nodes(
             facts.identities.push(ReferenceIdentity {
                 element: index,
                 is_marker: node.is_marker,
-                text_content: SvgTextContent::Empty,
                 ids: ElementIds {
                     parsed: node.parsed_id.clone(),
                     raw,
@@ -828,7 +827,6 @@ fn compact_facts_from_legacy_nodes(
             facts.identities.push(ReferenceIdentity {
                 element: index,
                 is_marker: node.is_marker,
-                text_content: SvgTextContent::Empty,
                 ids: ElementIds {
                     parsed: None,
                     raw: RawElementId::Other(raw.clone()),
@@ -969,11 +967,11 @@ fn text_path_href_is_required_only_when_inline_geometry_cannot_be_built() {
 }
 
 #[test]
-fn effective_tref_targets_inside_text_require_fonts() {
+fn effective_local_trefs_are_counted_only_inside_authored_text() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><text><tref href="#label"/></text><text><tspan><tref href="#ignored" x:href="#label"></tref></tspan></text><text><g><text><tref href="#label"/></text></g></text><text><tref href="#blank"/></text><tref href="#label"/><defs><g id="label"><g>Some text</g></g><g id="blank"/></defs></svg>"##;
     let validated =
         validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
-    assert_eq!(validated.text_elements, 4);
+    assert_eq!(validated.text_elements, 5);
     assert!(!validated.font_seal.is_complete());
     assert_eq!(
         validated.resource_closure.referenced_fragment_ids(),
@@ -982,7 +980,7 @@ fn effective_tref_targets_inside_text_require_fonts() {
 }
 
 #[test]
-fn empty_or_non_text_tref_targets_do_not_require_fonts() {
+fn source_text_counts_trefs_even_when_the_target_may_produce_no_text() {
     for target in [
         r#"<g id="label"/>"#,
         r#"<g id="label"><rect/></g>"#,
@@ -996,8 +994,8 @@ fn empty_or_non_text_tref_targets_do_not_require_fonts() {
         );
         let validated =
             validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
-        assert_eq!(validated.text_elements, 0, "{target}");
-        assert!(validated.font_seal.is_complete(), "{target}");
+        assert_eq!(validated.text_elements, 1, "{target}");
+        assert!(!validated.font_seal.is_complete(), "{target}");
         assert_eq!(
             validated.resource_closure.referenced_fragment_ids(),
             &["label"]
@@ -1006,77 +1004,20 @@ fn empty_or_non_text_tref_targets_do_not_require_fonts() {
 }
 
 #[test]
-fn tref_retains_nonbreaking_and_preserved_whitespace_as_font_content() {
-    for (ancestor_space, text_space, tref_space, target) in [
-        ("", "", "", "&#xA0;"),
-        (r#"xml:space="preserve""#, "", "", "\n \t "),
+fn source_text_counts_character_data_without_applying_layout() {
+    for (text, expected) in [
+        ("<text/><text><tspan/></text>", 0),
+        ("<text> </text>", 1),
+        ("<text><tspan>&#x20;</tspan></text>", 1),
+        ("<text><![CDATA[\n\t]]></text>", 1),
+        ("<text display=\"none\">Hidden</text>", 1),
         (
-            "",
-            r#"xml:space="preserve""#,
-            r#"xml:space="default""#,
-            "\n \t ",
+            "<x:text xmlns:x=\"urn:other\">Ignored namespace</x:text>",
+            0,
         ),
-        ("", "", r#"xml:space="preserve""#, "\n \t "),
+        ("<text><g><text><tspan>Alpha</tspan></text></g></text>", 2),
     ] {
-        let svg = format!(
-            r##"<svg xmlns="http://www.w3.org/2000/svg" {ancestor_space}><defs><g id="target">{target}</g></defs><text {text_space}><tref {tref_space} href="#target"/></text></svg>"##
-        );
-        let validated =
-            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
-        assert_eq!(validated.text_elements, 1, "{svg}");
-    }
-}
-
-#[test]
-fn tref_local_preserve_still_allows_single_fragment_edge_trimming() {
-    for (target, expected) in [(" ", 0), ("&#x20;\t", 0), ("\n&#x20;\t", 1)] {
-        let svg = format!(
-            r##"<svg><defs><g id="target">{target}</g><g id="empty"/></defs><text><tref href="#empty"/><tref xml:space="preserve" href="#target"/></text></svg>"##
-        );
-        let validated =
-            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
-        assert_eq!(validated.text_elements, expected, "{svg}");
-    }
-}
-
-#[test]
-fn use_space_follows_only_effective_clone_links_and_respects_resets() {
-    let template = r##"<g id="template" SPACE><g><text><tref href="#spaces"/></text></g></g>"##;
-    let link = r##"<use q:href="#template"/>"##;
-    let preserves = r##"<use href="#chain" xml:space="preserve"/>"##;
-    for (template_space, chain, outer, expected) in [
-        ("", link, preserves, 1),
-        (
-            "",
-            link,
-            r##"<g xml:space="preserve"><use href="#chain"/></g>"##,
-            1,
-        ),
-        (r#"xml:space="default""#, link, preserves, 0),
-        (
-            "",
-            r##"<use q:href="#template" xml:space="default"/>"##,
-            preserves,
-            0,
-        ),
-        (
-            "",
-            r##"<use q:href="#template" href="#blank"/>"##,
-            preserves,
-            0,
-        ),
-        ("", link, r##"<use href="#chain"/>"##, 0),
-        (
-            "",
-            link,
-            r##"<feImage href="#chain" xml:space="preserve"/>"##,
-            0,
-        ),
-    ] {
-        let template = template.replace("SPACE", template_space);
-        let svg = format!(
-            r#"<svg xmlns:q="http://www.w3.org/1999/xlink">{outer}<defs><g id="chain">{chain}</g>{template}<g id="spaces">     </g><g id="blank"/></defs></svg>"#
-        );
+        let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{text}</svg>"#);
         let validated =
             validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
         assert_eq!(validated.text_elements, expected, "{svg}");
@@ -1085,11 +1026,11 @@ fn use_space_follows_only_effective_clone_links_and_respects_resets() {
 }
 
 #[test]
-fn a_text_element_inside_tref_can_still_be_rendered_through_use() {
+fn source_text_counts_nested_sources_but_not_use_instances() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="blank"/></defs><text><tref href="#blank"><text id="label">Visible through use</text></tref></text><use href="#label"/></svg>"##;
     let validated =
         validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
-    assert_eq!(validated.text_elements, 1);
+    assert_eq!(validated.text_elements, 2);
     assert!(!validated.font_seal.is_complete());
 }
 
@@ -2482,22 +2423,20 @@ fn duplicate_parsed_id_dependencies_are_shared_without_changing_plan_semantics()
             .all(|&occurrences| occurrences == 1)
     );
     let (facts, _) = compact_facts_from_legacy_nodes(&nodes);
-    let (graph, effects) = build_reference_fact_dependencies(facts, None, &mut || {
-        Ok::<(), std::convert::Infallible>(())
-    })
-    .unwrap();
+    let (graph, effects) =
+        build_reference_fact_dependencies(facts, &mut || Ok::<(), std::convert::Infallible>(()))
+            .unwrap();
     assert_eq!(graph.ranges.len(), real_nodes + 2);
     assert_eq!(graph.edges.len(), dependency_edges);
-    let actual =
-        analyze_compact_reference_dependencies::<true, _>(&graph, &effects, None, &mut || {
-            Ok::<(), std::convert::Infallible>(())
-        })
-        .map(SvgReferenceAnalysis::into_detailed_plan)
-        .map_err(|error| match error {
-            ReferencePlanningError::Invalid(message) => message,
-            ReferencePlanningError::Checkpoint(error) => match error {},
-        })
-        .unwrap();
+    let actual = analyze_compact_reference_dependencies::<true, _>(&graph, &effects, &mut || {
+        Ok::<(), std::convert::Infallible>(())
+    })
+    .map(SvgReferenceAnalysis::into_detailed_plan)
+    .map_err(|error| match error {
+        ReferencePlanningError::Invalid(message) => message,
+        ReferencePlanningError::Checkpoint(error) => match error {},
+    })
+    .unwrap();
     assert_eq!(actual, plan);
 }
 
@@ -2564,7 +2503,6 @@ fn effect_plan_matches_two_pass_reference_for_shared_nested_and_saturated_graphs
                 let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
                     facts,
                     structure,
-                    None,
                     &mut || Ok::<(), std::convert::Infallible>(()),
                 )
                 .map(SvgReferenceAnalysis::into_detailed_plan)
@@ -2578,7 +2516,6 @@ fn effect_plan_matches_two_pass_reference_for_shared_nested_and_saturated_graphs
                     analyze_svg_reference_facts_with_checkpoints::<false, _>(
                         compact_facts_from_legacy_nodes(&nodes).0,
                         structure,
-                        None,
                         &mut || Ok::<(), std::convert::Infallible>(()),
                     )
                 });

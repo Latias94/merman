@@ -166,22 +166,30 @@ fn export_checkpoint_preserves_foreign_resource_terminal_provenance() {
 }
 
 #[test]
-fn exporter_image_resolver_never_reads_string_hrefs() {
-    let resolver = data_url_only_image_href_resolver();
+fn exporter_backend_ignores_local_image_even_before_svg_sanitization() {
+    let local_image = TempFile::new("png", encode_rgba_png(1, 1, &[255, 0, 0, 255]));
+    let href = escape_xml_attr(&local_image.href_path());
+    let source = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><image href="{href}" width="1" height="1"/></svg>"#
+    );
     let options = usvg::Options::default();
+    assert!(
+        !usvg::Tree::from_str(&source, &options)
+            .unwrap()
+            .root()
+            .children()
+            .is_empty()
+    );
 
-    for href in [
-        "/tmp/secret.png",
-        "../secret.png",
-        r"\\server\share\secret.png",
-        r"C:\private\secret.png",
-        "https://example.com/remote.png",
-    ] {
-        assert!(
-            (resolver.resolve_string)(href, &options).is_none(),
-            "string href unexpectedly resolved: {href}"
-        );
-    }
+    let svg = compatible_svg(&source);
+    let parsed = parse_svg_tree(
+        &source,
+        options,
+        SvgExportFonts::Retained(&svg),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    assert!(parsed.tree.root().children().is_empty());
 }
 
 #[test]

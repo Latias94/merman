@@ -301,7 +301,7 @@ fn raw_svg_font_byte_limit_applies_to_native_painting() {
         )
     };
     for (flag, status, detail) in [
-        ("--font-max-bytes=1", 3, "--font-max-bytes "),
+        ("--font-max-bytes=1", 3, "while loading fonts from"),
         ("--operation-timeout-ms=0", 1, "deadline_exceeded"),
     ] {
         let failed = convert(flag);
@@ -335,7 +335,10 @@ fn raw_svg_font_byte_limit_applies_to_native_painting() {
     let stderr = String::from_utf8_lossy(&explicit_path.stderr);
     assert_eq!(explicit_path.status.code(), Some(3), "{stderr}");
     assert!(explicit_path.stdout.is_empty());
-    assert!(stderr.contains("--font-max-bytes "), "{stderr}");
+    assert!(
+        stderr.contains("while loading fonts from") && stderr.contains("--font-max-bytes "),
+        "{stderr}"
+    );
 }
 
 #[cfg(feature = "markdown")]
@@ -2539,6 +2542,117 @@ fn raw_svg_use_inherits_space_for_copied_text_before_selecting_fonts() {
             assert!(trimmed.status.success(), "{format}: {trimmed:?}");
             assert_eq!(trimmed.stdout, blank.stdout, "{format}");
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn raw_svg_copied_spaces(text: &str) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><defs><g id="space"> </g></defs><text x="10" y="40" font-size="32" font-family="Cousine" text-decoration="underline">{text}</text></svg>"#
+    )
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_trimmed_pair_of_trefs_does_not_require_fonts() {
+    let input = raw_svg_copied_spaces(
+        r##"<tref xml:space="preserve" href="#space"/><tref href="#space"/>"##,
+    );
+    let blank = raw_svg_copied_spaces("");
+    let font = font();
+    let off = ["--font-system=off"];
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let blank = raw_conversion(format, &blank, &off);
+        let explicit = raw_conversion(format, &input, &["--font-system=off", "--font-file", &font]);
+        assert!(
+            blank.status.success() && explicit.status.success(),
+            "{format}: {explicit:?}"
+        );
+        assert_eq!(
+            explicit.stdout, blank.stdout,
+            "{format}: both spaces trim away"
+        );
+
+        let without_fonts = raw_conversion(format, &input, &off);
+        assert!(
+            without_fonts.status.success(),
+            "{format}: {without_fonts:?}"
+        );
+        assert_eq!(without_fonts.stdout, blank.stdout, "{format}");
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_nested_tref_spacing_requests_fonts_for_surviving_underline() {
+    let input = raw_svg_copied_spaces(
+        r##"<tref href="#space"/><tref href="#space"/><tspan><tref href="#space"/></tspan><tref href="#space"/>"##,
+    );
+    let blank = raw_svg_copied_spaces("");
+    let font = font();
+    let off = ["--font-system=off"];
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let blank = raw_conversion(format, &blank, &off);
+        let explicit = raw_conversion(format, &input, &["--font-system=off", "--font-file", &font]);
+        assert!(
+            blank.status.success() && explicit.status.success(),
+            "{format}: {explicit:?}"
+        );
+        assert!(
+            explicit.stdout != blank.stdout,
+            "{format}: one space paints an underline"
+        );
+
+        #[cfg(all(
+            windows,
+            any(
+                feature = "platform-system-font-default",
+                feature = "windows-platform-font-default"
+            )
+        ))]
+        {
+            let system_input = input.replace("Cousine", "sans-serif");
+            let direct = raw_svg_copied_spaces(r#"<tspan xml:space="preserve">   </tspan>"#)
+                .replace("Cousine", "sans-serif");
+            let default = raw_conversion(format, &system_input, &[]);
+            let direct = raw_conversion(format, &direct, &[]);
+            assert!(
+                default.status.success() && direct.status.success(),
+                "{format}: {default:?} {direct:?}"
+            );
+            assert!(
+                default.stdout == direct.stdout && default.stdout != blank.stdout,
+                "{format}: automatic font selection must paint the surviving space"
+            );
+        }
+
+        let without_fonts = raw_conversion(format, &input, &off);
+        assert_eq!(
+            without_fonts.status.code(),
+            Some(2),
+            "{format}: {without_fonts:?}"
+        );
+        assert!(without_fonts.stdout.is_empty(), "{format}");
+        assert!(
+            String::from_utf8_lossy(&without_fonts.stderr).contains("--font-system off"),
+            "{format}"
+        );
     }
 }
 

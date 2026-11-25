@@ -219,9 +219,9 @@ impl SvgFinalizationReport {
         &self.resource_closure
     }
 
-    /// Returns the number of terminal SVG `<text>` sources with character content,
-    /// including character data copied from local `<tref>` targets. Copied spaces count when
-    /// preserved in the source or a `<use>` instance, but not when trimmed from a lone fragment.
+    /// Counts authored SVG `<text>` elements with descendant character data (including
+    /// whitespace) or an effective local `<tref>`. It does not inspect the referenced text,
+    /// count `<use>` instances, or predict visibility, whitespace trimming, or native font use.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
     }
