@@ -7,6 +7,8 @@ use serde::de::{self, IntoDeserializer, value::MapAccessDeserializer};
 use serde::{Deserialize, Serialize};
 
 use super::Color;
+#[cfg(feature = "compile")]
+use super::json::{object, objects, present_object};
 
 // Optional fields in the document are omitted, so JSON null cannot be mistaken for an override.
 #[cfg(feature = "compile")]
@@ -16,7 +18,8 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
 
 #[cfg(feature = "compile")]
 macro_rules! patch {
-    ($name:ident { $($(#[$attr:meta])* $field:ident : $kind:ty),+ $(,)? }) => {
+    ($name:ident { $($(#[$attr:meta])* $field:ident : $kind:ty),* $(,)? }
+        $(objects { $($object:ident : $object_kind:ty),+ $(,)? })?) => {
         #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
         #[serde(default, deny_unknown_fields)]
         pub(super) struct $name {
@@ -24,7 +27,11 @@ macro_rules! patch {
                 $(#[$attr])*
                 #[serde(deserialize_with = "present")]
                 pub(super) $field: Option<$kind>,
-            )+
+            )*
+            $($(
+                #[serde(deserialize_with = "present_object")]
+                pub(super) $object: Option<$object_kind>,
+            )+)?
         }
     };
 }
@@ -124,8 +131,16 @@ pub enum Category {
 /// A version 2 theme document. Use [`super::ThemeCompiler`] to admit and resolve it.
 #[cfg(feature = "compile")]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
+#[serde(transparent)]
 pub struct ThemeDocumentV2 {
+    #[serde(deserialize_with = "object")]
+    pub(super) fields: ThemeDocumentFields,
+}
+
+#[cfg(feature = "compile")]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ThemeDocumentFields {
     #[serde(rename = "$schema", default, deserialize_with = "present")]
     schema: Option<String>,
     pub(super) schema_version: u32,
@@ -141,17 +156,17 @@ pub struct ThemeDocumentV2 {
     pub(super) extends: Option<String>,
     #[serde(default, deserialize_with = "present")]
     pub(super) default_appearance: Option<Appearance>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) seed: Option<SeedPatch>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) roles: Option<RoleOverrides>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) typography: Option<TypographyPatch>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) form: Option<FormPatch>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) appearances: Option<Appearances>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "objects")]
     pub(super) overrides: Vec<FamilyOverride>,
 }
 
@@ -159,31 +174,38 @@ pub struct ThemeDocumentV2 {
 impl ThemeDocumentV2 {
     /// The document's own identifier, when supplied.
     pub fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+        self.fields.id.as_deref()
     }
 
     /// The display name supplied by the author.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.fields.name.as_deref()
     }
 
     /// A short description of this design.
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.fields.description.as_deref()
     }
 
     /// The design's catalog category.
     pub const fn category(&self) -> Option<Category> {
-        self.category
+        self.fields.category
     }
 
     /// The built-in document this theme extends, when supplied.
     pub fn extends(&self) -> Option<&str> {
-        self.extends.as_deref()
+        self.fields.extends.as_deref()
     }
 
     /// Light and dark layers declared in this document, before preset extension.
     pub fn appearances(&self) -> impl Iterator<Item = Appearance> + '_ {
+        self.fields.appearances()
+    }
+}
+
+#[cfg(feature = "compile")]
+impl ThemeDocumentFields {
+    pub(super) fn appearances(&self) -> impl Iterator<Item = Appearance> + '_ {
         [Appearance::Light, Appearance::Dark]
             .into_iter()
             .filter(|appearance| self.layer(*appearance).is_some())
@@ -199,17 +221,18 @@ impl ThemeDocumentV2 {
 }
 
 #[cfg(feature = "compile")]
-patch!(Appearances {
+patch!(Appearances {} objects {
     light: AppearanceLayer,
     dark: AppearanceLayer
 });
 #[cfg(feature = "compile")]
 patch!(AppearanceLayer {
+    elevation: ElevationSpec,
+} objects {
     seed: SeedPatch,
     roles: RoleOverrides,
     data: DataPatch,
     canvas: CanvasPatch,
-    elevation: ElevationSpec,
 });
 #[cfg(feature = "compile")]
 patch!(SeedPatch {
@@ -427,6 +450,7 @@ pub struct LinearGradient {
     #[cfg_attr(feature = "compile", serde(default))]
     pub angle_deg: f64,
     /// Stops in nondecreasing offset order.
+    #[cfg_attr(feature = "compile", serde(deserialize_with = "objects"))]
     pub stops: Vec<GradientStop>,
 }
 
@@ -678,7 +702,7 @@ enum ElevationEffectKind {
 #[cfg(feature = "compile")]
 tagged_fields!(ElevationFields {
     kind: ElevationEffectKind,
-    layers: Vec<ShadowLayer>,
+    layers: Vec<super::json::Object<ShadowLayer>>,
     color: Color,
     blur: f64,
     opacity: f64,
@@ -704,7 +728,10 @@ impl<'de> Deserialize<'de> for ElevationSpec {
                 let mut fields = ElevationFields::deserialize(MapAccessDeserializer::new(map))?;
                 let effect = match fields.kind {
                     ElevationEffectKind::LayeredStack => ElevationEffect::LayeredStack {
-                        layers: take_required::<_, A::Error>(&mut fields.layers, "layers")?,
+                        layers: take_required::<_, A::Error>(&mut fields.layers, "layers")?
+                            .into_iter()
+                            .map(super::json::Object::into_inner)
+                            .collect(),
                     },
                     ElevationEffectKind::Glow => ElevationEffect::Glow {
                         color: take_required::<_, A::Error>(&mut fields.color, "color")?,
@@ -984,6 +1011,7 @@ patch!(FormPatch {
     marker_style: MarkerStyle,
     edge_label_bg: EdgeLabelBackground,
     elevation: ElevationSpec,
+} objects {
     chart: ChartPatch,
 });
 
@@ -994,13 +1022,13 @@ pub(super) struct FamilyOverride {
     pub(super) families: Vec<String>,
     #[serde(default, deserialize_with = "present")]
     pub(super) appearance: Option<Appearance>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) roles: Option<RoleOverrides>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) form: Option<FormPatch>,
     #[serde(default, deserialize_with = "present")]
     pub(super) elevation: Option<ElevationSpec>,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "present_object")]
     pub(super) typography: Option<TypographyPatch>,
     #[serde(default, deserialize_with = "present")]
     pub(super) node_ordinal_palette: Option<bool>,

@@ -3,10 +3,12 @@ use std::sync::Arc;
 
 #[cfg(feature = "presets")]
 use super::BuiltinPreset;
-use super::contrast::{BLACK, DARK_INK, TEXT_CONTRAST, automatic_fill_ink, backdrop, best_ink};
+use super::contrast::{
+    BLACK, DARK_INK, TEXT_CONTRAST, automatic_fill_ink_over, backdrop, best_ink,
+};
 use super::document::{
     CanvasPatch, DataPatch, ElevationEffect, ElevationPreset, ElevationSpec, FamilyOverride,
-    FillInk, SeedPatch,
+    FillInk, SeedPatch, ThemeDocumentFields,
 };
 use super::{
     Appearance, Canvas, Color, DataPalette, Elevation, FamilyTheme, Form, Paint, ResolvedThemeV2,
@@ -167,8 +169,9 @@ impl ThemeCompiler {
         strict: bool,
         auto_fix: bool,
     ) -> Result<Arc<ResolvedThemeV2>, ThemeError> {
+        let document = &document.fields;
         validate::document(document)?;
-        let inherited = document.extends().map(load_base).transpose()?;
+        let inherited = document.extends.as_deref().map(load_base).transpose()?;
         let documents: Vec<_> = inherited.into_iter().chain([document]).collect();
         let appearance = select_appearance(&documents, requested)?;
         let mut form = Form::default();
@@ -328,10 +331,10 @@ impl ThemeCompiler {
 }
 
 #[cfg(feature = "presets")]
-fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
+fn load_base(id: &str) -> Result<&'static ThemeDocumentFields, ThemeError> {
     let preset = BuiltinPreset::from_id(id)
         .ok_or_else(|| ThemeError::invalid("extends", format!("unknown built-in preset `{id}`")))?;
-    let document = preset.document()?;
+    let document = &preset.document()?.fields;
     if document.extends.is_some() {
         return Err(ThemeError::invalid(
             "extends",
@@ -343,7 +346,7 @@ fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
 }
 
 #[cfg(not(feature = "presets"))]
-fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
+fn load_base(id: &str) -> Result<&'static ThemeDocumentFields, ThemeError> {
     Err(ThemeError::invalid(
         "extends",
         format!("built-in preset `{id}` requires the `presets` feature"),
@@ -351,7 +354,7 @@ fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
 }
 
 fn select_appearance(
-    documents: &[&ThemeDocumentV2],
+    documents: &[&ThemeDocumentFields],
     requested: Option<Appearance>,
 ) -> Result<Appearance, ThemeError> {
     let available = |appearance| documents.iter().any(|doc| doc.layer(appearance).is_some());
@@ -456,7 +459,6 @@ fn derive_palette(
     mode: Appearance,
 ) -> DataPalette {
     let dark = mode == Appearance::Dark;
-    let canvas = paint_sample(canvas, backdrop(mode));
     let h = accent.oklch()[2];
     let hues = || (0..10).map(|index| h + f64::from(index) * 137.508);
     let ink = data.ink.clone().unwrap_or_else(|| {
@@ -465,7 +467,8 @@ fn derive_palette(
             .map(|h| {
                 let ink = Color::from_oklch(l, c, h);
                 fit_contrast(ink, |color| {
-                    color.contrast(canvas) >= DERIVED_SERIES_CONTRAST
+                    Paint::Solid(color).minimum_contrast_over(canvas, 1.0, None, mode)
+                        >= DERIVED_SERIES_CONTRAST
                 })
                 .unwrap_or(ink)
             })
@@ -483,7 +486,8 @@ fn derive_palette(
     let fill_ink = fill
         .iter()
         .map(|color| {
-            authored_fill_ink.unwrap_or_else(|| automatic_fill_ink(color.composite(canvas, 1.0)))
+            authored_fill_ink
+                .unwrap_or_else(|| automatic_fill_ink_over(*color, canvas, 1.0, backdrop(mode)))
         })
         .collect();
     DataPalette {
@@ -497,21 +501,11 @@ fn derive_palette(
 
 fn set_automatic_fill_ink(data: &mut DataPalette, canvas: &Paint, opacity: f64, mode: Appearance) {
     if data.automatic_fill_ink {
-        let canvas = paint_sample(canvas, backdrop(mode));
         data.fill_ink = data
             .fill
             .iter()
-            .map(|color| automatic_fill_ink(color.composite(canvas, opacity)))
+            .map(|&color| automatic_fill_ink_over(color, canvas, opacity, backdrop(mode)))
             .collect();
-    }
-}
-
-fn paint_sample(paint: &Paint, background: Color) -> Color {
-    match paint {
-        Paint::Solid(color) => color.composite(background, 1.0),
-        Paint::LinearGradient(gradient) => gradient.stops.first().map_or(background, |stop| {
-            stop.color.composite(background, stop.opacity)
-        }),
     }
 }
 

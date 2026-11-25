@@ -236,6 +236,44 @@ fn translucent_pie_slices_and_shared_fills_use_their_own_contrasting_ink() {
 }
 
 #[test]
+fn automatic_pie_ink_uses_the_entire_canvas_gradient() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+              "schema_version": 2,
+              "extends": "studio",
+              "form": {"chart": {"pie_opacity": 0.65}},
+              "roles": {"canvas": {"kind": "linear_gradient", "stops": [
+                {"offset": 0, "color": "#FFFFFF"}, {"offset": 1, "color": "#000000"}
+              ]}},
+              "appearances": {"light": {"data": {
+                "fill": ["#2C2C2C", "#2C2C2C", "#2C2C2C", "#2C2C2C"],
+                "fill_ink": "auto"
+              }}}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let pie = theme.family("pie");
+    assert_eq!(pie.data.fill_ink(0), Color::rgb(255, 255, 255));
+    assert!(
+        Paint::Solid(pie.data.fill_ink(0)).minimum_contrast_over(
+            &Paint::Solid(pie.data.fill(0)),
+            pie.form.chart.pie_opacity,
+            Some(&pie.roles.canvas),
+            theme.appearance(),
+        ) >= 4.5
+    );
+    assert!(!theme.notices().iter().any(|notice| matches!(
+        notice,
+        ThemeNotice::LowContrast {
+            background: "pie.data.fill",
+            ..
+        }
+    )));
+}
+
+#[test]
 fn a_transparent_seed_accent_falls_back_to_readable_title_ink() {
     let theme = ThemeCompiler::new()
         .with_strict_contrast(true)

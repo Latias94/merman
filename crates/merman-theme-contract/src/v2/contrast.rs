@@ -31,7 +31,21 @@ impl Paint {
         canvas: Option<&Self>,
         appearance: Appearance,
     ) -> f64 {
-        let backdrop = backdrop(appearance);
+        self.minimum_contrast_over_backdrop(
+            background,
+            background_opacity,
+            canvas,
+            backdrop(appearance),
+        )
+    }
+
+    fn minimum_contrast_over_backdrop(
+        &self,
+        background: &Self,
+        background_opacity: f64,
+        canvas: Option<&Self>,
+        backdrop: Color,
+    ) -> f64 {
         let opacity = background_opacity.clamp(0.0, 1.0);
         let transparent = Self::Solid(Color::TRANSPARENT);
         let canvas = canvas
@@ -81,15 +95,32 @@ pub(super) const fn backdrop(appearance: Appearance) -> Color {
     }
 }
 
-pub(super) fn automatic_fill_ink(background: Color) -> Color {
-    let ink = best_ink(background, DARK_INK, LIGHT_INK);
-    if ink.contrast(background) >= TEXT_CONTRAST {
-        ink
+pub(super) fn automatic_fill_ink_over(
+    fill: Color,
+    canvas: &Paint,
+    opacity: f64,
+    backdrop: Color,
+) -> Color {
+    let fill = Paint::Solid(fill);
+    select_fill_ink(|ink| {
+        Paint::Solid(ink).minimum_contrast_over_backdrop(&fill, opacity, Some(canvas), backdrop)
+    })
+}
+
+fn select_fill_ink(contrast: impl Fn(Color) -> f64) -> Color {
+    let dark = contrast(DARK_INK);
+    let light = contrast(LIGHT_INK);
+    if dark.max(light) >= TEXT_CONTRAST {
+        return if dark >= light { DARK_INK } else { LIGHT_INK };
+    }
+    if contrast(BLACK) >= contrast(WHITE) {
+        BLACK
     } else {
-        best_ink(background, BLACK, WHITE)
+        WHITE
     }
 }
 
+#[cfg(feature = "compile")]
 pub(super) fn best_ink(background: Color, first: Color, second: Color) -> Color {
     if first.contrast(background) >= second.contrast(background) {
         first
@@ -98,7 +129,7 @@ pub(super) fn best_ink(background: Color, first: Color, second: Color) -> Color 
     }
 }
 
-fn is_opaque(paint: &Paint, opacity: f64) -> bool {
+pub(super) fn is_opaque(paint: &Paint, opacity: f64) -> bool {
     opacity == 1.0
         && match paint {
             Paint::Solid(color) => color.channels()[3] == 255,
