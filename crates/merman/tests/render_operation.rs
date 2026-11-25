@@ -721,13 +721,12 @@ fn layout_json_writer_finishes_once_emission_commits() {
     let source = "flowchart TD\nA[Start] --> B[Done]";
     let request =
         |control| RenderRequest::layout_json(source, control, merman::SvgRequest::default());
-    let RenderOutput::LayoutJson(Some(layout)) =
-        renderer.render(request(OperationControl::new())).unwrap()
-    else {
-        panic!("expected managed geometry");
-    };
     let mut expected = Vec::new();
-    layout.layout().write_json_pretty(&mut expected).unwrap();
+    assert!(
+        renderer
+            .write_layout_json(request(OperationControl::new()), &mut expected, true)
+            .unwrap()
+    );
 
     let control = OperationControl::new();
     let mut writer = CancellingWriter {
