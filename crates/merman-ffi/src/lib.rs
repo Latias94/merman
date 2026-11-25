@@ -347,13 +347,12 @@ fn runtime_catalog_digest_bytes() -> Result<&'static [u8], NativeFailure> {
     }
 
     let catalog = runtime_catalog_bytes()?;
-    let digest = format!(
-        "sha256:{}",
-        data_encoding::HEXLOWER.encode_display(&Sha256::digest(catalog))
-    )
-    .into_bytes()
-    .into_boxed_slice();
-    let _ = RUNTIME_CATALOG_DIGEST.set(digest);
+    let digest = Sha256::digest(catalog);
+    let prefix = "sha256:";
+    let mut encoded = String::with_capacity(prefix.len() + 2 * digest.len());
+    encoded.push_str(prefix);
+    merman::model::push_hex_lower(&mut encoded, &digest);
+    let _ = RUNTIME_CATALOG_DIGEST.set(encoded.into_bytes().into_boxed_slice());
     Ok(RUNTIME_CATALOG_DIGEST
         .get()
         .expect("runtime catalog digest must be initialized after set"))

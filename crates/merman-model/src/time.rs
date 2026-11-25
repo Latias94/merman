@@ -322,12 +322,8 @@ fn system_provenance(time_zone: &jiff::tz::TimeZone) -> LocalTimeZoneProvenance 
         digest.update(timestamp.subsec_nanosecond().to_be_bytes());
         digest.update(transition.offset().seconds().to_be_bytes());
     }
-    let hash = digest.finalize();
-    let mut rules_sha256 = String::with_capacity(hash.len() * 2);
-    use std::fmt::Write as _;
-    for byte in hash {
-        write!(rules_sha256, "{byte:02x}").expect("writing to a String cannot fail");
-    }
+    let mut rules_sha256 = String::new();
+    crate::push_hex_lower(&mut rules_sha256, &digest.finalize());
 
     LocalTimeZoneProvenance {
         source: LocalTimeZoneSource::System,

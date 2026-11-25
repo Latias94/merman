@@ -83,6 +83,7 @@ indexmap = "2.14.2"
 libc = "0.2.191"
 # Pin numerical kernels so deterministic geometry changes are reviewed explicitly.
 libm = { version = "=0.2.16", default-features = false }
+memchr = "2"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 ratex-font = "0.1.15"
 ratex-layout = "0.1.15"

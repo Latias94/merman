@@ -354,7 +354,9 @@ fn unavailable_uri_digest(uri: &Uri) -> String {
     let mut hasher = Sha256::new();
     hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
     hasher.update(uri.as_str().as_bytes());
-    data_encoding::HEXLOWER.encode(&hasher.finalize())
+    let mut encoded = String::new();
+    merman_model::push_hex_lower(&mut encoded, &hasher.finalize());
+    encoded
 }
 
 impl UnavailableDiagnosticSource {

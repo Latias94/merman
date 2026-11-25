@@ -2327,7 +2327,6 @@ dependencies = [
 name = "merman-ascii"
 version = "0.11.0"
 dependencies = [
- "data-encoding",
  "dugong",
  "merman-core",
  "merman-model",
@@ -2356,7 +2355,6 @@ name = "merman-bindings-core"
 version = "0.11.0"
 dependencies = [
  "criterion",
- "data-encoding",
  "merman",
  "merman-analysis",
  "merman-ascii-test-contracts",
@@ -2583,11 +2581,11 @@ version = "0.11.0"
 name = "merman-lsp"
 version = "0.11.0"
 dependencies = [
- "data-encoding",
  "futures",
  "merman-analysis",
  "merman-core",
  "merman-editor-core",
+ "merman-model",
  "ropey",
  "serde",
  "serde_json",

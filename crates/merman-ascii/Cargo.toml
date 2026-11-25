@@ -104,7 +104,6 @@ rustc-hash = { workspace = true, optional = true }
 pulldown-cmark = { workspace = true, optional = true }
 
 [dev-dependencies]
-data-encoding.workspace = true
 merman-core = { workspace = true, features = ["test-support", "presentation", "compat-json"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }
 sha2.workspace = true
