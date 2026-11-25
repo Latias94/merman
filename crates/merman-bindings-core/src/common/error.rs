@@ -1,8 +1,16 @@
 use serde::{Serialize, Serializer};
 
+use super::BINDING_JSON_SAFE_INTEGER_MAX;
 #[cfg(feature = "svg")]
 use super::icon_registry_error_status;
-use super::{BINDING_JSON_SAFE_INTEGER_MAX, BINDING_RESULT_PAYLOAD_VERSION};
+
+mod transport_envelope;
+
+pub use transport_envelope::{
+    BindingErrorBody, binding_error_details_json, binding_error_js_details_json,
+    binding_error_js_payload_json_bytes, binding_error_payload_json_bytes,
+    error_payload_json_bytes,
+};
 
 /// Stable machine-readable classification carried by binding errors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -563,171 +571,6 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             message,
         )
     }
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorPayload<'a, R, D> {
-    version: u32,
-    ok: bool,
-    code: i32,
-    code_name: &'a str,
-    kind: &'a str,
-    capability_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<ErrorDetails<'a, R, D>>,
-    message: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorDetails<'a, R, D> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resource: Option<R>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    diagnostic: Option<D>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cancellation: Option<&'a BindingCancellationErrorDetails>,
-}
-
-pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
-    error_payload_json_bytes_with_details::<
-        &BindingResourceErrorDetails,
-        &BindingDiagnosticErrorDetails,
-    >(ErrorPayloadInput {
-        status,
-        kind: BindingErrorKind::Generic,
-        capability_id: None,
-        resource: None,
-        diagnostic: None,
-        icon_registry: None,
-        cancellation: None,
-        message,
-    })
-}
-
-pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
-    let details = error.details.as_deref();
-    error_payload_json_bytes_with_details(ErrorPayloadInput {
-        status: error.status(),
-        kind: error.kind(),
-        capability_id: error.capability_id(),
-        resource: details.and_then(|details| details.resource.as_ref()),
-        diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
-        icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
-        cancellation: details.and_then(|details| details.cancellation.as_ref()),
-        message: error.message(),
-    })
-}
-
-/// Serializes a binding error for JavaScript transports without losing wide resource counts.
-#[doc(hidden)]
-pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
-    let details = error.details.as_deref();
-    error_payload_json_bytes_with_details(ErrorPayloadInput {
-        status: error.status(),
-        kind: error.kind(),
-        capability_id: error.capability_id(),
-        resource: error
-            .resource_details()
-            .map(BindingResourceErrorDetails::js_safe_json),
-        diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
-        icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
-        cancellation: details.and_then(|details| details.cancellation.as_ref()),
-        message: error.message(),
-    })
-}
-
-/// Projects complete error details with ordinary JSON integer counts.
-#[doc(hidden)]
-pub fn binding_error_details_json(
-    error: &BindingError,
-) -> Result<Option<serde_json::Value>, serde_json::Error> {
-    binding_error_details_json_with(error, std::convert::identity)
-}
-
-/// Projects the complete error details for JavaScript transports.
-///
-/// Resource counts above JavaScript's exact integer range use canonical decimal strings.
-#[doc(hidden)]
-pub fn binding_error_js_details_json(
-    error: &BindingError,
-) -> Result<Option<serde_json::Value>, serde_json::Error> {
-    binding_error_details_json_with(error, BindingResourceErrorDetails::js_safe_json)
-}
-
-fn binding_error_details_json_with<R: Serialize>(
-    error: &BindingError,
-    resource: impl FnOnce(BindingResourceErrorDetails) -> R,
-) -> Result<Option<serde_json::Value>, serde_json::Error> {
-    error
-        .details
-        .as_deref()
-        .map(|details| {
-            serde_json::to_value(ErrorDetails {
-                resource: details.resource.map(resource),
-                diagnostic: details.diagnostic.as_ref(),
-                icon_registry: details.icon_registry.as_ref(),
-                cancellation: details.cancellation.as_ref(),
-            })
-        })
-        .transpose()
-}
-
-struct ErrorPayloadInput<'a, R, D> {
-    status: BindingStatus,
-    kind: BindingErrorKind,
-    capability_id: Option<&'a str>,
-    resource: Option<R>,
-    diagnostic: Option<D>,
-    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
-    cancellation: Option<&'a BindingCancellationErrorDetails>,
-    message: &'a str,
-}
-
-fn error_payload_json_bytes_with_details<R, D>(input: ErrorPayloadInput<'_, R, D>) -> Vec<u8>
-where
-    R: Serialize,
-    D: Serialize,
-{
-    let ErrorPayloadInput {
-        status,
-        kind,
-        capability_id,
-        resource,
-        diagnostic,
-        icon_registry,
-        cancellation,
-        message,
-    } = input;
-    let has_details = resource.is_some()
-        || diagnostic.is_some()
-        || icon_registry.is_some()
-        || cancellation.is_some();
-    let payload = ErrorPayload {
-        version: BINDING_RESULT_PAYLOAD_VERSION,
-        ok: false,
-        code: status.code(),
-        code_name: status.code_name(),
-        kind: kind.id(),
-        capability_id,
-        details: has_details.then_some(ErrorDetails {
-            resource,
-            diagnostic,
-            icon_registry,
-            cancellation,
-        }),
-        message,
-    };
-    serde_json::to_vec(&payload).unwrap_or_else(|_| {
-        format!(
-            r#"{{"version":{},"ok":false,"code":{},"code_name":"{}","kind":"generic","capability_id":null,"message":"internal error payload serialization failed"}}"#,
-            BINDING_RESULT_PAYLOAD_VERSION,
-            BindingStatus::InternalError.code(),
-            BindingStatus::InternalError.code_name()
-        )
-        .into_bytes()
-    })
 }
 
 #[cfg(feature = "analysis")]

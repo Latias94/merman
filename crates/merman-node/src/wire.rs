@@ -18,12 +18,12 @@ use std::time::Duration;
 use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
-    BindingError, BindingErrorKind, BindingOperationKind, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
-    CapabilityKey, ConstructorServiceKey, DecodedOperationOptions, NODE_TRANSPORT_API_VERSION,
-    OperationControl, OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
-    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
-    build_icon_registry_from_json,
+    BindingError, BindingErrorBody, BindingErrorKind, BindingOperationKind,
+    BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
+    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, ConstructorServiceKey, DecodedOperationOptions,
+    NODE_TRANSPORT_API_VERSION, OperationControl, OperationKey, OperationPhase,
+    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
+    TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -434,18 +434,7 @@ impl<'a> SuccessEnvelope<'a> {
 struct ErrorEnvelope<'a> {
     version: u32,
     ok: bool,
-    error: ErrorPayload<'a>,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorPayload<'a> {
-    code: i32,
-    code_name: &'a str,
-    kind: &'a str,
-    capability_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<serde_json::Value>,
-    message: Cow<'a, str>,
+    error: BindingErrorBody<'a, Value>,
 }
 
 #[cfg(test)]
@@ -1053,19 +1042,12 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
         return Err("error diagnostic span exceeds the JSON-safe integer range".to_owned());
     }
     let message = bounded_text(error.message(), fields.error_message_utf8_bytes);
-    let details = merman_bindings_core::binding_error_js_details_json(error)
+    let error = BindingErrorBody::with_js_details(error, &message)
         .map_err(|error| format!("failed to encode binding error details: {error}"))?;
     let envelope = ErrorEnvelope {
         version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
-        error: ErrorPayload {
-            code: error.status().code(),
-            code_name: error.status().code_name(),
-            kind: error.kind().id(),
-            capability_id: error.capability_id(),
-            details,
-            message,
-        },
+        error,
     };
     let json = serialize_bounded_json(&envelope, "error", contract.documents.error)?;
     validate_bounded_json_text(&json, "response", contract.documents.response)?;
