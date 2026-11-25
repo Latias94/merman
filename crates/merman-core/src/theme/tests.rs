@@ -7,40 +7,8 @@ fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
 }
 
 #[test]
-fn executable_theme_programs_cover_typed_catalog() {
-    assert!(
-        THEME_PROGRAMS
-            .iter()
-            .map(|program| program.id)
-            .eq(MermaidThemeId::ALL.iter().copied()),
-        "the executable theme programs must cover the typed catalog exactly"
-    );
-}
-
-#[test]
-fn owned_staged_theme_materialization_needs_no_json_cow_copy() {
-    for theme in [MermaidThemeId::Default, MermaidThemeId::Base] {
-        let raw = SourcePresentationConfig::from_value(json!({
-            "theme": theme.as_str(), "themeVariables": { "primaryColor": "#123456" },
-        }));
-        let (materialized, work) =
-            crate::config::measure_config_work(|| materialize_selected_theme(raw, theme).unwrap());
-        assert_eq!(
-            materialized.get_str("themeVariables.primaryColor"),
-            Some("#123456")
-        );
-        assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
-        assert_eq!(work.selected_theme_materializations, 1, "{theme}: {work:?}");
-    }
-}
-
-#[test]
-fn owned_legacy_theme_materialization_needs_no_json_cow_copy() {
-    for theme in MermaidThemeId::ALL
-        .iter()
-        .copied()
-        .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
-    {
+fn owned_theme_materialization_needs_no_json_cow_copy() {
+    for &theme in MermaidThemeId::ALL {
         let unrelated = "retained host data ".repeat(8_192);
         let raw = SourcePresentationConfig::from_value(json!({
             "theme": theme.as_str(),
@@ -224,8 +192,8 @@ fn supported_theme_defaults_match_upstream_snapshot() {
             .get("themeVariables")
             .and_then(|v| v.as_object())
             .unwrap();
-        let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
-            .resolved_without_overrides();
+        let expected =
+            ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).generated_snapshot();
 
         assert_eq!(actual, expected, "theme {theme}");
     }
@@ -303,7 +271,7 @@ fn architecture_color_dependencies_preserve_explicit_replay() {
 fn architecture_group_border_remains_independent_of_late_primary_border_overrides() {
     for &theme in MermaidThemeId::NAMES {
         let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
-            .resolved_without_overrides()
+            .generated_snapshot()
             .get("archGroupBorderColor")
             .and_then(Value::as_str)
             .unwrap();
@@ -1508,8 +1476,8 @@ fn dark_mode_branch_matches_generated_mermaid_oracle_for_every_theme() {
             .get("themeVariables")
             .and_then(Value::as_object)
             .unwrap();
-        let expected =
-            ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).resolved_dark_mode_true();
+        let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
+            .generated_dark_mode_snapshot();
         assert_eq!(actual, expected, "theme {theme}");
     }
 }
@@ -1587,8 +1555,8 @@ fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
             .get("themeVariables")
             .and_then(Value::as_object)
             .unwrap();
-        let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
-            .resolved_without_overrides();
+        let expected =
+            ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).generated_snapshot();
 
         for key in [
             "cScale0",
@@ -1650,9 +1618,9 @@ fn default_theme_exact_overrides_preserve_truthiness_and_typography() {
         apply_theme_defaults(&mut config).unwrap();
 
         let mut expected = if dark_mode {
-            program.resolved_dark_mode_true().clone()
+            program.generated_dark_mode_snapshot().clone()
         } else {
-            program.resolved_without_overrides().clone()
+            program.generated_snapshot().clone()
         };
         expected.extend(
             overrides
@@ -1696,7 +1664,7 @@ fn default_theme_nonexact_invalid_colors_preserve_errors() {
 
 #[test]
 fn default_theme_replays_color_limit_without_changing_fixed_scale() {
-    let baseline = ThemeProgram::resolve(MermaidThemeId::Default).resolved_without_overrides();
+    let baseline = ThemeProgram::resolve(MermaidThemeId::Default).generated_snapshot();
     for limit in [json!(0), json!([0]), json!(65), json!("Infinity")] {
         let mut config = SourcePresentationConfig::from_value(json!({
             "theme": "default",
@@ -1742,12 +1710,7 @@ fn base_finalize_uses_node_border_presence() {
     let program = ThemeProgram::resolve(MermaidThemeId::Base);
     for border in [json!(false), json!(0), Value::Null] {
         let explicit = json!({"nodeBorder": border});
-        let resolved = staged::Resolution::execute(
-            staged::StagedProgram::Base,
-            program,
-            explicit.as_object().unwrap(),
-        )
-        .unwrap();
+        let resolved = staged::Resolution::execute(program, explicit.as_object().unwrap()).unwrap();
         assert_eq!(resolved.variables["useGradient"], json!(false));
     }
 }
@@ -1838,16 +1801,21 @@ fn redux_color_categorical_overrides_feed_pie_gantt_and_journey() {
 
 #[test]
 fn redux_categorical_falsy_override_replays_after_pie_derivation() {
-    for theme in ["redux-color", "redux-dark-color"] {
+    for theme in [MermaidThemeId::ReduxColor, MermaidThemeId::ReduxDarkColor] {
+        let program = ThemeProgram::resolve(theme);
         for explicit_scale in [json!(false), json!(0)] {
-            let mut config = SourcePresentationConfig::from_value(json!({
-                "theme": theme,
-                "themeVariables": { "cScale2": explicit_scale }
-            }));
-            apply_theme_defaults(&mut config).unwrap();
-            let variables = &config.as_value()["themeVariables"];
-            assert_eq!(variables["cScale2"], explicit_scale, "{theme}");
-            assert_eq!(variables["pie3"], "#ffb86a", "{theme}");
+            let explicit = json!({ "cScale2": explicit_scale });
+            let resolution =
+                staged::Resolution::execute(program, explicit.as_object().unwrap()).unwrap();
+            let trace = resolution.trace();
+            assert_eq!(
+                trace.overrides_applied["cScale2"], explicit_scale,
+                "{theme}"
+            );
+            assert_eq!(trace.after_update["cScale2"], "#ffb86a", "{theme}");
+            assert_eq!(trace.after_update["pie3"], "#ffb86a", "{theme}");
+            assert_eq!(trace.final_resolved["cScale2"], explicit_scale, "{theme}");
+            assert_eq!(trace.final_resolved["pie3"], "#ffb86a", "{theme}");
         }
     }
 }
@@ -2477,18 +2445,14 @@ flowchart TD
 
 #[test]
 fn theme_failure_leaves_values_and_authored_paths_intact() {
-    let staged_cases = [
-        ("default", "primaryColor"),
-        ("dark", "mainBkg"),
-        ("base", "cScale2"),
-    ];
-    let other_cases = MermaidThemeId::ALL
-        .iter()
-        .filter(|theme| ThemeProgram::resolve(**theme).staged_program().is_none())
-        .map(|theme| (theme.as_str(), "primaryColor"));
-    for (theme, variable) in staged_cases.into_iter().chain(other_cases) {
+    for &theme in MermaidThemeId::ALL {
+        let variable = match theme {
+            MermaidThemeId::Dark => "mainBkg",
+            MermaidThemeId::Base => "cScale2",
+            _ => "primaryColor",
+        };
         let mut config = SourcePresentationConfig::from_value(json!({
-            "theme": theme,
+            "theme": theme.as_str(),
             "themeVariables": {"nodeBkg": null},
         }));
         config.set_value(&format!("themeVariables.{variable}"), json!("not-a-color"));
@@ -2572,19 +2536,13 @@ fn staged_theme_interface_matches_upstream_stage_oracles() {
         let theme = MermaidThemeId::parse(theme_name).unwrap();
         let id = case.get("id").and_then(Value::as_str).unwrap();
         let program = ThemeProgram::resolve(theme);
-        let Some(staged_program) = program.staged_program() else {
-            mismatches.push(format!(
-                "{theme_name}/{id}: stage oracle targets a non-staged theme program"
-            ));
-            continue;
-        };
         let raw = case
             .get("overrides")
             .and_then(Value::as_object)
             .unwrap()
             .clone();
-        let explicit = program.normalize_overrides(raw);
-        let resolution = staged::Resolution::execute(staged_program, program, &explicit).unwrap();
+        let explicit = ThemeProgram::normalize_overrides(raw);
+        let resolution = staged::Resolution::execute(program, &explicit).unwrap();
         let trace = resolution.trace();
         let actual_stages = [
             ("constructorPrepared", &trace.constructor_prepared),
@@ -2642,8 +2600,7 @@ fn default_staged_resolution_preserves_intermediates_and_replay() {
     });
     let explicit = explicit.as_object().unwrap();
     let program = ThemeProgram::resolve(MermaidThemeId::Default);
-    let resolution =
-        staged::Resolution::execute(staged::StagedProgram::Default, program, explicit).unwrap();
+    let resolution = staged::Resolution::execute(program, explicit).unwrap();
     let trace = resolution.trace();
     assert!(trace.constructor_prepared.is_empty());
     assert_eq!(&trace.overrides_applied, explicit);
@@ -2662,7 +2619,7 @@ fn default_staged_resolution_preserves_intermediates_and_replay() {
     ] {
         assert_eq!(trace.explicit_replay[key], explicit[key], "{key}");
     }
-    let baseline = program.resolved_without_overrides();
+    let baseline = program.generated_snapshot();
     assert_eq!(trace.final_resolved["cScalePeer0"], baseline["cScalePeer0"]);
     assert_eq!(trace.final_resolved["actorLineColor"], json!("#9370DB"));
     assert_eq!(trace.final_resolved["taskTextColor"], json!("white"));
@@ -2877,7 +2834,7 @@ fn raw_mermaid_config_preserves_upstream_unsupported_theme_fallback() {
 
         assert_eq!(
             variables,
-            ThemeProgram::resolve(MermaidThemeId::Default).resolved_without_overrides()
+            ThemeProgram::resolve(MermaidThemeId::Default).generated_snapshot()
         );
         assert_eq!(config.get_str("theme"), Some(requested));
     }
