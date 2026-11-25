@@ -97,7 +97,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "5aabe5ac21e7572d7bf0f006e7510c9cee2e9a303939490166c1696cee4c7290",
+    "cargo_lock_sha256": "509bc726f2308c7db49cdc7f74b1d9e7c72c7a09f9b6e5349558939570270413",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "e37a9cebe3a73cb08b7b2d251ef1ea62f6e4c36f411a6b3f3b721df2ed376453"
   },
@@ -105,13 +105,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 182,
-      "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
+      "package_count": 181,
+      "packages_sha256": "62fcc8de7c538442be38f518c2e302ea4670cb2ff27c1dbcef30b939f7731c46"
     }
   ],
   "dependency_closure": {
-    "package_count": 182,
-    "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
+    "package_count": 181,
+    "packages_sha256": "62fcc8de7c538442be38f518c2e302ea4670cb2ff27c1dbcef30b939f7731c46"
   },
   "licenses": [
     {
@@ -1755,22 +1755,6 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186",
-      "text": "The MIT License (MIT)\n\nCopyright (c) 2015-2020 Julien Cretin\nCopyright (c) 2017-2020 Google Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-      "packages": [
-        {
-          "name": "data-encoding",
-          "version": "2.11.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/ia0/data-encoding"
         }
       ]
     },

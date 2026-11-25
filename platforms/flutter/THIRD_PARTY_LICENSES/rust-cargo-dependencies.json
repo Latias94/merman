@@ -295,7 +295,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "5aabe5ac21e7572d7bf0f006e7510c9cee2e9a303939490166c1696cee4c7290",
+    "cargo_lock_sha256": "509bc726f2308c7db49cdc7f74b1d9e7c72c7a09f9b6e5349558939570270413",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "f33062369734a1786c00d7b5a4dba3b88136dc5250915a2129def623d083e2db"
   },
@@ -303,73 +303,73 @@
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
-      "package_count": 159,
-      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
+      "package_count": 158,
+      "packages_sha256": "fa20d3f34c4ea8c6eaa67ca8b3c2d0f84f885b2d07346c6790a7b3048d87f38c"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
-      "package_count": 158,
-      "packages_sha256": "ff71da5b263e46b9588715f95c8fab6d6d6aa3408340acb5e8b0ce03d6a70e61"
+      "package_count": 157,
+      "packages_sha256": "5f11a3c1ee9bb9f46bb138ccb662217df556a6c23433b7255caaa92da2d3f5a0"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
-      "package_count": 159,
-      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
+      "package_count": 158,
+      "packages_sha256": "fa20d3f34c4ea8c6eaa67ca8b3c2d0f84f885b2d07346c6790a7b3048d87f38c"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 159,
-      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
+      "package_count": 158,
+      "packages_sha256": "fa20d3f34c4ea8c6eaa67ca8b3c2d0f84f885b2d07346c6790a7b3048d87f38c"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 161,
-      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
+      "package_count": 160,
+      "packages_sha256": "df180699e3671c7639d8475a2a8bd95ecc6b98db8f969ca279cb0cc4c0c854bd"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 159,
-      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
+      "package_count": 158,
+      "packages_sha256": "fa20d3f34c4ea8c6eaa67ca8b3c2d0f84f885b2d07346c6790a7b3048d87f38c"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
-      "package_count": 161,
-      "packages_sha256": "d68bb70b3e0ee6516ae73f59ecf9ed7613d004297d7184b1236e686d02834ea6"
+      "package_count": 160,
+      "packages_sha256": "24a5cdd1d209c20fa1e8ea87df59f299e60d18be3342fd07254b9b8be7ce5eab"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 161,
-      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
+      "package_count": 160,
+      "packages_sha256": "df180699e3671c7639d8475a2a8bd95ecc6b98db8f969ca279cb0cc4c0c854bd"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
-      "package_count": 161,
-      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
+      "package_count": 160,
+      "packages_sha256": "df180699e3671c7639d8475a2a8bd95ecc6b98db8f969ca279cb0cc4c0c854bd"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 161,
-      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
+      "package_count": 160,
+      "packages_sha256": "df180699e3671c7639d8475a2a8bd95ecc6b98db8f969ca279cb0cc4c0c854bd"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
-      "package_count": 161,
-      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
+      "package_count": 160,
+      "packages_sha256": "df180699e3671c7639d8475a2a8bd95ecc6b98db8f969ca279cb0cc4c0c854bd"
     }
   ],
   "dependency_closure": {
-    "package_count": 164,
-    "packages_sha256": "15e9e0eca425a17463f3ffa08f25d3a9536f1da6b06031bf0a57b7772e5c3ca8"
+    "package_count": 163,
+    "packages_sha256": "a5ab91cecf6540357354a5a7bd7da9af28fd0c72b97820edc1cf86c57e0be3e0"
   },
   "licenses": [
     {
@@ -1855,22 +1855,6 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186",
-      "text": "The MIT License (MIT)\n\nCopyright (c) 2015-2020 Julien Cretin\nCopyright (c) 2017-2020 Google Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-      "packages": [
-        {
-          "name": "data-encoding",
-          "version": "2.11.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/ia0/data-encoding"
         }
       ]
     },
