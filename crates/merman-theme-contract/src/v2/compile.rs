@@ -237,13 +237,7 @@ impl ThemeCompiler {
             }
         }
 
-        let palette = derive_palette(
-            &data,
-            accent,
-            &roles.canvas,
-            form.chart.pie_opacity,
-            appearance,
-        );
+        let palette = derive_palette(&data, accent, &roles.canvas, appearance);
         let mut base = FamilyTheme {
             roles,
             data: palette,
@@ -265,21 +259,35 @@ impl ThemeCompiler {
         }
 
         let mut notices = Vec::new();
-        for family in family_overrides.values_mut() {
-            if family.roles.canvas != base.roles.canvas
-                || family.form.chart.pie_opacity != base.form.chart.pie_opacity
-            {
-                family.data = derive_palette(
-                    &data,
-                    accent,
-                    &family.roles.canvas,
-                    family.form.chart.pie_opacity,
-                    appearance,
-                );
+        let mut contrast = ContrastChecks {
+            appearance,
+            auto_fix,
+            notices: &mut notices,
+        };
+        let base_fill_ink = Arc::clone(&base.data.fill_ink);
+        contrast.check_family(&mut base, 1.0, "data.fill");
+        for (id, family) in &mut family_overrides {
+            if family.roles.canvas != base.roles.canvas {
+                family.data = derive_palette(&data, accent, &family.roles.canvas, appearance);
             }
-            check_contrast(family, appearance, auto_fix, &mut notices);
+            if id == "pie" {
+                let opacity = family.form.chart.pie_opacity;
+                set_automatic_fill_ink(&mut family.data, &family.roles.canvas, opacity, appearance);
+                contrast.check_family(family, opacity, "pie.data.fill");
+            } else {
+                contrast.check_family(family, 1.0, "data.fill");
+            }
         }
-        check_contrast(&mut base, appearance, auto_fix, &mut notices);
+        if base.form.chart.pie_opacity != 1.0 && !family_overrides.contains_key("pie") {
+            let mut pie = base.clone();
+            let opacity = pie.form.chart.pie_opacity;
+            pie.data.fill_ink = base_fill_ink;
+            set_automatic_fill_ink(&mut pie.data, &pie.roles.canvas, opacity, appearance);
+            contrast.check_fill_ink(&mut pie, opacity, "pie.data.fill");
+            if pie.data.fill_ink != base.data.fill_ink {
+                family_overrides.insert("pie".to_owned(), pie);
+            }
+        }
         if strict
             && let Some(ThemeNotice::LowContrast {
                 foreground,
@@ -395,6 +403,7 @@ fn derive_roles(
         .unwrap_or_else(|| Color::from_oklch(if dark { 0.30 } else { 0.94 }, 0.045, 82.0));
     let emphasis = surface.mix_oklab(accent, if dark { 0.22 } else { 0.12 });
     let (dark_ink, light_ink) = if dark { (canvas, ink) } else { (ink, surface) };
+    let painted_canvas = canvas.composite(backdrop(mode), 1.0);
 
     Roles {
         canvas: canvas.into(),
@@ -409,7 +418,11 @@ fn derive_roles(
         stroke_guide: canvas.mix_oklab(ink, if dark { 0.16 } else { 0.14 }).into(),
         text_primary: ink,
         text_muted: canvas.mix_oklab(ink, if dark { 0.72 } else { 0.68 }),
-        text_title: if accent.contrast(canvas) >= TEXT_CONTRAST {
+        text_title: if accent
+            .composite(painted_canvas, 1.0)
+            .contrast(painted_canvas)
+            >= TEXT_CONTRAST
+        {
             accent
         } else {
             ink
@@ -439,7 +452,6 @@ fn derive_palette(
     data: &DataPatch,
     accent: Color,
     canvas: &Paint,
-    opacity: f64,
     mode: Appearance,
 ) -> DataPalette {
     let dark = mode == Appearance::Dark;
@@ -470,8 +482,7 @@ fn derive_palette(
     let fill_ink = fill
         .iter()
         .map(|color| {
-            authored_fill_ink
-                .unwrap_or_else(|| automatic_fill_ink(color.composite(canvas, opacity)))
+            authored_fill_ink.unwrap_or_else(|| automatic_fill_ink(color.composite(canvas, 1.0)))
         })
         .collect();
     DataPalette {
@@ -480,6 +491,17 @@ fn derive_palette(
         fill_ink,
         pattern_encoding: data.pattern_encoding.unwrap_or(false),
         automatic_fill_ink: authored_fill_ink.is_none(),
+    }
+}
+
+fn set_automatic_fill_ink(data: &mut DataPalette, canvas: &Paint, opacity: f64, mode: Appearance) {
+    if data.automatic_fill_ink {
+        let canvas = paint_sample(canvas, backdrop(mode));
+        data.fill_ink = data
+            .fill
+            .iter()
+            .map(|color| automatic_fill_ink(color.composite(canvas, opacity)))
+            .collect();
     }
 }
 
@@ -519,39 +541,25 @@ fn fit_contrast(color: Color, passes: impl Fn(Color) -> bool) -> Option<Color> {
         .map(|(_, color)| color)
 }
 
-fn check_contrast(
-    family: &mut FamilyTheme,
+struct ContrastChecks<'a> {
     appearance: Appearance,
     auto_fix: bool,
-    notices: &mut Vec<ThemeNotice>,
-) {
-    let roles = &mut family.roles;
-    let canvas = ("canvas", &roles.canvas, None);
-    let node = ("surface.node", &roles.surface_node, Some(&roles.canvas));
-    let container = (
-        "surface.container",
-        &roles.surface_container,
-        Some(&roles.canvas),
-    );
-    let callout = (
-        "surface.callout",
-        &roles.surface_callout,
-        Some(&roles.canvas),
-    );
-    let emphasis = (
-        "surface.emphasis",
-        &roles.surface_emphasis,
-        Some(&roles.canvas),
-    );
-    let mut check = |name: &str,
-                     color: &mut Color,
-                     backgrounds: &[(&'static str, &Paint, Option<&Paint>)],
-                     opacity: f64,
-                     minimum: f64| {
+    notices: &'a mut Vec<ThemeNotice>,
+}
+
+impl ContrastChecks<'_> {
+    fn check(
+        &mut self,
+        name: &str,
+        color: &mut Color,
+        backgrounds: &[(&'static str, &Paint, Option<&Paint>)],
+        opacity: f64,
+        minimum: f64,
+    ) {
         let ratio = |color, background: &Paint, canvas: Option<&Paint>| {
-            Paint::Solid(color).minimum_contrast_over(background, opacity, canvas, appearance)
+            Paint::Solid(color).minimum_contrast_over(background, opacity, canvas, self.appearance)
         };
-        if auto_fix
+        if self.auto_fix
             && let Some(adjusted) = fit_contrast(*color, |candidate| {
                 backgrounds
                     .iter()
@@ -559,7 +567,7 @@ fn check_contrast(
             })
         {
             *color = adjusted;
-            notices.push(ThemeNotice::ContrastAdjusted {
+            self.notices.push(ThemeNotice::ContrastAdjusted {
                 foreground: name.to_owned(),
                 color: adjusted,
             });
@@ -567,7 +575,7 @@ fn check_contrast(
         for &(background, paint, canvas) in backgrounds {
             let ratio = ratio(*color, paint, canvas);
             if ratio < minimum {
-                notices.push(ThemeNotice::LowContrast {
+                self.notices.push(ThemeNotice::LowContrast {
                     foreground: name.to_owned(),
                     background,
                     ratio,
@@ -575,70 +583,99 @@ fn check_contrast(
                 });
             }
         }
-    };
+    }
 
-    check(
-        "text.primary",
-        &mut roles.text_primary,
-        &[canvas, node, container],
-        1.0,
-        TEXT_CONTRAST,
-    );
-    check(
-        "text.muted",
-        &mut roles.text_muted,
-        &[canvas, node],
-        1.0,
-        TEXT_CONTRAST,
-    );
-    check(
-        "text.title",
-        &mut roles.text_title,
-        &[canvas, container],
-        1.0,
-        TEXT_CONTRAST,
-    );
-    check(
-        "text.callout",
-        &mut roles.text_callout,
-        &[callout],
-        1.0,
-        TEXT_CONTRAST,
-    );
-    check(
-        "text.on_emphasis",
-        &mut roles.text_on_emphasis,
-        &[emphasis],
-        1.0,
-        TEXT_CONTRAST,
-    );
-
-    let mut series = family.data.ink.iter().copied().collect::<Vec<_>>();
-    for (index, color) in series.iter_mut().enumerate() {
-        check(
-            &format!("data.ink[{index}]"),
-            color,
-            &[canvas],
-            1.0,
-            SERIES_CONTRAST,
+    fn check_family(
+        &mut self,
+        family: &mut FamilyTheme,
+        fill_opacity: f64,
+        fill_background: &'static str,
+    ) {
+        let roles = &mut family.roles;
+        let canvas = ("canvas", &roles.canvas, None);
+        let node = ("surface.node", &roles.surface_node, Some(&roles.canvas));
+        let container = (
+            "surface.container",
+            &roles.surface_container,
+            Some(&roles.canvas),
         );
-    }
-    if auto_fix {
-        family.data.ink = series.into();
-    }
-    let mut fill_ink = family.data.fill_ink.iter().copied().collect::<Vec<_>>();
-    let opacity = family.form.chart.pie_opacity;
-    for (index, (fill, ink)) in family.data.fill.iter().zip(&mut fill_ink).enumerate() {
-        check(
-            &format!("data.fill_ink[{index}]"),
-            ink,
-            &[("data.fill", &Paint::Solid(*fill), Some(&roles.canvas))],
-            opacity,
+        let callout = (
+            "surface.callout",
+            &roles.surface_callout,
+            Some(&roles.canvas),
+        );
+        let emphasis = (
+            "surface.emphasis",
+            &roles.surface_emphasis,
+            Some(&roles.canvas),
+        );
+
+        self.check(
+            "text.primary",
+            &mut roles.text_primary,
+            &[canvas, node, container],
+            1.0,
             TEXT_CONTRAST,
         );
+        self.check(
+            "text.muted",
+            &mut roles.text_muted,
+            &[canvas, node],
+            1.0,
+            TEXT_CONTRAST,
+        );
+        self.check(
+            "text.title",
+            &mut roles.text_title,
+            &[canvas, container],
+            1.0,
+            TEXT_CONTRAST,
+        );
+        self.check(
+            "text.callout",
+            &mut roles.text_callout,
+            &[callout],
+            1.0,
+            TEXT_CONTRAST,
+        );
+        self.check(
+            "text.on_emphasis",
+            &mut roles.text_on_emphasis,
+            &[emphasis],
+            1.0,
+            TEXT_CONTRAST,
+        );
+
+        let mut series = family.data.ink.to_vec();
+        for (index, color) in series.iter_mut().enumerate() {
+            self.check(
+                &format!("data.ink[{index}]"),
+                color,
+                &[canvas],
+                1.0,
+                SERIES_CONTRAST,
+            );
+        }
+        if self.auto_fix {
+            family.data.ink = series.into();
+        }
+        self.check_fill_ink(family, fill_opacity, fill_background);
     }
-    if auto_fix {
-        family.data.fill_ink = fill_ink.into();
+
+    fn check_fill_ink(&mut self, family: &mut FamilyTheme, opacity: f64, background: &'static str) {
+        let mut fill_ink = family.data.fill_ink.to_vec();
+        for (index, (fill, ink)) in family.data.fill.iter().zip(&mut fill_ink).enumerate() {
+            self.check(
+                &format!("data.fill_ink[{index}]"),
+                ink,
+                &[(background, &Paint::Solid(*fill), Some(&family.roles.canvas))],
+                opacity,
+                TEXT_CONTRAST,
+            );
+        }
+        if self.auto_fix {
+            family.data.fill_ink = fill_ink.into();
+        }
     }
 }
 

@@ -360,14 +360,15 @@ impl From<Color> for Paint {
 }
 
 impl Paint {
-    /// Returns the starting color for surfaces that use a single color.
+    /// Returns the starting color, including stop opacity, for single-color surfaces.
     pub fn first_color(&self) -> Color {
         match self {
             Self::Solid(color) => *color,
-            Self::LinearGradient(gradient) => gradient
-                .stops
-                .first()
-                .map_or(Color::TRANSPARENT, |stop| stop.color),
+            Self::LinearGradient(gradient) => {
+                gradient.stops.first().map_or(Color::TRANSPARENT, |stop| {
+                    stop.color.composite(Color::TRANSPARENT, stop.opacity)
+                })
+            }
         }
     }
 }

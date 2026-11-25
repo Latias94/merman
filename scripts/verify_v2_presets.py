@@ -13,7 +13,7 @@ Validates every ThemeDocumentV2 preset JSON against:
        - text.callout vs surface.callout >= 4.5:1
        - text.on_emphasis vs surface.emphasis >= 4.5:1
        - data.ink[i] vs canvas >= 3.0:1 (WCAG 2.1 Non-Text Contrast 1.4.11)
-       - Pie / area fills composited at pie_opacity over canvas vs fill_ink >= 4.5:1
+       - Shared area fills and Pie slices at pie_opacity vs their paired text >= 4.5:1
   4. Font stack portability gates:
        - Never places bare `system-ui` first (breaks resvg serif fallback)
        - Never places macOS-exclusive faces first without cross-platform alternatives
@@ -308,20 +308,24 @@ def verify_preset(path: pathlib.Path) -> tuple[list[str], list[dict[str, Any]]]:
                 )
 
         fill_inks = []
+        pie_fill_inks = []
         min_fill_text_cr = 99.0
-        for idx, f in enumerate(fills):
-            comp = alpha_composite(f, roles["canvas"], pie_opacity)
-            if fill_ink_spec == "auto":
-                chosen = best_contrast_ink(comp, "#0F172A", "#F8FAFC")
-            else:
-                chosen = fill_ink_spec
-            fill_inks.append(chosen)
-            cr = contrast_ratio(chosen, comp)
-            min_fill_text_cr = min(min_fill_text_cr, cr)
-            if cr < 4.5:
-                errors.append(
-                    f"{tag}: DATA FILL TEXT FAIL data.fill[{idx}]({f} @ {pie_opacity} -> {comp}) with {fill_ink_spec} = {cr:.2f}:1 < 4.5:1"
-                )
+        for opacity, palette in [(1.0, fill_inks), (pie_opacity, pie_fill_inks)]:
+            for idx, f in enumerate(fills):
+                comp = alpha_composite(f, roles["canvas"], opacity)
+                if fill_ink_spec == "auto":
+                    chosen = best_contrast_ink(comp, "#0F172A", "#F8FAFC")
+                    if contrast_ratio(chosen, comp) < 4.5:
+                        chosen = best_contrast_ink(comp, "#000000", "#FFFFFF")
+                else:
+                    chosen = fill_ink_spec
+                palette.append(chosen)
+                cr = contrast_ratio(chosen, comp)
+                min_fill_text_cr = min(min_fill_text_cr, cr)
+                if cr < 4.5:
+                    errors.append(
+                        f"{tag}: DATA FILL TEXT FAIL data.fill[{idx}]({f} @ {opacity} -> {comp}) with {fill_ink_spec} = {cr:.2f}:1 < 4.5:1"
+                    )
 
         signatures.append({
             "tag": tag,
@@ -337,7 +341,10 @@ def verify_preset(path: pathlib.Path) -> tuple[list[str], list[dict[str, Any]]]:
             "min_fill_text_cr": min_fill_text_cr if fills else 0.0,
             "bytes": len(raw.encode("utf-8")),
             "lines": raw.count("\n") + 1,
-            "colors": {"roles": roles, "ink": inks, "fill": fills, "fill_ink": fill_inks},
+            "colors": {
+                "roles": roles, "ink": inks, "fill": fills,
+                "fill_ink": fill_inks, "pie_fill_ink": pie_fill_inks,
+            },
         })
 
     return errors, signatures
@@ -352,7 +359,8 @@ def format_colors(colors: dict[str, dict[str, Any]]) -> str:
             f'    "roles": {roles},\n'
             f'    "ink": {json.dumps(palette["ink"])},\n'
             f'    "fill": {json.dumps(palette["fill"])},\n'
-            f'    "fill_ink": {json.dumps(palette["fill_ink"])}\n'
+            f'    "fill_ink": {json.dumps(palette["fill_ink"])},\n'
+            f'    "pie_fill_ink": {json.dumps(palette["pie_fill_ink"])}\n'
             '  }'
         )
     return "{\n" + ",\n".join(entries) + "\n}\n"

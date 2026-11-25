@@ -39,6 +39,11 @@ fn builtin_presets_match_reference_colors_in_every_appearance() {
                 expected["fill_ink"],
                 "{key} fill ink"
             );
+            assert_eq!(
+                json!(actual.family("pie").data.fill_ink),
+                expected["pie_fill_ink"],
+                "{key} pie fill ink"
+            );
         }
     }
     assert_eq!(appearances, 19);
@@ -186,7 +191,7 @@ fn contrast_checks_between_canvas_stops_and_through_translucent_surfaces() {
     let shaded_ratio = low_contrast(&theme, "text.primary", "surface.node");
     assert!((shaded_ratio - 1.97468).abs() < 0.001, "{shaded_ratio}");
     assert_eq!(
-        low_contrast(&theme, "data.fill_ink[0]", "data.fill"),
+        low_contrast(&theme, "data.fill_ink[0]", "pie.data.fill"),
         shaded_ratio
     );
 
@@ -200,6 +205,46 @@ fn contrast_checks_between_canvas_stops_and_through_translucent_surfaces() {
         error.to_string(),
         "text.primary on canvas has 2.75:1 contrast, below 4.5:1"
     );
+}
+
+#[test]
+fn translucent_pie_slices_and_shared_fills_use_their_own_contrasting_ink() {
+    let input = json!({
+        "schema_version": 2,
+        "extends": "studio",
+        "form": {"chart": {"pie_opacity": 0.65}},
+        "appearances": {"light": {"data": {
+            "fill": ["#444444", "#444444", "#444444", "#444444"],
+            "fill_ink": "auto"
+        }}},
+        "overrides": [{"families": ["mindmap"], "form": {"chart": {"pie_opacity": 0.8}}}]
+    });
+    let theme = ThemeCompiler::new()
+        .with_strict_contrast(true)
+        .compile_json(input.to_string().as_bytes(), None)
+        .unwrap();
+    let pie = theme.family("pie");
+    let mindmap = theme.family("mindmap");
+    let pie_background = pie
+        .data
+        .fill(0)
+        .composite(pie.roles.canvas.first_color(), 0.65);
+    assert!(pie.data.fill_ink(0).contrast(pie_background) >= 4.5);
+    assert!(mindmap.data.fill_ink(0).contrast(mindmap.data.fill(0)) >= 4.5);
+    assert_eq!(theme.data().fill_ink(0), mindmap.data.fill_ink(0));
+    assert_ne!(pie.data.fill_ink(0), mindmap.data.fill_ink(0));
+}
+
+#[test]
+fn a_transparent_seed_accent_falls_back_to_readable_title_ink() {
+    let theme = ThemeCompiler::new()
+        .with_strict_contrast(true)
+        .compile_json(
+            br##"{"schema_version":2,"extends":"studio","seed":{"accent":"#00000000"}}"##,
+            None,
+        )
+        .unwrap();
+    assert_eq!(theme.roles().text_title, theme.roles().text_primary);
 }
 
 #[test]
@@ -217,6 +262,8 @@ fn contrast_accounts_for_transparent_stop_color_before_compositing() {
         }
     }"##;
     let theme = ThemeCompiler::new().compile_json(input, None).unwrap();
+    let painted = theme.roles().surface_node.first_color();
+    assert_eq!(painted.channels()[3], 0);
     // Both stops composite to #818181. Halfway, the lighter stop's opacity and RGB are both halved.
     let ratio = low_contrast(&theme, "text.primary", "surface.node");
     assert!((ratio - 3.869905).abs() < 0.001, "{ratio}");
