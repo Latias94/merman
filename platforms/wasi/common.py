@@ -57,10 +57,11 @@ def decode_descriptor(data):
     return fields
 
 
-def validate_catalog(catalog, flavor, transport_version=1):
+def validate_catalog(catalog, flavor, *, wasi=True):
     require(catalog["schema_version"] == 1, "catalog schema mismatch")
-    require(catalog["transport_api_version"] == transport_version,
-            "catalog transport API mismatch")
+    if wasi:
+        require(catalog["transport_api_version"] == PROTOCOL["abi_version"],
+                "catalog transport API mismatch")
     caps = catalog["capabilities"]
     for key in ("capability_ids", "operation_ids", "output_ids", "system_adapter_ids"):
         ids = caps[key]
@@ -75,7 +76,7 @@ def validate_catalog(catalog, flavor, transport_version=1):
     require("native-font-context" in catalog["constructor_service_ids"],
             "missing immutable font constructor service")
     providers = caps["text_measurement"]["provider_ids"]
-    require("native-fonts" in providers and (transport_version != 1 or "host-callback" not in providers),
+    require("native-fonts" in providers and (not wasi or "host-callback" not in providers),
             "unexpected text measurement provider")
 
 

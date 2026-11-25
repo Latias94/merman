@@ -101,6 +101,10 @@ export class PreviewSession {
     return this.theme;
   }
 
+  get appearancePreference(): ThemeAppearancePreference {
+    return this.appearance;
+  }
+
   get previewDisplayMode(): PreviewDisplayMode {
     return this.displayMode;
   }

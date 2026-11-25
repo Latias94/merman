@@ -5,7 +5,11 @@ use crate::model::{
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 use crate::resources::OperationWorkMeter;
-use crate::text::{TextMeasurer, TextStyle, mermaid_html_breaks_to_newlines};
+use crate::text::{
+    TextMeasurer, TextStyle, mermaid_html_breaks_to_newlines, svg_text_vertical_extents_px,
+    svg_title_bbox_vertical_extents_px,
+};
+use merman_model::OperationPhase;
 use merman_model::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt::Write as _;
@@ -1636,15 +1640,35 @@ pub(crate) fn layout_gantt_diagram_typed(
         Vec::new()
     };
 
-    let bounds = Some(Bounds {
+    let title_x = width / 2.0;
+    let title_y = title_top_margin;
+    let mut bounds = Bounds {
         min_x: 0.0,
         min_y: 0.0,
         max_x: width,
         max_y: height,
-    });
+    };
+    if let (Some(native), Some(title)) = (style.native(), title.as_deref())
+        && !title.trim().is_empty()
+    {
+        work_meter.charge(title.len())?;
+        let title_style = native.title_text_style();
+        let (left, right) = text_measurer.measure_svg_title_bbox_x(title, &title_style);
+        let (ascent, descent) = svg_text_vertical_extents_px(
+            text_measurer,
+            title,
+            &title_style,
+            svg_title_bbox_vertical_extents_px(&title_style),
+        );
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        bounds.min_x = bounds.min_x.min(title_x - left);
+        bounds.max_x = bounds.max_x.max(title_x + right);
+        bounds.min_y = bounds.min_y.min(title_y - ascent);
+        bounds.max_y = bounds.max_y.max(title_y + descent);
+    }
 
     let layout = GanttDiagramLayout {
-        bounds,
+        bounds: Some(bounds),
         width,
         height,
         left_padding,
@@ -1676,8 +1700,8 @@ pub(crate) fn layout_gantt_diagram_typed(
         bottom_ticks,
         top_ticks,
         title,
-        title_x: width / 2.0,
-        title_y: title_top_margin,
+        title_x,
+        title_y,
     };
     let task_source_indices = indexed_tasks.into_iter().map(|(index, _)| index).collect();
     Ok((layout, task_source_indices))

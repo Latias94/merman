@@ -198,7 +198,7 @@ pub(super) fn render_flowchart_svg_model(
                     document_ids.drop_shadow_small(),
                     document_ids.root_gradient(),
                     compatibility,
-                    ctx.native.is_some(),
+                    ctx.native.map(|native| &native.title_style),
                     &ctx.palette,
                     font_family,
                     font_size,

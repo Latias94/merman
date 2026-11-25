@@ -51,6 +51,64 @@ fn native_flowchart_rejects_configurations_with_different_layout_and_css_typogra
 }
 
 #[test]
+fn native_theme_font_admission_uses_the_selected_theme_and_keeps_local_guards() {
+    use merman::RenderOutput;
+    use merman::theme::{BuiltinPreset, ThemePrecedence, ThemeSelection};
+
+    let source = "---\nconfig:\n  theme: neutral\n  themeVariables:\n    fontSize: 2em\n  htmlLabels: false\n---\nflowchart LR\nA[Measured label] --> B";
+    let native = ThemeSelection::preset(BuiltinPreset::Studio, None);
+    let svg = request(true).with_native_theme(native.clone());
+    let renderer = Renderer::new();
+    let render = |source, target| {
+        renderer.render(RenderRequest::new(source, target, OperationControl::new()))
+    };
+
+    let RenderOutput::Svg(Some(output)) = render(source, RenderTarget::Svg(svg.clone())).unwrap()
+    else {
+        panic!("expected SVG");
+    };
+    assert!(!output.svg().contains("font-size:2em;"));
+    #[cfg(feature = "png")]
+    assert!(matches!(
+        render(
+            source,
+            RenderTarget::Png(merman::PngRequest {
+                svg: svg.clone(),
+                options: Default::default(),
+            })
+        )
+        .unwrap(),
+        RenderOutput::Png(Some(_)),
+    ));
+    #[cfg(feature = "pdf")]
+    assert!(matches!(
+        render(
+            source,
+            RenderTarget::Pdf(merman::PdfRequest {
+                svg: svg.clone(),
+                options: Default::default(),
+            })
+        )
+        .unwrap(),
+        RenderOutput::Pdf(Some(_)),
+    ));
+
+    let incompatible = render(
+        source,
+        RenderTarget::Svg(
+            svg.clone()
+                .with_native_theme(native.with_precedence(ThemePrecedence::Source)),
+        ),
+    )
+    .unwrap_err();
+    assert!(incompatible.to_string().contains("themeVariables.fontSize"));
+
+    let styled = format!("{source}\nstyle A letter-spacing:4px");
+    let incompatible = render(&styled, RenderTarget::Svg(svg)).unwrap_err();
+    assert!(incompatible.to_string().contains("letter-spacing"));
+}
+
+#[test]
 fn native_flowchart_admits_px_size_and_node_font_weight() {
     let source = "%%{init: {\"themeVariables\":{\"fontSize\":\"24px\"}}}%%\nflowchart LR\nA[Measured label]-->B\nstyle A font-weight:bold\n";
     let result = Renderer::new().render(RenderRequest::new(

@@ -272,7 +272,7 @@ Returns the SVG as a string. This value-returning API does not enter Typst `cont
 
 ### `mermaid-result(source, ..)`
 
-Returns a structured render payload, including `ok`, `svg`, `message`, `operation`, `kind`, and `capability_id`. The latter fields distinguish missing capabilities, invalid input, and general errors without parsing the message. Resource failures expose `details.resource` with the stable limit ID, profile, and actual/max values.
+Returns a structured render payload, including `ok`, `svg`, `message`, `operation`, `kind`, and `capability_id`. A successful render reports the effective theme mode, optional preset and appearance, and notices in `metadata.theme_outcome`. The error fields distinguish missing capabilities, invalid input, and general errors without parsing the message. Resource failures expose `details.resource` with the stable limit ID, profile, and actual/max values.
 
 ```typst
 #import "@preview/merman:0.7.0": mermaid-result

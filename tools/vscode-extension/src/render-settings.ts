@@ -14,7 +14,7 @@ export async function configuredRenderSettings(
   const settings = getPreviewSettings(resource);
   const discovery = await discoverThemes(context);
   const imported = settings.diagramTheme === "file"
-    ? await checkThemeFile(context, configuredThemeFileUri(settings.themeFile, resource), discovery)
+    ? await checkThemeFile(context, configuredThemeFileUri(settings.themeFile, resource), discovery, settings.appearance)
     : undefined;
   const resolved = resolveThemeSelection(
     discovery,

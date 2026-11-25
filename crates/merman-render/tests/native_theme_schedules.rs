@@ -165,7 +165,7 @@ fn native_theme_v2_gantt_layers_rows_and_preserves_task_states() {
             .find(|node| node.attribute("id") == Some(id))
             .unwrap()
     };
-    assert_eq!(task("schedule-ordinary").attribute("fill"), Some("#654321"));
+    assert_eq!(task("schedule-ordinary").attribute("fill"), Some("#334455"));
     assert_eq!(
         task("schedule-ordinary-text").attribute("font-size"),
         Some("17")
@@ -241,27 +241,13 @@ fn native_theme_v2_timeline_uses_unwrapped_ordinals_and_connector_paint() {
         );
 
         let authored = source.replace("    THEME_COLOR_LIMIT: 1", "    THEME_COLOR_LIMIT: 1\n    cScale0: '#123456'\n    cScaleLabel0: '#ABCDEF'\n    cScaleInv0: '#765432'");
-        let authored = render(&authored, Some(theme()));
-        let doc = roxmltree::Document::parse(&authored).unwrap();
-        assert!(
-            doc.descendants()
-                .any(|node| node.has_tag_name("rect") && node.attribute("fill") == Some("#123456"))
-        );
-        assert!(
-            doc.descendants()
-                .any(|node| node.has_tag_name("text") && node.attribute("fill") == Some("#ABCDEF"))
-        );
-        assert!(
-            doc.descendants().any(
-                |node| node.has_tag_name("line") && node.attribute("stroke") == Some("#765432")
-            )
-        );
+        assert_eq!(render(&authored, Some(theme())), svg);
     }
 }
 
 #[cfg(feature = "diagram-journey")]
 #[test]
-fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
+fn native_theme_v2_journey_owns_typography_and_preserves_authored_categorical_colors() {
     let source = concat!(
         "journey\n  title Project\n  section Launch\n",
         "    Discover: 1: Ada Lovelace and the design team\n",
@@ -306,7 +292,7 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
     assert_ne!(tasks[0].attribute("x"), parity_task.attribute("x"));
 
     let authored = format!(
-        "---\nconfig:\n  journey:\n    taskFontFamily: Georgia\n    taskFontSize: 19\n    sectionFills: ['#543210']\n    sectionColours: ['#FEDCBA']\n    actorColours: ['#123456']\n---\n{source}"
+        "---\nconfig:\n  themeVariables:\n    textColor: '#FE00FE'\n    mainBkg: '#FE00FE'\n  journey:\n    taskFontFamily: Georgia\n    taskFontSize: 19\n    titleFontFamily: Courier\n    titleColor: '#FE00FE'\n    sectionFills: ['#543210']\n    sectionColours: ['#FEDCBA']\n    actorColours: ['#123456']\n---\n{source}"
     );
     // Mermaid appends authored arrays to the defaults. Draw the first authored slot in each list.
     let mut authored = authored;
@@ -318,8 +304,15 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
         )
         .unwrap();
     }
-    let authored = render(&authored, Some(theme()));
-    let authored = roxmltree::Document::parse(&authored).unwrap();
+    let parity = render(&authored, None);
+    for setting in ["Georgia", "Courier", "#FE00FE"] {
+        assert!(parity.contains(setting), "Mermaid Journey lost {setting}");
+    }
+    let svg = render(&authored, Some(theme()));
+    for setting in ["Georgia", "Courier", "#FE00FE"] {
+        assert!(!svg.contains(setting), "native Journey used {setting}");
+    }
+    let authored = roxmltree::Document::parse(&svg).unwrap();
     let section = authored
         .descendants()
         .find(|node| {
@@ -340,10 +333,10 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
             authored.descendants().any(|node| node.has_tag_name(tag)
                 && node
                     .attribute("style")
-                    .is_some_and(|style| style.contains("font-family: Georgia;")
-                        && style.contains("font-size: 19px;")
+                    .is_some_and(|style| style.contains("Schedule Face")
+                        && style.contains("font-size: 24px;")
                         && style.contains("#FEDCBA"))),
-            "{tag} label retained source typography and color"
+            "{tag} label uses theme typography and the authored section color"
         );
     }
 }

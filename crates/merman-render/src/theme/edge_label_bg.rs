@@ -36,7 +36,9 @@ pub(crate) fn write_backplate(
     border: Color,
 ) -> fmt::Result {
     let pill = mode == EdgeLabelBackground::Pill;
+    // Auto samples an already painted surface. Repainting a translucent sample changes it.
     if mode == EdgeLabelBackground::Transparent
+        || (mode == EdgeLabelBackground::Auto && fill.channels()[3] != u8::MAX)
         || (fill.channels()[3] == 0 && (!pill || border.channels()[3] == 0))
         || label_bounds.width() <= 0.0
         || label_bounds.height() <= 0.0

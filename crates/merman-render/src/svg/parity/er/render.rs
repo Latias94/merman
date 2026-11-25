@@ -155,7 +155,6 @@ fn write_er_style_with_font_family(
             let text = &binding.node_text_color;
             let title = &binding.title_color;
             let border = native.border_width;
-            let guide = &native.guide;
             let heading_ink = &native.heading_ink;
             let _ = write!(
                 &mut css_out,
@@ -163,7 +162,6 @@ fn write_er_style_with_font_family(
                  #{id} .label.attribute-type{{font-family:{code_family};}}\
                  #{id} .erDiagramTitleText{{font-family:{title_family};font-weight:{title_weight};fill:{title};}}\
                  #{id} .node > .basic.label-container{{stroke-width:{border};}}\
-                 #{id} .node[data-look] .divider path + path{{stroke:{guide};}}\
                  #{id} .node[data-native-er-heading] > .label.name,#{id} .node[data-native-er-heading] > .basic + .label{{fill:{heading_ink};color:{heading_ink};}}"
             );
         }
@@ -1387,6 +1385,10 @@ pub(crate) fn render_er_diagram_svg_model(
         let box_x1 = ox + w;
         let box_y1 = oy + h;
         let sep_y = oy + name_row_h;
+        let type_col_w = measure.type_col_w.max(0.0);
+        let name_col_w = measure.name_col_w.max(0.0);
+        let key_col_w = measure.key_col_w.max(0.0);
+        let _comment_col_w = measure.comment_col_w.max(0.0);
 
         let box_fill = visual.box_fill.as_str();
         let box_stroke = visual.box_stroke.as_str();
@@ -1394,6 +1396,13 @@ pub(crate) fn render_er_diagram_svg_model(
         let group_style_attr = &visual.group_style_attr;
         let override_style_attr = visual.override_style_attr.as_str();
         let base_fill_style_attr = &visual.base_fill_style_attr;
+        let divider_xs = [
+            Some(ox + type_col_w),
+            measure.has_key.then_some(ox + type_col_w + name_col_w),
+            measure
+                .has_comment
+                .then_some(ox + type_col_w + name_col_w + key_col_w),
+        ];
 
         // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
         //
@@ -1497,9 +1506,24 @@ pub(crate) fn render_er_diagram_svg_model(
             let clip_id = format!("{diagram_id}-er-table-{entity_index}");
             let (left, top, width, height, radius) =
                 (fmt(ox), fmt(oy), fmt(w), fmt(h), fmt(native.radius));
+            let opacity_css = |property| {
+                source_style
+                    .rect_value(property)
+                    .map_or_else(String::new, |value| {
+                        format!(";{property}:{}", escape_attr(value))
+                    })
+            };
+            let fill_opacity = opacity_css("fill-opacity");
+            out.push_str(r#"<g class="er-native-table""#);
+            if let Some(opacity) = source_style.rect_value("opacity") {
+                let _ = write!(&mut out, r#" style="opacity:{}""#, escape_attr(opacity));
+            }
+            out.push_str(">");
+            // Keep the header and row fills disjoint for alpha compositing.
             let _ = write!(
                 &mut out,
-                r##"<defs><clipPath id="{clip_id}"><rect x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}"/></clipPath></defs><g class="outer-path" clip-path="url(#{clip_id})"><rect class="er-native-header" x="{left}" y="{top}" width="{width}" height="{height}" style="fill:{};stroke:none"/>"##,
+                r##"<defs><clipPath id="{clip_id}"><rect x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}"/></clipPath></defs><g class="outer-path" clip-path="url(#{clip_id})"><rect class="er-native-header" x="{left}" y="{top}" width="{width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"##,
+                fmt(name_row_h),
                 escape_attr(box_fill),
             );
             let mut y = sep_y;
@@ -1513,7 +1537,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 };
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="{row_class}" x="{left}" y="{}" width="{width}" height="{}" style="fill:{};stroke:none"/>"#,
+                    r#"<rect class="{row_class}" x="{left}" y="{}" width="{width}" height="{}" style="fill:{};stroke:none{fill_opacity}"/>"#,
                     fmt(y),
                     fmt(row_height),
                     escape_attr(fill),
@@ -1527,13 +1551,36 @@ pub(crate) fn render_er_diagram_svg_model(
             let dash = source_style
                 .rect_value("stroke-dasharray")
                 .unwrap_or("none");
-            let _ = write!(
-                &mut out,
-                r#"</g><rect class="er-native-outline" x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}" style="fill:none;stroke:{};stroke-width:{};stroke-dasharray:{}"/>"#,
-                escape_attr(box_stroke),
+            let stroke_css = format!(
+                "stroke-width:{};stroke-dasharray:{}{}",
                 escape_attr(&stroke_width),
                 escape_attr(dash),
+                opacity_css("stroke-opacity"),
             );
+            let _ = write!(
+                &mut out,
+                r#"</g><rect class="er-native-outline" x="{left}" y="{top}" width="{width}" height="{height}" rx="{radius}" style="fill:none;stroke:{};{stroke_css}"/>"#,
+                escape_attr(box_stroke),
+            );
+            // Stroke the separators together so translucent strokes are composited once.
+            let _ = write!(
+                &mut out,
+                r#"<g class="divider"><path d="M{} {}H{}"#,
+                fmt(box_x0),
+                fmt(sep_y),
+                fmt(box_x1),
+            );
+            for x in divider_xs.into_iter().flatten() {
+                let _ = write!(&mut out, " M{} {}V{}", fmt(x), fmt(sep_y), fmt(box_y1));
+            }
+            // Neo's common path rules would override presentation attributes.
+            let divider_stroke = source_style.stroke().unwrap_or(&native.guide);
+            let _ = write!(
+                &mut out,
+                r#"" fill="none" style="stroke:{};{stroke_css}"/></g></g>"#,
+                escape_attr(divider_stroke),
+            );
+            out.checkpoint()?;
         } else {
             // Base box (fill + border)
             let _ = write!(&mut out, r#"<g {} class="outer-path">"#, group_style_attr);
@@ -1646,11 +1693,6 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str("</g>");
         }
         out.checkpoint()?;
-
-        let type_col_w = measure.type_col_w.max(0.0);
-        let name_col_w = measure.name_col_w.max(0.0);
-        let key_col_w = measure.key_col_w.max(0.0);
-        let _comment_col_w = measure.comment_col_w.max(0.0);
 
         let left_text_x = ox + pad / 2.0;
         let type_left = left_text_x;
@@ -1792,16 +1834,6 @@ pub(crate) fn render_er_diagram_svg_model(
             row_top += row_h;
         }
 
-        // Dividers (header separator + column boundaries)
-        let divider_style = override_style_attr;
-        let divider_path_attrs = format!(
-            r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
-            escape_xml(native.map_or(box_stroke, |style| {
-                source_style.stroke().unwrap_or(&style.guide)
-            })),
-            stroke_width_attr,
-            divider_style
-        );
         // Mermaid `erBox.ts` draws the header separator twice:
         // - once as the explicit "Name line"
         // - once via the later `yOffsets` pass (which always contains `0`)
@@ -1830,51 +1862,49 @@ pub(crate) fn render_er_diagram_svg_model(
             out.checkpoint()
         }
 
-        write_divider_group(
-            &mut out,
-            &hand_drawn_seed,
-            box_x0,
-            sep_y,
-            box_x1,
-            sep_y,
-            box_fill,
-            base_fill_style_attr,
-            &divider_path_attrs,
-        )?;
-
-        let mut divider_xs: Vec<f64> = Vec::new();
-        divider_xs.push(ox + type_col_w);
-        if measure.has_key {
-            divider_xs.push(ox + type_col_w + name_col_w);
-        }
-        if measure.has_comment {
-            divider_xs.push(ox + type_col_w + name_col_w + key_col_w);
-        }
-        for x in divider_xs {
+        if native.is_none() {
+            let divider_path_attrs = format!(
+                r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
+                escape_xml(box_stroke),
+                stroke_width_attr,
+                override_style_attr,
+            );
             write_divider_group(
                 &mut out,
                 &hand_drawn_seed,
-                x,
+                box_x0,
                 sep_y,
-                x,
-                box_y1,
+                box_x1,
+                sep_y,
+                box_fill,
+                base_fill_style_attr,
+                &divider_path_attrs,
+            )?;
+            for x in divider_xs.into_iter().flatten() {
+                write_divider_group(
+                    &mut out,
+                    &hand_drawn_seed,
+                    x,
+                    sep_y,
+                    x,
+                    box_y1,
+                    box_fill,
+                    base_fill_style_attr,
+                    &divider_path_attrs,
+                )?;
+            }
+            write_divider_group(
+                &mut out,
+                &hand_drawn_seed,
+                box_x0,
+                sep_y,
+                box_x1,
+                sep_y,
                 box_fill,
                 base_fill_style_attr,
                 &divider_path_attrs,
             )?;
         }
-
-        write_divider_group(
-            &mut out,
-            &hand_drawn_seed,
-            box_x0,
-            sep_y,
-            box_x1,
-            sep_y,
-            box_fill,
-            base_fill_style_attr,
-            &divider_path_attrs,
-        )?;
 
         out.push_str("</g>");
         out.checkpoint()?;

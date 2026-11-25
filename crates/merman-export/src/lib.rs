@@ -1240,6 +1240,9 @@ impl Default for RasterOptions {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl RasterOptions {
+    /// The opaque matte used for JPEG when the caller supplies no matte.
+    pub const DEFAULT_JPEG_MATTE: ExportRgbaColor = ExportRgbaColor::WHITE;
+
     #[cfg(feature = "native-fonts")]
     pub fn with_font_context(mut self, font_context: NativeFontContext) -> Self {
         self.font_context = Some(font_context);
@@ -1351,6 +1354,11 @@ impl ExportRgbaColor {
         blue: 255,
         alpha: 255,
     };
+
+    /// Reads a solid color using the native export color grammar.
+    pub fn parse(text: &str) -> Option<Self> {
+        parse_export_color(text).ok()
+    }
 
     pub const fn red(self) -> u8 {
         self.red
@@ -1602,7 +1610,7 @@ impl PreparedRaster {
     pub fn report_for_output(&self, output: RasterOutputKind) -> RasterExportReport {
         let matte_defaulted = matches!(output, RasterOutputKind::Jpeg) && self.matte.is_none();
         let matte = if matte_defaulted {
-            Some(ExportRgbaColor::WHITE)
+            Some(RasterOptions::DEFAULT_JPEG_MATTE)
         } else {
             self.matte
         };
@@ -1692,7 +1700,7 @@ impl PreparedRaster {
             {
                 return Err(ExportError::JpegDimensionLimit);
             }
-            let matte = self.matte.unwrap_or(ExportRgbaColor::WHITE);
+            let matte = self.matte.unwrap_or(RasterOptions::DEFAULT_JPEG_MATTE);
             if !matte.is_opaque() {
                 return Err(ExportError::JpegOpaqueMatteRequired);
             }

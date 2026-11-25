@@ -150,7 +150,7 @@ class RustLicenseReportTests(unittest.TestCase):
             self.assertNotIn("--workspace", command)
             self.assertNotIn("--all-features", command)
             self.assertEqual(command[command.index("--target") + 1], "wasm32-unknown-unknown")
-            self.assertEqual(command[command.index("--features") + 1], "analysis")
+            self.assertEqual(command[command.index("--features") + 1], "merman-wasm/analysis")
             self.assertEqual(
                 command[command.index("--manifest-path") + 1],
                 "crates/merman-wasm/Cargo.toml",

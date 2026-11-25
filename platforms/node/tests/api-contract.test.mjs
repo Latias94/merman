@@ -2160,6 +2160,22 @@ test("runtime catalog transport boundary accepts JSON text only", async () => {
   );
 });
 
+test("public TypeScript declarations match the options schema and Node transport", () => {
+  const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
+  assert.match(declarations, new RegExp(
+    `interface MermanBindingOptions\\s*\\{\\s*version\\?:\\s*${BINDING_OPTIONS_SCHEMA_VERSION};`,
+  ));
+  assert.match(declarations, /\btheme\?:\s*DiagramThemeSelection\s*\|\s*null;/);
+  assert.match(declarations, new RegExp(
+    `\\btransport_api_version:\\s*${NODE_WIRE_CONTRACT.transport_api_version};`,
+  ));
+  const options = normalizeBindingOptions({ version: BINDING_OPTIONS_SCHEMA_VERSION, theme: null });
+  assert.equal(options.theme, null);
+  assert.throws(() => normalizeBindingOptions({ version: 3 }), {
+    name: "RangeError", message: /Unsupported binding options schema version/,
+  });
+});
+
 test("public TypeScript declarations cover the generic operation API", () => {
   const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
   for (const method of [

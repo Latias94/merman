@@ -5,8 +5,10 @@ Use this index to choose an upgrade path by the version you have installed. Stab
 ## Current source
 
 Theme v2 changes native theme documents and catalogs to schema `2` and reports
-`theme_outcome` in graphical result metadata. Use `merman-cli theme list`, `theme export`, and
-`theme check` for discovery and authoring. [Theme v2 guide](../rendering/custom-diagram-themes.md)
+`theme_outcome` in graphical result metadata. Update binding options to schema `4` and use one of
+the new `theme` forms. Build or install wrappers and runtime artifacts from the same revision.
+Use `merman-cli theme list`, `theme export`, and `theme check` for discovery and authoring.
+[Theme v2 guide](../rendering/custom-diagram-themes.md) · [Binding theme grammar](../bindings/OPTIONS_JSON.md#diagram-theme)
 
 ## Merman 0.11.0
 

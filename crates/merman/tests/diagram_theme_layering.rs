@@ -4,7 +4,8 @@
     any(
         feature = "diagram-flowchart",
         feature = "diagram-sequence",
-        feature = "diagram-mindmap"
+        feature = "diagram-mindmap",
+        feature = "diagram-packet"
     )
 ))]
 
@@ -13,22 +14,49 @@ use merman::svg::SvgPipeline;
 #[cfg(feature = "diagram-sequence")]
 use merman::theme::ThemeMode;
 use merman::theme::{Appearance, BuiltinPreset, ThemeSelection};
-#[cfg(feature = "diagram-sequence")]
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-packet"))]
 use merman::{MermaidEngine, SourcePresentationConfig};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
-#[cfg(feature = "diagram-sequence")]
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-packet"))]
 use serde_json::{Value, json};
 
 #[cfg(feature = "diagram-sequence")]
 const SOURCE: &str = "sequenceDiagram\nAlice->>Bob: Hello";
 
-#[cfg(feature = "diagram-sequence")]
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-packet"))]
 fn config(value: Value) -> SourcePresentationConfig {
     SourcePresentationConfig::from_value(value)
 }
 
 fn studio_dark() -> ThemeSelection {
     ThemeSelection::preset(BuiltinPreset::Studio, Some(Appearance::Dark))
+}
+
+#[cfg(feature = "diagram-packet")]
+#[test]
+fn native_packet_paint_ignores_site_theme_variables_until_source_selects_mermaid() {
+    use merman::theme::ThemePrecedence;
+
+    let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
+        config(json!({"themeVariables": {"packet": {"blockFillColor": "#FF00FF"}}})),
+    ));
+    let plain = "packet\n0-7: \"Header\"";
+    let with_theme = format!("---\nconfig:\n  theme: base\n---\n{plain}");
+    let render = |source, request| {
+        renderer
+            .render_svg_data(RenderRequest::svg(source, OperationControl::new(), request))
+            .unwrap()
+            .unwrap()
+    };
+    let host = SvgRequest::default().with_native_theme(studio_dark());
+    let source = SvgRequest::default()
+        .with_native_theme(studio_dark().with_precedence(ThemePrecedence::Source));
+    assert!(!render(&with_theme, host).contains("#FF00FF"));
+    assert!(!render(plain, source.clone()).contains("#FF00FF"));
+
+    let classic = render(&with_theme, SvgRequest::default());
+    assert!(classic.contains("#FF00FF"));
+    assert_eq!(render(&with_theme, source), classic);
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]

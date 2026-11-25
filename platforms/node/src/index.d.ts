@@ -28,7 +28,7 @@ export interface MermanAsciiRenderOptions {
 }
 
 export interface MermanBindingOptions {
-  version?: 3;
+  version?: 4;
   runtime_policy?: "deterministic";
   fixed_today?: string | null;
   /** Exact host-supplied Unix milliseconds; mutually exclusive with a non-null fixed_today. */
@@ -42,8 +42,8 @@ export interface MermanBindingOptions {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
   };
-  /** A supplied selection replaces the constructor theme. Use `"none"` to clear it. */
-  theme?: DiagramThemeSelection;
+  /** A supplied selection replaces the constructor theme. Use `null` or `"none"` to clear it. */
+  theme?: DiagramThemeSelection | null;
   /** Overrides the SVG canvas base with a hex color or `"transparent"`. */
   background?: string;
   ascii?: MermanAsciiRenderOptions;

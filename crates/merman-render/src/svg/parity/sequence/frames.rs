@@ -2,7 +2,9 @@ use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use merman_model::families::sequence::{SequenceControlKind, SequenceControlRole};
+use crate::model::SequenceFrameLayout;
+use crate::sequence::SequenceNativeStyle;
+use merman_model::families::sequence::{SequenceControlKind, SequenceControlRole, SequenceMessage};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -11,6 +13,7 @@ pub(super) struct SequenceFrameRenderOptions<'a> {
     pub(super) boxes: &'a [crate::model::SequenceParticipantBoxLayout],
     pub(super) box_indices: &'a [Option<usize>],
     pub(super) rect_default_fill: &'a str,
+    pub(super) native_frames: Option<(&'a SequenceNativeStyle, &'a [SequenceFrameLayout])>,
 }
 
 pub(super) fn builtin_box_paint_bounds(
@@ -45,7 +48,7 @@ pub(super) fn builtin_box_paint_bounds(
     Ok(bounds)
 }
 
-pub(super) fn render_sequence_box_frames_and_rect_blocks(
+pub(super) fn render_sequence_backgrounds(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
@@ -111,83 +114,190 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
         out.push_str("</g>");
     }
 
-    // Mermaid renders `rect` blocks as root-level `<rect class="rect"/>` nodes before actors.
-    {
-        #[derive(Debug, Clone, Copy)]
-        struct RectBlock<'a> {
-            fill: &'a str,
-            x: f64,
-            y: f64,
-            w: f64,
-            h: f64,
-        }
+    if let Some((native, frames)) = options.native_frames {
+        return render_native_backgrounds(
+            out,
+            model,
+            nodes_by_id,
+            options.rect_default_fill,
+            native,
+            frames,
+            checkpoints,
+        );
+    }
 
-        fn contains(a: &RectBlock<'_>, b: &RectBlock<'_>) -> bool {
-            const EPS: f64 = 1e-9;
-            a.x <= b.x + EPS
-                && a.y <= b.y + EPS
-                && (a.x + a.w) >= (b.x + b.w) - EPS
-                && (a.y + a.h) >= (b.y + b.h) - EPS
-        }
-
-        let mut rects: Vec<RectBlock<'_>> = Vec::with_capacity(model.messages.len());
-        for (message_index, msg) in model.messages.iter().enumerate() {
-            checkpoints.checkpoint_loop(message_index)?;
-            if !msg.control_semantics().is_some_and(|semantics| {
-                semantics.kind == SequenceControlKind::Rect
-                    && semantics.role == SequenceControlRole::Start
-            }) {
-                continue;
-            }
-            let explicit_fill = msg.message_text();
-            let fill = if explicit_fill.is_empty() {
-                options.rect_default_fill
-            } else {
-                explicit_fill
-            };
-            let node_id = format!("rect-{}", msg.id);
-            let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-                continue;
-            };
-            let (x, y) = node_left_top(n);
-            rects.push(RectBlock {
-                fill,
-                x,
-                y,
-                w: n.width,
-                h: n.height,
-            });
-        }
-
-        // Mermaid's emitted order for nested `rect` blocks is not strictly tied to parse order.
-        // Match its DOM ordering semantics by keeping parents before contained children and
-        // sorting unrelated rectangles by vertical position (lower blocks first).
-        checkpoints.checkpoint()?;
-        rects.sort_by(|a, b| {
-            if contains(a, b) && !contains(b, a) {
-                return std::cmp::Ordering::Less;
-            }
-            if contains(b, a) && !contains(a, b) {
-                return std::cmp::Ordering::Greater;
-            }
-            b.y.partial_cmp(&a.y)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
-        });
-
-        checkpoints.checkpoint()?;
-        for (rect_index, r) in rects.into_iter().enumerate() {
-            checkpoints.checkpoint_loop(rect_index)?;
-            let _ = write!(
-                out,
-                r#"<rect x="{x}" y="{y}" fill="{fill}" width="{w}" height="{h}" class="rect"/>"#,
-                x = fmt(r.x),
-                y = fmt(r.y),
-                w = fmt(r.w),
-                h = fmt(r.h),
-                fill = escape_xml_display(r.fill)
-            );
+    let mut rects = Vec::with_capacity(model.messages.len());
+    for (index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        if let Some(rect) = RectBlock::for_message(message, nodes_by_id, options.rect_default_fill)
+        {
+            rects.push(rect);
         }
     }
+
+    // Mermaid keeps contained rects after their parents and draws unrelated rects lower first.
+    checkpoints.checkpoint()?;
+    rects.sort_by(|a, b| {
+        if a.contains(b) && !b.contains(a) {
+            return std::cmp::Ordering::Less;
+        }
+        if b.contains(a) && !a.contains(b) {
+            return std::cmp::Ordering::Greater;
+        }
+        b.y.partial_cmp(&a.y)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
+    });
+
+    checkpoints.checkpoint()?;
+    for (index, rect) in rects.into_iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        rect.write(out);
+    }
     checkpoints.checkpoint()
+}
+
+enum Background<'a> {
+    Control(&'a SequenceFrameLayout),
+    Rect(RectBlock<'a>),
+}
+
+#[derive(Default)]
+struct BackgroundLayer<'a> {
+    background: Option<Background<'a>>,
+    previous_sibling: Option<usize>,
+    last_child: Option<usize>,
+}
+
+fn render_native_backgrounds(
+    out: &mut impl SvgOutput,
+    model: &SequenceSvgModel,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    rect_default_fill: &str,
+    native: &SequenceNativeStyle,
+    frames: &[SequenceFrameLayout],
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
+    let mut frames = frames.iter().peekable();
+    let mut layers = vec![BackgroundLayer::default()];
+    let mut parents = vec![0];
+    for (index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        let Some(control) = message.control_semantics() else {
+            continue;
+        };
+        match control.role {
+            SequenceControlRole::Start => {
+                let background = if control.kind == SequenceControlKind::Rect {
+                    RectBlock::for_message(message, nodes_by_id, rect_default_fill)
+                        .map(Background::Rect)
+                } else {
+                    frames
+                        .next_if(|frame| frame.id == message.id)
+                        .map(Background::Control)
+                };
+                let parent = *parents.last().expect("background root");
+                let layer = if background.is_some() {
+                    let layer = layers.len();
+                    let previous_sibling = layers[parent].last_child.replace(layer);
+                    layers.push(BackgroundLayer {
+                        background,
+                        previous_sibling,
+                        last_child: None,
+                    });
+                    layer
+                } else {
+                    parent
+                };
+                parents.push(layer);
+            }
+            SequenceControlRole::End if parents.len() > 1 => {
+                parents.pop();
+            }
+            _ => {}
+        }
+    }
+
+    // Paint a parent before its children. Paint siblings from last to first so an earlier
+    // rect keeps priority where two adjacent backgrounds overlap.
+    let mut pending: Vec<_> = layers[0].last_child.into_iter().collect();
+    while let Some(index) = pending.pop() {
+        checkpoints.checkpoint()?;
+        let layer = &mut layers[index];
+        match layer.background.take().expect("visible background layer") {
+            Background::Control(frame) => {
+                let _ = write!(
+                    out,
+                    r#"<rect class="merman-sequence-frame-surface" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}"/>"#,
+                    fmt(frame.x),
+                    fmt(frame.y),
+                    fmt(frame.width),
+                    fmt(frame.height),
+                    fmt(native.form.container_radius),
+                    native.container,
+                );
+            }
+            Background::Rect(rect) => rect.write(out),
+        }
+        pending.extend(layer.previous_sibling);
+        pending.extend(layer.last_child);
+    }
+    checkpoints.checkpoint()
+}
+
+struct RectBlock<'a> {
+    fill: &'a str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl<'a> RectBlock<'a> {
+    fn for_message(
+        message: &'a SequenceMessage,
+        nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+        default_fill: &'a str,
+    ) -> Option<Self> {
+        let control = message.control_semantics()?;
+        if control.kind != SequenceControlKind::Rect || control.role != SequenceControlRole::Start {
+            return None;
+        }
+        let node_id = format!("rect-{}", message.id);
+        let node = nodes_by_id.get(node_id.as_str()).copied()?;
+        let (x, y) = node_left_top(node);
+        let explicit_fill = message.message_text();
+        let fill = if explicit_fill.is_empty() {
+            default_fill
+        } else {
+            explicit_fill
+        };
+        Some(Self {
+            fill,
+            x,
+            y,
+            width: node.width,
+            height: node.height,
+        })
+    }
+
+    fn contains(&self, other: &Self) -> bool {
+        const EPS: f64 = 1e-9;
+        self.x <= other.x + EPS
+            && self.y <= other.y + EPS
+            && (self.x + self.width) >= (other.x + other.width) - EPS
+            && (self.y + self.height) >= (other.y + other.height) - EPS
+    }
+
+    fn write(self, out: &mut impl SvgOutput) {
+        let _ = write!(
+            out,
+            r#"<rect x="{x}" y="{y}" fill="{fill}" width="{w}" height="{h}" class="rect"/>"#,
+            x = fmt(self.x),
+            y = fmt(self.y),
+            w = fmt(self.width),
+            h = fmt(self.height),
+            fill = escape_xml_display(self.fill)
+        );
+    }
 }

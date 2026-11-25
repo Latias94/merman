@@ -61,6 +61,10 @@ pub struct SvgEnvironment {
     backend: BackendRenderEnvironment,
     pub(super) native_theme: Option<crate::theme::ThemeSelection>,
     pub(super) background: Option<crate::theme::Color>,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    export_backdrop: Option<crate::theme::Color>,
+    #[cfg(feature = "native-fonts")]
+    pub(super) native_render_config: Option<merman_render::theme::NativeRenderConfig>,
     #[cfg(feature = "native-fonts")]
     // The caller-selected context is retained for measurement/painting identity checks. The
     // active context is forked per render operation so counters and sticky failures do not leak.
@@ -86,6 +90,10 @@ impl SvgEnvironment {
         Self {
             native_theme: None,
             background: None,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            export_backdrop: None,
+            #[cfg(feature = "native-fonts")]
+            native_render_config: None,
             #[cfg(feature = "native-fonts")]
             native_fonts: None,
             #[cfg(feature = "native-fonts")]
@@ -102,6 +110,25 @@ impl SvgEnvironment {
             input_resources: *resources.input_policy(),
         }
         .with_capability_policy(RenderCapabilityPolicy::unrestricted())
+    }
+
+    /// Supplies the destination paint for labels rendered before a separate export step.
+    #[doc(hidden)]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    pub fn set_export_backdrop(
+        &mut self,
+        paint: Option<&str>,
+        default: Option<merman_export::ExportRgbaColor>,
+    ) {
+        if self.native_theme.is_some() {
+            let color = match paint {
+                Some(paint) => merman_export::ExportRgbaColor::parse(paint),
+                None => default,
+            };
+            self.export_backdrop = color
+                .filter(|color| color.is_opaque())
+                .map(|color| crate::theme::Color::rgb(color.red(), color.green(), color.blue()));
+        }
     }
 
     pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
@@ -245,9 +272,17 @@ impl SvgEnvironment {
         let session = if let Some(selection) = &self.native_theme {
             let native = selection.resolve_svg(metadata)?;
             match native {
-                Some(native) => self
-                    .backend
-                    .begin_session_with_native_theme_in_context(native, context, control),
+                Some(native) => {
+                    #[cfg(feature = "native-fonts")]
+                    let native = native.with_render_config(self.native_render_config.clone());
+                    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+                    let native = match self.export_backdrop {
+                        Some(backdrop) => native.with_export_backdrop(backdrop),
+                        None => native,
+                    };
+                    self.backend
+                        .begin_session_with_native_theme_in_context(native, context, control)
+                }
                 None => self.backend.begin_session_in_context(context, control),
             }
         } else {

@@ -445,8 +445,9 @@ class SdkQualificationTests(unittest.TestCase):
         module = self.installed / "lib/merman_wasi.wasm"
         module.parent.mkdir()
         module.write_bytes(b"fixture module")
-        (self.installed / "manifest.json").write_text('{"options_schema_versions":[3]}')
+        manifest = self.installed / "manifest.json"
         calls = []
+        png_options = []
         mismatch = False
 
         def example(command, **options):
@@ -460,33 +461,39 @@ class SdkQualificationTests(unittest.TestCase):
                 output.write_bytes(b"different" if mismatch and "python." in output.name else b"render")
                 if "--options" in command:
                     options_path = Path(command[command.index("--options") + 1])
-                    raster = json.loads(options_path.read_text())["raster"]
-                    self.assertIn("background" if schema == 2 else "matte", raster)
+                    png_options.append(json.loads(options_path.read_text()))
 
+        arguments = dict(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
+                         version=self.version, repo_root=self.repo)
         with mock.patch.object(sdk_qualify, "run", side_effect=example):
-            schema = 3
-            self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
-                                    version=self.version, repo_root=self.repo,
-                                    output_dir=self.root / "examples")
-            self.extract.assert_called_once_with(
-                self.output / "sdk.tar.xz", self.output / "sdk.tar.xz.sha256",
-                package_name="merman-sdk-wasi-standard", target=sdk_archive.WASI_TARGET,
-                version=self.version, limits=limits)
-            self.assertEqual(len(calls), 6)
-            self.assertEqual(calls[0][0], "go")
-            self.assertIn("-count=1", calls[0])
-            self.assertIn("unittest", calls[1])
-            self.assertTrue((self.root / "examples/verified.json").is_file())
-            schema = 2
-            (self.installed / "manifest.json").write_text('{"options_schema_versions":[2]}')
-            self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
-                                    version=self.version, repo_root=self.repo,
-                                    output_dir=self.root / "schema-two-examples")
+            for schema, paint_options in (
+                (2, {"raster": {"scale": 2, "background": "#ffffff"}}),
+                (3, {"raster": {"scale": 2, "matte": "#ffffff"}}),
+                (4, {"raster": {"scale": 2}, "export_matte": "#ffffff"}),
+            ):
+                with self.subTest(schema=schema):
+                    manifest.write_text(json.dumps({"options_schema_versions": [schema]}))
+                    output_dir = self.root / f"schema-{schema}-examples"
+                    self.extract.reset_mock()
+                    calls.clear()
+                    png_options.clear()
+                    self.real_wasi_examples(**arguments, output_dir=output_dir)
+                    self.extract.assert_called_once_with(
+                        self.output / "sdk.tar.xz", self.output / "sdk.tar.xz.sha256",
+                        package_name="merman-sdk-wasi-standard", target=sdk_archive.WASI_TARGET,
+                        version=self.version, limits=limits)
+                    self.assertEqual(len(calls), 6)
+                    self.assertEqual(calls[0][0], "go")
+                    self.assertIn("-count=1", calls[0])
+                    self.assertIn("unittest", calls[1])
+                    self.assertEqual(png_options, [{
+                        "svg": {"pipeline": "resvg-safe", "diagram_id": "sdk-example"},
+                        **paint_options,
+                    }] * 2)
+                    self.assertTrue((output_dir / "verified.json").is_file())
             mismatch = True
             with self.assertRaisesRegex(RuntimeError, "example output mismatch"):
-                self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
-                                        version=self.version, repo_root=self.repo,
-                                        output_dir=self.root / "mismatched-examples")
+                self.real_wasi_examples(**arguments, output_dir=self.root / "mismatched-examples")
             self.assertFalse((self.root / "mismatched-examples/verified.json").exists())
 
 

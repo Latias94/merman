@@ -512,6 +512,12 @@ fn class_box_dimensions(
     // Emulate that sizing logic deterministically using the same text measurer.
     let node_requires_math = class_node_requires_math(node);
     let use_html_labels = matches!(wrap_mode, WrapMode::HtmlLike) || node_requires_math;
+    let svg_font_family = if !use_html_labels && ctx.native_title_style.is_some() {
+        class_native_svg_font_family(node)
+    } else {
+        None
+    };
+    let svg_font_family = svg_font_family.as_deref();
     let prepare_html_labels = use_html_labels && !node_requires_math;
     let node_label_style = if use_html_labels {
         node_binding::class_apply_inline_styles(node).style_attr
@@ -657,6 +663,7 @@ fn class_box_dimensions(
                 class_svg_empty_markdown_fallback(text).is_some(),
             )
         };
+        let effective_style = class_svg_text_with_family(&effective_style, svg_font_family);
         let style = effective_style.as_ref();
         let calc_style = if ctx.native_title_style.is_some() {
             style
@@ -759,8 +766,16 @@ fn class_box_dimensions(
     // Both pinned shapeUtil implementations apply bolder after createText wrapping.
     let title_markdown_analysis =
         (!use_html_labels).then(|| analyze_class_svg_markdown(&title_text));
-    let title_style = ctx.native_title_style.unwrap_or(text_style);
-    let title_calc_style = ctx.native_title_style.unwrap_or(html_calc_text_style);
+    let title_style = class_svg_text_with_family(
+        ctx.native_title_style.unwrap_or(text_style),
+        svg_font_family,
+    );
+    let title_style = title_style.as_ref();
+    let title_calc_style = if ctx.native_title_style.is_some() {
+        title_style
+    } else {
+        html_calc_text_style
+    };
     let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
         && title_markdown_analysis
             .as_ref()
@@ -1013,6 +1028,40 @@ pub(crate) fn class_effective_text_style<'a>(
         cascade.observe_declaration(&declaration);
     });
     cascade.finish()
+}
+
+pub(crate) fn class_native_svg_font_family(node: &ClassNode) -> Option<String> {
+    use crate::mermaid_style::{CssFontSizeContext, TextStyleCascade, parse_style_declaration};
+
+    let inherited = TextStyle::default();
+    let mut cascade =
+        TextStyleCascade::new(&inherited, CssFontSizeContext::uniform(inherited.font_size));
+    for declaration in node
+        .styles
+        .iter()
+        .filter_map(|raw| parse_style_declaration(raw))
+    {
+        if declaration.property() == "font-family" {
+            cascade.observe_declaration(&declaration);
+        }
+    }
+    match cascade.finish() {
+        std::borrow::Cow::Owned(style) => style.font_family,
+        std::borrow::Cow::Borrowed(_) => None,
+    }
+}
+
+pub(crate) fn class_svg_text_with_family<'a>(
+    base: &'a TextStyle,
+    family: Option<&str>,
+) -> std::borrow::Cow<'a, TextStyle> {
+    match family {
+        Some(family) => std::borrow::Cow::Owned(TextStyle {
+            font_family: Some(family.to_owned()),
+            ..base.clone()
+        }),
+        None => std::borrow::Cow::Borrowed(base),
+    }
 }
 
 pub(crate) fn class_svg_row_text_style<'a>(
