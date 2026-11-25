@@ -310,9 +310,10 @@ struct ContrastRow {
 }
 
 #[cfg(feature = "svg")]
-fn contrast_rows(theme: &ResolvedThemeV2) -> [ContrastRow; 12] {
+fn contrast_rows(theme: &ResolvedThemeV2) -> [ContrastRow; 13] {
     let roles = theme.roles();
     let appearance = theme.appearance();
+    let pie = theme.family("pie");
     let on_canvas = |foreground, paint: &Paint| ContrastRow {
         foreground,
         background: "canvas",
@@ -383,8 +384,18 @@ fn contrast_rows(theme: &ResolvedThemeV2) -> [ContrastRow; 12] {
             theme.data().fill_ink(0),
             "data.fill",
             &Paint::Solid(theme.data().fill(0)),
-            theme.form().chart.pie_opacity,
+            1.0,
         ),
+        ContrastRow {
+            foreground: "data.fill_ink[0]",
+            background: "pie.data.fill",
+            ratio: Paint::Solid(pie.data.fill_ink(0)).minimum_contrast_over(
+                &Paint::Solid(pie.data.fill(0)),
+                pie.form.chart.pie_opacity,
+                Some(&pie.roles.canvas),
+                appearance,
+            ),
+        },
     ]
 }
 

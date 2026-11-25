@@ -6,8 +6,8 @@ This guide owns the direct object-binding contract implemented by
 [Kotlin package](ANDROID_JNI.md) uses its own JNI transport. Applications must deploy each generated
 UniFFI projection with its matching native library.
 
-The current direct binding API is `8`, with ASCII output schema `4`. Options JSON remains schema
-`3`; the runtime catalog and outer operation metadata remain schema `1`. The C ABI and
+The current direct binding API is `8`, with ASCII output schema `4` and Options JSON schema `4`.
+The runtime catalog and outer operation metadata use schema `1`. The C ABI and
 text-measurement protocol have separate version ownership.
 
 Theme authoring errors preserve `details_json` with the versioned `theme_authoring`

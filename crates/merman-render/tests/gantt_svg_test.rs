@@ -443,6 +443,127 @@ fn gantt_viewport_uses_its_own_max_width_setting() {
 }
 
 #[test]
+fn gantt_native_title_bounds_use_drawn_typography_without_resizing_tasks() {
+    use merman_render::text::DeterministicTextMeasurer;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    const TITLE: &str = "Milestones and delivery schedule";
+
+    struct TitleMeasurer;
+
+    impl TextMeasurer for TitleMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            DeterministicTextMeasurer::default().measure(text, style)
+        }
+
+        // The default raw width probe delegates to the title probe.
+        fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            DeterministicTextMeasurer::default().measure_svg_raw_text_bbox_width_px(text, style)
+        }
+
+        fn measure_svg_title_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+            assert_eq!(text, TITLE);
+            assert_eq!(
+                style.font_family.as_deref(),
+                Some(r#""Cousine", monospace"#)
+            );
+            assert_eq!(style.font_weight.as_deref(), Some("700"));
+            let half_width = text.len() as f64 * style.font_size * 0.3;
+            (half_width, half_width)
+        }
+
+        fn measure_svg_raw_text_bbox_y_offset_px(&self, _: &str, style: &TextStyle) -> Option<f64> {
+            Some(-0.9 * style.font_size)
+        }
+
+        fn measure_svg_raw_text_bbox_height_px(&self, _: &str, style: &TextStyle) -> f64 {
+            style.font_size
+        }
+    }
+
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-native-title").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(TitleMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let source = format!(
+        "gantt\ntitle {TITLE}\ndateFormat YYYY-MM-DD\ntodayMarker off\nShip : ship, 2024-01-01, 2d\n"
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let mut options = LayoutOptions::default();
+    options.container_width = 400.0;
+
+    for (base_size, view_box, max_width) in [
+        (None, "0 0 400 124", "max-width: 400px;"),
+        (Some(14), "0 0 400 124", "max-width: 400px;"),
+        (Some(24), "-88 -2 576 126", "max-width: 576px;"),
+    ] {
+        let session = if let Some(base_size) = base_size {
+            let theme = serde_json::json!({
+                "schema_version": 2,
+                "extends": "studio",
+                "typography": {
+                    "base_size_px": base_size,
+                    "mono": ["Cousine", "monospace"],
+                    "title_family": "mono",
+                    "title_weight": 700
+                }
+            });
+            let theme = ThemeCompiler::new()
+                .compile_json(theme.to_string().as_bytes(), None)
+                .unwrap();
+            environment.begin_session_with_native_theme(NativeTheme::new(theme))
+        } else {
+            environment.begin_session()
+        }
+        .unwrap();
+        let artifact = family::prepare(parsed.presentation(), &options, session).unwrap();
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(svg.svg()).unwrap();
+        let root = document.root_element();
+        assert_eq!(root.attribute("viewBox"), Some(view_box));
+        assert_eq!(root.attribute("style"), Some(max_width));
+        let css = root
+            .children()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        if let Some(base_size) = base_size {
+            let size = f64::from(base_size) * 1.25;
+            assert!(css.contains(&format!(
+                r#".titleText{{text-anchor:middle;font-family:"Cousine", monospace;font-size:{size}px;font-weight:700;"#
+            )));
+        } else {
+            assert!(css.contains(".titleText{text-anchor:middle;font-size:18px;"));
+        }
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("titleText"))
+            .unwrap();
+        assert_eq!(title.text(), Some(TITLE));
+        assert_eq!(title.attribute("x"), Some("200"));
+        assert_eq!(title.attribute("y"), Some("25"));
+        let task = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-ship"))
+            .unwrap();
+        assert_eq!(task.attribute("x"), Some("75"));
+        assert_eq!(task.attribute("width"), Some("250"));
+    }
+}
+
+#[test]
 fn gantt_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     let source = r#"gantt
 dateFormat YYYY-MM-DD

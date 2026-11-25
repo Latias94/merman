@@ -124,7 +124,7 @@ pub(super) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId, Gr
     drop_shadow_small_id: DropShadowSmallId,
     gradient_id: GradientId,
     theme: &crate::flowchart::FlowchartCompatibilityBinding,
-    native_theme: bool,
+    native_title: Option<&crate::text::TextStyle>,
     palette: &super::agentflow::ContainerPalette<'_>,
     font_family: &str,
     font_size: f64,
@@ -158,7 +158,7 @@ where
     let drop_shadow = &theme.drop_shadow;
 
     let faded_label_background;
-    let label_bkg = if native_theme {
+    let label_bkg = if native_title.is_some() {
         // Native labels paint their own backplate, including the transparent case.
         edge_label_background
     } else {
@@ -276,16 +276,27 @@ where
     );
     let _ = write!(
         &mut *out,
-        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
+        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;",
         id,
         font_family,
         tertiary,
         tooltip_border,
         id,
         title_css_class(diagram_type),
-        text_color,
-        id
     );
+    if let Some(style) = native_title {
+        let _ = write!(out, "font-size:{}px;fill:{title_color};", style.font_size);
+        if let Some(family) = style.font_family.as_deref() {
+            let _ = write!(out, "font-family:{family};");
+        }
+        if let Some(weight) = style.font_weight.as_deref() {
+            let _ = write!(out, "font-weight:{weight};");
+        }
+    } else {
+        let size = super::viewbox::TITLE_FONT_SIZE_PX;
+        let _ = write!(out, "font-size:{size}px;fill:{text_color};");
+    }
+    let _ = write!(out, "}}#{id} rect.text{{fill:none;stroke-width:0;}}");
     let _ = write!(
         &mut *out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
@@ -389,7 +400,7 @@ fn flowchart_css(
         format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
         format!("{diagram_id}-merman-flowchart-document-gradient-root"),
         &crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config),
-        false,
+        None,
         &super::agentflow::ContainerPalette::new(effective_config),
         font_family,
         font_size,
@@ -492,7 +503,7 @@ mod tests {
             "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
             "bounded-css-merman-flowchart-document-gradient-root",
             &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
-            false,
+            None,
             &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,
@@ -522,7 +533,7 @@ mod tests {
             "shadow-small",
             "gradient",
             &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
-            false,
+            None,
             &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,

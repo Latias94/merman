@@ -9,7 +9,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::theme::{NativeTheme, ThemeCompiler};
 
 #[test]
-fn native_theme_v2_packet_styles_fields_and_bit_labels_without_relayout() {
+fn native_theme_v2_packet_owns_fields_and_bit_label_styles_without_relayout() {
     let source = r#"---
 title: Packet header
 config:
@@ -73,9 +73,9 @@ packet
         .unwrap();
     assert!(css.contains(".packetBlock{stroke:#405060;stroke-width:3;fill:#BEEFD0;}"));
     assert!(css.contains(".packetByte.start{fill:#345678;}"));
-    assert!(css.contains(".packetByte{font-size:9px;}"));
+    assert!(css.contains(".packetByte{font-size:15.000px;}"));
     assert!(css.contains(".packetByte{font-family:\"Packet Mono\", monospace;}"));
-    assert!(css.contains(".packetLabel{fill:#AABBCC;font-size:18.000px;}"));
+    assert!(css.contains(".packetLabel{fill:#252A26;font-size:18.000px;}"));
     assert!(css.contains(".packetTitle{fill:#243648;font-size:21.000px;}"));
 }
 

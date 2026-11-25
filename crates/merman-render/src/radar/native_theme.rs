@@ -95,7 +95,7 @@ mod tests {
     use crate::{LayoutOptions, family};
 
     #[test]
-    fn native_theme_v2_radar_wraps_series_paints_and_preserves_source_slots() {
+    fn radar_native_series_wrap_independently_of_mermaid_color_slots() {
         let theme = ThemeCompiler::new()
             .compile_json(
                 br##"{
@@ -121,17 +121,17 @@ mod tests {
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let prepared = family::prepare(
-            parsed.presentation(),
-            &LayoutOptions::default(),
-            RenderEnvironment::deterministic()
-                .begin_session_with_native_theme(NativeTheme::new(theme))
-                .unwrap(),
-        )
-        .unwrap();
-        let rendered = prepared
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        let render = |session| {
+            family::prepare(parsed.presentation(), &LayoutOptions::default(), session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+        };
+        let environment = RenderEnvironment::deterministic();
+        let session = environment
+            .begin_session_with_native_theme(NativeTheme::new(theme))
             .unwrap();
+        let rendered = render(session);
         let dom = roxmltree::Document::parse(rendered.svg()).unwrap();
         let css = dom
             .descendants()
@@ -141,7 +141,7 @@ mod tests {
             .unwrap();
         assert!(
             css.contains(
-                ".radarCurve-0{color:#aabbcc;fill:#aabbcc;fill-opacity:0.28;stroke:#aabbcc"
+                ".radarCurve-0{color:#15505D;fill:#CCEEDD;fill-opacity:0.28;stroke:#15505D"
             )
         );
         assert!(css.contains(
@@ -154,6 +154,13 @@ mod tests {
         assert!(
             dom.descendants()
                 .any(|node| node.attribute("class") == Some("radarGraticule"))
+        );
+
+        let classic = render(environment.begin_session().unwrap());
+        assert!(
+            classic
+                .svg()
+                .contains(".radarCurve-0{color:#aabbcc;fill:#aabbcc;")
         );
     }
 }

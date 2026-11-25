@@ -7,11 +7,13 @@ import { RenderProcessExitError, runRenderProcess } from "./render-process.js";
 import { resolveCliInvocation } from "./renderer.js";
 import {
   CUSTOM_FILE_THEME,
+  editorThemeAppearance,
   isDiagramTheme,
   isThemeAppearance,
   SOURCE_THEME,
   type ImportedTheme,
   type ThemeAppearances,
+  type ThemeAppearancePreference,
   type ThemeChoice,
   type ThemeDiscovery,
 } from "./theme-selection.js";
@@ -33,6 +35,15 @@ export async function discoverThemes(context: vscode.ExtensionContext): Promise<
     }
     return await pending;
   } catch (error) {
+    try {
+      const capabilities = await readCliMetadata(resolveCliInvocation(context, ["capabilities", "--json"]));
+      const choices = legacyClassicChoices(capabilities);
+      if (choices.length > 0) {
+        return { choices: [SOURCE_THEME, ...choices], notice: "Update the CLI to use Merman v2 presets and custom files." };
+      }
+    } catch {
+      // Preserve the original discovery error when the fallback is unavailable.
+    }
     return { choices: [SOURCE_THEME], notice: `Theme discovery failed. ${errorMessage(error)}` };
   }
 }
@@ -61,18 +72,43 @@ export function parseThemeCatalog(value: unknown): ThemeDiscovery {
     });
   }
   for (const raw of catalog.mermaid_themes) {
-    const id = readCatalogId(raw, ids);
-    const label = id.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-    choices.push({ id, label, origin: "mermaid" });
+    choices.push(classicThemeChoice(readCatalogId(raw, ids)));
   }
   choices.push(CUSTOM_FILE_THEME);
   return { choices };
+}
+
+function legacyClassicChoices(capabilities: unknown): ThemeChoice[] {
+  const catalog = object(object(capabilities).theme_presets);
+  if (catalog.schema_version !== 1) return [];
+  const designs = catalog.mermaid_theme_designs;
+  if (designs === undefined) {
+    return ["default", "dark", "forest", "neutral", "base"].map(classicThemeChoice);
+  }
+  if (!Array.isArray(designs)) return [];
+
+  const ids = new Set<string>();
+  for (const design of designs) {
+    const appearances = object(design).appearances;
+    if (!Array.isArray(appearances)) continue;
+    for (const variant of appearances) {
+      const id = object(variant).theme_id;
+      if (isDiagramTheme(id) && id !== SOURCE_THEME.id && id !== CUSTOM_FILE_THEME.id) ids.add(id);
+    }
+  }
+  return Array.from(ids, classicThemeChoice);
+}
+
+function classicThemeChoice(id: string): ThemeChoice {
+  const label = id.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+  return { id, label, origin: "mermaid" };
 }
 
 export async function checkThemeFile(
   context: vscode.ExtensionContext,
   uri: vscode.Uri,
   discovery: ThemeDiscovery,
+  preference: ThemeAppearancePreference = "follow-editor",
 ): Promise<ImportedTheme> {
   if (!discovery.choices.some((choice) => choice.id === CUSTOM_FILE_THEME.id)) {
     throw new Error("Custom theme files require a CLI with `theme check` support.");
@@ -86,8 +122,26 @@ export async function checkThemeFile(
     throw new Error("Theme JSON exceeds the editor's 8 MiB file limit.");
   }
   const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  let document: Record<string, unknown> = {};
+  try {
+    document = object(JSON.parse(content));
+  } catch {
+    // The CLI reports syntax errors against the original text.
+  }
+  const inherited = discovery.choices.find((choice) => choice.origin === "preset" && choice.id === document.extends);
+  const supportedAppearances = new Set([
+    ...Object.keys(object(document.appearances)).filter(isThemeAppearance),
+    ...(inherited?.appearances?.supportedAppearances ?? []),
+  ]);
+  const args = ["theme", "check", "-", "--json"];
+  if (!Object.hasOwn(document, "default_appearance") && supportedAppearances.size === 2) {
+    const appearance = preference === "follow-editor"
+      ? editorThemeAppearance(vscode.window.activeColorTheme.kind)
+      : preference;
+    args.push("--appearance", appearance);
+  }
   const result = await runRenderProcess({
-    invocation: resolveCliInvocation(context, ["theme", "check", "-", "--json"]),
+    invocation: resolveCliInvocation(context, args),
     source: content,
     maxStdoutBytes: 8 * 1024 * 1024,
   }).catch((error: unknown) => {
@@ -101,13 +155,7 @@ export async function checkThemeFile(
   if (checked.ok !== true || !isThemeAppearance(defaultAppearance)) {
     throw new Error("The CLI returned an invalid theme check result.");
   }
-  const document = object(JSON.parse(content));
-  const inherited = discovery.choices.find((choice) => choice.origin === "preset" && choice.id === document.extends);
-  const supportedAppearances = new Set([
-    ...Object.keys(object(document.appearances)).filter(isThemeAppearance),
-    ...(inherited?.appearances?.supportedAppearances ?? []),
-    defaultAppearance,
-  ]);
+  supportedAppearances.add(defaultAppearance);
   return {
     content,
     label: path.basename(uri.fsPath),

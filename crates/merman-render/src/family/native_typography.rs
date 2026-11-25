@@ -1,4 +1,4 @@
-use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::presentation::{PresentationConfig, PresentationDiagram, RenderSemanticModel};
 use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 
 #[cfg(feature = "diagram-er")]
@@ -263,23 +263,27 @@ pub fn unsupported_native_text_style(
     parsed: &PresentationDiagram,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
+    unsupported_native_text_style_with_config(parsed, &parsed.metadata().effective_config, control)
+}
+
+pub fn unsupported_native_text_style_with_config(
+    parsed: &PresentationDiagram,
+    #[allow(
+        unused_variables,
+        reason = "Only some diagram families consult render configuration."
+    )]
+    config: &PresentationConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
     control.checkpoint()?;
     #[cfg(feature = "diagram-gantt")]
     if let RenderSemanticModel::Gantt(model) = parsed.model() {
-        return crate::gantt::unsupported_native_font_size(
-            model,
-            &parsed.metadata().effective_config,
-            &control,
-        );
+        return crate::gantt::unsupported_native_font_size(model, config, &control);
     }
     #[cfg(feature = "diagram-git-graph")]
     if let RenderSemanticModel::GitGraph(model) = parsed.model() {
-        return crate::gitgraph::unsupported_native_font_size(
-            model,
-            &parsed.metadata().effective_config,
-            &control,
-        );
+        return crate::gitgraph::unsupported_native_font_size(model, config, &control);
     }
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     if let RenderSemanticModel::Flowchart(model) = parsed.model() {
@@ -290,14 +294,9 @@ pub fn unsupported_native_text_style(
             .unwrap_or(&default_context);
         #[cfg(feature = "diagram-flowchart")]
         if parsed.metadata().diagram_type != "swimlane"
-            && parsed.metadata().effective_config.get_str("layout") != Some("swimlane")
+            && config.get_str("layout") != Some("swimlane")
         {
-            return flowchart::unsupported_source_style(
-                model,
-                context,
-                &parsed.metadata().effective_config,
-                &control,
-            );
+            return flowchart::unsupported_source_style(model, context, config, &control);
         }
         for (ordinal, subgraph) in model.subgraphs.iter().enumerate() {
             let (_, styles) = context.effective_subgraph_css(ordinal, subgraph);
@@ -538,6 +537,18 @@ pub fn unsupported_native_html_style(
     parsed: &PresentationDiagram,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
+    unsupported_native_html_style_with_config(parsed, &parsed.metadata().effective_config, control)
+}
+
+pub fn unsupported_native_html_style_with_config(
+    parsed: &PresentationDiagram,
+    #[allow(
+        unused_variables,
+        reason = "Only families with HTML labels consult render configuration."
+    )]
+    config: &PresentationConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
     control.checkpoint()?;
     match parsed.model() {
@@ -550,30 +561,23 @@ pub fn unsupported_native_html_style(
                     .render_context()
                     .flowchart_render_context()
                     .unwrap_or(&default_context),
-                &parsed.metadata().effective_config,
-                parsed.metadata().effective_config.get_str("layout") == Some("swimlane"),
+                config,
+                config.get_str("layout") == Some("swimlane"),
                 &control,
             )
         }
         #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(model) => unsupported_native_mindmap_html_style(
-            model,
-            &parsed.metadata().effective_config,
-            &control,
-        ),
-        #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(model) => {
-            er::unsupported_html_style(model, &parsed.metadata().effective_config, &control)
+        RenderSemanticModel::Mindmap(model) => {
+            unsupported_native_mindmap_html_style(model, config, &control)
         }
+        #[cfg(feature = "diagram-er")]
+        RenderSemanticModel::Er(model) => er::unsupported_html_style(model, config, &control),
         #[cfg(feature = "diagram-requirement")]
-        RenderSemanticModel::Requirement(model) => requirement::unsupported_html_style(
-            model,
-            &parsed.metadata().effective_config,
-            &control,
-        ),
+        RenderSemanticModel::Requirement(model) => {
+            requirement::unsupported_html_style(model, config, &control)
+        }
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
-            let config = &parsed.metadata().effective_config;
             let view = crate::flowchart::FlowchartConfigView::new(config);
             let labels = model.render_label_sources();
             let inspect = |label, kind: Option<&str>| {

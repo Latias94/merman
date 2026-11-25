@@ -1,4 +1,4 @@
-use merman_theme_contract::v2::ThemeCompiler;
+use merman_theme_contract::v2::{ThemeCompiler, ThemeDocumentV2};
 use serde_json::json;
 
 #[test]
@@ -44,6 +44,10 @@ fn reordered_fields_keep_the_same_theme_and_wire_shape() {
     let compiler = ThemeCompiler::new();
     let document = compiler.parse_json(ordered).unwrap();
     assert_eq!(document, compiler.parse_json(reordered).unwrap());
+    assert_eq!(
+        document,
+        serde_json::from_slice::<ThemeDocumentV2>(ordered).unwrap()
+    );
 
     let wire = serde_json::to_value(compiler.compile(&document, None).unwrap()).unwrap();
     assert_eq!(wire["roles"]["canvas"]["kind"], "linear_gradient");
@@ -176,6 +180,55 @@ fn tagged_objects_reject_extras_nulls_and_missing_required_fields() {
         let input = format!(r#"{{"schema_version":2,"form":{{"elevation":{effect}}}}}"#);
         let error = compiler.parse_json(input.as_bytes()).unwrap_err();
         assert!(error.to_string().starts_with(message), "{input}: {error}");
+    }
+}
+
+#[test]
+fn document_fields_require_json_objects_at_the_schema_paths() {
+    let compiler = ThemeCompiler::new();
+    for (input, path) in [
+        (json!(["", 2, "x", "X", "", "custom", "studio"]), "."),
+        (
+            json!({"schema_version": 2, "extends": "studio", "form": []}),
+            "form",
+        ),
+        (
+            json!({"schema_version": 2, "form": {"chart": [true]}}),
+            "form.chart",
+        ),
+        (
+            json!({"schema_version": 2, "appearances": {"light": {"seed": []}}}),
+            "appearances.light.seed",
+        ),
+        (
+            json!({"schema_version": 2, "overrides": [[["pie"]]]}),
+            "overrides[0]",
+        ),
+        (
+            json!({"schema_version": 2, "roles": {"canvas": {
+                "kind": "linear_gradient", "stops": [[0, "#FFFFFF"], [1, "#000000"]]
+            }}}),
+            "roles.canvas.stops[0]",
+        ),
+        (
+            json!({"schema_version": 2, "form": {"elevation": {
+                "kind": "layered_stack", "layers": [[1, 2, 0, "#000000"]]
+            }}}),
+            "form.elevation.layers[0]",
+        ),
+    ] {
+        let encoded = input.to_string();
+        assert!(
+            serde_json::from_str::<ThemeDocumentV2>(&encoded).is_err(),
+            "{input}"
+        );
+        let error = compiler.parse_json(encoded.as_bytes()).unwrap_err();
+        assert_eq!(error.path(), Some(path), "{input}: {error}");
+        assert!(
+            error.to_string().contains("expected a JSON object"),
+            "{error}"
+        );
+        assert_eq!(error.line(), Some(1));
     }
 }
 

@@ -204,6 +204,7 @@ struct FamilyRenderContext {
     layout_backend: GraphLayoutBackend,
     family_id: DiagramFamilyId,
     session: RenderSession,
+    native_metadata: Option<Box<PresentationMetadata>>,
 }
 
 #[derive(Clone, Copy)]
@@ -256,7 +257,12 @@ impl FamilyRenderContext {
             layout_backend,
             family_id,
             session,
+            native_metadata: None,
         }
+    }
+
+    fn render_metadata<'a>(&'a self, parsed: &'a PresentationMetadata) -> &'a PresentationMetadata {
+        self.native_metadata.as_deref().unwrap_or(parsed)
     }
 
     const fn family_id(&self) -> DiagramFamilyId {
@@ -2183,7 +2189,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         {
             return projected_metadata;
         }
-        self.metadata
+        self.context.render_metadata(self.metadata)
     }
 
     pub fn family_kind(&self) -> RenderFamilyKind {
@@ -2617,11 +2623,23 @@ fn prepare_for<'parsed>(
     };
     let required_capabilities = plan.required_capabilities().to_vec();
     let expected_family = plan.family_id();
-    let context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
     // Family adapter setup and projection surround the narrower kernel and measurement scopes.
     #[cfg(feature = "benchmark-stages")]
     let _stage =
         merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutPrepare);
+    let mut context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
+    if let Some(theme) = context.session().native_theme() {
+        let metadata = parsed.metadata();
+        let control = context.session().work_meter().control();
+        if let Some(effective_config) =
+            theme.render_config_for(&metadata.effective_config, control)?
+        {
+            context.native_metadata = Some(Box::new(PresentationMetadata {
+                effective_config,
+                ..metadata.clone()
+            }));
+        }
+    }
     // Keep the heterogeneous router's debug-build caller slots out of the Dagre and FCoSE
     // preparation chains. Share the completion path so each route needs only one artifact slot.
     let mut artifact = match expected_family {

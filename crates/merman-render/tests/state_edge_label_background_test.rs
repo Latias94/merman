@@ -165,7 +165,7 @@ fn state_auto_backplates_follow_nested_paint_and_canvas_in_both_label_modes() {
 }
 
 #[test]
-fn state_pill_transparent_and_authored_label_paints_preserve_the_label_modes() {
+fn state_edge_label_paint_keeps_native_and_mermaid_defaults_independent() {
     let layout = if cfg!(feature = "layout-dagre") {
         "dagre"
     } else if cfg!(feature = "layout-elk") {
@@ -176,8 +176,8 @@ fn state_pill_transparent_and_authored_label_paints_preserve_the_label_modes() {
     let source = "stateDiagram-v2\nA --> B: move\n";
     for html in [false, true] {
         let config = json!({"layout": layout, "look": "classic", "htmlLabels": html});
-        let svg = render(source, config.clone(), Some("pill"));
-        let doc = Document::parse(&svg).unwrap();
+        let native_svg = render(source, config.clone(), Some("pill"));
+        let doc = Document::parse(&native_svg).unwrap();
         let plate = backplate(label(&doc, "move")).unwrap();
         assert_eq!(plate.attribute("fill"), Some(NODE));
         assert_eq!(plate.attribute("stroke"), Some(BORDER));
@@ -204,22 +204,15 @@ fn state_pill_transparent_and_authored_label_paints_preserve_the_label_modes() {
             if let Some(fill) = svg_label_fill {
                 authored["themeVariables"]["labelBackgroundColor"] = json!(fill);
             }
-            let svg = render(source, authored, Some("pill"));
+            assert_eq!(render(source, authored.clone(), Some("pill")), native_svg);
+            let svg = render(source, authored, None);
             let doc = Document::parse(&svg).unwrap();
-            let plate = backplate(label(&doc, "move"));
-            if html && edge_fill.is_none() {
-                assert_eq!(plate.unwrap().attribute("fill"), Some(NODE));
-            } else {
-                assert!(plate.is_none());
-                let paint_rule = if html {
-                    format!(".edgeLabel p{{background-color:{};", edge_fill.unwrap())
-                } else {
-                    format!(
-                        ".edgeLabel .label rect{{fill:{};",
-                        svg_label_fill.or(edge_fill).unwrap()
-                    )
-                };
-                assert!(svg.contains(&paint_rule), "{svg}");
+            assert!(backplate(label(&doc, "move")).is_none());
+            if let Some(fill) = edge_fill {
+                assert!(svg.contains(&format!(".edgeLabel p{{background-color:{fill};")));
+            }
+            if let Some(fill) = svg_label_fill {
+                assert!(svg.contains(&format!(".edgeLabel .label rect{{fill:{fill};")));
             }
             assert!(
                 svg.contains(".edgeLabel .label text{fill:#102938;"),

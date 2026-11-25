@@ -27,15 +27,17 @@ Themes may declare `light`, `dark`, or both. Set `default_appearance` to choose 
 
 In the Playground, open **Theme library** to browse the installed presets. Select a design and preview its appearances on a Flowchart, Sequence, Pie, or your current diagram. **Apply theme** uses that choice in the workspace. A `?theme-design=<preset-id>` link opens the same preview and can accompany a shared workspace URL fragment. [Preview Riso](https://frankorz.com/merman/?theme-design=riso)
 
-For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.theme` in bindings. When you choose a native theme, its settings provide global visual defaults. To give an explicitly authored Mermaid theme priority, pass `--theme-precedence source`. Local styles such as Flowchart `classDef`, `style`, and `linkStyle` keep their precedence over native defaults.
+For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.theme` in bindings. A native theme supplies global visual settings in place of Mermaid's `theme`, `themeVariables`, `darkMode`, and root typography. Mermaid layout settings and local styles such as Flowchart `classDef`, `style`, and `linkStyle` still apply. To use Mermaid's visual settings when a diagram explicitly selects a Mermaid theme, pass `--theme-precedence source`.
 
 ## Graphics and terminal output
 
 Use `--background '#112233'` or `--background transparent` to replace the base of the diagram canvas. Theme textures remain visible. Raster and PDF matte settings belong to the destination output.
 
+Direct PNG, JPEG, and PDF renders use a known opaque destination color when choosing automatic Pie percentage ink over a translucent canvas. Automatic ink considers the full canvas gradient. Standalone SVG and reusable rendered documents choose their ink during SVG rendering using the theme appearance and canvas.
+
 Set `canvas.padding_px` in an appearance to add space around the diagram inside the SVG viewport. The canvas paint and textures fill the expanded area.
 
-The terminal palette uses the same native theme when you render ASCII or Unicode with `--ascii-color truecolor` or `--ascii-color ansi256`. A binding option `ascii.theme` can supply a separate terminal palette.
+The terminal palette uses the selected family's native colors when you render ASCII or Unicode with `--ascii-color truecolor` or `--ascii-color ansi256`. A binding option `ascii.theme` can supply a separate terminal palette.
 
 ## Use a theme in an application
 

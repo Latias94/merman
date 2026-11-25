@@ -328,7 +328,8 @@ pub use merman_model::family::DiagramFamilyId;
 #[doc(hidden)]
 pub mod __private {
     pub use crate::family::native_typography::{
-        unsupported_native_html_style, unsupported_native_text_style,
+        unsupported_native_html_style, unsupported_native_html_style_with_config,
+        unsupported_native_text_style, unsupported_native_text_style_with_config,
     };
     pub use crate::family::{FamilyLayoutArtifact, prepare_layout};
 

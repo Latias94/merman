@@ -188,6 +188,121 @@ style ACCOUNT fill:#BADA55,stroke:#112233,color:#445566
     assert!(classic.contains("data-color-id"));
 }
 
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn native_er_table_preserves_source_paint_opacity() {
+    use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let source = r##"---
+config:
+  layout: dagre
+  htmlLabels: false
+---
+erDiagram
+  BOOK {
+    int id PK
+    string name
+  }
+  classDef washed fill-opacity:5e-1,stroke-opacity:1
+  class BOOK washed
+  style BOOK fill:#ff0000,stroke:#00ff00,stroke-opacity:0,opacity:75e-2
+"##;
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let svg = render_er_svg_from_text_with_session(
+        source,
+        &SvgRenderOptions::default(),
+        MermaidEngine::new(),
+        session,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let element = |class| {
+        document
+            .descendants()
+            .find(|node| node.attribute("class") == Some(class))
+            .unwrap()
+    };
+    let header = element("er-native-header");
+    let odd_row = element("row-rect-odd");
+    let table = element("er-native-table");
+    assert_eq!(table.attribute("style"), Some("opacity:75e-2"));
+    for rect in [header, odd_row, element("row-rect-even")] {
+        assert!(rect.ancestors().any(|node| node == table));
+        let style = rect.attribute("style").unwrap();
+        assert_eq!(er_inline_style_property(style, "fill"), Some("#ff0000"));
+        assert_eq!(
+            er_inline_style_property(style, "fill-opacity"),
+            Some("5e-1")
+        );
+    }
+    let number = |node: roxmltree::Node<'_, '_>, attribute| {
+        node.attribute(attribute).unwrap().parse::<f64>().unwrap()
+    };
+    assert!(
+        (number(header, "y") + number(header, "height") - number(odd_row, "y")).abs() < 1e-6,
+        "the header must end where the first data row starts"
+    );
+    let outline = element("er-native-outline");
+    let dividers: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("divider"))
+        .flat_map(|group| group.children().filter(|node| node.has_tag_name("path")))
+        .collect();
+    assert_eq!(dividers.len(), 1, "paint the separators as one stroke");
+    assert_eq!(dividers[0].attribute("fill"), Some("none"));
+    for border in [outline, dividers[0]] {
+        assert!(border.ancestors().any(|node| node == table));
+        let style = border.attribute("style").unwrap();
+        assert_eq!(er_inline_style_property(style, "stroke"), Some("#00ff00"));
+        assert_eq!(er_inline_style_property(style, "stroke-opacity"), Some("0"));
+    }
+}
+
+#[test]
+fn er_native_neo_table_keeps_the_guide_stroke() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{"schema_version":2,"extends":"studio",
+                "roles":{"stroke.border":"#A32932","stroke.guide":"#146981"}}"##,
+            None,
+        )
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let svg = render_er_svg_from_text_with_session(
+        "---\nconfig:\n  look: neo\n---\nerDiagram\n  BOOK {\n    int id PK\n  }\n",
+        &SvgRenderOptions::default(),
+        MermaidEngine::new(),
+        session,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let table = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("er-native-table"))
+        .unwrap();
+    assert_eq!(table.parent().unwrap().attribute("data-look"), Some("neo"));
+    let stroke = |class, tag| {
+        let group = table
+            .descendants()
+            .find(|node| node.attribute("class") == Some(class))
+            .unwrap();
+        let element = group
+            .descendants()
+            .find(|node| node.has_tag_name(tag))
+            .unwrap();
+        er_inline_style_property(element.attribute("style").unwrap_or_default(), "stroke")
+    };
+    assert_eq!(stroke("er-native-outline", "rect"), Some("#A32932"));
+    assert_eq!(stroke("divider", "path"), Some("#146981"));
+}
+
 fn try_render_er_svg_with_resource_policy(
     text: &str,
     resource_policy: RenderResourcePolicy,

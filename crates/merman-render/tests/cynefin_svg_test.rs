@@ -268,20 +268,13 @@ complex --> clear : "Practice"
     let canvas = doc.root_element().first_element_child().unwrap();
     assert_eq!(canvas.attribute("class"), Some("merman-theme-canvas"));
     assert!(canvas.first_element_child().is_none());
-    for class in ["cynefinDomain", "cynefinDomainAccent", "cynefinItem"] {
-        assert!(
-            doc.descendants()
-                .any(|node| node.attribute("class") == Some(class)
-                    && node.attribute("fill") == Some("#AECFEF"))
-        );
+    for legacy in ["#AECFEF", "SourceCynefinFont", "#2C3D50", "#B04225"] {
+        assert!(!svg.contains(legacy), "native Cynefin used {legacy}");
     }
-    let css = cynefin_stylesheet(&svg);
-    assert!(css.contains("#cynefin-test{font-family:SourceCynefinFont,monospace;"));
-    assert!(cynefin_rule_body(&css, "cynefin-test", ".cynefinItemText").contains("fill:#2C3D50;"));
-    assert!(
-        cynefin_rule_body(&css, "cynefin-test", ".cynefinArrowLine").contains("stroke:#B04225;")
-    );
     let (_, classic) = parse_layout_and_render(source, &LayoutOptions::default());
+    for legacy in ["#AECFEF", "SourceCynefinFont", "#2C3D50", "#B04225"] {
+        assert!(classic.contains(legacy), "Mermaid Cynefin lost {legacy}");
+    }
     assert!(!classic.contains("cynefinDomainAccent"));
     assert!(!classic.contains("merman-theme-canvas"));
 }

@@ -2,6 +2,7 @@ use super::super::*;
 use crate::model::PieSliceLayout;
 use crate::pie::{PIE_MARGIN_PX, PieLegendPosition};
 use merman_model::families::pie::PieDiagramModel;
+use std::ops::Range;
 
 pub(super) const EMPTY_PIE_WIDTH: f64 = 225.0;
 pub(super) const EMPTY_PIE_HEIGHT: f64 = 450.0;
@@ -102,22 +103,56 @@ pub(super) fn pie_slice_path(slice: &PieSliceLayout, radius: f64, inner_radius: 
     }
     let start_angle = slice.start_angle - std::f64::consts::FRAC_PI_2;
     let end_angle = slice.end_angle - std::f64::consts::FRAC_PI_2;
-    let (x0, y0) = pie_polar_xy(radius, start_angle);
+    let angles = start_angle..end_angle;
+    pie_sector_path(radius, angles.clone(), inner_radius, angles)
+}
+
+pub(super) fn native_pie_slice_path(
+    slice: &PieSliceLayout,
+    radius: f64,
+    inner_radius: f64,
+    gap: f64,
+) -> String {
+    if gap == 0.0 || slice.is_full_circle {
+        return pie_slice_path(slice, radius, inner_radius);
+    }
+
+    let start = slice.start_angle - std::f64::consts::FRAC_PI_2;
+    let end = slice.end_angle - std::f64::consts::FRAC_PI_2;
+    let middle = start.midpoint(end);
+    let half_span = (end - start) / 2.0;
+    // Preserve a narrow slice by leaving at least half its original outer arc.
+    let half_gap = (gap / 2.0).min(radius * (half_span / 2.0).sin());
+    if half_gap == 0.0 {
+        return pie_slice_path(slice, radius, inner_radius);
+    }
+    // Convert each half-gap to an angular inset at its ring, as in D3's arc padding.
+    // A narrow inner arc collapses to its midpoint, while the outer sector remains visible.
+    let inset = |ring_radius: f64| {
+        let offset = (half_gap / ring_radius.max(half_gap)).asin();
+        let padded_span = (half_span - offset).max(0.0);
+        middle - padded_span..middle + padded_span
+    };
+    pie_sector_path(radius, inset(radius), inner_radius, inset(inner_radius))
+}
+
+fn pie_sector_path(radius: f64, outer: Range<f64>, inner_radius: f64, inner: Range<f64>) -> String {
+    let (x0, y0) = pie_polar_xy(radius, outer.start);
     let mut d = format!(
         "M{x0},{y0}",
         x0 = pie_path_number(x0),
         y0 = pie_path_number(y0),
     );
-    append_pie_arc(&mut d, radius, start_angle, end_angle);
+    append_pie_arc(&mut d, radius, outer.start, outer.end);
     if inner_radius > 0.0 {
-        let (ix1, iy1) = pie_polar_xy(inner_radius, end_angle);
+        let (ix1, iy1) = pie_polar_xy(inner_radius, inner.end);
         let _ = write!(
             d,
             "L{ix1},{iy1}",
             ix1 = pie_path_number(ix1),
             iy1 = pie_path_number(iy1),
         );
-        append_pie_arc(&mut d, inner_radius, end_angle, start_angle);
+        append_pie_arc(&mut d, inner_radius, inner.end, inner.start);
     } else {
         d.push_str("L0,0");
     }

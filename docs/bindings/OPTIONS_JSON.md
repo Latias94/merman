@@ -335,8 +335,7 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 set of protected Mermaid configuration keys are host trust decisions, so callers cannot replace
 them through one-shot options, reusable constructors, or request overlays. Trusted native hosts
 must use the Rust rendering API or native CLI host configuration. Binding consumers should use the
-typed `theme` schema for diagram styling and `svg.root_background_color` for the narrow root-canvas
-override.
+typed `theme` schema for diagram styling and top-level `background` for a canvas override.
 
 Official layout selection is independent of the typed theme. Under Mermaid 12's registered-loader
 resolution, an absent ELK loader falls back to Dagre for Flowchart, Class, and ER. A compiled
@@ -510,8 +509,8 @@ option spellings reach the same binding owner.
 
 `AsciiOutput::metadata()` owns the canonical ASCII output plan. Binding operations embed it as
 `output_plan` with `kind: "ascii"`; CLI report JSON adds the exact `text`. Current writers emit
-ASCII schema `4`. Options JSON stays version `3`, outer operation metadata stays version `1`, and
-SVG and semantic JSON schemas are unchanged. Refresh SDKs, generated wrappers, and runtime
+ASCII schema `4` and outer operation metadata schema `1`. The current Options JSON schema is `4`.
+Refresh SDKs, generated wrappers, and runtime
 artifacts together using the [current migration guide](../migrations/render-reuse-host-integration.md).
 
 | Fields | Meaning |
@@ -790,7 +789,7 @@ does not depend on them.
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `static`, `readable`, or `resvg-safe`. |
-| `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
+| `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement when top-level `background` is omitted. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
 Choose the pipeline for the consumer that will display the SVG:
@@ -824,10 +823,9 @@ General bindings reject `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_pol
 decisions and therefore remain limited to trusted Rust and native CLI integrations. This rejection
 applies to one-shot options, reusable-engine constructors, and request-local overlays.
 
-`svg.root_background_color` is narrower than host CSS. It rewrites the root `<svg>` inline
-`background-color` value, or adds one when missing. This is useful for editor previews that need the
-diagram canvas to match the host surface. The value must be a single CSS declaration value; use
-`"transparent"` when the host wants no opaque root background.
+Top-level `background` replaces the diagram canvas paint and preserves any theme textures. With
+`background` omitted, `svg.root_background_color` can set the root SVG's inline CSS background
+using a single declaration value. Native canvas paint is drawn over that CSS background.
 
 ## Native Export Options
 
@@ -894,10 +892,10 @@ Resvg-safe SVG with a host-owned canvas color:
 
 ```json
 {
+  "background": "#0f172a",
   "svg": {
     "pipeline": "resvg-safe",
-    "diagram_id": "host-preview",
-    "root_background_color": "#0f172a"
+    "diagram_id": "host-preview"
   }
 }
 ```
