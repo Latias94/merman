@@ -335,7 +335,7 @@ pub(super) fn layout(
         return Err(Error::InvalidModel { message });
     }
 
-    dugong::layout_controlled(&mut g, work_control)
+    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut g, work_control))
         .map_err(|error| work_control.map_dugong_error(error))?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();

@@ -771,8 +771,11 @@ fn layout_prepared_node(
 
     // State diagrams use Mermaid's unified Dagre renderer, so use Dugong's canonical pipeline
     // here (edge label proxies, BK positioning, etc.).
-    dugong::layout_controlled(&mut prepared.graph, work_control)
-        .map_err(|error| work_control.map_dugong_error(error))?;
+    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(
+        &mut prepared.graph,
+        work_control
+    ))
+    .map_err(|error| work_control.map_dugong_error(error))?;
 
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {

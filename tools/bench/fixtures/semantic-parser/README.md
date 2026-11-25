@@ -5,7 +5,8 @@ order and text, and State node/edge ids and descriptions. It calls the typed par
 without SVG, layout or compatibility JSON. U1 freezes the existing full typed parser; the later
 semantic boundary migrates its API while preserving these consumed observations.
 
-Use the existing isolated artifact driver after committing the harness:
+To replay this measurement, run the command from a checkout of the
+[archived driver revision](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/tools/bench/measure_diagram_selection.py).
 
 ```console
 python tools/bench/measure_diagram_selection.py --recipe semantic-parser --revision BASE --fixture-revision HARNESS --features diagram-flowchart,diagram-sequence,diagram-state --label semantic-base --output target/bench/semantic-boundary/size-base

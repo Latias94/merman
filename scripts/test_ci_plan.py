@@ -292,7 +292,7 @@ class PlannerTests(unittest.TestCase):
             "playground/tests/root-viewport-oracle.ts": True,
             "playground/tests/root-viewport-residuals.ts": True,
             "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
-            "crates/merman/benches/ascii_pipeline.rs": False,
+            "crates/merman/benches/pipeline/ascii.rs": False,
             "crates/merman/examples/render_terminal.rs": False,
             "crates/merman/src/ascii.rs": False,
             "crates/merman/tests/ascii_api.rs": False,
@@ -334,7 +334,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
             "crates/merman-render/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman/src/lib.rs": {"core", "fuzz", "hygiene"},
-            "crates/merman/benches/ascii_pipeline.rs": {
+            "crates/merman/benches/pipeline/ascii.rs": {
                 "core",
                 "fuzz",
                 "hygiene",
@@ -505,7 +505,7 @@ class PlannerTests(unittest.TestCase):
                 "vscode",
                 "web",
             },
-            "tools/bench/perf_runner.py": {"core", "hygiene", "performance"},
+            "tools/bench/bench.py": {"core", "hygiene", "performance"},
             "platforms/python/pyproject.toml": {"hygiene", "python"},
             "distribution/cli/registry-templates/scoop.template.json": {
                 "cli",

@@ -2140,11 +2140,13 @@ fn layout_architecture_diagram_model_admitted(
             fcose_random_policy,
         })?;
         let mut work_control = ArchitectureManateeWorkControl::new(work_meter);
-        let result = manatee::algo::fcose::layout_indexed_with_random_policy_and_work_control(
-            &plan.graph,
-            &plan.options,
-            plan.random_policy,
-            &mut work_control,
+        let result = crate::layout_work::measure_layout_solve!(
+            manatee::algo::fcose::layout_indexed_with_random_policy_and_work_control(
+                &plan.graph,
+                &plan.options,
+                plan.random_policy,
+                &mut work_control,
+            )
         )
         .map_err(|error| match error {
             manatee::Error::WorkFailure(manatee::WorkFailure::Interrupted) => work_control

@@ -1225,6 +1225,9 @@ fn assign_coordinates(
 }
 
 pub(super) fn run(layout: &mut WorkingLayout, config: SwimlaneConfig) -> HashSet<String> {
+    #[cfg(feature = "benchmark-stages")]
+    let _stage =
+        merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
     if config.automatic_lane_ordering {
         layout.top_lane_order = optimized_lane_order(layout);
     }

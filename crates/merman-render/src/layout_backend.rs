@@ -17,6 +17,27 @@ pub(crate) enum GraphLayoutBackend {
 }
 
 impl GraphLayoutBackend {
+    #[cfg(feature = "benchmark-stages")]
+    pub(crate) const fn benchmark_id(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Dagre => "dagre",
+            Self::Elk(algorithm) => match algorithm {
+                ElkRootAlgorithm::Layered => "elk",
+                ElkRootAlgorithm::Stress => "elk.stress",
+                ElkRootAlgorithm::Force => "elk.force",
+                ElkRootAlgorithm::MrTree => "elk.mrtree",
+                ElkRootAlgorithm::SporeOverlap => "elk.sporeOverlap",
+                ElkRootAlgorithm::Box => "elk.box",
+                ElkRootAlgorithm::Rectpacking => "elk.rectpacking",
+            },
+            Self::CoseBilkent => "cytoscape",
+            Self::Shoal => "shoal",
+            Self::Swimlane => "swimlane",
+            Self::TidyTree => "tidy-tree",
+        }
+    }
+
     pub(crate) const fn required_capability(self) -> Option<RenderCapability> {
         match self {
             Self::Native | Self::Swimlane | Self::TidyTree => None,
@@ -99,6 +120,38 @@ impl ElkRootAlgorithm {
 
 fn requested_layout(config: &(impl ConfigLookup + ?Sized)) -> &str {
     config.get("layout").and_then(Value::as_str).unwrap_or("")
+}
+
+/// A fixed backend is the family route when the benchmark site option has no effect.
+/// Unavailable or rejected selectable backends must go through normal admission.
+#[cfg(feature = "benchmark-stages")]
+pub(crate) fn benchmark_fixed_layout(
+    family: DiagramFamilyId,
+    requested: &str,
+) -> Option<GraphLayoutBackend> {
+    use GraphLayoutBackend as Backend;
+
+    match family {
+        DiagramFamilyId::AGENTFLOW
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::ER
+        | DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::MINDMAP
+        | DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::STATE
+        | DiagramFamilyId::USECASE => None,
+        DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::BLOCK
+        | DiagramFamilyId::C4
+        | DiagramFamilyId::SWIMLANE
+            if requested == "shoal" =>
+        {
+            None
+        }
+        DiagramFamilyId::ARCHITECTURE => Some(Backend::CoseBilkent),
+        DiagramFamilyId::SWIMLANE => Some(Backend::Swimlane),
+        _ => Some(Backend::Native),
+    }
 }
 
 pub(crate) fn resolve(

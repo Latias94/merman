@@ -1,5 +1,6 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
 import { supportsDirectNativeSvg } from "./native-loader.mjs";
+import { NODE_LOCAL_SHOAL_WIRE_CONTRACT } from "./transport-contract.mjs";
 import {
   MermanInvalidTransportError,
   NODE_TRANSPORT_FIELD_LIMITS,
@@ -113,7 +114,7 @@ export async function createNodeEngine(
     concurrency = 1,
     maxQueue = 64,
   } = {},
-  { loadTransport } = {},
+  { loadTransport, localShoal = false } = {},
 ) {
   if (typeof loadTransport !== "function") {
     throw new MermanInvalidTransportError("A concrete Node candidate transport loader is required.");
@@ -128,7 +129,7 @@ export async function createNodeEngine(
   const transport = await loadTransport(optionsJson, iconPacksJson);
   try {
     assertTransport(transport);
-    const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
+    const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson(), { localShoal });
     const directSvg = supportsDirectNativeSvg(transport) &&
       runtimeCatalog.capabilities.operation_ids.includes("svg");
     return new MermanEngine(
@@ -605,7 +606,7 @@ async function disposeUnusableTransport(transport) {
   }
 }
 
-export function validateRuntimeCatalog(value) {
+export function validateRuntimeCatalog(value, { localShoal = false } = {}) {
   if (typeof value !== "string") {
     throw new MermanInvalidTransportError(
       "Merman transport runtime catalog must be JSON text.",
@@ -663,6 +664,7 @@ export function validateRuntimeCatalog(value) {
   const metadataIds = validateMetadataIds(catalog.metadata_ids, new Set(capabilityIds));
   validateKnownArtifactIdentity({
     capabilityIds,
+    localShoal,
     metadataIds,
     operationIds,
     outputIds,
@@ -703,12 +705,13 @@ export function validateRuntimeCatalog(value) {
 
 function validateKnownArtifactIdentity({
   capabilityIds,
+  localShoal,
   metadataIds,
   operationIds,
   outputIds,
   systemAdapterIds,
 }) {
-  const expected = NODE_WIRE_CONTRACT.artifact;
+  const expected = (localShoal ? NODE_LOCAL_SHOAL_WIRE_CONTRACT : NODE_WIRE_CONTRACT).artifact;
   validateKnownIds(
     capabilityIds,
     expected.capability_ids,

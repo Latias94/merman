@@ -357,6 +357,8 @@ system-clock = ["merman-model/system-clock", "merman-core/system-clock", "merman
 system-timezone = ["merman-model/system-timezone", "merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-model/system-random", "merman-core/system-random", "merman-render?/system-random"]
 system-timing = ["merman-model/system-timing", "merman-core/system-timing", "merman-render?/system-timing"]
+dhat-heap = ["dep:dhat"]
+benchmark-stages = ["merman-model/benchmark-stages", "merman-core/benchmark-stages", "merman-render?/benchmark-stages"]
 presentation = ["merman-core/presentation", "dep:merman-markup"]
 compat-json = ["presentation", "merman-core/compat-json"]
 editor-facts = ["merman-core/editor-facts"]
@@ -391,6 +393,9 @@ merman-theme-contract = { workspace = true, optional = true, features = ["preset
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dhat = { version = "0.3.3", optional = true }
 
 [dev-dependencies]
 data-encoding.workspace = true
@@ -451,82 +456,15 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "pipeline"
 harness = false
-required-features = ["svg", "compat-json", "editor-facts", "layout-dagre"]
 
 [[bench]]
-name = "public_workloads"
+name = "workloads"
 harness = false
 required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-elk"]
 
 [[bench]]
-name = "public_workload_memory"
+name = "memory"
 harness = false
-required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-elk"]
-
-[[bench]]
-name = "native_export"
-harness = false
-required-features = ["png", "pdf", "diagram-flowchart", "diagram-sequence", "diagram-xychart", "layout-dagre"]
-
-[[bench]]
-name = "ascii_pipeline"
-harness = false
-required-features = ["ascii"]
-
-[[bench]]
-name = "native_memory"
-harness = false
-required-features = ["svg"]
-
-[[bench]]
-name = "parse_memory"
-harness = false
-required-features = ["all-diagrams", "compat-json", "editor-facts"]
-
-[[bench]]
-name = "flowchart_svg_label_memory"
-harness = false
-required-features = ["svg", "compat-json", "layout-dagre"]
-
-[[bench]]
-name = "sequence_message_memory"
-harness = false
-required-features = ["svg", "compat-json"]
-
-[[bench]]
-name = "elk_hierarchy_memory"
-harness = false
-required-features = ["layout-elk"]
-
-[[bench]]
-name = "flowchart_stress"
-harness = false
-required-features = ["svg", "compat-json", "layout-dagre"]
-
-[[bench]]
-name = "architecture_stress"
-harness = false
-required-features = ["layout-cytoscape"]
-
-[[bench]]
-name = "architecture_layout_stress"
-harness = false
-required-features = ["layout-cytoscape"]
-
-[[bench]]
-name = "mindmap_layout_stress"
-harness = false
-required-features = ["layout-cytoscape"]
-
-[[bench]]
-name = "text_measure_stress"
-harness = false
-required-features = ["svg"]
-
-[[bench]]
-name = "native_font_measurement"
-harness = false
-required-features = ["native-fonts", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "render_svg"

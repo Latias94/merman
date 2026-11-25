@@ -4,7 +4,7 @@ Measured on 2026-10-05 (Asia/Shanghai). This is the release-comparison scope sel
 
 **Observed result:** all six selected Dagre controls have lower current-version estimates in both recorded pairs, with paired-median reductions of about 15%-33%. The four stress cases that appeared slower under changed release defaults instead have 15%-21% lower costs with explicit Dagre/classic settings. These are descriptive observations, not statistically confirmed speedups: both same-executable A/A calibrations failed the preregistered noise gate. No production optimization or rendering fix was made.
 
-The [machine-readable receipt](baselines/library-dagre-v070-to-01cc4562f-2026-10-05.json) contains every selected pair, output identity, source/executable hash, calibration result, and raw-artifact inventory. Earlier [whole-corpus default-product observations](library_rendering_expanded_2026-10-05.md) remain historical records and must not be presented as a like-for-like Dagre regression table.
+The [machine-readable receipt](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/baselines/library-dagre-v070-to-01cc4562f-2026-10-05.json) contains every selected pair, output identity, source/executable hash, calibration result, and raw-artifact inventory. Earlier [whole-corpus default-product observations](library_rendering_expanded_2026-10-05.md) remain historical records and must not be presented as a like-for-like Dagre regression table.
 
 ## Compared operation and settings
 

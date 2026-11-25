@@ -1,9 +1,8 @@
 # Model/source boundary consumers
 
 These six fixed M0 consumers freeze consumed behavior at
-`a5c73612fb2288e5effdbb07b3e1c3e683968603`. They extend
-`tools/bench/measure_diagram_selection.py`; they are artifact/dependency observations, not timing
-benchmarks. Commit this fixture before running the base, then retain those receipts before editing
+`a5c73612fb2288e5effdbb07b3e1c3e683968603`. The [archived driver](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/tools/bench/measure_diagram_selection.py) collected these
+artifact and dependency observations. Commit this fixture before running the base, then retain those receipts before editing
 production code. The driver reads committed source and fixture revisions, never dirty fixture bytes.
 
 The original base fixture is pinned at `2e71bfa333b5e9ae6dcee41bdad2be81c162e444`.
@@ -26,7 +25,7 @@ model import protocol. Flowchart/Class use existing typed serde; State uses publ
 
 ## Freeze the base
 
-From the repository root, after the parent commits the harness, run these PowerShell commands.
+Run these historical commands from a checkout of the archived driver revision.
 `--features` is omitted because each boundary recipe selects its exact fixture feature. All library
 dependencies disable default features. These invocations deliberately reuse the maintainer's shared
 target; do not run another Cargo operation concurrently.

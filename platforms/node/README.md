@@ -127,8 +127,9 @@ npm run check:packages --prefix platforms/node
 ```
 
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
-benchmark contract with test transports. `check:packages` verifies the source manifests; native
-artifact assembly and installed-package smoke run in the target-specific release workflow.
+benchmark contract with test transports. It also checks the locked dependency tree for each build
+recipe. `check:packages` verifies the source manifests. Native artifact assembly and
+installed-package smoke run in the target-specific release workflow.
 The native target lanes install only the loader tarball, resolve its exact optional dependency
 through a small local registry, inspect the resulting lockfile, and execute ordinary SVG and
 outlined formula rendering on the matching CPU. Both transports also execute on Node 22.0.0.
@@ -145,7 +146,12 @@ The installed-product comparison times the strings returned by `renderSvg()` by 
 lanes. The concurrency lane uses `renderSvg()` in both modes. The worker prepares fixed SVG options
 before timing and hashes the returned string afterward.
 
-Building the Node-WASM candidate requires `wasm-pack 0.15.0` and Binaryen `version_133`.
+The N-API build uses the root workspace's `native-sdk` profile. Node-WASM uses the `release`
+profile. Both default builds select `all-diagrams,layout-cytoscape,layout-dagre,layout-elk,math,svg`
+and their own transport with Cargo defaults disabled. The build receipt records the selected
+Cargo profile, features, and the digest of the root `Cargo.lock`.
+
+Building the Node-WASM candidate requires `wasm-pack 0.15.1` and Binaryen `version_133`.
 Put that release's `wasm-opt` on `PATH` before running the build owner, as CI, release preflight,
 and the Node release workflow do. The older optimizer downloaded by wasm-pack can fail in its
 precomputation pass on the current module. The build retains release optimization.
@@ -166,3 +172,31 @@ for Bullseye. A maintained replacement needs separate glibc-floor and native-pac
 The package group is versioned and published in lockstep. See the [package surface
 guide](../../docs/release/PACKAGE_SURFACES.md) for the artifact, target, provenance, and release
 contract.
+
+### Local Shoal comparison
+
+Build and assemble a private pair on the matching native target. The example uses Windows x64.
+
+```text
+node platforms/node/scripts/build-candidate.mjs --candidate napi --target win32-x64-msvc --local-shoal
+node platforms/node/scripts/assemble-packages.mjs --target win32-x64-msvc --local-shoal
+node platforms/node/scripts/verify-packages.mjs --packed-root target/bench/node-shoal/packages --local-shoal
+```
+
+The addon and receipt live under `target/bench/node-shoal/artifacts/<target>`. Pack both
+directories under `target/bench/node-shoal/packages` and install their tarballs together in a fresh
+consumer. Use that consumer's `@mermanjs/node` entry for the workload collector. To select Shoal
+for a request, use Mermaid frontmatter `layout: shoal` or Options JSON `site_config.layout`.
+
+Build and verify the private Node-WASM comparison from the same source revision.
+
+```text
+node platforms/node/scripts/build-candidate.mjs --candidate node-wasm --local-shoal
+node platforms/node/scripts/assemble-packages.mjs --wasm --local-shoal
+node platforms/node/scripts/verify-packages.mjs --packed-root target/bench/node-shoal/wasm-packages --local-shoal
+```
+
+The WASM binary and receipt live under `target/bench/node-shoal/artifacts/node-wasm`. Use
+`target/bench/node-shoal/wasm-packages/node-wasm/dist/index.mjs` for the workload collector or
+pack and install that package in a fresh consumer. On each transport, use the same local
+artifact for the family-default and Shoal runs so the comparison isolates the layout choice.

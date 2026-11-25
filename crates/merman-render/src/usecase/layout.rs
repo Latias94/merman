@@ -140,9 +140,10 @@ pub(super) fn elk_layout(
         config,
         &mut Some(&mut *work),
     )?;
-    let mut placed =
+    let mut placed = crate::layout_work::measure_layout_solve!(
         elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
-            .map_err(|error| work.map_elk_error_with_context(error, "Usecase ELK"))?;
+    )
+    .map_err(|error| work.map_elk_error_with_context(error, "Usecase ELK"))?;
     oriented.restore(&mut placed, &mut Some(&mut *work))?;
     let frames = crate::elk_adapter::drawing_group_frames(
         &graph,

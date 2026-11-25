@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import os from "node:os";
@@ -197,6 +198,8 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
     napi_cli: "3.10.12",
   });
   assert.equal(recipes.candidates["node-wasm"].wasm_pack_target, "nodejs");
+  assert.equal(recipes.candidates["node-wasm"].profile, "release");
+  assert.equal(recipes.candidates.napi.profile, "native-sdk");
   assert.equal(recipes.candidates["node-wasm"].browser_package_reuse, false);
   assert.equal(recipes.candidates.napi.postinstall_download, false);
   assert.equal(recipes.candidates.napi.aggregate_all_targets, false);
@@ -259,6 +262,37 @@ test("assembled native packages pass real npm pack ownership inspection", async 
   }
 });
 
+test("local Shoal assembly packs a private loader and platform pair", async (context) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-shoal-test-"));
+  context.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const binary = path.join(temporaryRoot, "merman.node");
+  const output = path.join(temporaryRoot, "packages");
+  const target = "darwin-arm64";
+  const packageName = `@mermanjs/node-${target}`;
+  await writeFile(binary, "synthetic Shoal candidate");
+  assembleNativePackages(target, output, binary, {
+    localShoal: true,
+    readReceipt(artifact, { localShoal }) {
+      assert.equal(artifact, binary);
+      assert.equal(localShoal, true);
+      return { candidate: "napi", target };
+    },
+  });
+  const loaderRoot = path.join(output, "node");
+  const loader = JSON.parse(await readFile(path.join(loaderRoot, "package.json"), "utf8"));
+  assert.deepEqual(loader.optionalDependencies, { [packageName]: loader.version });
+  const assembledLoader = await import(pathToFileURL(path.join(loaderRoot, "dist", "native-loader.mjs")));
+  assert.equal(assembledLoader.nodeLoaderUsesLocalShoal(), true);
+
+  const verify = path.join(nodeRoot, "scripts", "verify-packages.mjs");
+  const flags = [verify, "--packed-root", output];
+  const release = spawnSync(process.execPath, flags, { encoding: "utf8" });
+  assert.equal(release.status, 1, release.error?.message);
+  assert.match(release.stderr, /private package.*release verification/i);
+  const local = spawnSync(process.execPath, [...flags, "--local-shoal"], { encoding: "utf8" });
+  assert.equal(local.status, 0, local.error?.message ?? local.stderr);
+});
+
 test("assembled Node WASM package owns only its explicit Node artifacts", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-wasm-pack-test-"));
   try {
@@ -291,6 +325,30 @@ test("assembled Node WASM package owns only its explicit Node artifacts", async 
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
+});
+
+test("local Node WASM packages require private verification", async (context) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-wasm-shoal-test-"));
+  context.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const wasm = path.join(temporaryRoot, "merman_node_bg.wasm");
+  const output = path.join(temporaryRoot, "packages");
+  await writeFile(wasm, "synthetic Shoal WASM candidate");
+  await writeFile(path.join(temporaryRoot, "merman_node.js"), "module.exports = {};\n");
+  assembleWasmPackage(output, wasm, {
+    localShoal: true,
+    readReceipt(artifact, { localShoal }) {
+      assert.equal(artifact, wasm);
+      assert.equal(localShoal, true);
+      return { candidate: "node-wasm", target: null };
+    },
+  });
+
+  const flags = [path.join(nodeRoot, "scripts", "verify-packages.mjs"), "--packed-root", output];
+  const release = spawnSync(process.execPath, flags, { encoding: "utf8" });
+  assert.equal(release.status, 1, release.error?.message);
+  assert.match(release.stderr, /private package.*release verification/i);
+  const local = spawnSync(process.execPath, [...flags, "--local-shoal"], { encoding: "utf8" });
+  assert.equal(local.status, 0, local.error?.message ?? local.stderr);
 });
 
 test("native package assembly requires canonical candidate and target provenance", async (context) => {

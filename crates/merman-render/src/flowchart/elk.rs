@@ -167,10 +167,12 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
             &mut layout_work,
         )?
     };
-    let mut layout = match elk::layout_with_operation_seed_and_work_control(
-        orientation.graph(),
-        execution.operation_seed,
-        &mut work_control,
+    let mut layout = match crate::layout_work::measure_layout_solve!(
+        elk::layout_with_operation_seed_and_work_control(
+            orientation.graph(),
+            execution.operation_seed,
+            &mut work_control,
+        )
     ) {
         Ok(layout) => layout,
         Err(error) => return Err(work_control.map_elk_error(error)),

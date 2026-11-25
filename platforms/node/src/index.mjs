@@ -1,4 +1,4 @@
-import { loadInstalledNativeTransport } from "./native-loader.mjs";
+import { loadInstalledNativeTransport, nodeLoaderUsesLocalShoal } from "./native-loader.mjs";
 import {
   MermanEngine,
   createNodeEngine as createEngineWithTransport,
@@ -9,6 +9,7 @@ export { MermanEngine };
 export function createNodeEngine(options) {
   return createEngineWithTransport(options, {
     loadTransport: loadInstalledNativeTransport,
+    localShoal: nodeLoaderUsesLocalShoal(),
   });
 }
 

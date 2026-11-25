@@ -16,6 +16,7 @@ members = [
     "crates/merman-android-jni",
     "crates/merman-cli",
     "crates/merman-lsp",
+    "crates/merman-node",
     "crates/merman-ffi",
     "crates/merman-elk-layered",
     "crates/merman-layout-elk",

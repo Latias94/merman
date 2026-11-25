@@ -6,7 +6,7 @@ Measured on 2026-10-05 (Asia/Shanghai). This checkpoint measures the `merman` cr
 
 **Result:** six of seven valid selected inputs rendered faster than v0.7.0. Mindmap was consistently slower in eight fresh alternating pairs: the paired median increased 11.1%, or 38.83 microseconds. Both explicit Dagre/classic configuration controls were about 32% faster. These are release-product observations, not a claim that every family, input scale, or same-output implementation improved.
 
-The machine-readable [receipt](baselines/library-v070-to-01cc4562f-2026-10-05.json) retains independent estimates, output identities, executable digests, recipes, excluded cases, and raw-artifact digests. No production rendering code was changed. The follow-up items below are recorded for later investigation at the maintainer's request.
+The machine-readable [receipt](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/baselines/library-v070-to-01cc4562f-2026-10-05.json) retains independent estimates, output identities, executable digests, recipes, excluded cases, and raw-artifact digests. No production rendering code was changed. The follow-up items below are recorded for later investigation at the maintainer's request.
 
 **Coverage update:** the [expanded native corpus observation](library_rendering_expanded_2026-10-05.md) extends this checkpoint to all 72 registered SVG fixtures and three preprocessing controls, resolves the missing AgentFlow/Usecase registrations, and records additional slower cases and historical identity blockers. The selected-input conclusions below retain their original scope and evidence; they are not a whole-corpus performance pass.
 

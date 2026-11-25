@@ -21,6 +21,7 @@
   },
   "candidates": {
     "node-wasm": {
+      "profile": "release",
       "transport_feature": "transport-wasm",
       "rust_target": "wasm32-unknown-unknown",
       "wasm_pack_target": "nodejs",
@@ -28,6 +29,7 @@
       "output": "platforms/node/artifacts/node-wasm"
     },
     "napi": {
+      "profile": "native-sdk",
       "transport_feature": "transport-napi",
       "versions": {
         "napi": "3.16.1",

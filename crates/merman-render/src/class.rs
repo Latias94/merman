@@ -1764,10 +1764,12 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         settings.effective_config,
         &mut Some(work_control),
     )?;
-    let mut layout = elk::layout_with_operation_seed_and_work_control(
-        orientation.graph(),
-        operation_seed,
-        work_control,
+    let mut layout = crate::layout_work::measure_layout_solve!(
+        elk::layout_with_operation_seed_and_work_control(
+            orientation.graph(),
+            operation_seed,
+            work_control,
+        )
     )
     .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
     orientation.restore(&mut layout, &mut Some(work_control))?;

@@ -5,6 +5,9 @@
 //! opt-in; default operation runtime values are deterministic.
 
 pub mod baseline;
+#[cfg(feature = "benchmark-stages")]
+#[doc(hidden)]
+pub mod benchmark_stages;
 pub mod config;
 pub mod families;
 pub mod family;

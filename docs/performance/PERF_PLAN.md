@@ -59,7 +59,7 @@ optimization, changed runtime contract or different release baseline does not cl
   State/Requirement/Gitgraph identity blockers, and smaller/noisy signals. Four Flowchart slowdowns
   do not reproduce with [matched Dagre](library_dagre_v070_to_01cc4562f_2026-10-05.md), whose A/A
   calibration fails; parallel-merges and backedges/subgraphs still lack matched-backend confirmation.
-- **Large Flowchart allocation:** the [six-scale baseline](baselines/runtime-06616dd71.json) at
+- **Large Flowchart allocation:** the [six-scale baseline](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/baselines/runtime-06616dd71.json) at
   `06616dd71` records cumulative-byte slope 2.338849 and 33,701,769,467 B at `100x`, exceeding its
   2.0/8 GiB infrastructure bounds. This identifies a scaling target, not its owning stage or a
   current measurement. Retained structural repairs have no closing allocation-curve receipt here.

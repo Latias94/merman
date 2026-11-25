@@ -8,9 +8,9 @@ contracts are defined in `docs/performance/BENCHMARKING.md`; the active candidat
 
 Use the narrowest lane that answers the current question:
 
-- Local Criterion, `perf_runner.py`, stage spot-checks, stress benches, and one-to-four-pair
-  `compare_self.py` runs are diagnostic. They identify a likely owner or reject weak hypotheses.
-- `compare_self.py --evidence-mode confirmation` is the decision-grade same-host regression lane.
+- Local Criterion, stage observations, stress groups, and one-to-four-pair
+  `bench.py ab` runs are diagnostic. They identify a likely owner or reject weak hypotheses.
+- `bench.py ab --evidence-mode confirmation` is the decision-grade same-host regression lane.
 - Cross-renderer and browser comparisons provide product context, not causal base/head evidence.
 - Allocation, peak-live-heap, RSS, and artifact-size gates remain separate from latency.
 
@@ -39,15 +39,15 @@ uploaded under a separate artifact name and cannot become the next baseline.
 Performance automation is isolated in the `Performance` workflow:
 
 - `perf-contracts` checks Python syntax and benchmark-helper contracts on manual and scheduled
-  runs. Every path-matched pull request retains the compiled `ascii_pipeline` list contract, even
+  runs. Every path-matched pull request retains the compiled `pipeline` ASCII list contract, even
   without a performance label; the broader compiled pipeline and native-memory smoke checks remain
   gated by `perf`.
-- `perf-regression` runs schema-v2 `compare_self.py` evidence for PR or manual base/head checkouts.
+- `perf-regression` runs schema-v2 `bench.py ab` evidence for PR or manual base/head checkouts.
   A PR with the `perf` label receives a short diagnostic AB/BA schedule. Timing movement is advisory,
   but any recipe, fixture, executable, runner, or report-contract failure still fails the lane.
   Artifacts and the sticky PR comment are written before the comparison exit code is enforced.
-- The manual `ascii` lane uses `ascii_pipeline`, `tools/bench/ascii_corpus.json`, the `ascii`
-  feature with default features disabled, and the `ascii_end_to_end` public-operation lane.
+- The manual `ascii` lane uses `pipeline`, the `ascii` view of `tools/bench/corpus.json`,
+  the `ascii` feature with default features disabled, and the `ascii_end_to_end` public-operation lane.
   Dispatch it only with a benchmark-only base backport that carries the byte-identical harness;
   ordinary PR labels do not run ASCII timing. The larger `large-closeout` suite remains an
   explicit local closeout observation rather than an unattended CI timing lane.
@@ -55,8 +55,6 @@ Performance automation is isolated in the `Performance` workflow:
   both thresholds, and explicit revisions. Exit `1`, `2`, and `3` remain distinct in the job result
   and report.
 - `perf-frontmatter` owns its preprocessing comparison and uses a separate sticky marker.
-- `perf-reference` checks out the pinned `mermaid-rs-renderer` reference and provides cross-renderer
-  context. It does not decide a Merman base/head candidate.
 - Manual `reference` and `full` dispatches also run `perf-node-reference` on revisions containing
   the locked Node consumer. Its artifact contains the plan, raw product reports, coverage and
   per-scenario comparisons of the pinned npm releases. A `full` dispatch also replays the native
@@ -93,7 +91,7 @@ gh workflow run performance.yml \
 ```
 
 Replace `YOUR_BENCHMARK_BACKPORT_SHA` with a revision that contains the byte-identical
-`ascii_pipeline` harness, corpus, fixtures,
+`pipeline` ASCII harness, corpus, fixtures,
 and preflight contract while retaining the selected base product implementation. Do not substitute
 plain `main` unless it already satisfies that identity contract.
 
@@ -107,9 +105,9 @@ Run these commands from the checkout root. `plan` freezes request order, source 
 in one portable JSON file. Keep that exact file for every implementation in a comparison.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --suite quick --out target/bench/plan.json
-python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric memory --site-layout dagre --out target/bench/memory.json
-python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric work --out target/bench/elk.json
+python tools/bench/bench.py plan --suite quick --out target/bench/plan.json
+python tools/bench/bench.py rust --plan target/bench/plan.json --metric memory --site-layout dagre --out target/bench/memory.json
+python tools/bench/bench.py rust --plan target/bench/plan.json --metric work --out target/bench/elk.json
 ```
 
 `mixed-families` alternates a configured Flowchart and an unconfigured Sequence four times.
@@ -133,11 +131,11 @@ each timed call. Supply the same option for both revisions. Batched clocks and t
 keep the original drop policy and expose a size check for the measured products.
 
 ```console
-python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --scenario small-svg --metric clock --verify-measured-svg --check-drawings --out target/bench/single-return.json
+python tools/bench/bench.py rust --plan target/bench/plan.json --scenario small-svg --metric clock --verify-measured-svg --check-drawings --out target/bench/single-return.json
 ```
 
 ```console
-python tools/bench/perf_runner.py workloads compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
+python tools/bench/bench.py compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
 ```
 
 The full plan includes a five-diagram project guide, Zed issue examples, configured multilingual
@@ -149,11 +147,11 @@ reversed-edge statement order for both orientations. To reproduce the original a
 100-node sources alongside their orientation control, freeze the desired cases in one plan.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --scenario scc-100 --scenario scc-100-edges-reverse --scenario scc-dag-100 --scenario scc-dag-100-edges-reverse --out target/bench/cycles.json
-python tools/bench/perf_runner.py workloads rust --plan target/bench/cycles.json --metric work --out target/bench/cycle-work.json
+python tools/bench/bench.py plan --scenario scc-100 --scenario scc-100-edges-reverse --scenario scc-dag-100 --scenario scc-dag-100-edges-reverse --out target/bench/cycles.json
+python tools/bench/bench.py rust --plan target/bench/cycles.json --metric work --out target/bench/cycle-work.json
 ```
 
-For all 36 order variants use `workloads plan --suite topology-orders`. Each source is also a
+For all 36 order variants use `bench.py plan --suite topology-orders`. Each source is also a
 single-request public render case. In a work report, `default`, `high` and
 `boundary.minimum_passing_budget` describe the layout writer. `svg.default` and `svg.high`
 describe actual public SVG returns, including the digest and work consumed on success or the
@@ -178,7 +176,7 @@ trailing whitespace differences. To reproduce generated-site weighting for those
 examples, select its 18-request manifest.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --document tools/bench/documents/mermaid-examples-generated.json --scenario mermaid-examples-generated --out target/bench/generated-examples.json
+python tools/bench/bench.py plan --document tools/bench/documents/mermaid-examples-generated.json --scenario mermaid-examples-generated --out target/bench/generated-examples.json
 ```
 
 The host text measurement guide supplies an integration diagram. The Sequence loop includes
@@ -204,8 +202,8 @@ v13 plugin discovery runs in the same consumer project for the whole comparison.
 
 ```console
 npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
-python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/full-plan.json
-python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-full
+python tools/bench/bench.py plan --suite full --out target/bench/full-plan.json
+python tools/bench/bench.py node --plan target/bench/full-plan.json --out-dir target/bench/node-full
 ```
 
 Open `node-full/summary.md` for the complete-batch medians and how many requests passed in both
@@ -220,8 +218,8 @@ outcome. The bundle includes the exact npm manifest and lock
 under `consumer/`. Inspect a plan or existing external comparisons with these commands.
 
 ```console
-python tools/bench/perf_runner.py workloads coverage --plan target/bench/full-plan.json
-python tools/bench/perf_runner.py workloads coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
+python tools/bench/bench.py coverage --plan target/bench/full-plan.json
+python tools/bench/bench.py coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
 ```
 
 For independent process observations, freeze a small selection and run an even number of rounds.
@@ -231,9 +229,33 @@ pass. Each numbered directory retains its raw observations, comparisons and cove
 `process-rounds.json` for every pair and the reason for any withheld ratio.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --scenario family-sequence --scenario family-pie --out target/bench/round-plan.json
-python tools/bench/perf_runner.py workloads node-matrix --peer pele --plan target/bench/round-plan.json --samples 8 --process-rounds 8 --out-dir target/bench/node-pairs
+python tools/bench/bench.py plan --scenario family-sequence --scenario family-pie --out target/bench/round-plan.json
+python tools/bench/bench.py node --peer pele --plan target/bench/round-plan.json --samples 8 --process-rounds 8 --out-dir target/bench/node-pairs
 ```
+
+Use repeatable `--variant LABEL=ENGINE[:MODULE][:OPTIONS_JSON]` for named configurations of the
+same or different Node products. Compare each later variant against the first. The default is two
+independent rounds in opposite order. Set `--process-rounds` to select a longer even schedule.
+Use `--variant` on its own when selecting products.
+`MODULE` is a local public entry path. Omit it to use the locked consumer. An inline Options JSON
+object can follow `ENGINE:` directly or use an empty module field (`::`). Merman variants without
+the JSON suffix call `renderSvgSync(source)`. A supplied suffix is passed verbatim as `optionsJson`
+on every call. Use `--variant-layout LABEL=LAYOUT` to select a site layout when the engine is
+created. The collector checks the reported SVG plan for each successful request after timing.
+
+```console
+python tools/bench/bench.py plan --scenario small-svg --out target/bench/node-layout-plan.json
+python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --variant direct=merman --variant 'with-json=merman::{}' --variant-layout direct=dagre --variant-layout with-json=dagre --out-dir target/bench/node-options
+```
+
+Each worker runs the cold batch, warms the same renderer for up to 20 calls or 150 ms, then
+collects the measured warm batches. Override the warmup with `--warmup-calls` and `--warmup-ms`.
+Set either to zero to skip it. The SVG validator starts after the last measured batch. The collector
+retains rendered strings until sampling ends, then hashes the outputs, deduplicates checks and
+spills validation jobs beyond 32 MiB to worker scratch. Worker RSS can include all sampled strings.
+The variant bundle freezes settings in `variants.json`. See its `summary.md` and `process-rounds.json`
+for diagnostic comparisons and any incomplete rounds. For an Options JSON bridge control on the
+same Merman transport and backend, eligible output must also match byte for byte.
 
 For the declared arrows, groups, label widths and Sequence message counts, install the repository's existing Puppeteer
 toolchain and pass `--check-drawings`. Use `--chrome` for a known Chrome executable or set
@@ -242,17 +264,17 @@ image and records its version in the audit.
 
 ```console
 npm ci --prefix tools/mermaid-cli --ignore-scripts --no-audit --no-fund
-python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-drawings --check-drawings --chrome /path/to/chrome
+python tools/bench/bench.py node --plan target/bench/full-plan.json --out-dir target/bench/node-drawings --check-drawings --chrome /path/to/chrome
 ```
 
 `drawing-audit.json` contains the evidence for each occurrence and product. `drawings/` contains
 only the selected Node outputs. Keep that directory with the raw reports to replay the checks.
 The SVG CLI reports refer to files in their recorded `run_dir`. For standalone Node collection,
-use `workload_node.mjs --drawing-dir DIR` with the usual plan, engine and sample arguments.
+use `collectors/node_runner.mjs --drawing-dir DIR` with the usual plan, engine and sample arguments.
 
 ```console
-python tools/bench/perf_runner.py workloads drawings --plan target/bench/node-drawings/plan.json --report target/bench/node-drawings/merman.json --out target/bench/merman-drawings.json --require-pass
-python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --drawing-plan target/bench/one.json --out target/bench/cli-checked.json
+python tools/bench/bench.py drawings --plan target/bench/node-drawings/plan.json --report target/bench/node-drawings/merman.json --out target/bench/merman-drawings.json --require-pass
+python tools/bench/bench.py compare target/bench/cli-merman.json target/bench/cli-mmdc.json --drawing-plan target/bench/one.json --out target/bench/cli-checked.json
 ```
 
 `--require-pass` returns a nonzero status for failed or unavailable facts, or for a plan with no
@@ -271,7 +293,7 @@ Keep the byte stability result alongside the pixel observation.
 node tools/bench/workload_svg_pixels.mjs --left first.svg --right second.svg --out-dir target/bench/svg-pixels --chrome /path/to/chrome
 ```
 
-For a breadth check, `workloads plan --scenario corpus-cross_family --out target/bench/families.json`
+For a breadth check, `bench.py plan --scenario corpus-cross_family --out target/bench/families.json`
 replays the native `cross_family` suite in catalog order across the public adapters.
 `--scenario corpus-full` selects every registered native fixture. These batches retain the label
 facts available for each source and report the other inputs as mechanically checked. Keep intended
@@ -283,13 +305,13 @@ entry, freeze the `families` suite. Each family has a separate scenario and can 
 Node summary and coverage JSON report the number tried, completed and repeatable for each peer.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --suite families --out target/bench/family-baselines.json
-python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/family-baselines.json --out-dir target/bench/family-node
-python tools/bench/perf_runner.py workloads rust --plan target/bench/family-baselines.json --operation svg-data --metric clock --out target/bench/family-rust.json
+python tools/bench/bench.py plan --suite families --out target/bench/family-baselines.json
+python tools/bench/bench.py node --plan target/bench/family-baselines.json --out-dir target/bench/family-node
+python tools/bench/bench.py rust --plan target/bench/family-baselines.json --operation svg-data --metric clock --out target/bench/family-rust.json
 ```
 
 When adding a family, register its example in `playground/examples/manifest.json` and review the
-expected SVG text in `tools/bench/workload_family_labels.json`. Use the fixture owned by the
+expected SVG text under `family_labels` in `tools/bench/workloads.json`. Use the fixture owned by the
 playground. Include a reason for an empty label list when the source has no portable visible label.
 
 For a package or CLI comparison, install the two releases of interest and run them on one host.
@@ -306,13 +328,13 @@ The exporter also checks labels on an auxiliary SVG. The browser corpus
 and its existing visual comparisons remain available separately.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --scenario small-svg --out target/bench/one.json
-node tools/bench/workload_node.mjs --engine merman --plan target/bench/one.json --samples 3 > target/bench/node-merman.json
-node tools/bench/workload_node.mjs --engine pele --plan target/bench/one.json --samples 3 > target/bench/node-pele.json
-python tools/bench/perf_runner.py workloads compare target/bench/node-merman.json target/bench/node-pele.json --out target/bench/node-comparison.json
-python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-merman.json
-python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-mmdc.json
-python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --out target/bench/cli-comparison.json
+python tools/bench/bench.py plan --scenario small-svg --out target/bench/one.json
+node tools/bench/collectors/node_runner.mjs --engine merman --plan target/bench/one.json --samples 3 > target/bench/node-merman.json
+node tools/bench/collectors/node_runner.mjs --engine pele --plan target/bench/one.json --samples 3 > target/bench/node-pele.json
+python tools/bench/bench.py compare target/bench/node-merman.json target/bench/node-pele.json --out target/bench/node-comparison.json
+python tools/bench/bench.py cli --engine merman --binary merman-cli --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-merman.json
+python tools/bench/bench.py cli --engine mmdc --binary mmdc --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-mmdc.json
+python tools/bench/bench.py compare target/bench/cli-merman.json target/bench/cli-mmdc.json --out target/bench/cli-comparison.json
 ```
 
 Reference reports show planned, completed and repeatable requests per scenario. Time ratios use
@@ -332,8 +354,8 @@ warmup and sample counts. Only the site `layout` setting varies. The default pro
 under the constrained policy.
 
 ```console
-python3 tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario flowchart-nested-layout --scenario fan-in-50 --out target/bench/layouts/comparison-plan.json
-python3 tools/bench/perf_runner.py workloads rust-layouts --plan target/bench/layouts/comparison-plan.json --warmups 1 --samples 3 --out target/bench/layouts/comparison.json
+python3 tools/bench/bench.py plan --scenario small-svg --scenario flowchart-nested-layout --scenario fan-in-50 --out target/bench/layouts/comparison-plan.json
+python3 tools/bench/bench.py layouts --plan target/bench/layouts/comparison-plan.json --warmups 1 --samples 3 --out target/bench/layouts/comparison.json
 ```
 
 Each scenario has six scheduled operations. Every backend writes public layout JSON and returns
@@ -356,7 +378,7 @@ measurements per topology. The shell environment variables below select the full
 plan and a new JSONL output path.
 
 ```console
-python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/full-plan.json
+python3 tools/bench/bench.py plan --suite full --out target/bench/full-plan.json
 MERMAN_SHOAL_STRESS_PLAN="$PWD/target/bench/full-plan.json" MERMAN_SHOAL_KERNEL_OUT="$PWD/target/bench/shoal-kernel.jsonl" cargo nextest run --release --locked -p merman-render --features diagram-flowchart,layout-shoal,layout-elk --lib --run-ignored only -E 'test(native_kernel_samples)'
 ```
 
@@ -370,7 +392,7 @@ SVG medians after checking the plan, executable, backend receipts and SVG digest
 report. Each unsuccessful backend displays its diagnostic in its own panel.
 
 ```console
-python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/comparison-plan.json --comparison target/bench/layouts/comparison.json --out target/bench/layouts/gallery.html
+python3 tools/bench/bench.py gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/comparison-plan.json --comparison target/bench/layouts/comparison.json --out target/bench/layouts/gallery.html
 ```
 
 Open `target/bench/layouts/gallery.html` in a browser. The file embeds the drawings and source.
@@ -388,8 +410,8 @@ Install the locked Node consumer once. This example includes a file and a frozen
 
 ```console
 npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
-python3 tools/bench/perf_runner.py workloads plan --scenario scc-25 --out target/bench/layouts/cycles.json
-python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/cycles.json --pele --out target/bench/layouts/gallery-pele.html
+python3 tools/bench/bench.py plan --scenario scc-25 --out target/bench/layouts/cycles.json
+python3 tools/bench/bench.py gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/cycles.json --pele --out target/bench/layouts/gallery-pele.html
 ```
 
 Pele receives the same source and diagram ID through its public `render()` API. The gallery embeds
@@ -430,14 +452,14 @@ The larger geometry replay is opt-in. Generate the standard full workload plan, 
 32 topologies; the `fork-join-500` input has 996 edges and must retain its parser rejection.
 
 ```console
-python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/layouts/full.json
+python3 tools/bench/bench.py plan --suite full --out target/bench/layouts/full.json
 MERMAN_SHOAL_STRESS_PLAN="$PWD/target/bench/layouts/full.json" cargo nextest run --locked -p merman-render --features diagram-flowchart,layout-shoal --lib --run-ignored only -E 'test(replay_stress_corpus)' --success-output immediate
 ```
 
 To inspect the release workflow and dense hub visually without a frozen comparison report:
 
 ```console
-python3 tools/bench/perf_runner.py workloads layout-gallery crates/merman-render/tests/fixtures/shoal-release.mmd crates/merman/benches/fixtures/flowchart_ports_heavy.mmd --pele --out target/bench/layouts/gallery-v2.html
+python3 tools/bench/bench.py gallery crates/merman-render/tests/fixtures/shoal-release.mmd crates/merman/benches/fixtures/flowchart_ports_heavy.mmd --pele --out target/bench/layouts/gallery-v2.html
 ```
 
 For nested Flowcharts and Agentflow, replay the checked-in compound fixtures and inspect
@@ -446,7 +468,7 @@ requires a repository checkout.
 
 ```console
 cargo nextest run --locked -p merman-render --features all-diagrams,layout-shoal,layout-elk --lib --run-ignored all -E 'test(replay_compound_examples) | test(replay_entire_compound_corpus)' --success-output immediate
-python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd fixtures/agentflow/container-and-shapes.mmd --pele --out target/bench/layouts/gallery-compound-v2.html
+python3 tools/bench/bench.py gallery fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd fixtures/agentflow/container-and-shapes.mmd --pele --out target/bench/layouts/gallery-compound-v2.html
 ```
 
 Read fork/join offsets and return distances in SVG units. A foreign-box hit counts a painted
@@ -463,7 +485,7 @@ diagram ID. Historical identity-only runners can still replay ordinary workloads
 the default ELK layout-work ceiling and accepts only the original default layout.
 
 ```console
-python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/comparison-plan.json --metric memory --operation svg --site-layout shoal --require-complete --out target/bench/layouts/shoal-memory.json
+python3 tools/bench/bench.py rust --plan target/bench/layouts/comparison-plan.json --metric memory --operation svg --site-layout shoal --require-complete --out target/bench/layouts/shoal-memory.json
 ```
 
 To check source precedence, run the Dagre-pinned control under a Shoal site default. The second
@@ -471,13 +493,13 @@ command exits with status 1. Inspect `layout_evidence[].backend` for `dagre` and
 the empty array in the scenario row.
 
 ```console
-python3 tools/bench/perf_runner.py workloads plan --scenario flowchart-layout-dagre-classic --out target/bench/layouts/pinned.json
-python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/pinned.json --metric clock --operation layout-json --site-layout shoal --out target/bench/layouts/pinned-result.json
+python3 tools/bench/bench.py plan --scenario flowchart-layout-dagre-classic --out target/bench/layouts/pinned.json
+python3 tools/bench/bench.py rust --plan target/bench/layouts/pinned.json --metric clock --operation layout-json --site-layout shoal --out target/bench/layouts/pinned-result.json
 ```
 
 ## Publish a reader report
 
-Use `workloads report` to turn completed benchmark evidence into a dated Markdown page and a
+Use `bench.py report` to turn completed benchmark evidence into a dated Markdown page and a
 portable JSON receipt. [Published comparisons](reports/README.md) live in `docs/performance/reports/`.
 Keep exploratory drafts and raw collector bundles in `target/bench/`. The
 [Markdown template](../../tools/bench/workload_report.md.in) owns the common product descriptions,
@@ -491,16 +513,16 @@ published run used the Merman CLI 0.11.0 release binary and mmdc 12.2.0. Use a f
 for each collection.
 
 ```console
-python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/readers/full.json
-python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/full.json --samples 3 --check-drawings --out-dir target/bench/readers/coverage
-python tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario different-flowcharts --scenario scc-75 --scenario family-sequence --scenario mixed-document --scenario mixed-families --scenario four-node-repeat --scenario four-node-relabel --scenario four-node-edges --scenario configured-labels --scenario editor-fixed-id --scenario merman-issue-guide --out target/bench/readers/pairs.json
-python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/pairs.json --samples 5 --process-rounds 8 --check-drawings --out-dir target/bench/readers/rounds
-python tools/bench/perf_runner.py workloads plan --scenario family-flowchart --scenario family-sequence --out target/bench/readers/cli.json
-python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-svg.json
-python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-svg.json
-python tools/bench/workload_cli.py --engine merman --binary merman-cli --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-png.json
-python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-png.json
-python tools/bench/perf_runner.py workloads rust --plan target/bench/readers/full.json --metric work --out target/bench/readers/work.json
+python tools/bench/bench.py plan --suite full --out target/bench/readers/full.json
+python tools/bench/bench.py node --plan target/bench/readers/full.json --samples 3 --check-drawings --out-dir target/bench/readers/coverage
+python tools/bench/bench.py plan --scenario small-svg --scenario different-flowcharts --scenario scc-75 --scenario family-sequence --scenario mixed-document --scenario mixed-families --scenario four-node-repeat --scenario four-node-relabel --scenario four-node-edges --scenario configured-labels --scenario editor-fixed-id --scenario merman-issue-guide --out target/bench/readers/pairs.json
+python tools/bench/bench.py node --plan target/bench/readers/pairs.json --samples 5 --process-rounds 8 --check-drawings --out-dir target/bench/readers/rounds
+python tools/bench/bench.py plan --scenario family-flowchart --scenario family-sequence --out target/bench/readers/cli.json
+python tools/bench/bench.py cli --engine merman --binary merman-cli --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-svg.json
+python tools/bench/bench.py cli --engine mmdc --binary mmdc --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-svg.json
+python tools/bench/bench.py cli --engine merman --binary merman-cli --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-png.json
+python tools/bench/bench.py cli --engine mmdc --binary mmdc --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-png.json
+python tools/bench/bench.py rust --plan target/bench/readers/full.json --metric work --out target/bench/readers/work.json
 ```
 
 Use the frozen plans from the report's evidence archive for an exact replay. The original breadth
@@ -552,8 +574,8 @@ measurements and fingerprints without machine-specific installation paths. A sin
 surface is sufficient to generate a report. Empty sections identify unmeasured operations.
 
 ```console
-python tools/bench/perf_runner.py workloads report --date 2026-11-23 --node-matrix target/bench/readers/coverage --node-rounds target/bench/readers/rounds --cli target/bench/readers/cli.json target/bench/readers/merman-svg.json target/bench/readers/mmdc-svg.json --cli target/bench/readers/cli.json target/bench/readers/merman-png.json target/bench/readers/mmdc-png.json --browser target/bench/readers/browser.json --rust-work target/bench/readers/full.json target/bench/readers/work.json --out target/bench/readers/2026-11-23-windows-x64.md
-python tools/bench/perf_runner.py workloads report --from target/bench/readers/2026-11-23-windows-x64.json --check
+python tools/bench/bench.py report --date 2026-11-23 --node-matrix target/bench/readers/coverage --node-rounds target/bench/readers/rounds --cli target/bench/readers/cli.json target/bench/readers/merman-svg.json target/bench/readers/mmdc-svg.json --cli target/bench/readers/cli.json target/bench/readers/merman-png.json target/bench/readers/mmdc-png.json --browser target/bench/readers/browser.json --rust-work target/bench/readers/full.json target/bench/readers/work.json --out target/bench/readers/2026-11-23-windows-x64.md
+python tools/bench/bench.py report --from target/bench/readers/2026-11-23-windows-x64.json --check
 ```
 
 For publication use a new dated output basename, place its `.md` and `.json` together under
@@ -591,23 +613,21 @@ Never assume that base and head share a feature vocabulary or benchmark configur
 side's checkout, label, package, bench, features, default-feature policy, toolchain, target, target
 directory, and corpus.
 
-The current `pipeline` bench uses `all-diagrams,svg,compat-json,editor-facts,layout-dagre` for
-every group. The Performance workflow reads the base recipe from the base checkout's
-`tools/bench/performance_lanes.json` and the head recipe from the head descriptor. Keep these
-independent for historical refs that lack the new feature names.
+The `pipeline` benchmark's native groups use `all-diagrams,svg,compat-json,editor-facts,layout-dagre`.
+The Performance workflow reads each revision's recipe from `performance_workflow`
+in that checkout's `tools/bench/corpus.json`. Historical base checkouts use their own
+`tools/bench/performance_lanes.json` and standalone corpus paths. The bindings Criterion list and
+native memory driver select the `bindings` view with `--corpus-view bindings`.
 
-The October 22, 2026 U8/U9 change is an API/recipe migration, not a new measurement or a
-performance pass. Current contracts refresh source input hashes and required features while
-retaining all metric thresholds, candidate-admission flags, and semantic output digests.
-Preserve ignored historical reports and frozen baselines. After the final
-`crates/merman/Cargo.toml` or `Cargo.lock` edit, refresh their `probe.inputs` hashes in
-`flowchart-svg-label-artifact-memory-v1.json`, `sequence-message-repeated-memory-v1.json`, and
-`sequence-message-unique-memory-v1.json` before checking current contracts.
+For a native memory lane, keep its registered metric bounds and semantic response expectations in
+the corpus `memory_bounds` entry. When a probe moves, update its repository-relative input paths.
+Each report records the selected contract, source-file digests, manifests, lockfile, and executable
+for that run.
 
 For the alpha.3 historical context, the essential capability difference is explicit:
 
 ```bash
-python3 tools/bench/compare_self.py \
+python3 tools/bench/bench.py ab \
   --base-dir ../merman-alpha3 \
   --head-dir . \
   --base-label v0.8.0-alpha.3 \
@@ -675,7 +695,7 @@ Run a one-to-four-pair alternating AB/BA schedule when the goal is only to decid
 investigate. Even pair counts are order-balanced:
 
 ```bash
-python3 tools/bench/compare_self.py \
+python3 tools/bench/bench.py ab \
   --base-dir ../merman-base \
   --head-dir . \
   --base-label base \
@@ -705,10 +725,8 @@ Do not accept, reject, or retain candidate code from diagnostic evidence.
 When attribution is needed, run owner-local stages only after the public lane moves:
 
 ```bash
-python3 tools/bench/stage_spotcheck.py \
-  --preset long \
-  --fixtures flowchart_medium,class_medium \
-  --out target/bench/stage_spotcheck.md
+python3 tools/bench/bench.py stages --plan target/bench/plan.json --layouts dagre,elk,shoal \
+  --with-memory --out target/bench/stages.json
 ```
 
 Use flamegraphs after stage attribution identifies a CPU owner:
@@ -722,12 +740,11 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph --profile bench \
 ```
 
 The example's `render` stage parses once and prepares a fresh artifact before each SVG emission,
-since rendering consumes the artifact. Whole-process flamegraphs, macOS `sample` output, Instruments
-profiles, and the reported elapsed time therefore include preparation. For emission attribution,
-inspect the subtree rooted at `profile_render::emit_prepared_svg`; this non-inlined frame contains
-SVG emission and output consumption, while preparation stays outside it. That is the operation
-boundary timed by Criterion's `render/*` group. Compare emission costs within that subtree rather
-than treating the whole-process profile as an emission-only measurement.
+since rendering consumes the artifact. The reported elapsed time starts after that preparation
+for each emission. Whole-process profilers still sample preparation. Inspect the non-inlined
+`profile_render::emit_prepared_svg` subtree when comparing with Criterion's `render/*` group.
+Pass `--layout dagre`, `--layout elk`, or `--layout shoal` with the corresponding build feature
+to change the default site layout. A layout declared in the diagram source takes precedence.
 
 ## 5. Run confirmation without adaptive sampling
 
@@ -792,7 +809,7 @@ calibration wrapper:
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
   --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-elk,math
 
-python3 tools/bench/run_layout_work_calibration.py \
+python3 tools/bench/bench.py calibrate-layout \
   --authoritative-date YYYY-MM-DD \
   --resource-profile trusted-native --theme default \
   --out-dir target/bench/layout-work-calibration-YYYY-MM-DD-default \
@@ -823,9 +840,9 @@ maximum at `W` and `W-1`, and a deterministic node/edge boundary proven by a com
 accepted-prefix scan or reviewed monotonicity proof. It must use a managed process group so timeout
 terminates descendants independently of leader exit or pipe closure, and the timeout regression
 suite must pass in the performance-contract CI. Require an empty evidence directory and bind typed
-failure payloads, timing-file byte lengths, peak RSS, and output hashes. Commit a compact evidence
-manifest under `docs/performance/evidence/` that binds the ignored raw summary by byte length and
-SHA-256, then link a dated decision receipt from `PERF_PLAN.md`. Record the result as
+failure payloads, timing-file byte lengths, peak RSS, and output hashes. Keep the manifest and
+raw summary together under `target/bench/` or as CI artifacts, then link a dated decision receipt
+from `PERF_PLAN.md`. Record the result as
 `accepted-structural` only; stage elapsed and RSS observations do not create latency, memory, or
 host-SLO claims.
 
@@ -838,7 +855,7 @@ coverage at 800,000.
 Run the native memory harness only when the owner unit registers that gate:
 
 ```bash
-python3 tools/bench/run_native_memory.py \
+python3 tools/bench/bench.py memory \
   --json-out target/bench/native_memory.json
 ```
 
@@ -847,23 +864,12 @@ operation/zero samples across six fixed scales and five repeats. Treat exit `2` 
 provenance failure, `1` as a failed bound, `3` as inconclusive, and `0` as passing only the declared
 owner contract. The checked-in Flowchart contract is explicitly an `infrastructure-smoke` contract
 with broad safety limits and cannot admit a candidate. A candidate unit must freeze tighter bounds
-before collecting its adjacent A/B evidence. Use `perf_runner.py --include-native-memory` only when
+before collecting its adjacent A/B evidence. Use `bench.py memory` only when
 this explicit cost is intended; no normal latency profile enables it automatically.
 
-For a durable baseline, run the full harness from a clean committed checkout, then freeze its JSON
-as the authoritative evidence envelope:
-
-```bash
-python3 tools/bench/freeze_perf_baseline.py freeze \
-  --native-memory-report target/bench/native_memory.json \
-  --out docs/performance/baselines/runtime-<source-commit>.json
-```
-
-The new manifest makes the checkout dirty only after it has captured the clean source. Commit the
-manifest separately. To verify later, use a clean checkout of the manifest's recorded source commit
-as `--repo-root` and pass the manifest from the later receipt commit. Verification rehashes the
-source, fixtures, report, executable, and any ordered patch stack, then recomputes native-memory
-analysis rather than trusting persisted classifications.
+Run the full harness from a clean committed checkout for a durable baseline. Keep the JSON
+report under `target/bench/` or attach it to the CI run. Link it from the dated decision
+receipt with the source revision and executable digest.
 
 ## 7. Interpret schema-v2 evidence
 
@@ -904,31 +910,11 @@ exact capabilities, fixture hashes, tools, and revisions used when it was collec
 
 ## Harness contract checks
 
-Run these checks after changing the benchmark infrastructure:
-
 ```bash
-python3 -m py_compile \
-  tools/bench/compare_mermaid_renderers.py \
-  tools/bench/compare_self.py \
-  tools/bench/corpus_utils.py \
-  tools/bench/freeze_perf_baseline.py \
-  tools/bench/native_memory.py \
-  tools/bench/perf_runner.py \
-  tools/bench/render_perf_comment.py \
-  tools/bench/run_native_memory.py \
-  tools/bench/stage_spotcheck.py \
-  tools/bench/test_native_memory_contracts.py \
-  tools/bench/test_native_memory_driver_contracts.py \
-  tools/bench/test_perf_baseline_manifest.py \
-  tools/bench/test_perf_contracts.py \
-  tools/bench/verify_pipeline_bench_list.py
-python3 tools/bench/test_native_memory_contracts.py
-python3 tools/bench/test_native_memory_driver_contracts.py
-python3 tools/bench/test_perf_baseline_manifest.py
-python3 tools/bench/test_perf_contracts.py
-python3 tools/bench/verify_pipeline_bench_list.py
-python3 tools/bench/run_native_memory.py --smoke \
-  --json-out target/bench/native_memory_smoke.json
-python3 tools/bench/test_native_memory_driver_contracts.py \
-  --verify-smoke-report target/bench/native_memory_smoke.json
+python3 -m compileall -q tools/bench/bench.py tools/bench/merman_bench
+python3 -m unittest discover -s tools/bench
+node --test tools/bench/collectors/node_runner.test.mjs
+python3 tools/bench/bench.py criterion-list
+python3 tools/bench/bench.py memory --smoke --json-out target/bench/native-memory-smoke.json
+python3 tools/bench/test_contracts.py --verify-smoke-report target/bench/native-memory-smoke.json
 ```
