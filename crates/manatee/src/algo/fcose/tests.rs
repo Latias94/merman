@@ -2568,6 +2568,58 @@ fn relative_placement_gap_is_center_to_center() {
 }
 
 #[test]
+fn relative_placement_generic_projection_preserves_chain_gaps_and_admission() {
+    let node_count = 65;
+    let mut nodes: Vec<SimNode> = (0..node_count)
+        .map(|index| node_at(index as f64 * 0.7, 0.0, 10.0, 10.0))
+        .collect();
+    let constraints = Constraints {
+        align_horizontal: Vec::new(),
+        align_vertical: Vec::new(),
+        relative: (1..node_count)
+            .map(|index| RelConstraint {
+                left: Some(index - 1),
+                right: Some(index),
+                top: None,
+                bottom: None,
+                gap: 3.0,
+            })
+            .collect(),
+    };
+    let mut control = RecordingWorkControl {
+        reject_after: Some(node_count - 1),
+        ..RecordingWorkControl::default()
+    };
+    let mut interrupted = nodes.clone();
+    assert_eq!(
+        super::handle_constraints_pre_layout(&mut interrupted, &constraints, &mut control),
+        Err(WorkFailure::Interrupted)
+    );
+    assert!(control.charges.iter().copied().eq(2..=node_count));
+    for (interrupted, original) in interrupted.iter().zip(&nodes) {
+        assert_eq!(
+            (interrupted.left, interrupted.top),
+            (original.left, original.top)
+        );
+    }
+
+    let mut control = RecordingWorkControl::default();
+    super::handle_constraints_pre_layout(&mut nodes, &constraints, &mut control)
+        .expect("generic relative projection");
+
+    for pair in nodes.windows(2) {
+        let gap = pair[1].center_x() - pair[0].center_x();
+        assert!((gap - 3.0).abs() < 1e-9, "unexpected chain gap: {gap}");
+    }
+    assert!(
+        control
+            .charges
+            .into_iter()
+            .eq((2..=node_count).chain([node_count]))
+    );
+}
+
+#[test]
 fn rect_clip_points_matches_layout_base_igeometry_getintersection2() {
     // Expected values computed via layout-base@2.0.1:
     //
