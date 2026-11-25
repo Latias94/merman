@@ -4,7 +4,7 @@
 //! deterministic staged protocol. The pinned theme sources use unconditional assignment,
 //! JavaScript `||`, and JavaScript `??`.
 
-use super::{ThemeResolutionError, is_js_truthy, value_is_missing};
+use super::{ThemeProgram, ThemeResolutionError, is_js_truthy, value_is_missing};
 use crate::json_value::number_value;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use merman_model::presentation::ThemeEvaluationLimitExceeded;
@@ -12,9 +12,11 @@ use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
 mod base;
+mod default;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StagedProgram {
+    Default,
     Base,
     Dark,
     Forest,
@@ -24,30 +26,25 @@ pub(super) enum StagedProgram {
 impl StagedProgram {
     pub(super) fn resolved_without_overrides(
         self,
+        theme: &ThemeProgram,
     ) -> Result<&'static Map<String, Value>, ThemeResolutionError> {
-        use super::{MermaidThemeId, ThemeProgram};
-
         static BASE: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
         static DARK: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
         static FOREST: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> = OnceLock::new();
         static NEUTRAL: OnceLock<Result<Map<String, Value>, ThemeResolutionError>> =
             OnceLock::new();
 
-        let (resolved, theme) = match self {
-            Self::Base => (&BASE, MermaidThemeId::Base),
-            Self::Dark => (&DARK, MermaidThemeId::Dark),
-            Self::Forest => (&FOREST, MermaidThemeId::Forest),
-            Self::Neutral => (&NEUTRAL, MermaidThemeId::Neutral),
+        let resolved = match self {
+            Self::Default => return Ok(theme.resolved_without_overrides()),
+            Self::Base => &BASE,
+            Self::Dark => &DARK,
+            Self::Forest => &FOREST,
+            Self::Neutral => &NEUTRAL,
         };
         resolved
             .get_or_init(|| {
                 // Cache the staged executor's resolved values for an unmodified theme.
-                Resolution::execute(
-                    self,
-                    ThemeProgram::resolve(theme).prepared_constructor(),
-                    &Map::new(),
-                )
-                .map(|resolution| resolution.variables)
+                Resolution::execute(self, theme, &Map::new()).map(|resolution| resolution.variables)
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -89,22 +86,6 @@ impl ThemeState {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone())),
         );
-    }
-
-    fn replay_explicit(&mut self, explicit: &Map<String, Value>) {
-        for (key, value) in explicit {
-            if let Some(target) = self.variables.get_mut(key).and_then(Value::as_object_mut)
-                && let Value::Object(children) = value
-            {
-                target.extend(
-                    children
-                        .iter()
-                        .map(|(key, value)| (key.clone(), value.clone())),
-                );
-            } else {
-                self.variables.insert(key.clone(), value.clone());
-            }
-        }
     }
 
     fn color(&self, key: &str) -> Result<String, ColorError> {
@@ -162,19 +143,41 @@ impl ThemeState {
 impl Resolution {
     pub(super) fn execute(
         program: StagedProgram,
-        prepared_constructor: &Map<String, Value>,
+        theme: &ThemeProgram,
         explicit: &Map<String, Value>,
     ) -> Result<Self, ThemeResolutionError> {
-        let mut state = ThemeState::constructor(prepared_constructor.clone());
+        let exact_default = if program == StagedProgram::Default {
+            theme.validate_evaluated_inputs(explicit)?;
+            theme.exact_snapshot(explicit)
+        } else {
+            None
+        };
+        let variables = match program {
+            // Default's compatibility calculation initializes missing roots after the overlay.
+            // The exact path starts directly from the generated result of that calculation.
+            StagedProgram::Default => exact_default.cloned().unwrap_or_default(),
+            _ => theme.prepared_constructor().clone(),
+        };
+        let mut state = ThemeState::constructor(variables);
         #[cfg(test)]
         let constructor_prepared = state.variables.clone();
 
-        state.overlay_explicit(explicit);
+        if exact_default.is_none() {
+            state.overlay_explicit(explicit);
+        }
         #[cfg(test)]
         let overrides_applied = state.variables.clone();
-        state.theme_color_iterations = theme_color_iteration_count(&state)?;
+
+        // Default uses fixed palette arrays. Its THEME_COLOR_LIMIT is replayed as data.
+        if program != StagedProgram::Default {
+            state.theme_color_iterations = theme_color_iteration_count(&state)?;
+        }
 
         match program {
+            StagedProgram::Default if exact_default.is_none() => {
+                default::update(&mut state, theme, explicit)?;
+            }
+            StagedProgram::Default => {}
             StagedProgram::Base => base::update(&mut state)?,
             StagedProgram::Dark => update_dark(&mut state)?,
             StagedProgram::Forest => update_forest(&mut state)?,
@@ -183,7 +186,13 @@ impl Resolution {
         #[cfg(test)]
         let after_update = state.variables.clone();
 
-        state.replay_explicit(explicit);
+        if program == StagedProgram::Default && !explicit.is_empty() {
+            default::restore_baseline_palette(
+                &mut state.variables,
+                theme.resolved_without_overrides(),
+            );
+        }
+        replay_explicit(&mut state.variables, explicit);
         #[cfg(test)]
         let explicit_replay = state.variables.clone();
 
@@ -212,6 +221,23 @@ impl Resolution {
     #[cfg(test)]
     pub(super) const fn trace(&self) -> &ResolutionTrace {
         &self.trace
+    }
+}
+
+pub(super) fn replay_explicit(variables: &mut Map<String, Value>, explicit: &Map<String, Value>) {
+    for (key, value) in explicit {
+        if let Some(target) = variables.get_mut(key).and_then(Value::as_object_mut)
+            && let Value::Object(children) = value
+        {
+            // Mermaid's applyOverride keeps generated siblings and replaces authored children.
+            target.extend(
+                children
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
+        } else {
+            variables.insert(key.clone(), value.clone());
+        }
     }
 }
 
@@ -1388,18 +1414,20 @@ fn update_git_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::MermaidThemeId;
     use super::*;
-    use crate::presentation::SourcePresentationConfig;
     use serde_json::json;
 
     #[test]
     fn explicit_replay_preserves_siblings_and_replaces_nested_children() {
-        let values = json!({"chart": {"retained": true, "nested": {"old": 1}}});
-        let mut state = ThemeState::constructor(values.as_object().unwrap().clone());
+        let mut values = json!({"chart": {"retained": true, "nested": {"old": 1}}});
         let explicit = json!({"chart": {"nested": {"new": 2}}});
-        state.replay_explicit(explicit.as_object().unwrap());
+        replay_explicit(
+            values.as_object_mut().unwrap(),
+            explicit.as_object().unwrap(),
+        );
         assert_eq!(
-            state.variables["chart"],
+            values["chart"],
             json!({"retained": true, "nested": {"new": 2}})
         );
     }
@@ -1414,28 +1442,21 @@ mod tests {
         );
     }
 
-    fn staged_programs() -> [(StagedProgram, super::super::MermaidThemeId); 4] {
-        use super::super::MermaidThemeId;
-        [
-            (StagedProgram::Base, MermaidThemeId::Base),
-            (StagedProgram::Dark, MermaidThemeId::Dark),
-            (StagedProgram::Forest, MermaidThemeId::Forest),
-            (StagedProgram::Neutral, MermaidThemeId::Neutral),
-        ]
-    }
+    const STAGED_THEMES: [MermaidThemeId; 5] = [
+        MermaidThemeId::Default,
+        MermaidThemeId::Base,
+        MermaidThemeId::Dark,
+        MermaidThemeId::Forest,
+        MermaidThemeId::Neutral,
+    ];
 
     #[test]
     fn prepared_empty_results_preserve_executor_order_and_are_isolated_from_materialization() {
-        use super::super::ThemeProgram;
-
-        for (program, theme) in staged_programs() {
-            let expected = Resolution::execute(
-                program,
-                ThemeProgram::resolve(theme).prepared_constructor(),
-                &Map::new(),
-            )
-            .unwrap();
-            let prepared = program.resolved_without_overrides().unwrap();
+        for theme in STAGED_THEMES {
+            let theme_program = ThemeProgram::resolve(theme);
+            let program = theme_program.staged_program().unwrap();
+            let expected = Resolution::execute(program, theme_program, &Map::new()).unwrap();
+            let prepared = program.resolved_without_overrides(theme_program).unwrap();
             let expected_bytes = serde_json::to_vec(&expected.variables).unwrap();
             assert_eq!(
                 serde_json::to_vec(prepared).unwrap(),
@@ -1451,7 +1472,7 @@ mod tests {
                 .unwrap()
                 .insert("axisColor".to_string(), json!("#123456"));
             materialized.insert("hostOnly".to_string(), json!(true));
-            let reused = program.resolved_without_overrides().unwrap();
+            let reused = program.resolved_without_overrides(theme_program).unwrap();
             assert!(std::ptr::eq(prepared, reused));
             assert_eq!(serde_json::to_vec(reused).unwrap(), expected_bytes);
         }
@@ -1459,14 +1480,14 @@ mod tests {
 
     #[test]
     fn custom_detector_observes_staged_theme_values() {
-        use super::super::{MermaidThemeId, ThemeProgram};
+        use crate::presentation::SourcePresentationConfig;
 
         fn detector(_text: &str, config: &mut SourcePresentationConfig) -> bool {
             let theme = MermaidThemeId::parse(config.get_str("theme").unwrap()).unwrap();
             let theme_program = ThemeProgram::resolve(theme);
             let expected = Resolution::execute(
                 theme_program.staged_program().unwrap(),
-                theme_program.prepared_constructor(),
+                theme_program,
                 &Map::new(),
             )
             .unwrap();
@@ -1478,7 +1499,9 @@ mod tests {
             true
         }
 
-        for (program, theme) in staged_programs() {
+        for theme in STAGED_THEMES {
+            let theme_program = ThemeProgram::resolve(theme);
+            let program = theme_program.staged_program().unwrap();
             let mut engine = crate::MermaidEngine::new().with_site_config(
                 SourcePresentationConfig::from_value(json!({
                     "theme": theme.as_str(),
@@ -1490,7 +1513,7 @@ mod tests {
             assert_eq!(metadata.diagram_type, "flowchart-v2");
             assert_eq!(
                 metadata.effective_config.as_value()["themeVariables"].as_object(),
-                Some(program.resolved_without_overrides().unwrap()),
+                Some(program.resolved_without_overrides(theme_program).unwrap()),
                 "{theme}: metadata retains the resolved variables"
             );
         }

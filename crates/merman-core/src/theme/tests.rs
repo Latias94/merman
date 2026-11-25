@@ -19,18 +19,19 @@ fn executable_theme_programs_cover_typed_catalog() {
 
 #[test]
 fn owned_staged_theme_materialization_needs_no_json_cow_copy() {
-    let raw = SourcePresentationConfig::from_value(json!({
-        "theme": "base", "themeVariables": { "primaryColor": "#123456" },
-    }));
-    let (materialized, work) = crate::config::measure_config_work(|| {
-        materialize_selected_theme(raw, MermaidThemeId::Base).unwrap()
-    });
-    assert_eq!(
-        materialized.get_str("themeVariables.primaryColor"),
-        Some("#123456")
-    );
-    assert_eq!(work.json_cow_copies, 0, "{work:?}");
-    assert_eq!(work.selected_theme_materializations, 1, "{work:?}");
+    for theme in [MermaidThemeId::Default, MermaidThemeId::Base] {
+        let raw = SourcePresentationConfig::from_value(json!({
+            "theme": theme.as_str(), "themeVariables": { "primaryColor": "#123456" },
+        }));
+        let (materialized, work) =
+            crate::config::measure_config_work(|| materialize_selected_theme(raw, theme).unwrap());
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
+        assert_eq!(work.selected_theme_materializations, 1, "{theme}: {work:?}");
+    }
 }
 
 #[test]
@@ -63,12 +64,8 @@ fn owned_legacy_theme_materialization_needs_no_json_cow_copy() {
 }
 
 #[test]
-fn shared_legacy_theme_materialization_detaches_only_at_successful_commit() {
-    for theme in MermaidThemeId::ALL
-        .iter()
-        .copied()
-        .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
-    {
+fn shared_theme_materialization_detaches_only_at_successful_commit() {
+    for theme in MermaidThemeId::ALL.iter().copied() {
         let original = SourcePresentationConfig::from_value(json!({
             "theme": theme.as_str(),
             "themeVariables": { "primaryColor": "#123456" },
@@ -102,21 +99,28 @@ fn shared_legacy_theme_materialization_detaches_only_at_successful_commit() {
 
 #[test]
 fn source_theme_materialization_merges_array_sources_without_object_coercion() {
-    let materialized = crate::MermaidEngine::new()
-        .parse_metadata_sync(
-            "%%{init: {\"theme\": \"base\", \"themeVariables\": [{\"primaryColor\": \"#123456\"}, {\"secondaryColor\": \"#654321\"}]}}%%\nflowchart TD\nA-->B",
-        )
-        .expect("materialize source theme through the public parse pipeline")
-        .effective_config;
+    for theme in ["base", "default"] {
+        let config = json!({
+            "theme": theme,
+            "themeVariables": [{"primaryColor": "#123456"}, {"secondaryColor": "#654321"}]
+        });
+        let source = format!("%%{{init: {config}}}%%\nflowchart TD\nA-->B");
+        let materialized = crate::MermaidEngine::new()
+            .parse_metadata_sync(&source)
+            .expect("materialize source theme through the public parse pipeline")
+            .effective_config;
 
-    assert_eq!(
-        materialized.get_str("themeVariables.primaryColor"),
-        Some("#123456")
-    );
-    assert_eq!(
-        materialized.get_str("themeVariables.secondaryColor"),
-        Some("#654321")
-    );
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456"),
+            "{theme}"
+        );
+        assert_eq!(
+            materialized.get_str("themeVariables.secondaryColor"),
+            Some("#654321"),
+            "{theme}"
+        );
+    }
 }
 
 #[test]
@@ -165,33 +169,28 @@ fn all_themes_preserve_generated_object_keys_after_partial_overrides() {
 
 #[test]
 fn theme_replay_object_merge_is_shallow_and_retains_scalar_replacement() {
-    let mut snapshot = ThemeStageSnapshot::from_variables(
-        json!({
-            "chart": { "nested": { "keep": 1, "replace": 2 }, "defaultColor": "blue" },
-            "array": [1, 2], "scalar": "old", "nullable": "old"
-        })
-        .as_object()
-        .unwrap()
-        .clone(),
-    );
-    snapshot.overlay(
+    let mut variables = json!({
+        "chart": { "nested": { "keep": 1, "replace": 2 }, "defaultColor": "blue" },
+        "array": [1, 2], "scalar": "old", "nullable": "old"
+    });
+    staged::replay_explicit(
+        variables.as_object_mut().unwrap(),
         json!({
             "chart": { "nested": { "replace": 3 } },
             "array": [3], "scalar": "new", "nullable": null
         })
         .as_object()
         .unwrap(),
-        true,
     );
     assert_eq!(
-        snapshot.variables["chart"],
+        variables["chart"],
         json!({
             "nested": { "replace": 3 }, "defaultColor": "blue"
         })
     );
-    assert_eq!(snapshot.variables["array"], json!([3]));
-    assert_eq!(snapshot.variables["scalar"], json!("new"));
-    assert_eq!(snapshot.variables["nullable"], Value::Null);
+    assert_eq!(variables["array"], json!([3]));
+    assert_eq!(variables["scalar"], json!("new"));
+    assert_eq!(variables["nullable"], Value::Null);
 }
 
 #[test]
@@ -1675,6 +1674,8 @@ fn default_theme_exact_overrides_preserve_truthiness_and_typography() {
 fn default_theme_nonexact_invalid_colors_preserve_errors() {
     for (variable, value, expected_input) in [
         ("primaryColor", json!("not-a-color"), "not-a-color"),
+        ("cScale0", json!(""), ""),
+        ("git0", json!(false), "false"),
         ("git7", json!("not-a-color"), "not-a-color"),
         ("quadrant1Fill", json!(17), "17"),
     ] {
@@ -1690,6 +1691,30 @@ fn default_theme_nonexact_invalid_colors_preserve_errors() {
             "{variable}"
         );
         assert_eq!(config.as_value(), before.as_value(), "{variable}");
+    }
+}
+
+#[test]
+fn default_theme_replays_color_limit_without_changing_fixed_scale() {
+    let baseline = ThemeProgram::resolve(MermaidThemeId::Default).resolved_without_overrides();
+    for limit in [json!(0), json!([0]), json!(65), json!("Infinity")] {
+        let mut config = SourcePresentationConfig::from_value(json!({
+            "theme": "default",
+            "themeVariables": { "THEME_COLOR_LIMIT": limit.clone() },
+        }));
+        apply_theme_defaults(&mut config).unwrap();
+        let variables = config.as_value()["themeVariables"].as_object().unwrap();
+        assert_eq!(variables["THEME_COLOR_LIMIT"], limit);
+        for key in [
+            "cScale0",
+            "cScalePeer0",
+            "cScaleInv0",
+            "cScaleLabel1",
+            "cScale11",
+        ] {
+            assert_eq!(variables[key], baseline[key], "{key}, limit {limit}");
+        }
+        assert!(!variables.contains_key("cScale12"));
     }
 }
 
@@ -1719,7 +1744,7 @@ fn base_finalize_uses_node_border_presence() {
         let explicit = json!({"nodeBorder": border});
         let resolved = staged::Resolution::execute(
             staged::StagedProgram::Base,
-            program.prepared_constructor(),
+            program,
             explicit.as_object().unwrap(),
         )
         .unwrap();
@@ -2452,7 +2477,11 @@ flowchart TD
 
 #[test]
 fn theme_failure_leaves_values_and_authored_paths_intact() {
-    let staged_cases = [("dark", "mainBkg"), ("base", "cScale2")];
+    let staged_cases = [
+        ("default", "primaryColor"),
+        ("dark", "mainBkg"),
+        ("base", "cScale2"),
+    ];
     let other_cases = MermaidThemeId::ALL
         .iter()
         .filter(|theme| ThemeProgram::resolve(**theme).staged_program().is_none())
@@ -2542,7 +2571,7 @@ fn staged_theme_interface_matches_upstream_stage_oracles() {
         let theme_name = case.get("theme").and_then(Value::as_str).unwrap();
         let theme = MermaidThemeId::parse(theme_name).unwrap();
         let id = case.get("id").and_then(Value::as_str).unwrap();
-        let program = *ThemeProgram::resolve(theme);
+        let program = ThemeProgram::resolve(theme);
         let Some(staged_program) = program.staged_program() else {
             mismatches.push(format!(
                 "{theme_name}/{id}: stage oracle targets a non-staged theme program"
@@ -2555,9 +2584,7 @@ fn staged_theme_interface_matches_upstream_stage_oracles() {
             .unwrap()
             .clone();
         let explicit = program.normalize_overrides(raw);
-        let resolution =
-            staged::Resolution::execute(staged_program, program.prepared_constructor(), &explicit)
-                .unwrap();
+        let resolution = staged::Resolution::execute(staged_program, program, &explicit).unwrap();
         let trace = resolution.trace();
         let actual_stages = [
             ("constructorPrepared", &trace.constructor_prepared),
@@ -2605,47 +2632,41 @@ fn staged_theme_interface_matches_upstream_stage_oracles() {
 }
 
 #[test]
-fn theme_resolution_records_stage_and_final_value_provenance() {
-    let explicit = json!({"fontFamily": "Inter, sans-serif", "cScale0": "#abcdef"})
-        .as_object()
-        .unwrap()
-        .clone();
-    let calculated = json!({
+fn default_staged_resolution_preserves_intermediates_and_replay() {
+    let explicit = json!({
         "fontFamily": "Inter, sans-serif",
-        "cScale0": "hsl(210, 68%, 70.3921568627%)",
-        "cScalePeer0": "hsl(210, 68%, 55.3921568627%)"
-    })
-    .as_object()
-    .unwrap()
-    .clone();
+        "cScale0": "#abcdef",
+        "border1": false,
+        "actorBorder": "#226688",
+        "taskTextLightColor": "#123456",
+    });
+    let explicit = explicit.as_object().unwrap();
+    let program = ThemeProgram::resolve(MermaidThemeId::Default);
     let resolution =
-        ThemeResolution::new(MermaidThemeId::Default, &explicit, || Ok(calculated)).unwrap();
+        staged::Resolution::execute(staged::StagedProgram::Default, program, explicit).unwrap();
+    let trace = resolution.trace();
+    assert!(trace.constructor_prepared.is_empty());
+    assert_eq!(&trace.overrides_applied, explicit);
+    assert_eq!(trace.after_update["border1"], json!("#9370DB"));
+    assert_eq!(trace.after_update["actorBorder"], json!("#9370DB"));
     assert_eq!(
-        resolution.default_snapshot.stage,
-        ThemeResolutionStage::DefaultSnapshot
+        trace.after_update["cScalePeer0"],
+        json!("hsl(210, 68%, 55.3921568627%)")
     );
-    assert_eq!(
-        resolution.overrides_applied.stage,
-        ThemeResolutionStage::OverridesApplied
-    );
-    assert_eq!(
-        resolution.calculated.stage,
-        ThemeResolutionStage::Calculated
-    );
-    assert_eq!(
-        resolution.explicit_replay.stage,
-        ThemeResolutionStage::ExplicitReplay
-    );
-    for key in ["fontFamily", "cScale0"] {
-        assert_eq!(
-            resolution.explicit_replay.origins.get(key),
-            Some(&ThemeValueOrigin::ExplicitOverride)
-        );
+    for key in [
+        "fontFamily",
+        "cScale0",
+        "border1",
+        "actorBorder",
+        "taskTextLightColor",
+    ] {
+        assert_eq!(trace.explicit_replay[key], explicit[key], "{key}");
     }
-    assert_eq!(
-        resolution.explicit_replay.origins.get("cScalePeer0"),
-        Some(&ThemeValueOrigin::DefaultSnapshot)
-    );
+    let baseline = program.resolved_without_overrides();
+    assert_eq!(trace.final_resolved["cScalePeer0"], baseline["cScalePeer0"]);
+    assert_eq!(trace.final_resolved["actorLineColor"], json!("#9370DB"));
+    assert_eq!(trace.final_resolved["taskTextColor"], json!("white"));
+    assert_eq!(trace.final_resolved, resolution.variables);
 }
 
 #[test]
@@ -2708,7 +2729,6 @@ fn default_theme_populates_mermaid_theme_variables() {
 
 #[test]
 fn default_xychart_keeps_constructor_colors_until_its_object_is_replaced() {
-    let program = *ThemeProgram::resolve(MermaidThemeId::Default);
     for (xy, title, sibling, background) in [
         (None, json!("#131300"), "#131300", "white"),
         (Some(json!({})), json!("#125634"), "#125634", "#142536"),
@@ -2735,9 +2755,11 @@ fn default_xychart_keeps_constructor_colors_until_its_object_is_replaced() {
         if let Some(xy) = xy {
             explicit["xyChart"] = xy;
         }
-        let actual = program
-            .resolve_legacy(explicit.as_object().unwrap())
-            .unwrap();
+        let mut config = SourcePresentationConfig::from_value(json!({
+            "theme": "default", "themeVariables": explicit,
+        }));
+        apply_theme_defaults(&mut config).unwrap();
+        let actual = &config.as_value()["themeVariables"];
         assert_eq!(actual["xyChart"]["titleColor"], title);
         assert_eq!(actual["xyChart"]["dataLabelColor"], sibling);
         assert_eq!(actual["xyChart"]["backgroundColor"], background);
