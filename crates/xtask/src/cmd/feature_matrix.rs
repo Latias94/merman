@@ -472,7 +472,7 @@ const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
     DependencyFeatureContract {
         package: "merman-model",
         dependency: "serde_json",
-        expected_features: &["float_roundtrip", "preserve_order"],
+        expected_features: &["float_roundtrip"],
         expected_uses_default_features: None,
     },
     DependencyFeatureContract {

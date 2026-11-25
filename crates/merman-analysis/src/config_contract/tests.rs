@@ -200,17 +200,17 @@ fn descriptor_bounds_nullability_and_scope_drive_both_projections() {
             .is_some_and(|types| types.iter().any(|value| value.as_str() == Some("null")));
         assert_eq!(schema_accepts_null, field.nullable);
         assert_eq!(
-            validate_config_field(field, &Value::Null).is_ok(),
+            validate_config_field(field, (&Value::Null).into()).is_ok(),
             field.nullable
         );
 
         if let AnalysisConfigValueKind::Integer { minimum, maximum } = field.value_kind {
             assert_eq!(schema["minimum"], json!(minimum));
             assert_eq!(schema["maximum"], json!(maximum));
-            assert!(validate_config_field(field, &json!(minimum)).is_ok());
-            assert!(validate_config_field(field, &json!(maximum)).is_ok());
-            assert!(validate_config_field(field, &json!(minimum - 1)).is_err());
-            assert!(validate_config_field(field, &json!(maximum + 1)).is_err());
+            assert!(validate_config_field(field, (&json!(minimum)).into()).is_ok());
+            assert!(validate_config_field(field, (&json!(maximum)).into()).is_ok());
+            assert!(validate_config_field(field, (&json!(minimum - 1)).into()).is_err());
+            assert!(validate_config_field(field, (&json!(maximum + 1)).into()).is_err());
         }
     }
 }

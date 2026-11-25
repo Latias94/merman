@@ -41,8 +41,7 @@ impl StagedProgram {
         };
         resolved
             .get_or_init(|| {
-                // The generated snapshot sorts object keys. Execute once to preserve the
-                // insertion order observed by config consumers, including nested objects.
+                // Cache the staged executor's resolved values for an unmodified theme.
                 Resolution::execute(
                     self,
                     ThemeProgram::resolve(theme).prepared_constructor(),
@@ -1459,7 +1458,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_detector_observes_staged_executor_key_order() {
+    fn custom_detector_observes_staged_theme_values() {
         use super::super::{MermaidThemeId, ThemeProgram};
 
         fn detector(_text: &str, config: &mut SourcePresentationConfig) -> bool {
@@ -1472,9 +1471,9 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                serde_json::to_vec(&config.as_value()["themeVariables"]).unwrap(),
-                serde_json::to_vec(&expected.variables).unwrap(),
-                "{theme}: a detector can observe recursive insertion order"
+                config.as_value()["themeVariables"].as_object(),
+                Some(&expected.variables),
+                "{theme}: a detector sees the resolved variables"
             );
             true
         }
@@ -1490,10 +1489,9 @@ mod tests {
             let metadata = engine.parse_metadata_sync("staged-order-probe").unwrap();
             assert_eq!(metadata.diagram_type, "flowchart-v2");
             assert_eq!(
-                serde_json::to_vec(&metadata.effective_config.as_value()["themeVariables"])
-                    .unwrap(),
-                serde_json::to_vec(program.resolved_without_overrides().unwrap()).unwrap(),
-                "{theme}: metadata retains the observed order"
+                metadata.effective_config.as_value()["themeVariables"].as_object(),
+                Some(program.resolved_without_overrides().unwrap()),
+                "{theme}: metadata retains the resolved variables"
             );
         }
     }

@@ -280,7 +280,7 @@ impl<'a> DecodedOperationOptions<'a> {
         invalid_json: impl FnOnce(serde_json::Error) -> BindingError,
     ) -> Result<Self, BindingError> {
         enforce_options_json_byte_len(json.len())?;
-        let value = serde_json::from_str(json).map_err(invalid_json)?;
+        let value = options_value::decode_options(json).map_err(invalid_json)?;
         Ok(Self { json, value })
     }
 }
@@ -1358,28 +1358,25 @@ fn binding_analysis_options_json_from_json_value(
         })
         .transpose()?;
 
-    let mut analysis_value = options_value.value.clone();
-    let analysis = analysis_value.as_object_mut().ok_or_else(|| {
+    let mut analysis_value = options_value.to_ordered();
+    let mut analysis = analysis_value.object_mut().ok_or_else(|| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             "invalid analysis options JSON: analysis options JSON must be an object",
         )
     })?;
     if !wrapped {
-        analysis.retain(|key, _| BINDING_ANALYSIS_OPTION_KEYS.contains(&key.as_str()));
+        analysis.retain(|key| BINDING_ANALYSIS_OPTION_KEYS.contains(&key));
     }
     let analysis_contract = merman_analysis::AnalysisConfigContract::current();
-    if let Some(resource_options) = analysis.get_mut("resources").and_then(Value::as_object_mut) {
-        resource_options.remove("profile");
-        if let Some(limits) = resource_options
-            .get_mut("limits")
-            .and_then(Value::as_object_mut)
-        {
-            limits.retain(|limit_id, _| analysis_contract.accepts_resource_limit(limit_id));
+    if let Some(mut resource_options) = analysis.child_object("resources") {
+        resource_options.swap_remove("profile");
+        if let Some(mut limits) = resource_options.child_object("limits") {
+            limits.retain(|limit_id| analysis_contract.accepts_resource_limit(limit_id));
         }
     }
     let decoded = analysis_contract
-        .decode_json(&analysis_value)
+        .decode_ordered_json(analysis_value.view())
         .map_err(BindingError::from)?;
     Ok(BindingAnalysisOptionsJson {
         fixed_today: decoded.fixed_today,
@@ -1974,7 +1971,7 @@ pub fn apply_resource_ceiling_json_with_allowed_overrides(
         ceiling_overrides,
         allowed_request_limit_ids,
     )?;
-    let serialized = serde_json::to_vec(&value.value).map_err(internal_json_error)?;
+    let serialized = serde_json::to_vec(&value.view()).map_err(internal_json_error)?;
     enforce_options_json_byte_budget(&serialized)?;
     parse_options_with_theme(options_json, value.view(), &DEFAULT_ARTIFACT_SNAPSHOT)?;
     Ok(serialized)
@@ -2202,7 +2199,7 @@ fn options_json_value(options_json: &[u8]) -> Result<OptionsValue, BindingError>
             format!("invalid options_json UTF-8: {error}"),
         )
     })?;
-    serde_json::from_str(text).map_err(|error| {
+    options_value::decode_options(text).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             format!("invalid options_json: {error}"),
@@ -3221,6 +3218,31 @@ mod tests {
         .unwrap_err();
         assert_eq!(decoded, raw);
         assert!(decoded.message().contains("unknown field `z_first`"));
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn source_order_reaches_nested_analysis_validation() {
+        let json = r#"{"analysis":{"lint":{"rule_severities":[{"severity":"fatal","rule_id":"bogus"}],"profile":"bogus"},"fixed_today":false}}"#;
+        let raw_error = parse_options(json.as_bytes()).unwrap_err();
+        assert_eq!(raw_error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            raw_error
+                .message()
+                .contains("lint.rule_severities[].severity")
+        );
+
+        let decoded = DecodedOperationOptions::decode(json, |error| {
+            BindingError::invalid_options_json(error.to_string())
+        })
+        .unwrap();
+        let error = parse_request_overlay_for_artifact(
+            BindingRequestOptions::Decoded(decoded),
+            BindingResourceScope::Model,
+            &DEFAULT_ARTIFACT_SNAPSHOT,
+        )
+        .unwrap_err();
+        assert_eq!(error, raw_error);
     }
 
     #[test]

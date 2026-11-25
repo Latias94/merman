@@ -168,6 +168,7 @@ pub struct UsecaseJsonNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub string_encoding: Option<UsecaseJsonStringEncoding>,
     /// Source property order, keyed by RFC 6901 JSON pointers, including the root.
+    /// Set this for programmatically built objects whose display order matters.
     pub property_order: BTreeMap<String, Vec<String>>,
     /// Non-finite table values keyed by RFC 6901 JSON pointers. Their entries in
     /// `value` are null, matching JavaScript JSON.stringify serialization.

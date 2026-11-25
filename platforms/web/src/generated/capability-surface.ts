@@ -7,208 +7,208 @@ export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:0c26d41286136ae5f3a76c0b6bd1
 export const WEB_CAPABILITIES = [
   {
     "id": "analysis",
-    "kind": "api",
-    "implications": []
+    "implications": [],
+    "kind": "api"
   },
   {
     "id": "ascii",
-    "kind": "output",
-    "implications": []
+    "implications": [],
+    "kind": "output"
   },
   {
     "id": "editor",
-    "kind": "api",
-    "implications": []
+    "implications": [],
+    "kind": "api"
   },
   {
     "id": "fixes",
-    "kind": "api",
     "implications": [
       "analysis"
-    ]
+    ],
+    "kind": "api"
   },
   {
     "id": "layout-cytoscape",
-    "kind": "engine",
     "implications": [
       "svg"
-    ]
+    ],
+    "kind": "engine"
   },
   {
     "id": "layout-dagre",
-    "kind": "engine",
     "implications": [
       "svg"
-    ]
+    ],
+    "kind": "engine"
   },
   {
     "id": "layout-elk",
-    "kind": "engine",
     "implications": [
       "svg"
-    ]
+    ],
+    "kind": "engine"
   },
   {
     "id": "layout-shoal",
-    "kind": "engine",
     "implications": [
       "svg"
-    ]
+    ],
+    "kind": "engine"
   },
   {
     "id": "math",
-    "kind": "engine",
     "implications": [
       "svg"
-    ]
+    ],
+    "kind": "engine"
   },
   {
     "id": "svg",
-    "kind": "output",
-    "implications": []
+    "implications": [],
+    "kind": "output"
   }
 ] as const;
 
 export const WEB_OUTPUTS = [
   {
-    "id": "ascii",
-    "capability": "ascii"
+    "capability": "ascii",
+    "id": "ascii"
   },
   {
-    "id": "svg",
-    "capability": "svg"
+    "capability": "svg",
+    "id": "svg"
   }
 ] as const;
 
 export const WEB_BINDING_OPERATIONS = [
   {
+    "capability": "analysis",
+    "compiled_prerequisites": [],
     "id": "analysis-facts-json",
-    "maturity": "stable",
-    "capability": "analysis",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
+    "capability": "analysis",
+    "compiled_prerequisites": [],
     "id": "analysis-json",
-    "maturity": "stable",
-    "capability": "analysis",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
-    "id": "ascii",
-    "maturity": "stable",
     "capability": "ascii",
-    "output": "ascii",
     "compiled_prerequisites": [],
+    "id": "ascii",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "text/plain; charset=utf-8",
+    "output": "ascii",
     "requires_uri": false
   },
   {
+    "capability": "analysis",
+    "compiled_prerequisites": [],
     "id": "document-analysis-facts-json",
-    "maturity": "stable",
-    "capability": "analysis",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": true
   },
   {
+    "capability": "analysis",
+    "compiled_prerequisites": [],
     "id": "document-analysis-json",
-    "maturity": "stable",
-    "capability": "analysis",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": true
   },
   {
+    "capability": "svg",
+    "compiled_prerequisites": [],
     "id": "edge-geometry-json",
-    "maturity": "stable",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
+    "capability": "svg",
+    "compiled_prerequisites": [],
     "id": "export-theme-preset",
-    "maturity": "stable",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "theme-preset-id",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
+    "capability": "svg",
+    "compiled_prerequisites": [],
     "id": "layout-json",
-    "maturity": "stable",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
+    "capability": "svg",
+    "compiled_prerequisites": [],
     "id": "resolve-theme",
-    "maturity": "stable",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
     "input_kind": "theme-resolve-request-json",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
-    "id": "semantic-json",
-    "maturity": "stable",
     "capability": null,
-    "output": null,
     "compiled_prerequisites": [],
+    "id": "semantic-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
+    "capability": "svg",
+    "compiled_prerequisites": [],
     "id": "svg",
-    "maturity": "stable",
-    "capability": "svg",
-    "output": "svg",
-    "compiled_prerequisites": [],
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "image/svg+xml",
+    "output": "svg",
     "requires_uri": false
   },
   {
-    "id": "svg-plan-json",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
+    "id": "svg-plan-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   },
   {
-    "id": "validation-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
+    "id": "validation-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false
   }
 ] as const;

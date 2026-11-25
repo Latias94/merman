@@ -1,6 +1,8 @@
 //! Iterative JSON value ownership used by configuration and explicit projections.
 
 mod managed;
+#[doc(hidden)]
+pub mod ordered;
 pub use managed::ManagedJson;
 
 use crate::{OperationControl, OperationControlResult};

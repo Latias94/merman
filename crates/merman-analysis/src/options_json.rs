@@ -4,6 +4,7 @@ use crate::{
 };
 use merman_model::{
     MermaidConfig,
+    json::ordered::{JsonOrderScope, OrderedJson},
     time::{CivilDate, UtcOffset},
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -59,14 +60,40 @@ pub struct LintRuleSeverityOverrideJson {
     pub severity: String,
 }
 
+#[derive(Clone, Copy)]
+enum AnalysisOrderScope {
+    Options,
+    Resources,
+    Lint,
+    RuleSeverities,
+    Members,
+}
+
+impl JsonOrderScope for AnalysisOrderScope {
+    fn member(self, key: &str) -> Option<Self> {
+        match (self, key) {
+            (Self::Options, "analysis" | "merman") => Some(Self::Options),
+            (Self::Options, "resources") => Some(Self::Resources),
+            (Self::Options, "lint") => Some(Self::Lint),
+            (Self::Resources, "limits") => Some(Self::Members),
+            (Self::Lint, "rule_severities") => Some(Self::RuleSeverities),
+            _ => None,
+        }
+    }
+
+    fn array_item(self) -> Option<Self> {
+        matches!(self, Self::RuleSeverities).then_some(Self::Members)
+    }
+}
+
 impl<'de> Deserialize<'de> for AnalysisOptionsJson {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let value = Value::deserialize(deserializer)?;
+        let value = OrderedJson::deserialize_with_scope(deserializer, AnalysisOrderScope::Options)?;
         AnalysisConfigContract::current()
-            .decode_json(&value)
+            .decode_ordered_json(value.view())
             .map_err(serde::de::Error::custom)
     }
 }
@@ -76,8 +103,10 @@ impl<'de> Deserialize<'de> for ResourceOptionsJson {
     where
         D: Deserializer<'de>,
     {
-        let value = Value::deserialize(deserializer)?;
-        crate::config_contract::decode_resource_options(&value).map_err(serde::de::Error::custom)
+        let value =
+            OrderedJson::deserialize_with_scope(deserializer, AnalysisOrderScope::Resources)?;
+        crate::config_contract::decode_resource_options(value.view())
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -543,6 +572,28 @@ mod tests {
             error
                 .to_string()
                 .contains("unknown field `future_resource_option`")
+        );
+    }
+
+    #[test]
+    fn wire_validation_reports_the_first_authored_invalid_member() {
+        let error = serde_json::from_str::<AnalysisOptionsJson>(
+            r#"{"analysis":{"lint":{"rule_severities":[{"severity":"fatal","rule_id":"bogus"}],"profile":"bogus"},"fixed_today":false}}"#,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("lint.rule_severities[].severity")
+        );
+
+        let error =
+            serde_json::from_str::<ResourceOptionsJson>(r#"{"limits":{"z_first":0,"a_second":0}}"#)
+                .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unknown analysis resource limit id: z_first")
         );
     }
 

@@ -5,8 +5,10 @@ use crate::{
 };
 use serde_json::{Map, Value};
 
-pub(super) fn decode_json(value: &Value) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
-    reject_removed_parse(value)?;
+pub(super) fn decode_json(
+    value: OrderedJsonRef<'_>,
+) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
+    reject_removed_parse(value.value)?;
     let options = select_analysis_options_root(value)?;
     validate_config_object(AnalysisConfigObjectId::Options, options)?;
     decode_analysis_options_object(options)
@@ -20,10 +22,10 @@ fn field_descriptor(
 }
 fn validate_config_object(
     id: AnalysisConfigObjectId,
-    value: &Value,
+    value: OrderedJsonRef<'_>,
 ) -> Result<(), AnalysisOptionsJsonError> {
     let descriptor = object_descriptor(id);
-    let map = value.as_object().ok_or_else(|| {
+    let map = value.value.as_object().ok_or_else(|| {
         AnalysisOptionsJsonError::new(format!(
             "invalid analysis options JSON: {} must be an object",
             descriptor.path
@@ -47,7 +49,7 @@ fn validate_config_object(
         }
     }
 
-    for (key, value) in map {
+    for (key, value) in value.entries() {
         let Some(field) = field_descriptor(id, key) else {
             if descriptor.compatibility == AnalysisConfigCompatibility::Strict {
                 return Err(AnalysisOptionsJsonError::new(format!(
@@ -64,8 +66,9 @@ fn validate_config_object(
 
 pub(super) fn validate_config_field(
     field: AnalysisConfigFieldDescriptor,
-    value: &Value,
+    member: OrderedJsonRef<'_>,
 ) -> Result<(), AnalysisOptionsJsonError> {
+    let value = member.value;
     if value.is_null() {
         return if field.nullable {
             Ok(())
@@ -102,7 +105,7 @@ pub(super) fn validate_config_field(
                 field.path
             ))
         }),
-        AnalysisConfigValueKind::Object(id) => validate_config_object(id, value),
+        AnalysisConfigValueKind::Object(id) => validate_config_object(id, member),
         AnalysisConfigValueKind::Array(item) => {
             let values = value.as_array().ok_or_else(|| {
                 AnalysisOptionsJsonError::new(format!(
@@ -110,10 +113,10 @@ pub(super) fn validate_config_field(
                     field.path
                 ))
             })?;
-            for (index, value) in values.iter().enumerate() {
+            for (index, value) in member.items(values).enumerate() {
                 match item {
                     AnalysisConfigArrayItem::RuleId => {
-                        let rule_id = value.as_str().ok_or_else(|| {
+                        let rule_id = value.value.as_str().ok_or_else(|| {
                             AnalysisOptionsJsonError::new(format!(
                                 "invalid analysis options JSON: {}[{index}] must be a string",
                                 field.path
@@ -135,7 +138,7 @@ pub(super) fn validate_config_field(
             }
             Ok(())
         }
-        AnalysisConfigValueKind::ResourceLimits => validate_resource_limits(value),
+        AnalysisConfigValueKind::ResourceLimits => validate_resource_limits(member),
     }
 }
 
@@ -168,14 +171,18 @@ fn validate_enum_value(
     )))
 }
 
-fn validate_resource_limits(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
-    let limits = value.as_object().ok_or_else(|| {
-        AnalysisOptionsJsonError::new(
+fn validate_resource_limits(limits: OrderedJsonRef<'_>) -> Result<(), AnalysisOptionsJsonError> {
+    if !limits.value.is_object() {
+        return Err(AnalysisOptionsJsonError::new(
             "invalid analysis options JSON: resources.limits must be an object",
-        )
-    })?;
-    for (limit_id, value) in limits {
-        decode_resource_limit(limit_id, value, &format!("resources.limits.{limit_id}"))?;
+        ));
+    }
+    for (limit_id, value) in limits.entries() {
+        decode_resource_limit(
+            limit_id,
+            value.value,
+            &format!("resources.limits.{limit_id}"),
+        )?;
     }
     Ok(())
 }
@@ -216,15 +223,17 @@ fn reject_removed_parse(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
     Ok(())
 }
 
-fn select_analysis_options_root(value: &Value) -> Result<&Value, AnalysisOptionsJsonError> {
-    let Value::Object(map) = value else {
+fn select_analysis_options_root(
+    value: OrderedJsonRef<'_>,
+) -> Result<OrderedJsonRef<'_>, AnalysisOptionsJsonError> {
+    let Value::Object(map) = value.value else {
         return Err(AnalysisOptionsJsonError::new(
             "analysis options JSON must be an object",
         ));
     };
     let mut selected_wrapper = None;
     for (_, key) in wrapped_config_roots() {
-        let Some(wrapped) = map.get(key) else {
+        let Some(wrapped) = value.get(key) else {
             continue;
         };
         if selected_wrapper.is_some() {
@@ -241,7 +250,7 @@ fn select_analysis_options_root(value: &Value) -> Result<&Value, AnalysisOptions
                 "options JSON must not mix top-level analysis options with `analysis` or `merman` wrappers",
             ));
         }
-        if !wrapped.is_object() {
+        if !wrapped.value.is_object() {
             return Err(AnalysisOptionsJsonError::new(format!(
                 "options JSON wrapper `{key}` must contain an object"
             )));
@@ -256,16 +265,17 @@ fn root_option_key_present(map: &Map<String, Value>) -> bool {
 }
 
 fn decode_analysis_options_object(
-    value: &Value,
+    options: OrderedJsonRef<'_>,
 ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
-    let map = value
-        .as_object()
-        .ok_or_else(|| AnalysisOptionsJsonError::new("analysis options JSON must be an object"))?;
     let mut decoded = AnalysisOptionsJson::default();
     for field in fields_for_object(AnalysisConfigObjectId::Options) {
-        let Some(value) = map.get(field.key).filter(|value| !value.is_null()) else {
+        let Some(member) = options
+            .get(field.key)
+            .filter(|member| !member.value.is_null())
+        else {
             continue;
         };
+        let value = member.value;
         let AnalysisConfigFieldId::Options(field_id) = field.id else {
             unreachable!("options object contained a non-options field descriptor")
         };
@@ -281,7 +291,7 @@ fn decode_analysis_options_object(
             }
             AnalysisOptionsFieldId::SiteConfig => decoded.site_config = Some(value.clone()),
             AnalysisOptionsFieldId::Resources => {
-                decoded.resources = Some(decode_resource_options(value)?);
+                decoded.resources = Some(decode_resource_options(member)?);
             }
             AnalysisOptionsFieldId::Lint => decoded.lint = Some(decode_lint(value)?),
         }
@@ -290,10 +300,11 @@ fn decode_analysis_options_object(
 }
 
 pub(crate) fn decode_resource_options(
-    value: &Value,
+    value: OrderedJsonRef<'_>,
 ) -> Result<ResourceOptionsJson, AnalysisOptionsJsonError> {
     validate_config_object(AnalysisConfigObjectId::Resources, value)?;
     let map = value
+        .value
         .as_object()
         .expect("validated resources configuration must be an object");
     let mut resources = ResourceOptionsJson::default();

@@ -154,6 +154,11 @@ config with `SourcePresentationConfig::from_value(value)`. `with_presentation_en
 configuration, detectors and custom adapters independently of `with_semantic_parser`; it does
 not replace the parser used by semantic or ordinary ASCII requests.
 
+`MermaidConfig::as_value` and the config views available to custom detectors use the host's
+`serde_json::Value` object order. Merman keeps authored order in the typed fields that use it for
+rendering. For a programmatically built Usecase table, populate `UsecaseJsonNode::property_order`
+to control the order of object rows.
+
 Reuse the configured `Renderer` across calls when site configuration and defaults are shared; construct a fresh request and operation control for each operation. Clone the operation control for the task that cancels it. Return or classify parse errors, cancellation, resource exhaustion, and missing capabilities separately. A successful `None` means no diagram was detected, not that a failed operation was ignored.
 
 `SvgPipeline::resvg_safe()` prepares SVG for the supported resvg/usvg path, including conversion of HTML labels. The CSS override postprocessor is useful when the host deliberately supplies final styles; omit it when those overrides are not part of the integration. Give co-located SVGs IDs that remain unique after `sanitize_svg_id()` normalization. A resvg-compatible artifact does not authorize arbitrary browser navigation or host DOM insertion; browser hosts should use the owning browser admission APIs.
