@@ -1,4 +1,6 @@
-pub(super) enum Action {
+/// A grammar action in replay order for the Sequence database.
+#[derive(Debug)]
+pub enum Action {
     SetTitle(String),
     SetAccTitle(String),
     SetAccDescr(String),

@@ -1,22 +1,18 @@
 //! Predictive parser over the Sequence lexer's spanned events.
 
-use super::{
-    Action, LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
+use super::ast::Action;
+use super::lexer::{LexError, SequenceLexicalEvent as LexicalEvent, Tok};
+use merman_core_preprocess::scan::TokenStream;
+use merman_model::families::sequence::{
+    LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
     LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
     LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION,
     LINETYPE_CRITICAL_START, LINETYPE_LOOP_END, LINETYPE_LOOP_START, LINETYPE_OPT_END,
     LINETYPE_OPT_START, LINETYPE_PAR_AND, LINETYPE_PAR_END, LINETYPE_PAR_OVER_START,
-    LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START, LexError, Tok,
+    LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START, PLACEMENT_LEFT_OF, PLACEMENT_OVER,
+    PLACEMENT_RIGHT_OF,
 };
-use crate::diagrams::scan::TokenStream;
-use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
-use crate::{
-    OperationCancelled, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, SourceSpan,
-};
-use merman_model::families::sequence::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
-
-pub(super) type LexicalEvent = Result<(usize, Tok, usize), LexError>;
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
 
 macro_rules! terminals {
     ($($variant:ident $(($payload:tt))? => $name:literal),+ $(,)?) => {
@@ -95,10 +91,13 @@ use Terminal::{
     RightOf, SequenceDiagram, SignalType, Text, Title,
 };
 
-#[derive(Clone, Copy, Default)]
-struct Expected(u64);
+/// The terminals accepted at a grammar error, in diagnostic order.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SequenceExpectedTokens(u64);
 
-impl Expected {
+type Expected = SequenceExpectedTokens;
+
+impl SequenceExpectedTokens {
     const fn one(terminal: Terminal) -> Self {
         Self(1 << terminal as u8)
     }
@@ -129,7 +128,8 @@ impl Expected {
         self.0 & Self::one(terminal).0 != 0
     }
 
-    fn names(self) -> impl Iterator<Item = &'static str> {
+    /// Iterates the original grammar's terminal names.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
         TERMINAL_NAMES
             .iter()
             .copied()
@@ -230,8 +230,23 @@ enum Frame {
     Fragment(Fragment),
 }
 
+/// The first lexical or grammar error in the supplied input's byte coordinates.
+#[derive(Debug)]
+pub enum SequenceSyntaxDiagnostic {
+    Lexical(LexError),
+    UnexpectedToken {
+        token: Tok,
+        span: SourceSpan,
+        expected: SequenceExpectedTokens,
+    },
+    UnexpectedEof {
+        offset: usize,
+        expected: SequenceExpectedTokens,
+    },
+}
+
 enum Failure {
-    Syntax(ParseDiagnostic),
+    Syntax(SequenceSyntaxDiagnostic),
     Cancelled(OperationCancelled),
 }
 
@@ -246,7 +261,7 @@ type ParseResult<T> = Result<T, Failure>;
 pub(super) fn parse(
     events: impl Iterator<Item = LexicalEvent>,
     control: &OperationControl,
-) -> OperationControlResult<Result<Vec<Action>, ParseDiagnostic>> {
+) -> OperationControlResult<Result<Vec<Action>, SequenceSyntaxDiagnostic>> {
     let mut parser = Parser {
         input: TokenStream::new(events, control),
         actions: Vec::new(),
@@ -292,29 +307,24 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
     }
 
     fn failure(&self, event: Option<LexicalEvent>, expected: Expected) -> Failure {
-        use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
-
         match event {
-            Some(Ok((start, token, end))) => Failure::Syntax(
-                ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
-                    .with_span(SourceSpan::new(start, end), Exact),
-            ),
-            Some(Err(error)) => Self::lexical_error(error),
-            None => {
-                let offset = self.input.previous_end();
-                Failure::Syntax(
-                    ParseDiagnostic::new(unexpected_eof_message(expected.names()))
-                        .with_span(SourceSpan::new(offset, offset), InsertionPoint),
-                )
+            Some(Ok((start, token, end))) => {
+                Failure::Syntax(SequenceSyntaxDiagnostic::UnexpectedToken {
+                    token,
+                    span: SourceSpan::new(start, end),
+                    expected,
+                })
             }
+            Some(Err(error)) => Self::lexical_error(error),
+            None => Failure::Syntax(SequenceSyntaxDiagnostic::UnexpectedEof {
+                offset: self.input.previous_end(),
+                expected,
+            }),
         }
     }
 
     fn lexical_error(error: LexError) -> Failure {
-        Failure::Syntax(
-            ParseDiagnostic::new(error.message)
-                .with_span(error.span, ParseDiagnosticSpanKind::Exact),
-        )
+        Failure::Syntax(SequenceSyntaxDiagnostic::Lexical(error))
     }
 
     fn text(&mut self, terminal: Terminal) -> ParseResult<String> {

@@ -1,5 +1,5 @@
-use crate::SourceSpan;
-use crate::diagrams::scan::{ScanStep, TokenScanner};
+use merman_core_preprocess::scan::{ScanStep, TokenScanner};
+use merman_model::SourceSpan;
 
 mod actor;
 mod scanner;
@@ -9,8 +9,9 @@ use scanner::SequenceScanner;
 #[cfg(test)]
 use actor::HALF_ARROW_TYPES;
 
+/// A terminal with its original lexer payload.
 #[derive(Debug, Clone)]
-pub(crate) enum Tok {
+pub enum Tok {
     Newline,
 
     SequenceDiagram,
@@ -70,12 +71,15 @@ pub(crate) enum Tok {
     AccDescrMultiline(String),
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
-pub(crate) struct LexError {
+/// A lexical error in the supplied input's byte coordinates.
+#[derive(Debug, Clone)]
+pub struct LexError {
     pub message: String,
     pub span: SourceSpan,
 }
+
+/// A terminal with its start and end byte offsets, or a lexical error.
+pub type SequenceLexicalEvent = Result<(usize, Tok, usize), LexError>;
 
 pub(super) struct Lexer<'input> {
     scanner: SequenceScanner<'input>,
@@ -90,7 +94,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl TokenScanner for Lexer<'_> {
-    type Event = std::result::Result<(usize, Tok, usize), LexError>;
+    type Event = SequenceLexicalEvent;
 
     fn scan_step(&mut self) -> ScanStep<Self::Event> {
         self.scanner.scan_step()
@@ -99,7 +103,7 @@ impl TokenScanner for Lexer<'_> {
 
 #[cfg(test)]
 impl Iterator for Lexer<'_> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+    type Item = SequenceLexicalEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token()
@@ -109,6 +113,7 @@ impl Iterator for Lexer<'_> {
 #[cfg(test)]
 mod tests {
     use super::{HALF_ARROW_TYPES, Lexer, Tok};
+    use merman_model::SourceSpan;
 
     #[test]
     fn empty_percent_comments_preserve_statement_boundaries() {
@@ -152,7 +157,7 @@ mod tests {
             .expect("unterminated actor config diagnostic");
         assert_eq!(
             error.span,
-            crate::SourceSpan::new(input.find("@{").unwrap(), input.len())
+            SourceSpan::new(input.find("@{").unwrap(), input.len())
         );
         assert!(
             lexer.next().is_none(),

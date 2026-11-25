@@ -10,7 +10,8 @@ use super::{
         is_ecmascript_whitespace, scan_actor, signal_type_at, trim_ecmascript,
     },
 };
-use crate::{SourceSpan, diagrams::scan::ScanStep};
+use merman_core_preprocess::scan::ScanStep;
+use merman_model::SourceSpan;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -949,8 +950,8 @@ impl<'input> SequenceScanner<'input> {
 #[cfg(test)]
 mod tests {
     use super::super::Lexer;
-    use crate::diagrams::scan::collect_lexical_events;
-    use crate::{CancelReason, OperationControl};
+    use merman_core_preprocess::scan::collect_lexical_events;
+    use merman_model::{CancelReason, OperationControl};
 
     #[test]
     fn autonumber_lookahead_scanning_observes_cancellation() {

@@ -1,8 +1,8 @@
-#[cfg(feature = "editor-facts")]
 use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
+use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -10,22 +10,21 @@ use crate::{
 };
 use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, ParseDiagnostic,
-    SemanticMetadata,
+    ParseDiagnosticSpanKind, SemanticMetadata,
 };
+#[cfg(feature = "editor-facts")]
+use merman_core_sequence::sequence::{SequenceLexicalEvent, SequenceToken as Tok};
+use merman_core_sequence::sequence::{SequenceSyntax, SequenceSyntaxDiagnostic};
 #[cfg(test)]
 use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::{HashMap, hash_map::Entry};
 
-#[cfg(feature = "editor-facts")]
-use super::Tok;
-use super::ast::Action;
+use super::Action;
 use super::db::SequenceDb;
 #[cfg(feature = "editor-facts")]
 use super::db::box_color_and_title;
-use super::lexer::Lexer;
 use super::model::SequenceDiagramModel;
-use super::parser::{self, LexicalEvent as SequenceLexicalEvent};
 
 #[cfg(test)]
 thread_local! {
@@ -42,47 +41,31 @@ pub(crate) fn sequence_syntax_construction_count() -> usize {
     SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-struct SequenceSyntaxOutcome {
-    actions: std::result::Result<Vec<Action>, ParseDiagnostic>,
-    #[cfg(feature = "editor-facts")]
-    editor_facts: Option<EditorSemanticFacts>,
+fn lex_sequence_syntax(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<SequenceSyntax> {
+    #[cfg(test)]
+    SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+    SequenceSyntax::lex(code, control)
 }
 
-struct SequenceSyntax {
-    events: Vec<SequenceLexicalEvent>,
-}
-
-impl SequenceSyntax {
-    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
-        #[cfg(test)]
-        SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
-
-        let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
-        Ok(Self { events })
-    }
-
-    fn into_actions(
-        self,
-        #[cfg(feature = "editor-facts")] code: &str,
-        #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
-        control: &OperationControl,
-    ) -> OperationControlResult<SequenceSyntaxOutcome> {
-        let Self { events } = self;
-        #[cfg(feature = "editor-facts")]
-        let editor_facts = match facts_demand {
-            EditorFactsDemand::Omit => None,
-            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
-            EditorFactsDemand::Capture => Some(collect_sequence_editor_facts_from_events(
-                &events, code, control,
-            )?),
-        };
-        control.checkpoint()?;
-        let actions = parser::parse(events.into_iter(), control)?;
-        Ok(SequenceSyntaxOutcome {
-            actions,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        })
+fn sequence_parse_diagnostic(diagnostic: SequenceSyntaxDiagnostic) -> ParseDiagnostic {
+    use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
+    match diagnostic {
+        SequenceSyntaxDiagnostic::Lexical(error) => {
+            ParseDiagnostic::new(error.message).with_span(error.span, Exact)
+        }
+        SequenceSyntaxDiagnostic::UnexpectedToken {
+            token,
+            span,
+            expected,
+        } => ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
+            .with_span(span, Exact),
+        SequenceSyntaxDiagnostic::UnexpectedEof { offset, expected } => {
+            ParseDiagnostic::new(unexpected_eof_message(expected.names()))
+                .with_span(SourceSpan::new(offset, offset), InsertionPoint)
+        }
     }
 }
 
@@ -214,23 +197,22 @@ pub(super) fn construct_sequence_semantic_source(
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>>
 {
-    let syntax = SequenceSyntax::lex(code, control)?;
-    let SequenceSyntaxOutcome {
-        actions,
-        #[cfg(feature = "editor-facts")]
-        editor_facts,
-    } = syntax.into_actions(
-        #[cfg(feature = "editor-facts")]
-        code,
-        #[cfg(feature = "editor-facts")]
-        facts_demand,
-        control,
-    )?;
-    let actions = match actions {
+    let syntax = lex_sequence_syntax(code, control)?;
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = match facts_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+        EditorFactsDemand::Capture => Some(collect_sequence_editor_facts_from_events(
+            syntax.events(),
+            code,
+            control,
+        )?),
+    };
+    let actions = match syntax.into_actions(control)? {
         Ok(actions) => actions,
         Err(diagnostic) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {
-                diagnostic,
+                diagnostic: sequence_parse_diagnostic(diagnostic),
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
@@ -728,7 +710,6 @@ mod tests {
     use crate::MermaidConfig;
     #[cfg(feature = "compat-json")]
     use crate::SourcePresentationMetadata;
-    use std::fmt::Write as _;
 
     #[cfg(feature = "compat-json")]
     fn meta() -> SourcePresentationMetadata {
@@ -848,54 +829,52 @@ mod tests {
         )
     }
 
-    fn parser_actions(source: &str) -> Vec<Action> {
-        parser::parse(Lexer::new(source), &OperationControl::new())
-            .unwrap()
-            .expect("Sequence parser accepts the workload")
-    }
-
     #[test]
-    fn sequence_parser_emits_each_action_once_at_increasing_width_and_depth() {
-        for size in [8, 128, 1_024] {
-            let flat = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(size));
-            assert_eq!(parser_actions(&flat).len(), size * 3);
+    fn sequence_syntax_diagnostics_keep_exact_and_insertion_spans() {
+        use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
 
-            let mut nested = String::from("sequenceDiagram\n");
-            for index in 0..size {
-                writeln!(nested, "loop L{index}").unwrap();
-            }
-            nested.push_str("A->>B: message\n");
-            nested.push_str(&"end\n".repeat(size));
-            assert_eq!(parser_actions(&nested).len(), size * 2 + 3);
+        let lexical = "sequenceDiagram\nparticipant 顾客@{ type: boundary";
+        let unexpected = "sequenceDiagram\nparticipant 顾客\nend\n";
+        let incomplete = "sequenceDiagram\nloop pending\n    ";
+        let eof_offset = incomplete.trim_end_matches(' ').len();
 
-            let mut boxed = String::from("sequenceDiagram\nbox Team\n");
-            for index in 0..size {
-                writeln!(boxed, "participant P{index}").unwrap();
-            }
-            boxed.push_str("end\n");
-            assert_eq!(parser_actions(&boxed).len(), size + 2);
-
-            let mut branched = String::from("sequenceDiagram\nalt Start\nA->>B: first\n");
-            for index in 0..size {
-                writeln!(branched, "else E{index}\nA->>B: branch").unwrap();
-            }
-            branched.push_str("end\n");
-            assert_eq!(parser_actions(&branched).len(), size * 4 + 5);
+        for (source, message, span, kind) in [
+            (
+                lexical,
+                "Unterminated config object; missing '}'",
+                SourceSpan::new(lexical.find("@{").unwrap(), lexical.len()),
+                Exact,
+            ),
+            (
+                unexpected,
+                "unexpected end; expected newline, \"participant\"",
+                SourceSpan::new(unexpected.rfind("end").unwrap(), unexpected.len() - 1),
+                Exact,
+            ),
+            (
+                incomplete,
+                "unexpected end of input; expected newline, \"participant\"",
+                SourceSpan::new(eof_offset, eof_offset),
+                InsertionPoint,
+            ),
+        ] {
+            let Err(failure) = construct_sequence_semantic_source(
+                source,
+                None,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap() else {
+                panic!("expected a Sequence grammar error for {source:?}");
+            };
+            let SequenceSemanticFailure::Grammar { diagnostic, .. } = *failure else {
+                panic!("expected a grammar error before database replay for {source:?}");
+            };
+            assert!(diagnostic.message().starts_with(message), "{diagnostic:?}");
+            assert_eq!(diagnostic.span(), Some(span), "{source:?}");
+            assert_eq!(diagnostic.span_kind(), kind, "{source:?}");
         }
-    }
-
-    #[test]
-    fn sequence_action_emission_observes_cancellation() {
-        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(1_024));
-        let seen = Cell::new(0);
-        let events = Lexer::new(&source).inspect(|_| seen.set(seen.get() + 1));
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(1);
-        let error = parser::parse(events, &control)
-            .err()
-            .expect("construction checkpoint interrupts action emission");
-        assert_eq!(error.reason, crate::CancelReason::Requested);
-        assert!(seen.get() < 128);
     }
 
     #[test]
@@ -904,20 +883,16 @@ mod tests {
         let control = OperationControl::new();
         let syntax = SequenceSyntax::lex(&source, &control).unwrap();
         #[cfg(feature = "editor-facts")]
-        let fact_checkpoints = syntax.events.len().div_ceil(128);
+        let fact_checkpoints = syntax.events().len().div_ceil(128);
         #[cfg(not(feature = "editor-facts"))]
         let fact_checkpoints = 0;
         control.cancel_after_checkpoints(fact_checkpoints + 2);
+        #[cfg(feature = "editor-facts")]
+        collect_sequence_editor_facts_from_events(syntax.events(), &source, &control)
+            .expect("editor collection finishes before token delivery");
         let error = syntax
-            .into_actions(
-                #[cfg(feature = "editor-facts")]
-                &source,
-                #[cfg(feature = "editor-facts")]
-                EditorFactsDemand::Capture,
-                &control,
-            )
-            .err()
-            .expect("cancelled delivery returns the outer terminal");
+            .into_actions(&control)
+            .expect_err("cancelled delivery returns the outer terminal");
         assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
@@ -930,19 +905,11 @@ mod tests {
         #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         reset_sequence_syntax_construction_count();
-        let syntax = SequenceSyntax::lex(&source, &control).unwrap();
+        let syntax = lex_sequence_syntax(&source, &control).unwrap();
         control.cancel_after_checkpoints(1);
 
-        let error = syntax
-            .into_actions(
-                #[cfg(feature = "editor-facts")]
-                &source,
-                #[cfg(feature = "editor-facts")]
-                EditorFactsDemand::Capture,
-                &control,
-            )
-            .err()
-            .expect("editor collection returns cancellation through the outer result");
+        let error = collect_sequence_editor_facts_from_events(syntax.events(), &source, &control)
+            .expect_err("editor collection returns cancellation through the outer result");
 
         assert_eq!(error.reason, crate::CancelReason::Requested);
         assert_eq!(sequence_syntax_construction_count(), 1);
@@ -971,8 +938,12 @@ mod tests {
     #[test]
     fn cancelled_replay_releases_remaining_flat_events() {
         let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
-        let actions = parser_actions(&source);
         let control = OperationControl::new();
+        let actions = SequenceSyntax::lex(&source, &control)
+            .unwrap()
+            .into_actions(&control)
+            .unwrap()
+            .expect("Sequence parser accepts the workload");
         control.cancel_after_checkpoints(16);
         let Err(error) = build_sequence_db(actions, None, &control) else {
             panic!("replay returns cancellation through the outer result");

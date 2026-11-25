@@ -9,6 +9,7 @@ members = [
     "crates/merman-core",
     "crates/merman-core-graph",
     "crates/merman-core-preprocess",
+    "crates/merman-core-sequence",
     "crates/merman-core-structured",
     "crates/merman-model",
     "crates/merman-markup",
@@ -172,6 +173,7 @@ merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.11.0
 merman-core = { path = "crates/merman-core", version = "0.11.0", default-features = false }
 merman-core-graph = { path = "crates/merman-core-graph", version = "0.11.0", default-features = false }
 merman-core-preprocess = { path = "crates/merman-core-preprocess", version = "0.11.0" }
+merman-core-sequence = { path = "crates/merman-core-sequence", version = "0.11.0", default-features = false }
 merman-core-structured = { path = "crates/merman-core-structured", version = "0.11.0", default-features = false }
 merman-model = { path = "crates/merman-model", version = "0.11.0", default-features = false }
 merman-markup = { path = "crates/merman-markup", version = "0.11.0", default-features = false }
