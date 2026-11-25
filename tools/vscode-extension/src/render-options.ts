@@ -44,9 +44,8 @@ export function renderMermanArgs(request: DiagramRenderSettings & {
   if (theme && theme !== "source") {
     args.push("--theme", theme);
     if (request.themeAppearance) {
-      args.push("--appearance", request.themeAppearance);
+      args.push("--appearance", request.themeAppearance, "--theme-precedence", "host");
     }
-    args.push("--theme-precedence", "host");
   }
   if (request.inputKind) {
     args.push("--input-kind", request.inputKind);

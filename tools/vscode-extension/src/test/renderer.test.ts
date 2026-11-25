@@ -19,8 +19,6 @@ describe("renderer arguments", () => {
       "--quiet",
       "--theme",
       "forest",
-      "--theme-precedence",
-      "host",
     ]);
   });
 

@@ -158,7 +158,7 @@ The **Theme** selector groups the CLI catalog into **Merman Themes** and **Merma
 
 **Source / default** preserves the source's authored theme or uses the Mermaid default. Mermaid Classic entries use literal IDs such as `forest` or `neo-dark`. Choosing a preset, classic theme, or custom file applies that theme in the preview without editing the diagram source.
 
-Choose **Custom File** to load the Merman v2 document at `merman.preview.themeFile`. To try a file in the current panel, use **Import theme…**. The extension runs `merman-cli theme check - --json` before adopting the file and shows the CLI's validation diagnostics on failure.
+Choose **Custom File** to load the Merman v2 document at `merman.preview.themeFile`. To try a file in the current panel, use **Import theme…**. The extension runs `merman-cli theme check - --json` before adopting the file and shows the CLI's validation diagnostics on failure. A file with light and dark appearances and no `default_appearance` is checked using the selected appearance. **Follow editor** uses the current editor appearance for that check.
 
 For persistent settings, use one of these alternatives:
 
@@ -181,9 +181,9 @@ Relative paths resolve from the source document's workspace folder. A configured
 
 An imported theme stays in memory for the panel across source changes and refreshes. Import the file again to apply edits. New panels load the configured defaults.
 
-SVG, Unicode, and ASCII use the same selected theme and appearance. Copy and export from the preview use the appearance and file contents captured for the displayed diagram. Document commands from the command palette, editor title, and CodeLens use the settings for that document.
+SVG, Unicode, and ASCII use the same selected Merman theme and appearance. Mermaid Classic themes style the SVG preview. Unicode and ASCII use the CLI's default terminal palette for Classic selections. Copy and export from the preview use the appearance and file contents captured for the displayed diagram. Document commands from the command palette, editor title, and CodeLens use the settings for that document.
 
-The extension reads the catalog with `merman-cli theme list --json`. Preset and custom file selection require a CLI with v2 theme support.
+The extension reads the catalog with `merman-cli theme list --json`. With an older CLI, it uses the legacy capability catalog to offer Mermaid Classic themes. Merman v2 presets and custom files require a CLI with v2 theme support.
 
 ### Background
 

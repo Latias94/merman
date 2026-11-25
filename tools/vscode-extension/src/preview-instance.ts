@@ -469,7 +469,7 @@ export class PreviewInstance implements vscode.Disposable {
       if (!request || request.key !== configured.key) {
         request = {
           key: configured.key,
-          promise: checkThemeFile(this.context, configured.uri, this.discovery!),
+          promise: checkThemeFile(this.context, configured.uri, this.discovery!, this.session.appearancePreference),
         };
         this.configuredThemeRequest = request;
       }
@@ -770,7 +770,7 @@ export class PreviewInstance implements vscode.Disposable {
     }
     let imported;
     try {
-      imported = await checkThemeFile(this.context, files[0], discovery);
+      imported = await checkThemeFile(this.context, files[0], discovery, this.session.appearancePreference);
     } catch (error) {
       if (this.disposed || generation !== this.themeGeneration) return;
       throw error;
