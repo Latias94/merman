@@ -24,15 +24,13 @@ merman-bindings-core = { workspace = true, features = [
     "all-diagrams",
     "analysis",
     "ascii",
+    "export-resource-metadata",
     "fixes",
-    "jpeg",
     "layout-cytoscape",
     "layout-dagre",
     "layout-elk",
     "math",
     "native-runtime",
-    "pdf",
-    "png",
     "svg",
 ] }
 merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone", "presentation", "compat-json", "editor-facts"] }

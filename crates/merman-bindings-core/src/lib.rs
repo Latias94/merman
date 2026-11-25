@@ -109,6 +109,9 @@ pub use operation_contract::{
 };
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
+#[cfg(feature = "export-resource-metadata")]
+#[doc(hidden)]
+pub use resource_contract::binding_resource_contract_with_export_metadata;
 pub use resource_contract::{
     BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceContract, BindingResourceLimitDescriptor,
     BindingResourceProfileDescriptor, binding_resource_contract,

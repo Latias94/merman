@@ -1,5 +1,15 @@
 use std::collections::BTreeMap;
 
+use merman::model::resources::ResourceProfile;
+
+#[cfg(all(
+    not(feature = "export-resource-metadata"),
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+use merman::svg::export::ExportResourceLimitDescriptor;
+#[cfg(feature = "export-resource-metadata")]
+use merman_export::resource_metadata::{ExportResourceLimitDescriptor, ExportResourceLimits};
+
 pub const BINDING_OPTIONS_JSON_MAX_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const BINDING_OPTIONS_JSON_LIMIT_ID: &str = "max_options_json_bytes";
 
@@ -25,6 +35,25 @@ pub struct BindingResourceLimitDescriptor {
     pub minimum_value: usize,
 }
 
+#[cfg(any(
+    feature = "export-resource-metadata",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
+))]
+impl From<ExportResourceLimitDescriptor> for BindingResourceLimitDescriptor {
+    fn from(descriptor: ExportResourceLimitDescriptor) -> Self {
+        Self {
+            stable_id: descriptor.stable_id,
+            phase: descriptor.phase,
+            description: descriptor.description,
+            overridable: descriptor.overridable,
+            hard_cap: descriptor.hard_cap,
+            minimum_value: descriptor.minimum_value,
+        }
+    }
+}
+
 /// One shared resource profile projected across every compiled resource owner.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -48,7 +77,30 @@ pub struct BindingResourceContract {
 
 /// Composes resource descriptors without redefining limits owned by lower-level crates.
 pub fn binding_resource_contract() -> BindingResourceContract {
-    let limits = binding_resource_limit_descriptors();
+    compose_resource_contract(binding_resource_limit_descriptors(), resource_profile_value)
+}
+
+/// Projects every export descriptor for host-language generators without compiling codecs.
+#[cfg(feature = "export-resource-metadata")]
+pub fn binding_resource_contract_with_export_metadata() -> BindingResourceContract {
+    let exports = ExportResourceLimits::ALL;
+    let mut limits = non_export_resource_limit_descriptors();
+    limits.extend(
+        exports
+            .descriptors()
+            .into_iter()
+            .map(BindingResourceLimitDescriptor::from),
+    );
+    compose_resource_contract(limits, |profile, stable_id| {
+        resource_profile_value(profile, stable_id)
+            .or_else(|| exports.profile_value(profile, stable_id))
+    })
+}
+
+fn compose_resource_contract(
+    limits: Vec<BindingResourceLimitDescriptor>,
+    profile_value: impl Fn(ResourceProfile, &str) -> Option<Option<usize>>,
+) -> BindingResourceContract {
     let profiles = merman::model::resources::RESOURCE_PROFILE_DESCRIPTORS
         .iter()
         .map(|profile| BindingResourceProfileDescriptor {
@@ -61,14 +113,11 @@ pub fn binding_resource_contract() -> BindingResourceContract {
                 .map(|limit| {
                     (
                         limit.stable_id,
-                        resource_profile_value(profile.profile, limit.stable_id)
-                            .expect("compiled resource descriptors must have profile values"),
+                        profile_value(profile.profile, limit.stable_id)
+                            .expect("resource descriptors must have profile values"),
                     )
                 })
-                .fold(BTreeMap::new(), |mut map, (key, value)| {
-                    map.insert(key, value);
-                    map
-                }),
+                .collect(),
         })
         .collect();
 
@@ -83,6 +132,17 @@ pub fn binding_resource_contract() -> BindingResourceContract {
 
 fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
     #[allow(unused_mut)]
+    let mut limits = non_export_resource_limit_descriptors();
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    limits.extend(
+        merman::svg::export::export_resource_limit_descriptors()
+            .into_iter()
+            .map(BindingResourceLimitDescriptor::from),
+    );
+    limits
+}
+
+fn non_export_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
     let mut limits = merman::model::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
         .iter()
         .map(|descriptor| BindingResourceLimitDescriptor {
@@ -135,20 +195,6 @@ fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
                 description: descriptor.description,
                 overridable: descriptor.overridable,
                 hard_cap: false,
-                minimum_value: descriptor.minimum_value,
-            }),
-    );
-
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    limits.extend(
-        merman::svg::export::export_resource_limit_descriptors()
-            .into_iter()
-            .map(|descriptor| BindingResourceLimitDescriptor {
-                stable_id: descriptor.stable_id,
-                phase: descriptor.phase,
-                description: descriptor.description,
-                overridable: descriptor.overridable,
-                hard_cap: descriptor.hard_cap,
                 minimum_value: descriptor.minimum_value,
             }),
     );
@@ -393,6 +439,36 @@ fn export_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
     {
         let _ = stable_id;
         None
+    }
+}
+
+#[cfg(all(test, feature = "export-resource-metadata"))]
+#[test]
+fn projected_export_metadata_does_not_expand_runtime_limits() {
+    let projection = binding_resource_contract_with_export_metadata();
+    for (id, compiled) in [
+        (
+            "max_raster_width",
+            cfg!(any(feature = "png", feature = "jpeg")),
+        ),
+        ("max_pdf_filter_image_pixels", cfg!(feature = "pdf")),
+        (
+            "max_svg_conversion_subroots",
+            cfg!(any(feature = "png", feature = "jpeg", feature = "pdf")),
+        ),
+    ] {
+        assert!(projection.limits.iter().any(|limit| limit.stable_id == id));
+        assert!(
+            projection
+                .profiles
+                .iter()
+                .all(|profile| profile.limits.contains_key(id))
+        );
+        assert_eq!(resource_limit_descriptor(id).is_some(), compiled);
+        assert_eq!(
+            resource_profile_value(ResourceProfile::Constrained, id).is_some(),
+            compiled,
+        );
     }
 }
 

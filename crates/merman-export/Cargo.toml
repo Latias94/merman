@@ -44,10 +44,11 @@ experimental-system-font-query = [
     "dep:windows-core",
     "dep:write-fonts",
 ]
+resource-metadata = ["dep:merman-model"]
 png = [
+    "resource-metadata",
     "dep:cssparser",
     "dep:data-url",
-    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -59,10 +60,10 @@ png = [
     "dep:usvg",
 ]
 jpeg = [
+    "resource-metadata",
     "dep:cssparser",
     "dep:data-url",
     "dep:image",
-    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -74,10 +75,10 @@ jpeg = [
     "dep:usvg",
 ]
 pdf = [
+    "resource-metadata",
     "dep:data-url",
     "dep:krilla",
     "dep:krilla-svg",
-    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:svgtypes",

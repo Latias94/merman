@@ -69,6 +69,9 @@ pub const fn system_font_discovery_available() -> bool {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod font_environment;
 
+#[cfg(feature = "resource-metadata")]
+pub mod resource_metadata;
+
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use font_environment::{ExportFontEnvironment, ExportFontPlanSeed};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -462,248 +465,44 @@ fn export_terminal_error(error: OperationLedgerError) -> ExportError {
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
-pub const DEFAULT_MAX_RASTER_SIDE_LENGTH: u32 = 4096;
-#[cfg(any(feature = "png", feature = "jpeg"))]
-pub const DEFAULT_MAX_RASTER_PIXELS: u64 =
-    (DEFAULT_MAX_RASTER_SIDE_LENGTH as u64) * (DEFAULT_MAX_RASTER_SIDE_LENGTH as u64);
-/// Aggregate pixels retained as localized PDF filter images before sampling is reduced.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub use resource_metadata::{
+    DEFAULT_MAX_DECODED_IMAGE_PIXELS, DEFAULT_MAX_EMBEDDED_IMAGE_BYTES,
+    DEFAULT_MAX_FILTER_PRIMITIVES_PER_FILTER, DEFAULT_MAX_NESTED_SVG_IMAGES,
+    DEFAULT_MAX_SVG_ISOLATION_DEPTH, DEFAULT_MAX_SVG_SUBROOTS,
+    DEFAULT_MAX_TOTAL_DECODED_IMAGE_PIXELS, DEFAULT_MAX_TOTAL_EMBEDDED_IMAGE_BYTES,
+    DEFAULT_MAX_TOTAL_FILTER_PRIMITIVES, ExportResourceLimitDescriptor,
+    MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID, MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
+    MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID,
+    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID,
+    MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
+    MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID,
+    MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID,
+    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
+    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID,
+};
 #[cfg(feature = "pdf")]
-pub const DEFAULT_MAX_PDF_FILTER_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
-/// Maximum intrinsic pixels accepted for one embedded raster image by default.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_DECODED_IMAGE_PIXELS: u64 = 16 * 1024 * 1024;
-/// Maximum aggregate intrinsic pixels accepted across embedded raster images by default.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_TOTAL_DECODED_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
-/// Maximum decoded data-URL bytes accepted for one embedded image before usvg parsing.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_EMBEDDED_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
-/// Maximum aggregate decoded data-URL bytes accepted before usvg parsing.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_TOTAL_EMBEDDED_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_SVG_ISOLATION_DEPTH: usize = 8;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-// Two sRGB shadows lower to at most ten standard SVG primitives. Keep this finite backend cap
-// aligned with that bounded composition; the separate total-primitive ceiling still applies.
-pub const DEFAULT_MAX_FILTER_PRIMITIVES_PER_FILTER: usize = 10;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_TOTAL_FILTER_PRIMITIVES: usize = 128;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_SVG_SUBROOTS: usize = 4096;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const DEFAULT_MAX_NESTED_SVG_IMAGES: usize = 64;
-
-/// Stable binding metadata for native export limits owned by this crate.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct ExportResourceLimitDescriptor {
-    pub stable_id: &'static str,
-    pub phase: &'static str,
-    pub description: &'static str,
-    pub overridable: bool,
-    pub hard_cap: bool,
-    pub minimum_value: usize,
-}
-
+pub use resource_metadata::{
+    DEFAULT_MAX_PDF_FILTER_IMAGE_PIXELS, MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
+};
 #[cfg(any(feature = "png", feature = "jpeg"))]
-pub const MAX_RASTER_WIDTH_RESOURCE_LIMIT_ID: &str = "max_raster_width";
-#[cfg(any(feature = "png", feature = "jpeg"))]
-pub const MAX_RASTER_HEIGHT_RESOURCE_LIMIT_ID: &str = "max_raster_height";
-#[cfg(any(feature = "png", feature = "jpeg"))]
-pub const MAX_RASTER_PIXELS_RESOURCE_LIMIT_ID: &str = "max_raster_pixels";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID: &str = "max_embedded_image_bytes";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID: &str = "max_total_embedded_image_bytes";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID: &str = "max_embedded_image_pixels";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID: &str =
-    "max_total_embedded_image_pixels";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID: &str =
-    "max_svg_conversion_isolation_depth";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID: &str =
-    "max_svg_conversion_filter_primitives_per_filter";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID: &str =
-    "max_total_svg_conversion_filter_primitives";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID: &str = "max_svg_conversion_subroots";
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub const MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID: &str = "max_nested_svg_images";
-#[cfg(feature = "pdf")]
-pub const MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID: &str = "max_pdf_filter_image_pixels";
-#[cfg(any(feature = "png", feature = "jpeg"))]
-const RASTER_RESOURCE_LIMIT_DESCRIPTORS: [ExportResourceLimitDescriptor; 3] = [
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_RASTER_WIDTH_RESOURCE_LIMIT_ID,
-        phase: "raster_allocation",
-        description: "Maximum final PNG or JPEG width in pixels",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_RASTER_HEIGHT_RESOURCE_LIMIT_ID,
-        phase: "raster_allocation",
-        description: "Maximum final PNG or JPEG height in pixels",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_RASTER_PIXELS_RESOURCE_LIMIT_ID,
-        phase: "raster_allocation",
-        description: "Maximum final PNG or JPEG pixel count",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-];
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-const EMBEDDED_IMAGE_RESOURCE_LIMIT_DESCRIPTORS: [ExportResourceLimitDescriptor; 4] = [
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID,
-        phase: "embedded_image_decode",
-        description: "Maximum decoded data-URL bytes for one embedded image",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID,
-        phase: "embedded_image_decode",
-        description: "Maximum aggregate decoded data-URL bytes across embedded images",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
-        phase: "embedded_image_decode",
-        description: "Maximum intrinsic pixels for one embedded raster image",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
-        phase: "embedded_image_decode",
-        description: "Maximum aggregate intrinsic pixels across embedded raster images",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    },
-];
-
-#[cfg(feature = "pdf")]
-const PDF_RESOURCE_LIMIT_DESCRIPTORS: [ExportResourceLimitDescriptor; 1] =
-    [ExportResourceLimitDescriptor {
-        stable_id: MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID,
-        phase: "pdf_filter_rasterization",
-        description: "Maximum aggregate pixels retained for localized PDF filter images",
-        overridable: true,
-        hard_cap: false,
-        minimum_value: 1,
-    }];
-
-// These are backend recursion guards, not caller policy knobs. They remain active for the
-// trusted-input profile and are exposed only so resource failures have discoverable stable IDs.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 5] = [
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
-        phase: "svg_conversion",
-        description: "Maximum nested SVG isolation depth accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID,
-        phase: "svg_conversion",
-        description: "Maximum primitives accepted in one SVG filter",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID,
-        phase: "svg_conversion",
-        description: "Maximum aggregate SVG filter primitives accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID,
-        phase: "svg_conversion",
-        description: "Maximum resolved SVG subroots accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID,
-        phase: "svg_conversion",
-        description: "Maximum nested SVG images accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-];
+pub use resource_metadata::{
+    DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, MAX_RASTER_HEIGHT_RESOURCE_LIMIT_ID,
+    MAX_RASTER_PIXELS_RESOURCE_LIMIT_ID, MAX_RASTER_WIDTH_RESOURCE_LIMIT_ID,
+};
 
 /// Returns the export limits compiled into the concrete feature closure.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[must_use]
 pub fn export_resource_limit_descriptors() -> Vec<ExportResourceLimitDescriptor> {
-    let mut descriptors = Vec::new();
-    #[cfg(any(feature = "png", feature = "jpeg"))]
-    descriptors.extend_from_slice(&RASTER_RESOURCE_LIMIT_DESCRIPTORS);
-    descriptors.extend_from_slice(&EMBEDDED_IMAGE_RESOURCE_LIMIT_DESCRIPTORS);
-    #[cfg(feature = "pdf")]
-    descriptors.extend_from_slice(&PDF_RESOURCE_LIMIT_DESCRIPTORS);
-    descriptors.extend_from_slice(&SVG_CONVERSION_HARD_CAP_DESCRIPTORS);
-    descriptors
+    resource_metadata::ExportResourceLimits::COMPILED.descriptors()
 }
 
 /// Returns the outputs that can enforce one export-owned resource limit.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[must_use]
 pub fn export_resource_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
-    #[cfg(any(feature = "png", feature = "jpeg"))]
-    if RASTER_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
-        .any(|descriptor| descriptor.stable_id == stable_id)
-    {
-        return Some(&["png", "jpeg"]);
-    }
-    if EMBEDDED_IMAGE_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
-        .any(|descriptor| descriptor.stable_id == stable_id)
-    {
-        return Some(&["png", "jpeg", "pdf"]);
-    }
-    #[cfg(feature = "pdf")]
-    if PDF_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
-        .any(|descriptor| descriptor.stable_id == stable_id)
-    {
-        return Some(&["pdf"]);
-    }
-    if SVG_CONVERSION_HARD_CAP_DESCRIPTORS
-        .iter()
-        .any(|descriptor| descriptor.stable_id == stable_id)
-    {
-        return Some(&["png", "jpeg", "pdf"]);
-    }
-    None
+    resource_metadata::ExportResourceLimits::COMPILED.output_ids(stable_id)
 }
 
 /// Returns the profile value for an export-owned resource limit.
@@ -713,48 +512,7 @@ pub fn export_resource_profile_value(
     profile: merman_render::resources::RenderResourceProfile,
     stable_id: &str,
 ) -> Option<Option<usize>> {
-    let finite_value = match stable_id {
-        #[cfg(any(feature = "png", feature = "jpeg"))]
-        MAX_RASTER_WIDTH_RESOURCE_LIMIT_ID | MAX_RASTER_HEIGHT_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_RASTER_SIDE_LENGTH as usize
-        }
-        #[cfg(any(feature = "png", feature = "jpeg"))]
-        MAX_RASTER_PIXELS_RESOURCE_LIMIT_ID => DEFAULT_MAX_RASTER_PIXELS as usize,
-        MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => DEFAULT_MAX_EMBEDDED_IMAGE_BYTES as usize,
-        MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_TOTAL_EMBEDDED_IMAGE_BYTES as usize
-        }
-        MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => DEFAULT_MAX_DECODED_IMAGE_PIXELS as usize,
-        MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_TOTAL_DECODED_IMAGE_PIXELS as usize
-        }
-        #[cfg(feature = "pdf")]
-        MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_PDF_FILTER_IMAGE_PIXELS as usize
-        }
-        MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID => DEFAULT_MAX_SVG_ISOLATION_DEPTH,
-        MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_FILTER_PRIMITIVES_PER_FILTER
-        }
-        MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID => {
-            DEFAULT_MAX_TOTAL_FILTER_PRIMITIVES
-        }
-        MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID => DEFAULT_MAX_SVG_SUBROOTS,
-        MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID => DEFAULT_MAX_NESTED_SVG_IMAGES,
-        _ => return None,
-    };
-    if SVG_CONVERSION_HARD_CAP_DESCRIPTORS
-        .iter()
-        .any(|descriptor| descriptor.stable_id == stable_id)
-    {
-        return Some(Some(finite_value));
-    }
-    Some(match profile {
-        merman_render::resources::RenderResourceProfile::UnboundedForTrustedInput => None,
-        merman_render::resources::RenderResourceProfile::Interactive
-        | merman_render::resources::RenderResourceProfile::Constrained
-        | merman_render::resources::RenderResourceProfile::TrustedNative => Some(finite_value),
-    })
+    resource_metadata::ExportResourceLimits::COMPILED.profile_value(profile, stable_id)
 }
 
 #[cfg(feature = "pdf")]
