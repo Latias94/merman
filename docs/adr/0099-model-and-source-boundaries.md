@@ -30,9 +30,10 @@ Introduce `merman-model` for canonical family data and its necessary value, iden
 
 Use `merman_model::families::<family>` as the canonical family namespace. Core retains source parser/DB construction privately and depends on these types. ASCII and Render select the shared data and their own handlers without selecting core parsers. Export uses shared execution types and retains its real dependency on Render. The facade owns source-to-output orchestration and may expose an intentional `merman::model` namespace.
 
-`merman-core-preprocess` owns controlled UTF-8 edits and exact or enclosing byte-span mapping.
-Core retains Mermaid frontmatter and directive interpretation, `PreprocessedSource`, and the
-projection of parser diagnostics and editor facts back to the original source.
+`merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
+line-ending, HTML attribute, and Mermaid entity rewrites. Core retains frontmatter and directive
+interpretation, `PreprocessedSource`, and the projection of parser diagnostics and editor facts
+back to the original source.
 
 Move pure value/model operations with the types. Keep source sanitization, detector effects,
 preprocessing orchestration, source errors, and engine initialization in Core. Replace
@@ -75,10 +76,13 @@ admission, and the editor and compatibility projections.
 `merman-render-graph` owns ER relationship marker geometry, names, and SVG definitions.
 `merman-render` resolves source styles and provides the operation's bounded SVG sink.
 
-### Sequence syntax
+### Sequence diagrams
 
 `merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
 facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
+
+`merman-render-sequence` owns participant geometry, glyphs, and lifelines. `merman-render` supplies
+the bounded SVG sink and diagram ID, places the labels, and retains traversal and operation checks.
 
 ### Chart rendering
 

@@ -34,6 +34,7 @@ on:
       - "crates/merman-render-charts/**"
       - "crates/merman-render-core/**"
       - "crates/merman-render-graph/**"
+      - "crates/merman-render-sequence/**"
       - "crates/merman-render-structured/**"
       - "crates/roughr/**"
       - "crates/manatee/**"

@@ -93,6 +93,7 @@ the existing `diagram-packet` and `diagram-railroad` features.
 `merman-render-charts` provides Pie layout and SVG content through `diagram-pie`, Sankey layout
 through `diagram-sankey`, and XY Chart layout and plot geometry through `diagram-xychart`.
 `merman-render-graph` provides ER relationship markers through `diagram-er`.
+`merman-render-sequence` provides participant geometry and drawing through `diagram-sequence`.
 [Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
 
 Homebrew/core owns formula publication; this repository only validates the external formula after
