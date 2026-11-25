@@ -9,6 +9,7 @@
 use merman::OperationControl;
 #[cfg(feature = "native-fonts")]
 use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
+use merman_bindings_core::transport_handles::OperationControlRegistry;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
@@ -23,7 +24,7 @@ use std::collections::BTreeMap;
 use std::mem::{align_of, size_of};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 include!("generated/text_measurement_abi.rs");
@@ -210,45 +211,6 @@ struct NativeAllocationRegistry {
     results: BTreeMap<u64, NativeResultAllocation>,
 }
 
-#[derive(Default)]
-struct NativeOperationControlRegistry {
-    last_counter: u64,
-    controls: BTreeMap<MermanNativeOperationControlToken, Arc<OperationControl>>,
-}
-
-impl NativeOperationControlRegistry {
-    fn issue(
-        &mut self,
-        timeout_ms: Option<u64>,
-    ) -> Result<MermanNativeOperationControlToken, NativeFailure> {
-        let control = match timeout_ms {
-            Some(timeout_ms) => {
-                OperationControl::new().with_deadline(Duration::from_millis(timeout_ms))
-            }
-            None => OperationControl::new(),
-        };
-        let token = issue_domain_token(
-            &mut self.last_counter,
-            MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG,
-            "native operation-control token space is exhausted",
-        )?;
-        let previous = self.controls.insert(token, Arc::new(control));
-        debug_assert!(
-            previous.is_none(),
-            "operation-control tokens are never reused"
-        );
-        Ok(token)
-    }
-
-    fn acquire(&self, token: MermanNativeOperationControlToken) -> Option<Arc<OperationControl>> {
-        self.controls.get(&token).cloned()
-    }
-
-    fn release(&mut self, token: MermanNativeOperationControlToken) -> bool {
-        self.controls.remove(&token).is_some()
-    }
-}
-
 struct NativeResultAllocation {
     _data: Vec<u8>,
     _metadata_or_error_json: Vec<u8>,
@@ -301,8 +263,9 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
 
 static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
-static OPERATION_CONTROL_REGISTRY: OnceLock<Mutex<NativeOperationControlRegistry>> =
-    OnceLock::new();
+static OPERATION_CONTROL_REGISTRY: Mutex<OperationControlRegistry> = Mutex::new(
+    OperationControlRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX),
+);
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
@@ -418,8 +381,22 @@ fn allocation_registry() -> &'static Mutex<NativeAllocationRegistry> {
     ALLOCATION_REGISTRY.get_or_init(|| Mutex::new(NativeAllocationRegistry::default()))
 }
 
-fn operation_control_registry() -> &'static Mutex<NativeOperationControlRegistry> {
-    OPERATION_CONTROL_REGISTRY.get_or_init(|| Mutex::new(NativeOperationControlRegistry::default()))
+fn operation_control_registry() -> MutexGuard<'static, OperationControlRegistry> {
+    OPERATION_CONTROL_REGISTRY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn registered_operation_control(
+    token: MermanNativeOperationControlToken,
+) -> Option<OperationControl> {
+    operation_control_registry()
+        .get(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        .cloned()
+}
+
+fn retire_operation_control(token: MermanNativeOperationControlToken) -> Option<OperationControl> {
+    operation_control_registry().remove(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
 }
 
 fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {
@@ -1026,12 +1003,8 @@ fn acquire_operation_control(
             "operation control token is zero or belongs to a different opaque token domain",
         ));
     }
-    let registry = operation_control_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry
-        .acquire(token)
-        .map(|control| Some((*control).clone()))
+    registered_operation_control(token)
+        .map(Some)
         .ok_or_else(|| {
             NativeFailure::new(
                 MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
@@ -2708,20 +2681,25 @@ unsafe fn operation_control_new_impl(
         );
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
-    let timeout = (has_timeout_ms == 1).then_some(timeout_ms);
-    let token = {
-        let mut registry = operation_control_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        match registry.issue(timeout) {
-            Ok(token) => token,
-            Err(failure) => {
-                return unsafe {
-                    write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
-                };
-            }
-        }
+    let issued = {
+        let mut registry = operation_control_registry();
+        let control = OperationControl::new();
+        let control = if has_timeout_ms == 1 {
+            control.with_deadline(Duration::from_millis(timeout_ms))
+        } else {
+            control
+        };
+        registry.try_insert(control)
     };
+    let Ok(counter) = issued else {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+            "native operation-control token space is exhausted",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    };
+    let token = (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        | MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG;
     let status = unsafe {
         write_native_result(
             out_result,
@@ -2733,10 +2711,7 @@ unsafe fn operation_control_new_impl(
         )
     };
     if status != MERMAN_NATIVE_STATUS_OK {
-        let _ = operation_control_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .release(token);
+        drop(retire_operation_control(token));
         return status;
     }
     unsafe { ptr::write(out_control, token) };
@@ -2750,13 +2725,7 @@ unsafe extern "C" fn native_operation_control_cancel(
         if !token_has_domain(control, MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG) {
             return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
         }
-        let control = {
-            let registry = operation_control_registry()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry.acquire(control)
-        };
-        let Some(control) = control else {
+        let Some(control) = registered_operation_control(control) else {
             return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
         };
         control.cancel();
@@ -2771,10 +2740,7 @@ unsafe extern "C" fn native_operation_control_release(
         if !token_has_domain(control, MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG) {
             return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
         }
-        let mut registry = operation_control_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if registry.release(control) {
+        if retire_operation_control(control).is_some() {
             MERMAN_NATIVE_STATUS_OK
         } else {
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
