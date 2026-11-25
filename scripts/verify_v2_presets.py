@@ -193,7 +193,6 @@ def derive_roles(mode: str, layer: dict[str, Any]) -> dict[str, str]:
 
     text_primary = ink
     text_muted = mix_oklab(canvas, ink, 0.72 if is_dark else 0.68)
-    text_title = accent if contrast_ratio(accent, canvas) >= 4.5 else ink
 
     # Contrast-safe callout & emphasis text
     dark_ref = "#111827" if not is_dark else canvas
@@ -212,7 +211,7 @@ def derive_roles(mode: str, layer: dict[str, Any]) -> dict[str, str]:
         "stroke.guide": stroke_guide,
         "text.primary": text_primary,
         "text.muted": text_muted,
-        "text.title": text_title,
+        "text.title": ink,
         "text.callout": text_callout,
         "text.on_emphasis": text_on_emphasis,
         "status.info": seed.get("info", accent),
@@ -224,6 +223,8 @@ def derive_roles(mode: str, layer: dict[str, Any]) -> dict[str, str]:
     for k, v in overrides.items():
         if isinstance(v, str) and v.startswith("#"):
             roles[k] = v
+    if "text.title" not in overrides:
+        roles["text.title"] = accent if contrast_ratio(accent, roles["canvas"]) >= 4.5 else roles["text.primary"]
     return roles
 
 

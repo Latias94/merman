@@ -248,6 +248,33 @@ fn a_transparent_seed_accent_falls_back_to_readable_title_ink() {
 }
 
 #[test]
+fn derived_title_uses_the_resolved_canvas_and_keeps_authored_titles() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,
+                "appearances":{"light":{"seed":{"canvas":"#00000000","accent":"#000000","ink":"#FFFFFF"}}},
+                "roles":{"canvas":"#000000"},
+                "overrides":[
+                    {"families":["flowchart"],"roles":{"canvas":"#FFFFFF"}},
+                    {"families":["pie"],"roles":{"text.title":"#FF8800"}}
+                ]
+            }"##,
+            None,
+        )
+        .unwrap();
+    assert_eq!(theme.roles().text_title, Color::rgb(255, 255, 255));
+    assert_eq!(
+        theme.family("flowchart").roles.text_title,
+        Color::rgb(0, 0, 0)
+    );
+    assert_eq!(
+        theme.family("pie").roles.text_title,
+        Color::rgb(255, 136, 0)
+    );
+}
+
+#[test]
 fn contrast_accounts_for_transparent_stop_color_before_compositing() {
     let input = br##"{
         "schema_version": 2,

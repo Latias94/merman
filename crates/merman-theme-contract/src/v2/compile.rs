@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 #[cfg(feature = "presets")]
@@ -225,15 +225,14 @@ impl ThemeCompiler {
             ));
         };
         let mut roles = derive_roles(&seed, canvas_color, ink, accent, appearance);
+        let mut authored_title = false;
         for document in &documents {
-            if let Some(roles_patch) = document
+            let layer_roles = document
                 .layer(appearance)
-                .and_then(|layer| layer.roles.as_ref())
-            {
+                .and_then(|layer| layer.roles.as_ref());
+            for roles_patch in layer_roles.into_iter().chain(document.roles.as_ref()) {
                 roles.apply(roles_patch);
-            }
-            if let Some(roles_patch) = &document.roles {
-                roles.apply(roles_patch);
+                authored_title |= roles_patch.text_title.is_some();
             }
         }
 
@@ -247,9 +246,17 @@ impl ThemeCompiler {
             node_ordinal_palette: false,
         };
         let mut family_overrides = BTreeMap::<String, FamilyTheme>::new();
+        let mut family_authored_titles = BTreeSet::new();
         for patch in documents.iter().flat_map(|document| &document.overrides) {
             if patch.appearance.is_none_or(|mode| mode == appearance) {
                 for family in &patch.families {
+                    if patch
+                        .roles
+                        .as_ref()
+                        .is_some_and(|roles| roles.text_title.is_some())
+                    {
+                        family_authored_titles.insert(family.as_str());
+                    }
                     let family = family_overrides
                         .entry(family.clone())
                         .or_insert_with(|| base.clone());
@@ -265,17 +272,20 @@ impl ThemeCompiler {
             notices: &mut notices,
         };
         let base_fill_ink = Arc::clone(&base.data.fill_ink);
-        contrast.check_family(&mut base, 1.0, "data.fill");
+        let title_accent = (!authored_title).then_some(accent);
+        contrast.check_family(&mut base, 1.0, "data.fill", title_accent);
         for (id, family) in &mut family_overrides {
+            let title_accent =
+                title_accent.filter(|_| !family_authored_titles.contains(id.as_str()));
             if family.roles.canvas != base.roles.canvas {
                 family.data = derive_palette(&data, accent, &family.roles.canvas, appearance);
             }
             if id == "pie" {
                 let opacity = family.form.chart.pie_opacity;
                 set_automatic_fill_ink(&mut family.data, &family.roles.canvas, opacity, appearance);
-                contrast.check_family(family, opacity, "pie.data.fill");
+                contrast.check_family(family, opacity, "pie.data.fill", title_accent);
             } else {
-                contrast.check_family(family, 1.0, "data.fill");
+                contrast.check_family(family, 1.0, "data.fill", title_accent);
             }
         }
         if base.form.chart.pie_opacity != 1.0 && !family_overrides.contains_key("pie") {
@@ -403,7 +413,6 @@ fn derive_roles(
         .unwrap_or_else(|| Color::from_oklch(if dark { 0.30 } else { 0.94 }, 0.045, 82.0));
     let emphasis = surface.mix_oklab(accent, if dark { 0.22 } else { 0.12 });
     let (dark_ink, light_ink) = if dark { (canvas, ink) } else { (ink, surface) };
-    let painted_canvas = canvas.composite(backdrop(mode), 1.0);
 
     Roles {
         canvas: canvas.into(),
@@ -418,15 +427,7 @@ fn derive_roles(
         stroke_guide: canvas.mix_oklab(ink, if dark { 0.16 } else { 0.14 }).into(),
         text_primary: ink,
         text_muted: canvas.mix_oklab(ink, if dark { 0.72 } else { 0.68 }),
-        text_title: if accent
-            .composite(painted_canvas, 1.0)
-            .contrast(painted_canvas)
-            >= TEXT_CONTRAST
-        {
-            accent
-        } else {
-            ink
-        },
+        text_title: ink,
         text_callout: best_ink(callout, dark_ink, light_ink),
         text_on_emphasis: best_ink(emphasis, dark_ink, light_ink),
         status_info: seed.info.unwrap_or(accent),
@@ -590,6 +591,7 @@ impl ContrastChecks<'_> {
         family: &mut FamilyTheme,
         fill_opacity: f64,
         fill_background: &'static str,
+        title_accent: Option<Color>,
     ) {
         let roles = &mut family.roles;
         let canvas = ("canvas", &roles.canvas, None);
@@ -624,6 +626,19 @@ impl ContrastChecks<'_> {
             1.0,
             TEXT_CONTRAST,
         );
+        if let Some(accent) = title_accent {
+            let ratio = Paint::Solid(accent).minimum_contrast_over(
+                &roles.canvas,
+                1.0,
+                None,
+                self.appearance,
+            );
+            roles.text_title = if ratio >= TEXT_CONTRAST {
+                accent
+            } else {
+                roles.text_primary
+            };
+        }
         self.check(
             "text.title",
             &mut roles.text_title,
