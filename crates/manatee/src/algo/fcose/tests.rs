@@ -1,17 +1,19 @@
+use super::repulsion_grid::RepulsionGrid;
+use super::spring_embedder::{for_each_owner_local_pair, owner_local_pair_work};
 use super::{
     BoundsExtras, CompoundTopology, Constraints, DisjointSet, FcoseConstraintWorkShape,
     FcoseIterationSchedule, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource, FcoseWorkPlan,
     IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions, IndexedGraph,
     IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, NoopWorkControl, RelConstraint,
-    RepulsionGrid, RepulsionGridPlan, RepulsionGridStorageKind, SimGraph, SimNode, Vec2,
-    WorkControl, XorShift64Star, admit_dynamic_work, apply_reflection_for_relative_placement,
-    for_each_owner_local_pair, layout, layout_indexed,
-    layout_indexed_with_random_policy_and_work_control, new_fcose_random, owner_local_pair_work,
+    RepulsionGridPlan, RepulsionGridStorageKind, SimGraph, SimNode, Vec2, WorkControl,
+    XorShift64Star, apply_reflection_for_relative_placement, layout, layout_indexed,
+    layout_indexed_with_random_policy_and_work_control, new_fcose_random,
     procrustes_transform_for_alignments, reset_fcose_random_for_run,
 };
 use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
 use crate::error::{Error, WorkFailure};
 use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
+use crate::work::admit_dynamic_work;
 
 #[derive(Default)]
 struct RecordingWorkControl {
