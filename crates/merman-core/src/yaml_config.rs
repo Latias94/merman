@@ -66,6 +66,8 @@ struct Capture<'a> {
     collection_text_keys: &'a [&'static str],
     root_key_order: Option<&'a mut Vec<String>>,
     #[cfg(feature = "editor-facts")]
+    ordered_document: Option<&'a mut String>,
+    #[cfg(feature = "editor-facts")]
     keys: bool,
 }
 
@@ -128,6 +130,28 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
         control,
     )?
     .value)
+}
+
+#[cfg(feature = "editor-facts")]
+pub(crate) fn parse_yaml_ordered_document_controlled(
+    input: &str,
+    max_bytes: usize,
+    max_nesting_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
+    let mut ordered_document = String::new();
+    let captured = parse_yaml_controlled(
+        input,
+        max_bytes,
+        max_nesting_depth,
+        max_bytes,
+        Capture {
+            ordered_document: Some(&mut ordered_document),
+            ..Capture::default()
+        },
+        control,
+    )?;
+    Ok(captured.value.ok().map(|_| ordered_document))
 }
 
 fn parse_yaml_controlled(
@@ -232,6 +256,12 @@ fn parse_yaml_controlled(
     let captured = (|| {
         if !value.as_ref().is_ok_and(Value::is_object) {
             return Ok(YamlCollectionText::new());
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(document) = capture.ordered_document
+            && let Some(root) = builder.root
+        {
+            *document = write_ordered_yaml_json(&builder.arena, root, control)?;
         }
         let collection_text = if capture.collection_text_keys.is_empty() {
             YamlCollectionText::new()

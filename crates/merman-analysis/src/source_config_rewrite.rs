@@ -1,3 +1,5 @@
+mod order;
+
 use crate::repair::{
     ConfigMigrationEvidence, MAX_CONFIG_MIGRATION_FIX_EDITS, MAX_CONFIG_MIGRATION_FIX_WEIGHT_BYTES,
     MAX_FRONTMATTER_MIGRATION_INPUT_BYTES, MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
@@ -8,9 +10,13 @@ use crate::{
 };
 #[cfg(test)]
 use merman_core::preprocess::SourceConfigEvidence;
+use merman_core::preprocess::source_config_rewrite_order_controlled;
 #[cfg(test)]
 use merman_core::preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block};
+use merman_model::json::ordered::OrderedJsonRef;
 use merman_model::{MermaidConfig, SourceSpan};
+use order::OrderedYaml;
+use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde_json::{Map, Value};
 
 const REWRITE_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -213,6 +219,26 @@ fn frontmatter_config_edit_cancellable(
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<FrontmatterEdit>, AnalysisCancelled> {
     let config = config.into_value();
+    let Some(order) = source_config_rewrite_order_controlled(
+        source,
+        evidence
+            .frontmatter
+            .as_ref()
+            .map(|frontmatter| frontmatter.full_span),
+        &evidence.directive_spans,
+        MAX_FRONTMATTER_MIGRATION_INPUT_BYTES.min(MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES),
+        MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
+        cancellation.operation_control(),
+    )
+    .map_err(|_| AnalysisCancelled)?
+    else {
+        return Ok(None);
+    };
+    let config = OrderedYaml::config(&config, &order);
+    let new_fields = FrontmatterYaml {
+        existing: None,
+        config: &config,
+    };
     let newline = newline_for_source_cancellable(source, cancellation)?;
     cancellation.checkpoint()?;
     let Some(frontmatter_evidence) = evidence.frontmatter.as_ref() else {
@@ -221,12 +247,7 @@ fn frontmatter_config_edit_cancellable(
             return Ok(None);
         }
         cancellation.checkpoint()?;
-        let replacement = frontmatter_document_cancellable(
-            frontmatter_fields_with_config(Map::new(), config),
-            "",
-            newline,
-            cancellation,
-        )?;
+        let replacement = frontmatter_document_cancellable(&new_fields, "", newline, cancellation)?;
         cancellation.checkpoint()?;
         return Ok(replacement.map(|replacement| FrontmatterEdit {
             span: insert_span,
@@ -255,7 +276,7 @@ fn frontmatter_config_edit_cancellable(
             source,
             body_span,
             frontmatter_evidence.indent.as_str(),
-            config,
+            &new_fields,
             newline,
             cancellation,
         )?;
@@ -282,21 +303,30 @@ fn frontmatter_config_edit_cancellable(
     else {
         return Ok(None);
     };
-    let existing_fields = match fields {
-        Value::Object(fields) => fields,
-        other => {
-            drop(MermaidConfig::from_value(other));
-            return Ok(None);
-        }
+    let fields = MermaidConfig::from_value(fields);
+    let (Some(existing_fields), Some(order)) =
+        (fields.as_value().as_object(), order.frontmatter.as_ref())
+    else {
+        return Ok(None);
     };
-    cancellation.checkpoint()?;
-    if !existing_fields.contains_key("config") {
+    let Some(authored_fields) = order.value.as_object() else {
+        return Ok(None);
+    };
+    if !existing_fields.contains_key("config")
+        || existing_fields.len() != authored_fields.len()
+        || existing_fields
+            .keys()
+            .any(|key| !authored_fields.contains_key(key))
+    {
         return Ok(None);
     }
 
     cancellation.checkpoint()?;
     let replacement = frontmatter_document_cancellable(
-        frontmatter_fields_with_config(existing_fields, config),
+        &FrontmatterYaml {
+            existing: Some((existing_fields, order.view())),
+            config: &config,
+        },
         frontmatter_evidence.indent.as_str(),
         newline,
         cancellation,
@@ -308,26 +338,38 @@ fn frontmatter_config_edit_cancellable(
     }))
 }
 
-fn frontmatter_fields_with_config(
-    mut fields: Map<String, Value>,
-    config: Value,
-) -> Map<String, Value> {
-    if let Some(replaced) = fields.insert("config".to_string(), config) {
-        drop(MermaidConfig::from_value(replaced));
+struct FrontmatterYaml<'a> {
+    existing: Option<(&'a Map<String, Value>, OrderedJsonRef<'a>)>,
+    config: &'a OrderedYaml<'a>,
+}
+
+impl Serialize for FrontmatterYaml<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let Some((existing, order)) = self.existing else {
+            let mut map = serializer.serialize_map(Some(1))?;
+            map.serialize_entry("config", self.config)?;
+            return map.end();
+        };
+        let mut map = serializer.serialize_map(Some(existing.len()))?;
+        for (key, source) in order.entries() {
+            if key == "config" {
+                map.serialize_entry(key, self.config)?;
+            } else {
+                map.serialize_entry(key, &OrderedYaml::field(&existing[key], source))?;
+            }
+        }
+        map.end()
     }
-    fields
 }
 
 fn frontmatter_config_insertion_cancellable(
     source: &str,
     body_span: SourceSpan,
     indent: &str,
-    config: Value,
+    fields: &FrontmatterYaml<'_>,
     newline: &str,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<String>, AnalysisCancelled> {
-    let mut fields = Map::new();
-    fields.insert("config".to_string(), config);
     let Some(body) = frontmatter_body_cancellable(fields, cancellation)? else {
         return Ok(None);
     };
@@ -388,7 +430,7 @@ fn is_whitespace_cancellable(
 }
 
 fn frontmatter_document_cancellable(
-    fields: Map<String, Value>,
+    fields: &FrontmatterYaml<'_>,
     indent: &str,
     newline: &str,
     cancellation: &AnalysisCancellationToken,
@@ -400,21 +442,19 @@ fn frontmatter_document_cancellable(
 }
 
 fn frontmatter_body_cancellable(
-    fields: Map<String, Value>,
+    fields: &FrontmatterYaml<'_>,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<String>, AnalysisCancelled> {
     cancellation.checkpoint()?;
     // The serializer does not expose an inner parse-control hook. The writer caps retained output
     // length and checkpoints at output-chunk boundaries; input size, materialization, and nesting
     // bounds keep serializer-internal scalar work finite during this atomic traversal.
-    let fields = MermaidConfig::from_value(Value::Object(fields));
     let mut writer = BoundedYamlWriter::new(cancellation);
     #[cfg(test)]
     crate::test_support::record_fix_serialization();
-    let serialization = serde_saphyr::to_fmt_writer(&mut writer, fields.as_value());
+    let serialization = serde_saphyr::to_fmt_writer(&mut writer, fields);
     let failure = writer.failure;
     let serialized = writer.text;
-    drop(fields);
     match failure {
         Some(BoundedWriteFailure::Cancelled) => return Err(AnalysisCancelled),
         Some(BoundedWriteFailure::Limit | BoundedWriteFailure::Allocation) => return Ok(None),
@@ -870,27 +910,34 @@ mod tests {
             ),
             serde_json::json!({ "value": "\u{a0}42" })
         );
-        let source = "flowchart TD\nA-->B\n";
+        let source = concat!(
+            "---\nconfig:\n  custom:\n    authored:\n",
+            "      quoted_true: 'true'\n",
+            "      quoted_null: 'null'\n",
+            "      quoted_number: '001'\n",
+            "      nbsp_number: '\u{a0}42'\n",
+            "      null_value: null\n",
+            "      multiline: \"first line\\nsecond line\"\n",
+            "      ordered_first: first\n",
+            "      ordered_second: second\n",
+            "---\n%%{ init: {theme: 'dark'} }%%\nflowchart TD\nA-->B\n",
+        );
         let source_map = SourceMap::new(source);
         let config = serde_json::json!({
-            "quoted_true": "true",
-            "quoted_null": "null",
-            "quoted_number": "001",
-            "nbsp_number": "\u{a0}42",
-            "null_value": null,
-            "multiline": "first line\nsecond line",
-            "ordered_first": "first",
-            "ordered_second": "second"
+            "custom": { "authored": {
+                "quoted_true": "true",
+                "quoted_null": "null",
+                "quoted_number": "001",
+                "nbsp_number": "\u{a0}42",
+                "null_value": null,
+                "multiline": "first line\nsecond line",
+                "ordered_first": "first",
+                "ordered_second": "second"
+            } },
+            "theme": "dark"
         });
 
-        let fix = frontmatter_config_fix(
-            source,
-            &source_map,
-            config.clone(),
-            Vec::new(),
-            "Add frontmatter config",
-        )
-        .expect("frontmatter fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
         let frontmatter = split_frontmatter_block(&edited).expect("generated frontmatter");
         let document = &edited[frontmatter.full.start..frontmatter.full.end];
@@ -1000,6 +1047,58 @@ mod tests {
     }
 
     #[test]
+    fn init_directive_migration_orders_legacy_config_after_bare_cr_comments() {
+        let source = concat!(
+            "---\rtitle: Demo\rconfig:\r  theme: default\r---\r",
+            "%% keep this comment\r",
+            "%%{ init: {config: {nodeSpacing: 9, curve: 'basis'}, look: 'classic'} }%%\r",
+            "flowchart TD\rA-->B\r",
+        );
+        let source_map = SourceMap::new(source);
+        let original = crate::test_support::capture_source_metadata(source).expect("source config");
+
+        let fix = migration_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+        let migrated = crate::test_support::capture_source_metadata(&edited).expect("new config");
+
+        assert_eq!(migrated.config.as_value(), original.config.as_value());
+        assert!(
+            edited.contains("  flowchart:\r    nodeSpacing: 9\r    curve: basis\r"),
+            "{edited:?}"
+        );
+        assert!(edited.contains("%% keep this comment\r"));
+        assert_only_bare_cr_newlines(&edited);
+    }
+
+    #[test]
+    fn init_directive_migration_counts_json5_depth_after_comments() {
+        let config = format!(
+            "{}0{}",
+            "[".repeat(MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH),
+            "]".repeat(MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH),
+        );
+        for comment in ["/* \" */", "// \"\u{2028}"] {
+            let source = format!(
+                "%%{{ init: {{ theme: 'dark', ignored: {comment}{config} }} }}%%\nflowchart TD\nA-->B\n",
+            );
+            let source_map = SourceMap::new(source.as_str());
+            let original = crate::test_support::capture_source_metadata(&source)
+                .expect("source parser accepts the directive");
+            assert_eq!(
+                original.config.get("theme").and_then(Value::as_str),
+                Some("dark")
+            );
+            assert!(migration_fix(&source, &source_map).is_none(), "{comment:?}");
+        }
+
+        let brackets = "[".repeat(MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH);
+        let source =
+            format!("%%{{ init: {{ /* {brackets} */ theme: 'dark' }} }}%%\nflowchart TD\nA-->B\n",);
+        let source_map = SourceMap::new(source.as_str());
+        assert!(migration_fix(&source, &source_map).is_some());
+    }
+
+    #[test]
     fn init_directive_migration_inserts_config_without_dropping_frontmatter_comments() {
         let source = "---\n# keep rationale\ntitle: Demo\ncustom: keep\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
@@ -1052,7 +1151,15 @@ mod tests {
 
     #[test]
     fn init_directive_migration_preserves_effective_diagram_config() {
-        let source = "---\nconfig:\n  flowchart:\n    curve: basis\n---\n%%{ initialize: {\"theme\":\"dark\",\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
+        let source = concat!(
+            "---\nconfig:\n  flowchart:\n    curve: basis\n    diagramPadding: 8\n",
+            "    wrappingWidth:\n      - 1\n      - width: 10\n        height: 20\n  look: classic\n",
+            "custom:\n  - zebra: true\n    alpha: null\n---\n",
+            "%%{ initialize: {\"theme\":\"dark\",\"flowchart\":{\"htmlLabels\":false,\"curve\":\"linear\",",
+            "\"wrappingWidth\":[1,2,{\"height\":20,\"width\":10}]}} }%%\n",
+            "%%{ init: {\"fontSize\":16,\"flowchart\":{\"nodeSpacing\":20,\"htmlLabels\":true}} }%%\n",
+            "flowchart TD\nA-->B\n",
+        );
         let source_map = SourceMap::new(source);
         let original =
             crate::test_support::capture_source_metadata(source).expect("original metadata");
@@ -1063,7 +1170,44 @@ mod tests {
             crate::test_support::capture_source_metadata(&edited).expect("migrated metadata");
 
         assert_eq!(migrated.config.as_value(), original.config.as_value());
-        assert!(!edited.contains("%%{ initialize"));
+        assert_eq!(
+            migrated
+                .config
+                .as_value()
+                .pointer("/flowchart/wrappingWidth"),
+            Some(
+                &serde_json::json!([1, {"width": 10, "height": 20}, 2, {"height": 20, "width": 10}])
+            )
+        );
+        assert!(!edited.contains("%%{"));
+        let ordered_keys = [
+            "flowchart:",
+            "curve:",
+            "diagramPadding:",
+            "wrappingWidth:",
+            "htmlLabels:",
+            "nodeSpacing:",
+            "look:",
+            "theme:",
+            "fontSize:",
+            "custom:",
+            "zebra:",
+            "alpha:",
+        ];
+        let positions = ordered_keys.map(|key| edited.find(key).expect("serialized key position"));
+        assert!(
+            positions.windows(2).all(|pair| pair[0] < pair[1]),
+            "{edited}"
+        );
+        let widths: Vec<_> = edited.match_indices("width:").map(|(pos, _)| pos).collect();
+        let heights: Vec<_> = edited
+            .match_indices("height:")
+            .map(|(pos, _)| pos)
+            .collect();
+        assert!(
+            matches!((widths.as_slice(), heights.as_slice()), ([w1, w2], [h1, h2]) if w1 < h1 && h1 < h2 && h2 < w2),
+            "{edited}"
+        );
     }
 
     #[test]

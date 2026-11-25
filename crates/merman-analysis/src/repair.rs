@@ -34,6 +34,7 @@ pub(crate) struct ConfigMigrationEvidence {
     pub(crate) authored_config: MermaidConfig,
     pub(crate) frontmatter: Option<MigrationFrontmatter>,
     pub(crate) config_insert_span: SourceSpan,
+    pub(crate) directive_spans: Vec<SourceSpan>,
     pub(crate) removals: Vec<SourceSpan>,
 }
 
@@ -50,6 +51,7 @@ impl ConfigMigrationEvidence {
             return Ok(None);
         }
         let source = source_map.source();
+        let mut directive_spans = Vec::new();
         let mut removals = Vec::new();
         for (index, directive) in source_config.directives().iter().enumerate() {
             if index.is_multiple_of(128) {
@@ -65,6 +67,7 @@ impl ConfigMigrationEvidence {
             if source.get(span.start..span.end).is_none() {
                 return Ok(None);
             }
+            directive_spans.push(span);
             removals.push(
                 crate::source_config_rewrite::directive_removal_span_cancellable(
                     source,
@@ -142,6 +145,7 @@ impl ConfigMigrationEvidence {
             authored_config,
             frontmatter,
             config_insert_span: source_config.config_insert_span(),
+            directive_spans,
             removals,
         })))
     }
@@ -157,6 +161,7 @@ impl ConfigMigrationEvidence {
                 .estimated_owned_heap_bytes_excluding_source(),
         );
         weight.add_array::<SourceSpan>(self.removals.capacity());
+        weight.add_array::<SourceSpan>(self.directive_spans.capacity());
         if let Some(frontmatter) = &self.frontmatter {
             weight.add_string(&frontmatter.indent);
             if let Some(fields) = &frontmatter.fields {

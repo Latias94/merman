@@ -10,12 +10,17 @@ pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
 
 #[cfg(feature = "editor-facts")]
 mod editor;
+#[cfg(feature = "editor-facts")]
+mod rewrite_order;
 mod scan;
 #[cfg(feature = "editor-facts")]
 mod source_config;
 mod source_edit_map;
 mod text;
 
+#[cfg(feature = "editor-facts")]
+#[doc(hidden)]
+pub use rewrite_order::{SourceConfigRewriteOrder, source_config_rewrite_order_controlled};
 #[cfg(feature = "editor-facts")]
 pub(crate) use source_config::SourceConfigPath;
 #[cfg(feature = "editor-facts")]
@@ -2301,7 +2306,9 @@ fn config_nesting_exceeds_limit_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<bool> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    if max_flow_collection_depth_controlled(text, &mut checkpoints)? > MAX_CONFIG_NESTING_DEPTH {
+    if max_flow_collection_depth_controlled::<false>(text, &mut checkpoints)?
+        > MAX_CONFIG_NESTING_DEPTH
+    {
         checkpoints.finish()?;
         return Ok(true);
     }
@@ -2311,7 +2318,7 @@ fn config_nesting_exceeds_limit_controlled(
     Ok(exceeds)
 }
 
-fn max_flow_collection_depth_controlled(
+fn max_flow_collection_depth_controlled<const JSON5_COMMENTS: bool>(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
 ) -> OperationControlResult<usize> {
@@ -2320,7 +2327,8 @@ fn max_flow_collection_depth_controlled(
     let mut quote = None;
     let mut escaped = false;
 
-    for ch in text.chars() {
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
         checkpoints.scanned(ch.len_utf8())?;
         if let Some(q) = quote {
             if escaped {
@@ -2339,6 +2347,26 @@ fn max_flow_collection_depth_controlled(
 
         match ch {
             '"' | '\'' => quote = Some(ch),
+            '/' if JSON5_COMMENTS && chars.next_if_eq(&'/').is_some() => {
+                checkpoints.scanned(1)?;
+                for ch in chars.by_ref() {
+                    checkpoints.scanned(ch.len_utf8())?;
+                    if json5::char::is_json5_line_terminator(ch) {
+                        break;
+                    }
+                }
+            }
+            '/' if JSON5_COMMENTS && chars.next_if_eq(&'*').is_some() => {
+                checkpoints.scanned(1)?;
+                let mut previous_star = false;
+                for ch in chars.by_ref() {
+                    checkpoints.scanned(ch.len_utf8())?;
+                    if previous_star && ch == '/' {
+                        break;
+                    }
+                    previous_star = ch == '*';
+                }
+            }
             '{' | '[' => {
                 depth = depth.saturating_add(1);
                 max_depth = max_depth.max(depth);
