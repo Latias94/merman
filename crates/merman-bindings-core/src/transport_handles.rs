@@ -1,33 +1,58 @@
-//! Monotonic handle storage shared by the native transports.
+//! Monotonic handle primitives shared by native and WASI transports.
 
 use crate::OperationControl;
 use std::collections::BTreeMap;
 
-/// A counter and its live values. The transport owns synchronization and wire encoding.
-pub struct HandleRegistry<T> {
+/// Issues nonzero handles in order up to a fixed inclusive limit.
+pub struct HandleCounter {
     last_handle: u64,
     max_handle: u64,
+}
+
+impl HandleCounter {
+    pub const fn new(max_handle: u64) -> Self {
+        Self {
+            last_handle: 0,
+            max_handle,
+        }
+    }
+
+    /// Consumes the next handle, or returns `None` when the space is exhausted.
+    pub fn allocate(&mut self) -> Option<u64> {
+        if self.last_handle == self.max_handle {
+            return None;
+        }
+        self.last_handle += 1;
+        Some(self.last_handle)
+    }
+
+    fn was_issued(&self, handle: u64) -> bool {
+        handle != 0 && handle <= self.last_handle
+    }
+}
+
+/// A counter and its live values. The transport owns synchronization and wire encoding.
+pub struct HandleRegistry<T> {
+    handles: HandleCounter,
     live: BTreeMap<u64, T>,
 }
 
 impl<T> HandleRegistry<T> {
     pub const fn new(max_handle: u64) -> Self {
         Self {
-            last_handle: 0,
-            max_handle,
+            handles: HandleCounter::new(max_handle),
             live: BTreeMap::new(),
         }
     }
 
     /// Returns the original value if the handle space is exhausted.
     pub fn try_insert(&mut self, value: T) -> Result<u64, T> {
-        if self.last_handle == self.max_handle {
+        let Some(handle) = self.handles.allocate() else {
             return Err(value);
-        }
-        self.last_handle += 1;
-        let previous = self.live.insert(self.last_handle, value);
+        };
+        let previous = self.live.insert(handle, value);
         debug_assert!(previous.is_none());
-        Ok(self.last_handle)
+        Ok(handle)
     }
 
     pub fn get(&self, handle: u64) -> Option<&T> {
@@ -44,7 +69,7 @@ impl<T> HandleRegistry<T> {
 
     /// Includes retired handles so callers can implement idempotent release.
     pub fn was_issued(&self, handle: u64) -> bool {
-        handle != 0 && handle <= self.last_handle
+        self.handles.was_issued(handle)
     }
 }
 
@@ -53,6 +78,17 @@ pub type OperationControlRegistry = HandleRegistry<OperationControl>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counter_issues_the_max_handle_once() {
+        let mut counter = HandleCounter {
+            last_handle: u64::MAX - 1,
+            max_handle: u64::MAX,
+        };
+        assert_eq!(counter.allocate(), Some(u64::MAX));
+        assert_eq!(counter.allocate(), None);
+        assert!(counter.was_issued(u64::MAX));
+    }
 
     #[test]
     fn retired_handles_stay_issued_and_exhaustion_returns_the_value() {
