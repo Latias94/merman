@@ -352,7 +352,9 @@ pub fn validate(
     Ok(allowed)
 }
 
-pub fn project_static<'a>(
+/// Projects an SVG whose input bytes and cancellation have already been checked by the caller.
+/// An SVG without Step markers returns through the allocation-free fast path.
+pub fn project_admitted_static<'a>(
     svg: Cow<'a, str>,
     checkpoint: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Cow<'a, str>> {

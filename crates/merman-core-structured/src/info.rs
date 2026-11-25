@@ -23,13 +23,16 @@ pub enum InfoStatement {
     },
 }
 
-/// Reads the next statement at a UTF-8 byte boundary in the source.
+/// Reads the next statement at a UTF-8 byte boundary before the end of the source.
 pub fn parse_info_statement(
     code: &str,
     offset: usize,
     allow_show_info: bool,
 ) -> Option<InfoStatement> {
     let rest = code.get(offset..)?;
+    if rest.is_empty() {
+        return None;
+    }
     if let Some(parsed) = parse_langium_common(code, offset) {
         return Some(InfoStatement::Common(parsed));
     }
@@ -136,6 +139,16 @@ mod tests {
     fn statements_reject_offsets_outside_utf8_boundaries() {
         assert!(parse_info_statement("info\né", 6, false).is_none());
         assert!(parse_info_statement("info", usize::MAX, false).is_none());
+    }
+
+    #[test]
+    fn statements_distinguish_empty_lines_from_end_of_input() {
+        assert!(parse_info_statement("", 0, false).is_none());
+        assert!(parse_info_statement("info", 4, false).is_none());
+        assert!(matches!(
+            parse_info_statement("info\n\n", 5, false),
+            Some(InfoStatement::Empty { next_offset: 6 })
+        ));
     }
 
     #[test]

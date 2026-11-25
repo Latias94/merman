@@ -15,7 +15,7 @@ pub(super) fn project_static<'a>(
     svg: Cow<'a, str>,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
-    merman_render_core::step_animation::project_static(svg, &mut || execution.checkpoint())
+    merman_render_core::step_animation::project_admitted_static(svg, &mut || execution.checkpoint())
 }
 
 #[cfg(test)]
