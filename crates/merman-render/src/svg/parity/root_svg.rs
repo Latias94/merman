@@ -774,7 +774,7 @@ impl<'a> RootViewportContext<'a> {
     }
 
     fn require_empty_document(&self, out: &impl SvgOutput) -> Result<()> {
-        if out.len() == 0 {
+        if out.is_empty() {
             return Ok(());
         }
         Err(Error::InvalidModel {

@@ -1,5 +1,5 @@
 use crate::mermaid_style::{
-    HtmlTextGeometryDeclarations, HtmlTextProperty, ParsedStyleDeclaration,
+    HtmlTextGeometryDeclarations, HtmlTextProperty, InvalidCssLength, ParsedStyleDeclaration,
 };
 use crate::text::{TextMetrics, TextStyle};
 use indexmap::{IndexMap, map::Entry};
@@ -325,7 +325,7 @@ impl FlowchartRectangleCssSize {
         &mut self,
         property: &str,
         important: bool,
-        length: impl FnOnce() -> Result<Option<f64>, ()>,
+        length: impl FnOnce() -> Result<Option<f64>, InvalidCssLength>,
     ) {
         if let Some(index) = rectangle_dimension_index(property)
             && (important || !self.important[index])

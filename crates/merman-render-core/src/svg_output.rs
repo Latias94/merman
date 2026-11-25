@@ -13,6 +13,9 @@ pub trait SvgOutput: fmt::Write {
     fn push_str(&mut self, value: &str);
     fn push(&mut self, value: char);
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn as_str(&self) -> &str;
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()>;
     fn checkpoint(&mut self) -> crate::Result<()>;

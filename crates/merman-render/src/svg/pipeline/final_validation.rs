@@ -1447,6 +1447,10 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     #[inline]
+    #[expect(
+        clippy::ptr_arg,
+        reason = "Retained hrefs preserve source borrows from the normalized XML value"
+    )]
     fn observe_raw_attribute(
         &mut self,
         name: &str,

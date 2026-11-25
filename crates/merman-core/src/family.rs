@@ -4,16 +4,16 @@
 //! detectors and their order/effects, editor semantics, and parser callbacks. Its capability
 //! projection reports the source providers actually compiled into this crate.
 
+#[cfg(feature = "presentation")]
+use crate::SourcePresentationMetadata;
 use crate::detect::{BuiltinDetectorFn, DetectorConfigEffect};
 #[cfg(feature = "compat-json")]
 use crate::diagram::BuiltInDiagramSemanticParser;
 #[cfg(feature = "compat-json")]
-use crate::{DiagramWarningFact, ManagedSemanticJson};
+use crate::{DiagramWarningFact, ManagedSemanticJson, MermaidConfig};
 #[cfg(feature = "editor-facts")]
 use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
-#[cfg(feature = "presentation")]
-use crate::{MermaidConfig, SourcePresentationMetadata};
 #[cfg(any(test, feature = "editor-facts"))]
 use merman_model::family::diagram_type_family_id;
 #[cfg(test)]

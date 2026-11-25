@@ -67,7 +67,9 @@ impl FlowchartStyleDeclaration {
         feature = "diagram-swimlane",
         feature = "diagram-agentflow"
     ))]
-    pub(crate) fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
+    pub(crate) fn svg_rect_length_px(
+        &self,
+    ) -> Result<Option<f64>, crate::mermaid_style::InvalidCssLength> {
         self.analysis.svg_rect_length_px(self.value())
     }
 

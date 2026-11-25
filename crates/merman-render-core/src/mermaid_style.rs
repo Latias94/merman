@@ -11,6 +11,10 @@ use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
 };
 
+/// A declaration value that is invalid for the requested CSS length property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidCssLength;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedStyleDeclaration<'a> {
     property: String,
@@ -65,11 +69,11 @@ impl<'a> ParsedStyleDeclaration<'a> {
         self.analysis.svg_number_or_px()
     }
 
-    pub fn html_box_length_px(&self) -> Result<Option<f64>, ()> {
+    pub fn html_box_length_px(&self) -> Result<Option<f64>, InvalidCssLength> {
         self.analysis.html_box_length_px(self.value)
     }
 
-    pub fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
+    pub fn svg_rect_length_px(&self) -> Result<Option<f64>, InvalidCssLength> {
         self.analysis.svg_rect_length_px(self.value)
     }
 
@@ -1011,11 +1015,11 @@ pub struct CssValueAnalysis {
 }
 
 impl CssValueAnalysis {
-    fn html_box_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
+    fn html_box_length_px(&self, source: &str) -> Result<Option<f64>, InvalidCssLength> {
         use CssScalar::*;
 
         if !self.is_single_component() {
-            return Err(());
+            return Err(InvalidCssLength);
         }
         match self.scalar.as_ref() {
             Some(Number(value)) if *value == 0.0 => Ok(Some(0.0)),
@@ -1055,13 +1059,13 @@ impl CssValueAnalysis {
                 {
                     Ok(None)
                 }
-                _ => Err(()),
+                _ => Err(InvalidCssLength),
             },
-            _ => Err(()),
+            _ => Err(InvalidCssLength),
         }
     }
 
-    pub fn svg_rect_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
+    pub fn svg_rect_length_px(&self, source: &str) -> Result<Option<f64>, InvalidCssLength> {
         if let Some(value) = self.absolute_length_or_number_px() {
             Ok(Some(value))
         } else if matches!(self.single_ident(), Some("auto" | "initial" | "unset")) {
