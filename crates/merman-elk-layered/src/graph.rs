@@ -16,7 +16,7 @@ use crate::random::{
 use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
 mod port_remap;
-pub(crate) use port_remap::FlatPortRemap;
+pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap};
 
 pub(crate) struct ReorderNodePortsWorkContext {
     shared_reference_work: usize,
@@ -26,13 +26,14 @@ pub(crate) struct ReorderNodePortsWorkContext {
 
 impl ReorderNodePortsWorkContext {
     pub(crate) fn new(graph: &LGraph) -> Result<Self, WorkError> {
-        Self::new_with_work_control(graph, &mut NoopWorkControl)
+        Self::new_with_work_control(graph, &mut NoopWorkControl, false).map(|(context, _)| context)
     }
 
     pub(crate) fn new_with_work_control(
         graph: &LGraph,
         work: &mut dyn WorkControl,
-    ) -> Result<Self, WorkError> {
+        mut can_defer: bool,
+    ) -> Result<(Self, bool), WorkError> {
         let initial_work = checked_add(graph.layerless_nodes.len(), graph.self_loop_holders.len())?;
         work.check(initial_work)?;
         work.charge(initial_work)?;
@@ -50,29 +51,55 @@ impl ReorderNodePortsWorkContext {
                 work.check(loop_work)?;
                 work.charge(loop_work)?;
                 *payload = checked_add(*payload, loop_payload)?;
+                if can_defer {
+                    let port_count = graph.layerless_nodes[holder.node].ports.len();
+                    can_defer = hyper_loop.ports.iter().all(|port| port.port < port_count)
+                        && hyper_loop.edges.iter().all(|edge| {
+                            edge.source_port < port_count && edge.target_port < port_count
+                        });
+                }
             }
         }
 
+        // Checking slots during the charged census is only a batching eligibility test.
+        // An origin outside the local slot range can retain the immediate path even if it
+        // belongs to another graph. Leave graph ID comparisons to the remapping walk.
+        let origin_slot_is_valid = |node: &LNode| {
+            node.origin_port
+                .as_ref()
+                .is_none_or(|origin| port_exists(graph, origin.port))
+        };
         let mut descendant_nodes = 0usize;
         let mut stack = graph
             .layerless_nodes
             .iter()
-            .filter_map(|node| node.nested_graph.as_deref())
+            .filter_map(|node| {
+                if can_defer {
+                    can_defer = origin_slot_is_valid(node)
+                        && node
+                            .long_edge_source
+                            .is_none_or(|port| port_exists(graph, port))
+                        && node
+                            .long_edge_target
+                            .is_none_or(|port| port_exists(graph, port));
+                }
+                node.nested_graph.as_deref()
+            })
             .collect::<Vec<_>>();
         while let Some(current) = stack.pop() {
             let scan_work = checked_add(1, current.layerless_nodes.len())?;
             work.check(scan_work)?;
             work.charge(scan_work)?;
             descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
-            stack.extend(
-                current
-                    .layerless_nodes
-                    .iter()
-                    .filter_map(|node| node.nested_graph.as_deref()),
-            );
+            stack.extend(current.layerless_nodes.iter().filter_map(|node| {
+                if can_defer {
+                    can_defer = origin_slot_is_valid(node);
+                }
+                node.nested_graph.as_deref()
+            }));
         }
 
-        Ok(Self {
+        let context = Self {
             shared_reference_work: checked_sum([
                 checked_mul(graph.edges.len(), 3)?,
                 checked_mul(graph.layerless_nodes.len(), 3)?,
@@ -81,7 +108,8 @@ impl ReorderNodePortsWorkContext {
             ])?,
             self_loop_holder_scan_work: graph.self_loop_holders.len(),
             self_loop_payload_by_node,
-        })
+        };
+        Ok((context, can_defer))
     }
 
     pub(crate) fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
@@ -1200,6 +1228,39 @@ impl LGraph {
         new_order: impl IntoIterator<Item = usize>,
         flat_remap: Option<&FlatPortRemap>,
     ) -> Option<Vec<usize>> {
+        let (old_to_new, changed) = self.permute_node_ports(node_index, new_order)?;
+        if changed {
+            if let Some(remap) = flat_remap {
+                remap.apply(self, node_index, &old_to_new);
+            } else {
+                self.remap_port_references(
+                    |owner| (owner == node_index).then_some(old_to_new.as_slice()),
+                    false,
+                    remap_port_slot,
+                );
+            }
+        }
+        Some(old_to_new)
+    }
+
+    /// Apply the first sorter permutation immediately. The census has checked node and holder
+    /// slots. Check other edge slots while repairing this owner's references in legacy order.
+    pub(crate) fn reorder_first_port_list(&mut self, node_index: usize, order: Vec<usize>) -> bool {
+        let Some((old_to_new, true)) = self.permute_node_ports(node_index, order) else {
+            return false;
+        };
+        self.remap_port_references(
+            |owner| (owner == node_index).then_some(old_to_new.as_slice()),
+            true,
+            remap_port_slot,
+        )
+    }
+
+    fn permute_node_ports(
+        &mut self,
+        node_index: usize,
+        new_order: impl IntoIterator<Item = usize>,
+    ) -> Option<(Vec<usize>, bool)> {
         let node = self.layerless_nodes.get(node_index)?;
         let port_count = node.ports.len();
         let new_order = new_order.into_iter().collect::<Vec<_>>();
@@ -1221,7 +1282,7 @@ impl LGraph {
             for port in &mut self.layerless_nodes[node_index].ports {
                 port.node = node_index;
             }
-            return Some(new_order);
+            return Some((new_order, false));
         }
 
         let ports = &mut self.layerless_nodes[node_index].ports;
@@ -1241,74 +1302,86 @@ impl LGraph {
                 destination = source;
             }
         }
-        drop(new_order);
+        Some((old_to_new, true))
+    }
 
-        if let Some(remap) = flat_remap {
-            remap.apply(self, node_index, &old_to_new);
-            return Some(old_to_new);
-        }
-
+    fn remap_port_references<'a>(
+        &mut self,
+        slots: impl Fn(usize) -> Option<&'a [usize]>,
+        mut can_defer: bool,
+        update: impl Fn(&mut usize, &[usize]),
+    ) -> bool {
+        let mut visit_edge_port = |port: &mut PortRef| {
+            if let Some(old_to_new) = slots(port.node) {
+                update(&mut port.port, old_to_new);
+            } else if can_defer {
+                can_defer = port_exists_in_nodes(&self.layerless_nodes, *port);
+            }
+        };
         for edge in &mut self.edges {
-            if edge.source.node == node_index {
-                edge.source.port = old_to_new[edge.source.port];
-            }
-            if edge.target.node == node_index {
-                edge.target.port = old_to_new[edge.target.port];
-            }
-            if let Some(port) = edge.original_opposite_port.as_mut()
-                && port.node == node_index
-            {
-                port.port = old_to_new[port.port];
+            visit_edge_port(&mut edge.source);
+            visit_edge_port(&mut edge.target);
+            if let Some(port) = edge.original_opposite_port.as_mut() {
+                visit_edge_port(port);
             }
         }
 
         for holder in &mut self.self_loop_holders {
-            if holder.node != node_index {
-                continue;
+            if let Some(old_to_new) = slots(holder.node) {
+                visit_self_loop_holder_port_slots(holder, |port| update(port, old_to_new));
             }
-            remap_self_loop_holder_ports(holder, &old_to_new);
         }
 
-        let graph_id = self.id.clone();
-        for node in &mut self.layerless_nodes {
-            update_graph_port_ref_after_reorder(
-                &mut node.origin_port,
-                graph_id.as_str(),
-                node_index,
-                &old_to_new,
-            );
-            if let Some(port) = node.long_edge_source.as_mut()
-                && port.node == node_index
-            {
-                port.port = old_to_new[port.port];
+        let remap_port = |port: &mut PortRef| {
+            if let Some(old_to_new) = slots(port.node) {
+                update(&mut port.port, old_to_new);
             }
-            if let Some(port) = node.long_edge_target.as_mut()
-                && port.node == node_index
-            {
-                port.port = old_to_new[port.port];
+        };
+
+        let graph_id = self.id.as_str();
+        for node in &mut self.layerless_nodes {
+            remap_origin_port(&mut node.origin_port, graph_id, &remap_port);
+            if let Some(port) = node.long_edge_source.as_mut() {
+                remap_port(port);
+            }
+            if let Some(port) = node.long_edge_target.as_mut() {
+                remap_port(port);
             }
             if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-                update_graph_port_refs_after_reorder(
-                    nested_graph,
-                    graph_id.as_str(),
-                    node_index,
-                    &old_to_new,
-                );
+                remap_descendant_origins(nested_graph, graph_id, &remap_port);
             }
         }
+        can_defer
+    }
 
-        Some(old_to_new)
+    fn remap_deferred_port_references<'a>(&mut self, slots: impl Fn(usize) -> Option<&'a [usize]>) {
+        self.remap_port_references(slots, false, |port, old_to_new| {
+            if let Some(&slot) = old_to_new.get(*port) {
+                *port = slot;
+            }
+        });
     }
 }
 
+fn remap_port_slot(port: &mut usize, old_to_new: &[usize]) {
+    *port = old_to_new[*port];
+}
+
 fn remap_self_loop_holder_ports(holder: &mut SelfLoopHolder, old_to_new: &[usize]) {
+    visit_self_loop_holder_port_slots(holder, |port| remap_port_slot(port, old_to_new));
+}
+
+fn visit_self_loop_holder_port_slots(
+    holder: &mut SelfLoopHolder,
+    mut visit: impl FnMut(&mut usize),
+) {
     for hyper_loop in &mut holder.hyper_loops {
         for port in &mut hyper_loop.ports {
-            port.port = old_to_new[port.port];
+            visit(&mut port.port);
         }
         for edge in &mut hyper_loop.edges {
-            edge.source_port = old_to_new[edge.source_port];
-            edge.target_port = old_to_new[edge.target_port];
+            visit(&mut edge.source_port);
+            visit(&mut edge.target_port);
         }
     }
 }
@@ -1388,8 +1461,11 @@ pub fn reverse_edge(graph: &mut LGraph, edge_index: usize, adapt_ports: bool) ->
 }
 
 fn port_exists(graph: &LGraph, port_ref: PortRef) -> bool {
-    graph
-        .layerless_nodes
+    port_exists_in_nodes(&graph.layerless_nodes, port_ref)
+}
+
+fn port_exists_in_nodes(nodes: &[LNode], port_ref: PortRef) -> bool {
+    nodes
         .get(port_ref.node)
         .and_then(|node| node.ports.get(port_ref.port))
         .is_some()
@@ -1417,35 +1493,23 @@ fn centered_port_position(node_size: LSize, side: PortSide) -> LPoint {
     }
 }
 
-fn update_graph_port_ref_after_reorder(
+fn remap_origin_port(
     graph_ref: &mut Option<GraphPortRef>,
     graph_id: &str,
-    node_index: usize,
-    old_to_new: &[usize],
+    remap: &impl Fn(&mut PortRef),
 ) {
     if let Some(port_ref) = graph_ref.as_mut()
         && port_ref.graph_id == graph_id
-        && port_ref.port.node == node_index
     {
-        port_ref.port.port = old_to_new[port_ref.port.port];
+        remap(&mut port_ref.port);
     }
 }
 
-fn update_graph_port_refs_after_reorder(
-    graph: &mut LGraph,
-    graph_id: &str,
-    node_index: usize,
-    old_to_new: &[usize],
-) {
+fn remap_descendant_origins(graph: &mut LGraph, graph_id: &str, remap: &impl Fn(&mut PortRef)) {
     for node in &mut graph.layerless_nodes {
-        update_graph_port_ref_after_reorder(
-            &mut node.origin_port,
-            graph_id,
-            node_index,
-            old_to_new,
-        );
+        remap_origin_port(&mut node.origin_port, graph_id, remap);
         if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            update_graph_port_refs_after_reorder(nested_graph, graph_id, node_index, old_to_new);
+            remap_descendant_origins(nested_graph, graph_id, remap);
         }
     }
 }
@@ -1814,6 +1878,35 @@ mod tests {
             Some(vec![0, 1, 2])
         );
         assert_eq!(graph, before);
+    }
+
+    #[test]
+    fn pending_port_maps_match_immediate_remaps_with_duplicate_ids_and_detached_edges() {
+        let mut immediate = port_reorder_reference_graph();
+        immediate.layerless_nodes[1].id = immediate.layerless_nodes[0].id.clone();
+        immediate.layerless_nodes[1]
+            .ports
+            .push(LPort::new("in", 1, PortType::Output));
+        immediate.layerless_nodes[0].ports[1].id = immediate.layerless_nodes[0].ports[0].id.clone();
+        immediate.detach_edge(1).unwrap();
+        let mut deferred = immediate.clone();
+        let mut pending = PendingPortRemap::default();
+
+        for (owner, order) in [
+            (0, vec![2, 0, 1]),
+            (1, vec![1, 0]),
+            (0, vec![0, 0, 1]),
+            (0, vec![0, 2, 1]),
+            (1, vec![0, 1]),
+        ] {
+            immediate.reorder_node_ports(owner, order.clone());
+            pending.reorder(&mut deferred, owner, order);
+        }
+        pending.apply(&mut deferred);
+
+        assert_eq!(deferred, immediate);
+        assert_eq!(deferred.edges[1].source, PortRef { node: 0, port: 1 });
+        assert!(!deferred.edge_source_attached(1));
     }
 
     #[test]
