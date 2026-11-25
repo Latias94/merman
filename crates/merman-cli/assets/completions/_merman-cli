@@ -265,6 +265,7 @@ platform\:"Query the platform'\''s font catalog. Platform metadata access is out
 compact\:""
 auto\:"Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow"))' \
 '--ascii-graph-presentation=[Permit a complete Plain graph document when bounded routing cannot draw the graph]:ASCII_GRAPH_PRESENTATION:(strict adaptive)' \
+'--ascii-graph-routing-space=[Use fixed node sizes and rank gaps for a flat Flowchart with strict presentation]:ASCII_GRAPH_ROUTING_SPACE:(expand fixed)' \
 '--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
 constrained\:"Constrained rendering for untrusted or publicly submitted documents"
 trusted-native\:"Local CLI and controlled native batch rendering"

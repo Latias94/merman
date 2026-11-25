@@ -1298,7 +1298,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__render)
-            opts="-o -f -C -q -s -c -t -b -w -H -I -h -V --output --fit-width --input-kind --format --svg-pipeline --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --theme --appearance --theme-precedence --background --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-graph-presentation --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-o -f -C -q -s -c -t -b -w -H -I -h -V --output --fit-width --input-kind --format --svg-pipeline --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --theme --appearance --theme-precedence --background --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-graph-presentation --ascii-graph-routing-space --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1682,6 +1682,10 @@ _merman__cli() {
                     ;;
                 --ascii-graph-presentation)
                     COMPREPLY=($(compgen -W "strict adaptive" -- "${cur}"))
+                    return 0
+                    ;;
+                --ascii-graph-routing-space)
+                    COMPREPLY=($(compgen -W "expand fixed" -- "${cur}"))
                     return 0
                     ;;
                 --resource-profile)
