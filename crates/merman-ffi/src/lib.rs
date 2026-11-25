@@ -9,6 +9,7 @@
 use merman::OperationControl;
 #[cfg(feature = "native-fonts")]
 use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
+use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::transport_handles::{HandleRegistry, OperationControlRegistry};
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
@@ -22,7 +23,6 @@ use merman_bindings_core::{
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::mem::{align_of, size_of};
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
@@ -1177,10 +1177,7 @@ impl merman_bindings_core::HostTextMeasurer for NativeHostTextMeasurer {
 }
 
 fn status_boundary(f: impl FnOnce() -> MermanNativeStatus) -> MermanNativeStatus {
-    match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(status) => status,
-        Err(_) => MERMAN_NATIVE_STATUS_PANIC,
-    }
+    catch_transport_unwind(f).unwrap_or(MERMAN_NATIVE_STATUS_PANIC)
 }
 
 unsafe fn result_status_boundary(
@@ -1188,9 +1185,9 @@ unsafe fn result_status_boundary(
     operation: MermanNativeOperationCode,
     f: impl FnOnce() -> MermanNativeStatus,
 ) -> MermanNativeStatus {
-    match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(status) => status,
-        Err(_) => {
+    match catch_transport_unwind(f) {
+        Some(status) => status,
+        None => {
             let failure = NativeFailure::new(
                 MERMAN_NATIVE_STATUS_PANIC,
                 "a Rust panic was caught at the native ABI boundary",
@@ -2750,7 +2747,7 @@ unsafe fn execute_collect_impl(
 }
 
 unsafe extern "C" fn native_result_free(result: *mut MermanNativeResult) {
-    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+    let _ = catch_transport_unwind(|| unsafe {
         if result.is_null() {
             return;
         }
@@ -2765,7 +2762,7 @@ unsafe extern "C" fn native_result_free(result: *mut MermanNativeResult) {
         let allocation_token = ptr::addr_of!((*result).allocation_token).read();
         ptr::write(result, initialized_native_result());
         release_result_allocation(allocation_token);
-    }));
+    });
 }
 
 #[cfg(test)]

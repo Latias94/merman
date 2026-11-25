@@ -31,6 +31,8 @@ mod svg_viewport;
 pub use svg_viewport::BindingSvgViewport;
 #[cfg(feature = "svg")]
 mod text_measurement;
+#[doc(hidden)]
+pub mod transport_boundary;
 mod transport_contract;
 #[doc(hidden)]
 pub mod transport_handles;

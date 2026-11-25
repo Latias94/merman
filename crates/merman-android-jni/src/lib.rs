@@ -22,6 +22,7 @@ use jni::{
     strings::JNIString,
     sys::{JNI_ERR, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6, jboolean, jint, jlong},
 };
+use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::transport_handles::HandleRegistry;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
@@ -34,7 +35,6 @@ use operation_control::JniOperationControlRegistry;
 use std::cell::Cell;
 use std::{
     ffi::c_void,
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, MutexGuard},
 };
 
@@ -309,13 +309,13 @@ pub unsafe extern "system" fn JNI_OnLoad(
     if vm.is_null() {
         return JNI_ERR;
     }
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
+    let outcome = catch_transport_unwind(|| {
         let vm = unsafe { JavaVM::from_raw(vm) };
         vm.with_top_local_frame(register_native_methods)
-    }));
+    });
     match outcome {
-        Ok(Ok(())) => JNI_VERSION_1_6,
-        Ok(Err(_)) | Err(_) => JNI_ERR,
+        Some(Ok(())) => JNI_VERSION_1_6,
+        Some(Err(_)) | None => JNI_ERR,
     }
 }
 

@@ -11,11 +11,11 @@ compile_error!("the Node candidates require the static layout-dagre capability r
 compile_error!("the Node candidates require the static layout-elk capability recipe");
 
 use std::borrow::Cow;
-#[cfg(not(target_arch = "wasm32"))]
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::LazyLock;
 use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
+use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
     BindingError, BindingErrorKind, BindingOperationKind, BindingOperationRequest,
@@ -1125,7 +1125,7 @@ fn binding_boundary<T>(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn transport_unwind_boundary<T>(operation: impl FnOnce() -> T) -> Result<T, ()> {
-    catch_unwind(AssertUnwindSafe(operation)).map_err(|_| ())
+    catch_transport_unwind(operation).ok_or(())
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -1,5 +1,6 @@
 use super::*;
 use std::collections::BTreeSet;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[repr(C)]
 struct StructSizeOnly {
@@ -2679,6 +2680,39 @@ fn engine_publication_rolls_back_result_failure_and_panic_before_exposure() {
             .is_none()
     );
     assert!(weak.upgrade().is_none());
+}
+
+#[cfg(panic = "unwind")]
+#[test]
+fn result_status_boundary_recovers_when_payload_drop_panics() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct PanickingPayload(Arc<AtomicBool>);
+
+    impl Drop for PanickingPayload {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+            panic!("synthetic panic in payload destructor");
+        }
+    }
+
+    let dropped = Arc::new(AtomicBool::new(false));
+    let mut result = native_result();
+    let status = unsafe {
+        result_status_boundary(&mut result, MERMAN_NATIVE_OPERATION_NONE, || {
+            std::panic::panic_any(PanickingPayload(Arc::clone(&dropped)))
+        })
+    };
+
+    assert!(dropped.load(Ordering::Relaxed));
+    assert_eq!(status, MERMAN_NATIVE_STATUS_PANIC);
+    let error = result_json(&result);
+    unsafe { native_result_free(&mut result) };
+    assert_eq!(error["status"], MERMAN_NATIVE_STATUS_PANIC);
+    assert_eq!(
+        error["message"],
+        "a Rust panic was caught at the native ABI boundary"
+    );
 }
 
 #[test]
