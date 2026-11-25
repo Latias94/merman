@@ -323,7 +323,7 @@ For dependency or feature ownership changes, run the artifact checks:
 ```bash
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages
-cargo run --locked -p xtask -- build-typst-package --profile publish \
+cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 

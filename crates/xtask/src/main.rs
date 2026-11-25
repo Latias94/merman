@@ -55,16 +55,22 @@ enum XtaskError {
     MissingReference(String),
     #[error("verification failed:\n{0}")]
     VerifyFailed(String),
+    #[cfg(feature = "wasm-host")]
     #[error("profile budget check failed:\n{0}")]
     ProfileBudgetFailed(String),
+    #[cfg(not(feature = "wasm-host"))]
+    #[error("{0}")]
+    WasmHostRequired(String),
     #[error("WASM size matrix failed:\n{0}")]
     WasmSizeMatrixFailed(String),
     #[error("workspace WASM build lock failed: {0}")]
     WasmBuildLockFailed(String),
     #[error("Typst package build failed:\n{0}")]
     TypstPackageFailed(String),
+    #[cfg(feature = "wasm-host")]
     #[error("Typst package smoke failed:\n{0}")]
     TypstPackageSmokeFailed(String),
+    #[cfg(feature = "wasm-host")]
     #[error("Typst plugin smoke failed:\n{0}")]
     TypstPluginSmokeFailed(String),
     #[error("snapshot update failed: {0}")]
@@ -116,10 +122,10 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
     println!("  check-alignment");
-    println!("  profile-budget");
+    println!("  profile-budget (requires --features wasm-host)");
     println!("  wasm-size-matrix");
-    println!("  build-typst-package");
-    println!("  typst-package-smoke");
+    println!("  build-typst-package (requires --features wasm-host)");
+    println!("  typst-package-smoke (requires --features wasm-host)");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
     println!("  import-upstream-examples");
@@ -169,9 +175,11 @@ fn print_help(topic: Option<&str>) {
         "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
     );
     println!(
-        "  - `cargo run -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json`"
+        "  - `cargo run -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json`"
     );
-    println!("  - `cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst <path>`");
+    println!(
+        "  - `cargo run -p xtask --features wasm-host -- typst-package-smoke --skip-wasm-build --typst <path>`"
+    );
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
     println!(
         "  - `cargo run -p xtask -- adopt-upstream-svg-provenance --diagram <name|all> [--check-only | --allow-downgrade]`"
@@ -242,10 +250,19 @@ fn main() -> Result<(), XtaskError> {
         "verify-native-abi" => cmd::verify_native_abi(args.collect()),
         "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
-        "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
-        "build-typst-package" => cmd::build_typst_package(args.collect()),
-        "typst-package-smoke" => cmd::typst_package_smoke(args.collect()),
+        #[cfg(feature = "wasm-host")]
+        "profile-budget" => cmd::profile_budget::profile_budget(args.collect()),
+        #[cfg(feature = "wasm-host")]
+        "build-typst-package" => cmd::typst_package::build_typst_package(args.collect()),
+        #[cfg(feature = "wasm-host")]
+        "typst-package-smoke" => cmd::typst_package::typst_package_smoke(args.collect()),
+        #[cfg(not(feature = "wasm-host"))]
+        "profile-budget" | "build-typst-package" | "typst-package-smoke" => {
+            Err(XtaskError::WasmHostRequired(format!(
+                "`{cmd_name}` requires the `wasm-host` feature. Run `cargo run -p xtask --features wasm-host -- {cmd_name} ...`."
+            )))
+        }
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),

@@ -385,6 +385,8 @@ class PlannerTests(unittest.TestCase):
 
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
         fixtures = {
+            "crates/xtask/Cargo.toml": {"core", "hygiene", "typst"},
+            "crates/xtask/src/cmd/profile_budget.rs": {"core", "hygiene", "typst"},
             "crates/xtask/src/cmd/wasm_size_matrix.rs": {
                 "core",
                 "hygiene",

@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+wasm-host = ["dep:wasmi"]
+
 [dependencies]
 base64.workspace = true
 brotli.workspace = true
@@ -51,7 +54,7 @@ sha2.workspace = true
 thiserror.workspace = true
 tempfile = "3.27.0"
 toml.workspace = true
-wasmi.workspace = true
+wasmi = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

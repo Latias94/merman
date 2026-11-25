@@ -92,8 +92,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         );
         println!("  --root-parity   add parity-root to the single SVG DOM comparison suite");
         println!("  --strict        run every optional gate plus materialized release, generated,");
-        println!("                  Web, Playground browser, and VS Code evidence");
-        println!("                  and cargo test --workspace --doc");
+        println!("                  Web, Playground browser, and VS Code evidence, plus xtask");
+        println!("                  Wasm host tests and cargo test --workspace --doc");
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -232,16 +232,17 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     println!("\n== cargo nextest ==");
+    let test_features = if options.strict {
+        "merman/compat-json,merman/editor-facts,xtask/wasm-host"
+    } else {
+        "merman/compat-json,merman/editor-facts"
+    };
     let mut nextest_cmd = Command::new("cargo");
     nextest_cmd
-        .arg("nextest")
-        .arg("run")
-        .arg("--workspace")
-        .arg("--features")
-        .arg("merman/compat-json,merman/editor-facts")
+        .args(["nextest", "run", "--workspace", "--features", test_features])
         .current_dir(&workspace_root);
     run_checked(
-        "cargo nextest run --workspace --features merman/compat-json,merman/editor-facts",
+        &format!("cargo nextest run --workspace --features {test_features}"),
         &mut nextest_cmd,
     )?;
 

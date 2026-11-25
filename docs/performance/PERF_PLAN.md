@@ -123,9 +123,10 @@ Remaining attribution leads, not admitted speedups:
 
 [WASM_SIZE_BUDGETS.json](../release/WASM_SIZE_BUDGETS.json) owns Typst's raw, stripped, gzip and
 Brotli ceilings. [Web size measurement](../../crates/xtask/src/cmd/wasm_size_matrix.rs) reports
-final assembled npm WASM without byte ceilings; `build-typst-package --profile publish --budget-file ...` owns the
-[Typst package](../../crates/xtask/src/cmd/typst_package.rs) and its verified artifact. Retain functional
-smoke and installed-consumer checks alongside size reporting. The [semantic baseline](semantic_wasm_budget_2026-10-25.md)
+final assembled npm WASM without byte ceilings. `build-typst-package --profile publish --budget-file ...`
+uses xtask's `wasm-host` feature and owns the [Typst package](../../crates/xtask/src/cmd/typst_package.rs)
+and its verified artifact. Retain functional smoke and installed-consumer checks alongside size reporting.
+The [semantic baseline](semantic_wasm_budget_2026-10-25.md)
 and [binding refresh](binding_wasm_budget_2026-11-01.md) retain historical size decisions; restoring math to
 Web full/render changes capabilities and is not an equal-capability size optimization.
 

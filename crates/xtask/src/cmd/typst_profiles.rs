@@ -33,6 +33,7 @@ struct RawTypstProfileCatalog {
 ///
 /// Its Cargo feature selection and runtime surface deliberately live in
 /// `capabilities/artifact-profiles-v2.json`, not in the Typst descriptor.
+#[cfg(any(feature = "wasm-host", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypstPackageProfile {
     name: String,
@@ -40,11 +41,13 @@ pub(crate) struct TypstPackageProfile {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypstProfileCatalog {
+    #[cfg(any(feature = "wasm-host", test))]
     plugin_abi_version: u32,
     package: String,
     manifest_path: PathBuf,
     artifact_name: String,
     artifact_profile: String,
+    #[cfg(any(feature = "wasm-host", test))]
     package_profile: TypstPackageProfile,
 }
 
@@ -59,12 +62,14 @@ struct CargoPackage {
     name: String,
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 impl TypstPackageProfile {
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 impl TypstProfileCatalog {
     pub(crate) fn plugin_abi_version(&self) -> u32 {
         self.plugin_abi_version
@@ -75,6 +80,7 @@ impl TypstProfileCatalog {
         &self.manifest_path
     }
 
+    #[cfg(feature = "wasm-host")]
     pub(crate) fn artifact_name(&self) -> &str {
         &self.artifact_name
     }
@@ -221,11 +227,13 @@ fn validate_and_build(
     validate_catalog(&raw, &manifest)?;
 
     Ok(TypstProfileCatalog {
+        #[cfg(any(feature = "wasm-host", test))]
         plugin_abi_version: raw.plugin_abi_version,
         package: raw.package,
         manifest_path: PathBuf::from(raw.manifest_path),
         artifact_name: raw.artifact_name,
         artifact_profile: raw.artifact_profile,
+        #[cfg(any(feature = "wasm-host", test))]
         package_profile: TypstPackageProfile {
             name: raw.package_profile,
         },

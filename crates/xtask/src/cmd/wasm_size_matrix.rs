@@ -1,8 +1,10 @@
+#[cfg(feature = "wasm-host")]
+use crate::cmd::typst_artifact::VerifiedTypstArtifact;
 use crate::{
     XtaskError,
     cmd::{
         artifact_profiles::load_wasm_size_artifact_profiles, paths,
-        typst_artifact::VerifiedTypstArtifact, wasm_build_lock::WorkspaceWasmBuildLock,
+        wasm_build_lock::WorkspaceWasmBuildLock,
     },
 };
 use flate2::{Compression, write::GzEncoder};
@@ -13,6 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(any(feature = "wasm-host", test))]
 const WASM_SIZE_BUDGET_SCHEMA_VERSION: u32 = 2;
 const WEB_PACKAGE_PROVENANCE: &str = "provenance.json";
 const WEB_PACKAGE_WASM: &str = "wasm/merman_wasm_bg.wasm";
@@ -89,6 +92,7 @@ impl CompressionSource {
     }
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WasmSizeBudgets {
@@ -99,6 +103,7 @@ struct WasmSizeBudgets {
     artifact_profiles: BTreeMap<String, WasmArtifactBudget>,
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WasmArtifactBudget {
@@ -214,6 +219,7 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     Ok(())
 }
 
+#[cfg(feature = "wasm-host")]
 pub(crate) fn check_typst_artifact_budget(
     verified: &VerifiedTypstArtifact,
     budget_file: &Path,
@@ -337,7 +343,9 @@ fn print_usage(artifacts: &[WasmArtifact]) {
     );
     println!("  Web sizes are reported without byte ceilings");
     println!("  --web-package-root  measure assembled Web package artifacts instead of rebuilding");
-    println!("  Typst: use build-typst-package --profile publish --budget-file <path>");
+    println!(
+        "  Typst uses `cargo run -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file <path>`"
+    );
     println!();
     println!("Artifact profiles:");
     for artifact in artifacts
@@ -499,6 +507,7 @@ fn load_web_package_artifacts(
     Ok(selected)
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 fn load_budget_file(
     path: &Path,
     artifacts: &[WasmArtifact],
@@ -510,6 +519,7 @@ fn load_budget_file(
     Ok(budgets)
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 fn validate_budget_coverage(
     budgets: &WasmSizeBudgets,
     artifacts: &[WasmArtifact],
@@ -577,6 +587,7 @@ fn resolve_repo_path(path: &Path) -> PathBuf {
     resolved.canonicalize().unwrap_or(resolved)
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 fn check_budget(
     artifact: &WasmArtifact,
     measurement: &WasmMeasurement,
@@ -629,6 +640,7 @@ fn check_budget(
     failures
 }
 
+#[cfg(any(feature = "wasm-host", test))]
 fn check_metric(
     failures: &mut Vec<String>,
     artifact_profile: &str,
@@ -673,7 +685,7 @@ fn selected_artifacts<'a>(
         .any(|artifact| artifact.surface == Surface::Typst)
     {
         return Err(XtaskError::WasmSizeMatrixFailed(
-            "Typst size production moved to build-typst-package --profile publish --budget-file <path>; wasm-size-matrix only measures Web artifacts"
+            "For Typst sizes, run `cargo run -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file <path>`. wasm-size-matrix measures Web artifacts."
                 .to_string(),
         ));
     }
@@ -863,9 +875,9 @@ mod tests {
             let error = selected_artifacts(&options, artifacts()).unwrap_err();
 
             assert!(
-                error
-                    .to_string()
-                    .contains("build-typst-package --profile publish --budget-file"),
+                error.to_string().contains(
+                    "cargo run -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file"
+                ),
                 "{error}"
             );
         }

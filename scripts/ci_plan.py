@@ -154,6 +154,8 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/", _CORE_OWNERS),
 )
 _CRATE_EXACT_OWNER_RULES = {
+    "crates/xtask/Cargo.toml": frozenset({"core", "hygiene", "typst"}),
+    "crates/xtask/src/cmd/profile_budget.rs": frozenset({"core", "hygiene", "typst"}),
     "crates/xtask/src/cmd/wasm_size_matrix.rs": frozenset({"core", "hygiene", "typst", "web"}),
     "crates/xtask/src/cmd/wasm_module_surface.rs": frozenset({"core", "hygiene", "typst"}),
 }

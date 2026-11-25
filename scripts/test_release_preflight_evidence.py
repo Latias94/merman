@@ -510,8 +510,13 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIn("SOURCE_TREE:", web)
         self.assertIn("if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}", web)
         typst = self.job(workflow, "typst-owner-preflight")
-        self.assertIn("build-typst-package --profile publish", typst)
-        self.assertIn("typst-package-smoke --profile publish --skip-wasm-build --examples-only", typst)
+        self.assertIn("cargo run --locked -p xtask -- verify-typst-profile-constants", typst)
+        host_command = "cargo run --locked -p xtask --features wasm-host -- "
+        self.assertIn(host_command + "build-typst-package --profile publish", typst)
+        self.assertIn(
+            host_command + "typst-package-smoke --profile publish --skip-wasm-build --examples-only",
+            typst,
+        )
         publish = self.job(workflow, "publish")
         self.assertIn("publish-receipted", publish)
         self.assertIn('test "$observed" = "$SOURCE_SHA"', publish)
