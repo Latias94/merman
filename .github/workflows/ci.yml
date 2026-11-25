@@ -620,6 +620,8 @@ jobs:
             cargo nextest run --locked -p merman-render --no-default-features --features "$features" \
               --lib --test diagram_features --test typed_family_api_test --cargo-quiet
           done
+          cargo nextest run --locked -p merman-render-core --no-default-features --features layout-shoal \
+            --lib -E 'test(layout_work::)' --cargo-quiet
 
       - name: Test isolated consumers without diagram families
         run: |

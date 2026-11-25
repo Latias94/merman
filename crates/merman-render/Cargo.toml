@@ -89,7 +89,7 @@ diagram-state = ["merman-model/diagram-state", "markdown-labels"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/resources-swimlane", "dep:merman-render-flow", "dep:imagesize", "markdown-labels"]
 diagram-timeline = ["merman-model/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
-diagram-treemap = ["merman-model/diagram-treemap"]
+diagram-treemap = ["merman-model/diagram-treemap", "dep:merman-render-charts", "merman-render-charts/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn", "dep:merman-render-charts", "merman-render-charts/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley"]
 diagram-xychart = ["merman-model/diagram-xychart", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
@@ -101,9 +101,9 @@ system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchmark-stages"]
-layout-cytoscape = ["dep:manatee"]
+layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre"]
-layout-elk = ["dep:merman-layout-elk"]
+layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
 layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal", "merman-render-graph?/layout-shoal"]
 math = [
   "dep:ratex-font",
@@ -118,7 +118,7 @@ math = [
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["css-style", "svg-parse", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["icon-registry", "svg-parse", "text-layout", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }
@@ -153,8 +153,6 @@ svgtypes.workspace = true
 thiserror.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
-unicode-width.workspace = true
-unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]

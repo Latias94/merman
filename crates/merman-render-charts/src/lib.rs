@@ -14,6 +14,10 @@ pub mod radar;
 #[doc(hidden)]
 pub mod sankey;
 
+#[cfg(feature = "diagram-treemap")]
+#[doc(hidden)]
+pub mod treemap;
+
 #[cfg(feature = "diagram-venn")]
 #[doc(hidden)]
 pub mod venn;

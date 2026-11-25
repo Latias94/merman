@@ -70,7 +70,9 @@ fn architecture_icon_scope(
             prefix
         }
     };
-    branch_prefix.scope_parts(&[local_id, "-icon"], work_meter)
+    branch_prefix
+        .scope_parts(&[local_id, "-icon"], work_meter)
+        .map_err(Into::into)
 }
 
 fn write_diagram_service_id(

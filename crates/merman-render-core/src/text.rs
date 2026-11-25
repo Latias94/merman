@@ -2,9 +2,30 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "text-layout")]
+mod create_text;
 mod css_font;
+#[cfg(feature = "text-layout")]
+mod css_font_stack;
+#[cfg(feature = "text-layout")]
+mod fonts;
+#[cfg(feature = "text-layout")]
+mod heuristic;
+#[cfg(feature = "text-layout")]
+pub mod line_break;
 mod whitespace;
+#[cfg(feature = "text-layout")]
+pub use create_text::non_markdown_svg_words;
 pub use css_font::{is_css_wide_keyword, resolve_css_font_weight};
+#[cfg(feature = "text-layout")]
+pub use css_font_stack::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_default};
+#[cfg(feature = "text-layout")]
+pub use fonts::{
+    FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
+    FontStack, FontStackError, FontStyle, GenericFontFamily,
+};
+#[cfg(feature = "text-layout")]
+pub use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use whitespace::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

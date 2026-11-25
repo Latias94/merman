@@ -1,11 +1,11 @@
 //! Source-owned CSS font decisions.
 
-use super::{GenericFontFamily, validate_font_stack_families};
+use super::{GenericFontFamily, fonts::validate_font_stack_families};
 use cssparser::Parser;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedCssFontStack {
+pub struct ParsedCssFontStack {
     families: Vec<String>,
     generic_families: BTreeMap<usize, GenericFontFamily>,
 }
@@ -15,7 +15,7 @@ impl ParsedCssFontStack {
         self.generic_families.get(&index).copied()
     }
 
-    pub(crate) fn as_css(&self) -> String {
+    pub fn as_css(&self) -> String {
         let mut out = String::new();
         for (index, family) in self.families.iter().enumerate() {
             if index > 0 {
@@ -32,7 +32,7 @@ impl ParsedCssFontStack {
     }
 }
 
-pub(crate) fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
+pub fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
     let mut parser = Parser::new(value);
     let mut families = Vec::new();
     let mut generic_families = BTreeMap::new();
@@ -80,7 +80,7 @@ pub(crate) fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
 
 /// User-agent font defaults for the inline HTML elements modeled by label measurement.
 /// Author declarations override these values; relative values use the element's parent.
-pub(crate) fn xhtml_font_default(element: &str, property: &str) -> Option<&'static str> {
+pub fn xhtml_font_default(element: &str, property: &str) -> Option<&'static str> {
     match (element, property) {
         ("strong" | "b", "font-weight") => Some("bolder"),
         ("cite" | "dfn" | "em" | "i" | "var", "font-style") => Some("italic"),

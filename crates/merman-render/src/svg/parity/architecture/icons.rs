@@ -1,10 +1,11 @@
 use crate::resources::OperationWorkMeter;
 use crate::svg::IconRegistry;
-use crate::svg::icon_registry::{IconIdScope, scope_svg_internal_ids};
+use crate::svg::icon_registry::{
+    IconIdScope, IconRenderRequest, render_icon, rewrite_builtin_icon_ids,
+};
 use merman_model::presentation::PresentationConfig;
 
 use super::super::{SvgOutput, fmt_into};
-use std::borrow::Cow;
 
 pub(super) fn arch_icon_body(name: &str) -> &'static str {
     // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
@@ -53,13 +54,15 @@ pub(super) fn write_arch_icon_svg(
     native: Option<&crate::architecture::ArchitectureNativeStyle>,
 ) -> crate::Result<()> {
     let body = arch_icon_body(icon_name);
+    let rewritten;
     let body = if arch_icon_body_has_internal_ids(icon_name) {
         let id_scope = id_scope.ok_or_else(|| {
             crate::Error::icon_processing("built-in icon with internal IDs is missing its scope")
         })?;
-        Cow::Owned(scope_svg_internal_ids(body, id_scope)?)
+        rewritten = rewrite_builtin_icon_ids(body, id_scope)?;
+        rewritten.untrusted_xml_parts().1
     } else {
-        Cow::Borrowed(body)
+        body
     };
     out.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" width=""#);
     fmt_into(out, icon_size_px);
@@ -71,7 +74,7 @@ pub(super) fn write_arch_icon_svg(
         let ink = super::super::escape_attr(&native.icon_ink);
         out.push_str(&body.replace("#087ebf", "none").replace("#fff", &ink));
     } else {
-        out.push_str(body.as_ref());
+        out.push_str(body);
     }
     out.push_str("</svg>");
     Ok(())
@@ -92,16 +95,19 @@ pub(super) fn write_arch_icon_svg_with_registry(
     native: Option<&crate::architecture::ArchitectureNativeStyle>,
 ) -> crate::Result<()> {
     let svg = match resources.icon_registry {
-        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-            icon_name,
-            width_px: icon_size_px,
-            height_px: icon_size_px,
-            fallback_prefix: Some("mermaid-architecture"),
-            extra_class: None,
-            id_scope,
-            effective_config: resources.effective_config,
-            work_meter: resources.work_meter,
-        })?,
+        Some(registry) => render_icon(
+            registry,
+            IconRenderRequest {
+                icon_name,
+                width_px: icon_size_px,
+                height_px: icon_size_px,
+                fallback_prefix: Some("mermaid-architecture"),
+                extra_class: None,
+                id_scope,
+                effective_config: resources.effective_config,
+                work_meter: resources.work_meter,
+            },
+        )?,
         None => None,
     };
     if let Some(svg) = svg {

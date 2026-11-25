@@ -95,13 +95,13 @@ fn estimate_grapheme_width_em(grapheme: &str) -> f64 {
     }
 }
 
-pub(crate) fn append_text_width_em(width_em: &mut f64, text: &str) {
+pub fn append_text_width_em(width_em: &mut f64, text: &str) {
     for grapheme in text.graphemes(true) {
         *width_em += estimate_grapheme_width_em(grapheme);
     }
 }
 
-pub(crate) fn estimate_text_width_em(text: &str) -> f64 {
+pub fn estimate_text_width_em(text: &str) -> f64 {
     let mut width_em = 0.0;
     append_text_width_em(&mut width_em, text);
     width_em

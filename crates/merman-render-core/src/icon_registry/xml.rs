@@ -21,8 +21,11 @@ const SCOPED_ID_HASH_HEX_LEN: usize = 16;
 const DEFS_OPEN: &str = "<defs>";
 const DEFS_CLOSE: &str = "</defs>";
 
-#[derive(Debug)]
-pub(super) struct ValidatedIconBody {
+/// Structurally admitted icon XML with a bounded internal ID rewrite plan.
+/// Host content still requires the renderer's sanitizer and terminal SVG validation.
+#[doc(hidden)]
+#[cfg_attr(test, derive(Debug))]
+pub struct ParsedIconBody {
     source: Arc<str>,
     pack_index: usize,
     element_count: usize,
@@ -34,30 +37,53 @@ pub(super) struct ValidatedIconBody {
     defs_content_scoped_len: usize,
 }
 
+/// Definition placement for the renderer's icon transform.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub enum IconDefsPlacement {
+    Inline,
+    Hoisted,
+}
+
+/// Internal ID rewrite output before any terminal SVG policy has been applied.
+#[doc(hidden)]
+pub struct UntrustedIconXml {
+    xml: String,
+    defs_end: usize,
+}
+
+impl UntrustedIconXml {
+    /// Returns hoisted definitions and body content in that order.
+    /// Either fragment may be empty. The renderer must sanitize and validate assembled host SVG.
+    pub fn untrusted_xml_parts(&self) -> (&str, &str) {
+        self.xml.split_at(self.defs_end)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct XmlAdmissionUsage {
     pub(super) retained_plan_bytes: usize,
     pub(super) build_work_units: usize,
 }
 
-impl ValidatedIconBody {
-    #[cfg(any(
-        test,
-        all(
-            feature = "diagram-architecture",
-            any(feature = "layout-cytoscape", feature = "layout-shoal")
-        )
-    ))]
-    pub(super) fn parse(
-        body: String,
+impl ParsedIconBody {
+    /// Parses source-owned artwork under the same fixed XML limits as a pack body.
+    /// The result carries structural admission only.
+    #[doc(hidden)]
+    pub fn parse_builtin_fragment(body: &'static str) -> Result<Self, IconRegistryBuildError> {
+        Self::parse(body, 0, &IconRegistryBuildLimits::fixed())
+    }
+
+    fn parse(
+        body: &str,
         pack_index: usize,
         limits: &IconRegistryBuildLimits,
     ) -> Result<Self, IconRegistryBuildError> {
         Self::parse_with_usage(body, pack_index, limits, 0, 0).map(|(body, _)| body)
     }
 
-    pub(super) fn parse_with_usage(
-        body: String,
+    fn parse_with_usage(
+        body: &str,
         pack_index: usize,
         limits: &IconRegistryBuildLimits,
         retained_plan_bytes_used: usize,
@@ -80,7 +106,7 @@ impl ValidatedIconBody {
             .ok_or_else(|| arithmetic_error(pack_index, "icon XML wrapper length overflowed"))?;
         let mut wrapped = String::with_capacity(wrapped_len);
         wrapped.push_str(WRAPPER_PREFIX);
-        wrapped.push_str(&body);
+        wrapped.push_str(body);
         wrapped.push_str(WRAPPER_SUFFIX);
 
         let stats = validate_wrapped_fragment(&wrapped, pack_index, limits)?;
@@ -98,7 +124,7 @@ impl ValidatedIconBody {
             .checked_add(structure_work)
             .ok_or_else(|| arithmetic_error(pack_index, "icon XML work accounting overflowed"))?;
         let (mut edits, defs) = plan_xml_rewrites(
-            &body,
+            body,
             &wrapped,
             pack_index,
             limits,
@@ -121,7 +147,7 @@ impl ValidatedIconBody {
         edits.sort_unstable_by(|left, right| {
             (left.start, left.end, left.id_index).cmp(&(right.start, right.end, right.id_index))
         });
-        validate_edit_order(&body, &edits, pack_index)?;
+        validate_edit_order(body, &edits, pack_index)?;
         let scoped_len = checked_scoped_len(body.len(), &edits, pack_index)?;
         let omitted_defs_scoped_len =
             checked_ranges_scoped_len(defs.iter().map(DefsRange::omission), &edits, pack_index)?;
@@ -155,31 +181,57 @@ impl ValidatedIconBody {
         ))
     }
 
-    pub(super) fn source_len(&self) -> usize {
+    pub fn source_len(&self) -> usize {
         self.source.len()
     }
 
-    pub(super) const fn element_count(&self) -> usize {
+    pub const fn element_count(&self) -> usize {
         self.element_count
     }
 
-    pub(super) const fn edit_count(&self) -> usize {
+    pub const fn edit_count(&self) -> usize {
         self.edits.len()
     }
 
-    pub(super) const fn uses_xlink(&self) -> bool {
+    pub const fn uses_xlink(&self) -> bool {
         self.uses_xlink
     }
 
-    /// Returns the exact output size for any scope.
-    ///
-    /// The scope contributes only a fixed-width FNV-1a digest. All checked arithmetic is performed
-    /// while the body is admitted, so render-time callers can pre-charge this value directly.
-    pub(super) const fn scoped_len(&self) -> usize {
+    /// Returns the exact fragment bytes for any scope and the selected definition placement.
+    /// The renderer accounts for its SVG and transform wrappers separately.
+    pub fn rewritten_len(&self, defs: IconDefsPlacement) -> Result<usize, IconRegistryBuildError> {
+        if matches!(defs, IconDefsPlacement::Inline) {
+            return Ok(self.scoped_len);
+        }
         self.scoped_len
+            .checked_sub(self.omitted_defs_scoped_len)
+            .and_then(|length| length.checked_add(self.defs_content_scoped_len))
+            .and_then(|length| {
+                (self.defs_content_scoped_len > 0)
+                    .then_some(DEFS_OPEN.len() + DEFS_CLOSE.len())
+                    .map_or(Some(length), |defs_wrapper| {
+                        length.checked_add(defs_wrapper)
+                    })
+            })
+            .ok_or_else(|| arithmetic_error(self.pack_index, "transformed icon size overflowed"))
     }
 
-    pub(super) fn scope(&self, scope: IconIdScope) -> Result<String, IconRegistryBuildError> {
+    /// Applies the admitted ID plan. The fragments remain untrusted XML.
+    pub fn rewrite_ids(
+        &self,
+        scope: IconIdScope,
+        defs: IconDefsPlacement,
+    ) -> Result<UntrustedIconXml, IconRegistryBuildError> {
+        match defs {
+            IconDefsPlacement::Inline => self.rewrite_inline(scope),
+            IconDefsPlacement::Hoisted => self.rewrite_hoisted(scope),
+        }
+    }
+
+    fn rewrite_inline(
+        &self,
+        scope: IconIdScope,
+    ) -> Result<UntrustedIconXml, IconRegistryBuildError> {
         let mut output = String::with_capacity(self.scoped_len);
         let scope_hash = scope.hash();
         let mut source_offset = 0usize;
@@ -203,36 +255,17 @@ impl ValidatedIconBody {
                 "scoped icon body length did not match its validated plan",
             ));
         }
-        Ok(output)
+        Ok(UntrustedIconXml {
+            xml: output,
+            defs_end: 0,
+        })
     }
 
-    pub(super) fn transformed_scoped_len(
-        &self,
-        wrapper_start_len: usize,
-        wrapper_end_len: usize,
-    ) -> Result<usize, IconRegistryBuildError> {
-        self.scoped_len
-            .checked_sub(self.omitted_defs_scoped_len)
-            .and_then(|length| length.checked_add(self.defs_content_scoped_len))
-            .and_then(|length| length.checked_add(wrapper_start_len))
-            .and_then(|length| length.checked_add(wrapper_end_len))
-            .and_then(|length| {
-                (self.defs_content_scoped_len > 0)
-                    .then_some(DEFS_OPEN.len() + DEFS_CLOSE.len())
-                    .map_or(Some(length), |defs_wrapper| {
-                        length.checked_add(defs_wrapper)
-                    })
-            })
-            .ok_or_else(|| arithmetic_error(self.pack_index, "transformed icon size overflowed"))
-    }
-
-    pub(super) fn scope_transformed(
+    fn rewrite_hoisted(
         &self,
         scope: IconIdScope,
-        wrapper_start: &str,
-        wrapper_end: &str,
-    ) -> Result<String, IconRegistryBuildError> {
-        let projected = self.transformed_scoped_len(wrapper_start.len(), wrapper_end.len())?;
+    ) -> Result<UntrustedIconXml, IconRegistryBuildError> {
+        let projected = self.rewritten_len(IconDefsPlacement::Hoisted)?;
         let scope_hash = scope.hash();
         let mut output = String::with_capacity(projected);
 
@@ -253,7 +286,7 @@ impl ValidatedIconBody {
             output.push_str(DEFS_CLOSE);
         }
 
-        output.push_str(wrapper_start);
+        let defs_end = output.len();
         let mut source_offset = 0usize;
         let mut edit_index = 0usize;
         for defs in &self.defs {
@@ -284,27 +317,28 @@ impl ValidatedIconBody {
             &mut output,
             self.pack_index,
         )?;
-        output.push_str(wrapper_end);
-
         if output.len() != projected {
             return Err(arithmetic_error(
                 self.pack_index,
                 "transformed icon length did not match its validated XML plan",
             ));
         }
-        Ok(output)
+        Ok(UntrustedIconXml {
+            xml: output,
+            defs_end,
+        })
     }
 }
 
-pub(super) fn validate_icon_body(
+pub(super) fn parse_icon_body(
     body: String,
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     retained_plan_bytes_used: usize,
     build_work_units_used: usize,
-) -> Result<(Arc<ValidatedIconBody>, XmlAdmissionUsage), IconRegistryBuildError> {
-    let (body, usage) = ValidatedIconBody::parse_with_usage(
-        body,
+) -> Result<(Arc<ParsedIconBody>, XmlAdmissionUsage), IconRegistryBuildError> {
+    let (body, usage) = ParsedIconBody::parse_with_usage(
+        &body,
         pack_index,
         limits,
         retained_plan_bytes_used,
@@ -676,7 +710,7 @@ fn validate_xml_chars(
     pack_index: usize,
     message: &'static str,
 ) -> Result<(), IconRegistryBuildError> {
-    if content.chars().all(crate::xml::is_xml_1_0_char) {
+    if content.chars().all(crate::xml_chars::is_xml_1_0_char) {
         Ok(())
     } else {
         Err(invalid_xml_error(pack_index, message))
@@ -693,7 +727,7 @@ fn validate_general_reference(
             "icon body contains an invalid XML character reference",
         )
     })? {
-        if crate::xml::is_xml_1_0_char(value) {
+        if crate::xml_chars::is_xml_1_0_char(value) {
             return Ok(());
         }
         return Err(invalid_xml_error(
@@ -771,7 +805,7 @@ fn plan_xml_rewrites(
     retained_plan_bytes_used: usize,
     build_work_units_used: usize,
 ) -> Result<(Vec<IdEdit>, Vec<DefsRange>), IconRegistryBuildError> {
-    let document = crate::xml_dom::Document::parse(wrapped).map_err(|_| {
+    let document = roxmltree::Document::parse(wrapped).map_err(|_| {
         invalid_xml_error(
             pack_index,
             "icon body could not be represented as strict XML",
@@ -789,7 +823,7 @@ fn plan_xml_rewrites(
 
     for attribute in document
         .descendants()
-        .filter(crate::xml_dom::Node::is_element)
+        .filter(roxmltree::Node::is_element)
         .flat_map(|node| node.attributes())
         .filter(|attribute| attribute.namespace().is_none() && attribute.name() == "id")
     {
@@ -833,7 +867,7 @@ fn plan_xml_rewrites(
     if !id_indexes.is_empty() {
         for attribute in document
             .descendants()
-            .filter(crate::xml_dom::Node::is_element)
+            .filter(roxmltree::Node::is_element)
             .flat_map(|node| node.attributes())
         {
             if attribute.namespace().is_none() && attribute.name() == "id" {
@@ -1002,7 +1036,7 @@ fn push_id_edit(
 
 fn plan_defs_ranges(
     body: &str,
-    document: &crate::xml_dom::Document<'_>,
+    document: &roxmltree::Document<'_>,
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     retained_plan_bytes_used: usize,
@@ -1217,7 +1251,7 @@ struct SemanticEdit {
 }
 
 fn attribute_reference_edits(
-    attribute: crate::xml_dom::Attribute<'_, '_>,
+    attribute: roxmltree::Attribute<'_, '_>,
     id_indexes: &HashMap<String, usize>,
     base_count: usize,
     maximum: usize,
@@ -1656,7 +1690,7 @@ fn decode_xml_reference(raw: &str, ampersand: usize) -> Option<(char, usize)> {
         _ if entity.starts_with('#') => entity[1..].parse::<u32>().ok().and_then(char::from_u32)?,
         _ => return None,
     };
-    if !crate::xml::is_xml_1_0_char(character) {
+    if !crate::xml_chars::is_xml_1_0_char(character) {
         return None;
     }
     Some((character, content_end.checked_add(1)?))
@@ -1928,8 +1962,13 @@ mod tests {
         super::super::icon_id_scope_for_test(value)
     }
 
-    fn parse(body: &str) -> Result<ValidatedIconBody, IconRegistryBuildError> {
-        ValidatedIconBody::parse(body.to_owned(), 7, &IconRegistryBuildLimits::fixed())
+    fn parse(body: &str) -> Result<ParsedIconBody, IconRegistryBuildError> {
+        ParsedIconBody::parse(body, 7, &IconRegistryBuildLimits::fixed())
+    }
+
+    fn rewrite_inline(body: &ParsedIconBody, name: &str) -> UntrustedIconXml {
+        body.rewrite_ids(scope(name), IconDefsPlacement::Inline)
+            .expect("scope succeeds")
     }
 
     fn scoped_id(scope: &str, index: usize) -> String {
@@ -1946,19 +1985,24 @@ mod tests {
         )
         .expect("valid icon body");
 
-        let first = body.scope(scope("diagram-a")).expect("scope succeeds");
-        let repeated = body.scope(scope("diagram-a")).expect("scope succeeds");
-        let other = body.scope(scope("diagram-b")).expect("scope succeeds");
+        let first = rewrite_inline(&body, "diagram-a");
+        let repeated = rewrite_inline(&body, "diagram-a");
+        let other = rewrite_inline(&body, "diagram-b");
+        let (defs, content) = first.untrusted_xml_parts();
 
-        assert_eq!(first, repeated);
-        assert_ne!(first, other);
-        assert_eq!(first.len(), body.scoped_len());
+        assert!(defs.is_empty());
+        assert_eq!((defs, content), repeated.untrusted_xml_parts());
+        assert_ne!((defs, content), other.untrusted_xml_parts());
+        assert_eq!(
+            content.len(),
+            body.rewritten_len(IconDefsPlacement::Inline).unwrap()
+        );
         assert_eq!(body.element_count(), 4);
         assert_eq!(body.edit_count(), 2);
     }
 
     #[test]
-    fn transformed_defs_extraction_uses_the_xml_plan() {
+    fn hoisted_defs_are_separate_from_untrusted_body_content() {
         let body = parse(concat!(
             "<!-- <defs>not-an-element</defs> -->",
             "<defs><linearGradient id=\"paint\"/></defs>",
@@ -1966,19 +2010,22 @@ mod tests {
         ))
         .expect("valid icon body");
         let transformed = body
-            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
-            .expect("XML-planned transform assembly succeeds");
+            .rewrite_ids(scope("diagram-a"), IconDefsPlacement::Hoisted)
+            .expect("XML-planned definitions can be hoisted");
         let paint = scoped_id("diagram-a", 0);
+        let (defs, content) = transformed.untrusted_xml_parts();
 
         assert_eq!(
-            transformed.len(),
-            body.transformed_scoped_len(3, 4).unwrap()
+            defs.len() + content.len(),
+            body.rewritten_len(IconDefsPlacement::Hoisted).unwrap()
         );
         assert_eq!(
-            transformed,
-            format!(
-                "<defs><linearGradient id=\"{paint}\"/></defs><g><!-- <defs>not-an-element</defs> --><path fill=\"url(#{paint})\"/></g>"
-            )
+            defs,
+            format!("<defs><linearGradient id=\"{paint}\"/></defs>")
+        );
+        assert_eq!(
+            content,
+            format!("<!-- <defs>not-an-element</defs> --><path fill=\"url(#{paint})\"/>")
         );
     }
 
@@ -1987,16 +2034,15 @@ mod tests {
         let body = parse("<defs><defs><path/></defs></defs><circle/>")
             .expect("nested SVG defs are valid XML");
         let transformed = body
-            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
+            .rewrite_ids(scope("diagram-a"), IconDefsPlacement::Hoisted)
             .expect("outermost defs are extracted once");
+        let (defs, content) = transformed.untrusted_xml_parts();
 
+        assert_eq!(defs, "<defs><defs><path/></defs></defs>");
+        assert_eq!(content, "<circle/>");
         assert_eq!(
-            transformed,
-            "<defs><defs><path/></defs></defs><g><circle/></g>"
-        );
-        assert_eq!(
-            transformed.len(),
-            body.transformed_scoped_len(3, 4).unwrap()
+            defs.len() + content.len(),
+            body.rewritten_len(IconDefsPlacement::Hoisted).unwrap()
         );
     }
 
@@ -2005,17 +2051,19 @@ mod tests {
         let limits = IconRegistryBuildLimits::fixed();
         let defs_count = limits.max_xml_elements_per_body / 2;
         let source = "<defs><path/></defs>".repeat(defs_count);
-        let body = ValidatedIconBody::parse(source, 7, &limits)
+        let body = ParsedIconBody::parse(&source, 7, &limits)
             .expect("the maximum element count remains transformable");
         let transformed = body
-            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
+            .rewrite_ids(scope("diagram-a"), IconDefsPlacement::Hoisted)
             .expect("many defs are assembled without repeated body copies");
-        let expected = format!("<defs>{}</defs><g></g>", "<path/>".repeat(defs_count));
+        let (defs, content) = transformed.untrusted_xml_parts();
+        let expected = format!("<defs>{}</defs>", "<path/>".repeat(defs_count));
 
-        assert_eq!(transformed, expected);
+        assert_eq!(defs, expected);
+        assert!(content.is_empty());
         assert_eq!(
-            transformed.len(),
-            body.transformed_scoped_len(3, 4).unwrap()
+            defs.len(),
+            body.rewritten_len(IconDefsPlacement::Hoisted).unwrap()
         );
     }
 
@@ -2024,13 +2072,13 @@ mod tests {
         let source = r#"<path id="shape" aria-controls="shape shape"/>"#;
         let mut exact = IconRegistryBuildLimits::fixed();
         exact.max_id_rewrite_edits_per_body = 3;
-        let body = ValidatedIconBody::parse(source.to_owned(), 7, &exact)
-            .expect("the exact edit limit is admitted");
+        let body =
+            ParsedIconBody::parse(source, 7, &exact).expect("the exact edit limit is admitted");
         assert_eq!(body.edit_count(), 3);
 
         let mut plus_one = exact;
         plus_one.max_id_rewrite_edits_per_body = 2;
-        let error = ValidatedIconBody::parse(source.to_owned(), 7, &plus_one)
+        let error = ParsedIconBody::parse(source, 7, &plus_one)
             .expect_err("limit plus one must fail before publishing a plan");
         assert_eq!(
             error.limit_id(),
@@ -2046,13 +2094,13 @@ mod tests {
         let exact_bytes = size_of::<IdEdit>();
         let mut exact = IconRegistryBuildLimits::fixed();
         exact.max_retained_xml_plan_bytes = exact_bytes;
-        let (_, usage) = ValidatedIconBody::parse_with_usage(source.to_owned(), 7, &exact, 0, 0)
+        let (_, usage) = ParsedIconBody::parse_with_usage(source, 7, &exact, 0, 0)
             .expect("the exact retained plan limit is admitted");
         assert_eq!(usage.retained_plan_bytes, exact_bytes);
 
         let mut plus_one = exact;
         plus_one.max_retained_xml_plan_bytes = exact_bytes - 1;
-        let error = ValidatedIconBody::parse(source.to_owned(), 7, &plus_one)
+        let error = ParsedIconBody::parse(source, 7, &plus_one)
             .expect_err("plan bytes above the aggregate limit must fail");
         assert_eq!(
             error.limit_id(),
@@ -2071,7 +2119,8 @@ mod tests {
         assert!(body.uses_xlink());
 
         let scope_name = "diagram-node";
-        let scoped = body.scope(scope(scope_name)).expect("scope succeeds");
+        let rewritten = rewrite_inline(&body, scope_name);
+        let (_, scoped) = rewritten.untrusted_xml_parts();
         let clip = scoped_id(scope_name, 0);
         let paint = scoped_id(scope_name, 1);
         let shape = scoped_id(scope_name, 2);
@@ -2111,7 +2160,8 @@ mod tests {
     fn namespaced_attributes_are_preserved_verbatim() {
         let source = r##"<g xmlns:meta="urn:test" meta:id="shape" meta:href="#shape" meta:begin="shape.end" meta:aria-controls="shape" meta:fill="url(#shape)"><path id="shape"/><use href="#shape"/></g>"##;
         let body = parse(source).expect("declared metadata namespace is valid");
-        let scoped = body.scope(scope("diagram-a")).expect("scope succeeds");
+        let rewritten = rewrite_inline(&body, "diagram-a");
+        let (_, scoped) = rewritten.untrusted_xml_parts();
 
         assert!(scoped.contains(r#"meta:id="shape""#), "{scoped}");
         assert!(scoped.contains(r##"meta:href="#shape""##), "{scoped}");
@@ -2155,7 +2205,8 @@ mod tests {
         )
         .expect("standard XML references are accepted");
         let id = scoped_id("diagram-a", 0);
-        let scoped = body.scope(scope("diagram-a")).expect("scope succeeds");
+        let rewritten = rewrite_inline(&body, "diagram-a");
+        let (_, scoped) = rewritten.untrusted_xml_parts();
 
         assert!(scoped.contains(&format!(r#"id="{id}""#)), "{scoped}");
         assert!(
@@ -2173,7 +2224,7 @@ mod tests {
     fn element_and_depth_limits_use_structured_resource_errors() {
         let mut limits = IconRegistryBuildLimits::fixed();
         limits.max_xml_elements_per_body = 1;
-        let element_error = ValidatedIconBody::parse("<path/><path/>".into(), 2, &limits)
+        let element_error = ParsedIconBody::parse("<path/><path/>", 2, &limits)
             .expect_err("element limit must be enforced");
         assert_eq!(
             element_error.kind(),
@@ -2186,7 +2237,7 @@ mod tests {
 
         let mut limits = IconRegistryBuildLimits::fixed();
         limits.max_xml_depth_per_body = 1;
-        let depth_error = ValidatedIconBody::parse("<g><path/></g>".into(), 3, &limits)
+        let depth_error = ParsedIconBody::parse("<g><path/></g>", 3, &limits)
             .expect_err("depth limit must be enforced");
         assert_eq!(
             depth_error.kind(),

@@ -4,7 +4,7 @@ use super::is_ecmascript_whitespace;
 
 /// Borrowed tokens equivalent to Mermaid's non-Markdown
 /// `line.trim().match(/<[^>]+>|[^\s<>]+/g)` operation.
-pub(crate) struct NonMarkdownSvgWords<'a> {
+struct NonMarkdownSvgWords<'a> {
     line: &'a str,
     offset: usize,
     closing_angle_exhausted: bool,
@@ -75,7 +75,7 @@ impl<'a> Iterator for NonMarkdownSvgWords<'a> {
     }
 }
 
-pub(crate) fn non_markdown_svg_words(line: &str) -> NonMarkdownSvgWords<'_> {
+pub fn non_markdown_svg_words(line: &str) -> impl Iterator<Item = &str> {
     NonMarkdownSvgWords::new(line)
 }
 

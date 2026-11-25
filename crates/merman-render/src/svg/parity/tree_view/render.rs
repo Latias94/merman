@@ -1,6 +1,8 @@
 use super::super::*;
 use crate::model::TreeViewNodeLayout;
-use crate::svg::icon_registry::mermaid_unknown_icon_svg;
+use crate::svg::icon_registry::{
+    IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
+};
 use crate::tree_view::{
     TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
@@ -309,21 +311,24 @@ fn tree_view_icon_svg(
     let node_id = node_id.to_string();
     let icon_svg = match icon_registry {
         Some(registry) => {
-            let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+            let prefix = IconIdScopePrefix::from_parts(
                 &["tree-view-", diagram_id.semantic_str(), "-"],
                 work_meter,
             )?;
             let id_scope = prefix.scope_parts(&[&node_id], work_meter)?;
-            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-                icon_name: icon,
-                width_px: TREE_VIEW_ICON_SIZE,
-                height_px: TREE_VIEW_ICON_SIZE,
-                fallback_prefix: None,
-                extra_class: None,
-                id_scope,
-                effective_config,
-                work_meter,
-            })?
+            render_icon(
+                registry,
+                IconRenderRequest {
+                    icon_name: icon,
+                    width_px: TREE_VIEW_ICON_SIZE,
+                    height_px: TREE_VIEW_ICON_SIZE,
+                    fallback_prefix: None,
+                    extra_class: None,
+                    id_scope,
+                    effective_config,
+                    work_meter,
+                },
+            )?
         }
         None => None,
     }

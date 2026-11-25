@@ -9,7 +9,13 @@ pub mod config;
 #[doc(hidden)]
 pub mod entities;
 mod geometry;
+#[cfg(feature = "icon-registry")]
+#[doc(hidden)]
+pub mod icon_registry;
 mod layout;
+#[cfg(feature = "svg-output")]
+#[doc(hidden)]
+pub mod layout_work;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod mermaid_style;
@@ -34,6 +40,9 @@ pub mod svg_output;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_scan;
+#[cfg(feature = "svg-parse")]
+#[doc(hidden)]
+pub mod svg_xml;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod text;
@@ -43,6 +52,8 @@ pub mod theme_svg;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod xml;
+#[cfg(any(feature = "icon-registry", feature = "svg-output"))]
+mod xml_chars;
 
 pub use geometry::{Bounds, LayoutPoint};
 pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};

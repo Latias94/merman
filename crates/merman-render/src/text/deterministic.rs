@@ -1,13 +1,12 @@
 //! Deterministic text measurement and wrapping fallback.
 
-use super::heuristic::append_text_width_em;
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
 #[cfg(test)]
 use super::wrap::GraphemeSplitStats as LongWordSplitStats;
 use super::wrap::visit_grapheme_lines_to_width;
 use super::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
-    trim_html_collapsible_ascii_whitespace,
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use std::convert::Infallible;
 use std::sync::Arc;

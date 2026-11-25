@@ -2,7 +2,7 @@
 
 use std::{fmt, sync::Arc};
 
-use merman_render_core::text::is_css_wide_keyword;
+use super::is_css_wide_keyword;
 
 const MAX_FONT_STACK_ENTRIES: usize = 32;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
@@ -278,7 +278,7 @@ pub struct FontStack {
     families: Arc<[String]>,
 }
 
-pub(crate) fn validate_font_stack_families(
+pub(super) fn validate_font_stack_families(
     families: impl IntoIterator<Item = impl Into<String>>,
 ) -> Result<Vec<String>, FontStackError> {
     let families = families

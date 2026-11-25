@@ -1,12 +1,7 @@
-mod create_text;
-mod css_font;
 mod deterministic;
 mod flowchart_parity;
-mod fonts;
-mod heuristic;
 pub(crate) mod html_wrap;
 mod icons;
-mod line_break;
 #[cfg(feature = "markdown-labels")]
 mod markdown;
 #[cfg(feature = "markdown-labels")]
@@ -18,18 +13,11 @@ mod types;
 mod wrap;
 mod xhtml_label;
 
-pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::{
     DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
 };
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
-pub(crate) use fonts::validate_font_stack_families;
-pub use fonts::{
-    FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
-    FontStack, FontStackError, FontStyle, GenericFontFamily,
-};
-pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub(crate) use html_wrap::HtmlWhiteSpace;
 pub use icons::replace_fontawesome_icons;
 pub use line_break::split_html_br_lines;
@@ -51,6 +39,7 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+use merman_render_core::text::line_break;
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
 pub use metrics::measure_html_with_inline_styles;
@@ -76,13 +65,19 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, mermaid_markdown_to_wrapped_word_lines,
 };
 
-pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_default};
+pub(crate) use merman_render_core::text::{
+    ParsedCssFontStack, append_text_width_em, estimate_text_width_em, non_markdown_svg_words,
+    parse_css_font_stack, xhtml_font_default,
+};
 
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_render_core::text::is_css_wide_keyword;
 #[cfg(any(feature = "diagram-git-graph", feature = "diagram-treemap"))]
 pub(crate) use merman_render_core::text::trim_start_ecmascript_whitespace;
-pub use merman_render_core::text::{TextMetrics, TextStyle, WrapMode};
+pub use merman_render_core::text::{
+    FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
+    FontStack, FontStackError, FontStyle, GenericFontFamily, TextMetrics, TextStyle, WrapMode,
+};
 pub(crate) use merman_render_core::text::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
     trim_ecmascript_whitespace, trim_end_html_collapsible_ascii_whitespace,

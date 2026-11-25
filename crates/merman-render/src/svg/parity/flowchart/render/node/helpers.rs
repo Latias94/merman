@@ -1,6 +1,8 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
-use crate::svg::icon_registry::mermaid_unknown_icon_svg;
+use crate::svg::icon_registry::{
+    IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
+};
 use crate::svg::parity::flowchart::document_ids::FlowchartDocumentId;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
@@ -23,21 +25,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
             })?;
     let icon = match ctx.icon_registry {
         Some(registry) => {
-            let id_scope = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
-                &[id_scope.as_str()],
-                ctx.work_meter,
+            let id_scope = IconIdScopePrefix::from_parts(&[id_scope.as_str()], ctx.work_meter)?
+                .scope_parts(&[], ctx.work_meter)?;
+            render_icon(
+                registry,
+                IconRenderRequest {
+                    icon_name,
+                    width_px: icon_size,
+                    height_px: icon_size,
+                    fallback_prefix: None,
+                    extra_class: None,
+                    id_scope,
+                    effective_config: ctx.config,
+                    work_meter: ctx.work_meter,
+                },
             )?
-            .scope_parts(&[], ctx.work_meter)?;
-            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-                icon_name,
-                width_px: icon_size,
-                height_px: icon_size,
-                fallback_prefix: None,
-                extra_class: None,
-                id_scope,
-                effective_config: ctx.config,
-                work_meter: ctx.work_meter,
-            })?
         }
         None => None,
     };

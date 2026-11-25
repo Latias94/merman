@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use super::limits::{IconRegistryBuildLimits, IconRegistryResourceLimitId};
-use super::xml::{ValidatedIconBody, validate_icon_body};
+use super::xml::{ParsedIconBody, parse_icon_body};
 use super::{IconRegistryBuildError, IconRegistryBuildErrorKind};
 
 const VALIDATION_SENTINEL: &str = "icon registry input validation failed";
@@ -42,16 +42,42 @@ impl IconTransform {
     }
 }
 
+/// Alias-resolved geometry and the admitted XML body of one icon.
+#[doc(hidden)]
 #[derive(Clone)]
-pub(super) struct ResolvedIcon {
-    pub(super) body: Arc<ValidatedIconBody>,
-    pub(super) left: f64,
-    pub(super) top: f64,
-    pub(super) width: f64,
-    pub(super) height: f64,
-    pub(super) h_flip: bool,
-    pub(super) v_flip: bool,
-    pub(super) rotate: u8,
+pub struct ResolvedIcon {
+    body: Arc<ParsedIconBody>,
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+    h_flip: bool,
+    v_flip: bool,
+    rotate: u8,
+}
+
+impl ResolvedIcon {
+    /// Returns the source view box as left, top, width and height before applying transforms.
+    pub const fn view_box(&self) -> [f64; 4] {
+        [self.left, self.top, self.width, self.height]
+    }
+
+    pub const fn h_flip(&self) -> bool {
+        self.h_flip
+    }
+
+    pub const fn v_flip(&self) -> bool {
+        self.v_flip
+    }
+
+    /// Returns the rotation in quarter turns.
+    pub const fn rotate(&self) -> u8 {
+        self.rotate
+    }
+
+    pub fn parsed_body(&self) -> &ParsedIconBody {
+        &self.body
+    }
 }
 
 pub(super) struct ResolvedPack {
@@ -416,7 +442,7 @@ impl GeometryOverrides {
 
 struct RawIcon {
     name: String,
-    body: Arc<ValidatedIconBody>,
+    body: Arc<ParsedIconBody>,
     geometry: GeometryOverrides,
     transform: IconTransform,
 }
@@ -1064,7 +1090,7 @@ impl<'de> Visitor<'de> for IconVisitor<'_, '_> {
             self.state
                 .schema_error::<A::Error>("icon definition is missing its body")
         })?;
-        let (validated, xml_usage) = validate_icon_body(
+        let (parsed, xml_usage) = parse_icon_body(
             body,
             self.state.pack_index,
             &self.state.limits,
@@ -1076,7 +1102,7 @@ impl<'de> Visitor<'de> for IconVisitor<'_, '_> {
 
         Ok(RawIcon {
             name: self.name,
-            body: validated,
+            body: parsed,
             geometry,
             transform,
         })

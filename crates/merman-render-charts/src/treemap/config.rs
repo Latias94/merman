@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use merman_render_core::config::{config_bool, config_f64, config_string};
 use serde_json::Value;
 
 const DEFAULT_USE_MAX_WIDTH: bool = true;
@@ -9,18 +9,18 @@ const DEFAULT_NODE_WIDTH: f64 = 100.0;
 const DEFAULT_NODE_HEIGHT: f64 = 40.0;
 const DEFAULT_VALUE_FORMAT: &str = ",";
 
-pub(crate) struct TreemapConfigView<'a> {
+pub(super) struct TreemapConfigView<'a> {
     treemap_config: &'a Value,
 }
 
 impl<'a> TreemapConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(super) fn new(effective_config: &'a Value) -> Self {
         Self {
             treemap_config: effective_config.get("treemap").unwrap_or(&Value::Null),
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> TreemapLayoutSettings {
+    pub(super) fn layout_settings(&self) -> TreemapLayoutSettings {
         // Mermaid treemap defaults live in `defaultConfig.ts`, not in the YAML schema.
         // Keep these in sync with:
         // - `repo-ref/mermaid/packages/mermaid/src/defaultConfig.ts`
@@ -64,14 +64,14 @@ impl<'a> TreemapConfigView<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TreemapLayoutSettings {
-    pub(crate) use_max_width: bool,
-    pub(crate) padding: f64,
-    pub(crate) diagram_padding: f64,
-    pub(crate) show_values: bool,
-    pub(crate) node_width: f64,
-    pub(crate) node_height: f64,
-    pub(crate) value_format: String,
+pub(super) struct TreemapLayoutSettings {
+    pub(super) use_max_width: bool,
+    pub(super) padding: f64,
+    pub(super) diagram_padding: f64,
+    pub(super) show_values: bool,
+    pub(super) node_width: f64,
+    pub(super) node_height: f64,
+    pub(super) value_format: String,
 }
 
 #[cfg(test)]

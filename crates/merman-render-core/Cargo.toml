@@ -16,8 +16,11 @@ third-party-bundle = true
 default = []
 benchmark-stages = ["merman-model?/benchmark-stages"]
 css-style = ["dep:cssparser", "dep:merman-markup", "dep:merman-model", "dep:serde_json", "dep:unicode-segmentation"]
+icon-registry = ["resources", "dep:quick-xml", "dep:roxmltree", "dep:serde_json"]
 route-paint = ["dep:kurbo"]
+layout-cytoscape = ["svg-output", "dep:manatee"]
 layout-dagre = ["svg-output", "dep:dugong"]
+layout-elk = ["svg-output", "dep:merman-layout-elk"]
 layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
 resources = ["dep:merman-model", "dep:thiserror"]
 resources-agentflow = ["resources", "merman-model/diagram-agentflow"]
@@ -30,6 +33,7 @@ resources-zenuml = ["resources", "merman-model/diagram-zenuml"]
 svg-output = ["resources", "dep:memchr", "dep:merman-markup", "dep:ryu-js", "dep:serde_json", "merman-model/compat-json", "merman-model/html-entities"]
 svg-parse = ["svg-output", "dep:quick-xml"]
 test-support = []
+text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unicode-width"]
 theme-svg = ["svg-output", "dep:merman-theme-contract"]
 
 [dependencies]
@@ -37,16 +41,21 @@ cssparser = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 memchr = { workspace = true, optional = true }
+manatee = { workspace = true, optional = true }
+merman-layout-elk = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+unicode-linebreak = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-core = { workspace = true, features = ["diagram-flowchart", "diagram-zenuml", "presentation", "test-support"] }

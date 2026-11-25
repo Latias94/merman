@@ -2710,7 +2710,6 @@ dependencies = [
  "merman-render-sequence",
  "merman-render-structured",
  "merman-theme-contract",
- "merman-unicode-linebreak",
  "pulldown-cmark",
  "quick-xml",
  "ratex-font",
@@ -2729,7 +2728,6 @@ dependencies = [
  "svgtypes 0.16.2",
  "thiserror 2.0.21",
  "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]
@@ -2756,12 +2754,15 @@ dependencies = [
  "cssparser",
  "dugong",
  "kurbo 0.13.1",
+ "manatee",
  "memchr",
  "merman-core",
+ "merman-layout-elk",
  "merman-layout-shoal",
  "merman-markup",
  "merman-model",
  "merman-theme-contract",
+ "merman-unicode-linebreak",
  "quick-xml",
  "roxmltree 0.21.2",
  "ryu-js",
@@ -2769,6 +2770,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

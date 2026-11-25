@@ -41,13 +41,13 @@ pub fn split_html_br_lines(text: &str) -> Vec<&str> {
 }
 
 /// Splits tags matched by Mermaid's `common.lineBreakRegex` (`/<\/?br\s*\/?>/gi`).
-pub(crate) fn split_mermaid_common_br_lines(text: &str) -> Vec<&str> {
+pub fn split_mermaid_common_br_lines(text: &str) -> Vec<&str> {
     split_br_lines(text, true)
 }
 
 /// Replaces tags matched by Mermaid's `common.lineBreakRegex` (`/<\/?br\s*\/?>/gi`).
 /// ELK applies this before Markdown parsing, including for State and Class edge labels.
-pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_, str> {
+pub fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_, str> {
     let mut output: Option<String> = None;
     let mut copied_until = 0;
     for (start, end) in mermaid_br_ranges(text, true) {
@@ -74,7 +74,7 @@ pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_
 /// ASCII digit, where UAX #14 keeps the hyphen attached to the number. CSS `white-space:
 /// break-spaces` additionally permits a break after every preserved U+0020, so runs of spaces
 /// are divided without discarding the spaces themselves.
-pub(crate) fn html_break_spaces_segments(text: &str) -> Vec<&str> {
+pub fn html_break_spaces_segments(text: &str) -> Vec<&str> {
     match html_break_spaces_segments_with_checkpoints(text, &mut || {
         Ok::<(), std::convert::Infallible>(())
     }) {
@@ -84,7 +84,7 @@ pub(crate) fn html_break_spaces_segments(text: &str) -> Vec<&str> {
 }
 
 /// Shares browser break opportunities with cancellable SVG label conversion.
-pub(crate) fn html_break_spaces_segments_with_checkpoints<'a, E>(
+fn html_break_spaces_segments_with_checkpoints<'a, E>(
     text: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<&'a str>, E> {
@@ -94,7 +94,7 @@ pub(crate) fn html_break_spaces_segments_with_checkpoints<'a, E>(
 
 /// The action available at the end of an atomic HTML line-box segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HtmlBreakKind {
+pub enum HtmlBreakKind {
     /// An ordinary discretionary break without an inserted glyph.
     Ordinary,
     /// A U+00AD opportunity that displays a hyphen only when the break is selected.
@@ -105,13 +105,13 @@ pub(crate) enum HtmlBreakKind {
 
 /// A borrowed atomic segment together with its line break action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct HtmlBreakSegment<'a> {
-    pub(crate) text: &'a str,
-    pub(crate) end: HtmlBreakKind,
+pub struct HtmlBreakSegment<'a> {
+    pub text: &'a str,
+    pub end: HtmlBreakKind,
 }
 
 /// Shares browser break opportunities and conditional glyphs with cancellable wrapping.
-pub(crate) fn html_break_spaces_segments_with_metadata_and_checkpoints<'a, E>(
+pub fn html_break_spaces_segments_with_metadata_and_checkpoints<'a, E>(
     text: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<HtmlBreakSegment<'a>>, E> {
@@ -226,7 +226,7 @@ impl<C: FnMut() -> Result<(), E>, E> Iterator for CheckpointChars<'_, '_, C, E> 
 /// Deriving this from the same atomic segments used by wrapping and min-content sizing keeps
 /// callers from guessing breakability from ASCII whitespace alone. A single segment means that
 /// shrinking the containing block cannot reflow the text without an additional CSS breaking rule.
-pub(crate) fn html_has_soft_break_opportunity(text: &str) -> bool {
+pub fn html_has_soft_break_opportunity(text: &str) -> bool {
     html_break_spaces_segments(text).len() > 1
 }
 

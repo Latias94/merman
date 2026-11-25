@@ -8,13 +8,7 @@ pub use text::{
     escape_xml_serialized_text_into, escaped_xml_len,
 };
 
-pub fn is_xml_1_0_char(ch: char) -> bool {
-    matches!(ch, '\u{9}' | '\u{A}' | '\u{D}')
-        || matches!(
-            ch,
-            '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
-        )
-}
+pub use crate::xml_chars::is_xml_1_0_char;
 
 /// Removes scalar values that XML 1.0 cannot serialize, without allocating for ordinary text.
 pub fn strip_forbidden_xml_1_0_chars(value: &str) -> Cow<'_, str> {
