@@ -190,9 +190,13 @@ fn read_svg_input(
 }
 
 fn read_svg_text(value: JsString<'_>, field: &str, limit: usize) -> napi::Result<String> {
-    wire::ensure_field_bytes(value.utf8_len()?, field, limit)
-        .map_err(wire::caller_options_error)
-        .map_err(napi_binding_error)?;
+    // Each UTF-16 code unit contributes at most three UTF-8 bytes, even for a replacement
+    // scalar. When the unit count is inconclusive, check the exact byte size before copying.
+    if value.utf16_len()? > limit / 3 {
+        wire::ensure_field_bytes(value.utf8_len()?, field, limit)
+            .map_err(wire::caller_options_error)
+            .map_err(napi_binding_error)?;
+    }
     // UTF-8 conversion in N-API can replace lone UTF-16 surrogates. Decode those units strictly,
     // including for callers invoking the private addon without going through the facade.
     value.into_utf16()?.as_str().map_err(|_| {
