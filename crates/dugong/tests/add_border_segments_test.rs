@@ -1,6 +1,6 @@
 use dugong::add_border_segments;
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, NodeLabel};
+use dugong::{BorderSide, DummyKind, EdgeLabel, GraphLabel, NodeLabel};
 
 fn compound_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
@@ -78,8 +78,8 @@ fn add_border_segments_adds_a_border_for_a_single_rank_subgraph() {
     assert_eq!(
         g.node(bl),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderLeft".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Left),
             rank: Some(1),
             width: 0.0,
             height: 0.0,
@@ -90,8 +90,8 @@ fn add_border_segments_adds_a_border_for_a_single_rank_subgraph() {
     assert_eq!(
         g.node(br),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderRight".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Right),
             rank: Some(1),
             width: 0.0,
             height: 0.0,
@@ -120,8 +120,8 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     assert_eq!(
         g.node(&bl1),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderLeft".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Left),
             rank: Some(1),
             width: 0.0,
             height: 0.0,
@@ -132,8 +132,8 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     assert_eq!(
         g.node(&br1),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderRight".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Right),
             rank: Some(1),
             width: 0.0,
             height: 0.0,
@@ -148,8 +148,8 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     assert_eq!(
         g.node(&bl2),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderLeft".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Left),
             rank: Some(2),
             width: 0.0,
             height: 0.0,
@@ -160,8 +160,8 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     assert_eq!(
         g.node(&br2),
         Some(&NodeLabel {
-            dummy: Some("border".to_string()),
-            border_type: Some("borderRight".to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(BorderSide::Right),
             rank: Some(2),
             width: 0.0,
             height: 0.0,

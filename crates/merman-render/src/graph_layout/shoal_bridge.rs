@@ -190,7 +190,7 @@ pub(crate) fn solve(
     ))]
     kernel_bench::capture(measured, options);
     let graph = project_input(measured, &placement, work)?;
-    let solved = crate::layout_work::measure_layout_solve!(shoal::layout_with_control(
+    let solved = crate::layout_work::measure_layout_solve!(shoal::layout_geometry_with_control(
         &graph, &options, scratch, work
     ))
     .map_err(|error| work.map_shoal_error(error))?;
@@ -217,7 +217,7 @@ fn placed_label(
 
 pub(super) fn project_output(
     measured: &MeasuredGraph,
-    solved: shoal::LayoutOutput,
+    solved: shoal::LayoutGeometry,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<SolvedGraph> {
     if measured.nodes.len() != solved.nodes.len()

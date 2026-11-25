@@ -803,7 +803,7 @@ mod tests {
         feature = "diagram-class"
     ))]
     #[test]
-    fn recovery_snapshots_skip_lalrpop_editor_collectors_and_construct_once() {
+    fn recovery_snapshots_skip_rich_editor_collectors_and_construct_once() {
         for source in [
             "sequenceDiagram\nAlice->>Bob: 終\n",
             "sequenceDiagram\nAlice->>Bob: 終\ninvalid ???\n",

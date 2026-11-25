@@ -1,13 +1,3 @@
-include_checked_in_lalrpop_parser!(
-    #[allow(
-        clippy::empty_line_after_outer_attr,
-        clippy::type_complexity,
-        clippy::result_large_err
-    )]
-    sequence_grammar,
-    "sequence_grammar.rs"
-);
-
 // The source grammar and typed consumers share the model-owned numeric protocol.
 use merman_model::families::sequence::{
     LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_ALT_ELSE, LINETYPE_ALT_END,
@@ -37,6 +27,7 @@ mod db;
 mod lexer;
 mod model;
 mod parse;
+mod parser;
 #[cfg(feature = "presentation")]
 mod presentation;
 

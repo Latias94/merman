@@ -943,7 +943,7 @@ mod font_style_tests {
             "fontFamily": "RootFallback",
             "themeVariables": {"fontFamily": "ThemeWinner"}
         }));
-        let cfg = IshikawaConfigView::new(config.as_value()).layout_settings();
+        let cfg = IshikawaConfigView::new(&config).layout_settings();
         let typography = IshikawaTypographyPlan::resolve(&config, cfg.font_size);
         let probe = FontProbe(std::cell::RefCell::new(Vec::new()));
         let model = IshikawaDiagramModel {

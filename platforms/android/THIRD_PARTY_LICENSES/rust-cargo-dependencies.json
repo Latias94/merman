@@ -94,7 +94,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "0649fe5c6467b3ad4d59d86ddc561be8169881d672b48ac6069b6c11030d9f05",
+    "cargo_lock_sha256": "aa580242fc215ade7b006cbe871d0ac4c9b85fabd3f3d83824039daf17faa0ef",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "a59684f6e93983d4f6c3e9a3d230bda0aa4246d931f39ef7957b8b68016cce08"
   },
@@ -102,19 +102,19 @@
     {
       "artifact_profile_id": "android-native",
       "target": "aarch64-linux-android",
-      "package_count": 168,
-      "packages_sha256": "735865f37689c80bf752c6ca8a1523e5d97fcef3db3360ff2443d49ff4f24dc9"
+      "package_count": 167,
+      "packages_sha256": "8d90715a57dd872661c9ba8e6e3d1e6edb2beb7c2f0859b666d2a6dc201851f3"
     },
     {
       "artifact_profile_id": "android-native",
       "target": "x86_64-linux-android",
-      "package_count": 168,
-      "packages_sha256": "735865f37689c80bf752c6ca8a1523e5d97fcef3db3360ff2443d49ff4f24dc9"
+      "package_count": 167,
+      "packages_sha256": "8d90715a57dd872661c9ba8e6e3d1e6edb2beb7c2f0859b666d2a6dc201851f3"
     }
   ],
   "dependency_closure": {
-    "package_count": 168,
-    "packages_sha256": "735865f37689c80bf752c6ca8a1523e5d97fcef3db3360ff2443d49ff4f24dc9"
+    "package_count": 167,
+    "packages_sha256": "8d90715a57dd872661c9ba8e6e3d1e6edb2beb7c2f0859b666d2a6dc201851f3"
   },
   "licenses": [
     {
@@ -705,16 +705,6 @@
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
           "repository": "https://github.com/indexmap-rs/indexmap"
-        },
-        {
-          "name": "lalrpop-util",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [
-            "Niko Matsakis <niko@alum.mit.edu>"
-          ],
-          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lock_api",

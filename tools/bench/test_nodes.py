@@ -182,11 +182,12 @@ class NodeMatrixTests(unittest.TestCase):
             for name, code in {
                 "@mermanjs/node": f"""export function createNodeEngine() {{ return {{
                     runtimeCatalog: {{package_version: {json.dumps(versions['@mermanjs/node'])}}},
-                    renderSvgSync(source) {{
+                    renderSvgSync(source, {{optionsJson}}) {{
                         if (source === 'throw') throw new Error('test render exception');
                         if (source === 'exit') process.exit(73);
                         if (source === 'timeout') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-                        return {svg};
+                        const {{svg: {{diagram_id}}}} = JSON.parse(optionsJson);
+                        return {svg}.replace('<svg>', '<svg id="' + diagram_id + '">');
                     }}, dispose() {{}}
                 }}; }}""",
                 "pele": f"export const render = () => ({{ svg: {svg} }});",
@@ -288,6 +289,9 @@ class ProcessRoundTests(unittest.TestCase):
             raw["variant"] = dict(label=label, options_json=value)
             if "--site-layout" in cmd:
                 raw["variant"]["site_layout"] = cmd[cmd.index("--site-layout") + 1]
+        variant = raw.get("variant")
+        omitted = engine == "merman" and variant is not None and variant["options_json"] is None
+        raw["diagram_id_mode"] = "omitted" if omitted else "plan"
         raw["warmup"] = {f"max_{key}": int(cmd[cmd.index(f"--warmup-{key}") + 1]) if f"--warmup-{key}" in cmd else default
                          for key, default in (("calls", 20), ("ms", 150))}
         for index, scenario in enumerate(json.loads(plan)["scenarios"]):
@@ -300,6 +304,15 @@ class ProcessRoundTests(unittest.TestCase):
                 row["requests"][i]["source_sha256"] = hashlib.sha256(request["source"].encode()).hexdigest()
                 if "drawing_facts" in request:
                     row["requests"][i]["drawing_required"] = True
+            if variant and "site_layout" in variant:
+                row["layout_plans"] = [dict(diagram_type="flowchart-v2", required_capability_ids=[f"layout-{variant['site_layout']}"])
+                                       for _ in requests]
+            if omitted:
+                for batch in [row["cold_batch"], *row["warm_samples"]]:
+                    batch["elapsed_ms"] = batch["complete_batch_ms"]
+                    batch["complete_batch_ms"] = None
+                    for result in batch["results"]:
+                        result["status"] = "diagram-id-not-applied"
             raw["scenarios"].append(row)
         raw["planned_scenarios"] = len(raw["scenarios"])
         self.edit(round_no, raw)
@@ -365,8 +378,8 @@ class ProcessRoundTests(unittest.TestCase):
 
     def test_named_variants_use_balanced_default_rounds_and_keep_exact_options(self):
         module = self.args.plan.parent / "candidate entry.mjs"
-        options = ' { "site_config": { "layout": "dagre" }, "svg": { "diagram_id": "node:with=value" } } '
-        self.args.variant = ["base.0=merman", f"explicit=merman:{module}:{options}"]
+        options = ' { "site_config": { "layout": "dagre" }, "svg": { "pipeline": "readable" } } '
+        self.args.variant = ["base.0=merman::{}", f"explicit=merman:{module}:{options}"]
         self.args.variant_layout = ["base.0=dagre", "explicit=dagre"]
         self.args.process_rounds = None
         self.args.warmup_calls = 4
@@ -387,13 +400,13 @@ class ProcessRoundTests(unittest.TestCase):
         self.assertEqual(set(report["reference_identities"]), {"base.0", "explicit"})
         self.assertEqual(report["comparisons"]["explicit"]["doc"]["eligible_pairs"], 2)
         recipes = json.loads((self.args.out_dir / "variants.json").read_bytes())
-        self.assertEqual(recipes["variants"], [dict(label="base.0", engine="merman", module=None, options_json=None, site_layout="dagre"),
+        self.assertEqual(recipes["variants"], [dict(label="base.0", engine="merman", module=None, options_json="{}", site_layout="dagre"),
                                                dict(label="explicit", engine="merman", module=str(module), options_json=options, site_layout="dagre")])
         self.assertEqual(recipes["warmup_overrides"], {"max_calls": 4})
         directory = self.args.out_dir / "rounds" / "001"
         comparison = json.loads((directory / "base.0-vs-explicit.json").read_bytes())
         self.assertEqual(comparison["render_settings"], "declared Node variants")
-        self.assertEqual(comparison["left"]["variant"], dict(label="base.0", options_json=None, site_layout="dagre"))
+        self.assertEqual(comparison["left"]["variant"], dict(label="base.0", options_json="{}", site_layout="dagre"))
         self.assertEqual(comparison["right"]["variant"], dict(label="explicit", options_json=options, site_layout="dagre"))
         self.assertEqual(json.loads((directory / "explicit.json").read_bytes())["warmup"], {"max_calls": 4, "max_ms": 150})
         projected, markdown = self.publish_rounds()
@@ -416,7 +429,7 @@ class ProcessRoundTests(unittest.TestCase):
             load_matrix(directory / "coverage.json")
 
     def test_named_report_withholds_ratio_for_repeatable_but_different_svg(self):
-        self.args.variant = ["direct=merman", "with_json=merman::{}"]
+        self.args.variant = ["direct=merman::{}", "with_json=merman::{ } "]
         self.args.variant_layout = ["direct=dagre", "with_json=dagre"]
 
         def change_svg(round_no, raw):
@@ -446,7 +459,7 @@ class ProcessRoundTests(unittest.TestCase):
         self.assertIn("Same-backend variants returned different SVG bytes", markdown)
 
     def test_named_rounds_check_every_finalized_product_identity(self):
-        self.args.variant = ["upstream=pele", "current=merman", "candidate=merman"]
+        self.args.variant = ["upstream=pele", "current=merman::{}", "candidate=merman::{}"]
         finalized = self.run_matrix()
         bundle = self.args.out_dir
         rounds_path = bundle / "process-rounds.json"
@@ -484,6 +497,45 @@ class ProcessRoundTests(unittest.TestCase):
             if row["peer"] == "candidate":
                 self.assertEqual(row["reasons"], ["evidence-mismatch"])
                 self.assertIsNone(row["ratio"])
+
+    def test_replay_rechecks_each_scenario_against_its_raw_requests_layout_and_batch(self):
+        self.args.variant = ["matched=merman::{}", "peer=pele"]
+        self.args.variant_layout = ["matched=dagre"]
+        self.run_matrix()
+        bundle = self.args.out_dir
+        report = bundle / "rounds" / "002" / "matched.json"
+        original = json.loads(report.read_bytes())
+        self.assertTrue(all(row["eligible_pairs"] == 2 for row in load_rounds(bundle)["latency"]))
+
+        for change in ("source", "layout", "batch", "old-collector"):
+            with self.subTest(change=change):
+                raw = deepcopy(original)
+                row = raw["scenarios"][0]
+                if change == "source":
+                    row["requests"][0]["source_sha256"] = "0" * 64
+                elif change == "layout":
+                    row["layout_plans"][0]["required_capability_ids"] = []
+                elif change == "batch":
+                    row["warm_samples"][0]["complete_batch_ms"] += 1
+                else:
+                    del raw["diagram_id_mode"]
+                report.write_bytes(json.dumps(raw).encode())
+                projected = {row["scenario"]: row for row in load_rounds(bundle)["latency"]}
+                self.assertEqual(projected["doc"]["eligible_pairs"], 1)
+                reason = "diagram-id-unverified" if change == "old-collector" else "evidence-mismatch"
+                self.assertEqual(projected["doc"]["reasons"], [reason])
+                self.assertIsNone(projected["doc"]["ratio"])
+                self.assertEqual(projected["control"]["eligible_pairs"], 1 if change == "old-collector" else 2)
+
+    def test_no_options_bridge_keeps_raw_observations_and_withholds_comparisons(self):
+        self.args.variant = ["matched=merman::{}", "no-options=merman", "peer=pele"]
+        rounds = self.run_matrix()
+        self.assertEqual(rounds["comparisons"]["no-options"]["doc"]["eligible_pairs"], 0)
+        self.assertEqual(rounds["comparisons"]["peer"]["doc"]["eligible_pairs"], 2)
+        raw = json.loads((self.args.out_dir / "rounds" / "001" / "no-options.json").read_bytes())
+        self.assertGreater(raw["scenarios"][0]["warm_samples"][0]["elapsed_ms"], 0)
+        projected = [row for row in load_rounds(self.args.out_dir)["latency"] if row["peer"] == "no-options"]
+        self.assertTrue(all(row["reasons"] == ["diagram-id-not-applied"] and row["ratio"] is None for row in projected))
 
     def test_incomplete_collectors_keep_other_rounds_peers_and_scenarios(self):
         def fail(round_no, raw):

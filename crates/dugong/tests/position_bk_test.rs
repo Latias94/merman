@@ -1,7 +1,7 @@
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::position::bk;
 use dugong::util;
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
+use dugong::{DummyKind, EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 use rustc_hash::FxHashMap as HashMap;
 
 fn new_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
@@ -32,7 +32,7 @@ fn set_node_with(
     rank: i32,
     order: usize,
     width: f64,
-    dummy: Option<&str>,
+    dummy: Option<DummyKind>,
     labelpos: Option<LabelPos>,
 ) {
     g.set_node(
@@ -41,7 +41,7 @@ fn set_node_with(
             rank: Some(rank),
             order: Some(order),
             width,
-            dummy: dummy.map(|s| s.to_string()),
+            dummy,
             labelpos,
             ..Default::default()
         },
@@ -116,7 +116,7 @@ fn find_type1_conflicts_does_not_mark_type_0_conflicts_a_is_dummy() {
     g.set_edge("b", "c");
     let layering = util::build_layer_matrix(&g);
 
-    g.node_mut("a").unwrap().dummy = Some("true".to_string());
+    g.node_mut("a").unwrap().dummy = Some(DummyKind::Other);
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
     assert!(!bk::has_conflict(&conflicts, "b", "c"));
@@ -133,7 +133,7 @@ fn find_type1_conflicts_does_not_mark_type_0_conflicts_b_is_dummy() {
     g.set_edge("b", "c");
     let layering = util::build_layer_matrix(&g);
 
-    g.node_mut("b").unwrap().dummy = Some("true".to_string());
+    g.node_mut("b").unwrap().dummy = Some(DummyKind::Other);
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
     assert!(!bk::has_conflict(&conflicts, "b", "c"));
@@ -150,7 +150,7 @@ fn find_type1_conflicts_does_not_mark_type_0_conflicts_c_is_dummy() {
     g.set_edge("b", "c");
     let layering = util::build_layer_matrix(&g);
 
-    g.node_mut("c").unwrap().dummy = Some("true".to_string());
+    g.node_mut("c").unwrap().dummy = Some(DummyKind::Other);
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
     assert!(!bk::has_conflict(&conflicts, "b", "c"));
@@ -167,7 +167,7 @@ fn find_type1_conflicts_does_not_mark_type_0_conflicts_d_is_dummy() {
     g.set_edge("b", "c");
     let layering = util::build_layer_matrix(&g);
 
-    g.node_mut("d").unwrap().dummy = Some("true".to_string());
+    g.node_mut("d").unwrap().dummy = Some(DummyKind::Other);
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
     assert!(!bk::has_conflict(&conflicts, "b", "c"));
@@ -185,7 +185,7 @@ fn find_type1_conflicts_does_mark_type_1_conflicts_a_is_non_dummy() {
     let layering = util::build_layer_matrix(&g);
 
     for w in ["b", "c", "d"] {
-        g.node_mut(w).unwrap().dummy = Some("true".to_string());
+        g.node_mut(w).unwrap().dummy = Some(DummyKind::Other);
     }
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(bk::has_conflict(&conflicts, "a", "d"));
@@ -204,7 +204,7 @@ fn find_type1_conflicts_does_mark_type_1_conflicts_b_is_non_dummy() {
     let layering = util::build_layer_matrix(&g);
 
     for w in ["a", "c", "d"] {
-        g.node_mut(w).unwrap().dummy = Some("true".to_string());
+        g.node_mut(w).unwrap().dummy = Some(DummyKind::Other);
     }
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
@@ -223,7 +223,7 @@ fn find_type1_conflicts_does_mark_type_1_conflicts_c_is_non_dummy() {
     let layering = util::build_layer_matrix(&g);
 
     for w in ["a", "b", "d"] {
-        g.node_mut(w).unwrap().dummy = Some("true".to_string());
+        g.node_mut(w).unwrap().dummy = Some(DummyKind::Other);
     }
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
@@ -242,7 +242,7 @@ fn find_type1_conflicts_does_mark_type_1_conflicts_d_is_non_dummy() {
     let layering = util::build_layer_matrix(&g);
 
     for w in ["a", "b", "c"] {
-        g.node_mut(w).unwrap().dummy = Some("true".to_string());
+        g.node_mut(w).unwrap().dummy = Some(DummyKind::Other);
     }
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(bk::has_conflict(&conflicts, "a", "d"));
@@ -261,7 +261,7 @@ fn find_type1_conflicts_does_not_mark_type_2_conflicts_all_dummies() {
     let layering = util::build_layer_matrix(&g);
 
     for v in ["a", "b", "c", "d"] {
-        g.node_mut(v).unwrap().dummy = Some("true".to_string());
+        g.node_mut(v).unwrap().dummy = Some(DummyKind::Other);
     }
     let conflicts = bk::find_type1_conflicts(&g, &layering);
     assert!(!bk::has_conflict(&conflicts, "a", "d"));
@@ -280,10 +280,10 @@ fn find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_1() {
     let layering = util::build_layer_matrix(&g);
 
     for v in ["a", "d"] {
-        g.node_mut(v).unwrap().dummy = Some("true".to_string());
+        g.node_mut(v).unwrap().dummy = Some(DummyKind::Other);
     }
     for v in ["b", "c"] {
-        g.node_mut(v).unwrap().dummy = Some("border".to_string());
+        g.node_mut(v).unwrap().dummy = Some(DummyKind::Border);
     }
 
     let conflicts = bk::find_type2_conflicts(&g, &layering);
@@ -303,10 +303,10 @@ fn find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_2() {
     let layering = util::build_layer_matrix(&g);
 
     for v in ["b", "c"] {
-        g.node_mut(v).unwrap().dummy = Some("true".to_string());
+        g.node_mut(v).unwrap().dummy = Some(DummyKind::Other);
     }
     for v in ["a", "d"] {
-        g.node_mut(v).unwrap().dummy = Some("border".to_string());
+        g.node_mut(v).unwrap().dummy = Some(DummyKind::Border);
     }
 
     let conflicts = bk::find_type2_conflicts(&g, &layering);
@@ -317,23 +317,23 @@ fn find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_2() {
 #[test]
 fn find_type2_conflicts_preserves_non_monotonic_and_missing_order_semantics() {
     let mut g = new_graph();
-    set_node_with(&mut g, "n0", 0, 0, 10.0, Some("dummy"), None);
-    set_node_with(&mut g, "n1", 0, 1, 10.0, Some("dummy"), None);
+    set_node_with(&mut g, "n0", 0, 0, 10.0, Some(DummyKind::Other), None);
+    set_node_with(&mut g, "n1", 0, 1, 10.0, Some(DummyKind::Other), None);
     g.set_node(
         "n_missing",
         NodeLabel {
             width: 10.0,
-            dummy: Some("dummy".to_string()),
+            dummy: Some(DummyKind::Other),
             ..Default::default()
         },
     );
-    set_node_with(&mut g, "b0", 1, 0, 10.0, Some("border"), None);
-    set_node_with(&mut g, "b1", 1, 1, 10.0, Some("border"), None);
+    set_node_with(&mut g, "b0", 1, 0, 10.0, Some(DummyKind::Border), None);
+    set_node_with(&mut g, "b1", 1, 1, 10.0, Some(DummyKind::Border), None);
     g.set_node(
         "b_missing",
         NodeLabel {
             width: 10.0,
-            dummy: Some("border".to_string()),
+            dummy: Some(DummyKind::Border),
             ..Default::default()
         },
     );
@@ -613,8 +613,8 @@ fn horizontal_compaction_separates_adjacent_nodes_by_specified_node_separation()
 fn horizontal_compaction_separates_adjacent_edges_by_specified_edge_separation() {
     let mut g = new_graph();
     g.graph_mut().edgesep = 20.0;
-    set_node_with(&mut g, "a", 0, 0, 100.0, Some("edge"), None);
-    set_node_with(&mut g, "b", 0, 1, 200.0, Some("edge"), None);
+    set_node_with(&mut g, "a", 0, 0, 100.0, Some(DummyKind::Edge), None);
+    set_node_with(&mut g, "b", 0, 1, 200.0, Some(DummyKind::Edge), None);
     let root = hm(&[("a", "a"), ("b", "b")]);
     let align = root.clone();
     let layering = util::build_layer_matrix(&g);
@@ -763,17 +763,17 @@ fn horizontal_compaction_cascades_class_shift() {
 fn horizontal_compaction_handles_labelpos_l() {
     let mut g = new_graph();
     g.graph_mut().edgesep = 50.0;
-    set_node_with(&mut g, "a", 0, 0, 100.0, Some("edge"), None);
+    set_node_with(&mut g, "a", 0, 0, 100.0, Some(DummyKind::Edge), None);
     set_node_with(
         &mut g,
         "b",
         0,
         1,
         200.0,
-        Some("edge-label"),
+        Some(DummyKind::EdgeLabel),
         Some(LabelPos::L),
     );
-    set_node_with(&mut g, "c", 0, 2, 300.0, Some("edge"), None);
+    set_node_with(&mut g, "c", 0, 2, 300.0, Some(DummyKind::Edge), None);
     let root = hm(&[("a", "a"), ("b", "b"), ("c", "c")]);
     let align = root.clone();
     let layering = util::build_layer_matrix(&g);
@@ -788,17 +788,17 @@ fn horizontal_compaction_handles_labelpos_l() {
 fn horizontal_compaction_handles_labelpos_c() {
     let mut g = new_graph();
     g.graph_mut().edgesep = 50.0;
-    set_node_with(&mut g, "a", 0, 0, 100.0, Some("edge"), None);
+    set_node_with(&mut g, "a", 0, 0, 100.0, Some(DummyKind::Edge), None);
     set_node_with(
         &mut g,
         "b",
         0,
         1,
         200.0,
-        Some("edge-label"),
+        Some(DummyKind::EdgeLabel),
         Some(LabelPos::C),
     );
-    set_node_with(&mut g, "c", 0, 2, 300.0, Some("edge"), None);
+    set_node_with(&mut g, "c", 0, 2, 300.0, Some(DummyKind::Edge), None);
     let root = hm(&[("a", "a"), ("b", "b"), ("c", "c")]);
     let align = root.clone();
     let layering = util::build_layer_matrix(&g);
@@ -813,17 +813,17 @@ fn horizontal_compaction_handles_labelpos_c() {
 fn horizontal_compaction_handles_labelpos_r() {
     let mut g = new_graph();
     g.graph_mut().edgesep = 50.0;
-    set_node_with(&mut g, "a", 0, 0, 100.0, Some("edge"), None);
+    set_node_with(&mut g, "a", 0, 0, 100.0, Some(DummyKind::Edge), None);
     set_node_with(
         &mut g,
         "b",
         0,
         1,
         200.0,
-        Some("edge-label"),
+        Some(DummyKind::EdgeLabel),
         Some(LabelPos::R),
     );
-    set_node_with(&mut g, "c", 0, 2, 300.0, Some("edge"), None);
+    set_node_with(&mut g, "c", 0, 2, 300.0, Some(DummyKind::Edge), None);
     let root = hm(&[("a", "a"), ("b", "b"), ("c", "c")]);
     let align = root.clone();
     let layering = util::build_layer_matrix(&g);
@@ -1164,10 +1164,10 @@ fn position_x_aligns_inner_segments() {
     let mut g = new_graph();
     g.graph_mut().nodesep = 10.0;
     g.graph_mut().edgesep = 10.0;
-    set_node_with(&mut g, "a", 0, 0, 50.0, Some("dummy"), None);
+    set_node_with(&mut g, "a", 0, 0, 50.0, Some(DummyKind::Other), None);
     set_node_with(&mut g, "b", 0, 1, 60.0, None, None);
     set_node_with(&mut g, "c", 1, 0, 70.0, None, None);
-    set_node_with(&mut g, "d", 1, 1, 80.0, Some("dummy"), None);
+    set_node_with(&mut g, "d", 1, 1, 80.0, Some(DummyKind::Other), None);
     g.set_edge("b", "c");
     g.set_edge("a", "d");
 

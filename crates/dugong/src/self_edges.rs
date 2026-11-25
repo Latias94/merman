@@ -10,7 +10,8 @@ use crate::graphlib::Graph;
 use crate::order::IndexedLayerMatrix;
 use crate::work::{checked_add, checked_mul};
 use crate::{
-    EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, Point, SelfEdge, WorkControl, WorkError,
+    DummyEdge, DummyKind, EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, OriginalEdge, Point,
+    WorkControl, WorkError,
 };
 
 pub fn remove_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -30,8 +31,8 @@ pub(crate) fn remove_self_edges_with_count(
             continue;
         };
         if let Some(n) = g.node_mut(&ek.v) {
-            n.self_edges.push(SelfEdge {
-                edge_obj: ek.clone(),
+            n.self_edges.push(OriginalEdge {
+                key: ek.clone(),
                 label,
             });
         }
@@ -167,9 +168,8 @@ pub(crate) fn insert_self_edges_with_layering_controlled(
                         height,
                         rank: Some(rank),
                         order: Some(expanded.len()),
-                        dummy: Some("selfedge".to_string()),
-                        edge_label: Some(self_edge.label),
-                        edge_obj: Some(self_edge.edge_obj),
+                        dummy: Some(DummyKind::SelfEdge),
+                        dummy_edge: DummyEdge::Original(Box::new(self_edge)),
                         ..Default::default()
                     },
                 );
@@ -211,7 +211,7 @@ where
 {
     let mut ids: Vec<String> = Vec::new();
     g.for_each_node(|id, n| {
-        if n.dummy.as_deref() == Some("selfedge") {
+        if n.dummy == Some(DummyKind::SelfEdge) {
             ids.push(id.to_string());
         }
     });
@@ -252,7 +252,11 @@ fn remove_nodes_batch(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, ids: &[St
 fn has_cross_dummy_dependency(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, ids: &[String]) -> bool {
     let dummy_ids: FxHashSet<&str> = ids.iter().map(String::as_str).collect();
     ids.iter().any(|id| {
-        let Some(edge_obj) = g.node(id).and_then(|node| node.edge_obj.as_ref()) else {
+        let Some(edge_obj) = g
+            .node(id)
+            .and_then(|node| node.dummy_edge.original())
+            .map(|edge| &edge.key)
+        else {
             return false;
         };
         (edge_obj.v.as_str() != id.as_str() && dummy_ids.contains(edge_obj.v.as_str()))
@@ -261,22 +265,19 @@ fn has_cross_dummy_dependency(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, ids: 
 }
 
 fn restore_self_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) -> bool {
-    let Some(node) = g.node(id).cloned() else {
+    let Some(node) = g.node(id) else {
         return false;
     };
-    if node.dummy.as_deref() != Some("selfedge") {
+    if node.dummy != Some(DummyKind::SelfEdge) {
         return false;
     }
     let (Some(x), Some(y)) = (node.x, node.y) else {
         return false;
     };
-    let Some(edge_obj) = node.edge_obj.clone() else {
+    let Some(edge) = node.dummy_edge.original() else {
         return false;
     };
-    let Some(mut label) = node.edge_label.clone() else {
-        return false;
-    };
-    let Some(v_node) = g.node(&edge_obj.v) else {
+    let Some(v_node) = g.node(&edge.key.v) else {
         return false;
     };
     let (Some(vx), Some(vy)) = (v_node.x, v_node.y) else {
@@ -290,6 +291,7 @@ fn restore_self_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) 
     let o = x - i;
     let l = v_node.height / 2.0;
 
+    let OriginalEdge { key, mut label } = edge.clone();
     label.points = vec![
         Point {
             x: i + 2.0 * o / 3.0,
@@ -312,7 +314,7 @@ fn restore_self_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) 
     label.x = Some(x);
     label.y = Some(y);
 
-    g.set_edge_named(edge_obj.v, edge_obj.w, edge_obj.name, Some(label));
+    g.set_edge_named(key.v, key.w, key.name, Some(label));
     true
 }
 
@@ -359,6 +361,10 @@ mod tests {
     }
 
     fn self_edge_dummy(name: &str, x: Option<f64>, y: Option<f64>) -> NodeLabel {
+        self_edge_dummy_for(EdgeKey::new("a", "a", Some(name)), x, y)
+    }
+
+    fn self_edge_dummy_for(key: EdgeKey, x: Option<f64>, y: Option<f64>) -> NodeLabel {
         let mut edge_label = EdgeLabel {
             width: 12.0,
             height: 8.0,
@@ -366,16 +372,18 @@ mod tests {
         };
         edge_label.extras.insert(
             "source".to_string(),
-            serde_json::Value::String(name.to_string()),
+            serde_json::Value::String(key.name.clone().unwrap_or_default()),
         );
         NodeLabel {
             width: 12.0,
             height: 8.0,
             x,
             y,
-            dummy: Some("selfedge".to_string()),
-            edge_label: Some(edge_label),
-            edge_obj: Some(EdgeKey::new("a", "a", Some(name))),
+            dummy: Some(DummyKind::SelfEdge),
+            dummy_edge: DummyEdge::Original(Box::new(OriginalEdge {
+                key,
+                label: edge_label,
+            })),
             ..Default::default()
         }
     }
@@ -431,7 +439,7 @@ mod tests {
                 .expect("source node")
                 .self_edges
                 .iter()
-                .map(|edge| edge.edge_obj.name.as_deref())
+                .map(|edge| edge.key.name.as_deref())
                 .collect::<Vec<_>>(),
             [Some("first"), Some("second")]
         );
@@ -473,14 +481,7 @@ mod tests {
             .collect::<Vec<_>>();
         let first_layer = ids[0]
             .iter()
-            .map(|id| {
-                graph
-                    .node(id)
-                    .and_then(|node| node.edge_obj.as_ref())
-                    .and_then(|edge| edge.name.as_deref())
-                    .unwrap_or(id)
-                    .to_string()
-            })
+            .map(|id| self_edge_source(&graph, id))
             .collect::<Vec<_>>();
         assert_eq!(first_layer, ["a", "a-first", "a-second", "b", "b-only"]);
         assert_eq!(ids[1], ["c"]);
@@ -510,14 +511,7 @@ mod tests {
         let layering = crate::util::build_layer_matrix(&graph);
         let first_layer = layering[0]
             .iter()
-            .map(|id| {
-                graph
-                    .node(id)
-                    .and_then(|node| node.edge_obj.as_ref())
-                    .and_then(|edge| edge.name.as_deref())
-                    .unwrap_or(id)
-                    .to_string()
-            })
+            .map(|id| self_edge_source(&graph, id))
             .collect::<Vec<_>>();
         assert_eq!(first_layer, ["a", "a-first", "a-second", "b", "b-only"]);
         assert_eq!(layering[1], ["c"]);
@@ -536,14 +530,7 @@ mod tests {
         let layering = crate::util::build_layer_matrix(&graph);
         let first_layer = layering[0]
             .iter()
-            .map(|id| {
-                graph
-                    .node(id)
-                    .and_then(|node| node.edge_obj.as_ref())
-                    .and_then(|edge| edge.name.as_deref())
-                    .unwrap_or(id)
-                    .to_string()
-            })
+            .map(|id| self_edge_source(&graph, id))
             .collect::<Vec<_>>();
         assert_eq!(first_layer, ["b", "b-only", "a", "a-first", "a-second"]);
         for (order, id) in layering[0].iter().enumerate() {
@@ -566,7 +553,8 @@ mod tests {
     fn self_edge_source(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) -> String {
         graph
             .node(id)
-            .and_then(|node| node.edge_obj.as_ref())
+            .and_then(|node| node.dummy_edge.original())
+            .map(|edge| &edge.key)
             .and_then(|edge| edge.name.as_deref())
             .unwrap_or(id)
             .to_string()
@@ -919,13 +907,22 @@ mod tests {
         graph.set_node("cluster", NodeLabel::default());
         graph.set_node("self_1", self_edge_dummy("self_1", Some(150.0), Some(70.0)));
 
-        let mut from_retired_source = self_edge_dummy("from_v", Some(160.0), Some(90.0));
-        from_retired_source.edge_obj = Some(EdgeKey::new("self_1", "self_1", Some("from_v")));
-        graph.set_node("from_v", from_retired_source);
-
-        let mut to_retired_target = self_edge_dummy("from_w", Some(170.0), Some(100.0));
-        to_retired_target.edge_obj = Some(EdgeKey::new("a", "self_1", Some("from_w")));
-        graph.set_node("from_w", to_retired_target);
+        graph.set_node(
+            "from_v",
+            self_edge_dummy_for(
+                EdgeKey::new("self_1", "self_1", Some("from_v")),
+                Some(160.0),
+                Some(90.0),
+            ),
+        );
+        graph.set_node(
+            "from_w",
+            self_edge_dummy_for(
+                EdgeKey::new("a", "self_1", Some("from_w")),
+                Some(170.0),
+                Some(100.0),
+            ),
+        );
 
         graph.set_parent("self_1", "cluster");
         graph.set_parent("from_v", "cluster");
@@ -965,30 +962,39 @@ mod tests {
             self_edge_dummy("missing_coords", None, None),
         );
 
-        let mut missing_edge_obj = self_edge_dummy("missing_edge_obj", Some(140.0), Some(70.0));
-        missing_edge_obj.edge_obj = None;
-        graph.set_node("missing_edge_obj", missing_edge_obj);
+        let mut missing_edge = self_edge_dummy("missing_edge", Some(140.0), Some(70.0));
+        missing_edge.dummy_edge = DummyEdge::None;
+        graph.set_node("missing_edge", missing_edge);
 
-        let mut missing_edge_label = self_edge_dummy("missing_edge_label", Some(150.0), Some(80.0));
-        missing_edge_label.edge_label = None;
-        graph.set_node("missing_edge_label", missing_edge_label);
+        let mut proxy_key = self_edge_dummy("proxy_key", Some(150.0), Some(80.0));
+        proxy_key.dummy_edge =
+            DummyEdge::RankProxy(Box::new(EdgeKey::new("keep", "keep", None::<String>)));
+        graph.set_node("proxy_key", proxy_key);
 
-        let mut missing_source = self_edge_dummy("missing_source", Some(160.0), Some(90.0));
-        missing_source.edge_obj = Some(EdgeKey::new(
-            "missing_source_node",
-            "missing_source_node",
-            Some("missing_source"),
-        ));
-        graph.set_node("missing_source", missing_source);
-
-        let mut source_without_coords =
-            self_edge_dummy("source_without_coords", Some(170.0), Some(100.0));
-        source_without_coords.edge_obj = Some(EdgeKey::new(
-            "source_without_coords",
-            "source_without_coords",
-            Some("source_without_coords"),
-        ));
-        graph.set_node("source_without_coords_dummy", source_without_coords);
+        graph.set_node(
+            "missing_source",
+            self_edge_dummy_for(
+                EdgeKey::new(
+                    "missing_source_node",
+                    "missing_source_node",
+                    Some("missing_source"),
+                ),
+                Some(160.0),
+                Some(90.0),
+            ),
+        );
+        graph.set_node(
+            "source_without_coords_dummy",
+            self_edge_dummy_for(
+                EdgeKey::new(
+                    "source_without_coords",
+                    "source_without_coords",
+                    Some("source_without_coords"),
+                ),
+                Some(170.0),
+                Some(100.0),
+            ),
+        );
 
         let nodes_before = graph.node_ids();
         let retirement_passes = position_self_edges_counted(&mut graph);
@@ -997,8 +1003,8 @@ mod tests {
         assert_eq!(graph.node_ids(), nodes_before);
         for leftover in [
             "missing_coords",
-            "missing_edge_obj",
-            "missing_edge_label",
+            "missing_edge",
+            "proxy_key",
             "missing_source",
             "source_without_coords_dummy",
         ] {
@@ -1034,7 +1040,7 @@ mod tests {
     ) -> usize {
         let mut ids = Vec::new();
         graph.for_each_node(|id, node| {
-            if node.dummy.as_deref() == Some("selfedge") {
+            if node.dummy == Some(DummyKind::SelfEdge) {
                 ids.push(id.to_string());
             }
         });

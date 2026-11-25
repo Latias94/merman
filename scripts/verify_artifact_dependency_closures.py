@@ -412,7 +412,7 @@ SEMANTIC_CLAIMS = (
 # separate from runtime policy: a compiler-only tool is not a runtime dependency leak.
 # Render/Export recipes must satisfy these claims once the M5 source edge is removed.
 SOURCE_INGESTION_PACKAGES = (
-    "merman-core", "granit-parser", "json5", "lalrpop", "lalrpop-util", "serde-saphyr",
+    "merman-core", "granit-parser", "json5", "serde-saphyr",
 ) + TREE_SITTER_FORBIDDEN_PACKAGES
 MODEL_ASCII_FORBIDDEN_PACKAGES = SOURCE_INGESTION_PACKAGES + (
     "merman-markup", "html5ever", "url",

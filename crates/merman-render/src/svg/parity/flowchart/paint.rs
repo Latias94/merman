@@ -1,5 +1,6 @@
 use super::render_input::{
-    FlowchartRenderEdge, FlowchartRenderInputs, prepare_flowchart_render_inputs,
+    FlowchartRenderEdge, FlowchartRenderEdgeRef, FlowchartRenderInputs,
+    prepare_flowchart_render_inputs,
 };
 use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
@@ -97,15 +98,12 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     // Source-ported ELK should preserve Mermaid's edge emission order, not the layout engine's
     // internal reordering. `render_edges` already reflects the source-backed ordering rules.
-    let edge_order: Vec<super::render_input::FlowchartRenderEdgeRef<'_>> =
+    let edge_order: Vec<FlowchartRenderEdgeRef<'_>> =
         render_edges.iter().map(|edge| edge.as_ref()).collect();
-    let mut edges_by_key: FxHashMap<
-        crate::flowchart::FlowchartEdgeKey,
-        super::render_input::FlowchartRenderEdgeRef<'_>,
-    > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
-    for e in &render_edges {
-        let edge = e.as_ref();
-        if edges_by_key.insert(edge.key, edge).is_some() {
+    let mut edges_by_key =
+        FxHashMap::with_capacity_and_hasher(edge_order.len(), Default::default());
+    for edge in &edge_order {
+        if edges_by_key.insert(edge.key, edge.edge).is_some() {
             return Err(crate::Error::InvalidModel {
                 message: format!("duplicate Flowchart render edge occurrence {:?}", edge.key),
             });
@@ -128,18 +126,16 @@ pub(super) fn with_flowchart_paint_context<T>(
         .flat_map(|layout| layout.lanes.iter())
         .map(|lane| (lane.id.as_str(), lane))
         .collect();
-    let swimlane_edge_label_edges_by_node_id: FxHashMap<
-        &str,
-        super::render_input::FlowchartRenderEdgeRef<'_>,
-    > = swimlane_layout
-        .into_iter()
-        .flat_map(|layout| layout.edges.iter().zip(layout.edge_owners.iter()))
-        .filter_map(|(layout_edge, owner)| {
-            let label_node_id = layout_edge.label_node_id.as_deref()?;
-            let edge = edges_by_key.get(&owner).copied()?;
-            Some((label_node_id, edge))
-        })
-        .collect();
+    let swimlane_edge_label_edges_by_node_id: FxHashMap<&str, FlowchartRenderEdgeRef<'_>> =
+        swimlane_layout
+            .into_iter()
+            .flat_map(|layout| layout.edges.iter().zip(layout.edge_owners.iter()))
+            .filter_map(|(layout_edge, owner)| {
+                let label_node_id = layout_edge.label_node_id.as_deref()?;
+                let edge = edges_by_key.get(&owner).copied()?;
+                Some((label_node_id, FlowchartRenderEdgeRef { key: owner, edge }))
+            })
+            .collect();
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
     let mut subgraph_index_by_id: FxHashMap<&str, usize> =
@@ -232,10 +228,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
     let mut ctx = FlowchartRenderCtx {
         prepared_nodes,
-        edges_by_key: edge_order
-            .iter()
-            .map(|edge| (edge.key, edge.edge))
-            .collect(),
+        edges_by_key,
         model,
         diagram_id,
         diagram_type,
@@ -956,9 +949,10 @@ mod tests {
     fn canonical_route_failure_is_returned_by_the_svg_renderer() {
         use crate::graph_layout::{
             AxisRoutes, RouteContract, RouteTopology,
+            axis_clearance::AxisClearance,
             contour::ShapePortProfile,
             ir::{Axis, Endpoint, KnotKind, Side},
-            route_paint::{Clearance, ObstacleOwner},
+            route_paint::ObstacleOwner,
         };
         let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
             "nodes": [
@@ -976,7 +970,7 @@ mod tests {
         layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
         layout.route_contract = RouteContract::CanonicalAxis(
             AxisRoutes {
-                clearance: Clearance::new(vec![(
+                clearance: AxisClearance::new(vec![(
                     kurbo::Rect::new(18., -2., 22., 2.),
                     ObstacleOwner::GroupTitle(0),
                 )]),

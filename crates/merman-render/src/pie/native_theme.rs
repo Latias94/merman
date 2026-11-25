@@ -27,7 +27,7 @@ impl PieNativeStyle {
         theme: &FamilyTheme,
         model: &PieDiagramModel,
         diagram_title: Option<&str>,
-        effective_config: &serde_json::Value,
+        effective_config: &impl crate::config::ConfigLookup,
         measurer: &dyn TextMeasurer,
     ) -> Result<(PieDiagramLayout, Self)> {
         let typography = &theme.typography;

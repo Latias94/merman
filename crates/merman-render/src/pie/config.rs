@@ -1,4 +1,6 @@
-use crate::config::{config_bool, config_f64, config_string, json_mermaid_font_size_number};
+use crate::config::{
+    ConfigLookup, config_bool, config_f64, config_string, json_mermaid_font_size_number, value_at,
+};
 use serde_json::Value;
 
 const DEFAULT_TEXT_POSITION: f64 = 0.75;
@@ -7,8 +9,10 @@ const DEFAULT_LEGEND_POSITION: &str = "right";
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 
 /// Mirror parseFontSize: numbers stay fractional; strings use parseInt(_, 10), even with CSS units.
-pub(super) fn pie_outer_stroke_width(config: &Value) -> f64 {
-    json_mermaid_font_size_number(&config["themeVariables"]["pieOuterStrokeWidth"]).unwrap_or(2.0)
+pub(super) fn pie_outer_stroke_width(config: &impl ConfigLookup) -> f64 {
+    value_at(config, &["themeVariables", "pieOuterStrokeWidth"])
+        .and_then(json_mermaid_font_size_number)
+        .unwrap_or(2.0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +29,7 @@ pub(crate) struct PieConfigView<'a> {
 }
 
 impl<'a> PieConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
             pie_config: effective_config.get("pie").unwrap_or(&Value::Null),
         }

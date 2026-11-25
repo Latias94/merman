@@ -48,32 +48,6 @@ pub struct ParseDiagnostic {
     code: Option<String>,
 }
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-pub(crate) trait ParseErrorSourceSpan {
-    fn source_span(&self) -> Option<SourceSpan>;
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-impl ParseErrorSourceSpan for String {
-    fn source_span(&self) -> Option<SourceSpan> {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{Error, ParseDiagnostic, ParseDiagnosticSpanKind};

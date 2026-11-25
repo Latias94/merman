@@ -1,3 +1,4 @@
+use crate::config::ConfigLookup;
 use merman_model::presentation::PresentationConfig;
 
 /// Final XY Chart typography shared by layout and SVG emission.
@@ -11,17 +12,16 @@ pub(crate) struct XyChartTypographyThemePlan {
 impl XyChartTypographyThemePlan {
     pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
         // Bind inherited role sizes and common CSS to the same valid root, including zero.
-        let root_size = crate::config::config_theme_font_size_css_or_root_number_px_opt(
-            effective_config.as_value(),
-        )
-        .unwrap_or(16.0);
+        let root_size =
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
+                .unwrap_or(16.0);
         let root_size = crate::number_format::canonicalize_number(root_size);
         let role_fonts = XyChartTextRole::ALL.map(|role| RoleFont {
-            size: role.prepare_size(effective_config.as_value(), root_size).0,
+            size: role.prepare_size(effective_config, root_size).0,
             weight: None,
         });
         let common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
-            effective_config.as_value(),
+            effective_config,
             crate::config::config_font_family_css(effective_config),
             format!("{}px", crate::number_format::canonical_number(root_size)),
         );
@@ -41,7 +41,7 @@ impl XyChartTypographyThemePlan {
         let title_family = font_family(typography.title_family);
         let base = typography.base_size_px;
         let role_fonts = XyChartTextRole::ALL.map(|role| {
-            let (prepared, configured) = role.prepare_size(effective_config.as_value(), base);
+            let (prepared, configured) = role.prepare_size(effective_config, base);
             let authored =
                 configured && effective_config.explicit_config_owns_path(role.size_config_path());
             let size = if authored {
@@ -60,7 +60,7 @@ impl XyChartTypographyThemePlan {
             }
         });
         let common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
-            effective_config.as_value(),
+            effective_config,
             body_family,
             format!("{}px", crate::number_format::canonical_number(base)),
         );
@@ -141,13 +141,13 @@ impl XyChartTextRole {
         }
     }
 
-    fn configured_value(self, config: &serde_json::Value) -> Option<&serde_json::Value> {
-        self.size_config_path()
-            .split('.')
-            .try_fold(config, |value, key| value.get(key))
+    fn configured_value(self, config: &impl ConfigLookup) -> Option<&serde_json::Value> {
+        let mut keys = self.size_config_path().split('.');
+        let section = config.get(keys.next()?)?;
+        keys.try_fold(section, |value, key| value.get(key))
     }
 
-    fn configured_size(self, config: &serde_json::Value) -> Option<f64> {
+    fn configured_size(self, config: &impl ConfigLookup) -> Option<f64> {
         self.configured_value(config)
             .and_then(|value| {
                 crate::config::json_f64_css_px(value).or_else(|| {
@@ -170,7 +170,7 @@ impl XyChartTextRole {
             })
     }
 
-    fn prepare_size(self, config: &serde_json::Value, root_size: f64) -> (PreparedFontSize, bool) {
+    fn prepare_size(self, config: &impl ConfigLookup, root_size: f64) -> (PreparedFontSize, bool) {
         use crate::mermaid_style::{
             CssFontSizeContext, CssFontSizeOwnership, css_font_size_value_override,
             parse_style_declaration,
@@ -279,7 +279,7 @@ impl XyChartTextRole {
         }
     }
 
-    pub(super) fn configured_font_size(self, config: &serde_json::Value) -> f64 {
+    pub(super) fn configured_font_size(self, config: &impl ConfigLookup) -> f64 {
         self.size_or_default(self.configured_size(config))
     }
 

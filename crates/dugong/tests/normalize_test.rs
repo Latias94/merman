@@ -1,6 +1,6 @@
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::normalize;
-use dugong::{EdgeLabel, GraphLabel, NodeLabel, Point};
+use dugong::{DummyKind, EdgeLabel, GraphLabel, NodeLabel, Point};
 use serde_json::Value;
 
 fn new_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
@@ -74,7 +74,7 @@ fn normalize_run_splits_a_two_layer_edge_into_two_segments() {
     let sucs = g.successors("a");
     assert_eq!(sucs.len(), 1);
     let successor = sucs[0].to_string();
-    assert_eq!(g.node(&successor).unwrap().dummy.as_deref(), Some("edge"));
+    assert_eq!(g.node(&successor).unwrap().dummy, Some(DummyKind::Edge));
     assert_eq!(g.node(&successor).unwrap().rank, Some(1));
     assert_eq!(g.successors(&successor), vec!["b"]);
     assert_eq!(g.node("a").unwrap().rank, Some(0));
@@ -550,7 +550,7 @@ fn normalize_undo_preserves_an_original_dummy_source_node() {
         "a",
         NodeLabel {
             rank: Some(0),
-            dummy: Some("custom".to_string()),
+            dummy: Some(DummyKind::Other),
             ..Default::default()
         },
     );
@@ -567,8 +567,8 @@ fn normalize_undo_preserves_an_original_dummy_source_node() {
     normalize::undo(&mut g);
 
     assert_eq!(
-        g.node("a").and_then(|node| node.dummy.as_deref()),
-        Some("custom")
+        g.node("a").and_then(|node| node.dummy),
+        Some(DummyKind::Other)
     );
     assert!(g.has_edge("a", "b", None));
 }

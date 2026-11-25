@@ -210,15 +210,9 @@ Core does not decide user-visible diagnostic merge policy. It reports parser fac
 
 Railroad repetition bounds use `RailroadRepeatBound` for both `min` and `max`. Use `ZERO`, `ONE`, or `RailroadRepeatBound::from(value)` for finite bounds and `RailroadRepeatBound::INFINITY` for an unbounded maximum. Finite bounds serialize as JSON numbers, while infinity serializes as `null`.
 
-## Maintainer Parser Generation
+## Parser Maintenance
 
-The Class, ER, Flowchart, Sequence, and State grammars use checked-in LALRPOP output. Downstream builds compile those parsers directly and do not run the LALRPOP generator. After editing any `src/diagrams/*_grammar.lalrpop` file, regenerate and verify the complete five-parser set:
-
-```console
-cargo run -p xtask -- gen-lalrpop-parsers
-cargo run -p xtask -- verify-lalrpop-parsers
-```
-
-`verify-generated` includes the same byte-for-byte freshness check.
-
-See the [parser generation guide](https://github.com/Latias94/merman/blob/main/docs/development/PARSER_GENERATION.md) for source ownership, transaction semantics, review expectations, and the parser/editor/LSP verification sequence.
+The built-in diagram parsers use handwritten Rust. Class, ER, Flowchart, Sequence, and State
+pair their stateful lexers with predictive parsers under `src/diagrams/`. Swimlane shares the
+Flowchart grammar. Changes to syntax should exercise the affected semantic snapshots and editor
+diagnostic and recovery tests.
