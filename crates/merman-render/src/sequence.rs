@@ -52,14 +52,12 @@ pub(crate) use theme_binding::SequenceCompatBinding;
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
-pub(crate) use constants::{
-    SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    SequenceActorBands, SequenceActorLabelFootprint,
-};
+pub(crate) use constants::{SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES};
 pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
     SequenceMathSidecarBuilder,
 };
+pub(crate) use merman_render_sequence::actor::SequenceActorLabelFootprint;
 #[cfg(test)]
 pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{

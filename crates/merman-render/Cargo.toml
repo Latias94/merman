@@ -84,7 +84,7 @@ diagram-radar = ["merman-model/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-render-structured", "merman-render-structured/diagram-railroad"]
 diagram-requirement = ["merman-model/diagram-requirement", "markdown-labels"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:merman-render-charts", "merman-render-charts/diagram-sankey"]
-diagram-sequence = ["merman-model/diagram-sequence", "merman-render-core/resources-sequence"]
+diagram-sequence = ["merman-model/diagram-sequence", "merman-render-core/resources-sequence", "dep:merman-render-sequence"]
 diagram-state = ["merman-model/diagram-state", "markdown-labels"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/resources-swimlane", "dep:imagesize", "markdown-labels"]
 diagram-timeline = ["merman-model/diagram-timeline"]
@@ -120,6 +120,7 @@ merman-model = { workspace = true, features = ["presentation-data", "compat-json
 merman-render-charts = { workspace = true, optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "theme-svg"] }
 merman-render-graph = { workspace = true, optional = true }
+merman-render-sequence = { workspace = true, optional = true }
 merman-render-structured = { workspace = true, optional = true }
 base64.workspace = true
 cssparser.workspace = true

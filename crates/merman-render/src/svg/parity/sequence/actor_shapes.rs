@@ -3,8 +3,12 @@ use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::math_label::sequence_katex_label;
 use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
-use crate::sequence::{SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, SequenceMathHeightMode};
+use crate::sequence::SequenceMathHeightMode;
 use merman_model::families::sequence::SequenceActor;
+use merman_render_sequence::actor::{
+    LIFELINE_STROKE_WIDTH_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, is_actor_man_variant,
+    write_neo_actor_shadow_attr,
+};
 
 pub(super) struct ActorLifelineIdentity<'a> {
     pub(super) actor_id: &'a str,
@@ -84,21 +88,13 @@ impl<'a> ActorLabelContext<'a> {
     pub(super) fn bands(&self, node: &LayoutNode, footer: bool) -> Option<SequenceActorBands> {
         self.is_neo().then(|| {
             let (_, top) = node_left_top(node);
-            // Neo row height is the shared glyph band plus two 6px gaps and the label block.
-            // Derive the label block from that datum so host bbox differences cannot move glyphs.
-            let text_height =
-                (node.height - crate::sequence::SEQUENCE_GLYPH_BAND_HEIGHT - 12.0).max(1.0);
-            SequenceActorBands::new(top, node.height, text_height, footer)
+            SequenceActorBands::for_row(top, node.height, footer)
         })
     }
 
     pub(super) fn write_shadow_attr(&self, out: &mut impl SvgOutput) {
         if self.is_neo() {
-            let _ = write!(
-                out,
-                r#" filter="url(#{}-drop-shadow)""#,
-                escape_attr_display(self.diagram_id)
-            );
+            write_neo_actor_shadow_attr(out, self.diagram_id);
         }
     }
 
@@ -152,33 +148,6 @@ impl<'a> ActorLabelContext<'a> {
             let _ = write!(out, r#" style="{}""#, escape_attr(&style));
         }
     }
-}
-
-pub(super) fn is_actor_man_variant(actor_type: &str) -> bool {
-    matches!(actor_type, "actor" | "boundary" | "control" | "entity")
-}
-
-pub(super) const LIFELINE_STROKE_WIDTH_PX: f64 = 0.5;
-
-pub(super) fn write_actor_man_lifeline(
-    out: &mut impl SvgOutput,
-    idx: usize,
-    cx: f64,
-    y1: f64,
-    y2: f64,
-    actor_id: &str,
-) {
-    let _ = write!(
-        out,
-        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
-        idx = idx,
-        cx = fmt(cx),
-        y1 = fmt(y1),
-        y2 = fmt(y2),
-        stroke_width = fmt(LIFELINE_STROKE_WIDTH_PX),
-        name = escape_xml(actor_id),
-        data_id = escape_attr(actor_id),
-    );
 }
 
 impl ActorLabelContext<'_> {

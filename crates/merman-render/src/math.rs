@@ -1149,20 +1149,23 @@ mod tests {
         assert_eq!(sequence.height, flowchart.height);
         assert_eq!(sequence.line_count, 1);
 
-        let flowchart_request = crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: &crate::text::DeterministicTextMeasurer::default(),
-            raw_label: "$$x^2$$",
-            label_type: "text",
-            style: &style,
-            max_width_px: Some(200.0),
-            wrap_mode: WrapMode::HtmlLike,
-            config: &config,
-            math_renderer: Some(&renderer),
-        };
-        let through_flowchart =
-            crate::flowchart::flowchart_label_metrics_for_layout(flowchart_request);
-        assert_eq!(through_flowchart.width, flowchart.width);
-        assert_eq!(through_flowchart.height, flowchart.height);
+        #[cfg(feature = "diagram-flowchart")]
+        {
+            let flowchart_request = crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: &crate::text::DeterministicTextMeasurer::default(),
+                raw_label: "$$x^2$$",
+                label_type: "text",
+                style: &style,
+                max_width_px: Some(200.0),
+                wrap_mode: WrapMode::HtmlLike,
+                config: &config,
+                math_renderer: Some(&renderer),
+            };
+            let through_flowchart =
+                crate::flowchart::flowchart_label_metrics_for_layout(flowchart_request);
+            assert_eq!(through_flowchart.width, flowchart.width);
+            assert_eq!(through_flowchart.height, flowchart.height);
+        }
     }
 
     #[cfg(feature = "math")]

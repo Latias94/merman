@@ -1,12 +1,12 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
-    ActorLabelContext, ActorLifelineIdentity, actor_placement_class, is_actor_man_variant,
-    write_actor_man_lifeline, write_collection_actor_shape, write_database_actor_shape,
-    write_queue_actor_shape, write_rect_actor_shape,
+    ActorLabelContext, ActorLifelineIdentity, actor_placement_class, write_collection_actor_shape,
+    write_database_actor_shape, write_queue_actor_shape, write_rect_actor_shape,
 };
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
+use merman_render_sequence::actor::{is_actor_man_variant, write_actor_man_lifeline};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {

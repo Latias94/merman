@@ -2696,6 +2696,7 @@ dependencies = [
  "merman-render-charts",
  "merman-render-core",
  "merman-render-graph",
+ "merman-render-sequence",
  "merman-render-structured",
  "merman-theme-contract",
  "merman-unicode-linebreak",
@@ -2760,6 +2761,13 @@ name = "merman-render-graph"
 version = "0.11.0"
 dependencies = [
  "kurbo 0.13.1",
+ "merman-render-core",
+]
+
+[[package]]
+name = "merman-render-sequence"
+version = "0.11.0"
+dependencies = [
  "merman-render-core",
 ]
 
