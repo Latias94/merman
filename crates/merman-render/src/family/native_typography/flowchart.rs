@@ -133,7 +133,7 @@ pub(super) fn unsupported_source_style(
             );
         let inline = declarations(&node.styles, control)?;
         let classes = flowchart_effective_node_class_names(&model.class_defs, &node.classes);
-        let assigned = class_declarations(&catalog, classes.iter().copied());
+        let assigned = class_declarations(&catalog, classes.clone());
         let html = node_html.then_some((label, label_type, config));
         if let Some(property) = unsupported_declarations(
             assigned.chain(inline),
@@ -148,7 +148,7 @@ pub(super) fn unsupported_source_style(
             let additional = structural
                 .into_iter()
                 .map(|(class, _)| class)
-                .filter(|class| !classes.contains(class));
+                .filter(|class| !classes.clone().any(|assigned| assigned == *class));
             if let Some(property) = unsupported_structural_classes(&catalog, additional, control)? {
                 return Ok(Some(property));
             }

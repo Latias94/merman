@@ -518,10 +518,23 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
     inline_styles_a: &[String],
     inline_styles_b: &[String],
 ) -> FlowchartCompiledStyles {
-    let prepared_classes =
-        FlowchartPreparedClassStyles::prepare(class_defs, classes.iter().map(String::as_str), None)
-            .expect("unmetered source style preparation cannot fail");
-    flowchart_compile_prepared_styles(
+    flowchart_compile_styles_for_class_names(
+        class_defs,
+        classes.iter().map(String::as_str),
+        inline_styles_a,
+        inline_styles_b,
+    )
+}
+
+fn flowchart_compile_styles_for_class_names<'a>(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: impl Iterator<Item = &'a str> + Clone,
+    inline_styles_a: &[String],
+    inline_styles_b: &[String],
+) -> FlowchartCompiledStyles {
+    let prepared_classes = FlowchartPreparedClassStyles::prepare(class_defs, classes.clone(), None)
+        .expect("unmetered source style preparation cannot fail");
+    flowchart_compile_prepared_styles_for_class_names(
         &prepared_classes,
         classes,
         inline_styles_a,
@@ -534,6 +547,22 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
 pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     class_styles: &FlowchartPreparedClassStyles,
     classes: &[String],
+    inline_styles_a: &[String],
+    inline_styles_b: &[String],
+    work_meter: Option<&crate::resources::OperationWorkMeter>,
+) -> std::result::Result<FlowchartCompiledStyles, crate::resources::OperationWorkError> {
+    flowchart_compile_prepared_styles_for_class_names(
+        class_styles,
+        classes.iter().map(String::as_str),
+        inline_styles_a,
+        inline_styles_b,
+        work_meter,
+    )
+}
+
+fn flowchart_compile_prepared_styles_for_class_names<'a>(
+    class_styles: &FlowchartPreparedClassStyles,
+    classes: impl Iterator<Item = &'a str>,
     inline_styles_a: &[String],
     inline_styles_b: &[String],
     work_meter: Option<&crate::resources::OperationWorkMeter>,
@@ -742,14 +771,9 @@ pub(in crate::svg::parity) fn flowchart_compile_node_styles(
     inline_styles_a: &[String],
     inline_styles_b: &[String],
 ) -> FlowchartCompiledStyles {
-    let effective_classes =
-        crate::flowchart::flowchart_effective_node_class_names(class_defs, classes)
-            .into_iter()
-            .map(|class| class.to_string())
-            .collect::<Vec<_>>();
-    flowchart_compile_styles(
+    flowchart_compile_styles_for_class_names(
         class_defs,
-        &effective_classes,
+        crate::flowchart::flowchart_effective_node_class_names(class_defs, classes),
         inline_styles_a,
         inline_styles_b,
     )
