@@ -40,6 +40,7 @@
             test -f ${source}/Cargo.toml
             test -f ${source}/Cargo.lock
             test -f ${source}/crates/merman-cli/assets/completions/merman-cli.bash
+            test -f ${source}/crates/merman-node/src/lib.rs
             test -f ${source}/capabilities/artifact-profiles-v2.json
             ${nixpkgs.lib.concatMapStringsSep "\n" (relative: "test -f ${source}/${relative}") scriptFiles}
             test ! -e ${source}/.git
@@ -47,7 +48,6 @@
             test ! -e ${source}/target
             test ! -e ${source}/platforms
             test ! -e ${source}/tools
-            test ! -e ${source}/crates/merman-node
             test ! -e ${source}/crates/merman-node/target
             test ! -e ${source}/crates/merman-wasm/target
             test "$(find ${source}/scripts -mindepth 1 -maxdepth 1 | wc -l)" -eq ${
