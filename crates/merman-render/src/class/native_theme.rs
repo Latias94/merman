@@ -122,9 +122,12 @@ mod tests {
         );
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
-        for html in [false, true] {
+        for (html, source_font) in [(false, None), (true, None), (false, Some("monospace"))] {
+            let font_style = source_font.map_or_else(String::new, |font| {
+                format!("style Report font-family:{font}\n")
+            });
             let source = format!(
-                "---\nconfig:\n  htmlLabels: {html}\n---\nclassDiagram\nclass Report {{\n+renderSummary()\n}}\nclass Draft\nstyle Draft fill:#aabbcc\nReport <|-- Draft\n"
+                "---\nconfig:\n  htmlLabels: {html}\n---\nclassDiagram\nclass Report {{\n+renderSummary()\n}}\n{font_style}class Draft\nstyle Draft fill:#aabbcc\nReport <|-- Draft\n"
             );
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
@@ -145,8 +148,11 @@ mod tests {
                     .lock()
                     .unwrap()
                     .iter()
-                    .any(|font| font.contains("Signature Mono")),
-                "layout must measure the method signature with the code font"
+                    .any(|font| match source_font {
+                        Some(expected) => font == expected,
+                        None => font.contains("Signature Mono"),
+                    }),
+                "layout must measure the method signature with the selected font"
             );
             let render = prepared
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -157,6 +163,19 @@ mod tests {
                     || svg.contains(".methods-group{font-family:\"Signature Mono\", monospace;")
             );
             let dom = roxmltree::Document::parse(svg).unwrap();
+            if let Some(font) = source_font {
+                let declaration = format!("font-family:{font}");
+                for label in ["Report", "+renderSummary()"] {
+                    let text = dom
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("text")
+                                && node.descendants().any(|child| child.text() == Some(label))
+                        })
+                        .unwrap();
+                    assert!(text.attribute("style").unwrap().contains(&declaration));
+                }
+            }
             let headers = dom
                 .descendants()
                 .filter(|node| node.attribute("class") == Some("class-native-header"))

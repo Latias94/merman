@@ -1,6 +1,6 @@
 use super::super::*;
 use super::geometry::{
-    open_pie_svg, pie_group_offset, pie_slice_class, pie_slice_path, pie_viewport,
+    native_pie_slice_path, open_pie_svg, pie_group_offset, pie_slice_class, pie_viewport,
     write_pie_group_open,
 };
 use crate::pie::{
@@ -44,56 +44,26 @@ pub(crate) fn render_native_pie_svg(
     write_patterns(&mut out, diagram_id, style, layout.legend_items.len())?;
     let session = options.family.session();
     let background = session.canvas_background();
-    let background_paint = background.map(Paint::Solid);
-    let gap_paint = (style.slice_gap_px > 0.0 && !layout.slices.is_empty())
-        .then_some(background_paint.as_ref().unwrap_or(&style.canvas));
-    if matches!(gap_paint, Some(Paint::LinearGradient(_))) {
-        let view_box = root.view_box().ok_or_else(|| Error::InvalidModel {
-            message: "Pie gap gradient requires a root viewBox".to_owned(),
-        })?;
-        write_gap_gradient(
-            &mut out,
-            diagram_id,
-            view_box,
-            (layout.center_x + offset.0, layout.center_y + offset.1),
-        )?;
-    }
 
     write_pie_group_open(&mut out, layout, offset);
     let inner_radius = settings.donut_hole * layout.radius;
     for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
-        let d = pie_slice_path(slice, layout.radius, inner_radius);
+        let d = native_pie_slice_path(slice, layout.radius, inner_radius, style.slice_gap_px);
         let class = pie_slice_class(&highlight, &slice.label);
         let _ = write!(&mut out, r#"<path d="{d}" class="{class}" "#);
         write_data_fill(&mut out, diagram_id, style, ordinal);
-        if let Some(paint) = gap_paint {
-            let _ = write!(
-                &mut out,
-                r#" stroke-width="{}" stroke-linejoin="round" "#,
-                fmt(style.slice_gap_px)
-            );
-            match paint {
-                Paint::Solid(color) => {
-                    let _ = write_color(&mut out, "stroke", *color, 1.0);
-                }
-                Paint::LinearGradient(_) => {
-                    let _ = write!(&mut out, r#"stroke="url(#{diagram_id}-pie-gap)""#);
-                }
-            }
-        }
         out.push_str("/>");
         out.checkpoint()?;
     }
 
-    let host_canvas = session.native_theme().and_then(|theme| {
-        let canvas = match (background, theme.export_backdrop(), &style.canvas) {
-            (Some(canvas), Some(backdrop), _) => Some(canvas.composite(backdrop, 1.0)),
-            (None, Some(backdrop), Paint::Solid(canvas)) if canvas.channels()[3] != 255 => {
-                Some(canvas.composite(backdrop, 1.0))
-            }
-            _ => background,
-        };
-        canvas.map(|canvas| (canvas, theme.resolved().appearance()))
+    let host_canvas = background.map(Paint::Solid);
+    let native = session.native_theme();
+    let export_ink = native.and_then(|theme| {
+        style.data.fill_inks_for_export(
+            host_canvas.as_ref().unwrap_or(&style.canvas),
+            style.slice_opacity,
+            theme.export_backdrop()?,
+        )
     });
     for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
         let _ = write!(
@@ -102,14 +72,28 @@ pub(crate) fn render_native_pie_svg(
             fmt(slice.text_x),
             fmt(slice.text_y)
         );
-        let ink = match host_canvas {
-            Some((canvas, appearance)) => {
-                style
-                    .data
-                    .fill_ink_for_canvas(ordinal, canvas, style.slice_opacity, appearance)
-            }
-            None => style.data.fill_ink(ordinal),
+        let ink = match (&export_ink, background, native) {
+            (Some(inks), _, _) => inks[ordinal % inks.len()],
+            (None, Some(canvas), Some(theme)) => style.data.fill_ink_for_canvas(
+                ordinal,
+                canvas,
+                style.slice_opacity,
+                theme.resolved().appearance(),
+            ),
+            _ => style.data.fill_ink(ordinal),
         };
+        if uses_pattern(style, ordinal) {
+            // Keep a contrasting edge around the glyphs where they cross pattern marks.
+            let black = Color::rgb(0, 0, 0);
+            let white = Color::rgb(255, 255, 255);
+            let outline = if ink.contrast(black) >= ink.contrast(white) {
+                black
+            } else {
+                white
+            };
+            out.push_str(r#" paint-order="stroke" stroke-width="2" stroke-linejoin="round" "#);
+            let _ = write_color(&mut out, "stroke", outline, 1.0);
+        }
         write_text(&mut out, &style.label, ink, &format!("{}%", slice.percent))?;
     }
     out.push_str("</g>");
@@ -200,26 +184,6 @@ fn write_data_fill(
     }
 }
 
-fn write_gap_gradient(
-    out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
-    view_box: root_svg::ViewBox,
-    center: (f64, f64),
-) -> Result<()> {
-    // The canvas gradient uses normalized viewport coordinates. Project those same coordinates
-    // into the translated pie group so every sector shares the canvas's gradient.
-    let (x, y) = center;
-    let _ = write!(
-        out,
-        r##"<defs><linearGradient id="{diagram_id}-pie-gap" xlink:href="#{diagram_id}-merman-canvas-base" gradientUnits="userSpaceOnUse" gradientTransform="translate({},{}) scale({},{})"/></defs>"##,
-        fmt(view_box.min_x - x),
-        fmt(view_box.min_y - y),
-        fmt(view_box.width),
-        fmt(view_box.height)
-    );
-    out.checkpoint()
-}
-
 fn write_text(out: &mut impl SvgOutput, style: &TextStyle, fill: Color, text: &str) -> Result<()> {
     let _ = write!(
         out,
@@ -235,11 +199,35 @@ fn write_text(out: &mut impl SvgOutput, style: &TextStyle, fill: Color, text: &s
 
 #[cfg(test)]
 mod tests {
+    use super::native_pie_slice_path;
     use crate::environment::RenderEnvironment;
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use crate::theme::{Color, NativeTheme, ThemeCompiler};
     use crate::{LayoutOptions, family};
     use merman_core::{MermaidEngine, ParseOptions};
+    use svgtypes::{PathParser, PathSegment};
+
+    #[test]
+    fn native_pie_retains_a_slice_narrower_than_the_gap() {
+        let slice = crate::model::PieSliceLayout {
+            label: String::new(),
+            value: 1.0,
+            start_angle: 0.0,
+            end_angle: 0.02,
+            is_full_circle: false,
+            percent: 0,
+            text_x: 0.0,
+            text_y: 0.0,
+            fill: String::new(),
+        };
+        let path = native_pie_slice_path(&slice, 185.0, 0.0, 6.0);
+        let mut segments = PathParser::from(path.as_str()).map(|segment| segment.unwrap());
+        assert!(matches!(segments.next(), Some(PathSegment::MoveTo { .. })));
+        assert!(matches!(
+            segments.next(),
+            Some(PathSegment::EllipticalArc { .. })
+        ));
+    }
 
     #[test]
     fn native_pie_uses_categorical_paint_after_filtering_and_wraparound() {
@@ -324,18 +312,20 @@ pie showData title Capacity
             .descendants()
             .filter(|node| slices(*node))
             .collect();
-        let parity_ds: Vec<_> = parity
+        let parity_paths: Vec<_> = parity
             .descendants()
             .filter(|node| slices(*node))
-            .map(|node| node.attribute("d"))
+            .map(|node| node.attribute("d").unwrap())
             .collect();
-        assert_eq!(
-            paths
-                .iter()
-                .map(|node| node.attribute("d"))
-                .collect::<Vec<_>>(),
-            parity_ds
-        );
+        // The first boundary is at twelve o'clock. The two adjacent outer arcs each
+        // leave half the 2.25 px gap, independent of the canvas paint.
+        let first_move_x = |path: &str| match PathParser::from(path).next().unwrap().unwrap() {
+            PathSegment::MoveTo { x, .. } => x,
+            segment => panic!("expected an initial move, got {segment:?}"),
+        };
+        assert_eq!(first_move_x(parity_paths[0]), 0.0);
+        assert_eq!(first_move_x(paths[0].attribute("d").unwrap()), 1.125);
+        assert_eq!(paths[0].attribute("stroke"), None);
 
         let swatches: Vec<_> = document
             .descendants()
@@ -359,8 +349,6 @@ pie showData title Capacity
             .zip(paths)
             .zip(percentages)
         {
-            assert_eq!(path.attribute("stroke"), Some("#FAFAFA"));
-            assert_eq!(path.attribute("stroke-width"), Some("2.25"));
             assert_eq!(path.attribute("fill-opacity"), Some("0.8"));
             assert_eq!(path.attribute("fill"), swatches[ordinal].attribute("fill"));
             assert_eq!(
@@ -373,6 +361,13 @@ pie showData title Capacity
             );
             assert_eq!(label.attribute("font-size"), Some("20"));
             assert_eq!(label.attribute("font-weight"), Some("600"));
+            if ordinal.is_multiple_of(6) {
+                assert_eq!(label.attribute("stroke"), None);
+            } else {
+                assert_eq!(label.attribute("paint-order"), Some("stroke"));
+                let outline = Color::parse(label.attribute("stroke").unwrap()).unwrap();
+                assert!(palette.fill_ink(ordinal).contrast(outline) >= 4.5);
+            }
         }
         assert_eq!(swatches[0].attribute("fill"), Some("#EEEEEE"));
         assert_eq!(swatches[6].attribute("fill"), Some("#EEEEEE"));
@@ -406,43 +401,21 @@ pie showData title Capacity
 
         let gradient = render(environment.begin_session_with_native_theme(native).unwrap());
         let gradient = roxmltree::Document::parse(&gradient).unwrap();
-        let gap = gradient
-            .descendants()
-            .find(|node| node.attribute("id") == Some("capacity-pie-gap"))
-            .unwrap();
-        assert_eq!(gap.attribute("gradientUnits"), Some("userSpaceOnUse"));
-        assert_eq!(
-            gap.attribute(("http://www.w3.org/1999/xlink", "href")),
-            Some("#capacity-merman-canvas-base")
-        );
         assert!(gradient.descendants().any(|node| {
             node.has_tag_name("linearGradient")
                 && node.attribute("id") == Some("capacity-merman-canvas-base")
         }));
-        let slice = gradient.descendants().find(|node| slices(*node)).unwrap();
-        assert_eq!(slice.attribute("stroke"), Some("url(#capacity-pie-gap)"));
-
-        let view_box = gradient
-            .root_element()
-            .attribute("viewBox")
-            .unwrap()
-            .parse::<svgtypes::ViewBox>()
-            .unwrap();
-        let gap_transform = gap
-            .attribute("gradientTransform")
-            .unwrap()
-            .parse::<svgtypes::Transform>()
-            .unwrap();
-        let (pie_x, pie_y) = slice
-            .ancestors()
-            .filter(|node| node.has_tag_name("g"))
-            .filter_map(|node| node.attribute("transform"))
-            .map(|transform| transform.parse::<svgtypes::Transform>().unwrap())
-            .fold((0.0, 0.0), |(x, y), transform| {
-                (x + transform.e, y + transform.f)
-            });
-        assert_eq!((gap_transform.a, gap_transform.d), (view_box.w, view_box.h));
-        assert!((gap_transform.e + pie_x - view_box.x).abs() < 1e-9);
-        assert!((gap_transform.f + pie_y - view_box.y).abs() < 1e-9);
+        assert_eq!(
+            gradient
+                .descendants()
+                .find(|node| slices(*node))
+                .unwrap()
+                .attribute("d"),
+            document
+                .descendants()
+                .find(|node| slices(*node))
+                .unwrap()
+                .attribute("d")
+        );
     }
 }

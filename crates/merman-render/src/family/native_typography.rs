@@ -268,6 +268,10 @@ pub fn unsupported_native_text_style(
 
 pub fn unsupported_native_text_style_with_config(
     parsed: &PresentationDiagram,
+    #[allow(
+        unused_variables,
+        reason = "Only some diagram families consult render configuration."
+    )]
     config: &PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
@@ -538,6 +542,10 @@ pub fn unsupported_native_html_style(
 
 pub fn unsupported_native_html_style_with_config(
     parsed: &PresentationDiagram,
+    #[allow(
+        unused_variables,
+        reason = "Only families with HTML labels consult render configuration."
+    )]
     config: &PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {

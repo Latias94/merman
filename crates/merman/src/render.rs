@@ -1936,7 +1936,7 @@ fn render_jpeg_target(
 ) -> Result<Option<RasterOutput>, RenderError> {
     request.svg.environment.set_export_backdrop(
         request.options.matte.as_deref(),
-        Some(merman_export::ExportRgbaColor::WHITE),
+        Some(merman_export::RasterOptions::DEFAULT_JPEG_MATTE),
     );
     let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;

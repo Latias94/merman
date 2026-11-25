@@ -3,7 +3,7 @@
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{NativeTheme, ThemeCompiler};
+use merman_render::theme::{Color, NativeTheme, ThemeCompiler};
 use merman_render::{LayoutOptions, family};
 use roxmltree::{Document, Node};
 
@@ -75,7 +75,12 @@ fn native_flowchart_edge_labels_use_nested_paint_and_pill_roles() {
         .unwrap()
         .unwrap()
         .into_presentation();
-    for background in ["auto", "pill", "transparent"] {
+    for (background, canvas) in [
+        ("auto", None),
+        ("auto", Some(Color::TRANSPARENT)),
+        ("pill", None),
+        ("transparent", None),
+    ] {
         let document = serde_json::json!({
             "schema_version": 2,
             "extends": "paper",
@@ -88,6 +93,10 @@ fn native_flowchart_edge_labels_use_nested_paint_and_pill_roles() {
         let session = RenderEnvironment::deterministic()
             .begin_session_with_native_theme(NativeTheme::new(theme))
             .unwrap();
+        let session = match canvas {
+            Some(canvas) => session.with_canvas_background(canvas),
+            None => session,
+        };
         let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap()
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -98,6 +107,10 @@ fn native_flowchart_edge_labels_use_nested_paint_and_pill_roles() {
             .filter(|node| node.attribute("class") == Some("merman-edge-label-background"))
             .collect();
         match background {
+            "auto" if canvas.is_some() => {
+                assert_eq!(plates.len(), 1);
+                assert_eq!(plates[0].attribute("fill"), Some("#7F0080"));
+            }
             "auto" => {
                 assert_eq!(plates.len(), 2);
                 assert!(
@@ -129,6 +142,34 @@ fn native_flowchart_edge_labels_use_nested_paint_and_pill_roles() {
             _ => assert!(plates.is_empty()),
         }
     }
+}
+
+#[test]
+fn native_auto_edge_label_does_not_repaint_a_translucent_source_container() {
+    let source = "flowchart TD\nsubgraph G[Group]\nA -->|Inside| B\nend\n\
+        style G fill:#ff0000,fill-opacity:0.5\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap()
+        .with_canvas_background(Color::TRANSPARENT);
+    let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let svg = Document::parse(rendered.svg()).unwrap();
+    assert!(svg.descendants().any(|node| node.text() == Some("Inside")));
+    assert!(
+        !svg.descendants()
+            .any(|node| { node.attribute("class") == Some("merman-edge-label-background") })
+    );
 }
 
 fn property<'a>(node: Node<'a, '_>, name: &str) -> Option<&'a str> {

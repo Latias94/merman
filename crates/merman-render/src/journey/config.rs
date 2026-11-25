@@ -262,6 +262,7 @@ pub(crate) const fn default_use_max_width() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_model::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]

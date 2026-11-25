@@ -33,7 +33,7 @@ For a classic Mermaid look, pass its name to CLI `--theme` or set `site_config.t
 
 Use `--background '#112233'` or `--background transparent` to replace the base of the diagram canvas. Theme textures remain visible. Raster and PDF matte settings belong to the destination output.
 
-Direct PNG, JPEG, and PDF renders use a known opaque destination color when choosing automatic Pie percentage ink over a translucent solid canvas. Standalone SVG and reusable rendered documents choose their ink during SVG rendering using the theme appearance and canvas.
+Direct PNG, JPEG, and PDF renders use a known opaque destination color when choosing automatic Pie percentage ink over a translucent canvas. Automatic ink considers the full canvas gradient. Standalone SVG and reusable rendered documents choose their ink during SVG rendering using the theme appearance and canvas.
 
 Set `canvas.padding_px` in an appearance to add space around the diagram inside the SVG viewport. The canvas paint and textures fill the expanded area.
 

@@ -12,11 +12,11 @@ fn direct_png_uses_the_matte_to_pair_automatic_ink_with_translucent_pie_slices()
     )
     .unwrap();
     let source = "pie\n  \"One\": 1\n  \"Two\": 1\n";
-    let render = |mode: &str| {
+    let render = |canvas: &str, mode: &str| {
         let document = format!(
             r##"{{
             "schema_version":2,"extends":"studio",
-            "roles":{{"canvas":"#00000000"}},
+            "roles":{{"canvas":{canvas}}},
             "typography":{{"sans":["Cousine","sans-serif"]}},
             "form":{{"chart":{{"pie_opacity":0.65}}}},
             "appearances":{{"light":{{"data":{{
@@ -45,8 +45,16 @@ fn direct_png_uses_the_matte_to_pair_automatic_ink_with_translucent_pie_slices()
         png.bytes().to_vec()
     };
 
-    assert_eq!(render("auto"), render("#F8FAFC"));
-    assert_ne!(render("#F8FAFC"), render("#0F172A"));
+    for canvas in [
+        r##""#00000000""##,
+        r##"{"kind":"linear_gradient","stops":[
+            {"offset":0,"color":"#00000000"},{"offset":1,"color":"#80808020"}
+        ]}"##,
+    ] {
+        let auto = render(canvas, "auto");
+        assert_eq!(auto, render(canvas, "#F8FAFC"), "{canvas}");
+        assert_ne!(auto, render(canvas, "#0F172A"), "{canvas}");
+    }
 }
 
 #[cfg(all(feature = "svg", feature = "diagram-info"))]

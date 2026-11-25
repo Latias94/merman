@@ -162,7 +162,7 @@ impl PreparedGraphicalOutput {
             Self::Jpeg { options } => {
                 svg.environment.set_export_backdrop(
                     options.matte.as_deref(),
-                    Some(merman::svg::export::ExportRgbaColor::WHITE),
+                    Some(merman::svg::export::RasterOptions::DEFAULT_JPEG_MATTE),
                 );
                 merman::RenderTarget::Document(svg)
             }
