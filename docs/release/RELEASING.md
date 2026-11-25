@@ -731,8 +731,10 @@ python3 scripts/crates_io_release.py registry-independent --observe-only \
 Manual candidates and uploads require the same receipt repository as the workflow. The repository
 option uses the maintainer's GitHub CLI authentication, separate from the crates.io token. Keep the
 original candidate directory, including any local attempt marker from an older publisher. Continue
-observation with the original checksum after an uncertain response. Do not run the manual and
-workflow publishers for the same version concurrently. Once
+observation with the original checksum after an uncertain response. Manual publishes and
+observations on the same candidate directory cannot overlap. Do not run manual publishers from
+different directories or machines, or a manual publisher and CI, for the same version
+concurrently. Once
 the group is visible, build a fresh registry consumer with all three output features before releasing
 `merman-export` and its workspace dependents.
 Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
@@ -769,9 +771,11 @@ releases in order and wait for each run to finish before dispatching the next.
 For all five packages, preflight checks legal files in the actual `.crate`. It checks Krilla's ICC
 license and resvg's BSD license against the pinned upstream digests and compares the other required
 files with their source files. Preflight freezes the archive and its Cargo upload metadata before
-observing the registry. The receipt binds their
-SHA-256 values to the package, version, source commit and tree, and producing run attempt. A
-missing version must also pass a credential-free locked dry run without changing the archive.
+observing the registry. The receipt binds their SHA-256 values to the package, version, source
+commit and tree, and producing run attempt. A missing version must also pass a credential-free
+locked dry run without changing the archive. The candidate directory appears only after those
+checks and the final source check succeed. A failed dry run leaves the directory available for
+retry.
 
 The protected publisher downloads the artifact by ID and verifies both digests and the producing
 run attempt. An immutable artifact holds the prepared bytes, but it does not indicate that they
@@ -783,8 +787,13 @@ registry query failure or failed receipt write does not send a request.
 The matching package, version, source commit and checksum are recorded as `registry-confirmed`
 when both registry endpoints confirm the archive. Shared receipts live in the repository's
 `crates.io-receipts` deployment records. The publisher retains a shared confirmation before
-mirroring it in the local candidate directory. These records do not expire with Actions artifacts.
-Only the `crates.io` job has the crates.io publishing credential.
+mirroring it in the local candidate directory. If the shared write fails, keep the local
+`registry-confirmed.json`. Retry `registry-independent --observe-only` with the receipt repository
+and the original candidate directory, source commit and tree, and archive checksum. It can replay
+the exact confirmation even if one of the registry endpoints is temporarily unavailable. It still
+reports a visibility failure if the archive is not currently visible through both endpoints.
+Shared records do not expire with Actions artifacts. Only the `crates.io` job has the crates.io
+publishing credential.
 
 A rerun or new dispatch without an intent or confirmation can still prepare the first upload,
 including after cancellation while retaining the candidate. Rerun all jobs to bind a new
@@ -792,12 +801,12 @@ publisher to the new attempt. With either receipt, the workflow observes the rec
 only. It does not need the candidate artifact or any job or step conclusions. Two 404s after an
 uncertain send or a confirmation do not reopen publication.
 
-Older dispatches without receipts require one operator reconciliation. If an old version
-already exists, run `registry-independent --observe-only` with its original `--sha256`,
-`--source-sha` and `--publication-repository Latias94/merman` to record the exact match. If it is
-missing and you can establish that no send was attempted, use the manual frozen candidate flow.
-An unresolved attempt stays observation-only. Do not dispatch pre-receipt workflow revisions for
-new uploads.
+The pre-receipt migration covers `roughr-merman` 0.12.0 through 0.12.6, the versions present in
+the registry when the receipt protocol was introduced. Those versions need an exact shared
+confirmation before CI can observe them. For a non-yanked version, run
+`registry-independent --observe-only` with its original `--sha256`, `--source-sha`, and
+`--publication-repository Latias94/merman`. New versions do not depend on Actions run retention or
+numbering. Do not dispatch pre-receipt workflow revisions for new uploads.
 
 After upload or a matching existing release, the verifier waits for both endpoints to report
 the exact checksum and records the confirmation. For a renderer fork it then compiles a fresh

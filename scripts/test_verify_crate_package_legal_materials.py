@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import tarfile
 import tempfile
 import unittest
@@ -83,15 +85,31 @@ class PackageLegalMaterialTests(unittest.TestCase):
                 with self.assertRaisesRegex(
                     verify.PackageLegalMaterialError, f"pinned upstream SHA-256: {pinned}$"
                 ):
-                    verify.verify_package_archive(package, self.archive(package, truncated))
-                verify.verify_package_archive(package, self.archive(package, original))
+                    verify.verify_package_archive(package, self.archive(package, truncated), repo_root=verify.ROOT)
+                verify.verify_package_archive(package, self.archive(package, original), repo_root=verify.ROOT)
+
+    def test_archive_uses_the_candidate_checkout_license_pin(self) -> None:
+        package = self.package() | {"name": "merman-krilla"}
+        files = {"LICENSE-MIT": b"MIT\n", "LICENSE-APACHE": b"Apache\n", "icc/LICENSE": b"Candidate ICC terms\n"}
+        for name in ("LICENSE-MIT", "LICENSE-APACHE"):
+            (self.root / name).write_bytes(files[name])
+        contract = self.root / "docs/release/THIRD_PARTY_COMPONENTS.json"
+        contract.parent.mkdir(parents=True)
+        contract.write_text(json.dumps({"components": [{"license_files": [{
+            "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-ICC",
+            "sha256": hashlib.sha256(files["icc/LICENSE"]).hexdigest(),
+        }]}]}), encoding="utf-8")
+        archive = self.archive(package, files)
+        verify.verify_package_archive(package, archive, repo_root=self.root)
+        with self.assertRaisesRegex(verify.PackageLegalMaterialError, "pinned upstream SHA-256"):
+            verify.verify_package_archive(package, archive, repo_root=verify.ROOT)
 
     def test_unpinned_archive_license_must_match_checkout(self) -> None:
         package = self.package("MIT")
         (self.root / "LICENSE").write_bytes(b"MIT\n")
-        verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT\n"}))
+        verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT\n"}), repo_root=self.root)
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "differs from source: LICENSE$"):
-            verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT!"}))
+            verify.verify_package_archive(package, self.archive(package, {"LICENSE": b"MIT!"}), repo_root=self.root)
 
     def test_apache_only_package_cannot_omit_its_license_text(self) -> None:
         with self.assertRaisesRegex(

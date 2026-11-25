@@ -2156,7 +2156,6 @@ jobs:
             "group": "release-independent-crate-${{ inputs.package == 'roughr-merman' && 'roughr' || 'renderers' }}",
             "cancel-in-progress": "false",
         })
-        self.assertIn("run-name: Release independent crate [receipts] ${{ inputs.package }} ${{ inputs.version }}", workflow)
         self.assertIn("\npermissions:\n  contents: read\n", workflow)
         self.assertNotIn("cargo info", workflow)
 
@@ -2175,7 +2174,7 @@ jobs:
         permissions = re.search(r"(?m)^    permissions:\n((?:^      [^\n]+\n)+)", preflight)
         self.assertIsNotNone(permissions)
         self.assertEqual(dict(re.findall(r"(?m)^      ([a-z-]+): ([a-z]+)$", permissions[1])), {
-            "actions": "read", "contents": "read", "deployments": "write",
+            "contents": "read", "deployments": "write",
         })
         self.assertIn("scripts/crates_io_release.py independent-history", preflight)
         self.assertIn("steps.history.outputs.sha256 || steps.candidate.outputs.sha256", preflight)

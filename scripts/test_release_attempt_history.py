@@ -157,7 +157,7 @@ class PublishHistoryTests(unittest.TestCase):
         self.assertNotIn("--method", run.call_args.args[0])
 
 
-class IndependentCrateHistoryTests(unittest.TestCase):
+class IndependentCrateReceiptTests(unittest.TestCase):
     repository = "example/project"
     name = "merman-resvg"
     version = "0.50.1"
@@ -165,30 +165,15 @@ class IndependentCrateHistoryTests(unittest.TestCase):
     old_sha = "b" * 40
     digest = "c" * 64
 
-    def run_record(self, run_id=42, attempt=1, **fields) -> dict:
-        return {
-            "id": run_id, "run_attempt": attempt, "head_sha": self.sha if run_id == 42 else self.old_sha,
-            "run_number": 2 if run_id == 42 else 1,
-            "display_title": f"{history.INDEPENDENT_RECEIPT_RUN}{self.name} {self.version}", **fields,
-        }
-
-    def select(self, runs=(), *, attempt=1, deployments=(), legacy_version=None):
+    def select(self, *, deployments=()):
         def read(path, *, paginate, gh_env):
             self.assertTrue(paginate)
-            if "/deployments?" in path:
-                self.assertIn("task=independent-crate%3Amerman-resvg%3A0.50.1", path)
-                return [list(deployments)]
-            self.assertIn(f"/workflows/{history.INDEPENDENT_WORKFLOW}/runs?", path)
-            return [{"total_count": len(runs), "workflow_runs": list(runs)}]
+            self.assertIn("/deployments?", path)
+            self.assertIn("task=independent-crate%3Amerman-resvg%3A0.50.1", path)
+            return [list(deployments)]
 
-        with (
-            mock.patch.object(history, "read_api", side_effect=read),
-            mock.patch.object(history, "_legacy_independent_version", return_value=legacy_version),
-        ):
-            return history.independent_crate_history(
-                self.repository, 42, attempt, name=self.name, version=self.version,
-                source_sha=self.sha, repo_root=Path.cwd(), manifest="vendor/resvg/Cargo.toml",
-            )
+        with mock.patch.object(history, "read_api", side_effect=read):
+            return history.read_independent_receipt(self.repository, self.name, self.version)
 
     def receipt(self, state, **fields) -> dict:
         return {
@@ -200,10 +185,8 @@ class IndependentCrateHistoryTests(unittest.TestCase):
             },
         }
 
-    def test_cancelled_frozen_candidate_does_not_require_observation(self) -> None:
-        cancelled = self.run_record(41, status="completed", conclusion="cancelled")
-        self.assertIsNone(self.select([self.run_record(), cancelled]))
-        self.assertIsNone(self.select([self.run_record(attempt=2, run_number=1)], attempt=2))
+    def test_no_receipt_does_not_require_any_workflow_records(self) -> None:
+        self.assertIsNone(self.select())
 
     def test_intent_and_confirmation_recover_the_digest_without_runs_or_artifacts(self) -> None:
         for state in ("upload-intent", "registry-confirmed"):
@@ -234,24 +217,6 @@ class IndependentCrateHistoryTests(unittest.TestCase):
             "payload": json.loads(response["payload"]),
         })
         self.assertEqual(self.select(deployments=[response]), record)
-
-    def test_only_matching_legacy_runs_without_a_receipt_require_manual_reconciliation(self) -> None:
-        named = self.run_record(41, display_title=f"Release independent crate {self.name} {self.version}")
-        unnamed = self.run_record(41, display_title="Release Independent Crate (crates.io)")
-        other = self.run_record(41, display_title="Release independent crate merman-resvg 0.50.0")
-        for legacy in (named, unnamed):
-            with self.subTest(legacy=legacy), self.assertRaisesRegex(ValueError, "reconcile it manually"):
-                self.select([self.run_record(), legacy], legacy_version=self.version)
-        self.assertIsNone(self.select([self.run_record(), other]))
-
-    def test_current_run_identity_is_verified_before_a_first_send(self) -> None:
-        with self.assertRaisesRegex(ValueError, "run identity"):
-            self.select([self.run_record(attempt=2)])
-
-    def test_only_a_gap_before_receipts_requires_legacy_reconciliation(self) -> None:
-        self.assertIsNone(self.select([self.run_record(run_number=3), self.run_record(41)]))
-        with self.assertRaisesRegex(ValueError, "before receipts is incomplete"):
-            self.select([self.run_record()])
 
 
 class NpmRecoverySelectionTests(unittest.TestCase):

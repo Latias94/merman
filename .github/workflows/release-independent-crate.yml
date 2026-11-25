@@ -1,5 +1,5 @@
 name: Release Independent Crate (crates.io)
-run-name: Release independent crate [receipts] ${{ inputs.package }} ${{ inputs.version }}
+run-name: Release independent crate ${{ inputs.package }} ${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -72,7 +72,6 @@ jobs:
     needs: validate-inputs
     runs-on: ubuntu-24.04
     permissions:
-      actions: read
       contents: read
       deployments: write
     outputs:
@@ -105,21 +104,19 @@ jobs:
             printf 'attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
           } >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100.0
       - name: Read independent crate receipts
         id: history
         env:
           GH_TOKEN: ${{ github.token }}
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
-          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
         run: |
           set -euo pipefail
-          python3 scripts/crates_io_release.py independent-history --package "$PACKAGE" --version "$VERSION" \
-            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
-            --source-sha "$SOURCE_SHA"
+          python3 scripts/crates_io_release.py independent-history --package "$PACKAGE" --version "$VERSION"
 
+      - name: Install Rust toolchain
+        if: ${{ steps.history.outputs.sha256 == '' }}
+        uses: dtolnay/rust-toolchain@1.100.0
       - name: Install cargo-semver-checks
         if: ${{ steps.history.outputs.sha256 == '' }}
         uses: taiki-e/install-action@v2.90.6

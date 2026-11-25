@@ -24,11 +24,11 @@ class PackageLegalMaterialError(RuntimeError):
     """A governed Cargo package has missing or invalid legal material."""
 
 
-def pinned_license_digests(package_name: str) -> dict[str, str]:
+def pinned_license_digests(package_name: str, repo_root: Path) -> dict[str, str]:
     if (pin := PINNED_LICENSES.get(package_name)) is None:
         return {}
     package_path, source_path = pin
-    contract = json.loads((ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(encoding="utf-8"))
+    contract = json.loads((repo_root / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(encoding="utf-8"))
     digests = [
         entry["sha256"]
         for component in contract["components"]
@@ -100,13 +100,13 @@ def verify_package_listing(package: dict[str, Any], listing: set[str]) -> None:
         )
 
 
-def verify_package_archive(package: dict[str, Any], archive: Path) -> None:
+def verify_package_archive(package: dict[str, Any], archive: Path, *, repo_root: Path) -> None:
     prefix = f"{package['name']}-{package['version']}/"
     crate_root = Path(package["manifest_path"]).parent
     required = required_legal_paths(package)
     files: set[str] = set()
     try:
-        pinned = pinned_license_digests(package["name"])
+        pinned = pinned_license_digests(package["name"], repo_root)
         with tarfile.open(archive, "r:gz") as crate:
             for member in crate:
                 if not member.name.startswith(prefix):

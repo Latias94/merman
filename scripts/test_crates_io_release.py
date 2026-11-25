@@ -11,6 +11,8 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import struct
+import subprocess
+import sys
 import tarfile
 import threading
 from pathlib import Path
@@ -394,6 +396,9 @@ class CratesIoReceiptTests(unittest.TestCase):
             for corruption in ("missing", "truncated", "same length", "unchanged"):
                 with self.subTest(name=name, corruption=corruption), tempfile.TemporaryDirectory() as temporary:
                     root = Path(temporary)
+                    contract = Path("docs/release/THIRD_PARTY_COMPONENTS.json")
+                    (root / contract).parent.mkdir(parents=True)
+                    (root / contract).write_bytes((ROOT / contract).read_bytes())
                     prepared = self.prepared(root, name)
                     metadata = package_metadata(name)
                     [package] = metadata["packages"]
@@ -1041,11 +1046,15 @@ class FrozenIndependentCrateTests(unittest.TestCase):
         ))
 
     def freeze(self, directory, publication):
-        return crates_io_archive.freeze_candidate(
-            directory, self.original, json.dumps({"name": self.name, "vers": self.version}).encode(),
+        candidate = crates_io_archive.freeze_candidate(
+            self.original, json.dumps({"name": self.name, "vers": self.version}).encode(),
             archive_sha256=release.sha256_file(self.original), name=self.name, version=self.version,
             source=self.source, publication=publication,
         )
+        crates_io_archive.retain_candidate(
+            directory, candidate, name=self.name, version=self.version, registry_confirmed=False,
+        )
+        return candidate
 
     def record(self, repository, package, version, receipt, *, gh_env):
         self.assertEqual((repository, package, version), (self.repository, self.name, self.version))
@@ -1057,6 +1066,8 @@ class FrozenIndependentCrateTests(unittest.TestCase):
         provenance = [] if manual else ["--publication-run-id", "42", "--publication-attempt", "1"]
         if share_receipts:
             provenance += ["--publication-repository", self.repository]
+        if action == "registry-independent":
+            provenance += ["--observe-only", "--visibility-attempts", "1", "--visibility-delay", "0"]
         with (
             mock.patch("sys.argv", [
                 "release", action, "--candidate-dir", str(self.directory),
@@ -1173,7 +1184,7 @@ image-webp = { package = "webp", version = "0.2", optional = true }
         identity = dict(name=self.name, version=self.version, source=self.source, publication=self.publication)
 
         def confirm(*_args, **_kwargs):
-            self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
+            self.assertFalse(self.directory.exists())
             return True
 
         with (
@@ -1191,6 +1202,34 @@ image-webp = { package = "webp", version = "0.2", optional = true }
         self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
         self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
         self.assertEqual(self.shared.state, "registry-confirmed")
+
+    def test_failed_manual_dry_run_leaves_no_uploadable_candidate_and_allows_in_place_retry(self) -> None:
+        self.directory = self.root / "manual-preflight"
+
+        def dry_run(command, **_kwargs):
+            self.assertFalse(self.directory.exists())
+            return subprocess.CompletedProcess(command, 1 if cargo.call_count == 1 else 0)
+
+        with (
+            self.preflight_dependencies(),
+            mock.patch.object(crates_io_archive, "publish_metadata", return_value=self.candidate.metadata),
+            mock.patch.object(release, "independent_version_exists", return_value=False) as registry,
+            mock.patch.object(release, "run_command", side_effect=dry_run) as cargo,
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("preflight-independent", manual=True, share_receipts=True), 1)
+            self.assertFalse(self.directory.exists())
+            self.assertFalse((self.root / "outputs").exists())
+            self.assertEqual(self.command("publish-independent", manual=True, share_receipts=True), 1)
+            registry.assert_called_once()
+            upload.assert_not_called()
+            self.shared_writes.assert_not_called()
+
+            self.assertEqual(self.command("preflight-independent", manual=True, share_receipts=True), 0)
+            actual = crates_io_archive.load_candidate(
+                self.directory, name=self.name, version=self.version, source=self.source, publication=None,
+            )
+            self.assertEqual((actual.archive, actual.metadata), (self.candidate.archive, self.candidate.metadata))
 
     def test_manual_preflight_respects_existing_shared_evidence(self) -> None:
         original_sha = "d" * 40
@@ -1214,9 +1253,9 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             self.assertEqual(self.command("preflight-independent", manual=True, share_receipts=True), 1)
             self.shared_writes.assert_not_called()
             cargo.assert_not_called()
+            self.assertFalse(self.directory.exists())
             self.assertFalse((self.root / "outputs").exists())
 
-            self.directory = self.root / "manual-confirmed"
             self.assertEqual(self.command("preflight-independent", manual=True, share_receipts=True), 0)
             self.assertTrue((self.directory / "registry-confirmed.json").is_file())
             self.shared_writes.assert_called_once()
@@ -1303,6 +1342,40 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             self.shared_writes.assert_not_called()
             upload.assert_not_called()
 
+    def test_manual_publish_serializes_competing_processes_before_registry_queries(self) -> None:
+        self.directory = self.root / "manual"
+        self.candidate = self.freeze(self.directory, None)
+        code = """
+from unittest.mock import patch
+from scripts import crates_io_release as release
+with patch.object(release.release_attempt_history, "read_independent_receipt",
+                  side_effect=AssertionError("competing process reached shared receipts")):
+    raise SystemExit(release.main())
+"""
+        def absent(*_args, **_kwargs):
+            result = subprocess.run(
+                [sys.executable, "-c", code, "publish-independent", "--candidate-dir", str(self.directory),
+                 "--package", self.name, "--version", self.version, "--source-sha", self.source["commit"],
+                 "--source-tree", self.source["tree"], "--sha256", self.candidate.archive_sha256,
+                 "--receipt-sha256", self.candidate.receipt_sha256, "--publication-repository", self.repository],
+                cwd=ROOT, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("another process is using this frozen candidate", result.stderr)
+            return False
+
+        connection = mock.MagicMock()
+        response = connection.getresponse.return_value.__enter__.return_value
+        response.status, response.read.return_value = 200, b""
+        with (
+            mock.patch.object(release, "independent_version_exists", side_effect=absent),
+            mock.patch.object(crates_io_archive.http.client, "HTTPSConnection", return_value=connection),
+        ):
+            self.assertEqual(self.command("publish-independent", manual=True, share_receipts=True), 0)
+        connection.request.assert_called_once()
+        self.shared_writes.assert_called_once()
+        self.assertEqual(self.shared.state, "upload-intent")
+
     def test_failed_receipt_write_prevents_crates_io_put(self) -> None:
         with (
             mock.patch.object(release, "assert_release_source"),
@@ -1344,6 +1417,52 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             self.assertEqual(self.command("publish-independent"), 1)
             upload.assert_not_called()
         self.shared_writes.assert_called_once()
+
+    def test_manual_observation_replays_local_confirmation_after_a_shared_write_failure(self) -> None:
+        workflow_directory, workflow_candidate = self.directory, self.candidate
+        self.directory = self.root / "manual"
+        self.candidate = self.freeze(self.directory, None)
+        checksum = self.candidate.archive_sha256
+        with (
+            mock.patch.object(release, "fetch_crates_io_checksum", side_effect=[checksum, None, None]) as api,
+            mock.patch.object(release, "fetch_crates_io_index_checksum", side_effect=[checksum, None, None]),
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("registry-independent", manual=True), 1)
+            api.assert_not_called()
+            self.shared_reads.assert_not_called()
+
+            self.shared_writes.side_effect = OSError("receipt store not reachable")
+            self.assertEqual(self.command("registry-independent", manual=True, share_receipts=True), 1)
+            self.assertEqual((self.directory / "registry-confirmed.json").read_bytes(), self.candidate.receipt_bytes)
+            self.assertIsNone(self.shared)
+
+            self.shared_writes.side_effect = self.record
+            self.assertEqual(self.command("registry-independent", manual=True, share_receipts=True), 1)
+            self.assertEqual((self.shared.sha256, self.shared.state), (checksum, "registry-confirmed"))
+            self.directory, self.candidate = workflow_directory, workflow_candidate
+            self.assertEqual(self.command("publish-independent"), 1)
+            upload.assert_not_called()
+
+    def test_independent_history_only_blocks_known_legacy_versions_without_shared_receipts(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": self.repository}),
+            mock.patch.object(release, "_independent_outputs") as outputs,
+            mock.patch.object(release, "cargo_metadata") as cargo,
+        ):
+            for package, version in ((self.name, self.version), ("roughr-merman", "0.12.7")):
+                with mock.patch("sys.argv", ["release", "independent-history", "--package", package, "--version", version]):
+                    self.assertEqual(release.main(), 0)
+                    outputs.assert_called_with(sha256="", source_sha="")
+            with mock.patch("sys.argv", ["release", "independent-history", "--package", "roughr-merman", "--version", "0.12.6"]):
+                self.assertEqual(release.main(), 1)
+                self.shared = release.release_attempt_history.IndependentCrateReceipt(
+                    self.candidate.archive_sha256, self.source["commit"], "registry-confirmed",
+                )
+                self.assertEqual(release.main(), 0)
+                outputs.assert_called_with(sha256=self.shared.sha256, source_sha=self.shared.source_sha)
+            cargo.assert_not_called()
 
     def test_registry_observation_records_confirmation_without_requiring_the_archive(self) -> None:
         intent = release.release_attempt_history.IndependentCrateReceipt(
