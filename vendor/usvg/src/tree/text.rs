@@ -294,7 +294,7 @@ impl Default for FontOpticalSizing {
 /// So you can have black text and green underline.
 ///
 /// Also, in SVG you can specify text decoration stroking.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextDecorationStyle {
     pub(crate) fill: Option<Fill>,
     pub(crate) stroke: Option<Stroke>,

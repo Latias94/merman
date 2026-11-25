@@ -240,6 +240,7 @@ pub(crate) fn can_probe_end_anchor(text: &Text) -> bool {
 struct UnpositionedChunk {
     clusters: Vec<GlyphCluster>,
     shifts: RelativeShifts,
+    next_chunk_offset: f32,
 }
 
 pub(crate) fn layout_text(
@@ -302,7 +303,11 @@ pub(crate) fn layout_text(
         apply_word_spacing(chunk, &mut clusters);
         let shifts = resolve_relative_shifts(text_node, chunk, *char_offset, &clusters);
         *char_offset += chunk.text.chars().count();
-        Some(UnpositionedChunk { clusters, shifts })
+        Some(UnpositionedChunk {
+            clusters,
+            shifts,
+            next_chunk_offset: 0.0,
+        })
     });
     let mut adjusted = Vec::new();
     // Keep shaping and placement streaming when there is no element-wide length to resolve.
@@ -320,6 +325,7 @@ pub(crate) fn layout_text(
         UnpositionedChunk {
             mut clusters,
             shifts,
+            next_chunk_offset,
         },
     ) in text_node
         .chunks
@@ -370,8 +376,9 @@ pub(crate) fn layout_text(
             end_layout = end.finish();
         }
 
-        if text_node.writing_mode == WritingMode::TopToBottom {
-            if let TextFlow::Linear = chunk.text_flow {
+        if let TextFlow::Linear = chunk.text_flow {
+            curr_pos.0 += next_chunk_offset;
+            if text_node.writing_mode == WritingMode::TopToBottom {
                 std::mem::swap(&mut curr_pos.0, &mut curr_pos.1);
             }
         }
@@ -398,45 +405,54 @@ fn append_chunk_geometry(
         }
     }
 
-    for span in &chunk.spans {
+    let baseline_for = |span: &TextSpan, font: &ResolvedFont| match chunk.text_flow {
+        TextFlow::Linear => resolve_baseline(span, font, text_node.writing_mode),
+        TextFlow::Path(_) => 0.0,
+    };
+    let mut decoration_ranges = [0..0, 0..0, 0..0];
+    for (index, span) in chunk.spans.iter().enumerate() {
         let font = match primary_font(fonts_cache, span) {
             Some((_, font)) => font,
             None => continue,
         };
 
-        let mut span_ts = text_ts;
-        span_ts = span_ts.pre_translate(x, y);
-        if let TextFlow::Linear = chunk.text_flow {
-            let shift = resolve_baseline(span, font, text_node.writing_mode);
-
-            // In case of a horizontal flow, shift transform and not clusters,
-            // because clusters can be rotated and an additional shift will lead
-            // to invalid results.
-            span_ts = span_ts.pre_translate(0.0, shift);
-        }
-
-        let mut decoration =
-            |offset, style: fn(&TextDecoration) -> Option<&TextDecorationStyle>| {
-                let paint = style(&span.decoration)?.clone();
-                let runs = collect_decoration_spans(span, chunk, clusters, style);
-                let path = convert_decoration(offset, span, font, paint, &runs, span_ts)?;
-                geometry.bbox = geometry.bbox.expand(path.data.bounds());
-                Some(Box::new(path))
-            };
-        let (underline_offset, overline_offset, strike_offset) = match text_node.writing_mode {
-            WritingMode::LeftToRight => (
-                -font.underline_position(),
-                -font.ascent(),
-                -font.line_through_position(),
-            ),
-            WritingMode::TopToBottom => {
-                let half_height = font.height() / 2.0;
-                (half_height, -half_height, 0.0)
+        let baseline = baseline_for(span, font);
+        let span_ts = text_ts.pre_translate(x, y).pre_translate(0.0, baseline);
+        let mut decoration = |line: DecorationLine| {
+            let paint = line.style(&span.decoration)?;
+            let offset = line.offset(font, text_node.writing_mode);
+            let range = &mut decoration_ranges[line as usize];
+            if index >= range.end {
+                let following = chunk.spans[index + 1..]
+                    .iter()
+                    .take_while(|next| {
+                        next.visible == span.visible
+                            && line.style(&next.decoration) == Some(paint)
+                            && primary_font(fonts_cache, next).is_some_and(|(_, next_font)| {
+                                next_font.underline_thickness() == font.underline_thickness()
+                                    && line.offset(next_font, text_node.writing_mode) == offset
+                                    && baseline_for(next, next_font) == baseline
+                            })
+                    })
+                    .count();
+                *range = index..index + 1 + following;
             }
+            let owner = match line {
+                DecorationLine::LineThrough => range.end - 1,
+                _ => range.start,
+            };
+            if owner != index {
+                return None;
+            }
+            let bytes = chunk.spans[range.start].start..chunk.spans[range.end - 1].end;
+            let runs = collect_decoration_spans(bytes, chunk, clusters, line);
+            let path = convert_decoration(offset, span, font, paint.clone(), &runs, span_ts)?;
+            geometry.bbox = geometry.bbox.expand(path.data.bounds());
+            Some(Box::new(path))
         };
-        let underline = decoration(underline_offset, TextDecoration::underline);
-        let overline = decoration(overline_offset, TextDecoration::overline);
-        let line_through = decoration(strike_offset, TextDecoration::line_through);
+        let underline = decoration(DecorationLine::Underline);
+        let overline = decoration(DecorationLine::Overline);
+        let line_through = decoration(DecorationLine::LineThrough);
 
         let mut fill = span.fill.clone();
         if let Some(ref mut fill) = fill {
@@ -538,8 +554,9 @@ fn convert_span(
             span_clusters.push(cluster.clone());
         }
 
-        let advance = if cluster.advance > 0.0 {
-            cluster.advance
+        let extent = cluster.text_length_extent.unwrap_or(cluster.advance);
+        let advance = if extent > 0.0 {
+            extent
         } else {
             cluster.width.max(1.0)
         };
@@ -564,11 +581,39 @@ fn convert_span(
     Some((span_clusters, bbox))
 }
 
+#[derive(Clone, Copy)]
+enum DecorationLine {
+    Underline,
+    Overline,
+    LineThrough,
+}
+
+impl DecorationLine {
+    fn style(self, decoration: &TextDecoration) -> Option<&TextDecorationStyle> {
+        match self {
+            Self::Underline => decoration.underline(),
+            Self::Overline => decoration.overline(),
+            Self::LineThrough => decoration.line_through(),
+        }
+    }
+
+    fn offset(self, font: &ResolvedFont, mode: WritingMode) -> f32 {
+        match (mode, self) {
+            (WritingMode::LeftToRight, Self::Underline) => -font.underline_position(),
+            (WritingMode::LeftToRight, Self::Overline) => -font.ascent(),
+            (WritingMode::LeftToRight, Self::LineThrough) => -font.line_through_position(),
+            (WritingMode::TopToBottom, Self::Underline) => font.height() / 2.0,
+            (WritingMode::TopToBottom, Self::Overline) => -font.height() / 2.0,
+            (WritingMode::TopToBottom, Self::LineThrough) => 0.0,
+        }
+    }
+}
+
 fn collect_decoration_spans(
-    span: &TextSpan,
+    bytes: Range<usize>,
     chunk: &TextChunk,
     clusters: &[GlyphCluster],
-    style: fn(&TextDecoration) -> Option<&TextDecorationStyle>,
+    line: DecorationLine,
 ) -> Vec<DecorationSpan> {
     let text = &chunk.text;
     let mut spans = Vec::new();
@@ -578,13 +623,20 @@ fn collect_decoration_spans(
     while let Some(cluster) = clusters.next() {
         let start = cluster.byte_idx.value();
         let end = cluster.byte_end;
-        let covered_start = span.start.max(start);
-        let covered_end = span.end.min(end);
+        let covered_start = bytes.start.max(start);
+        let covered_end = bytes.end.min(end);
         let covered = cluster.visible && covered_start < covered_end;
-        let whole = covered && covered_start == start && covered_end == end;
-        if !whole || cluster.has_relative_shift {
+        let (leading, trailing) = if cluster.rtl {
+            (covered_end == end, covered_start == start)
+        } else {
+            (covered_start == start, covered_end == end)
+        };
+        if !covered || !leading || cluster.has_relative_shift {
             spans.extend(current.take());
             advance = 0.0;
+        }
+        if !covered {
+            continue;
         }
         // Widths and advances already include lengthAdjust. For rotated characters,
         // put them back in local coordinates before applying the same inline scale as ink.
@@ -594,40 +646,31 @@ fn collect_decoration_spans(
         } else {
             (cluster.transform, 1.0)
         };
-        if whole {
-            let decoration = current.get_or_insert(DecorationSpan {
-                width: 0.0,
-                transform,
-            });
-            let mut width = cluster.advance;
-            if cluster.text_length_extent.is_some() {
-                // A paint boundary can split a continuous decoration. Include the
-                // adjusted gap only when this line continues into the next visual cluster.
-                let continues = clusters.peek().is_some_and(|next| {
-                    let edge = if next.rtl {
-                        next.byte_end.saturating_sub(1)
-                    } else {
-                        next.byte_idx.value()
-                    };
-                    next.visible
-                        && !next.has_relative_shift
-                        && !rotated
-                        && chunk_span_at(chunk, ByteIndex::new(edge))
-                            .is_some_and(|s| s.visible && style(&s.decoration).is_some())
-                });
-                width = if continues {
-                    width.max(cluster.width)
+        let width = match cluster.text_length_extent {
+            Some(extent) => {
+                let continues = !rotated
+                    && clusters.peek().is_some_and(|next| {
+                        let edge = if next.rtl {
+                            next.byte_end.saturating_sub(1)
+                        } else {
+                            next.byte_idx.value()
+                        };
+                        next.visible
+                            && !next.has_relative_shift
+                            && chunk_span_at(chunk, ByteIndex::new(edge))
+                                .is_some_and(|s| s.visible && line.style(&s.decoration).is_some())
+                    });
+                if continues {
+                    cluster.advance.max(extent)
                 } else {
-                    cluster.width
-                };
+                    extent
+                }
             }
-            decoration.width = decoration.width.max((advance + width) / scale);
-            advance += cluster.advance;
-            if rotated {
-                spans.extend(current.take());
-                advance = 0.0;
-            }
-        } else if covered {
+            None => cluster.advance,
+        };
+        let (from, to) = if leading && trailing {
+            (0.0, width)
+        } else {
             // A ligature may be shared by several paint spans. Divide its inline
             // advance among its source characters in visual order.
             let Some(characters) = text.get(start..end) else {
@@ -639,11 +682,27 @@ fn collect_decoration_spans(
             } else {
                 &text[start..covered_start]
             };
-            let unit = cluster.width / scale / characters.chars().count() as f32;
-            spans.push(DecorationSpan {
-                width: unit * covered.chars().count() as f32,
-                transform: transform.pre_translate(unit * before.chars().count() as f32, 0.0),
-            });
+            let unit = cluster.width / characters.chars().count() as f32;
+            let from = unit * before.chars().count() as f32;
+            let to = if trailing {
+                width
+            } else {
+                from + unit * covered.chars().count() as f32
+            };
+            (from, to)
+        };
+        let decoration = current.get_or_insert_with(|| {
+            advance = -from;
+            DecorationSpan {
+                width: 0.0,
+                transform: transform.pre_translate(from / scale, 0.0),
+            }
+        });
+        decoration.width = decoration.width.max((advance + to) / scale);
+        advance += cluster.advance;
+        if !trailing || rotated {
+            spans.extend(current.take());
+            advance = 0.0;
         }
     }
 
@@ -720,10 +779,11 @@ fn resolve_clusters_positions(
     fonts_cache: &FontsCache,
     clusters: &mut [GlyphCluster],
 ) -> (f32, f32) {
-    let anchor_offset = inline_anchor_offset(anchor, clusters, shifts);
+    let (anchor_offset, advance) = inline_anchor_and_advance(anchor, clusters, shifts);
     match chunk.text_flow {
         TextFlow::Linear => {
-            resolve_clusters_positions_horizontal(text, shifts, anchor_offset, clusters)
+            resolve_clusters_positions_horizontal(text, shifts, anchor_offset, clusters);
+            (advance + shifts.end.x, shifts.end.y)
         }
         TextFlow::Path(ref path) => resolve_clusters_positions_path(
             text,
@@ -799,7 +859,7 @@ fn resolve_clusters_positions_horizontal(
     shifts: &RelativeShifts,
     mut x: f32,
     clusters: &mut [GlyphCluster],
-) -> (f32, f32) {
+) {
     for (cluster, pair) in clusters.iter_mut().skip(1).zip(shifts.clusters.windows(2)) {
         cluster.has_relative_shift = pair[0].x != pair[1].x || pair[0].y != pair[1].y;
     }
@@ -816,28 +876,26 @@ fn resolve_clusters_positions_horizontal(
 
         x += cluster.advance;
     }
-
-    (x + shifts.end.x, shifts.end.y)
 }
 
-fn inline_anchor_offset(
+fn inline_anchor_and_advance(
     anchor: TextAnchor,
     clusters: &[GlyphCluster],
     shifts: &RelativeShifts,
-) -> f32 {
+) -> (f32, f32) {
     // SVG anchors the positioned chunk before projecting it onto a text path.
     let mut left = f32::INFINITY;
     let mut right = f32::NEG_INFINITY;
     let mut advance = 0.0;
     for (cluster, shift) in clusters.iter().zip(&shifts.clusters) {
         let start = advance + shift.x;
-        let end = start + cluster.text_length_extent.unwrap_or(cluster.advance);
-        left = left.min(start).min(end);
-        right = right.max(start).max(end);
+        let extent = cluster.text_length_extent.unwrap_or(cluster.advance);
+        left = left.min(start);
+        right = right.max(start + extent.max(0.0));
         advance += cluster.advance;
     }
     let first = shifts.clusters[shifts.logical_order[0]].x;
-    first - left + process_anchor(anchor, right - left)
+    (first - left + process_anchor(anchor, right - left), advance)
 }
 
 // Baseline resolving in SVG is a mess.
@@ -1265,23 +1323,23 @@ fn same_shaping_options(a: &TextSpan, b: &TextSpan, default_language: Option<&st
 struct LengthCluster<'a> {
     cluster: &'a mut GlyphCluster,
     byte: usize,
+    chunk_index: usize,
     shift: f32,
     owner: Option<usize>,
-    trailing_space: f32,
+    // The interval passed to an enclosing adjustment can exceed the typographic
+    // cell when a scaled parent ends with a child whose glyphs are already resolved.
+    extent: f32,
 }
 
 impl LengthCluster<'_> {
-    fn extent(&self) -> f32 {
-        self.cluster.width + self.trailing_space
-    }
-
     fn ends_unit_before(&self, next: &Self) -> bool {
         self.owner.is_none() || self.owner != next.owner
     }
 
-    fn scale_glyph(&mut self, factor: f32) {
+    fn scale_cell(&mut self, factor: f32) {
         self.cluster.glyph_scale_x *= factor;
         self.cluster.width *= factor;
+        self.extent *= factor;
     }
 }
 
@@ -1291,14 +1349,18 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
     let mut accumulated_shift = 0.0;
     let mut clusters = Vec::new();
     let mut logical = Vec::new();
+    let mut chunk_offsets = Vec::with_capacity(unpositioned.len());
     for (
         chunk,
         UnpositionedChunk {
             clusters: glyphs,
             shifts,
+            next_chunk_offset,
         },
     ) in text.chunks.iter().zip(unpositioned)
     {
+        let chunk_index = chunk_offsets.len();
+        chunk_offsets.push(next_chunk_offset);
         let first = clusters.len();
         logical.extend(shifts.logical_order.iter().map(|&index| first + index));
         clusters.extend(
@@ -1307,10 +1369,11 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
                 .zip(&shifts.clusters)
                 .map(|(cluster, shift)| LengthCluster {
                     byte: chunks_start + cluster.byte_idx.value(),
+                    chunk_index,
                     shift: accumulated_shift + shift.x,
+                    extent: cluster.advance,
                     cluster,
                     owner: None,
-                    trailing_space: 0.0,
                 }),
         );
         chunks_start += chunk.text.len();
@@ -1328,26 +1391,34 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
         };
 
         // These are the positions after CSS spacing, relative shifts and child adjustments.
-        // The final cluster's outgoing gap is outside this element's typographic extent.
+        // Each typographic cell includes its CSS letter and word spacing.
         let mut left = f32::INFINITY;
         let mut right = f32::NEG_INFINITY;
-        let inline_advance =
-            |range: &[LengthCluster<'_>]| range.iter().map(|c| c.cluster.advance).sum::<f32>();
+        let inline_advance = |clusters: &[LengthCluster<'_>], from: usize, to: usize| {
+            clusters[from..to]
+                .iter()
+                .map(|cell| cell.cluster.advance)
+                .sum::<f32>()
+                + chunk_offsets[clusters[from].chunk_index..clusters[to].chunk_index]
+                    .iter()
+                    .map(|offset| **offset)
+                    .sum::<f32>()
+        };
         let mut advance = 0.0;
         let mut previous = visual[0];
         for &i in &visual {
             // An RTL run can place nonmembers between two members of this element.
-            advance += inline_advance(&clusters[previous..i]);
+            advance += inline_advance(&clusters, previous, i);
             previous = i;
             let cluster = &clusters[i];
             let start = advance + cluster.shift;
-            let end = start + cluster.extent();
+            let end = start + cluster.extent;
             left = left.min(start).min(end);
             right = right.max(start).max(end);
         }
         let width = right - left;
 
-        let outgoing_gap = clusters[last].cluster.advance - clusters[last].extent();
+        let mut advance_change = 0.0;
         if adjustment.mode == LengthAdjust::Spacing {
             // A descendant with its own textLength contributes one spacing unit.
             let count = visual
@@ -1355,7 +1426,8 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
                 .filter(|pair| clusters[pair[0]].ends_unit_before(&clusters[pair[1]]))
                 .count();
             if count > 0 {
-                let spacing = (adjustment.length - width) / count as f32;
+                advance_change = adjustment.length - width;
+                let spacing = advance_change / count as f32;
                 for pair in visual.windows(2) {
                     if clusters[pair[0]].ends_unit_before(&clusters[pair[1]]) {
                         clusters[pair[0]].cluster.advance += spacing;
@@ -1375,27 +1447,36 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
                 let (index, next) = (pair[0], pair[1]);
                 let end_unit = clusters[index].ends_unit_before(&clusters[next]);
                 let gap = clusters[next].shift - clusters[index].shift;
-                unit_advance += inline_advance(&clusters[index..next]) + gap;
+                unit_advance += inline_advance(&clusters, index, next) + gap;
                 let cluster = &mut clusters[index];
                 if cluster.owner.is_none() {
-                    cluster.scale_glyph(factor);
+                    cluster.scale_cell(factor);
                 }
                 if end_unit {
-                    cluster.cluster.advance += unit_advance * (factor - 1.0);
+                    let delta = unit_advance * (factor - 1.0);
+                    cluster.cluster.advance += delta;
+                    advance_change += delta;
                     unit_advance = 0.0;
                 }
             }
             let cluster = &mut clusters[last];
             if cluster.owner.is_none() {
-                cluster.scale_glyph(factor);
+                cluster.scale_cell(factor);
             } else {
-                cluster.trailing_space += (unit_advance + cluster.extent()) * (factor - 1.0);
+                cluster.extent += (unit_advance + cluster.extent) * (factor - 1.0);
             }
         }
-        clusters[last].cluster.advance = clusters[last].extent() + outgoing_gap;
+        advance_change += clusters[last].extent - clusters[last].cluster.advance;
+        clusters[last].cluster.advance = clusters[last].extent;
+        *chunk_offsets[clusters[last].chunk_index] -= advance_change;
         for &i in &visual {
             let cluster = &mut clusters[i];
-            cluster.cluster.text_length_extent = Some(cluster.extent());
+            // Anchors and decoration use the actual cell, even if a parent has
+            // reserved additional space for the following text.
+            cluster
+                .cluster
+                .text_length_extent
+                .get_or_insert(cluster.extent);
             cluster.owner = Some(index);
         }
     }
@@ -1450,8 +1531,7 @@ fn apply_letter_spacing(chunk: &TextChunk, clusters: &mut [GlyphCluster]) {
         return;
     }
 
-    let num_clusters = clusters.len();
-    for (i, cluster) in clusters.iter_mut().enumerate() {
+    for cluster in clusters {
         // Spacing must be applied only to characters that belongs to the script
         // that supports spacing.
         // We are checking only the first code point, since it should be enough.
@@ -1459,11 +1539,7 @@ fn apply_letter_spacing(chunk: &TextChunk, clusters: &mut [GlyphCluster]) {
         let script = cluster.codepoint.script();
         if script_supports_letter_spacing(script) {
             if let Some(span) = chunk_span_at(chunk, cluster.byte_idx) {
-                // A space after the last cluster should be ignored,
-                // since it affects the bbox and text alignment.
-                if i != num_clusters - 1 {
-                    cluster.advance += span.letter_spacing;
-                }
+                cluster.advance += span.letter_spacing;
 
                 // Finite negative spacing can move the next origin backwards.
                 if !cluster.advance.is_finite() {
