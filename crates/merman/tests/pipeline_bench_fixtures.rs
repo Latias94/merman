@@ -10,27 +10,25 @@ mod json_identity;
 fn pipeline_json_identity_ignores_only_object_member_order() {
     use merman::model::ManagedJson;
 
-    let first = ManagedJson::from_value(
-        serde_json::from_str(r#"{"z":[{"b":2,"a":1},3],"a":"value"}"#).unwrap(),
-    );
-    let reordered = ManagedJson::from_value(
-        serde_json::from_str(r#"{"a":"value","z":[{"a":1,"b":2},3]}"#).unwrap(),
-    );
+    let original_input = br#"{"z":[{"b":2,"a":1},3],"a":"value"}"#;
+    let reordered_input = br#"{"a":"value","z":[{"a":1,"b":2},3]}"#;
+    assert_ne!(original_input.as_slice(), reordered_input.as_slice());
+
+    let first: ManagedJson = serde_json::from_slice(original_input).unwrap();
+    let reordered: ManagedJson = serde_json::from_slice(reordered_input).unwrap();
     assert_eq!(first, reordered);
     let mut original_bytes = Vec::new();
     first.write_json(&mut original_bytes).unwrap();
-    let mut reordered_bytes = Vec::new();
-    reordered.write_json(&mut reordered_bytes).unwrap();
-    assert_ne!(original_bytes, reordered_bytes);
 
     let identity = json_identity::json_identity_bytes(&first);
+    assert_eq!(identity.as_slice(), reordered_input.as_slice());
     assert_eq!(identity, json_identity::json_identity_bytes(&reordered));
     for changed in [
         r#"{"z":[3,{"b":2,"a":1}],"a":"value"}"#,
         r#"{"z":[{"b":2,"a":1},3],"a":"other"}"#,
         r#"{"z":[{"b":2,"a":1},3]}"#,
     ] {
-        let changed = ManagedJson::from_value(serde_json::from_str(changed).unwrap());
+        let changed: ManagedJson = serde_json::from_str(changed).unwrap();
         assert_ne!(identity, json_identity::json_identity_bytes(&changed));
     }
     let mut unchanged_bytes = Vec::new();

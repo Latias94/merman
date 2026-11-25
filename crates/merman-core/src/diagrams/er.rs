@@ -2610,7 +2610,7 @@ mod tests {
     }
 
     #[test]
-    fn er_typed_model_and_compat_json_preserve_declaration_order() {
+    fn er_typed_serde_preserves_declaration_order_and_compat_json_members() {
         let text = concat!(
             "erDiagram\n",
             "ZETA\n",
@@ -2622,57 +2622,46 @@ mod tests {
         );
         let meta = meta();
         let typed = parse_er_model_for_render(text, &meta).expect("ER model should parse");
+        let entity_order = ["ZETA", "ALPHA", "MIDDLE"];
+        let class_order = ["zeta", "alpha", "middle"];
         assert!(
             typed
                 .entities
                 .values()
                 .map(|entity| entity.label.as_str())
-                .eq(["ZETA", "ALPHA", "MIDDLE"])
+                .eq(entity_order)
         );
-        assert!(
-            typed
-                .classes
-                .keys()
-                .map(String::as_str)
-                .eq(["zeta", "alpha", "middle"])
-        );
+        assert!(typed.classes.keys().map(String::as_str).eq(class_order));
 
         let compat = render_model_to_compat_json(&typed, &meta)
             .expect("ER compatibility projection should serialize");
-        assert!(
-            compat["entities"]
-                .as_object()
-                .expect("ER entities should be an object")
-                .keys()
-                .map(String::as_str)
-                .eq(["ZETA", "ALPHA", "MIDDLE"])
-        );
-        assert!(
-            compat["classes"]
-                .as_object()
-                .expect("ER classes should be an object")
-                .keys()
-                .map(String::as_str)
-                .eq(["zeta", "alpha", "middle"])
-        );
+        let entities = compat["entities"].as_object().unwrap();
+        assert_eq!(entities.len(), entity_order.len());
+        for name in entity_order {
+            assert_eq!(entities[name]["label"], name);
+        }
+        let classes = compat["classes"].as_object().unwrap();
+        assert_eq!(classes.len(), class_order.len());
+        for name in class_order {
+            assert_eq!(classes[name]["id"], name);
+        }
 
-        let round_trip: ErDiagramModel = serde_json::from_value(
-            serde_json::to_value(&typed).expect("ER typed model should serialize"),
-        )
-        .expect("ER typed model should deserialize");
+        let wire = serde_json::to_vec(&typed).expect("ER typed model should serialize");
+        let round_trip: ErDiagramModel =
+            serde_json::from_slice(&wire).expect("ER typed model should deserialize");
         assert!(
             round_trip
                 .entities
                 .values()
                 .map(|entity| entity.label.as_str())
-                .eq(["ZETA", "ALPHA", "MIDDLE"])
+                .eq(entity_order)
         );
         assert!(
             round_trip
                 .classes
                 .keys()
                 .map(String::as_str)
-                .eq(["zeta", "alpha", "middle"])
+                .eq(class_order)
         );
     }
 

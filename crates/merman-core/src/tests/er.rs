@@ -1723,7 +1723,25 @@ fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_ord
         "end\n",
         "B ||--|| D : cross_relation\n",
     );
-    let parsed = MermaidEngine::new()
+    let engine = MermaidEngine::new();
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Er(typed_model) = typed.model() else {
+        panic!("expected typed ER model");
+    };
+    let entity_order = ["PRE", "A", "B", "C", "Inner", "D"];
+    assert_eq!(
+        typed_model
+            .entities
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        entity_order
+    );
+
+    let parsed = engine
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -1737,15 +1755,10 @@ fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_ord
     assert_eq!(model["subgraphs"][1]["nodes"], json!(["PRE", "Inner", "C"]));
     assert_eq!(model["subgraphs"][1]["dir"], "BT");
     let entities = model["entities"].as_object().unwrap();
-    assert!(
-        entities
-            .keys()
-            .map(String::as_str)
-            .eq(["PRE", "A", "B", "C", "Inner", "D"])
-    );
-    assert_eq!(entities["PRE"]["id"], "entity-PRE-0");
-    assert_eq!(entities["Inner"]["id"], "entity-Inner-4");
-    assert_eq!(entities["D"]["id"], "entity-D-5");
+    assert_eq!(entities.len(), entity_order.len());
+    for (index, name) in entity_order.into_iter().enumerate() {
+        assert_eq!(entities[name]["id"], format!("entity-{name}-{index}"));
+    }
     let relationships = model["relationships"].as_array().unwrap();
     assert!(
         relationships

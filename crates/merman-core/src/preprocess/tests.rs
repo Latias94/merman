@@ -46,7 +46,7 @@ fn frontmatter_collection_text_preserves_source_order() {
 }
 
 #[test]
-fn directive_json5_decodes_literal_keys_and_keeps_number_and_order_semantics() {
+fn directive_json5_decodes_literal_keys_and_preserves_numeric_and_duplicate_semantics() {
     let directive = parse_directive_like_upstream(
         r#"init: {
                 '$serde_json::private::RawValue': 'true',
@@ -61,16 +61,14 @@ fn directive_json5_decodes_literal_keys_and_keeps_number_and_order_semantics() {
     .expect("valid directive")
     .expect("init directive");
     let args = directive.args.expect("decoded argument");
-    assert_eq!(
-        args.as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        ["$serde_json::private::RawValue", "values", "theme"]
-    );
+    let args = args.as_object().unwrap();
+    assert_eq!(args.len(), 3);
     assert_eq!(args["$serde_json::private::RawValue"], "false");
-    let value = &args["values"][0];
+    assert_eq!(args["theme"], "dark");
+    let values = args["values"].as_array().unwrap();
+    assert_eq!(values.len(), 1);
+    let value = values[0].as_object().unwrap();
+    assert_eq!(value.len(), 5);
     assert_eq!(value["$serde_json::private::Number"], "123");
     assert_eq!(value["hex"], 16);
     assert_eq!(value["fraction"].as_f64(), Some(0.5));

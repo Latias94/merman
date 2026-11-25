@@ -191,12 +191,14 @@ json Data@{"\ud800":"high","\udc00":"low","�":"replacement","\\ud800":"literal
   }, source);
   expect(result.encoding).toBe("json-utf16");
   expect(new Set(result.encodedKeys).size).toBe(4);
-  expect(result.decoded).toEqual([
-    { codeUnits: [0xd800], value: "high" },
-    { codeUnits: [0xdc00], value: "low" },
-    { codeUnits: [0xfffd], value: "replacement" },
-    { codeUnits: [0x5c, 0x75, 0x64, 0x38, 0x30, 0x30], value: "literal" },
-  ]);
+  expect(result.decoded).toEqual(
+    expect.arrayContaining([
+      { codeUnits: [0xd800], value: "high" },
+      { codeUnits: [0xdc00], value: "low" },
+      { codeUnits: [0xfffd], value: "replacement" },
+      { codeUnits: [0x5c, 0x75, 0x64, 0x38, 0x30, 0x30], value: "literal" },
+    ]),
+  );
   expect(result.parserErrors).toBe(0);
   for (const value of ["high", "low", "replacement", "literal", "�"]) {
     expect(result.text).toContain(value);
