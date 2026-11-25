@@ -2719,9 +2719,11 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "roxmltree 0.21.2",
  "ryu-js",
  "serde",
  "serde_json",
+ "svgtypes 0.16.2",
 ]
 
 [[package]]

@@ -83,8 +83,8 @@ compatible version requirements and intentional upgrade exceptions.
 
 `merman-core-preprocess` provides source editing and byte-span mapping behind `merman-core`.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
-contracts. `merman-render-structured` is a workspace source crate that provides Packet layout and
-SVG rendering through the existing `diagram-packet` feature.
+contracts. `merman-render-structured` provides Packet and Railroad layout and SVG rendering through
+the existing `diagram-packet` and `diagram-railroad` features.
 [Renderer ownership](../adr/0099-model-and-source-boundaries.md#structured-diagram-rendering)
 
 Homebrew/core owns formula publication; this repository only validates the external formula after

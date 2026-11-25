@@ -80,11 +80,7 @@ pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_d
 
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_render_core::text::is_css_wide_keyword;
-#[cfg(any(
-    feature = "diagram-git-graph",
-    feature = "diagram-railroad",
-    feature = "diagram-treemap"
-))]
+#[cfg(any(feature = "diagram-git-graph", feature = "diagram-treemap"))]
 pub(crate) use merman_render_core::text::trim_start_ecmascript_whitespace;
 pub use merman_render_core::text::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use merman_render_core::text::{

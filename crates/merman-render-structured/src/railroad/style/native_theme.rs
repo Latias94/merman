@@ -4,13 +4,14 @@ use super::{
     RailroadStyle, is_valid_color_value, parse_number_value, railroad_config_value,
     sanitize_font_family_value, theme_config_value, trim_ecmascript_whitespace,
 };
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 #[derive(Clone, Debug)]
-pub(crate) struct RailroadNativeTypography {
-    pub(crate) terminal_font_family: Option<String>,
-    pub(crate) rule_name_font_family: Option<String>,
-    pub(crate) title_weight: u16,
+pub(super) struct RailroadNativeTypography {
+    pub(super) terminal_font_family: Option<String>,
+    pub(super) rule_name_font_family: Option<String>,
+    pub(super) title_weight: u16,
 }
 
 pub(super) fn apply(style: &mut RailroadStyle, theme: &FamilyTheme, config: &PresentationConfig) {

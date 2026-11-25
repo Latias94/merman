@@ -5,3 +5,6 @@
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;
+#[cfg(feature = "diagram-railroad")]
+#[doc(hidden)]
+pub mod railroad;

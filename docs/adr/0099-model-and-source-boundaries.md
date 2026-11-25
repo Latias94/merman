@@ -55,9 +55,10 @@ builder exchange the same route point types.
 
 ### Structured diagram rendering
 
-`merman-render-structured` owns the typed layout and SVG emission for Packet. It consumes
-canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
-`merman-render` dispatches to it when `diagram-packet` is selected through the facade or directly.
+`merman-render-structured` owns the typed layout and SVG emission for Packet and Railroad. It
+consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
+`merman-render` dispatches to it through the existing `diagram-packet` and `diagram-railroad`
+features and supplies the operation's text measurement to Railroad.
 
 ### Frozen presentation is distinct from engine initialization
 
