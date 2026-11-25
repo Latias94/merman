@@ -1,56 +1,29 @@
 //! Flowchart edge curve selection and bounds used by SVG emission and viewBox computation.
 
 use super::*;
+use crate::svg::parity::curve::{CurveGeometry, curve_geometry};
 
-type CurveGeometry = (String, Option<path_bounds::SvgPathBounds>, bool);
-
-pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
+pub(super) fn curve_path_geometry(
     points: &[crate::model::LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
     compact_edge_corners: bool,
     rounded_corner_mask: Option<&[bool]>,
 ) -> CurveGeometry {
-    let (d, bounds) = interpolate_route(
+    let mut geometry = curve_geometry(
         points,
         interpolate,
         rounded_radius,
         compact_edge_corners,
         rounded_corner_mask,
     );
-    let d = maybe_close_single_point_path(d, points);
-    let bounds = svg_path_bounds_from_d(&d).or(bounds);
-    (d, bounds, false)
-}
-
-fn interpolate_route(
-    points: &[crate::model::LayoutPoint],
-    interpolate: &str,
-    rounded_radius: f64,
-    compact_edge_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
-) -> (String, Option<path_bounds::SvgPathBounds>) {
-    match interpolate {
-        "linear" => crate::svg::parity::curve::curve_linear_path_d_and_bounds(points),
-        "natural" => crate::svg::parity::curve::curve_natural_path_d_and_bounds(points),
-        "bumpX" => crate::svg::parity::curve::curve_bump_x_path_d_and_bounds(points),
-        "bumpY" => crate::svg::parity::curve::curve_bump_y_path_d_and_bounds(points),
-        "catmullRom" => crate::svg::parity::curve::curve_catmull_rom_path_d_and_bounds(points),
-        "step" => crate::svg::parity::curve::curve_step_path_d_and_bounds(points),
-        "stepAfter" => crate::svg::parity::curve::curve_step_after_path_d_and_bounds(points),
-        "stepBefore" => crate::svg::parity::curve::curve_step_before_path_d_and_bounds(points),
-        "cardinal" => crate::svg::parity::curve::curve_cardinal_path_d_and_bounds(points, 0.0),
-        "monotoneX" => crate::svg::parity::curve::curve_monotone_path_d_and_bounds(points, false),
-        "monotoneY" => crate::svg::parity::curve::curve_monotone_path_d_and_bounds(points, true),
-        "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(
-            points,
-            rounded_radius,
-            compact_edge_corners,
-            rounded_corner_mask,
-        ),
-        // Unknown curve names fall back to Mermaid's historical `basis` behavior.
-        _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(points),
+    geometry.d = maybe_close_single_point_path(geometry.d, points);
+    if geometry.d == "Z" {
+        // The rounded generator has no segments for a singleton and emits a bare close.
+        // The bounds reader includes the origin for a bare close.
+        geometry.bounds = Some(path_bounds::SvgPathBounds::at(0.0, 0.0));
     }
+    geometry
 }
 
 fn maybe_close_single_point_path(d: String, line_data: &[crate::model::LayoutPoint]) -> String {
@@ -66,6 +39,80 @@ fn maybe_close_single_point_path(d: String, line_data: &[crate::model::LayoutPoi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::LayoutPoint;
+
+    #[test]
+    fn bounds_match_the_serialized_curve_parser() {
+        let points = [
+            LayoutPoint {
+                x: -5.0005,
+                y: 0.0004,
+            },
+            LayoutPoint {
+                x: -5.0005,
+                y: 12.2405,
+            },
+            LayoutPoint {
+                x: 14.9945,
+                y: -0.12349,
+            },
+            LayoutPoint {
+                x: 14.9945,
+                y: -0.12349,
+            },
+            LayoutPoint {
+                x: 2.0075,
+                y: 32.5214,
+            },
+        ];
+        let large_coordinates = [
+            LayoutPoint {
+                x: 123_456_789_123_456.75,
+                y: -9_007_199_254_740.992,
+            },
+            LayoutPoint {
+                x: -1.0e17,
+                y: 1.0e17,
+            },
+        ];
+        let corner_mask = [true, false, true, true, true];
+        for (kind, compact, mask) in [
+            ("basis", false, None),
+            ("linear", false, None),
+            ("natural", false, None),
+            ("bumpX", false, None),
+            ("bumpY", false, None),
+            ("catmullRom", false, None),
+            ("step", false, None),
+            ("stepAfter", false, None),
+            ("stepBefore", false, None),
+            ("cardinal", false, None),
+            ("monotoneX", false, None),
+            ("monotoneY", false, None),
+            ("rounded", false, None),
+            ("rounded", true, Some(corner_mask.as_slice())),
+            ("unrecognized", false, None),
+        ] {
+            for route in [
+                &points[..0],
+                &points[..1],
+                &points[..2],
+                &points[..],
+                &large_coordinates,
+            ] {
+                let geometry = curve_path_geometry(route, kind, 5.0, compact, mask);
+                let bounds_bits = |bounds: path_bounds::SvgPathBounds| {
+                    [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
+                };
+                assert_eq!(
+                    geometry.bounds.map(bounds_bits),
+                    svg_path_bounds_from_d(&geometry.d).map(bounds_bits),
+                    "{kind}: {}",
+                    geometry.d,
+                );
+            }
+        }
+    }
 
     #[test]
     fn basis_two_points_stays_linear_like_d3() {
@@ -73,8 +120,8 @@ mod tests {
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: 10.0, y: 4.0 },
         ];
-        let (path, _, _) = curve_path_d_and_bounds(&points, "basis", 5.0, false, None);
-        assert_eq!(path, "M0,0L10,4");
+        let geometry = curve_path_geometry(&points, "basis", 5.0, false, None);
+        assert_eq!(geometry.d, "M0,0L10,4");
     }
 
     #[test]
@@ -89,9 +136,9 @@ mod tests {
             ("bumpX", "M0,0C10,0,10,10,20,10C30,10,30,0,40,0"),
             ("bumpY", "M0,0C0,5,20,5,20,10C20,5,40,5,40,0"),
         ] {
-            let (path, bounds, _) = curve_path_d_and_bounds(&points, curve, 5.0, false, None);
-            assert_eq!(path, expected);
-            assert!(bounds.is_some());
+            let geometry = curve_path_geometry(&points, curve, 5.0, false, None);
+            assert_eq!(geometry.d, expected);
+            assert!(geometry.bounds.is_some());
         }
     }
 
@@ -143,8 +190,8 @@ mod tests {
             },
         ];
 
-        let (parity, _, _) = curve_path_d_and_bounds(&line_data, "rounded", 12.0, false, None);
-        let (compact, _, _) = curve_path_d_and_bounds(&line_data, "rounded", 12.0, true, None);
+        let parity = curve_path_geometry(&line_data, "rounded", 12.0, false, None).d;
+        let compact = curve_path_geometry(&line_data, "rounded", 12.0, true, None).d;
 
         assert!(
             parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
@@ -156,8 +203,8 @@ mod tests {
         );
 
         let corner_mask = [true, false, true, true];
-        let (adapter_linear, _, _) =
-            curve_path_d_and_bounds(&line_data, "rounded", 12.0, true, Some(&corner_mask));
+        let adapter_linear =
+            curve_path_geometry(&line_data, "rounded", 12.0, true, Some(&corner_mask)).d;
         assert!(
             adapter_linear
                 .starts_with("M130.484,214.303L135.784,230.203L135.784,240.203Q135.784,250.203"),

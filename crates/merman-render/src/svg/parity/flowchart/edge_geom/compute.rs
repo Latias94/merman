@@ -315,7 +315,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let (d, pb, skipped_bounds_for_viewbox) = {
+    let geometry = {
         let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
             .iter()
             .filter(|p| !p.y.is_nan())
@@ -366,7 +366,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
         };
 
-        curve_path_d_and_bounds(
+        curve_path_geometry(
             &line_data,
             interpolate,
             ctx.edge_corner_radius,
@@ -389,8 +389,8 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     }
 
     Some(FlowchartEdgePathGeom {
-        d,
-        pb,
+        d: geometry.d,
+        pb: geometry.bounds,
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,
@@ -402,6 +402,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }),
         label_path_was_explicitly_updated: is_cluster_edge,
         emitted_d_for_label: None,
-        bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
+        bounds_skipped_for_viewbox: false,
     })
 }

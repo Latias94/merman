@@ -23,7 +23,7 @@ pub(super) use terminal_jogs::{separate_edge_labels, straighten_edge_terminals};
 pub(super) use crate::svg::parity::edge_path::maybe_fix_corners;
 pub(super) use basis::maybe_remove_redundant_cluster_run_point;
 pub(super) use boundary::{BoundaryNode, boundary_for_cluster, boundary_for_node};
-pub(super) use curve_path::curve_path_d_and_bounds;
+use curve_path::curve_path_geometry;
 pub(super) use elk_points::{
     ElkEndpointAdapterCorners, apply_flowchart_elk_endpoint_cutter, missing_section_label_position,
     missing_section_points,

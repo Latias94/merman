@@ -208,25 +208,37 @@ pub(super) fn fmt_path(v: f64) -> String {
 }
 
 pub(super) fn fmt_path_into(out: &mut impl SvgOutput, v: f64) {
+    append_fixed_3dp_trimmed(out, path_coordinate_thousandths(v));
+}
+
+/// Write a path coordinate and return the value represented by those same bytes.
+pub(super) fn fmt_path_coordinate_into(out: &mut String, v: f64) -> f64 {
+    let thousandths = path_coordinate_thousandths(v);
+    let start = out.len();
+    append_fixed_3dp_trimmed(out, thousandths);
+    let numerator = thousandths as f64;
+    if thousandths.unsigned_abs() <= (1 << 53) {
+        numerator / 1000.0
+    } else {
+        // Converting the numerator to f64 can round before the division at this magnitude.
+        out[start..].parse().unwrap_or(numerator / 1000.0)
+    }
+}
+
+fn path_coordinate_thousandths(v: f64) -> i64 {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
     if !v.is_finite() || v.abs() < 0.0005 {
-        out.push('0');
-        return;
+        return 0;
     }
 
     let scaled = v * 1000.0;
-    let k = if scaled < 0.0 {
+    if scaled < 0.0 {
         (scaled - 0.5).ceil() as i64
     } else {
         (scaled + 0.5).floor() as i64
-    };
-    if k == 0 {
-        out.push('0');
-        return;
     }
-    append_fixed_3dp_trimmed(out, k);
 }
 
 fn append_fixed_3dp_trimmed(out: &mut impl SvgOutput, k: i64) {
