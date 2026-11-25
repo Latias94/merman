@@ -21,6 +21,18 @@ pub type ImageHrefDataResolverFn<'a> =
 pub type ImageHrefStringResolverFn<'a> =
     Box<dyn Fn(&str, &Options) -> Option<ImageKind> + Send + Sync + 'a>;
 
+/// Image resolution during a parse with deferred font configuration.
+#[cfg(feature = "text")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageHrefPolicy {
+    /// Resolve data URLs and local files with the built-in decoders.
+    DataAndFiles,
+    /// Resolve data URLs with the built-in decoders and ignore other references.
+    DataOnly,
+    /// Invoke the supplied image resolvers. They own any trees they construct.
+    Configured,
+}
+
 /// An `xlink:href` resolver for `<image>` elements.
 ///
 /// This type can be useful if you want to have an alternative `xlink:href` handling
@@ -57,23 +69,7 @@ impl ImageHrefResolver<'_> {
     /// Note that it will simply match the `mime` or data's magic.
     /// The actual images would not be decoded. It's up to the renderer.
     pub fn default_data_resolver() -> ImageHrefDataResolverFn<'static> {
-        Box::new(
-            move |mime: &str, data: Arc<Vec<u8>>, opts: &Options| match mime {
-                "image/jpg" | "image/jpeg" => Some(ImageKind::JPEG(data)),
-                "image/png" => Some(ImageKind::PNG(data)),
-                "image/gif" => Some(ImageKind::GIF(data)),
-                "image/webp" => Some(ImageKind::WEBP(data)),
-                "image/svg+xml" => load_sub_svg(&data, opts),
-                "text/plain" => match get_image_data_format(&data) {
-                    Some(ImageFormat::JPEG) => Some(ImageKind::JPEG(data)),
-                    Some(ImageFormat::PNG) => Some(ImageKind::PNG(data)),
-                    Some(ImageFormat::GIF) => Some(ImageKind::GIF(data)),
-                    Some(ImageFormat::WEBP) => Some(ImageKind::WEBP(data)),
-                    _ => load_sub_svg(&data, opts),
-                },
-                _ => None,
-            },
-        )
+        Box::new(|mime, data, opts| resolve_data(mime, data, |data| load_sub_svg(data, opts)))
     }
 
     /// Creates a default string resolver.
@@ -84,34 +80,62 @@ impl ImageHrefResolver<'_> {
     /// Paths have to be absolute or relative to the input SVG file or relative to
     /// [Options::resources_dir](crate::Options::resources_dir).
     pub fn default_string_resolver() -> ImageHrefStringResolverFn<'static> {
-        Box::new(move |href: &str, opts: &Options| {
-            let path = opts.get_abs_path(std::path::Path::new(href));
+        Box::new(|href, opts| resolve_path(href, opts, |data| load_sub_svg(data, opts)))
+    }
+}
 
-            if path.exists() {
-                let data = match std::fs::read(&path) {
-                    Ok(data) => data,
-                    Err(_) => {
-                        log::warn!("Failed to load '{}'. Skipped.", href);
-                        return None;
-                    }
-                };
+fn resolve_data(
+    mime: &str,
+    data: Arc<Vec<u8>>,
+    load_svg: impl FnOnce(&[u8]) -> Option<ImageKind>,
+) -> Option<ImageKind> {
+    match mime {
+        "image/jpg" | "image/jpeg" => Some(ImageKind::JPEG(data)),
+        "image/png" => Some(ImageKind::PNG(data)),
+        "image/gif" => Some(ImageKind::GIF(data)),
+        "image/webp" => Some(ImageKind::WEBP(data)),
+        "image/svg+xml" => load_svg(&data),
+        "text/plain" => match get_image_data_format(&data) {
+            Some(ImageFormat::JPEG) => Some(ImageKind::JPEG(data)),
+            Some(ImageFormat::PNG) => Some(ImageKind::PNG(data)),
+            Some(ImageFormat::GIF) => Some(ImageKind::GIF(data)),
+            Some(ImageFormat::WEBP) => Some(ImageKind::WEBP(data)),
+            _ => load_svg(&data),
+        },
+        _ => None,
+    }
+}
 
-                match get_image_file_format(&path, &data) {
-                    Some(ImageFormat::JPEG) => Some(ImageKind::JPEG(Arc::new(data))),
-                    Some(ImageFormat::PNG) => Some(ImageKind::PNG(Arc::new(data))),
-                    Some(ImageFormat::GIF) => Some(ImageKind::GIF(Arc::new(data))),
-                    Some(ImageFormat::WEBP) => Some(ImageKind::WEBP(Arc::new(data))),
-                    Some(ImageFormat::SVG) => load_sub_svg(&data, opts),
-                    _ => {
-                        log::warn!("'{}' is not a PNG, JPEG, GIF, WebP or SVG(Z) image.", href);
-                        None
-                    }
-                }
-            } else {
-                log::warn!("'{}' is not a path to an image.", href);
+fn resolve_path(
+    href: &str,
+    opts: &Options,
+    load_svg: impl FnOnce(&[u8]) -> Option<ImageKind>,
+) -> Option<ImageKind> {
+    let path = opts.get_abs_path(std::path::Path::new(href));
+
+    if path.exists() {
+        let data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(_) => {
+                log::warn!("Failed to load '{}'. Skipped.", href);
+                return None;
+            }
+        };
+
+        match get_image_file_format(&path, &data) {
+            Some(ImageFormat::JPEG) => Some(ImageKind::JPEG(Arc::new(data))),
+            Some(ImageFormat::PNG) => Some(ImageKind::PNG(Arc::new(data))),
+            Some(ImageFormat::GIF) => Some(ImageKind::GIF(Arc::new(data))),
+            Some(ImageFormat::WEBP) => Some(ImageKind::WEBP(Arc::new(data))),
+            Some(ImageFormat::SVG) => load_svg(&data),
+            _ => {
+                log::warn!("'{}' is not a PNG, JPEG, GIF, WebP or SVG(Z) image.", href);
                 None
             }
-        })
+        }
+    } else {
+        log::warn!("'{}' is not a path to an image.", href);
+        None
     }
 }
 
@@ -140,7 +164,7 @@ pub(crate) fn convert(
         .try_attribute(AId::Href)
         .log_none(|| log::warn!("Image lacks the 'xlink:href' attribute. Skipped."))?;
 
-    let kind = get_href_data(href, state)?;
+    let kind = get_href_data(href, state, cache)?;
 
     let visibility: Visibility = node.find_attribute(AId::Visibility).unwrap_or_default();
     let visible = visibility == Visibility::Visible;
@@ -302,7 +326,23 @@ pub(crate) fn convert_inner(
     Some(())
 }
 
-pub(crate) fn get_href_data(href: &str, state: &converter::State) -> Option<ImageKind> {
+pub(crate) fn get_href_data(
+    href: &str,
+    state: &converter::State,
+    _cache: &converter::Cache,
+) -> Option<ImageKind> {
+    #[cfg(feature = "text")]
+    let built_in = _cache
+        .text_font_session
+        .filter(|(_, policy)| *policy != ImageHrefPolicy::Configured);
+    #[cfg(feature = "text")]
+    let load_nested = |data: &[u8], session: &converter::TextFontSession| {
+        let options = Tree::nested_options(state.opt);
+        let tree = Tree::parse_data_with(data, |text| {
+            Tree::from_str_with_session(text, &options, session, ImageHrefPolicy::DataOnly)
+        });
+        sub_svg_image(tree)
+    };
     if let Ok(url) = data_url::DataUrl::process(href) {
         let (data, _) = url.decode_to_vec().ok()?;
 
@@ -312,8 +352,22 @@ pub(crate) fn get_href_data(href: &str, state: &converter::State) -> Option<Imag
             url.mime_type().subtype.as_str()
         );
 
-        (state.opt.image_href_resolver.resolve_data)(&mime, Arc::new(data), state.opt)
+        let data = Arc::new(data);
+        #[cfg(feature = "text")]
+        if let Some((session, _)) = built_in {
+            return resolve_data(&mime, data, |data| load_nested(data, session));
+        }
+        (state.opt.image_href_resolver.resolve_data)(&mime, data, state.opt)
     } else {
+        #[cfg(feature = "text")]
+        if let Some((session, policy)) = built_in {
+            return match policy {
+                ImageHrefPolicy::DataAndFiles => {
+                    resolve_path(href, state.opt, |data| load_nested(data, session))
+                }
+                _ => None,
+            };
+        }
         (state.opt.image_href_resolver.resolve_string)(href, state.opt)
     }
 }
@@ -342,7 +396,11 @@ fn get_image_data_format(data: &[u8]) -> Option<ImageFormat> {
 
 /// Tries to load the `ImageData` content as an SVG image or emits a warning and returns `None`.
 pub(crate) fn load_sub_svg(data: &[u8], opt: &Options) -> Option<ImageKind> {
-    match Tree::from_data_nested(data, opt) {
+    sub_svg_image(Tree::from_data_nested(data, opt))
+}
+
+fn sub_svg_image(tree: Result<Tree, super::Error>) -> Option<ImageKind> {
+    match tree {
         Ok(tree) => Some(ImageKind::SVG(tree)),
         Err(_) => {
             log::warn!("Failed to load nested SVG image.");

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
+import errno
 import hashlib
 import http.client
 import json
@@ -103,7 +106,7 @@ class FrozenCrate:
 
 
 def freeze_candidate(
-    directory: Path, archive: Path, metadata: bytes, *, archive_sha256: str,
+    archive: Path, metadata: bytes, *, archive_sha256: str,
     name: str, version: str, source: dict, publication: dict | None,
 ) -> FrozenCrate:
     archive_bytes = _read_member(archive.parent, archive.name)
@@ -115,11 +118,44 @@ def freeze_candidate(
         "archive_sha256": archive_sha256, "metadata_sha256": _digest(metadata),
     }
     receipt_bytes = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    directory.mkdir(parents=True, exist_ok=False)
-    (directory / f"{name}-{version}.crate").write_bytes(archive_bytes)
-    (directory / "publish-metadata.json").write_bytes(metadata)
-    (directory / "receipt.json").write_bytes(receipt_bytes)
     return FrozenCrate(receipt_bytes, archive_bytes, metadata)
+
+
+def retain_candidate(
+    directory: Path, candidate: FrozenCrate, *, name: str, version: str, registry_confirmed: bool,
+) -> None:
+    if directory.exists() or directory.is_symlink():
+        raise FileExistsError(f"frozen candidate already exists: {directory}")
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".merman-crate-", dir=directory.parent) as temporary:
+        staged = Path(temporary) / "candidate"
+        staged.mkdir()
+        (staged / f"{name}-{version}.crate").write_bytes(candidate.archive)
+        (staged / "publish-metadata.json").write_bytes(candidate.metadata)
+        (staged / "receipt.json").write_bytes(candidate.receipt_bytes)
+        if registry_confirmed:
+            (staged / "registry-confirmed.json").write_bytes(candidate.receipt_bytes)
+        staged.rename(directory)
+
+
+@contextmanager
+def candidate_lock(directory: Path):
+    with (directory / ".publication.lock").open("a+b") as lock:
+        lock.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            if error.errno not in {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK}:
+                raise
+            raise CrateArchiveError("another process is using this frozen candidate") from error
+        yield
 
 
 def load_candidate(
@@ -151,19 +187,35 @@ def load_candidate(
     return FrozenCrate(receipt_bytes, archive, metadata)
 
 
-def upload(candidate: FrozenCrate, *, token: str, intent_path: Path) -> None:
+def has_receipt(candidate: FrozenCrate, path: Path) -> bool:
+    if not path.exists() and not path.is_symlink():
+        return False
+    if _read_member(path.parent, path.name) != candidate.receipt_bytes:
+        raise CrateArchiveError(f"{path.name} belongs to a different frozen candidate")
+    return True
+
+
+def retain_receipt(candidate: FrozenCrate, path: Path) -> None:
+    if has_receipt(candidate, path):
+        return
+    with tempfile.TemporaryDirectory(prefix=".merman-receipt-", dir=path.parent) as temporary:
+        staged = Path(temporary) / path.name
+        with staged.open("wb") as receipt:
+            receipt.write(candidate.receipt_bytes)
+            receipt.flush()
+            os.fsync(receipt.fileno())
+        staged.replace(path)
+
+
+def upload(
+    candidate: FrozenCrate, *, token: str, retain_intent: Callable[[], None],
+) -> None:
     if not token or not token.isascii() or not token.isprintable() or any(char.isspace() for char in token):
         raise CrateArchiveError("invalid crates.io upload token")
     # Cargo's Registry Web API frames each original byte string with its u32 length.
     body = (struct.pack("<I", len(candidate.metadata)) + candidate.metadata
             + struct.pack("<I", len(candidate.archive)) + candidate.archive)
-    try:
-        with intent_path.open("xb") as intent:
-            intent.write(candidate.receipt_bytes)
-            intent.flush()
-            os.fsync(intent.fileno())
-    except FileExistsError:
-        raise CrateArchiveError("this candidate has an upload intent; observe registry propagation") from None
+    retain_intent()
     connection = http.client.HTTPSConnection("crates.io", timeout=60)
     try:
         connection.request("PUT", "/api/v1/crates/new", body, {

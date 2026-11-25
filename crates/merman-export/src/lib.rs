@@ -70,6 +70,8 @@ pub const fn system_font_discovery_available() -> bool {
 mod font_environment;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use font_environment::{ExportFontEnvironment, ExportFontPlanSeed};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use font_environment::{ExportFontMode, ExportFontPlan};
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1875,10 +1877,49 @@ pub fn prepare_raster_controlled(
     options: &RasterOptions,
     control: OperationControl,
 ) -> Result<PreparedRaster> {
+    let fonts = SvgExportFonts::from_options(
+        svg,
+        #[cfg(feature = "native-fonts")]
+        options.font_context.as_ref(),
+    );
+    prepare_raster_with_fonts(svg, options, control, fonts)
+}
+
+/// Prepares raster export with a caller-supplied font policy instead of `options.font_context`.
+///
+/// Calls `load` at most once. A `true` argument requires a context for actual converted text.
+/// For a successfully parsed fontless SVG, passes `false` so explicitly supplied sources can
+/// still be validated without discovering system fonts. Returning `None` is allowed only then.
+#[cfg(all(feature = "native-fonts", any(feature = "png", feature = "jpeg")))]
+pub fn prepare_raster_with_font_loader_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+    load: impl FnOnce(
+        bool,
+        &OperationControl,
+    ) -> std::result::Result<Option<NativeFontContext>, NativeFontError>
+    + Send,
+) -> Result<PreparedRaster> {
+    prepare_raster_with_fonts(
+        svg,
+        options,
+        control,
+        SvgExportFonts::Deferred(Box::new(load)),
+    )
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn prepare_raster_with_fonts(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+    fonts: SvgExportFonts<'_>,
+) -> Result<PreparedRaster> {
     export_checkpoint(&control)?;
     let backend_control = control.clone();
     run_recursive_svg_backend(&control, move |control| {
-        prepare_raster_on_backend_stack(svg, options, control).map(|mut prepared| {
+        prepare_raster_on_backend_stack(svg, options, fonts, control).map(|mut prepared| {
             prepared.control = backend_control;
             prepared
         })
@@ -1889,16 +1930,7 @@ pub fn prepare_raster_controlled(
 fn prepare_raster_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
-    control: &OperationControl,
-) -> Result<PreparedRaster> {
-    prepare_raster_source_on_backend_stack(svg, svg.as_str(), options, control)
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-fn prepare_raster_source_on_backend_stack(
-    svg: &ResvgCompatibleSvg,
-    source: &str,
-    options: &RasterOptions,
+    fonts: SvgExportFonts<'_>,
     control: &OperationControl,
 ) -> Result<PreparedRaster> {
     export_checkpoint(control)?;
@@ -1908,29 +1940,24 @@ fn prepare_raster_source_on_backend_stack(
         .map(parse_export_color)
         .transpose()
         .map_err(|_| ExportError::InvalidRasterMatte)?;
-    let root_metadata = parse_root_svg_metadata(source, control)?;
-    let mut usvg_options = usvg::Options::default();
-    let font_plan =
-        configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg, options, control)?;
+    let root_metadata = parse_root_svg_metadata(svg.as_str(), control)?;
     let data_plan = plan_embedded_data_resource_bytes(
         svg.inline_raster_sources(),
         options.embedded_image_limit,
         control,
     )?;
-    export_checkpoint(control)?;
-    let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse);
-    #[cfg(feature = "native-fonts")]
-    if let Some(context) = &options.font_context {
-        context.check()?;
-    }
-    export_checkpoint(control)?;
-    let tree = tree?;
+    let ParsedExportSvg {
+        tree,
+        font_plan,
+        #[cfg(feature = "native-fonts")]
+        font_context,
+    } = parse_svg_tree(
+        svg.as_str(),
+        raster_usvg_options(root_metadata),
+        fonts,
+        control,
+    )?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
-    let font_plan = font_plan.finish_with_tree(&tree, control)?;
-    #[cfg(feature = "native-fonts")]
-    if let Some(context) = &options.font_context {
-        check_export_glyph_coverage(context, font_plan)?;
-    }
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let directional_filter_transform_residual =
@@ -1957,7 +1984,7 @@ fn prepare_raster_source_on_backend_stack(
         jpeg_quality: options.jpeg_quality,
         control: control.clone(),
         #[cfg(feature = "native-fonts")]
-        font_context: options.font_context.clone(),
+        font_context,
     })
 }
 
@@ -1974,10 +2001,48 @@ pub fn prepare_pdf_controlled(
     options: &PdfOptions,
     control: OperationControl,
 ) -> Result<PreparedPdf> {
+    let fonts = SvgExportFonts::from_options(
+        svg,
+        #[cfg(feature = "native-fonts")]
+        options.font_context.as_ref(),
+    );
+    prepare_pdf_with_fonts(svg, options, control, fonts)
+}
+
+/// Prepares PDF export with a caller-supplied font policy instead of `options.font_context`.
+///
+/// The loader runs at most once and receives the same actual text-demand decision as raster
+/// export. It may return `None` only when the successfully parsed SVG needs no fonts.
+#[cfg(all(feature = "native-fonts", feature = "pdf"))]
+pub fn prepare_pdf_with_font_loader_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+    load: impl FnOnce(
+        bool,
+        &OperationControl,
+    ) -> std::result::Result<Option<NativeFontContext>, NativeFontError>
+    + Send,
+) -> Result<PreparedPdf> {
+    prepare_pdf_with_fonts(
+        svg,
+        options,
+        control,
+        SvgExportFonts::Deferred(Box::new(load)),
+    )
+}
+
+#[cfg(feature = "pdf")]
+fn prepare_pdf_with_fonts(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+    fonts: SvgExportFonts<'_>,
+) -> Result<PreparedPdf> {
     export_checkpoint(&control)?;
     let backend_control = control.clone();
     run_recursive_svg_backend(&control, move |control| {
-        prepare_pdf_on_backend_stack(svg, options, control).map(|mut prepared| {
+        prepare_pdf_on_backend_stack(svg, options, fonts, control).map(|mut prepared| {
             prepared.control = backend_control;
             prepared
         })
@@ -1988,6 +2053,7 @@ pub fn prepare_pdf_controlled(
 fn prepare_pdf_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &PdfOptions,
+    fonts: SvgExportFonts<'_>,
     control: &OperationControl,
 ) -> Result<PreparedPdf> {
     export_checkpoint(control)?;
@@ -2004,7 +2070,12 @@ fn prepare_pdf_on_backend_stack(
         options.embedded_image_limit,
         control,
     )?;
-    let (tree, font_plan) = parse_pdf_tree(svg, options, control)?;
+    let ParsedExportSvg {
+        tree,
+        font_plan,
+        #[cfg(feature = "native-fonts")]
+        font_context,
+    } = parse_svg_tree(source, usvg::Options::default(), fonts, control)?;
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let metadata = parse_root_svg_metadata(source, control)?;
     let implicit_viewport_clipping_residual = !metadata.has_view_box
@@ -2048,7 +2119,7 @@ fn prepare_pdf_on_backend_stack(
         report,
         control: control.clone(),
         #[cfg(feature = "native-fonts")]
-        font_context: options.font_context.clone(),
+        font_context,
     })
 }
 
@@ -2238,28 +2309,161 @@ pub fn svg_to_pdf_with_report(
     prepare_pdf(svg, options)?.encode_with_report()
 }
 
-#[cfg(feature = "pdf")]
-fn parse_pdf_tree(
-    svg: &ResvgCompatibleSvg,
-    options: &PdfOptions,
-    control: &OperationControl,
-) -> Result<(usvg::Tree, ExportFontPlan)> {
-    export_checkpoint(control)?;
-    let mut opts = usvg::Options::default();
-    let font_plan = configure_usvg_options_for_pdf(&mut opts, svg, options, control)?;
-    let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse);
+#[cfg(all(
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+type ExportFontLoader<'a> = Box<
+    dyn FnOnce(
+            bool,
+            &OperationControl,
+        ) -> std::result::Result<Option<NativeFontContext>, NativeFontError>
+        + Send
+        + 'a,
+>;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+enum SvgExportFonts<'a> {
+    Retained(&'a ResvgCompatibleSvg),
     #[cfg(feature = "native-fonts")]
-    if let Some(context) = &options.font_context {
+    Context(&'a NativeFontContext),
+    #[cfg(feature = "native-fonts")]
+    Deferred(ExportFontLoader<'a>),
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+struct ConfiguredExportFonts {
+    plan: ExportFontPlanSeed,
+    #[cfg(feature = "native-fonts")]
+    context: Option<NativeFontContext>,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl<'a> SvgExportFonts<'a> {
+    fn from_options(
+        svg: &'a ResvgCompatibleSvg,
+        #[cfg(feature = "native-fonts")] context: Option<&'a NativeFontContext>,
+    ) -> Self {
+        #[cfg(feature = "native-fonts")]
+        if let Some(context) = context {
+            return Self::Context(context);
+        }
+        Self::Retained(svg)
+    }
+
+    fn configure(
+        self,
+        needs_fonts: bool,
+        options: &mut usvg::Options<'_>,
+        control: &OperationControl,
+    ) -> Result<ConfiguredExportFonts> {
+        export_checkpoint(control)?;
+        let plan = match self {
+            Self::Retained(svg) if needs_fonts => {
+                ExportFontEnvironment::from_svg(svg)?.install(options)
+            }
+            #[cfg(feature = "native-fonts")]
+            Self::Context(context) => {
+                return ConfiguredExportFonts::from_context(context.clone(), options, control);
+            }
+            #[cfg(feature = "native-fonts")]
+            Self::Deferred(load) => match load(needs_fonts, control)? {
+                Some(context) => {
+                    return ConfiguredExportFonts::from_context(context, options, control);
+                }
+                None if needs_fonts => return Err(ExportError::FontSourceUnavailable),
+                None => ExportFontEnvironment::fontless_plan(options),
+            },
+            Self::Retained(_) => ExportFontEnvironment::fontless_plan(options),
+        };
+        Ok(ConfiguredExportFonts {
+            plan,
+            #[cfg(feature = "native-fonts")]
+            context: None,
+        })
+    }
+}
+
+#[cfg(all(
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+impl ConfiguredExportFonts {
+    fn from_context(
+        context: NativeFontContext,
+        options: &mut usvg::Options<'_>,
+        control: &OperationControl,
+    ) -> Result<Self> {
+        context.check()?;
+        let observer = context.apply_to_usvg_options_for_export(options, control);
+        Ok(Self {
+            plan: ExportFontPlanSeed::from_native_context(&context, observer),
+            context: Some(context),
+        })
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+struct ParsedExportSvg {
+    tree: usvg::Tree,
+    font_plan: ExportFontPlan,
+    #[cfg(feature = "native-fonts")]
+    font_context: Option<NativeFontContext>,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn parse_svg_tree(
+    source: &str,
+    mut options: usvg::Options<'static>,
+    fonts: SvgExportFonts<'_>,
+    control: &OperationControl,
+) -> Result<ParsedExportSvg> {
+    export_checkpoint(control)?;
+    #[cfg(feature = "native-fonts")]
+    if let SvgExportFonts::Context(context) = &fonts {
+        context.check()?;
+    }
+    let mut fonts = Some(fonts);
+    let mut configured = None;
+    let tree = usvg::Tree::try_from_str_with_text_fonts(
+        source,
+        &options,
+        usvg::ImageHrefPolicy::DataOnly,
+        |options| {
+            configured = fonts
+                .take()
+                .map(|fonts| fonts.configure(true, options, control));
+            configured.as_ref().is_some_and(Result::is_ok)
+        },
+    );
+    #[cfg(feature = "native-fonts")]
+    if let Some(Ok(configured)) = &configured
+        && let Some(context) = &configured.context
+    {
         context.check()?;
     }
     export_checkpoint(control)?;
-    let tree = tree?;
-    let font_plan = font_plan.finish_with_tree(&tree, control)?;
+    let configured = configured.transpose()?;
+    let tree = tree
+        .map_err(|_| ExportError::SvgParse)?
+        .ok_or(ExportError::SvgParse)?;
+    let configured = match configured {
+        Some(configured) => configured,
+        None => fonts
+            .ok_or(ExportError::SvgParse)?
+            .configure(false, &mut options, control)?,
+    };
+    let font_plan = configured.plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]
-    if let Some(context) = &options.font_context {
+    if let Some(context) = &configured.context {
         check_export_glyph_coverage(context, font_plan)?;
     }
-    Ok((tree, font_plan))
+    Ok(ParsedExportSvg {
+        tree,
+        font_plan,
+        #[cfg(feature = "native-fonts")]
+        font_context: configured.context,
+    })
 }
 
 #[cfg(all(
@@ -3480,37 +3684,8 @@ fn requested_raster_dim_px(value: f64) -> Result<f64> {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn configure_usvg_options_for_raster(
-    opt: &mut usvg::Options<'_>,
-    metadata: RootSvgMetadata,
-    svg: &ResvgCompatibleSvg,
-    options: &RasterOptions,
-    control: &OperationControl,
-) -> Result<font_environment::ExportFontPlanSeed> {
-    #[cfg(feature = "native-fonts")]
-    let plan = if let Some(context) = &options.font_context {
-        context.check()?;
-        let observer = context.apply_to_usvg_options_for_export(opt, control);
-        font_environment::ExportFontPlanSeed::from_native_context(context, observer)
-    } else {
-        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-        let plan = fonts.plan;
-        opt.fontdb = fonts.fontdb;
-        opt.font_family = fonts.default_family;
-        opt.font_resolver = fonts.resolver;
-        plan
-    };
-    #[cfg(not(feature = "native-fonts"))]
-    let plan = {
-        let _ = (options, control);
-        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-        let plan = fonts.plan;
-        opt.fontdb = fonts.fontdb;
-        opt.font_family = fonts.default_family;
-        opt.font_resolver = fonts.resolver;
-        plan
-    };
-
+fn raster_usvg_options(metadata: RootSvgMetadata) -> usvg::Options<'static> {
+    let mut opt = usvg::Options::default();
     if !metadata.has_view_box
         && let Some(max_width) = metadata.max_width_px
         && max_width.is_finite()
@@ -3520,50 +3695,7 @@ fn configure_usvg_options_for_raster(
         opt.default_size = size;
     }
 
-    opt.image_href_resolver = data_url_only_image_href_resolver();
-    Ok(plan)
-}
-
-#[cfg(feature = "pdf")]
-fn configure_usvg_options_for_pdf(
-    opt: &mut usvg::Options<'_>,
-    svg: &ResvgCompatibleSvg,
-    options: &PdfOptions,
-    control: &OperationControl,
-) -> Result<font_environment::ExportFontPlanSeed> {
-    #[cfg(feature = "native-fonts")]
-    let plan = if let Some(context) = &options.font_context {
-        context.check()?;
-        let observer = context.apply_to_usvg_options_for_export(opt, control);
-        font_environment::ExportFontPlanSeed::from_native_context(context, observer)
-    } else {
-        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-        let plan = fonts.plan;
-        opt.fontdb = fonts.fontdb;
-        opt.font_family = fonts.default_family;
-        opt.font_resolver = fonts.resolver;
-        plan
-    };
-    #[cfg(not(feature = "native-fonts"))]
-    let plan = {
-        let _ = (options, control);
-        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-        let plan = fonts.plan;
-        opt.fontdb = fonts.fontdb;
-        opt.font_family = fonts.default_family;
-        opt.font_resolver = fonts.resolver;
-        plan
-    };
-    opt.image_href_resolver = data_url_only_image_href_resolver();
-    Ok(plan)
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
-    usvg::ImageHrefResolver {
-        resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
-        resolve_string: Box::new(|_, _| None),
-    }
+    opt
 }
 
 #[cfg(any(
@@ -3853,6 +3985,76 @@ fn fixture_pdf_options() -> PdfOptions {
         return PdfOptions::default().with_font_context(fixture_native_font_context());
     }
     PdfOptions::default()
+}
+
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+mod svg_font_demand_tests {
+    use super::*;
+
+    fn sealed_svg(text: &str) -> ResvgCompatibleSvg {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .with_font_source_policy(merman_render::text::FontSourcePolicy::embedded_only())
+            .begin_session()
+            .unwrap();
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40"><defs><g id="space"> </g></defs><text x="4" y="24" text-decoration="underline">{text}</text></svg>"#
+        );
+        merman_render::svg::finalize_resvg_svg(&source, &session).unwrap()
+    }
+
+    const TRIMMED: &str = r##"<tref xml:space="preserve" href="#space"/><tref href="#space"/>"##;
+    const SURVIVING: &str = r##"<tref href="#space"/><tref href="#space"/><tspan><tref href="#space"/></tspan><tref href="#space"/>"##;
+
+    #[test]
+    fn retained_policy_only_requires_fonts_for_converted_svg_text() {
+        let blank = sealed_svg("");
+        let trimmed = sealed_svg(TRIMMED);
+        let surviving = sealed_svg(SURVIVING);
+        assert_eq!(trimmed.finalization_report().text_element_count(), 1);
+        assert_eq!(surviving.finalization_report().text_element_count(), 1);
+        assert!(
+            !merman_render::svg::StandaloneSvgArtifact::from(trimmed.clone())
+                .text_fonts_are_self_contained()
+        );
+
+        type Encode = fn(&ResvgCompatibleSvg) -> Result<Vec<u8>>;
+        let encoders: &[(&str, Encode)] = &[
+            #[cfg(feature = "png")]
+            ("png", |svg| svg_to_png(svg, &RasterOptions::default())),
+            #[cfg(feature = "jpeg")]
+            ("jpeg", |svg| svg_to_jpeg(svg, &RasterOptions::default())),
+            #[cfg(feature = "pdf")]
+            ("pdf", svg_to_pdf),
+        ];
+        for (format, encode) in encoders {
+            assert_eq!(
+                encode(&trimmed).unwrap(),
+                encode(&blank).unwrap(),
+                "{format}"
+            );
+            assert!(
+                matches!(encode(&surviving), Err(ExportError::FontSourceUnavailable)),
+                "{format}"
+            );
+        }
+    }
+
+    #[cfg(all(feature = "native-fonts", any(feature = "png", feature = "jpeg")))]
+    #[test]
+    fn cancelling_at_the_deferred_svg_font_loader_prevents_preparation() {
+        let control = OperationControl::new();
+        let result = prepare_raster_with_font_loader_controlled(
+            &sealed_svg(SURVIVING),
+            &RasterOptions::default(),
+            control.clone(),
+            |needs_fonts, control| {
+                assert!(needs_fonts);
+                control.cancel();
+                Ok(None)
+            },
+        );
+        assert!(matches!(result, Err(ExportError::Cancelled(_))));
+    }
 }
 
 #[cfg(all(
@@ -4352,22 +4554,30 @@ mod tests {
     }
 
     #[test]
-    fn exporter_image_resolver_never_reads_string_hrefs() {
-        let resolver = data_url_only_image_href_resolver();
+    fn exporter_backend_ignores_local_image_even_before_svg_sanitization() {
+        let local_image = TempFile::new("png", encode_rgba_png(1, 1, &[255, 0, 0, 255]));
+        let href = escape_xml_attr(&local_image.href_path());
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><image href="{href}" width="1" height="1"/></svg>"#
+        );
         let options = usvg::Options::default();
+        assert!(
+            !usvg::Tree::from_str(&source, &options)
+                .unwrap()
+                .root()
+                .children()
+                .is_empty()
+        );
 
-        for href in [
-            "/tmp/secret.png",
-            "../secret.png",
-            r"\\server\share\secret.png",
-            r"C:\private\secret.png",
-            "https://example.com/remote.png",
-        ] {
-            assert!(
-                (resolver.resolve_string)(href, &options).is_none(),
-                "string href unexpectedly resolved: {href}"
-            );
-        }
+        let svg = compatible_svg(&source);
+        let parsed = parse_svg_tree(
+            &source,
+            options,
+            SvgExportFonts::Retained(&svg),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.tree.root().children().is_empty());
     }
 
     #[test]
