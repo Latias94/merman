@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
+use merman_model::OperationPhase;
 use merman_model::families::venn::VennDiagramModel;
 use merman_render_core::{Bounds as LayoutBounds, Error, Result, resources::OperationWorkMeter};
 
@@ -131,7 +132,8 @@ pub fn layout_venn_diagram_typed_with_work_meter(
         scale,
         native_base_size,
         cfg.use_debug_layout,
-    );
+        work_meter,
+    )?;
 
     Ok(VennDiagramLayout {
         bounds: Some(LayoutBounds {
@@ -160,10 +162,24 @@ fn layout_text_nodes(
     scale: f64,
     native_base_size: Option<f64>,
     use_debug_layout: bool,
-) -> (Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>) {
+    work_meter: &OperationWorkMeter,
+) -> Result<(Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>)> {
+    work_meter.preflight(model.text_nodes.len())?;
     let mut nodes_by_area: IndexMap<String, Vec<&merman_model::families::venn::VennTextNodeModel>> =
         IndexMap::new();
     for node in &model.text_nodes {
+        work_meter.preflight(node.sets.len())?;
+        let key_work = node
+            .sets
+            .iter()
+            .fold(node.sets.len(), |work, set| work.saturating_add(set.len()));
+        // Cover joining and grouping the keys, and copying each matched node into the layout.
+        let work = key_work
+            .saturating_mul(2)
+            .saturating_add(node.id.len())
+            .saturating_add(node.label.as_ref().map_or(0, String::len))
+            .saturating_add(1);
+        work_meter.charge(work)?;
         nodes_by_area
             .entry(stable_sets_key(&node.sets))
             .or_default()
@@ -173,6 +189,7 @@ fn layout_text_nodes(
     let mut text_areas = Vec::new();
     let mut text_nodes = Vec::new();
     for (key, nodes) in nodes_by_area {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let Some(area) = layout_by_key.get(&key).copied() else {
             continue;
         };
@@ -233,6 +250,9 @@ fn layout_text_nodes(
 
         let mut debug_cells = Vec::new();
         for (index, node) in nodes.iter().enumerate() {
+            if index.is_multiple_of(64) {
+                work_meter.checkpoint(OperationPhase::Layout)?;
+            }
             let col = index % cols;
             let row = index / cols;
             let cell_x = start_x + cell_width * col as f64;
@@ -271,7 +291,8 @@ fn layout_text_nodes(
         });
     }
 
-    (text_areas, text_nodes)
+    work_meter.checkpoint(OperationPhase::Layout)?;
+    Ok((text_areas, text_nodes))
 }
 
 fn stable_sets_key(sets: &[String]) -> String {
@@ -435,7 +456,7 @@ fn canonical_pair(left: &str, right: &str) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_model::families::venn::VennSubsetModel;
+    use merman_model::families::venn::{VennSubsetModel, VennTextNodeModel};
     use merman_render_core::resources::{RenderResourcePolicy, ResourceLimitId};
 
     fn subset(sets: &[&str], size: f64) -> VennSubsetModel {
@@ -482,6 +503,45 @@ mod tests {
             ]
         );
         assert_eq!(model, original_model);
+    }
+
+    #[test]
+    fn typed_layout_admits_text_projection_separately_from_solver_work() {
+        let config = serde_json::json!({});
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input();
+        let solver_only = OperationWorkMeter::new(limits);
+        let mut model = VennDiagramModel {
+            subsets: vec![subset(&["A"], 1.0)],
+            ..Default::default()
+        };
+        layout_venn_diagram_typed_with_work_meter(&model, None, &config, None, &solver_only)
+            .unwrap();
+        model.text_nodes.push(VennTextNodeModel {
+            sets: vec!["A".to_string()],
+            id: "item".to_string(),
+            label: Some("note".to_string()),
+        });
+
+        let constrained = OperationWorkMeter::new(
+            limits
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, solver_only.used())
+                .unwrap(),
+        );
+        let error =
+            layout_venn_diagram_typed_with_work_meter(&model, None, &config, None, &constrained)
+                .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected a Venn text projection resource limit");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(constrained.used(), solver_only.used());
+
+        let admitted = OperationWorkMeter::new(limits);
+        let layout =
+            layout_venn_diagram_typed_with_work_meter(&model, None, &config, None, &admitted)
+                .unwrap();
+        assert_eq!(layout.text_nodes[0].label.as_deref(), Some("note"));
+        assert!(admitted.used() > solver_only.used());
     }
 
     #[test]
