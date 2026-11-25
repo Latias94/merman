@@ -65,7 +65,7 @@ diagram-block = ["merman-model/diagram-block"]
 diagram-c4 = ["merman-model/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "merman-render-core/resources-class", "markdown-labels"]
 diagram-cynefin = ["merman-model/diagram-cynefin"]
-diagram-er = ["merman-model/diagram-er", "markdown-labels"]
+diagram-er = ["merman-model/diagram-er", "dep:merman-render-graph", "merman-render-graph/diagram-er", "markdown-labels"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "merman-render-core/resources-agentflow", "dep:imagesize", "markdown-labels"]
 diagram-usecase = ["merman-model/diagram-usecase", "markdown-labels"]
@@ -104,7 +104,7 @@ benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchma
 layout-cytoscape = ["dep:manatee"]
 layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk"]
-layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal"]
+layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal", "merman-render-graph?/layout-shoal"]
 math = [
   "dep:ratex-font",
   "dep:ratex-layout",
@@ -119,6 +119,7 @@ merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "theme-svg"] }
+merman-render-graph = { workspace = true, optional = true }
 merman-render-structured = { workspace = true, optional = true }
 base64.workspace = true
 cssparser.workspace = true

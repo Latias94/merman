@@ -8,6 +8,7 @@ use crate::text::{
     TextStyle, WrapMode, measure_mermaid_text_dimensions,
 };
 use crate::{Error, Result};
+use merman_render_graph::er::er_marker_id;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -1321,18 +1322,6 @@ fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
         return Some((p0.x + t * dx, p0.y + t * dy));
     }
     Some((points.last()?.x, points.last()?.y))
-}
-
-fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
-    match card {
-        "ONLY_ONE" => Some(format!("ONLY_ONE_{suffix}")),
-        "ZERO_OR_ONE" => Some(format!("ZERO_OR_ONE_{suffix}")),
-        "ONE_OR_MORE" => Some(format!("ONE_OR_MORE_{suffix}")),
-        "ZERO_OR_MORE" => Some(format!("ZERO_OR_MORE_{suffix}")),
-        // Mermaid CLI ER output does not emit a dedicated MD_PARENT marker.
-        "MD_PARENT" => None,
-        _ => None,
-    }
 }
 
 pub(crate) struct ErPreparedLayout {

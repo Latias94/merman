@@ -28,6 +28,7 @@ members = [
     "crates/merman-render",
     "crates/merman-render-charts",
     "crates/merman-render-core",
+    "crates/merman-render-graph",
     "crates/merman-render-structured",
     "crates/merman-unicode-linebreak",
     "crates/merman-export",
@@ -182,6 +183,7 @@ merman-layout-shoal = { path = "crates/merman-layout-shoal", version = "0.11.0" 
 merman-render = { path = "crates/merman-render", version = "0.11.0", default-features = false }
 merman-render-charts = { path = "crates/merman-render-charts", version = "0.11.0", default-features = false }
 merman-render-core = { path = "crates/merman-render-core", version = "0.11.0", default-features = false }
+merman-render-graph = { path = "crates/merman-render-graph", version = "0.11.0", default-features = false }
 merman-render-structured = { path = "crates/merman-render-structured", version = "0.11.0", default-features = false }
 merman-export = { path = "crates/merman-export", version = "0.11.0", default-features = false }
 dugong = { path = "crates/dugong", version = "0.11.0" }

@@ -1,9 +1,12 @@
-use super::super::{SvgDiagramId, SvgOutput, escape_attr, fmt};
-use crate::Result;
+use merman_render_core::{
+    Result, number_format::canonical_number as fmt, svg_css::SvgId, svg_output::SvgOutput,
+    xml::escape_attr,
+};
 #[cfg(feature = "layout-shoal")]
-use crate::{graph_layout::Marker, model::LayoutPoint};
-#[cfg(feature = "layout-shoal")]
-use kurbo::{Point, Rect, Vec2};
+use {
+    kurbo::{BezPath, Point, Rect, Shape, Vec2},
+    merman_render_core::{LayoutPoint, route_types::Marker},
+};
 
 struct Cardinality {
     card: &'static str,
@@ -77,9 +80,9 @@ impl MarkerGlyph {
             return viewport;
         }
         *self.outline.get_or_init(|| {
-            let bounds = super::super::svg_path_bounds_from_d(self.path)
-                .expect("static ER marker path must have finite bounds");
-            let mut ink = Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y);
+            let mut ink = BezPath::from_svg(self.path)
+                .expect("static ER marker path must be valid")
+                .bounding_box();
             if let Some((classic_x, _)) = self.circle_x {
                 let diameter = 2.0 * f64::from(CIRCLE_RADIUS);
                 ink = ink.union(Rect::from_center_size(
@@ -159,6 +162,13 @@ fn cardinality(card: &str) -> Option<&'static Cardinality> {
     CARDINALITIES.iter().find(|entry| entry.card == card)
 }
 
+/// Projects a semantic cardinality to Mermaid's layout marker spelling.
+pub fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
+    // Mermaid ER does not assign a dedicated layout marker for MD_PARENT.
+    cardinality(card)?;
+    Some(format!("{card}_{suffix}"))
+}
+
 fn marker_suffix(value: &str) -> Option<(&str, bool)> {
     if let Some(card) = value.strip_suffix("_START") {
         Some((card, true))
@@ -167,11 +177,7 @@ fn marker_suffix(value: &str) -> Option<(&str, bool)> {
     }
 }
 
-pub(super) fn er_unified_marker_id(
-    diagram_id: SvgDiagramId<'_>,
-    diagram_type: &str,
-    upstream_marker: &str,
-) -> String {
+pub fn er_unified_marker_id(diagram_id: SvgId<'_>, upstream_marker: &str) -> String {
     let upstream_marker = upstream_marker.trim();
     let Some((card, start)) = marker_suffix(upstream_marker) else {
         return upstream_marker.to_owned();
@@ -184,11 +190,11 @@ pub(super) fn er_unified_marker_id(
         return upstream_marker.to_owned();
     };
     let end = if start { "Start" } else { "End" };
-    format!("{diagram_id}_{diagram_type}-{name}{end}")
+    format!("{diagram_id}_er-{name}{end}")
 }
 
 #[cfg(feature = "layout-shoal")]
-pub(crate) fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker {
+pub fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker {
     let Some(entry) = cardinality(card) else {
         return Marker::default();
     };
@@ -209,7 +215,7 @@ pub(crate) fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker 
 }
 
 #[cfg(feature = "layout-shoal")]
-pub(super) fn er_marker_paint_bounds(
+pub fn er_marker_paint_bounds(
     upstream_marker: &str,
     neo: bool,
     reference: &LayoutPoint,
@@ -240,23 +246,18 @@ pub(super) fn er_marker_paint_bounds(
     Some(bounds)
 }
 
-pub(super) struct ErMarkerDefs<'a> {
-    pub(super) diagram_id: SvgDiagramId<'a>,
-    pub(super) diagram_type: &'a str,
-    pub(super) include_md_parent: bool,
-    pub(super) canonical: bool,
-    pub(super) neo: bool,
-    pub(super) neo_stroke_width: f64,
-    pub(super) main_bkg: &'a str,
+pub struct ErMarkerDefs<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub include_md_parent: bool,
+    pub canonical: bool,
+    pub neo: bool,
+    pub neo_stroke_width: f64,
+    pub main_bkg: &'a str,
 }
 
-pub(super) fn write_er_marker_definitions(
-    out: &mut impl SvgOutput,
-    defs: ErMarkerDefs<'_>,
-) -> Result<()> {
+pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<'_>) -> Result<()> {
     let ErMarkerDefs {
         diagram_id,
-        diagram_type,
         include_md_parent,
         canonical,
         neo,
@@ -274,7 +275,7 @@ pub(super) fn write_er_marker_definitions(
                 MarkerGlyph::new(19, 7, 20, 28, "M 18,7 L9,13 L1,7 L9,1 Z", None),
             ),
         ] {
-            let id = format!("{diagram_id}_{diagram_type}-mdParent{end}");
+            let id = format!("{diagram_id}_er-mdParent{end}");
             write_marker_start(out, &id, "mdParent", &glyph, false);
             glyph.write_content(out, None);
             out.push_str("</marker></defs>\n");
@@ -287,7 +288,7 @@ pub(super) fn write_er_marker_definitions(
     for entry in &CARDINALITIES {
         for (end, glyph) in ["Start", "End"].into_iter().zip(&entry.ends) {
             let name = entry.name;
-            let id = format!("{diagram_id}_{diagram_type}-{name}{end}");
+            let id = format!("{diagram_id}_er-{name}{end}");
             write_marker_start(out, &id, name, glyph, neo || canonical);
             glyph.write_content(
                 out,
