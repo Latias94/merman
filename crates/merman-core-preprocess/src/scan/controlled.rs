@@ -104,6 +104,50 @@ pub fn find_line_break_controlled(
     Ok(None)
 }
 
+/// Finds the UTF-8 byte bounds left after trimming Rust whitespace on both ends.
+pub fn trim_whitespace_bounds_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> OperationControlResult<(usize, usize)> {
+    let mut start = text.len();
+    for (idx, ch) in text.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            start = idx;
+            break;
+        }
+    }
+    if start == text.len() {
+        return Ok((text.len(), text.len()));
+    }
+
+    let mut end = start;
+    for (idx, ch) in text.char_indices().rev() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            end = idx + ch.len_utf8();
+            break;
+        }
+    }
+    Ok((start, end))
+}
+
+/// Finds the first non-whitespace UTF-8 byte boundary, or the end of the input.
+pub fn trim_start_whitespace_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> OperationControlResult<usize> {
+    let mut start = text.len();
+    for (idx, ch) in text.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            start = idx;
+            break;
+        }
+    }
+    Ok(start)
+}
+
 pub fn push_str_controlled(
     out: &mut String,
     text: &str,

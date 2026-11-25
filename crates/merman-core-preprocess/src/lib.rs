@@ -5,6 +5,8 @@ use std::ops::Range;
 use std::sync::OnceLock;
 
 #[doc(hidden)]
+pub mod directives;
+#[doc(hidden)]
 pub mod frontmatter;
 #[doc(hidden)]
 pub mod scan;

@@ -1,7 +1,6 @@
 use super::config_scan::{
     MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit,
     config_nesting_exceeds_limit_controlled, max_yaml_indent_depth_controlled,
-    trim_whitespace_bounds_controlled,
 };
 use super::directives::{parse_directive_like_upstream, sanitize_directive};
 use super::frontmatter::FrontmatterCapture;
@@ -12,7 +11,7 @@ use super::text::{
 use super::*;
 use merman_core_preprocess::frontmatter::dedent_frontmatter_body_controlled;
 use merman_core_preprocess::scan::controlled::{
-    CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints,
+    CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
 };
 use serde_json::{Map, Value, json};
 

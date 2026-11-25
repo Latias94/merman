@@ -1,8 +1,9 @@
-//! Controlled depth and whitespace scans for source configuration.
+//! Controlled depth scans for source configuration.
 
 use crate::{OperationControl, OperationControlResult};
 use merman_core_preprocess::scan::controlled::{
-    ControlledScanCheckpoints, find_newline_controlled,
+    ControlledScanCheckpoints, find_newline_controlled, trim_start_whitespace_controlled,
+    trim_whitespace_bounds_controlled,
 };
 
 pub(super) const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
@@ -137,33 +138,6 @@ pub(super) fn max_yaml_indent_depth_controlled(
     Ok(max_depth)
 }
 
-pub(super) fn trim_whitespace_bounds_controlled(
-    text: &str,
-    checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> OperationControlResult<(usize, usize)> {
-    let mut start = text.len();
-    for (idx, ch) in text.char_indices() {
-        checkpoints.scanned(ch.len_utf8())?;
-        if !ch.is_whitespace() {
-            start = idx;
-            break;
-        }
-    }
-    if start == text.len() {
-        return Ok((text.len(), text.len()));
-    }
-
-    let mut end = start;
-    for (idx, ch) in text.char_indices().rev() {
-        checkpoints.scanned(ch.len_utf8())?;
-        if !ch.is_whitespace() {
-            end = idx + ch.len_utf8();
-            break;
-        }
-    }
-    Ok((start, end))
-}
-
 fn leading_ascii_space_count_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
@@ -177,21 +151,6 @@ fn leading_ascii_space_count_controlled(
         count += 1;
     }
     Ok(count)
-}
-
-pub(super) fn trim_start_whitespace_controlled(
-    text: &str,
-    checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> OperationControlResult<usize> {
-    let mut start = text.len();
-    for (idx, ch) in text.char_indices() {
-        checkpoints.scanned(ch.len_utf8())?;
-        if !ch.is_whitespace() {
-            start = idx;
-            break;
-        }
-    }
-    Ok(start)
 }
 
 fn yaml_inline_sequence_indicator_count_controlled(

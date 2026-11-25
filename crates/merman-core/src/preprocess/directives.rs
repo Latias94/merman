@@ -1,11 +1,8 @@
-//! Mermaid directive scanning, config evaluation, and source evidence.
+//! Mermaid directive config evaluation and source evidence.
 
 mod sanitize;
 
-use super::config_scan::{
-    MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit_controlled,
-    trim_start_whitespace_controlled, trim_whitespace_bounds_controlled,
-};
+use super::config_scan::{MAX_CONFIG_NESTING_DEPTH, config_nesting_exceeds_limit_controlled};
 #[cfg(feature = "editor-facts")]
 use super::source_config::{self, SourceAppearanceCapture, SourceAppearanceOwner};
 #[cfg(feature = "editor-facts")]
@@ -18,9 +15,13 @@ use crate::SourceSpan;
 use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
+use merman_core_preprocess::directives::{
+    DirectiveBlock, DirectiveRecoveryMode, directive_blocks_controlled,
+    normalize_directive_quotes_controlled,
+};
 use merman_core_preprocess::scan::controlled::{
-    ControlledScanCheckpoints, find_ascii_pattern_controlled, find_line_break_controlled,
-    push_str_controlled,
+    ControlledScanCheckpoints, push_str_controlled, trim_start_whitespace_controlled,
+    trim_whitespace_bounds_controlled,
 };
 #[cfg(test)]
 pub(super) use sanitize::sanitize_directive;
@@ -29,12 +30,6 @@ use serde_json::Value;
 use std::borrow::Cow;
 
 pub(super) const MAX_DIRECTIVE_CONFIG_PARSE_BYTES: usize = 1024 * 1024;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectiveRecoveryMode {
-    Strict,
-    RecoverLine,
-}
 
 pub(super) type DiagramTypeDetector<'a> =
     dyn Fn(&str, &OperationControl) -> OperationControlResult<Result<&'static str>> + 'a;
@@ -120,7 +115,7 @@ struct LocalDirectiveEvidence {
 pub(super) fn process_directives_controlled(
     input: &str,
     detector: &DiagramTypeDetector<'_>,
-    blocks: Vec<DirectiveBlock<'_>>,
+    blocks: Vec<DirectiveBlock>,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     evaluate_config: bool,
     control: &OperationControl,
@@ -167,7 +162,7 @@ pub(super) fn process_directives_controlled(
             continue;
         }
         let parsed = parse_directive_like_upstream_capture_controlled(
-            block.raw,
+            &input[block.raw.clone()],
             #[cfg(feature = "editor-facts")]
             capture_mode,
             #[cfg(feature = "editor-facts")]
@@ -189,9 +184,10 @@ pub(super) fn process_directives_controlled(
                     },
                     construct_span: SourceSpan::new(block.range.start, block.range.end),
                 });
+                let raw_start = block.raw.start;
                 let keyword_span = SourceSpan::new(
-                    block.raw_start.saturating_add(directive.keyword_span.start),
-                    block.raw_start.saturating_add(directive.keyword_span.end),
+                    raw_start.saturating_add(directive.keyword_span.start),
+                    raw_start.saturating_add(directive.keyword_span.end),
                 );
                 let keys = directive
                     .config_keys
@@ -200,8 +196,8 @@ pub(super) fn process_directives_controlled(
                         path: key.path.clone(),
                         span: key.span.as_ref().map(|span| {
                             SourceSpan::new(
-                                block.raw_start.saturating_add(span.start),
-                                block.raw_start.saturating_add(span.end),
+                                raw_start.saturating_add(span.start),
+                                raw_start.saturating_add(span.end),
                             )
                         }),
                         rewrite_safe: key.rewrite_safe,
@@ -431,18 +427,9 @@ pub(super) struct Directive {
     arguments_complete: bool,
 }
 
-#[derive(Debug)]
-pub(super) struct DirectiveBlock<'a> {
-    raw: &'a str,
-    #[cfg(feature = "editor-facts")]
-    raw_start: usize,
-    complete: bool,
-    range: std::ops::Range<usize>,
-}
-
 fn remove_directive_blocks_controlled<'a>(
     input: &'a str,
-    blocks: &[DirectiveBlock<'_>],
+    blocks: &[DirectiveBlock],
     control: &OperationControl,
 ) -> OperationControlResult<Cow<'a, str>> {
     if blocks.is_empty() {
@@ -471,81 +458,6 @@ fn remove_directive_blocks_controlled<'a>(
     push_str_controlled(&mut output, &input[cursor..], &mut checkpoints)?;
     checkpoints.finish()?;
     Ok(Cow::Owned(output))
-}
-
-#[cfg(test)]
-fn directive_blocks(
-    input: &str,
-    directive_recovery: DirectiveRecoveryMode,
-) -> Vec<DirectiveBlock<'_>> {
-    let control = OperationControl::new();
-    directive_blocks_controlled(input, directive_recovery, &control)
-        .expect("a private parse control cannot be cancelled")
-}
-
-pub(super) fn directive_blocks_controlled<'a>(
-    input: &'a str,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<Vec<DirectiveBlock<'a>>> {
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let mut blocks = Vec::new();
-    let mut pos = 0;
-    while let Some(start) = find_ascii_pattern_controlled(input, pos, b"%%{", &mut checkpoints)? {
-        let content_start = start + 3;
-        let close = find_ascii_pattern_controlled(input, content_start, b"}%%", &mut checkpoints)?;
-        let next_open = if directive_recovery == DirectiveRecoveryMode::RecoverLine {
-            find_ascii_pattern_controlled(input, content_start, b"%%{", &mut checkpoints)?
-        } else {
-            None
-        };
-
-        let content_end = match directive_recovery {
-            DirectiveRecoveryMode::Strict => close,
-            DirectiveRecoveryMode::RecoverLine => {
-                close.filter(|close| next_open.is_none_or(|open| *close < open))
-            }
-        };
-        if let Some(content_end) = content_end {
-            let end = content_end + 3;
-            let raw = &input[content_start..content_end];
-            let (trimmed_start, trimmed_end) =
-                trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
-            blocks.push(DirectiveBlock {
-                raw: &raw[trimmed_start..trimmed_end],
-                #[cfg(feature = "editor-facts")]
-                raw_start: content_start + trimmed_start,
-                complete: true,
-                range: start..end,
-            });
-            pos = end;
-            continue;
-        }
-
-        let end = match directive_recovery {
-            // Mermaid's optional closing marker makes an unterminated directive consume to EOF.
-            DirectiveRecoveryMode::Strict => input.len(),
-            DirectiveRecoveryMode::RecoverLine => {
-                let line_end = find_line_break_controlled(input, content_start, &mut checkpoints)?
-                    .unwrap_or(input.len());
-                next_open.map_or(line_end, |open| line_end.min(open))
-            }
-        };
-        let raw = &input[content_start..end];
-        let (trimmed_start, trimmed_end) =
-            trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
-        blocks.push(DirectiveBlock {
-            raw: &raw[trimmed_start..trimmed_end],
-            #[cfg(feature = "editor-facts")]
-            raw_start: content_start + trimmed_start,
-            complete: false,
-            range: start..end,
-        });
-        pos = end;
-    }
-
-    checkpoints.finish()?;
-    Ok(blocks)
 }
 
 #[cfg(test)]
@@ -608,49 +520,17 @@ fn parse_directive_like_upstream_capture_controlled(
     )
 }
 
-pub(super) fn normalize_directive_quotes_controlled<'a>(
-    raw: &'a str,
-    control: &OperationControl,
-) -> OperationControlResult<Cow<'a, str>> {
-    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let mut first_quote = None;
-    for (index, byte) in raw.as_bytes().iter().copied().enumerate() {
-        checkpoints.scanned(1)?;
-        if byte == b'\'' {
-            first_quote = Some(index);
-            break;
-        }
-    }
-    let Some(first_quote) = first_quote else {
-        checkpoints.finish()?;
-        return Ok(Cow::Borrowed(raw));
-    };
-
-    let mut normalized = String::with_capacity(raw.len());
-    let mut cursor = 0usize;
-    for (relative, byte) in raw.as_bytes()[first_quote..].iter().copied().enumerate() {
-        checkpoints.scanned(1)?;
-        if byte != b'\'' {
-            continue;
-        }
-        let quote = first_quote + relative;
-        push_str_controlled(&mut normalized, &raw[cursor..quote], &mut checkpoints)?;
-        normalized.push('"');
-        cursor = quote + 1;
-    }
-    push_str_controlled(&mut normalized, &raw[cursor..], &mut checkpoints)?;
-    checkpoints.finish()?;
-    Ok(Cow::Owned(normalized))
-}
-
 #[cfg(test)]
 pub(super) fn detect_directives(input: &str) -> Result<Vec<Directive>> {
+    let control = OperationControl::new();
+    let blocks = directive_blocks_controlled(input, DirectiveRecoveryMode::Strict, &control)
+        .expect("a private parse control cannot be cancelled");
     let mut directives = Vec::new();
-    for block in directive_blocks(input, DirectiveRecoveryMode::Strict) {
+    for block in blocks {
         if !block.complete {
             continue;
         }
-        if let Some(directive) = parse_directive_like_upstream(block.raw)? {
+        if let Some(directive) = parse_directive_like_upstream(&input[block.raw])? {
             directives.push(directive);
         }
     }
