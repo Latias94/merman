@@ -113,6 +113,7 @@ pub(crate) fn validate_edge(edge: &EdgeSpec) -> LayoutResult<()> {
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn components(
     graph: &Graph,
     options: &Options,
@@ -127,6 +128,15 @@ pub(super) fn collect(
     all_nodes: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Component>> {
+    partition(graph, options, all_nodes, work).map(|(components, _)| components)
+}
+
+pub(super) fn partition(
+    graph: &Graph,
+    options: &Options,
+    all_nodes: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<(Vec<Component>, bool)> {
     work.check()?;
     let n = graph.nodes.len();
     let m = graph.edges.len();
@@ -140,6 +150,7 @@ pub(super) fn collect(
     let s = options.spacing;
     let mut boundaries = false;
     let mut pinned = false;
+    let mut has_editor_hints = false;
     work.charge(n)?;
     for node in &graph.nodes {
         if node.parent.is_some() {
@@ -150,6 +161,8 @@ pub(super) fn collect(
         validate_node(node)?;
         boundaries |= node.boundary.is_some();
         pinned |= node.pin != 0;
+        has_editor_hints =
+            has_editor_hints || node.order_hint.is_some() || node.position_hint.is_some();
     }
     let endpoint = |ep: Endpoint, port: PortSideHint| -> LayoutResult<u32> {
         let Endpoint::Node(id) = ep else {
@@ -285,7 +298,7 @@ pub(super) fn collect(
     }
     charge_sort(components.len(), work)?;
     components.sort_unstable_by_key(|c| (c.nodes[0].seq, c.ids[0]));
-    Ok(components)
+    Ok((components, has_editor_hints))
 }
 
 pub(super) fn charge_sort(len: usize, work: &mut Work<'_>) -> LayoutResult<()> {
