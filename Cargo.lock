@@ -2585,7 +2585,6 @@ dependencies = [
  "merman-analysis",
  "merman-core",
  "merman-editor-core",
- "merman-model",
  "ropey",
  "serde",
  "serde_json",
