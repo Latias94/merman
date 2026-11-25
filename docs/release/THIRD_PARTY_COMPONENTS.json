@@ -906,6 +906,7 @@
         "crates/merman-render-charts/src/radar/layout.rs",
         "crates/merman-render-charts/src/venn/layout.rs",
         "crates/merman-render-flow/src",
+        "crates/merman-render-structured/src/info",
         "fixtures"
       ],
       "license_expression": "MIT",

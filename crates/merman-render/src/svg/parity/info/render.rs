@@ -6,7 +6,6 @@ pub(crate) fn render_native_info_svg(
     style: &InfoNativeStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let version = &style.version;
     let diagram_id = options.diagram_id_or("merman");
     let bounds = layout
         .bounds
@@ -29,20 +28,7 @@ pub(crate) fn render_native_info_svg(
             viewport,
             root_svg::RootChrome::new(diagram_id, "info"),
         )?;
-    let _ = write!(
-        &mut out,
-        r#"<g><text x="{}" y="{}" class="version" font-size="{}" font-family="{}" "#,
-        fmt(version.x),
-        fmt(version.y),
-        fmt(version.font_size_px),
-        escape_attr(&style.font_family),
-    );
-    let _ = crate::theme::canvas_svg::write_color(&mut out, "fill", style.text_color, 1.0);
-    let _ = write!(
-        &mut out,
-        r#" text-anchor="middle">{}</text></g></svg>"#,
-        escape_xml(&layout.version)
-    );
+    style.write_svg_tail(&mut out, layout);
     root.complete(out.finish()?)
 }
 
@@ -71,28 +57,7 @@ pub(crate) fn render_info_diagram_svg(
     let root_document = options
         .root_viewport(crate::DiagramFamilyId::INFO, diagram_id)
         .write_open(&mut out, root_spec, root_chrome)?;
-    out.push_str("<style>");
-    let selector = super::super::util::css_selector_diagram_id(diagram_id.semantic_str());
-    let fragment = super::super::css::FragmentDiagramId(diagram_id.semantic_str());
-    {
-        let mut css = super::super::output::XmlTextOutput::new(&mut out);
-        style.css.write_prefix(&mut css, selector)?;
-        style.css.write_root(&mut css, selector, fragment)?;
-    }
-    out.push_str("</style>");
-    out.checkpoint()?;
-    out.push_str(r#"<g/>"#);
-    out.checkpoint()?;
-    let version = &style.version;
-    let _ = write!(
-        &mut out,
-        r#"<g><text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">{}</text></g>"#,
-        fmt(version.x),
-        fmt(version.y),
-        fmt(version.font_size_px),
-        escape_xml(&layout.version)
-    );
-    out.checkpoint()?;
+    style.write_svg_contents(&mut out, layout, diagram_id.semantic_str())?;
     out.push_str("</svg>\n");
     root_document.complete(out.finish()?)
 }
@@ -113,7 +78,11 @@ mod tests {
         let debug = SvgDebugOptions::default();
         let effective_config = merman_model::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let (layout, style) = InfoClassicStyle::resolve(&effective_config, &measurer);
+        let (layout, appearance) =
+            crate::info::prepare_info_diagram(&effective_config, None, &measurer);
+        let crate::info::InfoAppearance::Mermaid(style) = appearance else {
+            panic!("expected Mermaid appearance");
+        };
         let execution = SvgExecution::unthemed_for_test(
             &request,
             &debug,

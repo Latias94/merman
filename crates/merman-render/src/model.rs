@@ -777,12 +777,8 @@ pub struct SequenceDiagramLayout {
     pub title: Option<SequenceTextLayout>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-info")]
-pub struct InfoDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub version: String,
-}
+pub use merman_render_structured::info::InfoDiagramLayout;
 
 #[cfg(feature = "diagram-packet")]
 pub use merman_render_structured::packet::{

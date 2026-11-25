@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-info")]
+#[doc(hidden)]
+pub mod info;
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;

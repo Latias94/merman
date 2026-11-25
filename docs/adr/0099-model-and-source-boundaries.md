@@ -71,10 +71,10 @@ intersections. `merman-render` owns traversal, work accounting, asset policy, an
 Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares the source and
 maps each parser's model, diagnostics, and optional syntax spans into the public parse result.
 
-`merman-render-structured` owns the typed layout and SVG emission for Packet and Railroad. It
+`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad. It
 consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
-`merman-render` dispatches to it through the existing `diagram-packet` and `diagram-railroad`
-features and supplies the operation's text measurement to Railroad.
+`merman-render` dispatches to it through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
+It supplies the operation's text measurement to Info and Railroad and applies the root SVG policy.
 
 ### Graph syntax
 

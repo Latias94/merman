@@ -311,19 +311,11 @@ fn prepare_info_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::info::{InfoAppearance, InfoClassicStyle, InfoNativeStyle};
-
-    let (layout, typography_theme) = match execution.native_family_theme() {
-        Some(theme) => {
-            let (layout, style) = InfoNativeStyle::resolve(theme, execution.text_measurer());
-            (layout, InfoAppearance::Native(style))
-        }
-        None => {
-            let (layout, style) =
-                InfoClassicStyle::resolve(&meta.effective_config, execution.text_measurer());
-            (layout, InfoAppearance::Mermaid(style))
-        }
-    };
+    let (layout, typography_theme) = crate::info::prepare_info_diagram(
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.text_measurer(),
+    );
     Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         typography_theme,
