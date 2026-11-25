@@ -156,7 +156,6 @@ fn compute_effective_dir_by_id(
 const SELF_LOOP_ID_EXTRA: &str = "selfLoopId";
 const SELF_LOOP_NODE_EXTRA: &str = "selfLoopNode";
 const SELF_LOOP_ORDER_EXTRA: &str = "selfLoopOrder";
-const EDGE_OWNER_INDEX_EXTRA: &str = "mermanEdgeOwnerIndex";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowchartSelfLoopSegmentMeta {
@@ -201,27 +200,31 @@ fn annotate_flowchart_self_loop_segment(
     label: &mut EdgeLabel,
     meta: &FlowchartSelfLoopSegmentMeta,
 ) {
-    label.extras.insert(
+    let extras = &mut *label.extras;
+    extras.insert(
         SELF_LOOP_ID_EXTRA.to_string(),
         Value::String(meta.logical_edge_id.clone()),
     );
-    label.extras.insert(
+    extras.insert(
         SELF_LOOP_NODE_EXTRA.to_string(),
         Value::String(meta.node_id.clone()),
     );
-    label
-        .extras
-        .insert(SELF_LOOP_ORDER_EXTRA.to_string(), Value::from(meta.order));
+    extras.insert(SELF_LOOP_ORDER_EXTRA.to_string(), Value::from(meta.order));
 }
 
-fn annotate_flowchart_edge_owner(label: &mut EdgeLabel, owner_index: usize) {
-    label
-        .extras
-        .insert(EDGE_OWNER_INDEX_EXTRA.to_string(), Value::from(owner_index));
+fn checked_flowchart_edge_owner_index(
+    owner_index: usize,
+    work_control: &OperationLayoutWorkControl,
+) -> Result<u32> {
+    let Ok(index) = u32::try_from(owner_index) else {
+        work_control.checkpoint()?;
+        return Err(work_control.record_arithmetic_overflow().into());
+    };
+    Ok(index)
 }
 
 fn flowchart_edge_owner_index(label: &EdgeLabel) -> Option<usize> {
-    usize::try_from(label.extras.get(EDGE_OWNER_INDEX_EXTRA)?.as_u64()?).ok()
+    usize::try_from(label.owner_index?).ok()
 }
 
 fn flowchart_layout_segment_key(label: &EdgeLabel) -> Option<FlowchartLayoutSegmentKey> {
@@ -2294,6 +2297,7 @@ fn layout_flowchart_with_model(
         // Mermaid 11.16 stores helper identity as edge metadata. The graph key is intentionally
         // node-scoped, so a later parallel self-loop overwrites the earlier triple in Graphlib.
         let edge_key = flowchart_layout_edge_key(e, self_loop_meta.as_ref());
+        let owner_index = checked_flowchart_edge_owner_index(*edge_owner_index, work_control)?;
 
         let from = e.from.clone();
         let to = e.to.clone();
@@ -2376,13 +2380,12 @@ fn layout_flowchart_with_model(
                 labeloffset: 10.0,
                 minlen,
                 weight: 1.0,
+                owner_index: Some(owner_index),
                 ..Default::default()
             };
             if let Some(meta) = self_loop_meta {
                 annotate_flowchart_self_loop_segment(&mut el, meta);
             }
-            annotate_flowchart_edge_owner(&mut el, *edge_owner_index);
-
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         } else {
             let mut el = EdgeLabel {
@@ -2393,12 +2396,12 @@ fn layout_flowchart_with_model(
                 labeloffset: 10.0,
                 minlen: e.length.max(1),
                 weight: 1.0,
+                owner_index: Some(owner_index),
                 ..Default::default()
             };
             if let Some(meta) = self_loop_meta {
                 annotate_flowchart_self_loop_segment(&mut el, meta);
             }
-            annotate_flowchart_edge_owner(&mut el, *edge_owner_index);
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         }
     }
@@ -4889,6 +4892,101 @@ flowchart TD
             compound: true,
             directed: true,
         })
+    }
+
+    #[test]
+    fn dagre_cluster_copy_keeps_edge_owner_and_extras() {
+        let mut graph = compound_graph();
+        for id in ["root", "a", "b", "outside"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for child in ["a", "b"] {
+            graph.set_parent(child, "root");
+        }
+        let edges = [
+            ("a", "b", "inside", "a", "b", 0),
+            ("a", "outside", "leaving", "root", "outside", 1),
+            ("outside", "b", "entering", "outside", "root", 2),
+        ];
+        let mut labels = Vec::new();
+        for (from, to, name, _, _, owner_index) in edges {
+            let mut label = EdgeLabel {
+                owner_index: Some(owner_index),
+                ..Default::default()
+            };
+            label
+                .extras
+                .insert("caller".into(), serde_json::json!({ "ends": [from, to] }));
+            graph.set_edge_named(from, to, Some(name), Some(label.clone()));
+            labels.push(label);
+        }
+        let mut copied = compound_graph();
+        let mut work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )));
+        let descendants = HashMap::from([("root".into(), vec!["a".into(), "b".into()])]);
+        copy_cluster(
+            "root",
+            &mut graph,
+            &mut copied,
+            "root",
+            &descendants,
+            &mut work_control,
+        )
+        .unwrap();
+
+        for ((_, _, name, from, to, _), label) in edges.into_iter().zip(&labels) {
+            let graph = if name == "inside" { &copied } else { &graph };
+            assert_eq!(graph.edge(from, to, Some(name)), Some(label));
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn dagre_edge_owner_index_overflow_is_a_sticky_layout_resource_error() {
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let max = u32::MAX as usize;
+        assert_eq!(
+            checked_flowchart_edge_owner_index(0, &work_control).unwrap(),
+            0
+        );
+        assert_eq!(
+            checked_flowchart_edge_owner_index(max, &work_control).unwrap(),
+            u32::MAX
+        );
+        let error = checked_flowchart_edge_owner_index(max + 1, &work_control).unwrap_err();
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected ResourceLimitExceeded, got {error}");
+        };
+        assert_eq!(limit.limit, "max_layout_work_units");
+        let Err(Error::ResourceLimitExceeded(sticky)) = work_control.charge_adapter(1) else {
+            panic!("expected the same terminal layout resource error");
+        };
+        assert_eq!(sticky, limit);
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn dagre_edge_owner_index_overflow_preserves_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        ));
+        let work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let error =
+            checked_flowchart_edge_owner_index(u32::MAX as usize + 1, &work_control).unwrap_err();
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured operation cancellation, got {error}");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]

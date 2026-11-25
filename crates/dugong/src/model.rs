@@ -4,6 +4,10 @@
 //! parity-oriented porting from upstream JS.
 
 use crate::graphlib::EdgeKey;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RankDir {
@@ -129,6 +133,34 @@ pub struct Point {
     pub y: f64,
 }
 
+/// Optional edge metadata with value semantics and copy-on-write storage.
+///
+/// Reading or cloning empty metadata does not allocate. Clones of populated metadata share its
+/// storage until one is mutated.
+#[derive(Debug, Clone, Default)]
+pub struct EdgeExtras(Option<Arc<BTreeMap<String, Value>>>);
+
+impl Deref for EdgeExtras {
+    type Target = BTreeMap<String, Value>;
+
+    fn deref(&self) -> &Self::Target {
+        static EMPTY: BTreeMap<String, Value> = BTreeMap::new();
+        self.0.as_deref().unwrap_or(&EMPTY)
+    }
+}
+
+impl DerefMut for EdgeExtras {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::make_mut(self.0.get_or_insert_with(Arc::default))
+    }
+}
+
+impl PartialEq for EdgeExtras {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref() == other.deref()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeLabel {
     pub width: f64,
@@ -141,7 +173,9 @@ pub struct EdgeLabel {
     pub nesting_edge: bool,
     pub reversed: bool,
     pub forward_name: Option<String>,
-    pub extras: std::collections::BTreeMap<String, serde_json::Value>,
+    /// An adapter-owned edge ordinal. Layout algorithms leave its meaning to the caller.
+    pub owner_index: Option<u32>,
+    pub extras: EdgeExtras,
 
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -168,10 +202,33 @@ impl Default for EdgeLabel {
             nesting_edge: false,
             reversed: false,
             forward_name: None,
-            extras: std::collections::BTreeMap::new(),
+            owner_index: None,
+            extras: EdgeExtras::default(),
             x: None,
             y: None,
             points: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edge_extras_keep_map_value_semantics_across_clones() {
+        let mut original = EdgeLabel::default();
+        original.extras.clear();
+        assert_eq!(original, EdgeLabel::default());
+
+        original
+            .extras
+            .insert("metadata".into(), serde_json::json!({ "nested": [1, 2] }));
+        let mut copy = original.clone();
+        copy.extras.get_mut("metadata").unwrap()["nested"][0] = 3.into();
+        assert_eq!(original.extras["metadata"]["nested"][0], 1);
+        assert_eq!(copy.extras["metadata"]["nested"][0], 3);
+        copy.extras.clear();
+        assert_eq!(copy, EdgeLabel::default());
     }
 }

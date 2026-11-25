@@ -272,23 +272,27 @@ fn normalize_undo_restores_previous_edge_labels() {
     g.set_node(
         "b",
         NodeLabel {
-            rank: Some(2),
+            rank: Some(4),
             ..Default::default()
         },
     );
-    let mut label = EdgeLabel::default();
+    let mut label = EdgeLabel {
+        owner_index: Some(u32::MAX),
+        ..Default::default()
+    };
     label
         .extras
-        .insert("foo".to_string(), Value::String("bar".to_string()));
-    g.set_edge_with_label("a", "b", label);
+        .insert("foo".into(), serde_json::json!({ "bar": [5, null] }));
+    label.extras.insert(
+        "mermanEdgeOwnerIndex".into(),
+        Value::from("opaque caller data"),
+    );
+    g.set_edge_with_label("a", "b", label.clone());
 
     normalize::run(&mut g);
     normalize::undo(&mut g);
 
-    assert_eq!(
-        g.edge("a", "b", None).unwrap().extras.get("foo").cloned(),
-        Some(Value::String("bar".to_string()))
-    );
+    assert_eq!(g.edge("a", "b", None), Some(&label));
 }
 
 #[test]
