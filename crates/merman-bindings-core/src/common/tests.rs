@@ -1249,7 +1249,7 @@ fn resource_ceiling_json_enforces_the_normalized_wire_byte_budget() {
 fn resource_ceiling_rejects_a_looser_profile_hidden_by_generic_overrides() {
     let constrained = ResourceOptionsJson {
         profile: Some("constrained".to_string()),
-        limits: BTreeMap::new(),
+        limits: Default::default(),
     };
     let requested = ResourceOptionsJson {
         profile: Some("interactive".to_string()),
