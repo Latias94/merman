@@ -190,22 +190,45 @@ impl Walls {
         })
     }
 
-    fn route(
-        &self,
+    fn into_route_walls(self) -> RouteWalls {
+        RouteWalls {
+            fixed_count: self.boxes.len(),
+            walls: self,
+        }
+    }
+}
+
+struct RouteWalls {
+    walls: Walls,
+    fixed_count: usize,
+}
+
+impl RouteWalls {
+    fn for_leg(
+        &mut self,
         index: usize,
         pair: [Contact; 2],
         work: &mut Work<'_>,
-    ) -> LayoutResult<Vec<Rect>> {
-        let count = self
-            .boxes
+    ) -> LayoutResult<&[Rect]> {
+        let Walls {
+            boxes,
+            markers,
+            title,
+        } = &mut self.walls;
+        boxes.truncate(self.fixed_count);
+        let extra = markers
             .len()
-            .checked_add(self.markers.len())
-            .and_then(|n| n.checked_add(1))
+            .checked_add(1)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        work.charge(count)?;
-        let mut result = reserved(count)?;
-        result.extend_from_slice(&self.boxes);
-        for &(owner, marker, rect) in &self.markers {
+        work.charge(
+            self.fixed_count
+                .checked_add(extra)
+                .ok_or(WorkError::ArithmeticOverflow)?,
+        )?;
+        boxes
+            .try_reserve_exact(extra)
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        for &(owner, marker, rect) in markers.iter() {
             work.visit(1)?;
             if index != owner
                 && !pair.iter().any(|port| {
@@ -224,10 +247,10 @@ impl Walls {
                         }
                 })
             {
-                result.push(rect);
+                boxes.push(rect);
             }
         }
-        if let Some(title) = self.title {
+        if let Some(title) = *title {
             let on_title = |port: &Contact| {
                 let point = port.at;
                 point.x >= title.x
@@ -236,10 +259,10 @@ impl Walls {
                     && point.y <= title.y + title.height
             };
             if !pair.iter().any(on_title) {
-                result.push(title);
+                boxes.push(title);
             }
         }
-        Ok(result)
+        Ok(boxes)
     }
 }
 
@@ -617,7 +640,7 @@ pub(super) fn title_room(
         let Some((end, slot, physical)) = wire.border() else {
             continue;
         };
-        if physical != side || wire.own {
+        if physical != side || wire.uses_caption_band() {
             continue;
         }
         let Some(edge) = &wire.route else { continue };
@@ -675,7 +698,7 @@ fn boundary_leg(
     index: usize,
     wire: &mut Wire,
     nodes: &[Rect],
-    walls: &Walls,
+    walls: &mut RouteWalls,
     fit: &fit::Fit,
     options: &Options,
     work: &mut Work<'_>,
@@ -694,7 +717,7 @@ fn boundary_leg(
     } else {
         inner.side.axis()
     };
-    if wire.flat() && !wire.own {
+    if wire.flat() && !wire.uses_caption_band() {
         let mut edge = wire.route.take().expect("flat border route");
         let index_in_route = if border == 0 {
             0
@@ -704,9 +727,10 @@ fn boundary_leg(
         let at = point(edge.points[index_in_route]);
         if at != outer.at {
             let dummy = Contact { at, side };
-            let blockers = walls.route(index, [dummy, outer], work)?;
+            let title = walls.walls.title;
+            let blockers = walls.for_leg(index, [dummy, outer], work)?;
             if options.routing == crate::RoutingStyle::Curved
-                && let Some(title) = walls.title
+                && let Some(title) = title
                 && let Some(sweep) = title_sweep(
                     &edge,
                     border,
@@ -716,7 +740,7 @@ fn boundary_leg(
                     work,
                 )?
                 && sweep.depth > 0.0
-                && clear(&sweep.points, &blockers, work)?
+                && clear(&sweep.points, blockers, work)?
             {
                 through_title(&mut edge, border, sweep, work)?;
                 edge.ports = ports;
@@ -724,7 +748,7 @@ fn boundary_leg(
             }
             let connection = Connection {
                 fit,
-                walls: &blockers,
+                walls: blockers,
                 gap: options.spacing.edge,
             };
             let path = connection.path(dummy, outer, [0.0, markers[border]], None, work)?;
@@ -749,10 +773,10 @@ fn boundary_leg(
     let End::Item { slot, .. } = wire.ends[member] else {
         unreachable!()
     };
-    let blockers = walls.route(index, [inner, outer], work)?;
+    let blockers = walls.for_leg(index, [inner, outer], work)?;
     let connection = Connection {
         fit,
-        walls: &blockers,
+        walls: blockers,
         gap: options.spacing.edge,
     };
     let path = connection.path(
@@ -799,10 +823,11 @@ pub(super) fn finish(
     }
     let mut walls = Walls::new(nodes, wires, title, work)?;
     let placed = labels(fit, wires, &mut walls, options, work)?;
+    let mut walls = walls.into_route_walls();
     for (index, (wire, seats)) in wires.iter_mut().zip(placed).enumerate() {
         work.visit(1)?;
         let mut edge = if wire.border().is_some() {
-            boundary_leg(index, wire, nodes, &walls, fit, options, work)?
+            boundary_leg(index, wire, nodes, &mut walls, fit, options, work)?
         } else {
             wire.route.take().expect("flat item route")
         };

@@ -154,7 +154,7 @@ pub(super) fn run(
         {
             break 'selected first_output;
         }
-        let suggestions = refine::port_hints(&first, &frames.levels, &first_output, work)?;
+        let suggestions = refine::port_hints(&first, &first_output, work)?;
         let mut previous = &first;
         if ordered.as_ref().is_some_and(|h| {
             crossings

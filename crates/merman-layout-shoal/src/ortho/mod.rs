@@ -24,11 +24,13 @@ pub struct OrthogonalSpan {
 /// Routes fixed spans in drawing coordinates with one obstacle index.
 ///
 /// Obstacles receive half the edge separation on each side. `bounds`, when
-/// supplied, is an inclusive limit for all spans. Each search admits at most
-/// 4,096 visibility vertices, and returns `None` in place if it exceeds that
-/// cap or finds no route. Successful paths include both fixed knots and affect
-/// later spans' crossing and overlap cost. Cancellation and work exhaustion
-/// abort the batch with an error.
+/// supplied, is an inclusive limit for all spans. The visibility search admits
+/// at most 4,096 vertices per span. If the cap prevents the search, the router
+/// keeps a valid straight or single-turn shortcut when available, even if it
+/// incurs a crossing or overlap penalty. The result contains `None` for any
+/// span where no route is found. Successful paths include both fixed knots and
+/// affect later spans' crossing and overlap cost. Cancellation and work
+/// exhaustion abort the batch with an error.
 pub fn route_orthogonal_spans(
     obstacles: &[Rect],
     bounds: Option<Rect>,
@@ -151,7 +153,9 @@ impl OrthoRouter {
     }
 
     /// Returns the complete inner span, including both unchanged endpoint knots.
-    /// The caller can retain its previous route if no span fits the walls or vertex cap.
+    /// A cap below the minimum for the endpoint geometry declines the span.
+    /// If the grid exceeds the cap, a valid shortcut is returned when available.
+    /// The caller can retain its previous route if no route is found.
     pub(crate) fn route(
         &mut self,
         request: OrthoRequest,
@@ -204,7 +208,7 @@ impl OrthoRouter {
         if self.corridors.is_none() {
             self.corridors = Some(self.obstacles.corridors(work)?);
         }
-        let Some(terminals) = self.grid.build(
+        let terminals = self.grid.build(
             self.corridors.as_deref().unwrap_or_default(),
             &self.obstacles,
             GridQuery {
@@ -215,18 +219,17 @@ impl OrthoRouter {
                 cap,
             },
             work,
-        )?
-        else {
-            return Ok(None);
-        };
-        if let Some(path) = self.search.route(
-            &self.grid.nodes,
-            terminals,
-            request,
-            &self.trails,
-            quick.as_ref(),
-            work,
-        )? {
+        )?;
+        if let Some(terminals) = terminals
+            && let Some(path) = self.search.route(
+                &self.grid.nodes,
+                terminals,
+                request,
+                &self.trails,
+                quick.as_ref(),
+                work,
+            )?
+        {
             return Ok(Some(path));
         }
         quick.map(|path| path.emit(request)).transpose()

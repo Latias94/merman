@@ -1017,6 +1017,7 @@ struct SuperGap {
     sweep: Sweep,
     occupied: [Span; MAX_SWEEP_GAPS],
     steps: usize,
+    free_departure: bool,
 }
 
 fn prove_sweep(
@@ -1024,6 +1025,7 @@ fn prove_sweep(
     bands: &[Band],
     rooms: &[Option<(f64, f64)>],
     sep: f64,
+    share_departure: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<SuperGap>> {
     let first = &gaps[0];
@@ -1047,6 +1049,13 @@ fn prove_sweep(
         ease: sweep_handle_fraction(span.width(), end - start),
     };
     let mut occupied = [span; MAX_SWEEP_GAPS];
+    // The painter can absorb a short terminal guard into the sweep. Longer guards keep
+    // their narrower per-gap occupancy so they do not block otherwise compatible curves.
+    let mut free_departure = share_departure
+        && first.allow_local_sweeps
+        && first.pieces.len() > 1
+        && first.upper_guard > 0.0
+        && first.upper_guard <= 2.0 * LEAD;
     let mut above = sweep.at(bands[0].bottom, work)?;
     for (step, (gap, lower)) in gaps.iter().zip(&bands[1..]).enumerate() {
         work.visit(1)?;
@@ -1063,13 +1072,26 @@ fn prove_sweep(
             if through.from < lo || through.to > hi {
                 return Ok(None);
             }
+            free_departure &= span.lo() >= lo && span.hi() <= hi;
             above = bottom;
+        }
+    }
+    if free_departure {
+        for gap in gaps {
+            if !gap.clear_of_peers(span, sep, work)? {
+                free_departure = false;
+                break;
+            }
+        }
+        if free_departure {
+            occupied[..gaps.len()].fill(span);
         }
     }
     Ok(Some(SuperGap {
         sweep,
         occupied,
         steps: gaps.len(),
+        free_departure,
     }))
 }
 
@@ -1078,6 +1100,7 @@ fn super_gap(
     bands: &[Band],
     rooms: &[Option<(f64, f64)>],
     sep: f64,
+    share_departure: bool,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<SuperGap>> {
     let usable = |gap: &Gap| {
@@ -1113,7 +1136,8 @@ fn super_gap(
         }
     }
     for count in (2..=steps).rev().take(MAX_SWEEP_TRIALS) {
-        if let Some(merge) = prove_sweep(&gaps[..count], bands, rooms, sep, work)? {
+        if let Some(merge) = prove_sweep(&gaps[..count], bands, rooms, sep, share_departure, work)?
+        {
             return Ok(Some(merge));
         }
     }
@@ -1394,6 +1418,10 @@ fn route_ranked(
             ));
         }
         if !direct {
+            let share_departure = !reversed
+                && side_start.is_none()
+                && spec.start_marker.width == 0.0
+                && g.layers[g.rank[first] as usize].as_slice() == [first as u32];
             let mut level = a;
             while level < b {
                 work.visit(1)?;
@@ -1402,14 +1430,17 @@ fn route_ranked(
                     &bands[level..],
                     &clearance,
                     options.spacing.edge,
+                    share_departure && level == a,
                     work,
                 )?;
                 let next = if let Some(merge) = merged {
                     let sweep = merge.sweep;
-                    knot(
-                        &mut points,
-                        RoutePoint::gap_boundary(sweep.span.from, sweep.start, Axis::Vertical),
-                    );
+                    let start = if merge.free_departure {
+                        RoutePoint::new(sweep.span.from, sweep.start, Axis::Vertical)
+                    } else {
+                        RoutePoint::gap_boundary(sweep.span.from, sweep.start, Axis::Vertical)
+                    };
+                    knot(&mut points, start);
                     knot(
                         &mut points,
                         RoutePoint::gap_boundary(sweep.span.to, sweep.end, Axis::Vertical),
