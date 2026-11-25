@@ -11,7 +11,7 @@ use crate::work::{
     checked_unparented_parent_batch_work,
 };
 use crate::{
-    DummyEdge, EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic,
+    DummyEdge, DummyKind, EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic,
     add_border_segments, coordinate_system, nesting_graph, normalize, order, parent_dummy_chains,
     position, rank, self_edges, util,
 };
@@ -513,7 +513,7 @@ fn run_layout(
             id,
             NodeLabel {
                 rank: Some(rank),
-                dummy: Some("edge-proxy".to_string()),
+                dummy: Some(DummyKind::EdgeProxy),
                 dummy_edge: DummyEdge::RankProxy(Box::new(ek)),
                 ..Default::default()
             },
@@ -953,7 +953,7 @@ where
             generated_proxy_ids.iter().map(String::as_str).collect();
         let mut leftovers = Vec::new();
         g.for_each_node(|id, node| {
-            if node.dummy.as_deref() == Some("edge-proxy") && !generated_ids.contains(id) {
+            if node.dummy == Some(DummyKind::EdgeProxy) && !generated_ids.contains(id) {
                 leftovers.push(id.to_string());
             }
         });
@@ -984,7 +984,7 @@ fn write_edge_label_proxy_rank(
     id: &str,
 ) {
     let writeback = g.node(id).and_then(|node| {
-        if node.dummy.as_deref() != Some("edge-proxy") {
+        if node.dummy != Some(DummyKind::EdgeProxy) {
             return None;
         }
         let DummyEdge::RankProxy(key) = &node.dummy_edge else {
@@ -1526,7 +1526,7 @@ mod tests {
             "generated",
             NodeLabel {
                 rank: Some(4),
-                dummy: Some("edge-proxy".to_string()),
+                dummy: Some(DummyKind::EdgeProxy),
                 dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                 ..Default::default()
             },
@@ -1535,7 +1535,7 @@ mod tests {
             "generated_only",
             NodeLabel {
                 rank: Some(6),
-                dummy: Some("edge-proxy".to_string()),
+                dummy: Some(DummyKind::EdgeProxy),
                 dummy_edge: DummyEdge::RankProxy(Box::new(generated_target)),
                 ..Default::default()
             },
@@ -1544,7 +1544,7 @@ mod tests {
             "generated_non_proxy",
             NodeLabel {
                 rank: Some(5),
-                dummy: Some("other".to_string()),
+                dummy: Some(DummyKind::Other),
                 dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                 ..Default::default()
             },
@@ -1553,7 +1553,7 @@ mod tests {
             "caller_proxy",
             NodeLabel {
                 rank: Some(7),
-                dummy: Some("edge-proxy".to_string()),
+                dummy: Some(DummyKind::EdgeProxy),
                 dummy_edge: DummyEdge::RankProxy(Box::new(target)),
                 ..Default::default()
             },
@@ -1562,7 +1562,7 @@ mod tests {
             "orphan_proxy",
             NodeLabel {
                 rank: Some(9),
-                dummy: Some("edge-proxy".to_string()),
+                dummy: Some(DummyKind::EdgeProxy),
                 ..Default::default()
             },
         );
@@ -1669,7 +1669,7 @@ mod tests {
                 &id,
                 NodeLabel {
                     rank: Some(i32::try_from(index).unwrap()),
-                    dummy: Some("edge-proxy".to_string()),
+                    dummy: Some(DummyKind::EdgeProxy),
                     dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                     ..Default::default()
                 },

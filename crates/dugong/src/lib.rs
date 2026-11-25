@@ -10,7 +10,8 @@ pub mod data;
 
 mod model;
 pub use model::{
-    DummyEdge, EdgeLabel, GraphLabel, LabelPos, NodeLabel, OriginalEdge, Point, RankDir,
+    BorderSide, DummyEdge, DummyKind, EdgeLabel, GraphLabel, LabelPos, NodeLabel, OriginalEdge,
+    Point, RankDir,
 };
 
 mod error;

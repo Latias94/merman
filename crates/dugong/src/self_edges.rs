@@ -10,8 +10,8 @@ use crate::graphlib::Graph;
 use crate::order::IndexedLayerMatrix;
 use crate::work::{checked_add, checked_mul};
 use crate::{
-    DummyEdge, EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, OriginalEdge, Point, WorkControl,
-    WorkError,
+    DummyEdge, DummyKind, EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, OriginalEdge, Point,
+    WorkControl, WorkError,
 };
 
 pub fn remove_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -168,7 +168,7 @@ pub(crate) fn insert_self_edges_with_layering_controlled(
                         height,
                         rank: Some(rank),
                         order: Some(expanded.len()),
-                        dummy: Some("selfedge".to_string()),
+                        dummy: Some(DummyKind::SelfEdge),
                         dummy_edge: DummyEdge::Original(Box::new(self_edge)),
                         ..Default::default()
                     },
@@ -211,7 +211,7 @@ where
 {
     let mut ids: Vec<String> = Vec::new();
     g.for_each_node(|id, n| {
-        if n.dummy.as_deref() == Some("selfedge") {
+        if n.dummy == Some(DummyKind::SelfEdge) {
             ids.push(id.to_string());
         }
     });
@@ -268,7 +268,7 @@ fn restore_self_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) 
     let Some(node) = g.node(id) else {
         return false;
     };
-    if node.dummy.as_deref() != Some("selfedge") {
+    if node.dummy != Some(DummyKind::SelfEdge) {
         return false;
     }
     let (Some(x), Some(y)) = (node.x, node.y) else {
@@ -379,7 +379,7 @@ mod tests {
             height: 8.0,
             x,
             y,
-            dummy: Some("selfedge".to_string()),
+            dummy: Some(DummyKind::SelfEdge),
             dummy_edge: DummyEdge::Original(Box::new(OriginalEdge {
                 key,
                 label: edge_label,
@@ -1040,7 +1040,7 @@ mod tests {
     ) -> usize {
         let mut ids = Vec::new();
         graph.for_each_node(|id, node| {
-            if node.dummy.as_deref() == Some("selfedge") {
+            if node.dummy == Some(DummyKind::SelfEdge) {
                 ids.push(id.to_string());
             }
         });

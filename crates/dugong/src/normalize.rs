@@ -5,7 +5,7 @@
 //! chain of rank-adjacent edges.
 
 use crate::graphlib::{EdgeKey, Graph};
-use crate::{DummyEdge, EdgeLabel, GraphLabel, NodeLabel, OriginalEdge, Point};
+use crate::{DummyEdge, DummyKind, EdgeLabel, GraphLabel, NodeLabel, OriginalEdge, Point};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Default)]
@@ -133,7 +133,7 @@ fn normalize_edge(
                 width: 0.0,
                 height: 0.0,
                 rank: Some(r),
-                dummy: Some("edge".to_string()),
+                dummy: Some(DummyKind::Edge),
                 dummy_edge,
                 ..Default::default()
             },
@@ -149,7 +149,7 @@ fn normalize_edge(
         {
             n.width = width;
             n.height = height;
-            n.dummy = Some("edge-label".to_string());
+            n.dummy = Some(DummyKind::EdgeLabel);
             n.labelpos = Some(labelpos);
         }
 
@@ -235,7 +235,7 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 
             if let (Some(x), Some(y)) = (node.x, node.y) {
                 orig_label.points.push(Point { x, y });
-                if node.dummy.as_deref() == Some("edge-label") {
+                if node.dummy == Some(DummyKind::EdgeLabel) {
                     orig_label.x = Some(x);
                     orig_label.y = Some(y);
                     orig_label.width = node.width;

@@ -1,7 +1,7 @@
 //! Compound-graph helpers for layout pipelines.
 
 use crate::graphlib;
-use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{DummyKind, EdgeLabel, GraphLabel, NodeLabel};
 
 pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     // First pass: update compound-node geometry from its border nodes.
@@ -68,7 +68,7 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
     // Second pass: remove all border dummy nodes.
     let mut to_remove: Vec<String> = Vec::new();
     g.for_each_node(|id, n| {
-        if n.dummy.as_deref() == Some("border") {
+        if n.dummy == Some(DummyKind::Border) {
             to_remove.push(id.to_string());
         }
     });
