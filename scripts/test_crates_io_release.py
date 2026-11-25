@@ -386,32 +386,48 @@ class CratesIoReceiptTests(unittest.TestCase):
                     ROOT, package_metadata("merman-resvg"), package_name="merman-resvg", expected_version="1.0.0",
                 )
 
-    def test_independent_preflight_rejects_actual_archives_missing_special_licenses(self) -> None:
+    def test_independent_preflight_verifies_the_special_licenses_before_registry_access(self) -> None:
         for name, expression, extra in (
             ("merman-krilla", "MIT OR Apache-2.0", "icc/LICENSE"),
             ("merman-resvg", "(MIT OR Apache-2.0) AND BSD-2-Clause", "LICENSE-BSD-2-Clause"),
         ):
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                prepared = self.prepared(root, name)
-                metadata = package_metadata(name)
-                [package] = metadata["packages"]
-                package.update(license=expression, manifest_path=str(prepared.package.manifest_path))
-                with tarfile.open(prepared.artifact_path, "w:gz") as crate:
-                    for filename in ("LICENSE-MIT", "LICENSE-APACHE"):
-                        text = b"test license"
-                        member = tarfile.TarInfo(f"{name}-1.0.0/{filename}")
-                        member.size = len(text)
-                        crate.addfile(member, io.BytesIO(text))
-                with (
-                    mock.patch.object(release, "_prepare_crate", return_value=prepared),
-                    mock.patch.object(release, "independent_version_exists") as registry,
-                    self.assertRaisesRegex(PackageLegalMaterialError, extra),
-                ):
-                    release.preflight_independent_crate(
-                        root, metadata, package_name=name, expected_version="1.0.0",
-                    )
-                registry.assert_not_called()
+            for corruption in ("missing", "truncated", "same length", "unchanged"):
+                with self.subTest(name=name, corruption=corruption), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    prepared = self.prepared(root, name)
+                    metadata = package_metadata(name)
+                    [package] = metadata["packages"]
+                    package.update(license=expression, manifest_path=str(prepared.package.manifest_path))
+                    expected = b"test license"
+                    with tarfile.open(prepared.artifact_path, "w:gz") as crate:
+                        for filename in ("LICENSE-MIT", "LICENSE-APACHE", extra):
+                            source = prepared.package.manifest_path.parent / filename
+                            source.parent.mkdir(parents=True, exist_ok=True)
+                            source.write_bytes(expected)
+                            if filename == extra and corruption == "missing":
+                                continue
+                            text = ({"truncated": b"X", "same length": b"X" * len(expected)}.get(corruption, expected)
+                                    if filename == extra else expected)
+                            member = tarfile.TarInfo(f"{name}-1.0.0/{filename}")
+                            member.size = len(text)
+                            crate.addfile(member, io.BytesIO(text))
+                    prepared = replace(prepared, artifact_sha256=release.sha256_file(prepared.artifact_path),
+                                       artifact_size=prepared.artifact_path.stat().st_size)
+                    with (
+                        mock.patch.object(release, "_prepare_crate", return_value=prepared),
+                        mock.patch.object(release, "independent_version_exists", return_value=True) as registry,
+                    ):
+                        if corruption == "unchanged":
+                            self.assertEqual(release.preflight_independent_crate(
+                                root, metadata, package_name=name, expected_version="1.0.0",
+                            ), (True, prepared))
+                            registry.assert_called_once()
+                        else:
+                            with self.assertRaisesRegex(PackageLegalMaterialError, extra):
+                                release.preflight_independent_crate(
+                                    root, metadata, package_name=name, expected_version="1.0.0",
+                                )
+                            registry.assert_not_called()
 
     def test_receipt_validation_rejects_bad_artifact_identity(self) -> None:
         receipt = {
@@ -1018,7 +1034,7 @@ class FrozenIndependentCrateTests(unittest.TestCase):
             source=self.source, publication=self.publication,
         )
 
-    def command(self, action: str) -> int:
+    def command(self, action: str, *, current_attempt: str = "1") -> int:
         with (
             mock.patch("sys.argv", [
                 "release", action, "--candidate-dir", str(self.directory),
@@ -1029,6 +1045,7 @@ class FrozenIndependentCrateTests(unittest.TestCase):
             ]),
             mock.patch.dict(os.environ, {
                 "CARGO_REGISTRY_TOKEN": "dummy-token", "GITHUB_OUTPUT": str(self.root / "outputs"),
+                "GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": current_attempt,
             }),
         ):
             return release.main()
@@ -1111,6 +1128,76 @@ image-webp = { package = "webp", version = "0.2", optional = true }
             ):
                 crates_io_archive.load_candidate(self.directory, **(origin | mismatch))
 
+    def test_preflight_retains_the_exact_archive_for_an_already_published_version(self) -> None:
+        self.directory = self.root / "confirmed"
+        prepared = release.PreparedCrate(
+            publish.PackageInfo(self.name, self.version, self.root / "Cargo.toml", ()),
+            self.original, self.candidate.archive_sha256, len(self.candidate.archive), "a" * 64,
+        )
+        metadata = package_metadata(self.name)
+        metadata["packages"][0]["version"] = self.version
+        identity = dict(name=self.name, version=self.version, source=self.source, publication=self.publication)
+
+        def confirm(*_args, **_kwargs):
+            self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
+            return True
+
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "require_tool"),
+            mock.patch.object(release, "cargo_metadata", return_value=metadata),
+            mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "verify_package_archive"),
+            mock.patch.object(release, "independent_version_exists", side_effect=confirm) as registry,
+            mock.patch.object(crates_io_archive, "publish_metadata", side_effect=[
+                crates_io_archive.CrateArchiveError("cannot freeze upload metadata"), self.candidate.metadata,
+            ]),
+        ):
+            self.assertEqual(self.command("preflight-independent"), 1)
+            self.assertFalse(self.directory.exists())
+            registry.assert_not_called()
+            self.assertEqual(self.command("preflight-independent"), 0)
+            registry.assert_called_once()
+        self.assertEqual(crates_io_archive.load_candidate(self.directory, **identity), self.candidate)
+        self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+
+    def test_failed_registry_check_does_not_authorize_upload_and_can_be_retried(self) -> None:
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "fetch_crates_io_checksum", side_effect=[
+                release.CratesIoPublishError("HTTP 503"), None,
+            ]) as api,
+            mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None) as index,
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("authorize-independent-upload"), 1)
+            self.assertFalse((self.directory / "upload-authorized.json").exists())
+            self.assertFalse((self.directory / "upload-attempted.json").exists())
+            self.assertEqual(self.command("publish-independent"), 1)
+            api.assert_called_once()
+            index.assert_not_called()
+            upload.assert_not_called()
+
+            self.assertEqual(self.command("authorize-independent-upload"), 0)
+            self.assertEqual(self.command("publish-independent", current_attempt="2"), 1)
+            upload.assert_not_called()
+            self.assertEqual(self.command("publish-independent"), 0)
+            self.assertEqual(api.call_count, 2)
+            index.assert_called_once()
+            upload.assert_called_once()
+
+    def test_final_registry_check_that_confirms_archive_never_authorizes_upload(self) -> None:
+        with (
+            mock.patch.object(release, "assert_release_source"),
+            mock.patch.object(release, "independent_version_exists", return_value=True) as registry,
+            mock.patch.object(crates_io_archive, "upload") as upload,
+        ):
+            self.assertEqual(self.command("authorize-independent-upload"), 0)
+            self.assertEqual(self.command("publish-independent"), 1)
+            registry.assert_called_once()
+            upload.assert_not_called()
+        self.assertIn("publish=false", (self.root / "outputs").read_text(encoding="utf-8").splitlines())
+
     def test_lost_upload_response_retains_intent_and_never_repackages_or_resends(self) -> None:
         requests = []
         intent_path = self.directory / "upload-attempted.json"
@@ -1129,16 +1216,20 @@ image-webp = { package = "webp", version = "0.2", optional = true }
         try:
             self.original.write_bytes(b"a subsequent Cargo invocation resolved a newer compatible sibling")
             with (
-                mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
-                mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None),
+                mock.patch.object(release, "assert_release_source"),
+                mock.patch.object(release, "fetch_crates_io_checksum", return_value=None) as api,
+                mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None) as index,
                 mock.patch.object(release, "run_command") as cargo,
                 mock.patch.object(
                     crates_io_archive.http.client, "HTTPSConnection",
                     side_effect=lambda *_args, **_kwargs: http.client.HTTPConnection(*server.server_address),
                 ) as connect,
             ):
+                self.assertEqual(self.command("authorize-independent-upload"), 0)
                 self.assertEqual(self.command("publish-independent"), 1)
                 self.assertEqual(self.command("publish-independent"), 1)
+            api.assert_called_once()
+            index.assert_called_once()
             connect.assert_called_once()
             cargo.assert_not_called()
         finally:
@@ -1155,6 +1246,21 @@ image-webp = { package = "webp", version = "0.2", optional = true }
         self.assertEqual(stream.read(archive_size), self.candidate.archive)
         self.assertFalse(stream.read())
         self.assertEqual(intent, self.candidate.receipt_bytes)
+
+    def test_cargo_error_in_success_response_fails_without_resending(self) -> None:
+        connection = mock.MagicMock()
+        response = connection.getresponse.return_value.__enter__.return_value
+        response.status = 200
+        response.read.return_value = b'{"errors":[{"detail":"rejected"}]}'
+        intent = self.directory / "upload-attempted.json"
+        with mock.patch.object(crates_io_archive.http.client, "HTTPSConnection", return_value=connection):
+            with self.assertRaisesRegex(crates_io_archive.CrateArchiveError, "registry reported crate upload errors"):
+                crates_io_archive.upload(self.candidate, token="dummy-token", intent_path=intent)
+            with self.assertRaisesRegex(crates_io_archive.CrateArchiveError, "has an upload intent"):
+                crates_io_archive.upload(self.candidate, token="dummy-token", intent_path=intent)
+        response.read.assert_called_once()
+        connection.request.assert_called_once()
+        self.assertEqual(intent.read_bytes(), self.candidate.receipt_bytes)
 
 
 class SparseIndexBoundaryTests(unittest.TestCase):

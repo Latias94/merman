@@ -478,7 +478,7 @@ An accepted upload can remain absent from a registry replica or its consumer ind
 
 Recovery reports bind their producing run and attempt. Cargo requires the preceding attempt's
 receipts or the explicitly selected source run's current attempt for workspace publication.
-Independent Cargo crates retain the original archive and upload intent through the
+Independent Cargo crates retain the original archive, upload intent or registry confirmation through the
 [independent crate owner](#independent-crate-publication-and-recovery). Node and Web share the report
 selector in `scripts/release_attempt_history.py`: select the nearest valid report only when every
 intervening upload is proven not to have run. A completed skipped job or skipped upload step
@@ -760,16 +760,22 @@ releases in order and wait for each run to finish before dispatching the next.
 
 ### Independent Crate Publication And Recovery
 
-For all five packages, the read-only preflight checks legal files in the actual `.crate`, including
-Krilla's ICC license and resvg's BSD license. After a credential-free locked dry run, it rechecks
-the verified package's digest and freezes that archive and its Cargo upload metadata. The receipt
-binds their SHA-256 values to the package, version, source commit and tree, and producing run attempt.
-The protected publisher downloads that artifact by ID, verifies both digests, and retains the
-same bundle as an immutable `crates-io-independent-upload-intent-attempt-<N>` artifact before OIDC
-authentication and the single crates.io `PUT`. Only the frozen archive and metadata go into the
-request. Both the crates.io API and sparse index must report absence before the first send. A
-matching published version proceeds to verification. A partial observation, conflicting checksum or
-yank stops the release.
+For all five packages, the read-only preflight compares the legal files in the actual `.crate`
+with the source files, including Krilla's ICC license and resvg's BSD license. It freezes the
+archive and its Cargo upload metadata before observing the registry. The receipt binds their
+SHA-256 values to the package, version, source commit and tree, and producing run attempt. A
+missing version must also pass a credential-free locked dry run without changing the archive.
+
+The protected publisher downloads the artifact by ID, verifies both digests, and queries the
+crates.io API and sparse index. Both must report absence to authorize the same frozen receipt for
+this run and attempt. A partial observation, conflicting checksum, yank or query failure stops
+before the upload step. After authentication, the workflow retains the bundle as an immutable
+`crates-io-independent-upload-intent-attempt-<N>` artifact. The sender does not query again. It
+sends the frozen archive and metadata in one `PUT`.
+
+If either the preflight or the protected publisher confirms an existing version with a matching
+checksum, it retains the verified bundle as a registry confirmation instead of sending. A
+later run uses that evidence for observation only, including after a manual first publication.
 
 If the preflight ran in an earlier attempt, the protected publisher is skipped and the read-only
 verification job observes the original digest. Rerun all jobs to qualify a first upload after an
@@ -779,11 +785,12 @@ workflow runs. A gap in the run numbers blocks new uploads rather than treating 
 skipped send.
 
 When a prior upload may have run, the workflow can recover a unique retained intent by run,
-attempt, and artifact ID for observation only. A verification-only rerun may repeat the old
-publish job result, but it does not create a new intent. If no unique intent can be recovered,
-observe the registry manually with the original digest. Legacy attempts have no frozen upload
-intent. A double 404, lost response, or new dispatch does not authorize another send after an
-uncertain attempt.
+attempt, and artifact ID for observation only. It can also recover the original registry
+confirmation when no upload occurred. A verification-only rerun may repeat the old publish job
+result, but it does not create a new intent. If the original evidence is missing, expired, or
+ambiguous, observe the registry manually with the original digest. Legacy attempts may have no
+frozen evidence. A double 404, lost response, or new dispatch does not authorize another send
+after an uncertain attempt or a confirmed release.
 
 After upload or a matching existing release, a read-only job waits for both endpoints to report
 the exact checksum. For a renderer fork it then compiles a fresh consumer with all four packages

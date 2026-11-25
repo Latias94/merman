@@ -2178,7 +2178,7 @@ jobs:
             "actions": "read", "contents": "read",
         })
         self.assertIn("scripts/crates_io_release.py independent-history", preflight)
-        download = step_body(preflight, "Download the original independent upload intent")
+        download = step_body(preflight, "Download the original independent release evidence")
         self.assertIn("artifact-ids: ${{ steps.history.outputs.artifact_id }}", download)
         self.assertIn("run-id: ${{ steps.history.outputs.run_id }}", download)
         self.assertIn("digest-mismatch: error", download)
@@ -2192,30 +2192,40 @@ jobs:
             "    if: ${{ needs.preflight.outputs.publish == 'true' "
             "&& needs.preflight.outputs.attempt == github.run_attempt }}", publish,
         )
-        inspect = step_body(publish, "Inspect independent crate publication state")
-        self.assertIn("scripts/crates_io_release.py registry-independent", inspect)
         download = step_body(publish, "Download the frozen independent candidate")
         self.assertIn("artifact-ids: ${{ needs.preflight.outputs.artifact_id }}", download)
         self.assertIn("digest-mismatch: error", download)
         self.assertNotIn("--verify-fork-consumer", publish)
         self.assertNotRegex(publish, r"cargo (?:package|publish)")
         steps = (
-            "Download the frozen independent candidate", "Verify frozen archive and publish metadata",
-            "Retain the independent upload intent before sending", "Authenticate with crates.io",
+            "Download the frozen independent candidate", "Authorize sending the frozen independent candidate",
+            "Retain the independent publisher registry confirmation", "Authenticate with crates.io",
+            "Retain the independent upload intent before sending",
             "Upload independent crate to crates.io",
         )
         positions = [publish.index(step) for step in steps]
         self.assertEqual(positions, sorted(positions))
-        for step_name in steps:
+        for step_name in steps[3:]:
             step = step_body(publish, step_name)
             self.assertIn("if: ${{ steps.crate-state.outputs.publish == 'true' }}", step)
+        for job, stage, state, label in (
+            (preflight, "preflight", "candidate", "Retain the independent preflight registry confirmation"),
+            (publish, "publish", "crate-state", steps[2]),
+        ):
+            confirmation = step_body(job, label)
+            self.assertIn(f"if: ${{{{ steps.{state}.outputs.publish == 'false' }}}}", confirmation)
+            self.assertIn(f"name: crates-io-independent-confirmation-{stage}-attempt-${{{{ github.run_attempt }}}}",
+                          confirmation)
+            self.assertIn("path: target/independent-crate", confirmation)
+            self.assertIn("if-no-files-found: error", confirmation)
         intent = step_body(publish, "Retain the independent upload intent before sending")
         self.assertIn("name: crates-io-independent-upload-intent-attempt-${{ github.run_attempt }}", intent)
         self.assertIn("if-no-files-found: error", intent)
         guarded_commands = (
-            ("Verify frozen archive and publish metadata", "verify-independent-candidate"),
+            ("Authorize sending the frozen independent candidate", "authorize-independent-upload"),
             ("Upload independent crate to crates.io", "publish-independent"),
         )
+        self.assertNotRegex(step_body(publish, guarded_commands[0][0]), r"(?m)^\s*if:")
         for step_name, action in guarded_commands:
             step = step_body(publish, step_name)
             self.assertIn(f"python3 scripts/crates_io_release.py {action}", step)
@@ -2277,9 +2287,7 @@ jobs:
             for code in (0, 7):
                 with self.subTest(action=action, code=code):
                     result = subprocess.run(
-                        [BASH, "-c", 'git() { [[ "$2" == HEAD ]] && printf "%s\\n" "$SOURCE_SHA" '
-                         '|| printf "%s\\n" "$SOURCE_TREE"; }\n'
-                         'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
+                        [BASH, "-c", 'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
                         env={"PATH": "", "PACKAGE": "merman-resvg", "VERSION": "0.50.1", "SHA256": "a" * 64,
                              "RECEIPT_SHA256": "d" * 64, "SOURCE_SHA": "b" * 40, "SOURCE_TREE": "c" * 40,
                              "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "1", "EXIT_CODE": str(code)},

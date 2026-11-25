@@ -998,6 +998,7 @@ def preflight_independent_crate(
     registry_api: str = CRATES_IO_API,
     registry_index: str = CRATES_IO_INDEX,
     verify_fork_consumer: bool = False,
+    stage_candidate: Callable[[PreparedCrate], None] | None = None,
 ) -> tuple[bool, PreparedCrate]:
     """Return the publication state and the verified archive.
 
@@ -1005,7 +1006,8 @@ def preflight_independent_crate(
     archive has the exact registry checksum.  Missing versions must pass a
     credential-free publish dry-run.  The package is intentionally resolved
     outside the coupled publish graph. Later renderer fork releases can also
-    compile the prepared archive with published siblings.
+    compile the prepared archive with published siblings. Stage any CI receipt
+    before observing registry state so a positive observation needs no repackaging.
     """
     if verify_fork_consumer and package_name not in renderer_fork_consumer.FORK_REQUIREMENTS:
         raise CratesIoPublishError("the renderer fork consumer requires a renderer fork package")
@@ -1021,17 +1023,20 @@ def preflight_independent_crate(
     target_directory = Path(target_directory_raw).resolve()
     prepared = _prepare_crate(repo_root, target_directory, package)
     verify_package_archive(_workspace_packages_by_name(metadata)[package_name], prepared.artifact_path)
-    exists = independent_version_exists(
-        package.name, package.version, prepared.artifact_sha256,
-        registry_api=registry_api, registry_index=registry_index,
-    )
     if verify_fork_consumer:
         renderer_fork_consumer.verify(
             prepared.artifact_path, candidate=package.name, version=package.version,
             repo_root=repo_root, target_directory=target_directory,
         )
+    if stage_candidate is not None:
+        stage_candidate(prepared)
+    exists = independent_version_exists(
+        package.name, package.version, prepared.artifact_sha256,
+        registry_api=registry_api, registry_index=registry_index,
+    )
     if exists:
-        _assert_artifact_unchanged(prepared)
+        if stage_candidate is None:
+            _assert_artifact_unchanged(prepared)
         print(
             f"Skipping {package.name} {package.version}; the exact version already exists"
         )
@@ -1083,6 +1088,15 @@ def _independent_outputs(**values: str) -> None:
                 print(f"{name}={value}", file=stream)
 
 
+def _require_current_independent_attempt(publication: dict | None) -> None:
+    current = {
+        "run_id": os.environ.get("GITHUB_RUN_ID"),
+        "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0")),
+    }
+    if os.environ.get("GITHUB_ACTIONS") != "true" or publication != current:
+        raise CratesIoPublishError("independent upload must use the current GitHub run and attempt")
+
+
 def _independent_command(
     args: argparse.Namespace, repo_root: Path, metadata: dict | None, token: str | None,
 ) -> None:
@@ -1106,23 +1120,32 @@ def _independent_command(
     registry = {"registry_api": args.registry_api, "registry_index": args.registry_index}
     outputs = {}
     if args.command == "preflight-independent":
+        publication = None
         if args.candidate_dir is not None:
             source, publication = _independent_candidate_identity(args)
             assert_release_source(repo_root, args.source_sha, args.source_tree)
-        exists, prepared = preflight_independent_crate(
-            repo_root, metadata, package_name=name, expected_version=version,
-            verify_fork_consumer=args.verify_fork_consumer, **registry,
-        )
-        digest = prepared.artifact_sha256
-        if args.candidate_dir is not None and not exists:
+
+        def stage_candidate(prepared: PreparedCrate) -> None:
             payload = crates_io_archive.publish_metadata(repo_root, prepared.artifact_path, name, version)
             assert_release_source(repo_root, args.source_sha, args.source_tree)
             candidate = crates_io_archive.freeze_candidate(
-                args.candidate_dir, prepared.artifact_path, payload, archive_sha256=digest,
+                args.candidate_dir, prepared.artifact_path, payload, archive_sha256=prepared.artifact_sha256,
                 name=name, version=version, source=source, publication=publication,
             )
             outputs["receipt_sha256"] = candidate.receipt_sha256
             print(f"Frozen receipt SHA-256: {candidate.receipt_sha256}")
+
+        exists, prepared = preflight_independent_crate(
+            repo_root, metadata, package_name=name, expected_version=version,
+            verify_fork_consumer=args.verify_fork_consumer,
+            stage_candidate=stage_candidate if publication is not None else None, **registry,
+        )
+        digest = prepared.artifact_sha256
+        if args.candidate_dir is not None and not exists:
+            if publication is None:
+                stage_candidate(prepared)
+            else:
+                assert_release_source(repo_root, args.source_sha, args.source_tree)
     elif args.command == "registry-independent":
         digest = args.sha256
         exists = independent_version_exists(
@@ -1141,14 +1164,30 @@ def _independent_command(
             receipt_sha256=args.receipt_sha256, archive_sha256=args.sha256,
         )
         digest = candidate.archive_sha256
+        if args.command == "authorize-independent-upload":
+            _require_current_independent_attempt(publication)
+            assert_release_source(repo_root, args.source_sha, args.source_tree)
+            exists = independent_version_exists(name, version, digest, **registry)
+            if not exists:
+                with (args.candidate_dir / "upload-authorized.json").open("xb") as authorization:
+                    authorization.write(candidate.receipt_bytes)
+            print(f"{name} {version}: {'published' if exists else 'missing'} (SHA-256 {digest})")
+            _independent_outputs(sha256=digest, publish=str(not exists).lower())
+            return
         if args.command == "publish-independent":
             if not token:
                 raise CratesIoPublishError("independent publication requires CARGO_REGISTRY_TOKEN")
-            exists = independent_version_exists(name, version, digest, **registry)
-            if not exists:
-                crates_io_archive.upload(
-                    candidate, token=token, intent_path=args.candidate_dir / "upload-attempted.json",
-                )
+            if publication is not None or os.environ.get("GITHUB_ACTIONS") == "true":
+                _require_current_independent_attempt(publication)
+                authorization = args.candidate_dir / "upload-authorized.json"
+                if (authorization.is_symlink() or not authorization.is_file()
+                        or authorization.read_bytes() != candidate.receipt_bytes):
+                    raise CratesIoPublishError("missing registry authorization for this frozen upload")
+            elif independent_version_exists(name, version, digest, **registry):
+                return
+            crates_io_archive.upload(
+                candidate, token=token, intent_path=args.candidate_dir / "upload-attempted.json",
+            )
             return
         print(f"Verified frozen candidate {name} {version} (SHA-256 {digest})")
         _independent_outputs(sha256=digest)
@@ -1163,7 +1202,8 @@ def main() -> int:
     parser.add_argument(
         "command",
         choices=["preflight-initial", "preflight-independent", "registry-independent", "publish-receipted",
-                 "independent-history", "verify-independent-candidate", "publish-independent"],
+                 "independent-history", "verify-independent-candidate", "authorize-independent-upload",
+                 "publish-independent"],
     )
     parser.add_argument("--package")
     parser.add_argument("--version")
@@ -1207,12 +1247,14 @@ def main() -> int:
         parser.error(f"{args.command} requires --package and --version")
     if args.command == "registry-independent" and not SHA256.fullmatch(args.sha256 or ""):
         parser.error("registry-independent requires the preflight --sha256")
-    if args.command in {"verify-independent-candidate", "publish-independent"} and args.candidate_dir is None:
+    upload_commands = {"authorize-independent-upload", "publish-independent"}
+    if args.command in upload_commands | {"verify-independent-candidate"} and args.candidate_dir is None:
         parser.error(f"{args.command} requires --candidate-dir")
-    if args.command == "publish-independent" and not SHA256.fullmatch(args.receipt_sha256 or ""):
-        parser.error("publish-independent requires the preflight --receipt-sha256")
-    if args.command == "publish-independent" and (args.registry_api, args.registry_index) != (CRATES_IO_API, CRATES_IO_INDEX):
-        parser.error("publish-independent requires the crates.io API and sparse index")
+    if args.command in upload_commands:
+        if not SHA256.fullmatch(args.sha256 or "") or not SHA256.fullmatch(args.receipt_sha256 or ""):
+            parser.error(f"{args.command} requires the preflight --sha256 and --receipt-sha256")
+        if (args.registry_api, args.registry_index) != (CRATES_IO_API, CRATES_IO_INDEX):
+            parser.error(f"{args.command} requires the crates.io API and sparse index")
     if args.command == "independent-history" and (
         not args.publication_run_id or args.publication_attempt is None or not args.source_sha
     ):
@@ -1225,7 +1267,7 @@ def main() -> int:
     oidc_request_token = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_TOKEN", None)
     metadata = None
     try:
-        if args.command in {"publish-receipted", "independent-history"} or (
+        if args.command in {"publish-receipted", "independent-history", "authorize-independent-upload"} or (
             args.command == "preflight-independent" and args.candidate_dir is not None
         ):
             require_tool("git")

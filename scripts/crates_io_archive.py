@@ -177,6 +177,19 @@ def upload(candidate: FrozenCrate, *, token: str, intent_path: Path) -> None:
                 raise CrateArchiveError(
                     f"crate upload returned HTTP {response.status}; observe the frozen candidate"
                 )
+            limit = 64 * 1024
+            data = response.read(limit + 1)
+            if len(data) > limit:
+                raise CrateArchiveError("crate upload response was too large; observe the frozen candidate")
+            if data:
+                try:
+                    result = json.loads(data)
+                except (ValueError, RecursionError):
+                    raise CrateArchiveError("crate upload response was invalid; observe the frozen candidate") from None
+                if not isinstance(result, dict):
+                    raise CrateArchiveError("crate upload response was invalid; observe the frozen candidate")
+                if result.get("errors"):
+                    raise CrateArchiveError("registry reported crate upload errors; observe the frozen candidate")
     except (OSError, http.client.HTTPException):
         raise CrateArchiveError("crate upload response is uncertain; observe the frozen candidate") from None
     finally:

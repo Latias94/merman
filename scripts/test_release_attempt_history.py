@@ -232,6 +232,92 @@ class IndependentCrateHistoryTests(unittest.TestCase):
             history.IndependentCrateHistory(observe_only=False),
         )
 
+    def test_registry_check_failure_before_upload_allows_full_rerun_or_new_dispatch(self) -> None:
+        failed_before_send = [{
+            "id": 11, "name": "publish", "status": "completed", "conclusion": "failure",
+            "steps": [
+                {"name": "Authorize sending the frozen independent candidate",
+                 "status": "completed", "conclusion": "failure"},
+                {"name": history.OWNERS[self.owner][2], "status": "completed", "conclusion": "skipped"},
+            ],
+        }]
+        for run_id in (41, 42):
+            with self.subTest(run=run_id):
+                attempt = 2 if run_id == 42 else 1
+                runs = [self.run_record(attempt=2, run_number=1)] if run_id == 42 else [self.run_record(), self.run_record(41)]
+                self.assertEqual(
+                    self.select(runs, attempt=attempt, jobs=[(f"{run_id}/attempts/1", failed_before_send)]),
+                    history.IndependentCrateHistory(observe_only=False),
+                )
+
+    def test_matching_version_stays_observation_only_even_without_a_prior_send(self) -> None:
+        for stage in ("preflight", "publish"):
+            with self.subTest(stage=stage):
+                confirmation = self.intent(name=f"crates-io-independent-confirmation-{stage}-attempt-1")
+                attempts = [
+                    ([self.run_record(attempt=2, run_number=1)], 2, 42, self.sha),
+                    ([self.run_record(), self.run_record(41)], 1, 41, self.old_sha),
+                ]
+                for runs, attempt, run_id, sha in attempts:
+                    selected = self.select(runs, attempt=attempt, jobs=[(f"{run_id}/attempts/1", "skipped")],
+                                           artifacts=[confirmation])
+                    self.assertEqual(selected, history.IndependentCrateHistory(True, 101, run_id, 1, sha))
+
+    def test_lost_confirmation_artifact_does_not_authorize_upload(self) -> None:
+        for name, label in (
+            ("verify-published", "Verify exact published archive and registry consumers"),
+            ("preflight", "Retain the independent preflight registry confirmation"),
+        ):
+            with self.subTest(job=name):
+                jobs = [{
+                    "id": 11, "name": "publish", "status": "completed", "conclusion": "skipped", "steps": [],
+                }, {
+                    "id": 12, "name": name, "status": "completed", "conclusion": "success",
+                    "steps": [{"name": label, "status": "completed", "conclusion": "success",
+                               "started_at": "2026-11-25T00:00:00Z"}],
+                }]
+                selected = self.select([self.run_record(), self.run_record(41)], jobs=[("41/attempts/1", jobs)])
+                self.assertEqual(selected, history.IndependentCrateHistory())
+
+    def test_cancelled_preflight_after_registry_check_does_not_assume_absence(self) -> None:
+        jobs = [{
+            "id": 11, "name": "publish", "status": "completed", "conclusion": "skipped", "steps": [],
+        }, {
+            "id": 12, "name": "preflight", "status": "completed", "conclusion": "cancelled", "steps": [
+                {"name": "Verify registry bytes or dry-run independent crate publication", "conclusion": "success"},
+                {"name": "Retain the frozen independent candidate", "conclusion": "skipped"},
+                {"name": "Retain the independent preflight registry confirmation", "conclusion": "skipped"},
+            ],
+        }]
+        runs = [self.run_record(), self.run_record(41)]
+        self.assertEqual(self.select(runs, jobs=[("41/attempts/1", jobs)]), history.IndependentCrateHistory())
+
+    def test_legacy_confirmation_survives_failed_final_verification(self) -> None:
+        for preflight_publish in (True, False):
+            with self.subTest(preflight_publish=preflight_publish):
+                jobs = [{
+                    "id": 10, "name": "preflight", "status": "completed", "conclusion": "success", "steps": [
+                        {"name": "Verify registry bytes or dry-run independent crate publication",
+                         "conclusion": "success"},
+                        {"name": "Retain the frozen independent candidate",
+                         "conclusion": "success" if preflight_publish else "skipped"},
+                    ],
+                }, {
+                    "id": 11, "name": "publish", "status": "completed",
+                    "conclusion": "success" if preflight_publish else "skipped",
+                    "steps": [
+                        {"name": "Inspect independent crate publication state", "conclusion": "success"},
+                        {"name": "Download the frozen independent candidate", "conclusion": "skipped"},
+                        {"name": history.OWNERS[self.owner][2], "status": "completed", "conclusion": "skipped"},
+                    ] if preflight_publish else [],
+                }, {
+                    "id": 12, "name": "verify-published", "status": "completed", "conclusion": "failure",
+                    "steps": [{"name": "Verify exact published archive and registry consumers",
+                               "status": "completed", "conclusion": "failure"}],
+                }]
+                runs = [self.run_record(), self.run_record(41)]
+                self.assertEqual(self.select(runs, jobs=[("41/attempts/1", jobs)]), history.IndependentCrateHistory())
+
     def test_full_rerun_preserves_original_attempt_even_after_a_skipped_rerun(self) -> None:
         runs = [self.run_record(attempt=3, run_number=1)]
         result = self.select(runs, attempt=3, jobs=[("42/attempts/1", "failure"), ("42/attempts/2", "skipped")],
