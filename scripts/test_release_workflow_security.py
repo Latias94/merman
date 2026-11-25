@@ -2149,24 +2149,23 @@ jobs:
         self.assertIn("preflight-independent", independent)
         self.assertIn("Verify published dependent lanes", independent)
 
-    def test_independent_release_serializes_forks_through_read_only_registry_verification(self) -> None:
+    def test_independent_release_serializes_forks_and_isolates_registry_credentials(self) -> None:
         workflow = read(WORKFLOW_ROOT / "release-independent-crate.yml")
         concurrency = re.search(r"(?ms)^concurrency:\n(.*?)(?=^\S|\Z)", workflow)[1]
         self.assertEqual(dict(re.findall(r"(?m)^  ([a-z-]+): (.+)$", concurrency)), {
             "group": "release-independent-crate-${{ inputs.package == 'roughr-merman' && 'roughr' || 'renderers' }}",
             "cancel-in-progress": "false",
         })
-        self.assertIn("run-name: Release independent crate ${{ inputs.package }} ${{ inputs.version }}", workflow)
         self.assertIn("\npermissions:\n  contents: read\n", workflow)
         self.assertNotIn("cargo info", workflow)
 
-        def step_body(job: str, name: str) -> str:
+        def step_body(job: str, marker: str) -> str:
             steps = job.split("\n    steps:\n", 1)[1]
             matches = [
                 f"        {step}" for step in re.split(r"(?m)^      - ", steps)[1:]
-                if re.search(rf"(?m)^(?:        )?name: {re.escape(name)}$", step)
+                if marker in step
             ]
-            self.assertEqual(len(matches), 1, name)
+            self.assertEqual(len(matches), 1, marker)
             return matches[0]
 
         for name in ("validate-inputs", "preflight", "publish", "verify-published"):
@@ -2175,82 +2174,49 @@ jobs:
         permissions = re.search(r"(?m)^    permissions:\n((?:^      [^\n]+\n)+)", preflight)
         self.assertIsNotNone(permissions)
         self.assertEqual(dict(re.findall(r"(?m)^      ([a-z-]+): ([a-z]+)$", permissions[1])), {
-            "actions": "read", "contents": "read",
+            "contents": "read", "deployments": "write",
         })
         self.assertIn("scripts/crates_io_release.py independent-history", preflight)
-        download = step_body(preflight, "Download the original independent release evidence")
-        self.assertIn("artifact-ids: ${{ steps.history.outputs.artifact_id }}", download)
-        self.assertIn("run-id: ${{ steps.history.outputs.run_id }}", download)
-        self.assertIn("digest-mismatch: error", download)
-        recovery = step_body(preflight, "Restore the original independent candidate for observation")
-        self.assertIn("if: ${{ steps.history.outputs.observe_only == 'true' }}", recovery)
-        self.assertIn("verify-independent-candidate", recovery)
-        self.assertIn("steps.candidate.outputs.sha256 || steps.recovery.outputs.sha256", preflight)
+        self.assertIn("steps.history.outputs.sha256 || steps.candidate.outputs.sha256", preflight)
+        self.assertIn("steps.history.outputs.source_sha || steps.source.outputs.source_sha", preflight)
         publish = workflow_job(workflow, "publish")
         self.assertIn("needs: [validate-inputs, preflight]", publish)
         self.assertIn(
             "    if: ${{ needs.preflight.outputs.publish == 'true' "
             "&& needs.preflight.outputs.attempt == github.run_attempt }}", publish,
         )
-        download = step_body(publish, "Download the frozen independent candidate")
+        download = step_body(publish, "uses: actions/download-artifact@")
         self.assertIn("artifact-ids: ${{ needs.preflight.outputs.artifact_id }}", download)
         self.assertIn("digest-mismatch: error", download)
         self.assertNotIn("--verify-fork-consumer", publish)
         self.assertNotRegex(publish, r"cargo (?:package|publish)")
-        steps = (
-            "Download the frozen independent candidate", "Authorize sending the frozen independent candidate",
-            "Retain the independent publisher registry confirmation", "Authenticate with crates.io",
-            "Retain the independent upload intent before sending",
-            "Upload independent crate to crates.io",
-        )
+        steps = ("uses: actions/download-artifact@", "uses: rust-lang/crates-io-auth-action@",
+                 "scripts/crates_io_release.py publish-independent")
         positions = [publish.index(step) for step in steps]
         self.assertEqual(positions, sorted(positions))
-        for step_name in steps[3:]:
-            step = step_body(publish, step_name)
-            self.assertIn("if: ${{ steps.crate-state.outputs.publish == 'true' }}", step)
-        for job, stage, state, label in (
-            (preflight, "preflight", "candidate", "Retain the independent preflight registry confirmation"),
-            (publish, "publish", "crate-state", steps[2]),
-        ):
-            confirmation = step_body(job, label)
-            self.assertIn(f"if: ${{{{ steps.{state}.outputs.publish == 'false' }}}}", confirmation)
-            self.assertIn(f"name: crates-io-independent-confirmation-{stage}-attempt-${{{{ github.run_attempt }}}}",
-                          confirmation)
-            self.assertIn("path: target/independent-crate", confirmation)
-            self.assertIn("if-no-files-found: error", confirmation)
-        intent = step_body(publish, "Retain the independent upload intent before sending")
-        self.assertIn("name: crates-io-independent-upload-intent-attempt-${{ github.run_attempt }}", intent)
-        self.assertIn("if-no-files-found: error", intent)
-        guarded_commands = (
-            ("Authorize sending the frozen independent candidate", "authorize-independent-upload"),
-            ("Upload independent crate to crates.io", "publish-independent"),
-        )
-        self.assertNotRegex(step_body(publish, guarded_commands[0][0]), r"(?m)^\s*if:")
-        for step_name, action in guarded_commands:
-            step = step_body(publish, step_name)
-            self.assertIn(f"python3 scripts/crates_io_release.py {action}", step)
-            self.assertIn('--sha256 "$SHA256" --receipt-sha256 "$RECEIPT_SHA256"', step)
-            self.assertIn('--publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT"', step)
-        self.assertEqual(publish.count("CARGO_REGISTRY_TOKEN:"), 1)
-        self.assertIn("CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}",
-                      step_body(publish, "Upload independent crate to crates.io"))
-        for job_name, step_name in (
-            ("preflight", "Verify registry bytes or dry-run independent crate publication"),
-            ("verify-published", "Verify exact published archive and registry consumers"),
+        upload = step_body(publish, steps[2])
+        self.assertIn("SHA256: ${{ needs.preflight.outputs.sha256 }}", upload)
+        self.assertIn("RECEIPT_SHA256: ${{ needs.preflight.outputs.receipt_sha256 }}", upload)
+        self.assertEqual(workflow.count("CARGO_REGISTRY_TOKEN:"), 1)
+        self.assertIn("CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}", upload)
+        for job_name, marker in (
+            ("preflight", "args=(preflight-independent "),
+            ("verify-published", "args=(registry-independent "),
         ):
             with self.subTest(job=job_name):
                 job = workflow_job(workflow, job_name)
                 if job_name == "verify-published":
-                    self.assertNotRegex(job, r"(?m)^    permissions:")
+                    self.assertNotIn("id-token: write", job)
                     self.assertIn("needs: [validate-inputs, preflight, publish]", job)
                     self.assertIn("needs.publish.result == 'skipped'", job)
                     self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", job)
-                step = step_body(job, step_name)
+                step = step_body(job, marker)
                 if job_name == "preflight":
-                    self.assertIn("if: ${{ steps.history.outputs.observe_only == 'false' }}", step)
+                    self.assertIn("if: ${{ steps.history.outputs.sha256 == '' }}", step)
                 else:
                     self.assertNotRegex(step, r"(?m)^\s*if:")
-                    self.assertIn("registry-independent --observe-only", step)
+                    self.assertIn("--observe-only", step)
+                    self.assertIn("ARCHIVE_SOURCE_SHA: ${{ needs.preflight.outputs.archive_source_sha }}", step)
                 self.assertIn("PACKAGE: ${{ needs.validate-inputs.outputs.package }}", step)
                 self.assertIn("VERSION: ${{ needs.validate-inputs.outputs.version }}", step)
                 self.assertIn('args+=(--verify-fork-consumer)', step)
@@ -2265,43 +2231,54 @@ jobs:
                             [BASH, "-c", 'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
                             env={"PATH": "", "PACKAGE": package, "VERSION": "0.50.1",
                                  "SHA256": "a" * 64, "SOURCE_SHA": "b" * 40, "SOURCE_TREE": "c" * 40,
-                                 "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "2", "EXIT_CODE": str(code)},
+                                 "ARCHIVE_SOURCE_SHA": "e" * 40,
+                                 "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "2",
+                                 "GITHUB_REPOSITORY": "example/project", "EXIT_CODE": str(code)},
                             capture_output=True, text=True, timeout=15,
                         )
-                        args = ["preflight-independent"] if job_name == "preflight" else ["registry-independent", "--observe-only"]
-                        args += ["--package", package, "--version", "0.50.1"]
+                        expected = {"--package": package, "--version": "0.50.1"}
+                        flags = set()
                         if job_name == "verify-published":
-                            args += ["--sha256", "a" * 64]
+                            action = "registry-independent"
+                            flags.add("--observe-only")
+                            expected.update({"--sha256": "a" * 64, "--publication-repository": "example/project",
+                                             "--source-sha": "e" * 40})
                         else:
-                            args += ["--candidate-dir", "target/independent-crate", "--source-sha", "b" * 40,
-                                     "--source-tree", "c" * 40, "--publication-run-id", "42", "--publication-attempt", "2"]
+                            action = "preflight-independent"
+                            expected.update({"--candidate-dir": "target/independent-crate", "--source-sha": "b" * 40,
+                                             "--source-tree": "c" * 40, "--publication-run-id": "42",
+                                             "--publication-attempt": "2"})
                         if package != "roughr-merman":
-                            args.append("--verify-fork-consumer")
+                            flags.add("--verify-fork-consumer")
                         self.assertEqual(result.returncode, code, result.stderr)
-                        self.assertEqual(result.stdout.splitlines(), ["scripts/crates_io_release.py", *args])
+                        script, actual_action, *args = result.stdout.splitlines()
+                        self.assertEqual((script, actual_action), ("scripts/crates_io_release.py", action))
+                        self.assertTrue(flags.issubset(args))
+                        values = [arg for arg in args if arg not in flags]
+                        self.assertEqual(dict(zip(values[::2], values[1::2], strict=True)), expected)
 
         if not BASH or (os.name == "nt" and Path(BASH).parent.name.casefold() in {"system32", "windowsapps"}):
             return
-        for step_name, action in guarded_commands:
-            command = textwrap.dedent(step_body(publish, step_name).split("        run: |\n", 1)[1])
-            for code in (0, 7):
-                with self.subTest(action=action, code=code):
-                    result = subprocess.run(
-                        [BASH, "-c", 'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
-                        env={"PATH": "", "PACKAGE": "merman-resvg", "VERSION": "0.50.1", "SHA256": "a" * 64,
-                             "RECEIPT_SHA256": "d" * 64, "SOURCE_SHA": "b" * 40, "SOURCE_TREE": "c" * 40,
-                             "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "1", "EXIT_CODE": str(code)},
-                        capture_output=True, text=True, timeout=15,
-                    )
-                    self.assertEqual(result.returncode, code, result.stderr)
-                    self.assertEqual(result.stdout.splitlines(), [
-                        "scripts/crates_io_release.py", action,
-                        "--candidate-dir", "target/independent-crate",
-                        "--package", "merman-resvg", "--version", "0.50.1",
-                        "--source-sha", "b" * 40, "--source-tree", "c" * 40,
-                        "--publication-run-id", "42", "--publication-attempt", "1",
-                        "--sha256", "a" * 64, "--receipt-sha256", "d" * 64,
-                    ])
+        command = textwrap.dedent(upload.split("        run: |\n", 1)[1])
+        for code in (0, 7):
+            with self.subTest(code=code):
+                result = subprocess.run(
+                    [BASH, "-c", 'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
+                    env={"PATH": "", "PACKAGE": "merman-resvg", "VERSION": "0.50.1", "SHA256": "a" * 64,
+                         "RECEIPT_SHA256": "d" * 64, "SOURCE_SHA": "b" * 40, "SOURCE_TREE": "c" * 40,
+                         "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "1", "EXIT_CODE": str(code)},
+                    capture_output=True, text=True, timeout=15,
+                )
+                self.assertEqual(result.returncode, code, result.stderr)
+                script, action, *args = result.stdout.splitlines()
+                self.assertEqual((script, action), ("scripts/crates_io_release.py", "publish-independent"))
+                self.assertEqual(dict(zip(args[::2], args[1::2], strict=True)), {
+                    "--candidate-dir": "target/independent-crate",
+                    "--package": "merman-resvg", "--version": "0.50.1",
+                    "--source-sha": "b" * 40, "--source-tree": "c" * 40,
+                    "--publication-run-id": "42", "--publication-attempt": "1",
+                    "--sha256": "a" * 64, "--receipt-sha256": "d" * 64,
+                })
 
     def test_tag_bound_publishers_recheck_remote_tag_at_mutation_boundary(self) -> None:
         jobs = (

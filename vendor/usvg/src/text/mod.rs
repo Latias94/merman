@@ -6,7 +6,7 @@ use std::sync::Arc;
 use fontdb::{Database, ID};
 use svgtypes::FontFamily;
 
-use crate::{Cache, Font, FontStretch, FontStyle, FontVariation, Text};
+use crate::{Font, FontStretch, FontStyle, FontVariation, Text};
 
 pub(crate) mod cache;
 pub(crate) mod flatten;
@@ -355,17 +355,12 @@ impl std::fmt::Debug for FontResolver<'_> {
 pub(crate) fn convert(
     text: &mut Text,
     options: &crate::Options,
-    cache: &mut Cache,
+    fonts: &mut cache::FontCache,
     probe_end_anchor: bool,
     no_primary_face: &mut bool,
 ) -> Option<Option<f32>> {
-    let (layout, end) = layout::layout_text(
-        text,
-        options,
-        &mut cache.fonts,
-        probe_end_anchor,
-        no_primary_face,
-    )?;
+    let (layout, end) =
+        layout::layout_text(text, options, fonts, probe_end_anchor, no_primary_face)?;
     text.layouted = layout.spans;
     text.bounding_box = layout.bbox.to_rect();
     text.abs_bounding_box = layout.bbox.transform(text.abs_transform)?.to_rect();
@@ -375,7 +370,7 @@ pub(crate) fn convert(
         text.rendering_mode,
         text.abs_transform,
         &text.layouted,
-        &mut cache.fonts,
+        fonts,
     )?;
     text.flattened = Box::new(group);
     text.stroke_bounding_box = stroke_bbox.to_rect();
@@ -389,7 +384,7 @@ pub(crate) fn convert(
             text.rendering_mode,
             text.abs_transform,
             &end.spans,
-            &mut cache.fonts,
+            fonts,
         )?;
         stroke_bbox.transform(text.abs_transform)?;
         Some(end.bbox.x())

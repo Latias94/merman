@@ -164,15 +164,24 @@ impl Span {
     /// A continuous decoration can cover this span even when its path is stored on another span.
     pub fn has_visible_paint(&self) -> bool {
         self.visible
-            && (crate::has_nontransparent_paint(self.fill.as_ref(), self.stroke.as_ref())
+            && (self.has_glyph_paint()
                 || [&self.underline, &self.overline, &self.line_through]
                     .into_iter()
                     .flatten()
                     .any(|path| decoration_has_visible_paint(path))
                 || self
                     .positioned_glyphs
-                    .first()
-                    .is_some_and(|glyph| glyph.has_visible_decoration))
+                    .iter()
+                    .any(|glyph| glyph.has_visible_decoration))
+    }
+
+    /// Returns whether a glyph from this span has visible fill, stroke, or decoration coverage.
+    pub fn glyph_has_visible_paint(&self, glyph: &PositionedGlyph) -> bool {
+        self.visible && (self.has_glyph_paint() || glyph.has_visible_decoration)
+    }
+
+    fn has_glyph_paint(&self) -> bool {
+        crate::has_nontransparent_paint(self.fill.as_ref(), self.stroke.as_ref())
     }
 }
 
@@ -422,6 +431,7 @@ fn append_chunk_geometry(
         TextFlow::Path(_) => 0.0,
     };
     let mut decoration_ranges: [DecorationRange; 3] = Default::default();
+    let mut decorated_clusters = Vec::new();
     for (index, span) in chunk.spans.iter().enumerate() {
         let font = match primary_font(fonts_cache, span) {
             Some((_, font)) => font,
@@ -430,7 +440,6 @@ fn append_chunk_geometry(
 
         let baseline = baseline_for(span, font);
         let span_ts = text_ts.pre_translate(x, y).pre_translate(0.0, baseline);
-        let mut has_visible_decoration = false;
         let mut decoration = |line: DecorationLine| {
             let paint = line.style(&span.decoration)?;
             let range = &mut decoration_ranges[line as usize];
@@ -454,16 +463,22 @@ fn append_chunk_geometry(
                     _ => index,
                 };
                 let bytes = span.start..chunk.spans[end - 1].end;
-                let runs = collect_decoration_spans(bytes, chunk, clusters, line);
-                let path = convert_decoration(offset, span, font, paint, &runs, span_ts);
+                let (mut runs, members) = collect_decoration_spans(bytes, chunk, clusters, line);
+                let path = convert_decoration(offset, span, font, paint, &mut runs, span_ts);
+                if path.as_ref().is_some_and(decoration_has_visible_paint) {
+                    decorated_clusters.resize(clusters.len(), false);
+                    for run in runs {
+                        for &member in &members[run.members] {
+                            decorated_clusters[member] = true;
+                        }
+                    }
+                }
                 *range = DecorationRange {
                     end,
                     path_owner,
-                    visible_paint: path.as_ref().is_some_and(decoration_has_visible_paint),
                     path: path.map(Box::new),
                 };
             }
-            has_visible_decoration |= range.visible_paint;
             if index != range.path_owner {
                 return None;
             }
@@ -485,7 +500,9 @@ fn append_chunk_geometry(
             fill.rule = FillRule::NonZero;
         }
 
-        if let Some((span_fragments, span_bbox)) = convert_span(span, clusters, span_ts) {
+        if let Some((span_fragments, span_bbox)) =
+            convert_span(span, clusters, &decorated_clusters, span_ts)
+        {
             geometry.bbox = geometry.bbox.expand(span_bbox);
 
             append_font_spans(
@@ -505,7 +522,6 @@ fn append_chunk_geometry(
                 },
                 span_fragments,
                 span_ts,
-                has_visible_decoration,
             );
         }
     }
@@ -516,7 +532,6 @@ fn append_font_spans(
     mut span: Span,
     fragments: Vec<GlyphCluster>,
     span_ts: Transform,
-    has_visible_decoration: bool,
 ) {
     if fragments.is_empty() {
         spans.push(span);
@@ -544,7 +559,6 @@ fn append_font_spans(
                 for glyph in &mut cluster.glyphs {
                     glyph.cluster_ts = cluster_ts;
                     glyph.span_ts = span_ts;
-                    glyph.has_visible_decoration = has_visible_decoration;
                 }
                 cluster.glyphs
             })
@@ -564,18 +578,25 @@ fn append_font_spans(
 fn convert_span(
     span: &TextSpan,
     clusters: &[GlyphCluster],
+    decorated_clusters: &[bool],
     text_ts: Transform,
 ) -> Option<(Vec<GlyphCluster>, NonZeroRect)> {
     let mut span_clusters = vec![];
     let mut bboxes_builder = tiny_skia_path::PathBuilder::new();
 
-    for cluster in clusters {
+    for (index, cluster) in clusters.iter().enumerate() {
         if !cluster.visible {
             continue;
         }
 
         if span_contains(span, cluster.byte_idx) {
-            span_clusters.push(cluster.clone());
+            let mut fragment = cluster.clone();
+            if decorated_clusters.get(index) == Some(&true) {
+                for glyph in &mut fragment.glyphs {
+                    glyph.has_visible_decoration = true;
+                }
+            }
+            span_clusters.push(fragment);
         }
 
         let extent = cluster.text_length_extent.unwrap_or(cluster.advance);
@@ -609,7 +630,6 @@ fn convert_span(
 struct DecorationRange {
     end: usize,
     path_owner: usize,
-    visible_paint: bool,
     path: Option<Box<Path>>,
 }
 
@@ -646,13 +666,14 @@ fn collect_decoration_spans(
     chunk: &TextChunk,
     clusters: &[GlyphCluster],
     line: DecorationLine,
-) -> Vec<DecorationSpan> {
+) -> (Vec<DecorationSpan>, Vec<usize>) {
     let text = &chunk.text;
     let mut spans = Vec::new();
+    let mut members = Vec::new();
     let mut current: Option<DecorationSpan> = None;
     let mut advance = 0.0;
-    let mut clusters = clusters.iter().peekable();
-    while let Some(cluster) = clusters.next() {
+    let mut clusters = clusters.iter().enumerate().peekable();
+    while let Some((index, cluster)) = clusters.next() {
         let start = cluster.byte_idx.value();
         let end = cluster.byte_end;
         let covered_start = bytes.start.max(start);
@@ -681,7 +702,7 @@ fn collect_decoration_spans(
         let width = match cluster.text_length_extent {
             Some(extent) => {
                 let continues = !rotated
-                    && clusters.peek().is_some_and(|next| {
+                    && clusters.peek().is_some_and(|(_, next)| {
                         let edge = if next.rtl {
                             next.byte_end.saturating_sub(1)
                         } else {
@@ -728,9 +749,15 @@ fn collect_decoration_spans(
             DecorationSpan {
                 width: 0.0,
                 transform: transform.pre_translate(from / scale, 0.0),
+                members: members.len()..members.len(),
             }
         });
-        decoration.width = decoration.width.max((advance + to) / scale);
+        let inline_end = (advance + to) / scale;
+        decoration.width = decoration.width.max(inline_end);
+        if bytes.contains(&start) && inline_end > ((advance + from) / scale).max(0.0) {
+            members.push(index);
+            decoration.members.end = members.len();
+        }
         advance += cluster.advance;
         if !trailing || rotated {
             spans.extend(current.take());
@@ -739,7 +766,7 @@ fn collect_decoration_spans(
     }
 
     spans.extend(current);
-    spans
+    (spans, members)
 }
 
 fn convert_decoration(
@@ -747,31 +774,31 @@ fn convert_decoration(
     span: &TextSpan,
     font: &ResolvedFont,
     decoration: &TextDecorationStyle,
-    decoration_spans: &[DecorationSpan],
+    decoration_spans: &mut Vec<DecorationSpan>,
     transform: Transform,
 ) -> Option<Path> {
     let thickness = font.underline_thickness();
 
     let mut builder = tiny_skia_path::PathBuilder::new();
-    for dec_span in decoration_spans {
+    decoration_spans.retain(|dec_span| {
         let rect = match NonZeroRect::from_xywh(0.0, -thickness / 2.0, dec_span.width, thickness) {
             Some(v) => v,
             None => {
                 log::warn!("a decoration span has a malformed bbox");
-                continue;
+                return false;
             }
         };
 
         let ts = dec_span.transform.pre_translate(0.0, dy);
 
-        let mut path = tiny_skia_path::PathBuilder::from_rect(rect.to_rect());
-        path = match path.transform(ts) {
-            Some(v) => v,
-            None => continue,
+        let path = tiny_skia_path::PathBuilder::from_rect(rect.to_rect());
+        let Some(path) = path.transform(ts) else {
+            return false;
         };
 
         builder.push_path(&path);
-    }
+        true
+    });
 
     let mut path_data = builder.finish()?;
     path_data = path_data.transform(transform)?;
@@ -792,10 +819,10 @@ fn convert_decoration(
 ///
 /// Basically a horizontal line, that will be used for underline, overline and line-through.
 /// It doesn't have a height, since it depends on the Font metrics.
-#[derive(Clone, Copy)]
-pub(crate) struct DecorationSpan {
-    pub(crate) width: f32,
-    pub(crate) transform: Transform,
+struct DecorationSpan {
+    width: f32,
+    transform: Transform,
+    members: Range<usize>,
 }
 
 /// Resolves clusters positions.

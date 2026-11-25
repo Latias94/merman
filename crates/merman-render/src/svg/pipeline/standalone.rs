@@ -149,6 +149,9 @@ impl StandaloneSvgArtifact {
         }
     }
 
+    /// Returns whether terminal source validation proves that no authored SVG text requires
+    /// external fonts. Potential text, including whitespace and local `<tref>`s, is
+    /// conservatively treated as unresolved even when a native backend would not paint it.
     pub fn text_fonts_are_self_contained(&self) -> bool {
         self.finalization_report()
             .is_some_and(|report| report.font_seal().is_complete())

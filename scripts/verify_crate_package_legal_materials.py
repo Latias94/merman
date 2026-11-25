@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import subprocess
 import sys
 import tarfile
@@ -12,10 +14,30 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PINNED_LICENSES = {
+    "merman-resvg": ("LICENSE-BSD-2-Clause", "THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE"),
+    "merman-krilla": ("icc/LICENSE", "THIRD_PARTY_LICENSES/krilla/LICENSE-ICC"),
+}
 
 
 class PackageLegalMaterialError(RuntimeError):
-    """A governed Cargo package omitted required legal material."""
+    """A governed Cargo package has missing or invalid legal material."""
+
+
+def pinned_license_digests(package_name: str, repo_root: Path) -> dict[str, str]:
+    if (pin := PINNED_LICENSES.get(package_name)) is None:
+        return {}
+    package_path, source_path = pin
+    contract = json.loads((repo_root / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(encoding="utf-8"))
+    digests = [
+        entry["sha256"]
+        for component in contract["components"]
+        for entry in component["license_files"]
+        if entry["path"] == source_path
+    ]
+    if len(digests) != 1 or not isinstance(digests[0], str) or not re.fullmatch(r"[0-9a-f]{64}", digests[0]):
+        raise PackageLegalMaterialError(f"{package_name} is missing a unique upstream SHA-256 for {source_path}")
+    return {package_path: digests[0]}
 
 
 def requires_third_party_bundle(package: dict[str, Any]) -> bool:
@@ -49,8 +71,8 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
             f"{license_expression!r}"
         )
 
-    if package["name"] == "merman-krilla":
-        required.add("icc/LICENSE")
+    if pin := PINNED_LICENSES.get(package["name"]):
+        required.add(pin[0])
 
     notice = crate_root / "THIRD_PARTY_NOTICES.md"
     license_root = crate_root / "THIRD_PARTY_LICENSES"
@@ -78,12 +100,13 @@ def verify_package_listing(package: dict[str, Any], listing: set[str]) -> None:
         )
 
 
-def verify_package_archive(package: dict[str, Any], archive: Path) -> None:
+def verify_package_archive(package: dict[str, Any], archive: Path, *, repo_root: Path) -> None:
     prefix = f"{package['name']}-{package['version']}/"
     crate_root = Path(package["manifest_path"]).parent
     required = required_legal_paths(package)
     files: set[str] = set()
     try:
+        pinned = pinned_license_digests(package["name"], repo_root)
         with tarfile.open(archive, "r:gz") as crate:
             for member in crate:
                 if not member.name.startswith(prefix):
@@ -93,15 +116,17 @@ def verify_package_archive(package: dict[str, Any], archive: Path) -> None:
                     continue
                 if name in files or not member.isfile():
                     raise PackageLegalMaterialError(f"{archive.name} has an invalid legal file entry: {name}")
-                expected = (crate_root / name).read_bytes()
-                if not expected or member.size != len(expected):
-                    raise PackageLegalMaterialError(f"{archive.name} legal file differs from source: {name}")
                 content = crate.extractfile(member)
                 if content is None:
                     raise PackageLegalMaterialError(f"{archive.name} cannot read legal file: {name}")
                 with content:
-                    if content.read() != expected:
-                        raise PackageLegalMaterialError(f"{archive.name} legal file differs from source: {name}")
+                    if digest := pinned.get(name):
+                        if hashlib.file_digest(content, "sha256").hexdigest() != digest:
+                            raise PackageLegalMaterialError(f"{archive.name} legal file differs from pinned upstream SHA-256: {name}")
+                    else:
+                        expected = (crate_root / name).read_bytes()
+                        if not expected or member.size != len(expected) or content.read() != expected:
+                            raise PackageLegalMaterialError(f"{archive.name} legal file differs from source: {name}")
                 files.add(name)
     except (OSError, tarfile.TarError) as error:
         raise PackageLegalMaterialError(f"cannot inspect {archive.name}: {error}") from error
