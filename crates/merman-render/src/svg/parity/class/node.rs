@@ -166,6 +166,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub hide_empty_members_box: bool,
     pub node_stroke_style_attr: &'a str,
     pub node_label_style_attr: &'a str,
+    pub font_family: Option<&'a str>,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -871,6 +872,26 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     let gap = padding;
     let text_padding = 3.0;
 
+    let label_style;
+    let node_label_style = match ctx.font_family {
+        Some(family) => {
+            let mut style = ctx.node_label_style_attr.to_owned();
+            if !style.is_empty() {
+                style.push(';');
+            }
+            style.push_str("font-family:");
+            style.push_str(family);
+            label_style = style;
+            label_style.as_str()
+        }
+        None => ctx.node_label_style_attr,
+    };
+    let text_style = crate::class::class_svg_text_with_family(ctx.text_style, ctx.font_family);
+    let probe_style = if ctx.font_family.is_some() {
+        text_style.as_ref()
+    } else {
+        ctx.html_calc_text_style
+    };
     let title_label = &prepared_title.label;
     let title_metrics = prepared_title.metrics;
     // Annotation group: Mermaid only renders the first annotation.
@@ -883,8 +904,8 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             text = wrap_class_svg_text_like_mermaid(
                 &text,
                 ctx.measurer,
-                ctx.text_style,
-                ctx.html_calc_text_style,
+                &text_style,
+                probe_style,
                 ctx.wrap_probe_font_size,
                 false,
             );
@@ -892,7 +913,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         let metrics = crate::text::measure_markdown_with_inline_styles(
             ctx.measurer,
             &text,
-            ctx.text_style,
+            &text_style,
             None,
             WrapMode::SvgLike,
         );
@@ -1034,7 +1055,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         ann_new_x,
         ann_new_y,
         &annotation_runs,
-        ctx.node_label_style_attr,
+        node_label_style,
     );
 
     let native_title_weight = ctx
@@ -1047,7 +1068,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         label_new_y,
         title_label,
         &title_metrics,
-        ctx.node_label_style_attr,
+        node_label_style,
         native_title_weight
             .as_deref()
             .unwrap_or("font-weight: bolder"),
@@ -1063,7 +1084,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         adjusted_text_group_x,
         members_new_y,
         &members_runs,
-        ctx.node_label_style_attr,
+        node_label_style,
     );
 
     let methods_new_y = adjust_y(methods_ty);
@@ -1073,7 +1094,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         adjusted_text_group_x,
         methods_new_y,
         &methods_runs,
-        ctx.node_label_style_attr,
+        node_label_style,
     );
 
     // Dividers (classBox.ts uses group bbox heights).
@@ -1268,6 +1289,7 @@ fn measure_class_svg_node_rows(
             &row.css_style,
             literal_fallback,
         );
+        let text_style = crate::class::class_svg_text_with_family(&text_style, ctx.font_family);
         if let Some(fallback) = fallback {
             text = fallback;
         }
@@ -1516,6 +1538,7 @@ mod typography_tests {
             hide_empty_members_box: false,
             node_stroke_style_attr: "",
             node_label_style_attr: "",
+            font_family: None,
             node_stroke: "#000",
             node_stroke_width: "1",
             node_stroke_dasharray: "",

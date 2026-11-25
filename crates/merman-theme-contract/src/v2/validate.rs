@@ -1,16 +1,17 @@
 use super::document::{
-    ElevationEffect, ElevationSpec, FillInk, FormPatch, RoleOverrides, TypographyPatch,
+    ElevationEffect, ElevationSpec, FillInk, FormPatch, RoleOverrides, ThemeDocumentFields,
+    TypographyPatch,
 };
-use super::{FontRole, Paint, SCHEMA_VERSION, Texture, ThemeDocumentV2, ThemeError};
+use super::{FontRole, Paint, SCHEMA_VERSION, Texture, ThemeError};
 
-pub(super) fn document(doc: &ThemeDocumentV2) -> Result<(), ThemeError> {
+pub(super) fn document(doc: &ThemeDocumentFields) -> Result<(), ThemeError> {
     if doc.schema_version != SCHEMA_VERSION {
         return Err(ThemeError::invalid(
             "schema_version",
             "expected theme schema version 2",
         ));
     }
-    if let Some(id) = doc.id()
+    if let Some(id) = doc.id.as_deref()
         && (id.len() > 48
             || !id.starts_with(|ch: char| ch.is_ascii_lowercase())
             || !id

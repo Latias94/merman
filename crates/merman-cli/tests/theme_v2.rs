@@ -112,7 +112,7 @@ fn full_and_minimal_exports_check_to_the_same_palette() {
     assert_eq!(minimal["resolved"]["appearance"], "dark");
     assert_eq!(minimal["resolved"]["roles"], full["resolved"]["roles"]);
     assert_eq!(minimal["contrast"], full["contrast"]);
-    assert_eq!(minimal["contrast"].as_array().unwrap().len(), 12);
+    assert_eq!(minimal["contrast"].as_array().unwrap().len(), 13);
 
     let text = run(directory.path(), &["theme", "check", "theme.json"]);
     success(&text);
@@ -158,10 +158,35 @@ fn check_reports_syntax_location_and_strict_contrast() {
     assert_eq!(exit_code(strict.status), 1);
     let result = json(&strict);
     assert_eq!(result["ok"], false);
-    assert_eq!(result["contrast"].as_array().unwrap().len(), 12);
+    assert_eq!(result["contrast"].as_array().unwrap().len(), 13);
     assert!(result["notices"].as_array().unwrap().iter().any(|notice| {
         notice["kind"] == "low_contrast" && notice["foreground"] == "text.primary"
     }));
+}
+
+#[test]
+fn check_reports_shared_and_pie_fill_contrast_at_their_rendered_opacities() {
+    let output = run_with_stdin(
+        &["theme", "check", "-", "--strict-contrast", "--json"],
+        r##"{
+            "schema_version":2,"extends":"studio",
+            "form":{"chart":{"pie_opacity":0.65}},
+            "appearances":{"light":{"data":{
+                "fill":["#444444","#444444","#444444","#444444"],"fill_ink":"auto"
+            }}}
+        }"##,
+    );
+    success(&output);
+    let result = json(&output);
+    let rows = result["contrast"].as_array().unwrap();
+    for (background, expected) in [("data.fill", 9.30), ("pie.data.fill", 4.76)] {
+        let ratio = rows
+            .iter()
+            .find(|row| row["foreground"] == "data.fill_ink[0]" && row["background"] == background)
+            .and_then(|row| row["ratio"].as_f64())
+            .unwrap();
+        assert!((ratio - expected).abs() < 0.05, "{background}: {ratio}");
+    }
 }
 
 #[test]

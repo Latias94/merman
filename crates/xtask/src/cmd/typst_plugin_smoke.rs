@@ -840,6 +840,7 @@ fn assert_render_payload(payload: &JsonValue) -> Result<usize, XtaskError> {
             "capability_id",
             "message",
             "data",
+            "metadata",
         ],
         "render payload",
     )?;
@@ -1544,6 +1545,7 @@ mod tests {
             "data": {
                 "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
             },
+            "metadata": { "theme_outcome": { "mode": "mermaid_parity", "notices": [] } },
         });
         assert!(assert_render_payload(&payload).is_ok());
 

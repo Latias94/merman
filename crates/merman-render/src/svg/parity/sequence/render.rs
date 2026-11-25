@@ -7,7 +7,7 @@ use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
 };
-use super::frames::{SequenceFrameRenderOptions, render_sequence_box_frames_and_rect_blocks};
+use super::frames::{SequenceFrameRenderOptions, render_sequence_backgrounds};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
 use super::root::write_sequence_svg_root_open;
@@ -224,7 +224,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             checkpoints,
         };
 
-        render_sequence_box_frames_and_rect_blocks(
+        render_sequence_backgrounds(
             &mut out,
             model,
             &nodes_by_id,
@@ -233,6 +233,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                 boxes: &layout.boxes,
                 box_indices: prepared.box_indices(),
                 rect_default_fill: &settings.rect_default_fill,
+                native_frames: native.map(|theme| (theme, layout.frames.as_slice())),
             },
             &actor_ctx.label_context(),
             checkpoints,
@@ -240,20 +241,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         out.checkpoint()?;
 
         if let Some(native) = native {
-            for (index, frame) in layout.frames.iter().enumerate() {
-                checkpoints.checkpoint_loop(index)?;
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="merman-sequence-frame-surface" x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}"/>"#,
-                    fmt(frame.x),
-                    fmt(frame.y),
-                    fmt(frame.width),
-                    fmt(frame.height),
-                    fmt(native.form.container_radius),
-                    native.container,
-                );
-            }
-            out.checkpoint()?;
             native_actor_depth_bounds =
                 write_native_actor_depths(&mut out, native, &actor_ctx, settings.mirror_actors)?;
         }

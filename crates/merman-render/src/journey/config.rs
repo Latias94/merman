@@ -1,7 +1,6 @@
 use crate::config::{config_bool, config_f64, config_string, config_string_vec};
 use crate::text::TextStyle;
 use crate::theme::{FamilyTheme, font_family_css};
-use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use super::JourneyNativeStyle;
@@ -123,51 +122,23 @@ impl<'a> JourneyConfigView<'a> {
 
     pub(super) fn native_render_settings(
         &self,
-        config: &PresentationConfig,
         theme: &FamilyTheme,
         body_font: &str,
-        inherited_font: Option<String>,
         font_size_px: f64,
     ) -> JourneyRenderSettings {
-        let owns = |path| config.explicit_config_owns_path(path);
         let typography = &theme.typography;
         JourneyRenderSettings {
             text_placement: self.text_placement(),
             task_text_style: TextStyle {
-                font_family: Some(if owns("journey.taskFontFamily") {
-                    self.journey_string("taskFontFamily", DEFAULT_TASK_FONT_FAMILY)
-                } else {
-                    body_font.to_owned()
-                }),
-                font_size: if owns("journey.taskFontSize") {
-                    self.journey_f64("taskFontSize")
-                        .unwrap_or(DEFAULT_TASK_FONT_SIZE)
-                } else {
-                    font_size_px
-                },
+                font_family: Some(body_font.to_owned()),
+                font_size: font_size_px,
                 font_weight: None,
                 font_style: None,
             },
             section_colours: self.section_colours(),
-            title_font_family: if owns("journey.titleFontFamily") {
-                self.journey_string("titleFontFamily", DEFAULT_TITLE_FONT_FAMILY)
-            } else {
-                inherited_font
-                    .unwrap_or_else(|| font_family_css(typography.stack(typography.title_family)))
-            },
-            title_font_size: if owns("journey.titleFontSize") {
-                self.journey_string("titleFontSize", DEFAULT_TITLE_FONT_SIZE)
-            } else {
-                format!("{}px", font_size_px * 1.9375)
-            },
-            title_color: if owns("journey.titleColor") {
-                self.journey_string("titleColor", DEFAULT_TITLE_COLOR)
-            } else {
-                config
-                    .get_str("themeVariables.titleColor")
-                    .filter(|_| owns("themeVariables.titleColor"))
-                    .map_or_else(|| theme.roles.text_title.to_string(), str::to_owned)
-            },
+            title_font_family: font_family_css(typography.stack(typography.title_family)),
+            title_font_size: format!("{}px", font_size_px * 1.9375),
+            title_color: theme.roles.text_title.to_string(),
         }
     }
 
@@ -291,6 +262,7 @@ pub(crate) const fn default_use_max_width() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_model::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]

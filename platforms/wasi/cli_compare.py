@@ -63,20 +63,25 @@ def compare(args):
               "fonts": font_inputs()[2], "comparisons": {}}
     with example.Client(module.read_bytes(), options=FIXTURES["engine_options"], fonts=fonts, fuel=fuel) as client:
         schemas = client.catalog()["options_schema_versions"]
-        require(schemas in ([2], [3]), "update the comparison options for this binding schema")
-        paint_key = "background" if schemas == [2] else "matte"
+        require(schemas in ([2], [3], [4]), "update the comparison options for this binding schema")
         report["options_schema_versions"] = schemas
         for name, source in cases.items():
             path = output / (name + ".mmd")
             path.write_bytes(source.encode())
             report["comparisons"][name] = {"source_sha256": sha(source.encode())}
             for operation in ("svg", "png"):
-                # One background value controls both the root canvas and raster matte.
                 background = "#f1e2d3" if operation == "png" else "transparent"
-                options = {"svg": {"root_background_color": background}}
+                if schemas == [4]:
+                    # The current CLI paints the SVG canvas and keeps the default PNG matte.
+                    options = {"background": background}
+                else:
+                    options = {"svg": {"root_background_color": background}}
                 flags = ["--svg-pipeline", "resvg-safe"] if operation == "svg" else ["--scale", "2"]
                 if operation == "png":
-                    options["raster"] = {"scale": 2, paint_key: background}
+                    options["raster"] = {"scale": 2}
+                    if schemas != [4]:
+                        paint_key = "background" if schemas == [2] else "matte"
+                        options["raster"][paint_key] = background
                 data, metadata = client.execute(operation, source.encode(), options)
                 wasi_output = output / (name + ".wasi." + operation)
                 cli_output = output / (name + ".cli." + operation)

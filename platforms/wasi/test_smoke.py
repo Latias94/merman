@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 import struct
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
+import cli_compare
 from common import (DEPENDENCY_FONT_PROBES, FIXTURES, FIXTURE_BYTES, PROTOCOL, ROOT, compare_pixels, decode_descriptor,
                     font_inputs, png_pixels, save_render, sha, validate_catalog, validate_error, validate_native_error,
                     validate_png, validate_svg)
@@ -202,6 +205,47 @@ class OutputTests(unittest.TestCase):
             b.write_bytes(self.png(color="blue"))
             with self.assertRaises(ValueError):
                 compare_pixels(a, b)
+
+    def test_cli_comparison_matches_canvas_and_matte_for_each_options_schema(self):
+        outputs = {"svg": b"<svg/>", "png": self.png()}
+        canvas = "#f1e2d3"
+
+        def render_cli(command, **_kwargs):
+            operation = command[command.index("--format") + 1]
+            self.assertEqual(command[command.index("--background") + 1],
+                             canvas if operation == "png" else "transparent")
+            flag, value = ("--scale", "2") if operation == "png" else ("--svg-pipeline", "resvg-safe")
+            self.assertEqual(command[command.index(flag) + 1], value)
+            Path(command[command.index("--output") + 1]).write_bytes(outputs[operation])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("merman-cli", "merman_wasi.wasm"):
+                (root / name).touch()
+            for schema, png_options in (
+                (2, {"svg": {"root_background_color": canvas},
+                     "raster": {"scale": 2, "background": canvas}}),
+                (3, {"svg": {"root_background_color": canvas},
+                     "raster": {"scale": 2, "matte": canvas}}),
+                (4, {"background": canvas, "raster": {"scale": 2}}),
+            ):
+                with self.subTest(schema=schema):
+                    example = mock.MagicMock()
+                    client = example.Client.return_value.__enter__.return_value
+                    client.catalog.return_value = {"options_schema_versions": [schema]}
+                    client.execute.side_effect = lambda operation, _source, _options: (outputs[operation], {})
+                    args = SimpleNamespace(cli=root / "merman-cli", module=root / "merman_wasi.wasm",
+                                           flavor="standard", output_dir=root / str(schema))
+                    with (mock.patch.object(cli_compare, "importlib") as loader,
+                          mock.patch.object(cli_compare.subprocess, "run", side_effect=render_cli)):
+                        loader.util.module_from_spec.return_value = example
+                        report = cli_compare.compare(args)
+                    svg_options = ({"background": "transparent"} if schema == 4 else
+                                   {"svg": {"root_background_color": "transparent"}})
+                    self.assertEqual([(call.args[0], call.args[2]) for call in client.execute.call_args_list],
+                                     [("svg", svg_options), ("png", png_options)] * 2)
+                    self.assertEqual(report["options_schema_versions"], [schema])
+                    self.assertEqual(set(report["comparisons"]), {"basic", "swimlane"})
 
     def test_svg_metadata_is_checked_against_real_viewbox(self):
         data = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -2 30 20">'

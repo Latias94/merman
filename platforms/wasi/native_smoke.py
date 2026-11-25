@@ -35,7 +35,8 @@ def run(args):
         raw_catalog = catalog_path.read_bytes()
         if catalog_bytes is None:
             catalog_bytes = raw_catalog
-            validate_catalog(json.loads(raw_catalog), args.flavor, transport_version=3)
+            # The probe negotiates the generated C ABI and packaging checks the catalog version.
+            validate_catalog(json.loads(raw_catalog), args.flavor, wasi=False)
         require(raw_catalog == catalog_bytes, "native catalog changed between identical probe processes")
         if expected_code or capability:
             require(process.returncode == 3, "native operation unexpectedly succeeded: " + name)

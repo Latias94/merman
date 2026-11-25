@@ -886,6 +886,10 @@ fn render_svg_json_returns_the_shared_success_envelope() {
     assert_success_envelope(&payload, RENDER_OPERATION);
     assert!(payload["data"]["svg"].as_str().unwrap().contains("<svg"));
     assert!(payload["data"]["svg"].as_str().unwrap().contains("Hello"));
+    assert_eq!(
+        payload["metadata"]["theme_outcome"]["mode"],
+        "mermaid_parity"
+    );
 }
 
 #[cfg(feature = "svg")]

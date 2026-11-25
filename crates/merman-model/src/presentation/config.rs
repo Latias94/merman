@@ -172,6 +172,36 @@ impl PresentationConfig {
         }
     }
 
+    /// Copies the retained root sections and ownership using the caller's cancellation control.
+    /// Returns `None` when none of the supplied keys is present.
+    #[doc(hidden)]
+    pub fn without_root_keys_controlled(
+        &self,
+        keys: &[&str],
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<Self>> {
+        let Some(values) = self.values.without_root_keys_controlled(keys, control)? else {
+            return Ok(None);
+        };
+        let mut authored_paths = BTreeSet::new();
+        for path in self.authored_paths.iter() {
+            control.checkpoint()?;
+            if path.is_empty() {
+                let object = values.as_value().as_object().expect("retained root object");
+                for key in object.keys() {
+                    control.checkpoint()?;
+                    authored_paths.insert(Arc::from(key.as_str()));
+                }
+            } else if !keys.contains(&path.split_once('.').map_or(path, |(root, _)| root)) {
+                authored_paths.insert(Arc::clone(path));
+            }
+        }
+        Ok(Some(Self {
+            values,
+            authored_paths: Arc::new(authored_paths),
+        }))
+    }
+
     /// Alias for [`Self::explicit_config_owns_path`] during the renderer migration.
     pub fn config_paint_overrides_typed_default(&self, dotted_path: &str) -> bool {
         self.explicit_config_owns_path(dotted_path)

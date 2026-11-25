@@ -826,6 +826,8 @@ fn render_class_node_id<O: SvgOutput>(
                 message: format!("missing prepared Class SVG title for `{}`", n.id),
             });
         };
+        let font_family =
+            native.and_then(|_| crate::class::class_native_svg_font_family(node.node));
         let svg_stats = render_class_svg_node_body(
             ClassNodeRenderState {
                 out,
@@ -845,6 +847,7 @@ fn render_class_node_id<O: SvgOutput>(
                 hide_empty_members_box: settings.hide_empty_members_box(),
                 node_stroke_style_attr: node_style,
                 node_label_style_attr: binding.svg_label_style.as_str(),
+                font_family: font_family.as_deref(),
                 node_stroke: guide_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,

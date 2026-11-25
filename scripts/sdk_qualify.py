@@ -122,9 +122,8 @@ def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
         prefix = extracted.root
         module = prefix / "lib/merman_wasi.wasm"
         schemas = json.loads((prefix / "manifest.json").read_text())["options_schema_versions"]
-        if schemas not in ([2], [3]):
+        if schemas not in ([2], [3], [4]):
             raise RuntimeError("update the example options for this artifact's binding schema")
-        paint_key = "background" if schemas == [2] else "matte"
         environment = os.environ.copy()
         environment.update(MERMAN_WASI_MODULE=str(module),
                            MERMAN_WASI_FONT=str(prefix / "fonts/Cousine-Regular.ttf"))
@@ -142,8 +141,14 @@ def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
                           "    htmlLabels: false\n---\nflowchart LR\nA[SDK] --> B[Examples]\n",
                           encoding="utf-8")
         options = output_dir / "options.json"
-        options.write_text(json.dumps({"svg": {"pipeline": "resvg-safe", "diagram_id": "sdk-example"},
-                                       "raster": {"scale": 2, paint_key: "#ffffff"}}), encoding="utf-8")
+        png_options = {"svg": {"pipeline": "resvg-safe", "diagram_id": "sdk-example"},
+                       "raster": {"scale": 2}}
+        if schemas == [4]:
+            png_options["export_matte"] = "#ffffff"
+        else:
+            paint_key = "background" if schemas == [2] else "matte"
+            png_options["raster"][paint_key] = "#ffffff"
+        options.write_text(json.dumps(png_options), encoding="utf-8")
         report = {"module_sha256": sdk_archive.sha256_file(module), "outputs": {}}
         for operation in ("svg", "png"):
             for language, command in (

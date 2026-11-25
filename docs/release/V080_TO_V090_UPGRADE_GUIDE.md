@@ -1,6 +1,6 @@
 # Merman 0.8.0 to 0.9.0 upgrade guide
 
-This guide covers upgrading from Merman 0.8.0 to the immutable `v0.9.0` release. It describes changes to Rust APIs, CLI commands, rendered output, bindings, and independently versioned packages. Later development contracts are called out separately under [current development migration](#current-development-migration-unreleased); they do not apply to installed 0.9.0 artifacts. See the [release index](README.md) for earlier upgrade paths.
+This guide covers upgrading from Merman 0.8.0 to the immutable `v0.9.0` release. It describes changes to Rust APIs, CLI commands, rendered output, bindings, and independently versioned packages. See [later upgrades](#later-upgrades) for newer contracts and the [release index](README.md) for earlier upgrade paths.
 
 ## Rust dependencies
 
@@ -124,8 +124,8 @@ Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (1
 
 These packages use independent version numbers. Review the [dependency policy](../DEPENDENCY_POLICY.md) for compatible dependency lines, exact generator groups, and intentional upgrade exceptions.
 
-## Current development migration (unreleased)
+## Later upgrades
 
-The current development branch after published `0.9.3` replaces the Presentation API with compiled `DiagramTheme` requests and `theme-catalog` discovery. Bindings use Options JSON schema 3 with a top-level `theme` group; Web uses transport API 10, analysis facts use schema 3, and render theme execution evidence uses schema 2. Deploy matching wrappers, package facades, generated glue, and native/WASM artifacts from the same revision. These are unreleased contracts and do not change the 0.9.0 instructions above.
-
-Use the [current theme guide](../rendering/custom-diagram-themes.md), [binding theme grammar](../bindings/OPTIONS_JSON.md#diagram-theme), and [Web SDK](../../platforms/web/README.md) for that migration. The [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md) covers the later Rust model, prepared-source, and geometry resource changes.
+Use the [0.9.3 to 0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for the
+compiled theme API and Options JSON schema 3. For Theme v2 and Options JSON schema 4, see the
+[current source migration](README.md#current-source).

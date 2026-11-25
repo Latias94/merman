@@ -177,13 +177,14 @@ def cargo_about_command(
         command.extend(["--workspace", "--all-features"])
     else:
         cargo = artifact_profile["cargo"]
+        features = " ".join(f"{cargo['package']}/{feature}" for feature in cargo["features"])
         command.extend(
             [
                 "--manifest-path",
                 cargo["manifest"],
                 "--no-default-features",
                 "--features",
-                " ".join(cargo["features"]),
+                features,
             ]
         )
         resolved_target = resolve_report_target(artifact_profile, target)

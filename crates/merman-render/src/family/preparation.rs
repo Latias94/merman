@@ -1160,7 +1160,7 @@ pub(super) fn prepare_class_render<'parsed>(
     options: &LayoutOptions,
     context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
-    let meta = parsed.metadata();
+    let meta = context.render_metadata(parsed.metadata());
     let model = parsed.model();
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
@@ -1180,7 +1180,7 @@ pub(super) fn prepare_architecture_render<'parsed>(
     options: &LayoutOptions,
     context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
-    let meta = parsed.metadata();
+    let meta = context.render_metadata(parsed.metadata());
     let model = parsed.model();
     let RenderSemanticModel::Architecture(model) = model else {
         unreachable!("Architecture render dispatch requires an Architecture semantic model")
@@ -1197,7 +1197,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
     context: FamilyRenderContext,
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
-    let meta = parsed.metadata();
+    let meta = context.render_metadata(parsed.metadata());
     let model = parsed.model();
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     let flowchart_render_context = parsed

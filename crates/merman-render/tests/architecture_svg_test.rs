@@ -34,7 +34,7 @@ const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 512 * 1024;
 const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 128 * 1024;
 
 #[test]
-fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() {
+fn native_theme_v2_architecture_layers_service_cards_and_owns_edge_color() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "---\nconfig:\n  themeVariables:\n    archEdgeColor: '#123456'\n---\narchitecture-beta\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend\nservice db[Database] in backend\napi:R --> L:db\n",
@@ -47,7 +47,8 @@ fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() 
             br##"{
                 "schema_version":2,"extends":"studio",
                 "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0",
-                         "stroke.border":"#405060","text.title":"#243648"},
+                         "stroke.border":"#405060","stroke.connector":"#244466",
+                         "text.title":"#243648"},
                 "typography":{"sans":["Architecture Text","sans-serif"],"base_size_px":20},
                 "form":{"radius":7,"container_radius":11,"connector_width":3,
                         "edge_style":"orthogonal","marker_style":"open","elevation":"soft"}
@@ -100,7 +101,7 @@ fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() 
         .text()
         .unwrap();
     assert!(css.contains("font-family:\"Architecture Text\", sans-serif;font-size:20px;"));
-    assert!(css.contains(".edge{stroke-width:3px;stroke:#123456;"));
+    assert!(css.contains(".edge{stroke-width:3px;stroke:#244466;"));
 }
 
 #[derive(Default)]

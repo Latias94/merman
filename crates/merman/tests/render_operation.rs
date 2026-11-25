@@ -850,9 +850,8 @@ fn unthemed_svg_reports_mermaid_parity() {
 
 #[cfg(all(feature = "svg", feature = "diagram-info"))]
 #[test]
-fn unsupported_native_treatments_are_reported_or_rejected() {
+fn unsupported_native_treatments_are_quiet_in_best_effort_and_rejected_in_portable_mode() {
     use merman::svg::{RenderError as SvgRenderError, ThemePortabilityRequirement};
-    use merman::theme::ThemeOutcomeNotice;
 
     let renderer = Renderer::new();
     for (preset, expected) in [
@@ -880,9 +879,7 @@ fn unsupported_native_treatments_are_reported_or_rejected() {
             panic!("expected a best-effort SVG");
         };
         assert_eq!(output.theme_outcome().preset_id, Some(preset));
-        assert!(output.theme_outcome().notices.iter().any(|notice|
-            matches!(notice, ThemeOutcomeNotice::Rendering(message) if *message == expected)
-        ));
+        assert!(output.theme_outcome().notices.is_empty());
         let error = render(ThemePortabilityRequirement::RequirePortable).unwrap_err();
         assert!(
             matches!(error, RenderError::Svg(SvgRenderError::UnsupportedNativeThemeFeature {
@@ -890,6 +887,34 @@ fn unsupported_native_treatments_are_reported_or_rejected() {
         }) if message == expected)
         );
     }
+}
+
+#[cfg(all(feature = "svg", feature = "diagram-info"))]
+#[test]
+fn custom_native_treatments_report_unsupported_features() {
+    use merman::theme::{ThemeCompiler, ThemeOutcomeNotice};
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"elevation":"soft"}}"#,
+            None,
+        )
+        .unwrap();
+    let request = merman::SvgRequest::default().with_native_theme(ThemeSelection::compiled(theme));
+    let RenderOutput::Svg(Some(output)) = Renderer::new()
+        .render(RenderRequest::svg("info", OperationControl::new(), request))
+        .unwrap()
+    else {
+        panic!("expected a best-effort SVG")
+    };
+    assert!(
+        output
+            .theme_outcome()
+            .notices
+            .contains(&ThemeOutcomeNotice::Rendering(
+                "This diagram family does not support theme elevation."
+            ))
+    );
 }
 
 #[cfg(all(feature = "svg", feature = "diagram-packet"))]

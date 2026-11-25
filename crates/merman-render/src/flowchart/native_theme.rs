@@ -1,6 +1,7 @@
 use merman_theme_contract::v2::{DataPalette, Density, EdgeStyle, Elevation, Form};
 
-use crate::theme::{Color, FamilyTheme};
+use crate::text::TextStyle;
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::{FlowchartLayoutSettings, FlowchartShape};
 
@@ -15,6 +16,7 @@ pub(crate) struct FlowchartNativeStyle {
     pub(crate) emphasis: Color,
     pub(crate) on_emphasis: Color,
     pub(crate) guide: Color,
+    pub(crate) title_style: TextStyle,
     pub(super) callout: Color,
     on_callout: Color,
     data: DataPalette,
@@ -24,6 +26,7 @@ pub(crate) struct FlowchartNativeStyle {
 impl FlowchartNativeStyle {
     pub(super) fn resolve(theme: &FamilyTheme, background: Option<Color>) -> Self {
         let roles = &theme.roles;
+        let typography = &theme.typography;
         Self {
             form: theme.form,
             elevation: theme.elevation.clone(),
@@ -34,6 +37,12 @@ impl FlowchartNativeStyle {
             emphasis: roles.surface_emphasis.first_color(),
             on_emphasis: roles.text_on_emphasis,
             guide: roles.stroke_guide.first_color(),
+            title_style: TextStyle {
+                font_family: Some(font_family_css(typography.stack(typography.title_family))),
+                font_size: typography.base_size_px * 1.25,
+                font_weight: Some(typography.title_weight.to_string()),
+                font_style: None,
+            },
             callout: roles.surface_callout.first_color(),
             on_callout: roles.text_callout,
             data: theme.data.clone(),

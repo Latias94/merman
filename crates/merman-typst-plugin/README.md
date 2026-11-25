@@ -37,7 +37,7 @@ compiler's default linker exports. No other function, memory, table, or global e
 
 `wasm-profiles.json` owns the ABI number. Run `cargo run -p xtask -- gen-typst-profile-constants` after changing it; the generated Rust projection contains both the numeric `TYPST_PLUGIN_ABI_VERSION` constant and the ASCII bytes returned by `abi_version`. `verify-typst-profile-constants` and the aggregate `verify-generated` gate reject drift. `package_version` returns the Rust workspace package version.
 
-`capabilities_json` reports the flat runtime catalog schema 1 for the `typst-wasm` artifact. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` use result envelope schema 1. A successful render returns `data.svg`, analysis returns `data.analysis`, and a theme call returns `data.result`. Transport errors include a machine-readable error kind and an optional capability ID.
+`capabilities_json` reports the flat runtime catalog schema 1 for the `typst-wasm` artifact. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` use result envelope schema 1. A successful render returns `data.svg` and `metadata.theme_outcome`. Analysis returns `data.analysis`, and a theme call returns `data.result`. Transport errors include a machine-readable error kind and an optional capability ID.
 
 `theme_catalog_json` returns shared catalog schema 2 and appears as `theme-catalog` in `metadata_ids`. `theme_operation_json` accepts `export-theme-preset` with raw UTF-8 preset ID bytes and `resolve-theme` with a JSON object containing `document`, optional `appearance`, and optional `auto_fix_contrast`. Pass empty `options_json` bytes for both operations.
 

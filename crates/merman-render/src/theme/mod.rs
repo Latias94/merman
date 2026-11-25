@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use merman_model::presentation::PresentationConfig;
+
 pub(crate) mod canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -47,6 +49,65 @@ pub use merman_theme_contract::v2::{
     ThemeCompiler, ThemeDocumentV2, ThemeError, ThemeNotice,
 };
 
+/// An operation-local projection of the configuration used by native layout and text admission.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct NativeRenderConfig(Arc<NativeRenderConfigParts>);
+
+#[derive(Debug)]
+struct NativeRenderConfigParts {
+    source: PresentationConfig,
+    render: PresentationConfig,
+}
+
+impl NativeRenderConfig {
+    pub fn prepare(
+        config: &PresentationConfig,
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<Option<Self>> {
+        let render = Self::project(config, control)?;
+        Ok(render.map(|render| {
+            Self(Arc::new(NativeRenderConfigParts {
+                source: config.clone(),
+                render,
+            }))
+        }))
+    }
+
+    fn project(
+        config: &PresentationConfig,
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<Option<PresentationConfig>> {
+        let control = control.for_phase(merman_model::OperationPhase::Layout);
+        // Keep structural settings and the trusted output CSS boundary. The original source
+        // configuration and authored paths remain available to compatibility projections.
+        config.without_root_keys_controlled(
+            &[
+                "theme",
+                "themeVariables",
+                "darkMode",
+                "fontFamily",
+                "fontSize",
+                "fontWeight",
+            ],
+            &control,
+        )
+    }
+
+    pub fn config(&self) -> &PresentationConfig {
+        &self.0.render
+    }
+
+    fn is_for(&self, source: &PresentationConfig) -> bool {
+        let original = &self.0.source;
+        original.as_config().shares_storage_with(source.as_config())
+            && Arc::ptr_eq(
+                original.shared_explicit_config_paths(),
+                source.shared_explicit_config_paths(),
+            )
+    }
+}
+
 /// Whether rendering requires portable output for the selected target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -61,6 +122,8 @@ pub enum ThemePortabilityRequirement {
 pub struct NativeTheme {
     resolved: Arc<ResolvedThemeV2>,
     background: Option<Color>,
+    render_config: Option<NativeRenderConfig>,
+    export_backdrop: Option<Color>,
 }
 
 impl NativeTheme {
@@ -69,6 +132,8 @@ impl NativeTheme {
         Self {
             resolved,
             background: None,
+            render_config: None,
+            export_backdrop: None,
         }
     }
 
@@ -86,6 +151,37 @@ impl NativeTheme {
     /// Returns the explicitly selected base color, if supplied.
     pub const fn background(&self) -> Option<Color> {
         self.background
+    }
+
+    /// Supplies an opaque destination color for automatic contrast under a translucent canvas.
+    #[doc(hidden)]
+    pub fn with_export_backdrop(mut self, color: Color) -> Self {
+        self.export_backdrop = Some(color);
+        self
+    }
+
+    #[cfg(feature = "diagram-pie")]
+    pub(crate) const fn export_backdrop(&self) -> Option<Color> {
+        self.export_backdrop
+    }
+
+    #[doc(hidden)]
+    pub fn with_render_config(mut self, config: Option<NativeRenderConfig>) -> Self {
+        self.render_config = config;
+        self
+    }
+
+    pub(crate) fn render_config_for(
+        &self,
+        source: &PresentationConfig,
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<Option<PresentationConfig>> {
+        if let Some(config) = &self.render_config
+            && config.is_for(source)
+        {
+            return Ok(Some(config.config().clone()));
+        }
+        NativeRenderConfig::project(source, control)
     }
 }
 

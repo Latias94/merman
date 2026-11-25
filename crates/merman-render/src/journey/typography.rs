@@ -1,9 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::{
-    config_f64_css_absolute_px, config_font_family_css,
-    config_theme_font_size_css_or_root_number_px_opt,
-};
+use crate::config::{config_font_family_css, config_theme_font_size_css_or_root_number_px_opt};
 use crate::svg::PreparedCommonCss;
 use crate::text::TextStyle;
 use crate::theme::{FamilyTheme, font_family_css};
@@ -56,34 +53,11 @@ impl JourneyStyle {
     fn resolve_native(config: &PresentationConfig, theme: &FamilyTheme) -> Self {
         let config_view = JourneyConfigView::new(config.as_value());
         let typography = &theme.typography;
-        let owns = |path| config.explicit_config_owns_path(path);
-        let source_family = ["themeVariables.fontFamily", "fontFamily"]
-            .into_iter()
-            .filter(|path| owns(path))
-            .find_map(|path| {
-                config
-                    .get_str(path)
-                    .and_then(crate::config::normalized_config_font_family)
-            });
-        let family = source_family
-            .clone()
-            .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
-        let font_size_px = [
-            (
-                "themeVariables.fontSize",
-                &["themeVariables", "fontSize"][..],
-            ),
-            ("fontSize", &["fontSize"][..]),
-        ]
-        .into_iter()
-        .filter(|(path, _)| owns(path))
-        .find_map(|(_, path)| config_f64_css_absolute_px(config.as_value(), path))
-        .filter(|size| *size >= 0.0)
-        .unwrap_or(typography.base_size_px);
+        let family = font_family_css(typography.stack(typography.body_family));
+        let font_size_px = typography.base_size_px;
         let native = JourneyNativeStyle::new(theme, config);
         let layout_settings = config_view.layout_settings(Some(&native));
-        let render_settings =
-            config_view.native_render_settings(config, theme, &family, source_family, font_size_px);
+        let render_settings = config_view.native_render_settings(theme, &family, font_size_px);
         let common_css = PreparedCommonCss::with_resolved_typography(
             config.as_value(),
             family,

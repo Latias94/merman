@@ -6,7 +6,7 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::SequenceDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{NativeTheme, ThemeCompiler};
+use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
 use serde_json::{Value, json};
 
 const DIAGRAM_ID: &str = "sequence-terminals";
@@ -298,4 +298,97 @@ fn native_sequence_paints_control_frames_and_measures_actor_labels_with_the_them
         .find(|node| node.has_tag_name("text") && node.text() == Some("Native sequence"))
         .unwrap();
     assert_eq!(title.attribute("fill"), Some("#154567"));
+}
+
+#[test]
+fn studio_sequence_paints_nested_block_backgrounds_over_their_parents() {
+    let theme = NativeTheme::new(
+        ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Studio, None)
+            .unwrap(),
+    );
+    let svg = render(
+        r#"sequenceDiagram
+    loop Retry
+        rect rgb(237, 18, 8)
+            alt Accepted
+                rect rgb(8, 150, 70)
+                    A->>B: Request
+                end
+            else Rejected
+                B-->>A: Fallback
+            end
+        end
+    end
+"#,
+        json!({}),
+        Some(&theme),
+        RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let root = document.root_element();
+    let frame_class = "merman-sequence-frame-surface";
+    let [loop_surface, outer_rect, alt_surface, inner_rect]: [_; 4] = root
+        .children()
+        .filter(|node| has_class(*node, frame_class) || has_class(*node, "rect"))
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("four block backgrounds");
+    assert!(has_class(loop_surface, frame_class));
+    assert_eq!(outer_rect.attribute("fill"), Some("rgb(237, 18, 8)"));
+    assert!(has_class(alt_surface, frame_class));
+    assert_eq!(inner_rect.attribute("fill"), Some("rgb(8, 150, 70)"));
+
+    let first_message = root
+        .children()
+        .find(|node| has_class(*node, "messageText"))
+        .unwrap();
+    let first_message_line = root
+        .children()
+        .find(|node| has_class(*node, "messageLine0"))
+        .unwrap();
+    assert!(first_message.range().end <= first_message_line.range().start);
+    let mut controls = root
+        .children()
+        .filter(|node| node.attribute("data-et") == Some("control-structure"));
+    for (surface, keyword) in [(alt_surface, "alt"), (loop_surface, "loop")] {
+        let control = controls.next().unwrap();
+        let border = control
+            .children()
+            .find(|node| has_class(*node, "loopLine"))
+            .unwrap();
+        let label = control
+            .children()
+            .find(|node| has_class(*node, "labelText"))
+            .unwrap();
+        assert_eq!(label.text(), Some(keyword));
+        assert_eq!(surface.attribute("y"), border.attribute("y1"));
+        assert!(inner_rect.range().end <= control.range().start);
+        assert!(border.range().end <= label.range().start);
+        assert!(control.range().end <= first_message.range().start);
+    }
+}
+
+#[test]
+fn earlier_sequence_rect_keeps_priority_over_an_overlapping_sibling() {
+    let source = "sequenceDiagram\nrect rgb(237, 18, 8)\nA->>B: First\nend\nrect rgb(8, 150, 70)\nA->>B: Second\nend\n";
+    for theme in [None, Some(native_fixture())] {
+        let svg = render(
+            source,
+            json!({"sequence":{"boxMargin":2}}),
+            theme.as_ref(),
+            RenderEnvironment::deterministic(),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let [second, first]: [_; 2] = document
+            .root_element()
+            .children()
+            .filter(|node| has_class(*node, "rect"))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        assert_eq!(first.attribute("fill"), Some("rgb(237, 18, 8)"));
+        assert_eq!(second.attribute("fill"), Some("rgb(8, 150, 70)"));
+        assert!(number(first, "y") + number(first, "height") > number(second, "y"));
+    }
 }

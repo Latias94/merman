@@ -24,6 +24,7 @@
     capability_id: envelope.capability_id,
     message: envelope.message,
     details: if "details" in envelope { envelope.details } else { none },
+    metadata: envelope.at("metadata", default: none),
     svg: if envelope.ok { envelope.data.svg } else { none },
   )
 }

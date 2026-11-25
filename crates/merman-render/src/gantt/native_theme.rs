@@ -1,6 +1,7 @@
 use merman_model::families::gantt::GanttRenderTask;
 use merman_model::presentation::PresentationConfig;
 
+use crate::text::TextStyle;
 use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::task_bar::GanttTaskBarState;
@@ -159,6 +160,15 @@ impl GanttNativeStyle {
                 paint("sectionBkgColor2", container),
             ],
             container: container.to_string(),
+        }
+    }
+
+    pub(super) fn title_text_style(&self) -> TextStyle {
+        TextStyle {
+            font_family: Some(self.title_family.clone()),
+            font_size: self.title_size,
+            font_weight: Some(self.title_weight.to_string()),
+            font_style: None,
         }
     }
 

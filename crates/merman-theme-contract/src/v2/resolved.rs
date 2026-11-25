@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use super::contrast::{automatic_fill_ink, backdrop};
-use super::{Appearance, Color, Form, Roles, ShadowLayer, Texture, Typography};
+use super::contrast::{automatic_fill_ink_over, backdrop, is_opaque};
+use super::{Appearance, Color, Form, Paint, Roles, ShadowLayer, Texture, Typography};
 
 /// Concrete canvas decorations and extra padding. The base paint is in [`Roles::canvas`].
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -62,8 +62,31 @@ impl DataPalette {
         if !self.automatic_fill_ink {
             return self.fill_ink(ordinal);
         }
-        let canvas = canvas.composite(backdrop(appearance), 1.0);
-        automatic_fill_ink(self.fill(ordinal).composite(canvas, fill_opacity))
+        automatic_fill_ink_over(
+            self.fill(ordinal),
+            &Paint::Solid(canvas),
+            fill_opacity,
+            backdrop(appearance),
+        )
+    }
+
+    /// Recomputes automatic fill ink when the canvas reveals a known opaque export backdrop.
+    /// Opaque canvases and authored ink keep the compiled colors.
+    pub fn fill_inks_for_export(
+        &self,
+        canvas: &Paint,
+        fill_opacity: f64,
+        backdrop: Color,
+    ) -> Option<Vec<Color>> {
+        if !self.automatic_fill_ink || is_opaque(canvas, 1.0) {
+            return None;
+        }
+        Some(
+            self.fill
+                .iter()
+                .map(|&fill| automatic_fill_ink_over(fill, canvas, fill_opacity, backdrop))
+                .collect(),
+        )
     }
 }
 

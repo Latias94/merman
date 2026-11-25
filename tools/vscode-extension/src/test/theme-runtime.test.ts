@@ -6,6 +6,7 @@ import * as path from "node:path";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
+import { renderMermanArgs, resolvedRenderSettings } from "../render-options.js";
 import { RenderProcessExitError, type RenderProcessRequest } from "../render-process.js";
 import { resolveThemeSelection } from "../theme-selection.js";
 
@@ -50,6 +51,32 @@ describe("runtime theme discovery and import", () => {
     assert.throws(() => runtime.parseThemeCatalog({ schema_version: 2 }), /incomplete/);
   });
 
+  it("uses the older CLI's literal Classic IDs and compatible render arguments", async () => {
+    const host = loadRuntime(process.execPath, () => {
+      throw new RenderProcessExitError("unrecognized subcommand 'list'", Buffer.alloc(0));
+    });
+    host.capabilities = {
+      cli_contract_version: 8,
+      theme_presets: {
+        schema_version: 1,
+        presets: [{ id: "editor" }],
+        mermaid_theme_designs: [
+          { id: "forest", appearances: [{ appearance: "light", theme_id: "forest" }] },
+          { id: "neo", appearances: [{ appearance: "light", theme_id: "neo" }, { appearance: "dark", theme_id: "neo-dark" }] },
+        ],
+      },
+    };
+
+    const discovery = await host.runtime.discoverThemes(context);
+    assert.deepEqual(discovery.choices.map((choice) => choice.id), ["source", "forest", "neo", "neo-dark"]);
+    assert.deepEqual(host.requests.map(({ invocation }) => invocation.args), [
+      ["theme", "list", "--json"], ["capabilities", "--json"],
+    ]);
+    assert.match(discovery.notice!, /update the CLI/i);
+    const forest = resolveThemeSelection(discovery, "forest", "follow-editor", "dark");
+    assert.deepEqual(renderMermanArgs({ ...resolvedRenderSettings(forest), format: "svg" }).slice(7), ["--theme", "forest"]);
+  });
+
   it("queries theme list once per executable identity", async () => {
     const host = loadRuntime();
     const [first, second] = await Promise.all([host.runtime.discoverThemes(context), host.runtime.discoverThemes(context)]);
@@ -71,7 +98,7 @@ describe("runtime theme discovery and import", () => {
       assert.ok((await host.runtime.discoverThemes(context)).choices.some((choice) => choice.id === "studio"));
       await fs.writeFile(command, "old");
       assert.equal((await host.runtime.discoverThemes(context)).choices.length, 1);
-      assert.equal(host.requests.length, 3);
+      assert.equal(host.requests.filter(({ invocation }) => invocation.args[0] === "theme").length, 3);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -94,6 +121,36 @@ describe("runtime theme discovery and import", () => {
     const single = await host.runtime.checkThemeFile(context, fileUri(), discovery);
     assert.deepEqual(single.supportedAppearances, ["dark"]);
     assert.equal(resolveThemeSelection(discovery, "file", "follow-editor", "light", single).effectiveAppearance, "dark");
+  });
+
+  it("checks a dual-appearance file without a default using the selected appearance", async () => {
+    const host = loadRuntime();
+    const discovery = host.runtime.parseThemeCatalog(v2Catalog());
+    host.content = `{
+  "schema_version": 2,
+  "appearances": {
+    "light": { "seed": { "canvas": "#FFFFFF", "ink": "#111111", "accent": "#0052CC" } },
+    "dark": { "seed": { "canvas": "#111111", "ink": "#FFFFFF", "accent": "#2288FF" } }
+  }
+}\n`;
+    host.check = ({ invocation }) => {
+      const index = invocation.args.indexOf("--appearance");
+      if (index < 0) {
+        throw new RenderProcessExitError("theme check exited with status 2", Buffer.from(JSON.stringify({
+          ok: false, path: "default_appearance", message: "select an appearance or declare a default",
+        })));
+      }
+      return invocation.args[index + 1]!;
+    };
+    for (const [preference, expected] of [["follow-editor", "light"], ["dark", "dark"]] as const) {
+      const imported = await host.runtime.checkThemeFile(context, fileUri(), discovery, preference);
+      const request = host.requests.at(-1)!;
+      assert.deepEqual(request.invocation.args, ["theme", "check", "-", "--json", "--appearance", expected]);
+      assert.equal(request.source, host.content);
+      assert.equal(imported.content, host.content);
+      assert.deepEqual(imported.supportedAppearances, ["light", "dark"]);
+      assert.equal(resolveThemeSelection(discovery, "file", preference, "light", imported).effectiveAppearance, expected);
+    }
   });
 
   it("forwards duplicate fields unchanged and surfaces the CLI's JSON diagnostic on failure", async () => {
@@ -132,6 +189,8 @@ function loadRuntime(command = process.execPath, catalog: () => unknown = v2Cata
     content: "{}",
     size: 100,
     reads: 0,
+    capabilities: {} as unknown,
+    check: undefined as ((request: RenderProcessRequest) => string) | undefined,
     checkAppearance: "light",
     checkError: undefined as Error | undefined,
   };
@@ -141,6 +200,7 @@ function loadRuntime(command = process.execPath, catalog: () => unknown = v2Cata
   loader._load = function (request, parent, isMain) {
     if (request === "vscode") {
       return {
+        window: { activeColorTheme: { kind: 1 } },
         workspace: {
           fs: {
             stat: async () => ({ size: host.size }),
@@ -160,8 +220,8 @@ function loadRuntime(command = process.execPath, catalog: () => unknown = v2Cata
           const checking = request.invocation.args[1] === "check";
           if (checking && host.checkError) throw host.checkError;
           const result = checking
-            ? { ok: true, resolved: { appearance: host.checkAppearance }, notices: [], contrast: [] }
-            : await catalog();
+            ? { ok: true, resolved: { appearance: host.check?.(request) ?? host.checkAppearance }, notices: [], contrast: [] }
+            : request.invocation.args[0] === "capabilities" ? host.capabilities : await catalog();
           return { stdout: Buffer.from(JSON.stringify(result)) };
         },
       };
