@@ -30,6 +30,7 @@ use base64::Engine as _;
 )]
 use indexmap::IndexMap;
 use merman_model::OperationPhase;
+use merman_render_core::svg_css::SvgDiagramIdValue;
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
 
@@ -744,19 +745,9 @@ impl std::fmt::Display for SvgDiagramId<'_> {
     }
 }
 
-pub(super) trait SvgDiagramIdValue: Copy + std::fmt::Display {
-    fn semantic_value(&self) -> &str;
-}
-
 impl SvgDiagramIdValue for SvgDiagramId<'_> {
     fn semantic_value(&self) -> &str {
         self.value
-    }
-}
-
-impl SvgDiagramIdValue for &str {
-    fn semantic_value(&self) -> &str {
-        self
     }
 }
 
@@ -1349,14 +1340,9 @@ fn render_builtin_family_artifact_raw(
             ),
         },
         #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Packet(artifact) => {
+            packet::render_packet_family_artifact(artifact, title, options)
+        }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),

@@ -1,33 +1,25 @@
-use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
-use crate::{Error, Result};
-use merman_model::families::packet::PacketDiagramModel;
-use merman_model::presentation::PresentationConfig;
+use merman_model::{families::packet::PacketDiagramModel, presentation::PresentationConfig};
+use merman_render_core::{Bounds, Error, Result};
 
-mod config;
-mod theme;
+use super::{
+    PacketBlockLayout, PacketDiagramLayout, PacketWordLayout,
+    config::{PacketBitOrder, PacketConfigView},
+    terminal_title,
+};
 
-pub(crate) use config::{PacketBitOrder, PacketConfigView};
-pub(crate) use theme::PacketTypographyThemePlan;
-
-pub(crate) fn layout_packet_diagram_typed(
+pub fn layout_packet_diagram_typed(
     model: &PacketDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &PresentationConfig,
 ) -> Result<PacketDiagramLayout> {
     let cfg = PacketConfigView::new(effective_config)
         .layout_settings()
-        .map_err(|error| crate::Error::InvalidModel {
+        .map_err(|error| Error::InvalidModel {
             message: error.to_string(),
         })?;
 
     let total_row_height = cfg.row_height + cfg.padding_y;
-    let title_from_semantic = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty());
-    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    let has_title = title_from_semantic.or(title_from_meta).is_some();
+    let has_title = terminal_title(model, diagram_title).is_some();
 
     let words_count = model.packet.len();
     let svg_height = total_row_height * ((words_count + 1) as f64)

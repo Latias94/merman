@@ -2666,6 +2666,7 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "merman-render-core",
+ "merman-render-structured",
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",
@@ -2693,6 +2694,7 @@ dependencies = [
 name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
  "dugong",
  "kurbo 0.13.1",
  "memchr",
@@ -2701,9 +2703,24 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "roxmltree 0.21.2",
+ "ryu-js",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "merman-render-structured"
+version = "0.11.0"
+dependencies = [
+ "merman-markup",
+ "merman-model",
+ "merman-render-core",
+ "merman-theme-contract",
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

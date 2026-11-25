@@ -1,8 +1,8 @@
-pub(crate) fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
+pub fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
     matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
 }
 
-pub(crate) fn is_ecmascript_whitespace(ch: char) -> bool {
+pub fn is_ecmascript_whitespace(ch: char) -> bool {
     matches!(
         ch,
         '\u{0009}'
@@ -24,18 +24,18 @@ pub(crate) fn is_ecmascript_whitespace(ch: char) -> bool {
     )
 }
 
-pub(crate) fn trim_html_collapsible_ascii_whitespace(text: &str) -> &str {
+pub fn trim_html_collapsible_ascii_whitespace(text: &str) -> &str {
     text.trim_matches(is_html_collapsible_ascii_whitespace)
 }
 
-pub(crate) fn trim_end_html_collapsible_ascii_whitespace(text: &str) -> &str {
+pub fn trim_end_html_collapsible_ascii_whitespace(text: &str) -> &str {
     text.trim_end_matches(is_html_collapsible_ascii_whitespace)
 }
 
-pub(crate) fn trim_ecmascript_whitespace(text: &str) -> &str {
+pub fn trim_ecmascript_whitespace(text: &str) -> &str {
     text.trim_matches(is_ecmascript_whitespace)
 }
 
-pub(crate) fn trim_start_ecmascript_whitespace(text: &str) -> &str {
+pub fn trim_start_ecmascript_whitespace(text: &str) -> &str {
     text.trim_start_matches(is_ecmascript_whitespace)
 }

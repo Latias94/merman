@@ -4,6 +4,9 @@ use std::sync::Arc;
 
 use merman_model::presentation::PresentationConfig;
 
+#[allow(unused_imports, reason = "Used by enabled diagram families.")]
+pub(crate) use merman_render_core::mermaid_style::font_family_css;
+
 pub(crate) mod canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -497,24 +500,4 @@ pub fn unsupported_features(
     ]
     .into_iter()
     .flatten()
-}
-
-#[allow(dead_code, reason = "Used by enabled diagram families.")]
-pub(crate) fn font_family_css(families: &[String]) -> String {
-    let mut css = String::new();
-    for (index, family) in families.iter().enumerate() {
-        if index != 0 {
-            css.push_str(", ");
-        }
-        if matches!(
-            family.as_str(),
-            "serif" | "sans-serif" | "monospace" | "system-ui" | "cursive" | "fantasy"
-        ) {
-            css.push_str(family);
-        } else {
-            cssparser::serialize_string(family, &mut css)
-                .expect("writing a CSS string to String cannot fail");
-        }
-    }
-    css
 }

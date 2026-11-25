@@ -15,7 +15,6 @@ mod measure;
 mod metrics;
 mod svg_metrics;
 mod types;
-mod whitespace;
 mod wrap;
 mod xhtml_label;
 
@@ -25,11 +24,11 @@ pub use deterministic::{
     try_measure_wrapped_text_with_line_metrics,
 };
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
+pub(crate) use fonts::validate_font_stack_families;
 pub use fonts::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
     FontStack, FontStackError, FontStyle, GenericFontFamily,
 };
-pub(crate) use fonts::{is_css_wide_keyword, validate_font_stack_families};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub(crate) use html_wrap::HtmlWhiteSpace;
 pub use icons::replace_fontawesome_icons;
@@ -77,21 +76,27 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, mermaid_markdown_to_wrapped_word_lines,
 };
 
-pub(crate) use css_font::{
-    ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight, xhtml_font_default,
-};
+pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_default};
 
+#[cfg(feature = "diagram-c4")]
+pub(crate) use merman_render_core::text::is_css_wide_keyword;
+#[cfg(any(
+    feature = "diagram-git-graph",
+    feature = "diagram-railroad",
+    feature = "diagram-treemap"
+))]
+pub(crate) use merman_render_core::text::trim_start_ecmascript_whitespace;
+pub use merman_render_core::text::{TextMetrics, TextStyle, WrapMode};
+pub(crate) use merman_render_core::text::{
+    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
+    trim_ecmascript_whitespace, trim_end_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
+};
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,
 };
 pub(crate) use types::{MermaidMarkdownWordType, SvgTextEntityMode};
-pub use types::{TextMetrics, TextStyle, WrapMode};
-pub(crate) use whitespace::{
-    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,
-    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
-    trim_start_ecmascript_whitespace,
-};
 pub(crate) use wrap::wrap_label_like_mermaid_lines_with_checkpoint;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even,

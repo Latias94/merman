@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-pub(crate) trait ConfigLookup {
+pub trait ConfigLookup {
     fn get(&self, key: &str) -> Option<&Value>;
 }
 
@@ -16,28 +16,24 @@ impl ConfigLookup for merman_model::presentation::PresentationConfig {
     }
 }
 
-pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
-    r#""trebuchet ms",verdana,arial,sans-serif"#;
+pub const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str = r#""trebuchet ms",verdana,arial,sans-serif"#;
 const MERMAID_DEFAULT_FONT_FAMILY_CONFIG: &str = r#""trebuchet ms", verdana, arial, sans-serif"#;
 const MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG: &str =
     r#""trebuchet ms", verdana, arial, sans-serif;"#;
-pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
+pub const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
-pub(crate) fn value_at<'a>(
-    cfg: &'a (impl ConfigLookup + ?Sized),
-    path: &[&str],
-) -> Option<&'a Value> {
+pub fn value_at<'a>(cfg: &'a (impl ConfigLookup + ?Sized), path: &[&str]) -> Option<&'a Value> {
     let (first, rest) = path.split_first()?;
     rest.iter()
         .try_fold(cfg.get(first)?, |value, key| value.get(*key))
 }
 
-pub(crate) fn config_string(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<String> {
+pub fn config_string(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<String> {
     value_at(cfg, path).and_then(|v| v.as_str().map(str::to_string))
 }
 
 /// Selects a string and its actual origin together; empty strings remain CSS tokens.
-pub(crate) fn selected_config_string<'a>(
+pub fn selected_config_string<'a>(
     cfg: &'a (impl ConfigLookup + ?Sized),
     paths: &[&'static str],
 ) -> Option<(&'static str, &'a str)> {
@@ -49,7 +45,7 @@ pub(crate) fn selected_config_string<'a>(
     })
 }
 
-pub(crate) fn json_string_or_first_array(value: &Value) -> Option<String> {
+pub fn json_string_or_first_array(value: &Value) -> Option<String> {
     value.as_str().map(str::to_string).or_else(|| {
         value
             .as_array()
@@ -58,14 +54,14 @@ pub(crate) fn json_string_or_first_array(value: &Value) -> Option<String> {
     })
 }
 
-pub(crate) fn config_string_or_first_array(
+pub fn config_string_or_first_array(
     cfg: &(impl ConfigLookup + ?Sized),
     path: &[&str],
 ) -> Option<String> {
     value_at(cfg, path).and_then(json_string_or_first_array)
 }
 
-pub(crate) fn json_string_vec(value: &Value) -> Vec<String> {
+pub fn json_string_vec(value: &Value) -> Vec<String> {
     value
         .as_array()
         .map(|values| {
@@ -77,15 +73,15 @@ pub(crate) fn json_string_vec(value: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub(crate) fn config_string_vec(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Vec<String> {
+pub fn config_string_vec(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Vec<String> {
     value_at(cfg, path).map_or_else(Vec::new, json_string_vec)
 }
 
-pub(crate) fn config_bool(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<bool> {
+pub fn config_bool(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
-pub(crate) fn json_bool(v: &Value) -> Option<bool> {
+pub fn json_bool(v: &Value) -> Option<bool> {
     v.as_bool()
         .or_else(|| v.as_i64().map(|n| n != 0))
         .or_else(|| v.as_u64().map(|n| n != 0))
@@ -100,7 +96,7 @@ pub(crate) fn json_bool(v: &Value) -> Option<bool> {
 }
 
 // Theme overrides retain their JSON types; source drawing guards use JavaScript truthiness.
-pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
+pub fn json_value_is_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(value) => *value,
@@ -110,14 +106,14 @@ pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
     }
 }
 
-pub(crate) fn config_effective_html_labels(cfg: &(impl ConfigLookup + ?Sized)) -> bool {
+pub fn config_effective_html_labels(cfg: &(impl ConfigLookup + ?Sized)) -> bool {
     config_bool(cfg, &["htmlLabels"])
         .or_else(|| config_bool(cfg, &["flowchart", "htmlLabels"]))
         .unwrap_or(true)
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) struct DiagramLook<'a> {
+pub struct DiagramLook<'a> {
     /// The effective look used by layout and renderer behavior.
     value: &'a str,
     /// The allow-listed token preserved when a renderer serializes `data-look`.
@@ -130,7 +126,7 @@ pub(crate) struct DiagramLook<'a> {
 }
 
 impl<'a> DiagramLook<'a> {
-    pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
+    pub fn from_raw(raw: Option<&'a str>) -> Self {
         let serialized_value = raw
             .map(str::trim)
             .filter(|look| matches!(*look, "classic" | "handDrawn" | "neo" | "default"))
@@ -145,7 +141,7 @@ impl<'a> DiagramLook<'a> {
         }
     }
 
-    pub(crate) fn into_static(self) -> DiagramLook<'static> {
+    pub fn into_static(self) -> DiagramLook<'static> {
         let serialized_value = match self.serialized_value {
             "handDrawn" => "handDrawn",
             "neo" => "neo",
@@ -155,19 +151,19 @@ impl<'a> DiagramLook<'a> {
         DiagramLook::from_raw(Some(serialized_value))
     }
 
-    pub(crate) fn as_str(&self) -> &'a str {
+    pub fn as_str(&self) -> &'a str {
         self.value
     }
 
-    pub(crate) fn serialized(&self) -> &'a str {
+    pub fn serialized(&self) -> &'a str {
         self.serialized_value
     }
 
-    pub(crate) fn is_neo(&self) -> bool {
+    pub fn is_neo(&self) -> bool {
         self.value == "neo"
     }
 
-    pub(crate) fn is_hand_drawn(&self) -> bool {
+    pub fn is_hand_drawn(&self) -> bool {
         self.value == "handDrawn"
     }
 }
@@ -178,17 +174,17 @@ impl std::fmt::Display for DiagramLook<'_> {
     }
 }
 
-pub(crate) fn config_diagram_look(cfg: &(impl ConfigLookup + ?Sized)) -> DiagramLook<'_> {
+pub fn config_diagram_look(cfg: &(impl ConfigLookup + ?Sized)) -> DiagramLook<'_> {
     DiagramLook::from_raw(value_at(cfg, &["look"]).and_then(Value::as_str))
 }
 
-pub(crate) fn mermaid_config_diagram_look(
+pub fn mermaid_config_diagram_look(
     cfg: &merman_model::presentation::PresentationConfig,
 ) -> DiagramLook<'_> {
     DiagramLook::from_raw(cfg.get_str("look"))
 }
 
-pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
+pub fn normalize_css_font_family(font_family: &str) -> String {
     let Some(parsed) = crate::mermaid_style::parse_css_font_family_value(font_family) else {
         return String::new();
     };
@@ -231,13 +227,13 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
     }
 }
 
-pub(crate) fn configured_font_family(
+pub fn configured_font_family(
     cfg: &(impl ConfigLookup + ?Sized),
 ) -> Option<(String, &'static str)> {
     configured_font_family_with(cfg, Value::as_str)
 }
 
-pub(crate) fn configured_font_family_or_first_array(
+pub fn configured_font_family_or_first_array(
     cfg: &(impl ConfigLookup + ?Sized),
 ) -> Option<(String, &'static str)> {
     configured_font_family_with(cfg, json_str_or_first_array_ref)
@@ -259,7 +255,7 @@ fn configured_font_family_with(
         })
 }
 
-pub(crate) fn config_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
+pub fn config_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
     configured_font_family(cfg)
         .map(|(font, _)| font)
         .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
@@ -267,7 +263,7 @@ pub(crate) fn config_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) -> Stri
 
 /// Mermaid's generated :root custom property reads config.fontFamily, independently
 /// of the theme font used by diagram styles (mermaidAPI.createCssStyles).
-pub(crate) fn config_root_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
+pub fn config_root_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
     let Some(font_family) = value_at(cfg, &["fontFamily"]).and_then(Value::as_str) else {
         return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
     };
@@ -279,7 +275,7 @@ pub(crate) fn config_root_font_family_css(cfg: &(impl ConfigLookup + ?Sized)) ->
         .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
 }
 
-pub(crate) fn config_font_family_or_first_array_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
+pub fn config_font_family_or_first_array_css(cfg: &(impl ConfigLookup + ?Sized)) -> String {
     configured_font_family_or_first_array(cfg)
         .map(|(font, _)| font)
         .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
@@ -291,7 +287,7 @@ fn json_str_or_first_array_ref(value: &Value) -> Option<&str> {
         .or_else(|| value.as_array().and_then(|values| values.first()?.as_str()))
 }
 
-pub(crate) fn normalized_config_font_family(font_family: &str) -> Option<String> {
+pub fn normalized_config_font_family(font_family: &str) -> Option<String> {
     if matches!(
         font_family,
         MERMAID_DEFAULT_FONT_FAMILY_CONFIG | MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
@@ -303,14 +299,12 @@ pub(crate) fn normalized_config_font_family(font_family: &str) -> Option<String>
     (!font_family.is_empty()).then_some(font_family)
 }
 
-pub(crate) fn config_theme_or_root_font_size_px_opt(
-    cfg: &(impl ConfigLookup + ?Sized),
-) -> Option<f64> {
+pub fn config_theme_or_root_font_size_px_opt(cfg: &(impl ConfigLookup + ?Sized)) -> Option<f64> {
     configured_theme_or_root_font_size_px(cfg).map(|(size, _)| size)
 }
 
 /// Selects a valid nonnegative font size before assigning configuration ownership.
-pub(crate) fn configured_theme_or_root_font_size_px(
+pub fn configured_theme_or_root_font_size_px(
     cfg: &(impl ConfigLookup + ?Sized),
 ) -> Option<(f64, &'static str)> {
     config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
@@ -323,20 +317,17 @@ pub(crate) fn configured_theme_or_root_font_size_px(
         })
 }
 
-pub(crate) fn config_theme_or_root_font_size_px(
-    cfg: &(impl ConfigLookup + ?Sized),
-    default: f64,
-) -> f64 {
+pub fn config_theme_or_root_font_size_px(cfg: &(impl ConfigLookup + ?Sized), default: f64) -> f64 {
     config_theme_or_root_font_size_px_opt(cfg).unwrap_or(default)
 }
 
-pub(crate) fn config_theme_font_size_css_or_root_number_px_opt(
+pub fn config_theme_font_size_css_or_root_number_px_opt(
     cfg: &(impl ConfigLookup + ?Sized),
 ) -> Option<f64> {
     configured_theme_font_size_css_or_root_number_px(cfg).map(|(size, _)| size)
 }
 
-pub(crate) fn configured_theme_font_size_css_or_root_number_px(
+pub fn configured_theme_font_size_css_or_root_number_px(
     cfg: &(impl ConfigLookup + ?Sized),
 ) -> Option<(f64, &'static str)> {
     config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
@@ -349,14 +340,14 @@ pub(crate) fn configured_theme_font_size_css_or_root_number_px(
         })
 }
 
-pub(crate) fn config_theme_font_size_css_or_root_number_px(
+pub fn config_theme_font_size_css_or_root_number_px(
     cfg: &(impl ConfigLookup + ?Sized),
     default: f64,
 ) -> f64 {
     config_theme_font_size_css_or_root_number_px_opt(cfg).unwrap_or(default)
 }
 
-pub(crate) fn json_f64(value: &Value) -> Option<f64> {
+pub fn json_f64(value: &Value) -> Option<f64> {
     value
         .as_f64()
         .or_else(|| value.as_i64().map(|n| n as f64))
@@ -367,21 +358,17 @@ pub(crate) fn json_f64(value: &Value) -> Option<f64> {
         })
 }
 
-pub(crate) fn config_f64(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<f64> {
+pub fn config_f64(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<f64> {
     value_at(cfg, path).and_then(json_f64)
 }
 
-pub(crate) fn config_f64_or(
-    cfg: &(impl ConfigLookup + ?Sized),
-    path: &[&str],
-    default: f64,
-) -> f64 {
+pub fn config_f64_or(cfg: &(impl ConfigLookup + ?Sized), path: &[&str], default: f64) -> f64 {
     config_f64(cfg, path).unwrap_or(default)
 }
 
 /// Mermaid `parseFontSize` preserves numeric fractions and reads an integer prefix from strings.
 /// This is a compatibility number, not a conversion from CSS lengths to pixels.
-pub(crate) fn json_mermaid_font_size_number(value: &Value) -> Option<f64> {
+pub fn json_mermaid_font_size_number(value: &Value) -> Option<f64> {
     if let Some(number) = value.as_f64() {
         return Some(number);
     }
@@ -400,18 +387,18 @@ pub(crate) fn json_mermaid_font_size_number(value: &Value) -> Option<f64> {
         .filter(|number| number.is_finite())
 }
 
-pub(crate) fn json_f64_css_px(value: &Value) -> Option<f64> {
+pub fn json_f64_css_px(value: &Value) -> Option<f64> {
     json_f64(value).or_else(|| value.as_str().and_then(parse_css_px_to_f64))
 }
 
-pub(crate) fn config_f64_css_px(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<f64> {
+pub fn config_f64_css_px(cfg: &(impl ConfigLookup + ?Sized), path: &[&str]) -> Option<f64> {
     value_at(cfg, path).and_then(json_f64_css_px)
 }
 
 /// Extends the legacy numeric/px configuration subset with context-free CSS length units.
 /// Literal zero lengths need no host context. Other relative lengths, keywords, and expressions
 /// retain their existing family-specific owners.
-pub(crate) fn config_f64_css_absolute_px(
+pub fn config_f64_css_absolute_px(
     cfg: &(impl ConfigLookup + ?Sized),
     path: &[&str],
 ) -> Option<f64> {
@@ -438,18 +425,18 @@ pub(crate) fn config_f64_css_absolute_px(
     })
 }
 
-pub(crate) fn json_f64_explicit_css_absolute_px(value: &Value) -> Option<f64> {
+pub fn json_f64_explicit_css_absolute_px(value: &Value) -> Option<f64> {
     crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(value.as_str()?)
 }
 
-pub(crate) fn config_f64_explicit_css_absolute_px(
+pub fn config_f64_explicit_css_absolute_px(
     cfg: &(impl ConfigLookup + ?Sized),
     path: &[&str],
 ) -> Option<f64> {
     value_at(cfg, path).and_then(json_f64_explicit_css_absolute_px)
 }
 
-pub(crate) fn json_css_number_or_string(value: &Value) -> Option<String> {
+pub fn json_css_number_or_string(value: &Value) -> Option<String> {
     if let Some(raw) = value.as_str() {
         let text = normalize_css_raw_value_text(raw);
         return (!text.is_empty()).then(|| text.to_string());
@@ -462,7 +449,7 @@ pub(crate) fn json_css_number_or_string(value: &Value) -> Option<String> {
     })
 }
 
-pub(crate) fn config_css_number_or_string(
+pub fn config_css_number_or_string(
     cfg: &(impl ConfigLookup + ?Sized),
     path: &[&str],
 ) -> Option<String> {

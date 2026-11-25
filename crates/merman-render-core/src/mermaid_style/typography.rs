@@ -13,8 +13,7 @@ use crate::text::TextStyle;
 ///
 /// Compatibility measurement still approximates rem using the inherited diagram size. This
 /// detector supplies admission evidence only; it never changes measurement or emitted CSS.
-#[cfg_attr(not(feature = "all-diagrams"), allow(dead_code))]
-pub(crate) fn root_dependent_font_size<'a>(
+pub fn root_dependent_font_size<'a>(
     styles: impl IntoIterator<Item = &'a str>,
     control: &OperationControl,
 ) -> OperationControlResult<Option<(usize, &'a str)>> {
@@ -67,7 +66,7 @@ pub(crate) fn root_dependent_font_size<'a>(
 }
 
 /// Resolves supported font longhands against one immutable inherited style.
-pub(crate) struct TextStyleCascade<'a> {
+pub struct TextStyleCascade<'a> {
     base: &'a TextStyle,
     style: Cow<'a, TextStyle>,
     context: CssFontSizeContext,
@@ -75,7 +74,7 @@ pub(crate) struct TextStyleCascade<'a> {
 }
 
 impl<'a> TextStyleCascade<'a> {
-    pub(crate) fn new(base: &'a TextStyle, context: CssFontSizeContext) -> Self {
+    pub fn new(base: &'a TextStyle, context: CssFontSizeContext) -> Self {
         Self {
             base,
             style: Cow::Borrowed(base),
@@ -84,7 +83,7 @@ impl<'a> TextStyleCascade<'a> {
         }
     }
 
-    pub(crate) fn observe_declaration(&mut self, declaration: &ParsedStyleDeclaration<'_>) {
+    pub fn observe_declaration(&mut self, declaration: &ParsedStyleDeclaration<'_>) {
         self.observe_analyzed(
             declaration.property(),
             declaration.value(),
@@ -93,7 +92,7 @@ impl<'a> TextStyleCascade<'a> {
         );
     }
 
-    pub(crate) fn observe(&mut self, property: &str, value: &str, important: bool) {
+    pub fn observe(&mut self, property: &str, value: &str, important: bool) {
         if !matches!(
             property,
             "font-family" | "font-size" | "font-weight" | "font-style"
@@ -190,7 +189,7 @@ impl<'a> TextStyleCascade<'a> {
         }
     }
 
-    pub(crate) fn finish(self) -> Cow<'a, TextStyle> {
+    pub fn finish(self) -> Cow<'a, TextStyle> {
         if self.style.font_family == self.base.font_family
             && self.style.font_size == self.base.font_size
             && self.style.font_weight == self.base.font_weight
@@ -203,7 +202,7 @@ impl<'a> TextStyleCascade<'a> {
     }
 }
 
-pub(crate) fn source_font_size_after_style(parent: Option<f64>, style: &str) -> Option<f64> {
+pub fn source_font_size_after_style(parent: Option<f64>, style: &str) -> Option<f64> {
     use crate::mermaid_style::{self, CssFontSizeContext, CssFontSizeOwnership};
 
     let mut winner = None;

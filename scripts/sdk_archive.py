@@ -474,6 +474,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         "Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-model",
         "crates/merman-markup", "crates/merman-render", "crates/merman-export",
         "crates/merman-core-preprocess", "crates/merman-render-core",
+        "crates/merman-render-structured",
     ]
     if flavor == "full":
         source_paths.append("crates/merman-layout-elk")

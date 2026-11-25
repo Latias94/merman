@@ -77,7 +77,7 @@ diagram-ishikawa = ["merman-model/diagram-ishikawa"]
 diagram-journey = ["merman-model/diagram-journey"]
 diagram-kanban = ["merman-model/diagram-kanban", "markdown-labels"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "merman-render-core/resources-mindmap", "markdown-labels"]
-diagram-packet = ["merman-model/diagram-packet"]
+diagram-packet = ["merman-model/diagram-packet", "dep:merman-render-structured", "merman-render-structured/diagram-packet"]
 diagram-pie = ["merman-model/diagram-pie"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar"]
@@ -117,7 +117,8 @@ math = [
 [dependencies]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
-merman-render-core = { workspace = true, features = ["svg-output"] }
+merman-render-core = { workspace = true, features = ["css-style", "svg-output"] }
+merman-render-structured = { workspace = true, optional = true }
 base64.workspace = true
 cssparser.workspace = true
 data-url.workspace = true

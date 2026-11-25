@@ -4,7 +4,7 @@ const MAX_SAFE_INTEGER_F64: f64 = 9_007_199_254_740_991.0;
 ///
 /// Theme sizes originate as `f32`, while layout and rendering use `f64`. Values close to an
 /// integer must therefore converge before measurement, serialization, and receipts consume them.
-pub(crate) fn canonicalize_number(mut value: f64) -> f64 {
+pub fn canonicalize_number(mut value: f64) -> f64 {
     if !value.is_finite() {
         return 0.0;
     }
@@ -19,14 +19,13 @@ pub(crate) fn canonicalize_number(mut value: f64) -> f64 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CanonicalNumber(f64);
+pub struct CanonicalNumber(f64);
 
-pub(crate) fn canonical_number(value: f64) -> CanonicalNumber {
+pub fn canonical_number(value: f64) -> CanonicalNumber {
     CanonicalNumber(canonicalize_number(value))
 }
 
-#[cfg(any(feature = "diagram-c4", feature = "diagram-journey"))]
-pub(crate) fn canonical_number_with_nonfinite(value: f64) -> CanonicalNumber {
+pub fn canonical_number_with_nonfinite(value: f64) -> CanonicalNumber {
     CanonicalNumber(if value.is_finite() {
         canonicalize_number(value)
     } else {

@@ -53,6 +53,12 @@ SVG path, including marker setback, bounds, and obstacle clearance. Diagram fami
 semantic bindings, work accounting, and projection into the layout solver. Shoal and the path
 builder exchange the same route point types.
 
+### Structured diagram rendering
+
+`merman-render-structured` owns the typed layout and SVG emission for Packet. It consumes
+canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
+`merman-render` dispatches to it when `diagram-packet` is selected through the facade or directly.
+
 ### Frozen presentation is distinct from engine initialization
 
 Shared presentation data includes the pure full payloads, exact render facts, normalized theme recipe and frozen resolved configuration/ownership used by terminal or graphical output. Core retains mutable detector journals, the actual history-based freeze computation, initialization caches, theme evaluation and source construction. Equal final configuration values do not prove equal authored authority.

@@ -1,5 +1,7 @@
 use super::*;
 
+pub(super) use merman_render_core::svg_css::{MermaidBaseCss, write_mermaid_base_css_prefix};
+
 // Shared Mermaid diagram CSS fragments (split from parity.rs).
 //
 // Keep Mermaid@11.16.0 ordering quirks to preserve DOM parity.
@@ -54,76 +56,6 @@ fn is_normalized_svg_diagram_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct MermaidBaseCss<'a> {
-    pub(super) font_family: &'a str,
-    pub(super) font_size_css: &'a str,
-    pub(super) normal_edge_stroke_width_css: &'a str,
-    pub(super) text_color: &'a str,
-    pub(super) line_color: &'a str,
-    pub(super) error_bkg: &'a str,
-    pub(super) error_text: &'a str,
-}
-
-pub(super) fn write_mermaid_base_css_prefix<I>(
-    out: &mut impl SvgOutput,
-    id: I,
-    css: MermaidBaseCss<'_>,
-) -> Result<()>
-where
-    I: Copy + std::fmt::Display,
-{
-    emit_mermaid_base_css_prefix(out, &id, css)
-}
-
-#[inline(never)]
-fn emit_mermaid_base_css_prefix(
-    out: &mut dyn SvgOutput,
-    id: &dyn std::fmt::Display,
-    css: MermaidBaseCss<'_>,
-) -> Result<()> {
-    let _ = write!(
-        out,
-        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
-        id, css.font_family, css.font_size_css, css.text_color
-    );
-    out.checkpoint()?;
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, css.error_bkg, id, css.error_text, css.error_text
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"#{} .edge-thickness-normal{{stroke-width:{};}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, css.normal_edge_stroke_width_css, id, id, id, id, id
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, css.line_color, css.line_color, id, css.line_color
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        id, css.font_family, css.font_size_css, id
-    );
-    out.checkpoint()
 }
 
 pub(super) fn write_mermaid_paragraph_css_to(

@@ -805,10 +805,11 @@ impl FeatureGraph {
                     .iter()
                     .filter(|dependency| dependency.kind.is_none())
                 {
-                    if !self
-                        .packages
-                        .get(&dependency.name)
-                        .is_some_and(|dependency| dependency.features.contains_key("all-diagrams"))
+                    let Some(dependency_package) = self.packages.get(&dependency.name) else {
+                        continue;
+                    };
+                    let all_families = dependency_package.features.contains_key("all-diagrams");
+                    if !all_families && !dependency_package.features.contains_key(selector.feature)
                     {
                         continue;
                     }
@@ -823,7 +824,13 @@ impl FeatureGraph {
                             dependency.name
                         )));
                     }
-                    let weak = if dependency.optional { "?" } else { "" };
+                    // Optional products select their capabilities independently. A family
+                    // crate must be enabled by the selector that dispatches to it.
+                    let weak = if dependency.optional && all_families {
+                        "?"
+                    } else {
+                        ""
+                    };
                     let edge = format!("{}{weak}/{}", dependency.name, selector.feature);
                     if !members.contains(&edge) {
                         return Err(matrix_error(format!(

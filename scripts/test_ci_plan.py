@@ -277,6 +277,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-markup/src/sanitize/fragment.rs": True,
             "crates/merman-render/src/lib.rs": True,
             "crates/merman-render-core/src/lib.rs": True,
+            "crates/merman-render-structured/src/packet/mod.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
             "crates/xtask/src/cmd/flowchart_elk_corpus.rs": True,
             "crates/xtask/src/cmd/parser_differential.rs": True,
@@ -333,6 +334,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-core-preprocess/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-structured/src/packet/mod.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-model/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-markup/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
@@ -1069,12 +1071,12 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                     job.index(fetch), job.index("scripts/verify_artifact_dependency_closures.py")
                 )
 
-    def test_performance_paths_include_shared_model_and_markup_sources(self) -> None:
+    def test_performance_paths_include_shared_model_markup_and_render_sources(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml"
         ).read_text(encoding="utf-8")
         paths = workflow.split("    paths:\n", 1)[1].split("  schedule:", 1)[0]
-        for root in ["merman-model", "merman-markup"]:
+        for root in ("merman-model", "merman-markup", "merman-render-core", "merman-render-structured"):
             self.assertIn(f'      - "crates/{root}/**"', paths)
 
     def test_manual_full_owner_verification_is_explicit_and_opt_in(self) -> None:

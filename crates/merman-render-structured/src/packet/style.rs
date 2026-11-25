@@ -1,41 +1,46 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::{config, mermaid_style::font_family_css};
+use merman_theme_contract::v2::FamilyTheme;
 
-/// Final Packet stylesheet values used by the SVG writer.
+use super::config::{PacketBitOrder, PacketConfigView, PacketStyleSettings};
+
+/// Presentation settings bound before emitting Packet SVG.
 #[derive(Debug)]
-pub(crate) struct PacketTypographyThemePlan {
-    css_binding: super::config::PacketStyleSettings,
-    font_family_css: Box<str>,
-    root_font_size_px: f64,
-    native_typography: Option<Box<PacketNativeTypography>>,
+pub struct PacketStyle {
+    pub(super) css_binding: PacketStyleSettings,
+    pub(super) bit_order: PacketBitOrder,
+    use_max_width: bool,
+    pub(super) font_family_css: Box<str>,
+    pub(super) root_font_size_px: f64,
+    pub(super) native_typography: Option<Box<PacketNativeTypography>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct PacketNativeTypography {
-    pub(crate) byte_font_family: Option<String>,
-    pub(crate) title_font_family: Option<String>,
-    pub(crate) label_weight: u16,
-    pub(crate) title_weight: u16,
+pub(super) struct PacketNativeTypography {
+    pub(super) byte_font_family: Option<String>,
+    pub(super) title_font_family: Option<String>,
+    pub(super) label_weight: u16,
+    pub(super) title_weight: u16,
 }
 
-impl PacketTypographyThemePlan {
-    fn from_config(config: &PresentationConfig) -> Self {
+impl PacketStyle {
+    fn from_config(config: &PresentationConfig, packet: &PacketConfigView<'_>) -> Self {
         Self {
-            css_binding: super::PacketConfigView::new(config).style_settings(),
-            font_family_css: crate::config::config_font_family_css(config).into_boxed_str(),
-            root_font_size_px: crate::config::config_theme_font_size_css_or_root_number_px_opt(
-                config,
-            )
-            .unwrap_or(16.0),
+            css_binding: packet.style_settings(),
+            bit_order: packet.bit_order(),
+            use_max_width: packet.use_max_width(),
+            font_family_css: config::config_font_family_css(config).into_boxed_str(),
+            root_font_size_px: config::config_theme_font_size_css_or_root_number_px_opt(config)
+                .unwrap_or(16.0),
             native_typography: None,
         }
     }
 
-    pub(crate) fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
-        let mut plan = Self::from_config(config);
+    pub fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
+        let packet = PacketConfigView::new(config);
+        let mut plan = Self::from_config(config, &packet);
         let Some(theme) = native else { return plan };
-        let packet = super::PacketConfigView::new(config);
         let roles = &theme.roles;
         let css = &mut plan.css_binding;
         let owns_style =
@@ -112,17 +117,16 @@ impl PacketTypographyThemePlan {
         if !owns_style("blockStrokeWidth", "themeVariables.packet.blockStrokeWidth") {
             css.block_stroke_width = theme.form.stroke_width.to_string().into();
         }
-        plan.root_font_size_px =
-            crate::config::configured_theme_font_size_css_or_root_number_px(config)
-                .filter(|(_, path)| config.explicit_config_owns_path(path))
-                .map_or(base_size, |(size, _)| size);
+        plan.root_font_size_px = config::configured_theme_font_size_css_or_root_number_px(config)
+            .filter(|(_, path)| config.explicit_config_owns_path(path))
+            .map_or(base_size, |(size, _)| size);
         let explicit_font = ["themeVariables.fontFamily", "fontFamily"]
             .into_iter()
             .filter(|path| config.explicit_config_owns_path(path))
             .find_map(|path| {
                 config
                     .get_str(path)
-                    .and_then(crate::config::normalized_config_font_family)
+                    .and_then(config::normalized_config_font_family)
             });
         let has_explicit_font = explicit_font.is_some();
         plan.font_family_css = explicit_font
@@ -139,19 +143,7 @@ impl PacketTypographyThemePlan {
         plan
     }
 
-    pub(crate) fn font_family_css(&self) -> &str {
-        &self.font_family_css
-    }
-
-    pub(crate) const fn root_font_size_px(&self) -> f64 {
-        self.root_font_size_px
-    }
-
-    pub(crate) fn css_binding(&self) -> &super::config::PacketStyleSettings {
-        &self.css_binding
-    }
-
-    pub(crate) fn native_typography(&self) -> Option<&PacketNativeTypography> {
-        self.native_typography.as_deref()
+    pub const fn use_max_width(&self) -> bool {
+        self.use_max_width
     }
 }

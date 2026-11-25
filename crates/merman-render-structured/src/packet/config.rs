@@ -1,5 +1,7 @@
-use crate::config::{ConfigLookup, config_bool, config_css_number_or_string, config_f64};
 use merman_model::families::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
+use merman_render_core::config::{
+    ConfigLookup, config_bool, config_css_number_or_string, config_f64,
+};
 use serde_json::Value;
 use std::borrow::Cow;
 
@@ -21,13 +23,13 @@ const DEFAULT_BLOCK_STROKE_COLOR: &str = "black";
 const DEFAULT_BLOCK_STROKE_WIDTH: &str = "1";
 const DEFAULT_BLOCK_FILL_COLOR: &str = "#efefef";
 
-pub(crate) struct PacketConfigView<'a> {
+pub(super) struct PacketConfigView<'a> {
     packet_config: &'a Value,
     packet_theme: &'a Value,
 }
 
 impl<'a> PacketConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
+    pub(super) fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
             packet_config: effective_config.get("packet").unwrap_or(&Value::Null),
             packet_theme: effective_config
@@ -37,7 +39,7 @@ impl<'a> PacketConfigView<'a> {
         }
     }
 
-    pub(crate) fn layout_settings(
+    pub(super) fn layout_settings(
         &self,
     ) -> std::result::Result<PacketLayoutSettings, PacketBitsPerRowError> {
         let show_bits = self.packet_bool("showBits").unwrap_or(DEFAULT_SHOW_BITS);
@@ -73,18 +75,18 @@ impl<'a> PacketConfigView<'a> {
         })
     }
 
-    pub(crate) fn bit_order(&self) -> PacketBitOrder {
+    pub(super) fn bit_order(&self) -> PacketBitOrder {
         match self.packet_config.get("bitOrder").and_then(Value::as_str) {
             Some("descending") => PacketBitOrder::Descending,
             _ => PacketBitOrder::Ascending,
         }
     }
 
-    pub(crate) fn use_max_width(&self) -> bool {
+    pub(super) fn use_max_width(&self) -> bool {
         self.packet_bool("useMaxWidth").unwrap_or(true)
     }
 
-    pub(crate) fn style_settings(&self) -> PacketStyleSettings {
+    pub(super) fn style_settings(&self) -> PacketStyleSettings {
         PacketStyleSettings {
             byte_font_size: self.packet_style("byteFontSize", DEFAULT_BYTE_FONT_SIZE),
             start_byte_color: self.packet_style("startByteColor", DEFAULT_START_BYTE_COLOR),
@@ -122,34 +124,34 @@ impl<'a> PacketConfigView<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PacketBitOrder {
+pub(super) enum PacketBitOrder {
     Ascending,
     Descending,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PacketLayoutSettings {
-    pub(crate) show_bits: bool,
-    pub(crate) bit_order: PacketBitOrder,
-    pub(crate) row_height: f64,
-    pub(crate) padding_x: f64,
-    pub(crate) padding_y: f64,
-    pub(crate) bit_width: f64,
-    pub(crate) bits_per_row: f64,
+pub(super) struct PacketLayoutSettings {
+    pub(super) show_bits: bool,
+    pub(super) bit_order: PacketBitOrder,
+    pub(super) row_height: f64,
+    pub(super) padding_x: f64,
+    pub(super) padding_y: f64,
+    pub(super) bit_width: f64,
+    pub(super) bits_per_row: f64,
 }
 
 #[derive(Debug)]
-pub(crate) struct PacketStyleSettings {
-    pub(crate) byte_font_size: Cow<'static, str>,
-    pub(crate) start_byte_color: Cow<'static, str>,
-    pub(crate) end_byte_color: Cow<'static, str>,
-    pub(crate) label_color: Cow<'static, str>,
-    pub(crate) label_font_size: Cow<'static, str>,
-    pub(crate) title_color: Cow<'static, str>,
-    pub(crate) title_font_size: Cow<'static, str>,
-    pub(crate) block_stroke_color: Cow<'static, str>,
-    pub(crate) block_stroke_width: Cow<'static, str>,
-    pub(crate) block_fill_color: Cow<'static, str>,
+pub(super) struct PacketStyleSettings {
+    pub(super) byte_font_size: Cow<'static, str>,
+    pub(super) start_byte_color: Cow<'static, str>,
+    pub(super) end_byte_color: Cow<'static, str>,
+    pub(super) label_color: Cow<'static, str>,
+    pub(super) label_font_size: Cow<'static, str>,
+    pub(super) title_color: Cow<'static, str>,
+    pub(super) title_font_size: Cow<'static, str>,
+    pub(super) block_stroke_color: Cow<'static, str>,
+    pub(super) block_stroke_width: Cow<'static, str>,
+    pub(super) block_fill_color: Cow<'static, str>,
 }
 
 #[cfg(test)]

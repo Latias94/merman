@@ -2,6 +2,8 @@
 
 use std::{fmt, sync::Arc};
 
+use merman_render_core::text::is_css_wide_keyword;
+
 const MAX_FONT_STACK_ENTRIES: usize = 32;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
 
@@ -345,13 +347,6 @@ fn is_css_generic_family(value: &str) -> bool {
     matches!(
         value.to_ascii_lowercase().as_str(),
         "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy" | "system-ui"
-    )
-}
-
-pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
-    matches!(
-        value.to_ascii_lowercase().as_str(),
-        "inherit" | "initial" | "revert" | "revert-layer" | "unset"
     )
 }
 

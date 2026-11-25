@@ -79,6 +79,7 @@ DUAL_LICENSE_CRATE_ROOTS = (
     "crates/merman-markup",
     "crates/merman-render",
     "crates/merman-render-core",
+    "crates/merman-render-structured",
     "crates/merman-rustdoc",
     "crates/merman-typst-plugin",
     "crates/merman-uniffi",
@@ -119,6 +120,7 @@ CRATE_COMPONENTS = {
         "zenuml-core",
     ),
     "crates/merman-render-core": ("mermaid",),
+    "crates/merman-render-structured": ("mermaid",),
     "crates/merman-unicode-linebreak": ("unicode-linebreak",),
 }
 

@@ -934,8 +934,7 @@ fn prepare_packet_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution.native_family_theme();
-    let typography_theme =
-        crate::packet::PacketTypographyThemePlan::resolve(native, &meta.effective_config);
+    let style = crate::packet::PacketStyle::resolve(native, &meta.effective_config);
     let layout = crate::packet::layout_packet_diagram_typed(
         model,
         meta.title.as_deref(),
@@ -944,7 +943,7 @@ fn prepare_packet_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Packet(Box::new(
         PacketFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            typography_theme,
+            style,
         },
     )))
 }

@@ -2,19 +2,17 @@
 
 mod html_text;
 mod typography;
-pub(crate) use html_text::{
+pub use html_text::{
     HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty, HtmlTextSpacing,
 };
-pub(crate) use typography::{
-    TextStyleCascade, root_dependent_font_size, source_font_size_after_style,
-};
+pub use typography::{TextStyleCascade, root_dependent_font_size, source_font_size_after_style};
 
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedStyleDeclaration<'a> {
+pub struct ParsedStyleDeclaration<'a> {
     property: String,
     property_source: &'a str,
     source_value: &'a str,
@@ -24,66 +22,66 @@ pub(crate) struct ParsedStyleDeclaration<'a> {
 }
 
 impl<'a> ParsedStyleDeclaration<'a> {
-    pub(crate) fn property(&self) -> &str {
+    pub fn property(&self) -> &str {
         &self.property
     }
 
     /// Returns the source spelling of the property for compatibility callers that
     /// must borrow the original declaration instead of allocating a decoded name.
-    pub(crate) const fn property_source(&self) -> &'a str {
+    pub const fn property_source(&self) -> &'a str {
         self.property_source
     }
 
-    pub(crate) const fn property_css(&self) -> &'a str {
+    pub const fn property_css(&self) -> &'a str {
         self.property_source
     }
 
     /// Returns the declaration value including a trailing `!important`, if present.
-    pub(crate) const fn source_value(&self) -> &'a str {
+    pub const fn source_value(&self) -> &'a str {
         self.source_value
     }
 
-    pub(crate) const fn value(&self) -> &'a str {
+    pub const fn value(&self) -> &'a str {
         self.value
     }
 
-    pub(crate) const fn important(&self) -> bool {
+    pub const fn important(&self) -> bool {
         self.important
     }
 
-    pub(crate) const fn analysis(&self) -> &CssValueAnalysis {
+    pub const fn analysis(&self) -> &CssValueAnalysis {
         &self.analysis
     }
 
-    pub(crate) fn inherits_property_value(&self) -> bool {
+    pub fn inherits_property_value(&self) -> bool {
         self.analysis.inherits_property_value()
     }
 
-    pub(crate) const fn is_single_component_value(&self) -> bool {
+    pub const fn is_single_component_value(&self) -> bool {
         self.analysis.is_single_component()
     }
 
-    pub(crate) fn svg_number_or_px(&self) -> Option<f64> {
+    pub fn svg_number_or_px(&self) -> Option<f64> {
         self.analysis.svg_number_or_px()
     }
 
-    pub(crate) fn html_box_length_px(&self) -> Result<Option<f64>, ()> {
+    pub fn html_box_length_px(&self) -> Result<Option<f64>, ()> {
         self.analysis.html_box_length_px(self.value)
     }
 
-    pub(crate) fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
+    pub fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
         self.analysis.svg_rect_length_px(self.value)
     }
 
-    pub(crate) fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
+    pub fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
         self.analysis.resolve_font_size_px(context)
     }
 
-    pub(crate) fn font_size_is_literal_zero(&self) -> bool {
+    pub fn font_size_is_literal_zero(&self) -> bool {
         css_font_size_value_is_zero(self.value, &self.analysis)
     }
 
-    pub(crate) fn font_size_is_negative_literal(&self) -> bool {
+    pub fn font_size_is_negative_literal(&self) -> bool {
         if !self.is_single_component_value() {
             return false;
         }
@@ -97,11 +95,11 @@ impl<'a> ParsedStyleDeclaration<'a> {
     }
 }
 
-pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
+pub fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
     parse_style_declaration_with_policy(raw, CssValuePolicy::MermaidSourceStyle)
 }
 
-pub(crate) fn parse_html_label_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
+pub fn parse_html_label_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
     parse_style_declaration_with_policy(raw, CssValuePolicy::HtmlLabelMeasurement)
 }
 
@@ -149,12 +147,12 @@ fn parse_style_declaration_with_policy(
     })
 }
 
-pub(crate) fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
+pub fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
     let parsed = parse_style_declaration(s)?;
     Some((parsed.property_source(), parsed.source_value()))
 }
 
-pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
+pub fn is_safe_css_font_family_value(value: &str) -> bool {
     // Preserve existing dynamic host values. Literal font names have their own CSS grammar:
     // markup punctuation inside a complete quoted name belongs to the terminal XML writer.
     (css_value_is_safe(value, CssValuePolicy::MermaidSourceStyle) && !value.contains(':'))
@@ -162,15 +160,15 @@ pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
 }
 
 #[derive(Debug)]
-pub(crate) struct ParsedCssFontFamilyValue<'a> {
-    pub(crate) value: &'a str,
-    pub(crate) important: bool,
+pub struct ParsedCssFontFamilyValue<'a> {
+    pub value: &'a str,
+    pub important: bool,
     literal_family_list: bool,
 }
 
 /// Checks the outer list and priority without evaluating host-dependent font functions.
 /// Emission safety remains separate, including for opaque function bodies.
-pub(crate) fn parse_css_font_family_value(value: &str) -> Option<ParsedCssFontFamilyValue<'_>> {
+pub fn parse_css_font_family_value(value: &str) -> Option<ParsedCssFontFamilyValue<'_>> {
     let value = value.trim();
     if value.chars().any(char::is_control) {
         return None;
@@ -284,59 +282,59 @@ fn literal_css_font_family_list_is_valid(value: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CssFontFamilyOwnership {
+pub enum CssFontFamilyOwnership {
     Inherited,
     SourceOwned,
     Unverified,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CssFontFamilyOverride {
+pub struct CssFontFamilyOverride {
     important: bool,
     ownership: CssFontFamilyOwnership,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CssFontSizeOwnership {
+pub enum CssFontSizeOwnership {
     Inherited,
     SourceOwned,
     Unverified,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CssFontSizeOverride {
+pub struct CssFontSizeOverride {
     important: bool,
     ownership: CssFontSizeOwnership,
 }
 
 impl CssFontSizeOverride {
-    pub(crate) const fn important(self) -> bool {
+    pub const fn important(self) -> bool {
         self.important
     }
 
-    pub(crate) const fn ownership(self) -> CssFontSizeOwnership {
+    pub const fn ownership(self) -> CssFontSizeOwnership {
         self.ownership
     }
 }
 
 impl CssFontFamilyOverride {
-    pub(crate) const fn ownership(self) -> CssFontFamilyOwnership {
+    pub const fn ownership(self) -> CssFontFamilyOwnership {
         self.ownership
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct StyleDeclarationBoundary<'a> {
+pub struct StyleDeclarationBoundary<'a> {
     raw: &'a str,
 }
 
 impl<'a> StyleDeclarationBoundary<'a> {
-    pub(crate) const fn raw(self) -> &'a str {
+    pub const fn raw(self) -> &'a str {
         self.raw
     }
 }
 
-pub(crate) fn css_font_family_ownership<'a>(
+pub fn css_font_family_ownership<'a>(
     declarations: impl IntoIterator<Item = &'a str>,
 ) -> CssFontFamilyOwnership {
     css_font_family_winner(declarations).map_or(CssFontFamilyOwnership::Inherited, |winner| {
@@ -344,7 +342,7 @@ pub(crate) fn css_font_family_ownership<'a>(
     })
 }
 
-pub(crate) fn css_font_family_override(declaration_list: &str) -> Option<CssFontFamilyOverride> {
+pub fn css_font_family_override(declaration_list: &str) -> Option<CssFontFamilyOverride> {
     css_font_family_winner([declaration_list])
 }
 
@@ -373,7 +371,7 @@ fn css_font_family_winner<'a>(
     winner
 }
 
-pub(crate) fn css_font_size_override(declaration_list: &str) -> Option<CssFontSizeOverride> {
+pub fn css_font_size_override(declaration_list: &str) -> Option<CssFontSizeOverride> {
     let mut winner = None;
     visit_style_declaration_boundaries(declaration_list, |boundary| match parse_style_declaration(
         boundary.raw(),
@@ -398,7 +396,7 @@ pub(crate) fn css_font_size_override(declaration_list: &str) -> Option<CssFontSi
 ///
 /// The declaration scanner conservatively retains host CSS outside the safe emission subset,
 /// including comments. Check only the value/priority boundary here; do not evaluate host CSS.
-pub(crate) fn css_font_size_value_override(value: &str) -> Option<CssFontSizeOverride> {
+pub fn css_font_size_value_override(value: &str) -> Option<CssFontSizeOverride> {
     let mut parser = Parser::new(value);
     let mut has_value = false;
     loop {
@@ -425,7 +423,7 @@ pub(crate) fn css_font_size_value_override(value: &str) -> Option<CssFontSizeOve
         .flatten()
 }
 
-pub(crate) fn visit_parsed_style_declarations<'a>(
+pub fn visit_parsed_style_declarations<'a>(
     declaration_list: &'a str,
     mut visit: impl FnMut(ParsedStyleDeclaration<'a>),
 ) {
@@ -442,7 +440,7 @@ pub(crate) fn visit_parsed_style_declarations<'a>(
 /// stop immediately after the first over-limit declaration without maintaining another CSS scanner.
 /// Untrusted callers must enforce a byte ceiling before entry; checkpoints occur at declaration
 /// boundaries because `cssparser` does not expose token-progress callbacks.
-pub(crate) fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
+pub fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
     declaration_list: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
     mut visit: impl FnMut(StyleDeclarationBoundary<'a>) -> Result<bool, E>,
@@ -470,7 +468,7 @@ pub(crate) fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
 ///
 /// Unlike [`css_font_family_ownership`], this preserves the writer's fail-closed behavior for a
 /// malformed item that smuggles in an extra semicolon-delimited declaration.
-pub(crate) fn css_font_family_declaration_ownership<'a>(
+pub fn css_font_family_declaration_ownership<'a>(
     declarations: impl IntoIterator<Item = &'a str>,
 ) -> CssFontFamilyOwnership {
     css_font_family_ownership_from_parsed(
@@ -483,7 +481,7 @@ pub(crate) fn css_font_family_declaration_ownership<'a>(
 /// Class labels use this for parent style attributes before the declaration list is embedded in
 /// the terminal fragment. Malformed items are ignored, matching the existing font-family helper
 /// instead of allowing a partial declaration to claim the typed value.
-pub(crate) fn css_font_size_declaration_ownership<'a>(
+pub fn css_font_size_declaration_ownership<'a>(
     declarations: impl IntoIterator<Item = &'a str>,
 ) -> CssFontSizeOwnership {
     let mut winner = None;
@@ -715,7 +713,7 @@ fn font_size_value_ownership(
     }
 }
 
-pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
+pub fn is_static_css_font_family_list(value: &str) -> bool {
     let mut parser = Parser::new(value);
     let mut family_count = 0usize;
     while !parser.is_exhausted() {
@@ -746,7 +744,7 @@ pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
     family_count != 0
 }
 
-pub(crate) fn visit_style_declaration_boundaries<'a>(
+pub fn visit_style_declaration_boundaries<'a>(
     declaration_list: &'a str,
     mut visit: impl FnMut(StyleDeclarationBoundary<'a>),
 ) {
@@ -803,11 +801,11 @@ fn declaration_metadata_for_fallback(raw: &str) -> FontDeclarationFallbackMetada
     }
 }
 
-pub(crate) fn is_resource_free_css_value(value: &str) -> bool {
+pub fn is_resource_free_css_value(value: &str) -> bool {
     css_value_is_safe(value, CssValuePolicy::PortableTheme)
 }
 
-pub(crate) fn is_label_style_key(key: &str) -> bool {
+pub fn is_label_style_key(key: &str) -> bool {
     let key = key.trim().to_ascii_lowercase();
     matches!(
         key.as_str(),
@@ -837,14 +835,14 @@ pub(crate) fn is_label_style_key(key: &str) -> bool {
 /// `em`/percentages follow the computed parent, including zero. `rem` uses the explicit
 /// document-root argument; callers without a document root retain their documented approximation.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct CssFontSizeContext {
+pub struct CssFontSizeContext {
     inherited_px: f64,
     root_px: f64,
     medium_px: f64,
 }
 
 impl CssFontSizeContext {
-    pub(crate) fn new(inherited_px: f64, root_px: f64) -> Self {
+    pub fn new(inherited_px: f64, root_px: f64) -> Self {
         Self {
             inherited_px: inherited_px.max(0.0),
             root_px: root_px.max(0.0),
@@ -852,18 +850,18 @@ impl CssFontSizeContext {
         }
     }
 
-    pub(crate) fn uniform(font_size_px: f64) -> Self {
+    pub fn uniform(font_size_px: f64) -> Self {
         Self::new(font_size_px, font_size_px)
     }
 
     #[cfg(test)]
-    pub(crate) fn with_medium_px(mut self, medium_px: f64) -> Self {
+    pub fn with_medium_px(mut self, medium_px: f64) -> Self {
         self.medium_px = medium_px.max(1.0);
         self
     }
 }
 
-pub(crate) fn resolve_mermaid_font_size_px(raw: &str, context: CssFontSizeContext) -> Option<f64> {
+pub fn resolve_mermaid_font_size_px(raw: &str, context: CssFontSizeContext) -> Option<f64> {
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
         .analysis
         .resolve_font_size_px(context)
@@ -873,14 +871,14 @@ pub(crate) fn resolve_mermaid_font_size_px(raw: &str, context: CssFontSizeContex
 ///
 /// CSS tokens own unit case/escaping and numeric precision. Relative lengths, keywords,
 /// and functions need a separate context or host and are intentionally not resolved here.
-pub(crate) fn resolve_mermaid_absolute_font_size_px(raw: &str) -> Option<f64> {
+pub fn resolve_mermaid_absolute_font_size_px(raw: &str) -> Option<f64> {
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
         .analysis
         .absolute_length_or_number_px()
 }
 
 /// Resolves CSS absolute dimension tokens, excluding legacy unitless configuration numbers.
-pub(crate) fn resolve_explicit_css_absolute_font_size_px(raw: &str) -> Option<f64> {
+pub fn resolve_explicit_css_absolute_font_size_px(raw: &str) -> Option<f64> {
     let parsed = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?;
     if !matches!(
         parsed.analysis.scalar,
@@ -891,7 +889,7 @@ pub(crate) fn resolve_explicit_css_absolute_font_size_px(raw: &str) -> Option<f6
     parsed.analysis.absolute_length_or_number_px()
 }
 
-pub(crate) fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
+pub fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
         .analysis
         .svg_number_or_px()
@@ -899,7 +897,7 @@ pub(crate) fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
 
 /// Recognizes literal zero font sizes without applying the positive measurement fallback.
 /// Functions and unknown units remain unresolved rather than being evaluated here.
-pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
+pub fn css_font_size_is_zero(raw: &str) -> bool {
     let Some(parsed) = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle) else {
         return false;
     };
@@ -935,7 +933,7 @@ fn is_css_length_unit(unit: &str) -> bool {
     .any(|length_unit| unit.eq_ignore_ascii_case(length_unit))
 }
 
-pub(crate) fn strip_css_important(raw: &str) -> &str {
+pub fn strip_css_important(raw: &str) -> &str {
     let raw = raw.trim();
     let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)
@@ -943,7 +941,7 @@ pub(crate) fn strip_css_important(raw: &str) -> &str {
         .unwrap_or(raw)
 }
 
-pub(crate) fn is_supported_css_font_weight_value(value: &str) -> bool {
+pub fn is_supported_css_font_weight_value(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "normal" | "bold" | "bolder" | "lighter"
@@ -953,18 +951,18 @@ pub(crate) fn is_supported_css_font_weight_value(value: &str) -> bool {
         .is_ok_and(|weight| (1..=1000).contains(&weight))
 }
 
-pub(crate) fn is_supported_css_font_style_value(value: &str) -> bool {
+pub fn is_supported_css_font_style_value(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "normal" | "italic" | "oblique"
     )
 }
 
-pub(crate) fn is_supported_css_color_value(value: &str) -> bool {
+pub fn is_supported_css_color_value(value: &str) -> bool {
     merman_markup::theme_color::ThemeColor::parse(value.trim()).is_ok()
 }
 
-pub(crate) fn is_safe_browser_css_color_value(value: &str) -> bool {
+pub fn is_safe_browser_css_color_value(value: &str) -> bool {
     if is_supported_css_color_value(value) {
         return true;
     }
@@ -1006,7 +1004,7 @@ enum CssScalar {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CssValueAnalysis {
+pub struct CssValueAnalysis {
     scalar: Option<CssScalar>,
     component_count: usize,
     has_dynamic_reference_function: bool,
@@ -1063,7 +1061,7 @@ impl CssValueAnalysis {
         }
     }
 
-    pub(crate) fn svg_rect_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
+    pub fn svg_rect_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
         if let Some(value) = self.absolute_length_or_number_px() {
             Ok(Some(value))
         } else if matches!(self.single_ident(), Some("auto" | "initial" | "unset")) {
@@ -1074,12 +1072,12 @@ impl CssValueAnalysis {
     }
 
     /// A positive rem size needs a document-root size that diagram configuration cannot supply.
-    pub(crate) fn depends_on_root_font_size(&self) -> bool {
+    pub fn depends_on_root_font_size(&self) -> bool {
         self.is_single_component()
             && matches!(self.scalar, Some(CssScalar::Rem(value)) if value.is_finite() && value > 0.0)
     }
 
-    pub(crate) fn font_size_depends_on_root(raw: &str) -> bool {
+    pub fn font_size_depends_on_root(raw: &str) -> bool {
         // Admission observes browser tokens even when emission safety rejects source comments.
         // This is dependency detection only, not permission to measure or emit the value.
         let raw = raw.trim().strip_suffix(';').unwrap_or(raw.trim()).trim();
@@ -1091,15 +1089,15 @@ impl CssValueAnalysis {
                 || (parser.try_parse(parse_important).is_ok() && parser.is_exhausted()))
     }
 
-    pub(crate) fn inherits_property_value(&self) -> bool {
+    pub fn inherits_property_value(&self) -> bool {
         matches!(self.single_ident(), Some("inherit" | "unset"))
     }
 
-    pub(crate) const fn is_single_component(&self) -> bool {
+    pub const fn is_single_component(&self) -> bool {
         self.component_count == 1
     }
 
-    pub(crate) fn single_ident(&self) -> Option<&str> {
+    pub fn single_ident(&self) -> Option<&str> {
         if !self.is_single_component() {
             return None;
         }
@@ -1114,11 +1112,11 @@ impl CssValueAnalysis {
         }
     }
 
-    pub(crate) const fn has_dynamic_reference_function(&self) -> bool {
+    pub const fn has_dynamic_reference_function(&self) -> bool {
         self.has_dynamic_reference_function
     }
 
-    pub(crate) fn svg_number_or_px(&self) -> Option<f64> {
+    pub fn svg_number_or_px(&self) -> Option<f64> {
         if !self.is_single_component() {
             return None;
         }
@@ -1133,7 +1131,7 @@ impl CssValueAnalysis {
         (value.is_finite() && value >= 0.0).then_some(value)
     }
 
-    pub(crate) fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
+    pub fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
         if !self.is_single_component() {
             return None;
         }
@@ -1165,7 +1163,7 @@ impl CssValueAnalysis {
 
     /// Resolves CSS absolute sizes without borrowing an inherited or document-root size.
     /// Nonzero unitless numbers remain invalid CSS even though SVG attributes accept them.
-    pub(crate) fn context_free_font_size_px(&self) -> Option<f64> {
+    pub fn context_free_font_size_px(&self) -> Option<f64> {
         match self.scalar.as_ref()? {
             CssScalar::Px(_) | CssScalar::AbsoluteLengthPx(_) => {
                 self.absolute_length_or_number_px()
@@ -1189,7 +1187,7 @@ impl CssValueAnalysis {
         }
     }
 
-    pub(crate) fn absolute_length_or_number_px(&self) -> Option<f64> {
+    pub fn absolute_length_or_number_px(&self) -> Option<f64> {
         if !self.is_single_component() {
             return None;
         }
@@ -1587,6 +1585,26 @@ fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
         parser.next(),
         Ok(Token::Ident(name)) if name.as_ref() == SENTINEL
     )
+}
+
+/// Serializes a resolved native-theme font stack for CSS.
+pub fn font_family_css(families: &[String]) -> String {
+    let mut css = String::new();
+    for (index, family) in families.iter().enumerate() {
+        if index != 0 {
+            css.push_str(", ");
+        }
+        if matches!(
+            family.as_str(),
+            "serif" | "sans-serif" | "monospace" | "system-ui" | "cursive" | "fantasy"
+        ) {
+            css.push_str(family);
+        } else {
+            cssparser::serialize_string(family, &mut css)
+                .expect("writing a CSS string to String cannot fail");
+        }
+    }
+    css
 }
 
 #[cfg(test)]

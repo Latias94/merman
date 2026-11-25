@@ -833,7 +833,7 @@ pub(crate) struct RequirementFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-packet")]
 pub(crate) struct PacketFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::packet::PacketDiagramModel, PacketDiagramLayout>,
-    typography_theme: crate::packet::PacketTypographyThemePlan,
+    style: crate::packet::PacketStyle,
 }
 
 #[cfg(feature = "diagram-packet")]
@@ -844,8 +844,8 @@ impl<'parsed> PacketFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::packet::PacketTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::packet::PacketStyle {
+        &self.style
     }
 }
 

@@ -30,15 +30,7 @@ pub mod c4;
 mod chart_palette;
 #[cfg(feature = "diagram-class")]
 pub mod class;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod config;
+use merman_render_core::{config, entities, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
 #[cfg(all(
@@ -120,15 +112,6 @@ mod elk_options;
     )
 )]
 mod elk_terminal_jogs;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod entities;
 pub mod environment;
 #[cfg(feature = "diagram-er")]
 pub mod er;
@@ -230,21 +213,15 @@ mod layout_work;
     )
 )]
 pub mod math;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod mermaid_style;
 #[cfg(feature = "diagram-mindmap")]
 pub mod mindmap;
 pub mod model;
-mod number_format;
 #[cfg(feature = "diagram-packet")]
-pub mod packet;
+pub mod packet {
+    pub(crate) use merman_render_structured::packet::{
+        PacketStyle, layout_packet_diagram_typed, write_svg_contents,
+    };
+}
 #[cfg(feature = "diagram-pie")]
 pub mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]

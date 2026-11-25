@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 
 /// Decodes Mermaid's preprocessor placeholders before text is emitted or measured.
-pub(crate) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
+pub fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
     if !text.contains('\u{fb02}') && !text.contains('\u{00b6}') && !text.contains('#') {
         return Cow::Borrowed(text);
     }
@@ -18,7 +18,7 @@ pub(crate) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str
 /// SVG labels are assigned through `textContent`, so Mermaid decodes only the entities introduced
 /// by its sanitizer. Other spellings such as `&nbsp;`, `&#160;`, and unknown entities remain
 /// literal text and must continue to participate in text measurement with that spelling.
-pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
+pub fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
     if !text.contains("&lt;") && !text.contains("&gt;") && !text.contains("&amp;") {
         return Cow::Borrowed(text);
     }
@@ -34,11 +34,11 @@ pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
 ///
 /// The replacement order matters: for example `&amp;quot;` becomes `"` (two-step), while
 /// `&amp;lt;` stays as `&lt;` (one-step).
-pub(crate) fn decode_entities_minimal(text: &str) -> String {
+pub fn decode_entities_minimal(text: &str) -> String {
     merman_model::text::decode_entities_minimal(text)
 }
 
-pub(crate) fn decode_entities_minimal_cow(text: &str) -> Cow<'_, str> {
+pub fn decode_entities_minimal_cow(text: &str) -> Cow<'_, str> {
     if !text.contains('&') {
         return Cow::Borrowed(text);
     }

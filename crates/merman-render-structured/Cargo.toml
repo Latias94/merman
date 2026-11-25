@@ -1,0 +1,26 @@
+[package]
+name = "merman-render-structured"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Layout and SVG emission for Merman's structured diagram families."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet"]
+
+[dependencies]
+merman-markup = { workspace = true, optional = true }
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
+merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
+merman-theme-contract = { workspace = true, optional = true }
+ryu-js = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

@@ -1,5 +1,11 @@
 use std::borrow::Cow;
 
+mod text;
+pub use text::{
+    EscapeXmlDisplay, escape_xml, escape_xml_display, escape_xml_into, escape_xml_raw_into,
+    escape_xml_serialized_text_into, escaped_xml_len,
+};
+
 pub fn is_xml_1_0_char(ch: char) -> bool {
     matches!(ch, '\u{9}' | '\u{A}' | '\u{D}')
         || matches!(

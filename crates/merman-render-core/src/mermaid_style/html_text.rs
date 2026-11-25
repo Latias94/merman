@@ -6,7 +6,7 @@ use super::{CssScalar, CssValuePolicy, parse_css_value};
 const MAX_TEXT_LENGTH_PX: f64 = 1_000_000.0;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) enum HtmlLineHeight {
+pub enum HtmlLineHeight {
     #[default]
     Normal,
     Number(f64),
@@ -14,7 +14,7 @@ pub(crate) enum HtmlLineHeight {
 }
 
 impl HtmlLineHeight {
-    pub(crate) fn pixels(self, font_size: f64) -> f64 {
+    pub fn pixels(self, font_size: f64) -> f64 {
         match self {
             Self::Normal => font_size * 1.5,
             Self::Number(scale) => font_size * scale,
@@ -24,7 +24,7 @@ impl HtmlLineHeight {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum HtmlTextTransform {
+pub enum HtmlTextTransform {
     #[default]
     None,
     Uppercase,
@@ -33,7 +33,7 @@ pub(crate) enum HtmlTextTransform {
 }
 
 impl HtmlTextTransform {
-    pub(crate) fn apply<'a>(self, text: &'a str, in_word: &mut bool) -> Cow<'a, str> {
+    pub fn apply<'a>(self, text: &'a str, in_word: &mut bool) -> Cow<'a, str> {
         if text.is_empty() {
             return Cow::Borrowed(text);
         }
@@ -63,13 +63,13 @@ impl HtmlTextTransform {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct HtmlTextSpacing {
-    pub(crate) letters: f64,
-    pub(crate) words: f64,
+pub struct HtmlTextSpacing {
+    pub letters: f64,
+    pub words: f64,
 }
 
 impl HtmlTextSpacing {
-    pub(crate) fn advance(self, text: &str) -> f64 {
+    pub fn advance(self, text: &str) -> f64 {
         let mut advance = 0.0;
         if self.letters != 0.0 {
             let letters = text
@@ -94,20 +94,20 @@ impl HtmlTextSpacing {
         advance
     }
 
-    pub(crate) fn is_normal(self) -> bool {
+    pub fn is_normal(self) -> bool {
         self == Self::default()
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct HtmlTextGeometry {
-    pub(crate) line_height: HtmlLineHeight,
-    pub(crate) spacing: HtmlTextSpacing,
-    pub(crate) transform: HtmlTextTransform,
+pub struct HtmlTextGeometry {
+    pub line_height: HtmlLineHeight,
+    pub spacing: HtmlTextSpacing,
+    pub transform: HtmlTextTransform,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HtmlTextProperty {
+pub enum HtmlTextProperty {
     LineHeight,
     LetterSpacing,
     WordSpacing,
@@ -115,14 +115,14 @@ pub(crate) enum HtmlTextProperty {
 }
 
 impl HtmlTextProperty {
-    pub(crate) const ALL: [Self; 4] = [
+    pub const ALL: [Self; 4] = [
         Self::LineHeight,
         Self::LetterSpacing,
         Self::WordSpacing,
         Self::Transform,
     ];
 
-    pub(crate) const fn name(self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
             Self::LineHeight => "line-height",
             Self::LetterSpacing => "letter-spacing",
@@ -131,7 +131,7 @@ impl HtmlTextProperty {
         }
     }
 
-    pub(crate) fn named(name: &str) -> Option<Self> {
+    pub fn named(name: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
             .find(|property| property.name() == name)
@@ -209,30 +209,29 @@ impl Value {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct HtmlTextGeometryDeclarations([Option<Value>; 4]);
+pub struct HtmlTextGeometryDeclarations([Option<Value>; 4]);
 
 impl HtmlTextGeometryDeclarations {
-    pub(crate) fn is_supported(property: HtmlTextProperty, value: &str) -> bool {
+    pub fn is_supported(property: HtmlTextProperty, value: &str) -> bool {
         Value::parse(property, value).is_some()
     }
 
-    #[cfg(feature = "diagram-flowchart")]
-    pub(crate) fn is_source_owned(property: HtmlTextProperty, value: &str) -> bool {
+    pub fn is_source_owned(property: HtmlTextProperty, value: &str) -> bool {
         matches!(
             Value::parse(property, value),
             Some(Value::Absolute(_) | Value::Em(_) | Value::Number(_) | Value::Transform(_))
         )
     }
 
-    pub(crate) fn set(&mut self, property: HtmlTextProperty, value: &str) {
+    pub fn set(&mut self, property: HtmlTextProperty, value: &str) {
         self.0[property as usize] = Value::parse(property, value);
     }
 
-    pub(crate) fn is_empty(self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.0.iter().all(Option::is_none)
     }
 
-    pub(crate) fn resolve(
+    pub fn resolve(
         self,
         mut inherited: HtmlTextGeometry,
         font_size: f64,
