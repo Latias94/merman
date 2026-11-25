@@ -35,41 +35,59 @@ where
         }
     }
 
+    let mut edges = SimplifiedEdges::default();
+    g.for_each_edge_ix(|tail, head, _, label| edges.push(tail, head, label.weight, label.minlen));
+    edges.insert(g, &mut simplified);
+    simplified
+}
+
+#[derive(Default)]
+pub(crate) struct SimplifiedEdges {
     // Pinned Dagre creates each simplified edge at the first occurrence of its endpoint pair and
     // only updates the label for later parallel edges. Preserve that insertion order explicitly;
     // sorting endpoint pairs changes network-simplex tie-breaking because `g.edges()` is ordered.
-    let mut merged_index: BTreeMap<(usize, usize), usize> = BTreeMap::new();
-    let mut merged: Vec<(usize, usize, f64, usize)> = Vec::new();
-    g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
-        if let Some(&merged_ix) = merged_index.get(&(v_ix, w_ix)) {
-            let entry = &mut merged[merged_ix];
-            entry.2 += lbl.weight;
-            entry.3 = entry.3.max(lbl.minlen);
-        } else {
-            merged_index.insert((v_ix, w_ix), merged.len());
-            merged.push((v_ix, w_ix, lbl.weight, lbl.minlen.max(1)));
-        }
-    });
+    by_pair: BTreeMap<(usize, usize), usize>,
+    in_order: Vec<(usize, usize, f64, usize)>,
+}
 
-    for (v_ix, w_ix, weight, minlen) in merged {
-        let Some(v) = g.node_id_by_ix(v_ix) else {
-            continue;
-        };
-        let Some(w) = g.node_id_by_ix(w_ix) else {
-            continue;
-        };
-        simplified.set_edge_with_label(
-            v.to_string(),
-            w.to_string(),
-            EdgeLabel {
-                weight,
-                minlen,
-                ..Default::default()
-            },
-        );
+impl SimplifiedEdges {
+    pub(crate) fn push(&mut self, tail: usize, head: usize, weight: f64, minlen: usize) {
+        if let Some(&position) = self.by_pair.get(&(tail, head)) {
+            let entry = &mut self.in_order[position];
+            entry.2 += weight;
+            entry.3 = entry.3.max(minlen);
+        } else {
+            self.by_pair.insert((tail, head), self.in_order.len());
+            self.in_order.push((tail, head, weight, minlen.max(1)));
+        }
     }
 
-    simplified
+    pub(crate) fn insert<N, G>(
+        self,
+        source: &Graph<N, EdgeLabel, G>,
+        simplified: &mut Graph<N, EdgeLabel, G>,
+    ) where
+        N: Default + 'static,
+        G: Default,
+    {
+        for (tail, head, weight, minlen) in self.in_order {
+            let Some(tail_id) = source.node_id_by_ix(tail) else {
+                continue;
+            };
+            let Some(head_id) = source.node_id_by_ix(head) else {
+                continue;
+            };
+            simplified.set_edge_with_label(
+                tail_id.to_string(),
+                head_id.to_string(),
+                EdgeLabel {
+                    weight,
+                    minlen,
+                    ..Default::default()
+                },
+            );
+        }
+    }
 }
 
 pub fn as_non_compound_graph<N, E, G>(g: &Graph<N, E, G>) -> Graph<N, E, G>

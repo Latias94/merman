@@ -7,6 +7,9 @@ use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 
 mod edges;
+mod projection;
+
+pub(crate) use projection::rank_leaf_projection_controlled;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DfsFrame {
@@ -861,8 +864,29 @@ pub(crate) fn network_simplex_controlled(
     // places otherwise remain live together across the whole network-simplex coordinator, which
     // can exhaust small worker stacks even though every topology traversal is iterative.
     let mut simplified = build_simplified_graph_boxed(g, work_control)?;
-    util::longest_path_controlled(&mut simplified, work_control)?;
-    let mut t_state = build_initial_tree_state_controlled(&mut simplified, work_control)?;
+    solve_simplified_controlled(&mut simplified, work_control, |simplified, work_control| {
+        work_control.charge(g.node_count())?;
+        for v in g.node_ids() {
+            if let Some(rank) = simplified.node(&v).and_then(|n| n.rank)
+                && let Some(lbl) = g.node_mut(&v)
+            {
+                lbl.rank = Some(rank);
+            }
+        }
+        Ok(())
+    })
+}
+
+fn solve_simplified_controlled(
+    simplified: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+    finish: impl FnOnce(
+        &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        &mut dyn WorkControl,
+    ) -> Result<(), RankError>,
+) -> Result<(), RankError> {
+    util::longest_path_controlled(simplified, work_control)?;
+    let mut t_state = build_initial_tree_state_controlled(simplified, work_control)?;
 
     work_control.charge(simplified.node_slot_count())?;
     let mut rank_by_ix = vec![0_i128; simplified.node_slot_count()];
@@ -873,38 +897,42 @@ pub(crate) fn network_simplex_controlled(
     while let Some(leaving) = t_state.find_leave_edge_in_insertion_order() {
         pivot_controlled(
             &mut t_state,
-            &mut simplified,
+            simplified,
             &mut rank_by_ix,
             leaving,
             work_control,
         )?;
     }
 
-    work_control.charge(g.node_count())?;
-    for v in g.node_ids() {
-        if let Some(rank) = simplified.node(&v).and_then(|n| n.rank)
-            && let Some(lbl) = g.node_mut(&v)
-        {
-            lbl.rank = Some(rank);
-        }
-    }
-    Ok(())
+    finish(simplified, work_control)
 }
 
 fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
-    let node_work = checked_mul(g.node_count(), 2)?;
-    let numeric_order_work =
-        checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
-    let numeric_adjacency_work = checked_ordered_key_updates(
+    simplify_work_units_for(
         g.node_count(),
+        g.array_index_node_count(),
         g.directed_array_index_adjacency_entry_count(),
-    )?;
+        g.edge_slot_count(),
+        g.edge_count(),
+    )
+}
+
+fn simplify_work_units_for(
+    nodes: usize,
+    numeric_nodes: usize,
+    numeric_adjacency: usize,
+    edge_slots: usize,
+    edges: usize,
+) -> Result<usize, WorkError> {
+    let node_work = checked_mul(nodes, 2)?;
+    let numeric_order_work = checked_ordered_key_updates(nodes, numeric_nodes)?;
+    let numeric_adjacency_work = checked_ordered_key_updates(nodes, numeric_adjacency)?;
     // Rank validation and endpoint aggregation each scan the slot-backed edge storage. The
     // ordered endpoint index gives the merge a deterministic logarithmic bound while the separate
     // first-occurrence vector avoids the second endpoint-string sort used by the legacy path.
-    let slot_scan_work = checked_mul(g.edge_slot_count(), 2)?;
-    let live_edge_work = checked_mul(g.edge_count(), 3)?;
-    let ordered_merge_work = checked_n_log_n(g.edge_count())?;
+    let slot_scan_work = checked_mul(edge_slots, 2)?;
+    let live_edge_work = checked_mul(edges, 3)?;
+    let ordered_merge_work = checked_n_log_n(edges)?;
     let edge_work = checked_add(
         checked_add(slot_scan_work, live_edge_work)?,
         ordered_merge_work,

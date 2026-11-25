@@ -178,6 +178,11 @@ fn run_rank_phases(
                 node.rank = Some(minlen);
             }
         }
+    } else if uses_network_simplex && g.is_directed() {
+        charge_non_compound_rank_graph(g, work_control)?;
+        let ranks = rank::network_simplex::rank_leaf_projection_controlled(g, work_control)?;
+        work_control.charge(node_snapshot_work_units(g)?)?;
+        ranks.publish(g);
     } else {
         // Dagre ranks a non-compound view. Nesting border nodes remain leaves in that view and
         // carry cluster constraints, while compound labels themselves never receive a leaf rank.
@@ -873,6 +878,14 @@ fn build_non_compound_rank_graph(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    charge_non_compound_rank_graph(g, work_control)?;
+    Ok(util::as_non_compound_graph(g))
+}
+
+fn charge_non_compound_rank_graph(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
     let numeric_order_work =
         checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
     let numeric_adjacency_work = checked_ordered_key_updates(
@@ -882,8 +895,7 @@ fn build_non_compound_rank_graph(
     work_control.charge(checked_add(
         graph_scan_work_units(g)?,
         checked_add(numeric_order_work, numeric_adjacency_work)?,
-    )?)?;
-    Ok(util::as_non_compound_graph(g))
+    )?)
 }
 
 fn node_snapshot_work_units(
