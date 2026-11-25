@@ -5,13 +5,13 @@ use crate::common::parse_generic_types;
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use indexmap::IndexMap;
+use merman_core_graph::class::{ClassAction as Action, ClassRelationData as RelationData};
 use merman_model::families::class as class_typed;
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::warnings::{CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use super::ast::{Action, RelationData};
 use super::{
     LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
     REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,

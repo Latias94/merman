@@ -1,17 +1,13 @@
 //! Predictive Class grammar over the existing normalized lexical events.
 
-use super::ast::{ActionArena, ActionList, ClassIdList};
-use super::lexer::ClassLexicalEvent;
-use super::{
-    Action, LINE_DOTTED, LINE_SOLID, LexError, REL_AGGREGATION, REL_COMPOSITION, REL_DEPENDENCY,
-    REL_EXTENSION, REL_LOLLIPOP, REL_NONE, Relation, RelationData, Tok,
+use super::ast::{Action, ActionArena, ActionList, ClassIdList, Relation, RelationData};
+use super::lexer::{ClassLexicalEvent, LexError, Tok};
+use crate::scan::TokenStream;
+use merman_model::families::class::{
+    LINE_DOTTED, LINE_SOLID, REL_AGGREGATION, REL_COMPOSITION, REL_DEPENDENCY, REL_EXTENSION,
+    REL_LOLLIPOP, REL_NONE,
 };
-use crate::diagrams::scan::TokenStream;
-use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
-use crate::{
-    OperationCancelled, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, SourceSpan,
-};
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
 
 type Token = (usize, Tok, usize);
 type NamespaceItem = (ActionList, ClassIdList);
@@ -81,10 +77,13 @@ terminals! {
 
 use Terminal::*;
 
-#[derive(Clone, Copy, Default)]
-struct Expected(u64);
+/// The grammar terminals accepted at a failing position, in grammar order.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClassExpectedTokens(u64);
 
-impl Expected {
+use ClassExpectedTokens as Expected;
+
+impl ClassExpectedTokens {
     const fn new(terminals: &[Terminal]) -> Self {
         let mut expected = Self(0);
         let mut index = 0;
@@ -107,7 +106,7 @@ impl Expected {
         self.0 & (1 << terminal as u8) != 0
     }
 
-    fn names(self) -> impl Iterator<Item = &'static str> {
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
         TERMINAL_NAMES
             .iter()
             .copied()
@@ -143,8 +142,23 @@ const RELATION_TYPE: Expected = Expected::new(&[Ext, Dep, Comp, Agg, Lollipop]);
 const RELATION_START: Expected = RELATION_TYPE.union(LINE);
 const ENDPOINT: Expected = Expected::new(&[Str, Name]);
 
+/// The first lexical or grammar error in the supplied source's byte coordinates.
+#[derive(Debug)]
+pub enum ClassSyntaxDiagnostic {
+    Lexical(LexError),
+    UnexpectedToken {
+        token: Tok,
+        span: SourceSpan,
+        expected: ClassExpectedTokens,
+    },
+    UnexpectedEof {
+        offset: usize,
+        expected: ClassExpectedTokens,
+    },
+}
+
 enum Failure {
-    Syntax(ParseDiagnostic),
+    Syntax(ClassSyntaxDiagnostic),
     Cancelled(OperationCancelled),
 }
 
@@ -160,7 +174,7 @@ pub(super) fn parse(
     arena: &mut ActionArena,
     events: impl Iterator<Item = ClassLexicalEvent>,
     control: &OperationControl,
-) -> OperationControlResult<Result<ActionList, ParseDiagnostic>> {
+) -> OperationControlResult<Result<ActionList, ClassSyntaxDiagnostic>> {
     control.checkpoint()?;
     let outcome = Parser {
         arena,
@@ -635,7 +649,9 @@ impl<I: Iterator<Item = ClassLexicalEvent>> Parser<'_, '_, I> {
     fn peek(&mut self) -> ParseResult<Option<Terminal>> {
         match self.input.peek()? {
             Some(Ok((_, token, _))) => Ok(Some(Terminal::of(token))),
-            Some(Err(error)) => Err(lexical_failure(error)),
+            Some(Err(error)) => Err(Failure::Syntax(ClassSyntaxDiagnostic::Lexical(
+                error.clone(),
+            ))),
             None => Ok(None),
         }
     }
@@ -644,7 +660,7 @@ impl<I: Iterator<Item = ClassLexicalEvent>> Parser<'_, '_, I> {
         self.input
             .bump()?
             .transpose()
-            .map_err(|error| lexical_failure(&error))
+            .map_err(|error| Failure::Syntax(ClassSyntaxDiagnostic::Lexical(error)))
     }
 
     fn require(&mut self, expected: Expected) -> ParseResult<Token> {
@@ -655,28 +671,18 @@ impl<I: Iterator<Item = ClassLexicalEvent>> Parser<'_, '_, I> {
     }
 
     fn unexpected(&self, token: Option<Token>, expected: Expected) -> Failure {
-        let diagnostic = match token {
-            Some((start, token, end)) => {
-                ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
-                    .with_span(SourceSpan::new(start, end), ParseDiagnosticSpanKind::Exact)
-            }
-            None => {
-                let end = self.input.previous_end();
-                ParseDiagnostic::new(unexpected_eof_message(expected.names())).with_span(
-                    SourceSpan::new(end, end),
-                    ParseDiagnosticSpanKind::InsertionPoint,
-                )
-            }
-        };
-        Failure::Syntax(diagnostic)
+        Failure::Syntax(match token {
+            Some((start, token, end)) => ClassSyntaxDiagnostic::UnexpectedToken {
+                token,
+                span: SourceSpan::new(start, end),
+                expected,
+            },
+            None => ClassSyntaxDiagnostic::UnexpectedEof {
+                offset: self.input.previous_end(),
+                expected,
+            },
+        })
     }
-}
-
-fn lexical_failure(error: &LexError) -> Failure {
-    Failure::Syntax(
-        ParseDiagnostic::new(error.message.clone())
-            .with_span(error.span, ParseDiagnosticSpanKind::Exact),
-    )
 }
 
 fn relation_type(token: Tok) -> i32 {

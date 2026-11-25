@@ -1,6 +1,9 @@
-use crate::OperationControlResult;
+//! Flat grammar actions and namespace fragments.
 
-pub(crate) enum Action {
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
+
+/// Source-ordered actions for the Class database.
+pub enum Action {
     SetDirection(String),
     SetAccTitle(String),
     SetAccDescr(String),
@@ -68,19 +71,19 @@ pub(crate) enum Action {
         text: String,
     },
     WarnIgnoredStatement {
-        span: crate::SourceSpan,
+        span: SourceSpan,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Relation {
+pub struct Relation {
     pub type1: i32,
     pub type2: i32,
     pub line_type: i32,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RelationData {
+pub struct RelationData {
     pub id1: String,
     pub id2: String,
     pub relation: Relation,
@@ -125,10 +128,7 @@ pub(super) struct ActionArena {
 }
 
 impl ActionArena {
-    pub(super) fn checkpoint(
-        &mut self,
-        control: &crate::OperationControl,
-    ) -> OperationControlResult<()> {
+    pub(super) fn checkpoint(&mut self, control: &OperationControl) -> OperationControlResult<()> {
         if self.construction_steps.is_multiple_of(128) {
             control.checkpoint()?;
         }
@@ -139,7 +139,7 @@ impl ActionArena {
     pub(super) fn push_actions(
         &mut self,
         actions: impl IntoIterator<Item = Action>,
-        control: &crate::OperationControl,
+        control: &OperationControl,
     ) -> OperationControlResult<ActionList> {
         let mut list = ActionList::default();
         for action in actions {
@@ -165,7 +165,7 @@ impl ActionArena {
         &mut self,
         first: ActionList,
         rest: ActionList,
-        control: &crate::OperationControl,
+        control: &OperationControl,
     ) -> OperationControlResult<ActionList> {
         self.checkpoint(control)?;
         if let (Some(tail), Some(head)) = (first.tail, rest.head) {
@@ -184,7 +184,7 @@ impl ActionArena {
     pub(super) fn push_class_id(
         &mut self,
         id: String,
-        control: &crate::OperationControl,
+        control: &OperationControl,
     ) -> OperationControlResult<ClassIdList> {
         self.checkpoint(control)?;
         let index = self.class_ids.len();
@@ -202,7 +202,7 @@ impl ActionArena {
         &mut self,
         first: (ActionList, ClassIdList),
         rest: (ActionList, ClassIdList),
-        control: &crate::OperationControl,
+        control: &OperationControl,
     ) -> OperationControlResult<(ActionList, ClassIdList)> {
         let actions = self.concat(first.0, rest.0, control)?;
         if let (Some(tail), Some(head)) = (first.1.tail, rest.1.head) {
@@ -226,7 +226,7 @@ impl ActionArena {
         namespace: String,
         label: Option<String>,
         body: (ActionList, ClassIdList),
-        control: &crate::OperationControl,
+        control: &OperationControl,
     ) -> OperationControlResult<ActionList> {
         let mut class_ids = Vec::new();
         let mut next = body.1.head;

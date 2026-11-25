@@ -1,18 +1,13 @@
 pub(crate) use merman_model::text::is_ecmascript_whitespace;
 
 #[cfg(any(
-    feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-sequence"
 ))]
 pub(crate) use merman_core_preprocess::scan::TokenStream;
-#[cfg(any(feature = "diagram-class", feature = "diagram-sequence"))]
+#[cfg(feature = "diagram-sequence")]
 pub(crate) use merman_core_preprocess::scan::{ScanStep, TokenScanner, collect_lexical_events};
-#[cfg(feature = "diagram-class")]
-pub(crate) use merman_core_preprocess::scan::{
-    consume_line_ending, is_ecmascript_inline_whitespace,
-};
 
 pub(crate) fn strip_line_ending(segment: &str) -> &str {
     let segment = segment.strip_suffix('\n').unwrap_or(segment);

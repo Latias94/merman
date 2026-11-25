@@ -373,7 +373,7 @@ const MERMAID_UNICODE_TEXT_RANGES: &[(u32, u32)] = &[
     (0xFFDA, 0xFFDC),
 ];
 
-pub(crate) fn is_mermaid_unicode_text(ch: char) -> bool {
+pub fn is_mermaid_unicode_text(ch: char) -> bool {
     let code = ch as u32;
     MERMAID_UNICODE_TEXT_RANGES
         .binary_search_by(|&(start, end)| {

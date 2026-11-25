@@ -2,6 +2,11 @@
 
 use merman_model::{OperationControl, OperationControlResult};
 
+#[cfg(feature = "mermaid-unicode")]
+mod jison_unicode;
+#[cfg(feature = "mermaid-unicode")]
+pub use jison_unicode::is_mermaid_unicode_text;
+
 pub fn is_ecmascript_inline_whitespace(ch: char) -> bool {
     merman_model::text::is_ecmascript_whitespace(ch) && !matches!(ch, '\r' | '\n')
 }

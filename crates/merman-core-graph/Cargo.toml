@@ -14,6 +14,7 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-class = ["merman-model/diagram-class", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode"]
 diagram-er = ["merman-model/diagram-er", "dep:indexmap", "dep:merman-core-preprocess"]
 diagram-state = ["merman-model/diagram-state", "dep:merman-core-preprocess"]
 editor-facts = []

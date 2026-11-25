@@ -8,10 +8,10 @@ use super::{
 };
 #[cfg(feature = "editor-facts")]
 use super::{ClickAction, ClickStmt};
-use crate::diagrams::jison_unicode::is_mermaid_unicode_text;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorExpectedSyntax, EditorExpectedSyntaxKind};
 use crate::{OperationControl, SourceSpan};
+use merman_core_preprocess::scan::is_mermaid_unicode_text;
 use std::collections::VecDeque;
 
 #[cfg(feature = "editor-facts")]

@@ -9,6 +9,13 @@ rust-version.workspace = true
 description = "Controlled source text edits and byte-span mapping for Merman."
 readme = "README.md"
 
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+mermaid-unicode = []
+
 [dependencies]
 merman-model.workspace = true
 

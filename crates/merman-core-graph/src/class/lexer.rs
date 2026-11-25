@@ -1,15 +1,16 @@
+//! Stateful Class lexer with source-relative token spans.
+
+use crate::scan::{
+    ScanStep, TokenScanner, consume_line_ending, is_ecmascript_inline_whitespace,
+    is_mermaid_unicode_text,
+};
+use merman_model::SourceSpan;
+use merman_model::text::is_ecmascript_whitespace;
 use std::collections::VecDeque;
 
-use crate::diagrams::{
-    jison_unicode::is_mermaid_unicode_text,
-    scan::{
-        ScanStep, TokenScanner, consume_line_ending, is_ecmascript_inline_whitespace,
-        is_ecmascript_whitespace,
-    },
-};
-
+/// A Class token in the lexical event stream.
 #[derive(Debug, Clone)]
-pub(crate) enum Tok {
+pub enum Tok {
     Newline,
 
     ClassDiagram,
@@ -65,28 +66,36 @@ pub(crate) enum Tok {
     AccDescrMultiline(String),
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
-pub(crate) struct LexError {
+/// Lexical constructs whose value slot can be restored by an editor.
+#[cfg(feature = "editor-facts")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassLexicalExpectation {
+    Direction,
+    CallbackArguments,
+}
+
+/// A lexical failure, with the exact span of the rejected input or missing value.
+#[derive(Debug, Clone)]
+pub struct LexError {
     pub message: String,
-    pub span: crate::SourceSpan,
+    pub span: SourceSpan,
     #[cfg(feature = "editor-facts")]
-    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
+    pub expectation: Option<ClassLexicalExpectation>,
 }
 
 impl LexError {
-    fn new(message: impl Into<String>, span: crate::SourceSpan) -> Self {
+    fn new(message: impl Into<String>, span: SourceSpan) -> Self {
         Self {
             message: message.into(),
             span,
             #[cfg(feature = "editor-facts")]
-            expected_syntax: None,
+            expectation: None,
         }
     }
 
     #[cfg(feature = "editor-facts")]
-    fn expecting(mut self, kind: crate::EditorExpectedSyntaxKind, span: crate::SourceSpan) -> Self {
-        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+    fn expecting(mut self, expectation: ClassLexicalExpectation) -> Self {
+        self.expectation = Some(expectation);
         self
     }
 }
@@ -113,10 +122,12 @@ pub(super) struct Lexer<'input> {
     mode: Mode,
 }
 
-pub(super) type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
+/// A spanned token or recoverable lexical error.
+pub type ClassLexicalEvent = Result<(usize, Tok, usize), LexError>;
 
+/// Whether a replacement identifier requires Class's quoted-name form.
 #[cfg(feature = "editor-facts")]
-pub(crate) fn editor_name_requires_backticks(name: &str) -> Option<bool> {
+pub fn editor_name_requires_backticks(name: &str) -> Option<bool> {
     if name.is_empty()
         || !name.chars().all(|ch| {
             if ch.is_ascii() {
@@ -137,6 +148,30 @@ pub(crate) fn editor_name_requires_backticks(name: &str) -> Option<bool> {
         Some(Ok((0, Tok::Name(value), end))) if end == name.len() && value == name
     ) && lexer.next().is_none();
     Some(!unquoted)
+}
+
+/// Whether an adjacent token would absorb part of a renamed, unquoted Class name.
+#[cfg(feature = "editor-facts")]
+pub fn editor_name_needs_separator(name: &str, suffix: &str) -> bool {
+    if suffix.chars().next().is_some_and(char::is_alphanumeric) {
+        return true;
+    }
+    let operator = if suffix.starts_with("--") {
+        "--"
+    } else if suffix.starts_with("..") {
+        ".."
+    } else {
+        return false;
+    };
+    // Only the adjacent line token is needed to expose a trailing `o` becoming aggregation
+    // or a trailing `-` joining the line. Keep the complete candidate as the first Name.
+    let mut probe = String::with_capacity(name.len() + operator.len());
+    probe.push_str(name);
+    probe.push_str(operator);
+    !matches!(
+        Lexer::new(&probe).next(),
+        Some(Ok((0, Tok::Name(value), end))) if end == name.len() && value == name
+    )
 }
 
 impl<'input> Lexer<'input> {
@@ -247,7 +282,7 @@ impl<'input> Lexer<'input> {
                 self.pos = self.input.len();
                 return Some(ScanStep::Emit(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
-                    crate::SourceSpan::new(opening, opening + 1),
+                    SourceSpan::new(opening, opening + 1),
                 ))));
             };
             self.pos = self.input.len() - body.len() + end_rel + 1;
@@ -363,7 +398,7 @@ impl<'input> Lexer<'input> {
         let direction_end = self.pos;
         let _ = self.read_to_newline();
         let direction = &self.input[direction_start..direction_end];
-        let selection = crate::SourceSpan::new(direction_start, direction_end);
+        let selection = SourceSpan::new(direction_start, direction_end);
         let dir = if direction == "TB" {
             "TB"
         } else if direction == "BT" {
@@ -375,10 +410,7 @@ impl<'input> Lexer<'input> {
         } else {
             let error = LexError::new("invalid class direction", selection);
             #[cfg(feature = "editor-facts")]
-            let error = error.expecting(
-                crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
-                selection,
-            );
+            let error = error.expecting(ClassLexicalExpectation::Direction);
             return Some(Err(error));
         };
         Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
@@ -444,13 +476,10 @@ impl<'input> Lexer<'input> {
         let Some(end_rel) = self.input[self.pos..].find(')') else {
             let error = LexError::new(
                 "Unterminated callback arguments; missing ')'",
-                crate::SourceSpan::new(start, self.pos),
+                SourceSpan::new(start, self.pos),
             );
             #[cfg(feature = "editor-facts")]
-            let error = error.expecting(
-                crate::EditorExpectedSyntaxKind::Payload,
-                crate::SourceSpan::new(start, self.pos),
-            );
+            let error = error.expecting(ClassLexicalExpectation::CallbackArguments);
             return Some(Err(error));
         };
         let args = self.input[self.pos..self.pos + end_rel].trim().to_string();
@@ -593,7 +622,7 @@ impl<'input> Lexer<'input> {
         let Some(rel_end) = self.input[self.pos..].find('"') else {
             return Some(Err(LexError::new(
                 "Unterminated string literal; missing '\"'",
-                crate::SourceSpan::new(start, self.pos),
+                SourceSpan::new(start, self.pos),
             )));
         };
         let s = self.input[self.pos..self.pos + rel_end].to_string();
@@ -685,7 +714,7 @@ impl<'input> Lexer<'input> {
             let name_start = start + usize::from(quoted);
             return Some(Err(LexError::new(
                 "Expected a class name before the generic type",
-                crate::SourceSpan::new(name_start, (name_start + 1).min(self.pos)),
+                SourceSpan::new(name_start, (name_start + 1).min(self.pos)),
             )));
         }
 
@@ -726,7 +755,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
             return Some(Err(LexError::new(
                 "Unexpected '{' inside class body",
-                crate::SourceSpan::new(start, self.pos),
+                SourceSpan::new(start, self.pos),
             )));
         }
         let start = self.pos;
@@ -769,7 +798,7 @@ impl TokenScanner for Lexer<'_> {
                 self.mode = Mode::Default;
                 return ScanStep::Emit(Err(LexError::new(
                     "EOF inside class body",
-                    crate::SourceSpan::new(self.pos, self.pos),
+                    SourceSpan::new(self.pos, self.pos),
                 )));
             }
             return ScanStep::End;
@@ -856,11 +885,12 @@ impl TokenScanner for Lexer<'_> {
         let _ = self.bump();
         ScanStep::Emit(Err(LexError::new(
             format!("Unexpected character at {start}"),
-            crate::SourceSpan::new(start, self.pos),
+            SourceSpan::new(start, self.pos),
         )))
     }
 }
 
+#[cfg(any(test, feature = "editor-facts"))]
 impl Iterator for Lexer<'_> {
     type Item = <Self as TokenScanner>::Event;
 
@@ -872,6 +902,8 @@ impl Iterator for Lexer<'_> {
 #[cfg(test)]
 mod tests {
     use super::Lexer;
+    use crate::scan::collect_lexical_events;
+    use merman_model::{CancelReason, OperationControl};
 
     #[test]
     fn cancellation_interrupts_skipped_comments_inside_a_class_body() {
@@ -880,11 +912,11 @@ mod tests {
             "%% comment\n".repeat(1_024)
         );
         let mut lexer = Lexer::new(&input);
-        let control = crate::OperationControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
-        let error = crate::diagrams::scan::collect_lexical_events(&mut lexer, &control)
+        let error = collect_lexical_events(&mut lexer, &control)
             .expect_err("skipped comments must observe cancellation before the closing brace");
-        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert_eq!(error.reason, CancelReason::Requested);
         assert!(lexer.pos > 0 && lexer.pos < input.len());
     }
 
