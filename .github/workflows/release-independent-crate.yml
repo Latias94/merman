@@ -96,9 +96,12 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
-          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
-          printf 'source_tree=%s\n' "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
-          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.100.0
@@ -197,8 +200,10 @@ jobs:
           dependent_source="${ORIGINAL_SOURCE_SHA:-HEAD}"
           stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$dependent_source")"
           prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' "$dependent_source")"
-          printf 'stable_version=%s\n' "${stable_tag#v}" >> "$GITHUB_OUTPUT"
-          printf 'prerelease_version=%s\n' "${prerelease_tag#v}" >> "$GITHUB_OUTPUT"
+          {
+            printf 'stable_version=%s\n' "${stable_tag#v}"
+            printf 'prerelease_version=%s\n' "${prerelease_tag#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Compile published dependents against the candidate
         if: ${{ steps.history.outputs.observe_only == 'false' && needs.validate-inputs.outputs.package == 'roughr-merman' }}
