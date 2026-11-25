@@ -6,8 +6,9 @@
 use super::super::{
     ColorTransform, THEME_SCALE_INVERSE_KEYS, THEME_SCALE_KEYS, THEME_SCALE_LABEL_KEYS,
     THEME_SCALE_PEER_KEYS, ThemeProgram, XYCHART_TEXT_COLOR_KEYS, apply_quadrant_theme_defaults,
-    get_truthy_string, merge_theme_variable_defaults, mk_border, required_color,
-    set_derived_string_unless_explicit, set_if_missing, validate_explicit_git_transforms,
+    generated_theme_runtime, get_truthy_string, merge_theme_variable_defaults, mk_border,
+    required_color, set_derived_string_unless_explicit, set_if_missing,
+    validate_explicit_git_transforms,
 };
 use super::{ColorAdjustment, ColorError, Map, ThemeState, Value, copy, theme_color};
 
@@ -38,7 +39,7 @@ pub(super) fn update(
     theme: &ThemeProgram,
     explicit: &Map<String, Value>,
 ) -> Result<(), ColorError> {
-    calculate(&mut stage.variables, theme, explicit)?;
+    calculate(&mut stage.variables, explicit)?;
     merge_theme_variable_defaults(&mut stage.variables, theme.calculation_snapshot(explicit));
     update_rows(explicit, &mut stage.variables)?;
     for &(source, target) in DEPENDENCIES {
@@ -123,12 +124,18 @@ fn update_rows(
     Ok(())
 }
 
-fn ensure_xychart_theme(tv: &mut Map<String, Value>, constructor: &Map<String, Value>) {
+fn ensure_xychart_theme(tv: &mut Map<String, Value>) {
+    let constructor = generated_theme_runtime()
+        .prepared_constructors
+        .default
+        .xy_chart
+        .resolved();
     // An absent object keeps constructor snapshots. An authored object replaces that snapshot
     // before updateColors derives missing fields; explicit replay restores its authored leaves.
-    let mut xy = match tv.get("xyChart").or_else(|| constructor.get("xyChart")) {
+    let mut xy = match tv.get("xyChart") {
         Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
+        Some(_) => Map::new(),
+        None => constructor.clone(),
     };
 
     set_if_missing(
@@ -148,7 +155,7 @@ fn ensure_xychart_theme(tv: &mut Map<String, Value>, constructor: &Map<String, V
     set_if_missing(
         &mut xy,
         "plotColorPalette",
-        constructor["xyChart"]["plotColorPalette"].clone(),
+        constructor["plotColorPalette"].clone(),
     );
 
     tv.insert("xyChart".to_string(), Value::Object(xy));
@@ -158,11 +165,7 @@ fn mermaid_default_font_family() -> Value {
     Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string())
 }
 
-fn calculate(
-    tv: &mut Map<String, Value>,
-    theme: &ThemeProgram,
-    explicit: &Map<String, Value>,
-) -> Result<(), ColorError> {
+fn calculate(tv: &mut Map<String, Value>, explicit: &Map<String, Value>) -> Result<(), ColorError> {
     // Default initializes missing roots after the overlay, before using the calculated snapshot.
     let default_primary = "#ECECFF";
     let default_secondary = "#ffffde";
@@ -614,7 +617,7 @@ fn calculate(
         Value::String("drop-shadow(1px 2px 2px rgba(185, 185, 185, 1))".to_string()),
     );
 
-    ensure_xychart_theme(tv, theme.prepared_constructor());
+    ensure_xychart_theme(tv);
 
     apply_quadrant_theme_defaults(tv, default_primary, "#131300", &default_primary_border)?;
     validate_explicit_git_transforms(tv, explicit, ColorTransform::Darken(25.0))?;

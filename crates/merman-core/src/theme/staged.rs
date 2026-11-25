@@ -104,7 +104,17 @@ impl ThemeProgram {
     }
 
     fn prepared_constructor(self) -> &'static Map<String, Value> {
-        generated_theme_runtime().prepared_constructors[self.id.as_str()].resolved()
+        let constructors = &generated_theme_runtime().prepared_constructors;
+        let snapshot = match self.staged {
+            StagedProgram::Base => &constructors.base,
+            StagedProgram::Dark => &constructors.dark,
+            StagedProgram::Forest => &constructors.forest,
+            StagedProgram::Neutral => &constructors.neutral,
+            StagedProgram::Default | StagedProgram::Extended(_) => {
+                unreachable!("snapshot-backed themes do not use a full constructor")
+            }
+        };
+        snapshot.resolved()
     }
 
     pub(super) fn generated_snapshot(self) -> &'static Map<String, Value> {

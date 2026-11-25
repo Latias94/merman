@@ -29,7 +29,7 @@ impl From<ThemeResolutionError> for crate::Error {
     }
 }
 
-const THEME_RUNTIME_SCHEMA_VERSION: u32 = 3;
+const THEME_RUNTIME_SCHEMA_VERSION: u32 = 4;
 const THEME_ORACLE_CASE_COUNT: usize = MermaidThemeId::ALL.len() * 5 + 12;
 #[cfg(test)]
 const THEME_AUDIT_SCHEMA_VERSION: u32 = 2;
@@ -46,12 +46,46 @@ struct GeneratedThemeRuntime<'a> {
     schema_version: u32,
     provenance: GeneratedThemeProvenance,
     #[serde(borrow)]
-    prepared_constructors: BTreeMap<String, GeneratedThemeMap<'a>>,
+    prepared_constructors: GeneratedThemeConstructors<'a>,
     #[serde(borrow)]
     themes: BTreeMap<String, GeneratedThemeMap<'a>>,
     #[serde(borrow)]
     dark_mode_true_overrides: BTreeMap<String, GeneratedThemeMap<'a>>,
     oracle_case_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GeneratedThemeConstructors<'a> {
+    #[serde(borrow)]
+    base: GeneratedThemeMap<'a>,
+    #[serde(borrow)]
+    dark: GeneratedThemeMap<'a>,
+    #[serde(borrow)]
+    default: GeneratedDefaultConstructor<'a>,
+    #[serde(borrow)]
+    forest: GeneratedThemeMap<'a>,
+    #[serde(borrow)]
+    neutral: GeneratedThemeMap<'a>,
+}
+
+impl<'a> GeneratedThemeConstructors<'a> {
+    fn snapshots(&self) -> [&GeneratedThemeMap<'a>; 5] {
+        [
+            &self.base,
+            &self.dark,
+            &self.default.xy_chart,
+            &self.forest,
+            &self.neutral,
+        ]
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GeneratedDefaultConstructor<'a> {
+    #[serde(borrow)]
+    xy_chart: GeneratedThemeMap<'a>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,12 +206,11 @@ fn parse_generated_theme_runtime() -> GeneratedThemeRuntime<'static> {
     assert_eq!(artifact.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
     assert_generated_theme_provenance(&artifact.provenance);
     assert_eq!(artifact.oracle_case_count, THEME_ORACLE_CASE_COUNT);
+    for snapshot in artifact.prepared_constructors.snapshots() {
+        assert!(snapshot.encoded.get().starts_with('{'));
+    }
     for theme in MermaidThemeId::ALL {
-        for section in [
-            &artifact.prepared_constructors,
-            &artifact.themes,
-            &artifact.dark_mode_true_overrides,
-        ] {
+        for section in [&artifact.themes, &artifact.dark_mode_true_overrides] {
             assert!(section[theme.as_str()].encoded.get().starts_with('{'));
         }
     }
@@ -213,7 +246,8 @@ fn generated_theme_sections_decode_on_demand() {
     assert!(
         artifact
             .prepared_constructors
-            .values()
+            .snapshots()
+            .into_iter()
             .all(|snapshot| snapshot.decoded.get().is_none())
     );
 }
