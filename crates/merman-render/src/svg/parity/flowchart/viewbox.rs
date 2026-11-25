@@ -404,7 +404,7 @@ fn builtin_neo_paint_bounds(
             continue;
         };
         if !matches!(
-            crate::flowchart::FlowchartShape::resolve(info.shape)?,
+            crate::flowchart::resolve_flowchart_shape(info.shape)?,
             crate::flowchart::FlowchartShape::Process
                 | crate::flowchart::FlowchartShape::RoundedRectangle
         ) {

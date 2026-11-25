@@ -2695,6 +2695,7 @@ dependencies = [
  "merman-model",
  "merman-render-charts",
  "merman-render-core",
+ "merman-render-flow",
  "merman-render-graph",
  "merman-render-sequence",
  "merman-render-structured",
@@ -2754,6 +2755,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "merman-render-flow"
+version = "0.11.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "merman-render-core",
 ]
 
 [[package]]

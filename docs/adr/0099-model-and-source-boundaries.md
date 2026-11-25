@@ -54,6 +54,12 @@ SVG path, including marker setback, bounds, and obstacle clearance. Diagram fami
 semantic bindings, work accounting, and projection into the layout solver. Shoal and the path
 builder exchange the same route point types.
 
+### Flow diagrams
+
+`merman-render-flow` owns Flowchart, Swimlane, and Agentflow shape geometry. It resolves shape
+aliases and image and icon dimensions, and supplies organic outlines and BPMN connector
+intersections. `merman-render` owns traversal, work accounting, asset policy, and SVG emission.
+
 ### Structured diagrams
 
 `merman-core-structured` owns Packet field scanning and bounded row expansion, along with the

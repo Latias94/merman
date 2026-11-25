@@ -23,7 +23,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bpmn(
     };
     let metrics = common.label_metrics(ctx, label);
     let geometry = shape.geometry(
-        metrics,
+        kurbo::Size::new(metrics.width, metrics.height),
         !label.text.is_empty(),
         options.icon.is_some(),
         !options.markers.is_empty(),
@@ -246,13 +246,8 @@ mod tests {
     use super::*;
 
     fn render(shape: BpmnShape, options: BpmnOptions<'_>) -> (String, Vec<(String, f64, usize)>) {
-        let metrics = crate::text::TextMetrics {
-            width: 32.921875,
-            height: 24.0,
-            line_count: 1,
-        };
         let geometry = shape.geometry(
-            metrics,
+            kurbo::Size::new(32.921875, 24.0),
             true,
             options.icon.is_some(),
             !options.markers.is_empty(),

@@ -5,7 +5,7 @@ use super::prepare::{normalize_direction, synthetic_node};
 use super::working::{WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
     FlowchartEdgeKey, FlowchartRenderModelRef, FlowchartShape, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
+    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge, resolve_flowchart_shape,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -247,7 +247,7 @@ fn measure(
         let geometry = labels.zip(owner).and_then(|(labels, owner)| {
             labels.measured_node_geometry(FlowchartSvgLabelOwner::SwimlaneNode(owner))
         });
-        let radii = match FlowchartShape::resolve(&node.shape)? {
+        let radii = match resolve_flowchart_shape(&node.shape)? {
             FlowchartShape::Process => process_radius,
             FlowchartShape::RoundedRectangle => configured_radius,
             _ => None,

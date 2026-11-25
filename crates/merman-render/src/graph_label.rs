@@ -57,22 +57,24 @@ pub(crate) fn flowchart_node_label_min_width(
     if raw_label.is_empty()
         || matches!(
             shape,
-            Ok(FlowchartShape::Anchor
-                | FlowchartShape::Circle
-                | FlowchartShape::Choice
-                | FlowchartShape::CrossedCircle
-                | FlowchartShape::DoubleCircle
-                | FlowchartShape::FilledCircle
-                | FlowchartShape::ForkJoin
-                | FlowchartShape::FramedCircle
-                | FlowchartShape::SmallCircle
-                | FlowchartShape::LightningBolt
-                | FlowchartShape::Icon
-                | FlowchartShape::IconCircle
-                | FlowchartShape::IconRounded
-                | FlowchartShape::IconSquare
-                | FlowchartShape::ImageSquare
-                | FlowchartShape::CollapsedGroup)
+            Some(
+                FlowchartShape::Anchor
+                    | FlowchartShape::Circle
+                    | FlowchartShape::Choice
+                    | FlowchartShape::CrossedCircle
+                    | FlowchartShape::DoubleCircle
+                    | FlowchartShape::FilledCircle
+                    | FlowchartShape::ForkJoin
+                    | FlowchartShape::FramedCircle
+                    | FlowchartShape::SmallCircle
+                    | FlowchartShape::LightningBolt
+                    | FlowchartShape::Icon
+                    | FlowchartShape::IconCircle
+                    | FlowchartShape::IconRounded
+                    | FlowchartShape::IconSquare
+                    | FlowchartShape::ImageSquare
+                    | FlowchartShape::CollapsedGroup
+            )
         )
     {
         return 0.0;

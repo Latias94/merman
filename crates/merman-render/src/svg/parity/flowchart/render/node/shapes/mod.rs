@@ -100,8 +100,8 @@ pub(super) fn advance_rough_geometry(
     common: &super::FlowchartNodeGeometry<'_>,
     label: &mut super::FlowchartNodeLabelState<'_>,
 ) -> crate::Result<()> {
-    use crate::flowchart::{FlowchartShape, LeanKind};
-    match FlowchartShape::resolve(common.shape)? {
+    use crate::flowchart::{FlowchartShape, LeanKind, resolve_flowchart_shape};
+    match resolve_flowchart_shape(common.shape)? {
         FlowchartShape::Anchor
         | FlowchartShape::Choice
         | FlowchartShape::CrossedCircle

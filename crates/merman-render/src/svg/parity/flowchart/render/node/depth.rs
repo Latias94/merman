@@ -24,7 +24,7 @@ pub(in crate::svg::parity::flowchart) fn native_silhouette(
     if width <= 0.0 || height <= 0.0 {
         return None;
     }
-    match FlowchartShape::resolve(info.shape).ok()? {
+    match FlowchartShape::resolve(info.shape)? {
         FlowchartShape::Process | FlowchartShape::RoundedRectangle => {
             let rect = ctx.rectangle_geometry(node).shape;
             let radius = prepared.selection.source_radii[0]

@@ -523,7 +523,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `ascii-render`, `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-flow/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 

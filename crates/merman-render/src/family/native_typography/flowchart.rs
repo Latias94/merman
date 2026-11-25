@@ -129,7 +129,7 @@ pub(super) fn unsupported_source_style(
             && node.icon.is_none()
             && matches!(
                 FlowchartShape::resolve(shape),
-                Ok(FlowchartShape::Process | FlowchartShape::RoundedRectangle)
+                Some(FlowchartShape::Process | FlowchartShape::RoundedRectangle)
             );
         let inline = declarations(&node.styles, control)?;
         let classes = flowchart_effective_node_class_names(&model.class_defs, &node.classes);

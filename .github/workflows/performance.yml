@@ -33,6 +33,7 @@ on:
       - "crates/merman-render/**"
       - "crates/merman-render-charts/**"
       - "crates/merman-render-core/**"
+      - "crates/merman-render-flow/**"
       - "crates/merman-render-graph/**"
       - "crates/merman-render-sequence/**"
       - "crates/merman-render-structured/**"

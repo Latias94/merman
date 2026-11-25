@@ -282,6 +282,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-render-core/src/lib.rs": True,
             "crates/merman-render-structured/src/packet/mod.rs": True,
             "crates/merman-render-charts/src/pie/mod.rs": True,
+            "crates/merman-render-flow/src/shapes.rs": True,
             "crates/merman-render-graph/src/er/markers.rs": True,
             "crates/merman-render-sequence/src/actor/glyph.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
@@ -345,6 +346,7 @@ class PlannerTests(unittest.TestCase):
             "crates/merman-render-core/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-structured/src/packet/mod.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-charts/src/pie/mod.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-flow/src/shapes.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-graph/src/er/markers.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-render-sequence/src/actor/glyph.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-model/src/lib.rs": {"core", "fuzz", "hygiene"},
@@ -1091,8 +1093,8 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         for root in (
             "merman-core-graph", "merman-core-sequence", "merman-core-structured", "merman-model",
             "merman-markup",
-            "merman-render-charts", "merman-render-core", "merman-render-graph",
-            "merman-render-sequence", "merman-render-structured",
+            "merman-render-charts", "merman-render-core", "merman-render-flow",
+            "merman-render-graph", "merman-render-sequence", "merman-render-structured",
         ):
             self.assertIn(f'      - "crates/{root}/**"', paths)
 

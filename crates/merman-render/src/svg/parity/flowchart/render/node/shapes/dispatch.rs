@@ -1,6 +1,6 @@
 //! Flowchart node shape dispatch.
 
-use crate::flowchart::FlowchartShape;
+use crate::flowchart::{FlowchartShape, resolve_flowchart_shape};
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
 use crate::{Error, Result};
@@ -12,7 +12,7 @@ pub(in super::super) fn render_flowchart_shape(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> Result<bool> {
-    let resolved_shape = FlowchartShape::resolve(common.shape)?;
+    let resolved_shape = resolve_flowchart_shape(common.shape)?;
 
     match resolved_shape {
         FlowchartShape::Anchor

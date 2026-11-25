@@ -264,11 +264,11 @@ pub(super) fn advance_rough_geometry(
         RoughGeometryTarget, roughjs_prepare_hachure_paths_for_svg_path,
         roughjs_prepare_paths_for_circle_with_roughness,
     };
-    use crate::flowchart::FlowchartShape;
+    use crate::flowchart::{FlowchartShape, resolve_flowchart_shape};
     if !common.look_is_hand_drawn() {
         return Ok(());
     }
-    match FlowchartShape::resolve(common.shape)? {
+    match resolve_flowchart_shape(common.shape)? {
         FlowchartShape::Diamond => {
             let path = diamond_path(
                 common.layout_node.width.max(1.0),

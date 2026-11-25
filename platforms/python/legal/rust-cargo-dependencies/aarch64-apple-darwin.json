@@ -97,7 +97,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "8608aff68554281a498c30202ded48b84b43f0f56e6690e8a0f4f9c1f87531f3",
+    "cargo_lock_sha256": "5fba0f0e7c627c2e77fa7c1b52667a212a2f38f14afb453197f7bb44890a31b0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "5c18f57e656bcd15cb63c2e70d0cf3df3975adbdaa573f00d41d46cac1dc8a8e"
   },

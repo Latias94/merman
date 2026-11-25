@@ -902,6 +902,7 @@
         "crates/merman-markup/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "crates/merman-render-flow/src",
         "fixtures"
       ],
       "license_expression": "MIT",

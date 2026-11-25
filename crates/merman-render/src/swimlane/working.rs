@@ -49,16 +49,7 @@ impl WorkingNode {
                     | crate::flowchart::bpmn::BpmnShape::Annotation
             )
         {
-            let geometry = shape.geometry(
-                crate::text::TextMetrics {
-                    width: 0.0,
-                    height: 0.0,
-                    line_count: 0,
-                },
-                false,
-                false,
-                false,
-            );
+            let geometry = shape.geometry(kurbo::Size::ZERO, false, false, false);
             return (geometry.drawn_width, geometry.drawn_height);
         }
         (self.width, self.height)
