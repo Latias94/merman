@@ -1,0 +1,2711 @@
+use super::*;
+
+// Frozen pre-refactor collection and graph planning are intentionally test-only.
+// They provide an independent oracle for identity ownership, adjacency, and exact counts.
+struct ReferenceNode {
+    children: Vec<usize>,
+    is_marker: bool,
+    may_repeat_per_element: bool,
+    use_id: Option<String>,
+    parsed_id: Option<String>,
+    references: Vec<ElementReference>,
+}
+
+struct LegacyReferenceDependencyGraph {
+    // Real document nodes keep their encounter-order indexes. Trailing nodes are transparent
+    // candidate groups: they share duplicate-ID edges without contributing an element or depth.
+    dependencies: Vec<Vec<(usize, usize)>>,
+    real_nodes: usize,
+}
+
+fn append_reference_node(
+    nodes: &mut Vec<ReferenceNode>,
+    parent: Option<usize>,
+    validated: LegacyValidatedElement,
+) {
+    let index = nodes.len();
+    if let Some(parent) = parent {
+        nodes[parent].children.push(index);
+    }
+    nodes.push(ReferenceNode {
+        children: Vec::new(),
+        is_marker: validated.is_marker,
+        may_repeat_per_element: validated.may_repeat_per_element,
+        use_id: validated.use_id,
+        parsed_id: validated.parsed_id,
+        references: validated.references,
+    });
+}
+
+struct LegacyValidatedElement {
+    is_marker: bool,
+    may_repeat_per_element: bool,
+    use_id: Option<String>,
+    parsed_id: Option<String>,
+    references: Vec<ElementReference>,
+}
+
+struct LegacyReferenceAttributes<'a> {
+    element_name: &'a str,
+    is_svg_element: bool,
+    use_id: Option<String>,
+    parsed_id: Option<String>,
+    use_href: Option<String>,
+    use_xlink_href: Option<String>,
+    geometry_source_len: Option<usize>,
+    marker_start: Option<String>,
+    marker_start_seen: bool,
+    marker_mid: Option<String>,
+    marker_mid_seen: bool,
+    marker_end: Option<String>,
+    marker_end_seen: bool,
+    marker_error: Option<Error>,
+}
+
+impl<'a> LegacyReferenceAttributes<'a> {
+    fn new(element_name: &'a str, is_svg_element: bool) -> Self {
+        Self {
+            element_name,
+            is_svg_element,
+            use_id: None,
+            parsed_id: None,
+            use_href: None,
+            use_xlink_href: None,
+            geometry_source_len: None,
+            marker_start: None,
+            marker_start_seen: false,
+            marker_mid: None,
+            marker_mid_seen: false,
+            marker_end: None,
+            marker_end_seen: false,
+            marker_error: None,
+        }
+    }
+
+    fn observe_raw_attribute(&mut self, name: &str, unbound: bool, xlink: bool, value: &str) {
+        if name == "id" {
+            self.use_id.get_or_insert_with(|| value.to_owned());
+        }
+        if self.is_svg_element
+            && (self.element_name.eq_ignore_ascii_case("use")
+                || self.element_name.eq_ignore_ascii_case("feImage"))
+            && name == "href"
+        {
+            if unbound {
+                self.use_href.get_or_insert_with(|| value.to_owned());
+            }
+            if xlink {
+                self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn observe(
+        &mut self,
+        semantic_name: &str,
+        is_unbound_attribute: bool,
+        is_xlink_attribute: bool,
+        value: &str,
+        checkpoint: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        self.observe_raw_attribute(
+            semantic_name,
+            is_unbound_attribute,
+            is_xlink_attribute,
+            value,
+        );
+        if self.is_svg_element
+            && ((self.element_name == "path" && semantic_name == "d")
+                || (matches!(self.element_name, "polyline" | "polygon")
+                    && semantic_name == "points"))
+        {
+            self.geometry_source_len.get_or_insert(value.len());
+        }
+        if self.is_svg_element && semantic_name == "id" {
+            self.parsed_id.get_or_insert_with(|| value.to_owned());
+        }
+        let marker_slot = if semantic_name == "marker-start" && !self.marker_start_seen {
+            self.marker_start_seen = true;
+            Some(&mut self.marker_start)
+        } else if semantic_name == "marker-mid" && !self.marker_mid_seen {
+            self.marker_mid_seen = true;
+            Some(&mut self.marker_mid)
+        } else if semantic_name == "marker-end" && !self.marker_end_seen {
+            self.marker_end_seen = true;
+            Some(&mut self.marker_end)
+        } else {
+            None
+        };
+        if let Some(slot) = marker_slot {
+            let target = same_document_marker_target(value);
+            checkpoint()?;
+            match target {
+                Ok(Some(target)) if is_marker_capable_svg_element(self.element_name) => {
+                    *slot = Some(target.to_owned());
+                }
+                Ok(None) => {}
+                Ok(Some(_)) => {
+                    self.marker_error.get_or_insert_with(|| {
+                        validation_error(format!(
+                            "marker references on <{}> cannot be bounded before usvg parsing",
+                            self.element_name
+                        ))
+                    });
+                }
+                Err(error) => {
+                    self.marker_error.get_or_insert(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> LegacyValidatedElement {
+        let mut references = Vec::new();
+        if let Some(target) = self
+            .use_href
+            .as_deref()
+            .or(self.use_xlink_href.as_deref())
+            .and_then(same_document_href_target)
+        {
+            references.push(ElementReference {
+                target: target.to_owned(),
+                multiplicity: 1,
+                target_kind: if self.element_name.eq_ignore_ascii_case("feImage") {
+                    ReferenceTargetKind::ParsedElement
+                } else {
+                    ReferenceTargetKind::UseElement
+                },
+            });
+        }
+        if let Some(target) = self.marker_start {
+            references.push(ElementReference {
+                target,
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        if let Some(target) = self.marker_mid {
+            references.push(ElementReference {
+                target,
+                multiplicity: marker_mid_instance_upper_bound(
+                    self.element_name,
+                    self.geometry_source_len.unwrap_or(0),
+                ),
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        if let Some(target) = self.marker_end {
+            references.push(ElementReference {
+                target,
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        LegacyValidatedElement {
+            is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
+            may_repeat_per_element: self.is_svg_element
+                && matches!(self.element_name, "filter" | "mask" | "clipPath"),
+            use_id: self.use_id,
+            parsed_id: self.parsed_id,
+            references,
+        }
+    }
+}
+
+#[test]
+fn reference_name_dispatch_matches_legacy_facts_and_each_checkpoint_failure() {
+    for element in [
+        "path", "Path", "polyline", "polygon", "line", "rect", "g", "use", "UsE", "feImage",
+        "FeImAgE", "style", "marker", "filter", "mask", "clipPath",
+    ] {
+        for is_svg in [false, true] {
+            for (marker, xlink) in [
+                ("url(#marker)", "#aliased"),
+                ("none", "#aliased"),
+                ("url(https://example.test/marker)", "external.svg#ignored"),
+            ] {
+                let attributes = [
+                    ("class", true, false, "irrelevant"),
+                    ("style", true, false, "fill:red;marker-end:url(#ignored)"),
+                    ("transform", true, false, "translate(1,2)"),
+                    ("data-marker-start", true, false, "url(#ignored)"),
+                    ("ID", true, false, "ignored"),
+                    ("id", false, false, "a&中文"),
+                    ("id", true, false, "raw"),
+                    ("id", false, true, "ignored"),
+                    ("d", false, false, "M0 0L1 1L2 2"),
+                    ("d", true, false, "M0 0"),
+                    ("points", true, false, "0,0 1,1 2,2"),
+                    ("points", false, false, "0,0"),
+                    ("Href", true, false, "#ignored"),
+                    ("href", true, false, "#raw"),
+                    ("href", false, true, xlink),
+                    ("href", true, false, "#ignored"),
+                    ("href", false, false, "#ignored"),
+                    ("marker-Mid", true, false, "url(#ignored)"),
+                    ("marker-start", false, false, marker),
+                    ("marker-start", true, false, "url(#ignored)"),
+                    ("marker-mid", true, false, marker),
+                    ("marker-end", false, true, marker),
+                    ("marker-end", true, false, "url(#ignored)"),
+                    ("id", true, false, "a&中文"),
+                ];
+                for fail_at in [None, Some(1), Some(2), Some(3)] {
+                    let mut actual = ReferenceAttributes::new(element, is_svg);
+                    let mut expected = LegacyReferenceAttributes::new(element, is_svg);
+                    let (mut actual_count, mut expected_count) = (0, 0);
+                    let checkpoint = |count: &mut usize| {
+                        *count += 1;
+                        if fail_at == Some(*count) {
+                            Err(Error::Cancelled(merman_model::OperationCancelled {
+                                phase: merman_model::OperationPhase::Postprocess,
+                                reason: merman_model::CancelReason::Requested,
+                            }))
+                        } else {
+                            Ok(())
+                        }
+                    };
+                    for (name, unbound, xlink, value) in attributes {
+                        actual.observe_raw_attribute(name, unbound, xlink, &Cow::Borrowed(value));
+                        let result =
+                            actual.observe(name, value, &mut || checkpoint(&mut actual_count));
+                        let oracle = expected.observe(name, unbound, xlink, value, &mut || {
+                            checkpoint(&mut expected_count)
+                        });
+                        assert_eq!(format!("{result:?}"), format!("{oracle:?}"));
+                        assert_eq!(actual_count, expected_count);
+                        assert_eq!(
+                            (
+                                &actual.ids.parsed,
+                                actual.ids.raw_value(),
+                                actual.geometry_source_len
+                            ),
+                            (
+                                &expected.parsed_id,
+                                expected.use_id.as_deref(),
+                                expected.geometry_source_len
+                            ),
+                            "{element}/{is_svg}/{name}",
+                        );
+                        assert_eq!(
+                            (
+                                &actual.marker_start,
+                                actual.marker_start_seen,
+                                &actual.marker_mid,
+                                actual.marker_mid_seen,
+                                &actual.marker_end,
+                                actual.marker_end_seen
+                            ),
+                            (
+                                &expected.marker_start,
+                                expected.marker_start_seen,
+                                &expected.marker_mid,
+                                expected.marker_mid_seen,
+                                &expected.marker_end,
+                                expected.marker_end_seen
+                            ),
+                        );
+                        assert_eq!(
+                            format!("{:?}", actual.marker_error),
+                            format!("{:?}", expected.marker_error)
+                        );
+                        if result.is_err() {
+                            break;
+                        }
+                    }
+                    assert_eq!(actual_count, fail_at.unwrap_or(3));
+                    let actual = actual.finish();
+                    let expected = expected.finish();
+                    assert_eq!(
+                        (
+                            actual.is_marker,
+                            actual.may_repeat_per_element,
+                            actual.ids.parsed.as_deref(),
+                            actual.ids.raw_value()
+                        ),
+                        (
+                            expected.is_marker,
+                            expected.may_repeat_per_element,
+                            expected.parsed_id.as_deref(),
+                            expected.use_id.as_deref()
+                        ),
+                    );
+                    let key = |reference: ElementReference| {
+                        (
+                            reference.target,
+                            reference.multiplicity,
+                            std::mem::discriminant(&reference.target_kind),
+                        )
+                    };
+                    assert_eq!(
+                        actual
+                            .references
+                            .into_iter()
+                            .flatten()
+                            .map(key)
+                            .collect::<Vec<_>>(),
+                        expected.references.into_iter().map(key).collect::<Vec<_>>(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn collect_reference_element_after_xml(
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<LegacyValidatedElement> {
+    let (namespace, local_name) = resolver.resolve_element(element.name());
+    let element_name = local_name.as_ref();
+    let mut references =
+        LegacyReferenceAttributes::new(element_name, is_svg_element_namespace(&namespace));
+    // The caller already validated this exact immutable SVG, including lexical and expanded
+    // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
+    for attribute in element.attributes().with_checks(false) {
+        checkpoint()?;
+        let attribute = attribute
+            .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
+        if attribute.key.as_namespace_binding().is_some() {
+            continue;
+        }
+        let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
+        let is_unbound = matches!(&namespace, ResolveResult::Unbound);
+        let is_xlink = matches!(
+            &namespace,
+            ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
+        );
+        let consumes_namespace = usvg_consumes_attribute_namespace(namespace)?;
+        let value = attribute.normalized_value(XmlVersion::Implicit1_0);
+        checkpoint()?;
+        let value = value.map_err(|error| {
+            xml_validation_error(format!("invalid XML attribute value: {error}"))
+        })?;
+        references.observe_raw_attribute(local_name.as_ref(), is_unbound, is_xlink, &value);
+        if !consumes_namespace {
+            continue;
+        }
+        references.observe(
+            local_name.as_ref(),
+            is_unbound,
+            is_xlink,
+            &value,
+            checkpoint,
+        )?;
+    }
+    Ok(references.finish())
+}
+
+fn plan_svg_reference_expansion_with_checkpoints<E>(
+    nodes: &[ReferenceNode],
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> ReferencePlanningResult<SvgReferencePlan, E> {
+    analyze_svg_reference_expansion_with_checkpoints::<true, _>(nodes, None, checkpoint)
+        .map(SvgReferenceAnalysis::into_detailed_plan)
+}
+
+fn analyze_svg_reference_expansion_with_checkpoints<const DETAILED: bool, E>(
+    nodes: &[ReferenceNode],
+    raw_structure: Option<SvgStructureMetrics>,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
+    let Some(_) = nodes.first() else {
+        return Err(ReferencePlanningError::Invalid(
+            "the document does not contain an SVG reference root".to_string(),
+        ));
+    };
+
+    if let Some(structure) = raw_structure {
+        // Only this XML owner supplies complete, validated element facts for these exact bytes.
+        // Unused IDs/markers/gradients do not expand. References and all conservative effect
+        // applications must use the graph, including missing targets and duplicate parsed IDs.
+        let mut no_expansion = true;
+        for (index, node) in nodes.iter().enumerate() {
+            checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+            if !node.references.is_empty() || node.may_repeat_per_element {
+                no_expansion = false;
+                break;
+            }
+        }
+        if no_expansion {
+            debug_assert_eq!(structure.elements, nodes.len());
+            let raw_element_occurrences = if DETAILED {
+                record_reference_analysis_work(|work| {
+                    work.occurrence_slots += nodes.len();
+                });
+                vec![1; nodes.len()].into_boxed_slice()
+            } else {
+                Box::default()
+            };
+            checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+            return Ok(SvgReferenceAnalysis {
+                structure,
+                raw_element_occurrences,
+            });
+        }
+    }
+
+    let dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
+        .map_err(ReferencePlanningError::Checkpoint)?;
+    analyze_svg_reference_dependencies_with_effects::<DETAILED, _>(&dependencies, nodes, checkpoint)
+}
+
+fn build_svg_reference_dependencies(nodes: &[ReferenceNode]) -> LegacyReferenceDependencyGraph {
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    match build_svg_reference_dependencies_with_checkpoints(nodes, &mut checkpoint) {
+        Ok(graph) => graph,
+        Err(error) => match error {},
+    }
+}
+
+fn build_svg_reference_dependencies_with_checkpoints<E>(
+    nodes: &[ReferenceNode],
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<LegacyReferenceDependencyGraph, E> {
+    let real_nodes = nodes.len();
+
+    let mut use_ids = HashMap::new();
+    let mut parsed_ids: HashMap<&str, Vec<(usize, bool)>> = HashMap::new();
+    for (index, node) in nodes.iter().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        if let Some(id) = node.use_id.as_deref() {
+            // Raw XML lookup selects the first local-name ID in document order.
+            use_ids.entry(id).or_insert(index);
+        }
+        if let Some(id) = node.parsed_id.as_deref() {
+            // Keep every candidate conservatively. usvg ignores unknown elements and otherwise
+            // resolves duplicate parsed IDs to one element; charging the union avoids mirroring
+            // its private element whitelist while ensuring an ignored duplicate cannot shadow a
+            // resource-bearing target in this preflight graph.
+            parsed_ids
+                .entry(id)
+                .or_default()
+                .push((index, node.is_marker));
+        }
+    }
+
+    let mut dependencies = Vec::with_capacity(real_nodes);
+    let mut child_iteration = 0usize;
+    for (node_index, node) in nodes.iter().enumerate() {
+        checkpoint_loop(node_index, checkpoint)?;
+        let mut node_dependencies = Vec::with_capacity(node.children.len());
+        for &child in &node.children {
+            checkpoint_loop(child_iteration, checkpoint)?;
+            child_iteration = child_iteration.saturating_add(1);
+            node_dependencies.push((child, 1));
+        }
+        dependencies.push(node_dependencies);
+    }
+    let mut parsed_dependencies = HashMap::new();
+    let mut marker_dependencies = HashMap::new();
+    let mut reference_iteration = 0usize;
+    for (index, node) in nodes.iter().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        for reference in &node.references {
+            checkpoint_loop(reference_iteration, checkpoint)?;
+            reference_iteration = reference_iteration.saturating_add(1);
+            let target_index = match reference.target_kind {
+                ReferenceTargetKind::UseElement => use_ids.get(reference.target.as_str()).copied(),
+                ReferenceTargetKind::ParsedElement => {
+                    resolve_parsed_id_dependency_with_checkpoints(
+                        reference.target.as_str(),
+                        false,
+                        &parsed_ids,
+                        &mut parsed_dependencies,
+                        &mut dependencies,
+                        checkpoint,
+                    )?
+                }
+                ReferenceTargetKind::Marker => resolve_parsed_id_dependency_with_checkpoints(
+                    reference.target.as_str(),
+                    true,
+                    &parsed_ids,
+                    &mut marker_dependencies,
+                    &mut dependencies,
+                    checkpoint,
+                )?,
+            };
+            if let Some(target_index) = target_index {
+                dependencies[index].push((target_index, reference.multiplicity));
+            }
+        }
+    }
+
+    record_reference_analysis_work(|work| {
+        work.dependency_nodes += dependencies.len();
+    });
+    Ok(LegacyReferenceDependencyGraph {
+        dependencies,
+        real_nodes,
+    })
+}
+
+fn resolve_parsed_id_dependency_with_checkpoints<'a, E>(
+    target: &str,
+    marker_only: bool,
+    parsed_ids: &HashMap<&'a str, Vec<(usize, bool)>>,
+    resolved: &mut HashMap<&'a str, Option<usize>>,
+    dependencies: &mut Vec<Vec<(usize, usize)>>,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<usize>, E> {
+    checkpoint()?;
+    let Some((id, candidates)) = parsed_ids.get_key_value(target) else {
+        return Ok(None);
+    };
+    if let [(index, is_marker)] = candidates.as_slice() {
+        return Ok((!marker_only || *is_marker).then_some(*index));
+    }
+    if let Some(&dependency) = resolved.get(target) {
+        return Ok(dependency);
+    }
+    let dependency = if marker_only {
+        resolve_reference_candidates_with_checkpoints(
+            dependencies,
+            candidates
+                .iter()
+                .filter_map(|&(index, is_marker)| is_marker.then_some(index)),
+            checkpoint,
+        )?
+    } else {
+        resolve_reference_candidates_with_checkpoints(
+            dependencies,
+            candidates.iter().map(|&(index, _)| index),
+            checkpoint,
+        )?
+    };
+    resolved.insert(*id, dependency);
+    Ok(dependency)
+}
+
+fn resolve_reference_candidates_with_checkpoints<E>(
+    dependencies: &mut Vec<Vec<(usize, usize)>>,
+    mut candidates: impl Iterator<Item = usize>,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<usize>, E> {
+    checkpoint()?;
+    let Some(first) = candidates.next() else {
+        return Ok(None);
+    };
+    let Some(second) = candidates.next() else {
+        return Ok(Some(first));
+    };
+
+    // A duplicate-ID candidate union is materialized once. Every parsed-tree reference then owns
+    // one edge to this transparent group instead of copying every candidate edge.
+    let group_index = dependencies.len();
+    let mut group = Vec::with_capacity(candidates.size_hint().0.saturating_add(2));
+    group.push((first, 1));
+    group.push((second, 1));
+    for (iteration, index) in candidates.enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        group.push((index, 1));
+    }
+    dependencies.push(group);
+    Ok(Some(group_index))
+}
+
+fn plan_svg_reference_dependencies(
+    graph: &LegacyReferenceDependencyGraph,
+) -> std::result::Result<SvgReferencePlan, String> {
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    match analyze_svg_reference_dependencies_with_effects::<true, _>(graph, &[], &mut checkpoint) {
+        Ok(plan) => Ok(plan.into_detailed_plan()),
+        Err(ReferencePlanningError::Invalid(error)) => Err(error),
+        Err(ReferencePlanningError::Checkpoint(error)) => match error {},
+    }
+}
+
+fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
+    graph: &LegacyReferenceDependencyGraph,
+    svg_nodes: &[ReferenceNode],
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
+    // User element budgets can exceed a native backend's ceiling. Count independently of that
+    // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
+    let dependencies = &graph.dependencies;
+    let nodes_len = dependencies.len();
+    let mut states = vec![0_u8; nodes_len];
+    let mut expanded_elements = vec![0_usize; nodes_len];
+    let mut expanded_depths = vec![0_usize; nodes_len];
+    let mut postorder = if DETAILED {
+        Vec::with_capacity(nodes_len)
+    } else {
+        Vec::new()
+    };
+    record_reference_analysis_work(|work| {
+        work.postorder_slots += if DETAILED { nodes_len } else { 0 };
+    });
+    let mut stack = vec![(0_usize, false)];
+    let mut traversal_iteration = 0usize;
+    let mut dependency_iteration = 0usize;
+
+    while let Some((index, complete)) = stack.pop() {
+        checkpoint_loop(traversal_iteration, checkpoint)
+            .map_err(ReferencePlanningError::Checkpoint)?;
+        traversal_iteration = traversal_iteration.saturating_add(1);
+        if complete {
+            let is_group = index >= graph.real_nodes;
+            let mut elements = if is_group { 0_usize } else { 1 };
+            let mut depth = 0_usize;
+            for &(dependency, multiplicity) in &dependencies[index] {
+                checkpoint_loop(dependency_iteration, checkpoint)
+                    .map_err(ReferencePlanningError::Checkpoint)?;
+                dependency_iteration = dependency_iteration.saturating_add(1);
+                let dependency_elements =
+                    expanded_elements[dependency].saturating_mul(multiplicity);
+                elements = elements.saturating_add(dependency_elements);
+                let dependency_depth = expanded_depths[dependency];
+                depth = depth.max(if is_group {
+                    dependency_depth
+                } else {
+                    dependency_depth.saturating_add(1)
+                });
+            }
+            expanded_elements[index] = elements;
+            expanded_depths[index] = depth;
+            states[index] = 2;
+            if DETAILED {
+                postorder.push(index);
+            }
+            continue;
+        }
+
+        match states[index] {
+            0 => {
+                states[index] = 1;
+                stack.push((index, true));
+                for &(dependency, _) in dependencies[index].iter().rev() {
+                    checkpoint_loop(dependency_iteration, checkpoint)
+                        .map_err(ReferencePlanningError::Checkpoint)?;
+                    dependency_iteration = dependency_iteration.saturating_add(1);
+                    match states[dependency] {
+                        0 => stack.push((dependency, false)),
+                        1 => {
+                            checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+                            return Err(ReferencePlanningError::Invalid(
+                                "same-document SVG expansion references contain a cycle"
+                                    .to_string(),
+                            ));
+                        }
+                        2 => {}
+                        _ => unreachable!("SVG reference traversal state is bounded"),
+                    }
+                }
+            }
+            1 => {
+                checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+                return Err(ReferencePlanningError::Invalid(
+                    "same-document SVG expansion references contain a cycle".to_string(),
+                ));
+            }
+            2 => {}
+            _ => unreachable!("SVG reference traversal state is bounded"),
+        }
+    }
+
+    let mut raw_element_occurrences = if DETAILED {
+        vec![0_usize; nodes_len]
+    } else {
+        Vec::new()
+    };
+    record_reference_analysis_work(|work| {
+        work.occurrence_slots += if DETAILED { nodes_len } else { 0 };
+    });
+    if DETAILED {
+        raw_element_occurrences[0] = 1;
+    }
+    let application_upper_bound = expanded_elements[0];
+    for (index, node) in svg_nodes.iter().enumerate() {
+        checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+        if node.may_repeat_per_element {
+            // The XML owner includes every real node under the SVG root. After cycle checking,
+            // an extra root edge to an effect cannot change non-root costs or topological order.
+            debug_assert!(index != 0 && states[index] == 2);
+            // Charge each filter/mask/clip-path once per baseline expanded element, preserving
+            // the conservative CSS-independent bound without evaluating the graph a second time.
+            expanded_elements[0] = expanded_elements[0]
+                .saturating_add(expanded_elements[index].saturating_mul(application_upper_bound));
+            expanded_depths[0] = expanded_depths[0].max(expanded_depths[index].saturating_add(1));
+            if DETAILED {
+                raw_element_occurrences[index] =
+                    raw_element_occurrences[index].saturating_add(application_upper_bound);
+            }
+        }
+    }
+    let mut occurrence_dependency_iteration = 0usize;
+    for (iteration, index) in postorder.into_iter().rev().enumerate() {
+        checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+        let occurrences = raw_element_occurrences[index];
+        for &(dependency, multiplicity) in &dependencies[index] {
+            checkpoint_loop(occurrence_dependency_iteration, checkpoint)
+                .map_err(ReferencePlanningError::Checkpoint)?;
+            occurrence_dependency_iteration = occurrence_dependency_iteration.saturating_add(1);
+            record_reference_analysis_work(|work| {
+                work.occurrence_edges += 1;
+            });
+            let added = occurrences.saturating_mul(multiplicity);
+            raw_element_occurrences[dependency] =
+                raw_element_occurrences[dependency].saturating_add(added);
+        }
+    }
+    raw_element_occurrences.truncate(graph.real_nodes);
+
+    Ok(SvgReferenceAnalysis {
+        structure: SvgStructureMetrics {
+            elements: expanded_elements[0],
+            max_tree_depth: expanded_depths[0],
+        },
+        raw_element_occurrences: raw_element_occurrences.into_boxed_slice(),
+    })
+}
+
+fn legacy_reference_nodes(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<Vec<ReferenceNode>> {
+    let mut reader = NsReader::from_str(svg);
+    let mut reference_nodes = Vec::new();
+    let mut reference_stack = Vec::new();
+    loop {
+        checkpoint()?;
+        let event = reader.read_event();
+        checkpoint()?;
+        let event = event.map_err(|error| xml_validation_error(format!("invalid XML: {error}")))?;
+        let is_start = matches!(&event, Event::Start(_));
+        match event {
+            Event::Start(element) | Event::Empty(element) => {
+                let references =
+                    collect_reference_element_after_xml(&element, reader.resolver(), checkpoint)?;
+                append_reference_node(
+                    &mut reference_nodes,
+                    reference_stack.last().copied(),
+                    references,
+                );
+                if is_start {
+                    reference_stack.push(reference_nodes.len() - 1);
+                }
+            }
+            Event::End(_) => {
+                reference_stack.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    Ok(reference_nodes)
+}
+
+fn compact_facts_from_legacy_nodes(
+    nodes: &[ReferenceNode],
+) -> (SvgReferenceFacts, SvgStructureMetrics) {
+    let mut facts = SvgReferenceFacts {
+        parents: vec![usize::MAX; nodes.len()],
+        ..SvgReferenceFacts::default()
+    };
+    for (index, node) in nodes.iter().enumerate() {
+        for &child in &node.children {
+            facts.parents[child] = index;
+        }
+        if node.parsed_id.is_some() {
+            let raw = match &node.use_id {
+                None => RawElementId::Absent,
+                Some(raw) if Some(raw) == node.parsed_id.as_ref() => RawElementId::Parsed,
+                Some(raw) => RawElementId::Other(raw.clone()),
+            };
+            facts.identities.push(ReferenceIdentity {
+                element: index,
+                is_marker: node.is_marker,
+                text_content: SvgTextContent::Empty,
+                ids: ElementIds {
+                    parsed: node.parsed_id.clone(),
+                    raw,
+                },
+            });
+        } else if let Some(raw) = &node.use_id {
+            facts.identities.push(ReferenceIdentity {
+                element: index,
+                is_marker: node.is_marker,
+                text_content: SvgTextContent::Empty,
+                ids: ElementIds {
+                    parsed: None,
+                    raw: RawElementId::Other(raw.clone()),
+                },
+            });
+        }
+        for reference in &node.references {
+            facts.references.push(SourceReference {
+                source: index,
+                reference: ElementReference {
+                    target: reference.target.clone(),
+                    multiplicity: reference.multiplicity,
+                    target_kind: reference.target_kind,
+                },
+            });
+        }
+        if node.may_repeat_per_element {
+            facts.effects.push(index);
+        }
+    }
+    let mut depths = vec![0; nodes.len()];
+    for (index, &parent) in facts.parents.iter().enumerate().skip(1) {
+        depths[index] = depths[parent] + 1;
+    }
+    let structure = SvgStructureMetrics {
+        elements: nodes.len(),
+        max_tree_depth: depths.into_iter().max().unwrap_or(0),
+    };
+    (facts, structure)
+}
+
+fn two_pass_reference_budget(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+) -> Result<()> {
+    validate_well_formed_svg_with_controls(svg, checkpoint, check_structure)?;
+    let reference_nodes = legacy_reference_nodes(svg, checkpoint)?;
+    let plan = match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint) {
+        Ok(plan) => plan,
+        // XML and raw element budgets have already been checked. A cycle prevents a complete
+        // expansion plan, including for mixed cyclic/acyclic graphs, but does not make ordinary
+        // host SVG invalid. This path returns no compatibility or expansion certificate.
+        Err(ReferencePlanningError::Invalid(_)) => return checkpoint(),
+        Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
+    };
+    checkpoint()?;
+    check_structure(plan.expanded_elements(), plan.max_tree_depth())
+}
+
+fn validate_xml(svg: &str) -> Result<()> {
+    validate_well_formed_svg(svg, RenderResourcePolicy::trusted_native())
+}
+
+fn validate(svg: &str) -> Result<()> {
+    validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).map(|_| ())
+}
+
+fn nested_group_svg(depth: usize) -> String {
+    let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg">"#);
+    svg.push_str(&"<g>".repeat(depth));
+    svg.push_str(&"</g>".repeat(depth));
+    svg.push_str("</svg>");
+    svg
+}
+
+#[test]
+fn accepts_structural_fragments_and_raster_data_images() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"/><clipPath id="clip"><rect width="1" height="1"/></clipPath><rect id="filter-source"/></defs><circle fill="url(#paint)" style="clip-path:url(#clip);content:&quot;45deg&quot;"/><image href="data:image/png;base64,AAAA"/><filter><feImage href="#filter-source"/><feImage href="data:image/png;base64,BBBB"/></filter></svg>"##;
+
+    let validated =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+    assert_eq!(
+        validated.resource_closure.referenced_fragment_ids(),
+        &["clip", "filter-source", "paint"]
+    );
+    assert_eq!(validated.resource_closure.inline_data_resource_count(), 2);
+}
+
+#[test]
+fn inline_raster_inventory_records_the_selected_href_for_each_element() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><s:image x:href="data:image/png;base64,AAAA" href="data:image/png;base64,BBBB"/><image href="data:image/png;base64,BBBB"/><image href="" x:href="data:image/png;base64,AAAA"/><filter><feImage x:href="data:image/png;base64,&#x42;BBB" href="data:image/png;base64,BBBB"/><feImage x:href="data:image/png;base64,&#x42;BBB"/></filter></svg>"#;
+    let validated =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+    assert_eq!(validated.resource_closure.inline_data_resource_count(), 4);
+    assert_eq!(
+        validated
+            .inline_raster_sources
+            .iter()
+            .map(|(element, href)| (*element, href.as_str(svg)))
+            .collect::<Vec<_>>(),
+        [1, 2, 5, 6].map(|element| (element, "data:image/png;base64,BBBB"))
+    );
+    assert!(matches!(
+        validated.inline_raster_sources[0].1,
+        InlineRasterHref::Source(_)
+    ));
+    assert!(matches!(
+        validated.inline_raster_sources[3].1,
+        InlineRasterHref::Normalized(_)
+    ));
+}
+
+#[test]
+fn text_path_href_is_required_only_when_inline_geometry_cannot_be_built() {
+    for (path, inline) in [
+        ("M10 40 H190", true),
+        ("M10 40 H190 bad suffix", true),
+        ("M10 40 Z", true),
+        ("M1e40 40 M10 40 H190", true),
+        ("", false),
+        ("invalid", false),
+        ("M10 40 M20 40", false),
+        ("M10 40 L1e40 40", false),
+        ("M-2e38 40 L2e38 40", false),
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><text><textPath s:path="{path}" href="#old">Label</textPath></text></svg>"##
+        );
+        if inline {
+            let validation =
+                validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native())
+                    .unwrap();
+            assert!(
+                validation
+                    .resource_closure
+                    .referenced_fragment_ids()
+                    .is_empty()
+            );
+        } else {
+            let error = validate(&svg).unwrap_err();
+            assert!(
+                error.to_string().contains("fragment #old"),
+                "{path}: {error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn effective_tref_targets_inside_text_require_fonts() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><text><tref href="#label"/></text><text><tspan><tref href="#ignored" x:href="#label"></tref></tspan></text><text><g><text><tref href="#label"/></text></g></text><text><tref href="#blank"/></text><tref href="#label"/><defs><g id="label"><g>Some text</g></g><g id="blank"/></defs></svg>"##;
+    let validated =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+    assert_eq!(validated.text_elements, 4);
+    assert!(!validated.font_seal.is_complete());
+    assert_eq!(
+        validated.resource_closure.referenced_fragment_ids(),
+        &["blank", "label"]
+    );
+}
+
+#[test]
+fn empty_or_non_text_tref_targets_do_not_require_fonts() {
+    for target in [
+        r#"<g id="label"/>"#,
+        r#"<g id="label"><rect/></g>"#,
+        "<g id=\"label\">\n  <rect/>\n</g>",
+        "<rect id=\"label\" width=\"1\" height=\"1\">&#x20;<![CDATA[\r\n\t]]></rect>",
+        r#"<g id="label"/><g id="label">An ignored duplicate ID</g>"#,
+        r#"<x:g xmlns:x="urn:other" id="label">Ignored namespace</x:g>"#,
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><defs>{target}</defs><text><tref href="#label"/></text><rect width="20" height="20"/></svg>"##
+        );
+        let validated =
+            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, 0, "{target}");
+        assert!(validated.font_seal.is_complete(), "{target}");
+        assert_eq!(
+            validated.resource_closure.referenced_fragment_ids(),
+            &["label"]
+        );
+    }
+}
+
+#[test]
+fn tref_retains_nonbreaking_and_preserved_whitespace_as_font_content() {
+    for (ancestor_space, text_space, tref_space, target) in [
+        ("", "", "", "&#xA0;"),
+        (r#"xml:space="preserve""#, "", "", "\n \t "),
+        (
+            "",
+            r#"xml:space="preserve""#,
+            r#"xml:space="default""#,
+            "\n \t ",
+        ),
+        ("", "", r#"xml:space="preserve""#, "\n \t "),
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" {ancestor_space}><defs><g id="target">{target}</g></defs><text {text_space}><tref {tref_space} href="#target"/></text></svg>"##
+        );
+        let validated =
+            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, 1, "{svg}");
+    }
+}
+
+#[test]
+fn tref_local_preserve_still_allows_single_fragment_edge_trimming() {
+    for (target, expected) in [(" ", 0), ("&#x20;\t", 0), ("\n&#x20;\t", 1)] {
+        let svg = format!(
+            r##"<svg><defs><g id="target">{target}</g><g id="empty"/></defs><text><tref href="#empty"/><tref xml:space="preserve" href="#target"/></text></svg>"##
+        );
+        let validated =
+            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, expected, "{svg}");
+    }
+}
+
+#[test]
+fn use_space_follows_only_effective_clone_links_and_respects_resets() {
+    let template = r##"<g id="template" SPACE><g><text><tref href="#spaces"/></text></g></g>"##;
+    let link = r##"<use q:href="#template"/>"##;
+    let preserves = r##"<use href="#chain" xml:space="preserve"/>"##;
+    for (template_space, chain, outer, expected) in [
+        ("", link, preserves, 1),
+        (
+            "",
+            link,
+            r##"<g xml:space="preserve"><use href="#chain"/></g>"##,
+            1,
+        ),
+        (r#"xml:space="default""#, link, preserves, 0),
+        (
+            "",
+            r##"<use q:href="#template" xml:space="default"/>"##,
+            preserves,
+            0,
+        ),
+        (
+            "",
+            r##"<use q:href="#template" href="#blank"/>"##,
+            preserves,
+            0,
+        ),
+        ("", link, r##"<use href="#chain"/>"##, 0),
+        (
+            "",
+            link,
+            r##"<feImage href="#chain" xml:space="preserve"/>"##,
+            0,
+        ),
+    ] {
+        let template = template.replace("SPACE", template_space);
+        let svg = format!(
+            r#"<svg xmlns:q="http://www.w3.org/1999/xlink">{outer}<defs><g id="chain">{chain}</g>{template}<g id="spaces">     </g><g id="blank"/></defs></svg>"#
+        );
+        let validated =
+            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, expected, "{svg}");
+        assert_eq!(validated.font_seal.is_complete(), expected == 0, "{svg}");
+    }
+}
+
+#[test]
+fn a_text_element_inside_tref_can_still_be_rendered_through_use() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="blank"/></defs><text><tref href="#blank"><text id="label">Visible through use</text></tref></text><use href="#label"/></svg>"##;
+    let validated =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+    assert_eq!(validated.text_elements, 1);
+    assert!(!validated.font_seal.is_complete());
+}
+
+#[test]
+fn accepts_a_parsed_literal_navigation_entity_without_decoding_it_twice() {
+    validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript&amp;colon;ticket"><text>safe literal</text></a></svg>"#,
+        )
+        .unwrap();
+    assert!(
+            validate(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><a href=" https://example.test "><text>not normalized</text></a></svg>"#
+            )
+            .is_err()
+        );
+}
+
+#[test]
+fn streaming_xml_validation_accepts_a_strict_utf8_declaration_and_namespaces() {
+    validate_xml(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:x="urn:x"><x:item x:id="one"/></svg>"#,
+        )
+        .unwrap();
+}
+
+fn assert_xml_validation_error(svg: &str) {
+    let error = validate_xml(svg).expect_err("forbidden XML 1.0 content must be rejected");
+    assert!(
+        matches!(&error, Error::SvgPostprocess { pass, .. } if pass == XML_VALIDATION_PASS),
+        "{svg:?}: {error:?}"
+    );
+}
+
+#[test]
+fn streaming_xml_validation_rejects_forbidden_literal_text_scalars() {
+    for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+        assert_xml_validation_error(&format!("<svg><text>A{scalar}B</text></svg>"));
+    }
+}
+
+#[test]
+fn streaming_xml_validation_rejects_forbidden_literal_cdata_scalars() {
+    for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+        assert_xml_validation_error(&format!("<svg><![CDATA[A{scalar}B]]></svg>"));
+    }
+}
+
+#[test]
+fn streaming_xml_validation_rejects_forbidden_literal_attribute_scalars() {
+    for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+        for svg in [
+            format!(r#"<svg title="A{scalar}B"/>"#),
+            format!(r#"<svg xmlns:x="urn:A{scalar}B"><x:item/></svg>"#),
+        ] {
+            assert_xml_validation_error(&svg);
+        }
+    }
+}
+
+#[test]
+fn streaming_xml_validation_rejects_forbidden_attribute_character_references() {
+    for entity in ["&#0;", "&#x1f;", "&#xFFFE;", "&#xFFFF;"] {
+        assert_xml_validation_error(&format!(r#"<svg title="A{entity}B"/>"#));
+    }
+}
+
+#[test]
+fn streaming_xml_validation_rejects_forbidden_literal_comment_scalars() {
+    for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+        assert_xml_validation_error(&format!("<svg><!-- A{scalar}B --></svg>"));
+    }
+}
+
+#[test]
+fn streaming_xml_validation_keeps_existing_name_and_declaration_scalar_checks() {
+    for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+        for svg in [
+            format!("<svg><A{scalar}B/></svg>"),
+            format!(r#"<svg A{scalar}B="value"/>"#),
+            format!(r#"<?xml version="1.0{scalar}"?><svg/>"#),
+            format!(r#"<?xml version="1.0" encoding="UTF-8{scalar}"?><svg/>"#),
+        ] {
+            assert_xml_validation_error(&svg);
+        }
+    }
+}
+
+#[test]
+fn streaming_xml_validation_accepts_legal_scalars_and_single_entity_decoding() {
+    let legal = "\t\n\r café 中文 🙂 \u{85}\u{d7ff}\u{e000}\u{fffd}\u{10000}\u{10ffff}";
+    for svg in [
+        format!("<svg><text>{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;</text></svg>"),
+        format!("<svg><![CDATA[{legal}&amp;<literal>]]></svg>"),
+        format!(r#"<svg title="{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;"/>"#),
+        format!("<svg><!-- {legal}&amp;<literal> --></svg>"),
+        r#"<svg title="&amp;#0;">&amp;#xFFFE;</svg>"#.to_owned(),
+    ] {
+        validate_xml(&svg).unwrap_or_else(|error| panic!("{svg:?}: {error:?}"));
+    }
+}
+
+#[test]
+fn xml_character_bytes_match_every_rust_scalar() {
+    let mut encoded = [0_u8; 4];
+    for point in 0..=0x10ffff {
+        let Some(character) = char::from_u32(point) else {
+            continue;
+        };
+        let text = character.encode_utf8(&mut encoded);
+        let result = validate_xml_characters(text, &mut || Ok(()));
+        assert_eq!(
+            result.is_ok(),
+            crate::xml::is_xml_1_0_char(character),
+            "U+{point:04X}"
+        );
+    }
+}
+
+#[test]
+fn xml_character_bytes_keep_first_scalar_error_across_utf8_block_boundaries() {
+    fn scalar_reference(value: &str) -> Result<()> {
+        match value
+            .chars()
+            .find(|&character| !crate::xml::is_xml_1_0_char(character))
+        {
+            None => Ok(()),
+            Some(character) => Err(xml_validation_error(format!(
+                "the character U+{:04X} is forbidden in XML 1.0",
+                u32::from(character)
+            ))),
+        }
+    }
+
+    for offset in 0..=768 {
+        for middle in [
+            "é中🙂",
+            "\u{fffd}\u{1fffe}\u{10ffff}",
+            "\0\u{ffff}",
+            "\u{ffff}\0",
+            "\u{fffe}\u{1f}",
+            "\u{1f}\u{fffe}",
+            "é🙂\u{ffff}",
+        ] {
+            let text = format!("{}{middle}{}", "a".repeat(offset), "普通🙂".repeat(90));
+            let expected = scalar_reference(&text);
+            let actual = validate_xml_characters(&text, &mut || Ok(()));
+            assert_eq!(
+                format!("{actual:?}"),
+                format!("{expected:?}"),
+                "offset={offset}, middle={middle:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn xml_character_bytes_accept_legal_controls_and_noncharacters_in_every_plane() {
+    let mut text = String::from("\t\r\n\u{7f}\u{85}\u{d7ff}\u{e000}\u{fffd}");
+    for point in 0xfdd0..=0xfdef {
+        text.push(char::from_u32(point).unwrap());
+    }
+    for plane in 1..=16 {
+        for suffix in [0xfffe, 0xffff] {
+            text.push(char::from_u32((plane << 16) | suffix).unwrap());
+        }
+    }
+    validate_xml_characters(&text.repeat(32), &mut || Ok(())).unwrap();
+}
+
+#[test]
+fn xml_character_bytes_observe_postprocess_cancellation_before_error_and_during_long_text() {
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
+
+    for (text, cancel_at) in [
+        ("\u{ffff}".to_owned(), 2),
+        (format!("{}\0", "普通🙂".repeat(4_096)), 3),
+    ] {
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let mut checkpoints = 0;
+        let error = validate_xml_characters(&text, &mut || {
+            checkpoints += 1;
+            if checkpoints == cancel_at {
+                control.cancel();
+            }
+            session.checkpoint(OperationPhase::Postprocess)
+        })
+        .unwrap_err();
+        assert!(matches!(
+            &error,
+            Error::Cancelled(cancellation)
+                if cancellation.phase == OperationPhase::Postprocess
+                    && cancellation.reason == CancelReason::Requested
+        ));
+        // No historical callback-count equality is required. Once observed, cancellation
+        // remains the first terminal even at another stage and before a later XML error.
+        assert_eq!(
+            format!(
+                "{:?}",
+                session.checkpoint(OperationPhase::Emit).unwrap_err()
+            ),
+            format!("{error:?}")
+        );
+    }
+}
+
+#[test]
+fn streaming_xml_validation_checks_cancellation_inside_a_long_text_event() {
+    let svg = format!("<svg>{}<rect/></svg>", "A".repeat(4096));
+    let root_admitted = std::cell::Cell::new(false);
+    let mut text_checkpoints = 0usize;
+    let error = validate_well_formed_svg_with_controls(
+        &svg,
+        &mut || {
+            if root_admitted.get() {
+                text_checkpoints += 1;
+                if text_checkpoints == 16 {
+                    return Err(Error::Cancelled(merman_model::OperationCancelled {
+                        phase: merman_model::OperationPhase::Postprocess,
+                        reason: merman_model::CancelReason::Requested,
+                    }));
+                }
+            }
+            Ok(())
+        },
+        &mut |elements, _depth| {
+            assert_eq!(elements, 1, "cancellation must precede the following rect");
+            root_admitted.set(true);
+            Ok(())
+        },
+    )
+    .unwrap_err();
+
+    assert!(matches!(error, Error::Cancelled(_)), "{error:?}");
+}
+
+#[test]
+fn rejects_smil_and_other_active_elements() {
+    for element in [
+        "set",
+        "animate",
+        "animateMotion",
+        "animateTransform",
+        "discard",
+        "mpath",
+    ] {
+        let svg = format!("<svg><{element}/></svg>");
+        let error = validate(&svg).unwrap_err();
+        assert!(error.to_string().contains("active element"), "{error}");
+    }
+}
+
+#[test]
+fn rejects_foreign_object_from_the_portable_terminal_contract() {
+    let error = validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml">label</div></foreignObject></svg>"#,
+        )
+        .unwrap_err();
+
+    assert!(error.to_string().contains("foreignObject"), "{error}");
+}
+
+#[test]
+fn rejects_dtd_processing_instructions_and_malformed_xml() {
+    for svg in [
+        "<!DOCTYPE svg><svg/>",
+        "<?merman unsafe?><svg/>",
+        "<svg><g></svg>",
+        "<SVG/>",
+        "<svg/><svg/>",
+        "<svg><x:g/></svg>",
+        "<svg>&unknown;</svg>",
+        "<svg><text>]]></text></svg>",
+        "<svg><?xml version=\"1.0\"?></svg>",
+        "<svg/><?xml version=\"1.0\"?>",
+        "<svg><!-- a--b --></svg>",
+        "<svg id=\"a<b\"/>",
+        "<svg><1bad/></svg>",
+        "<svg 1bad=\"value\"/>",
+        "<svg bad:name:again=\"value\"/>",
+        "<svg value=\"&unknown;\"/>",
+        "<svg value=\"one\" value=\"two\"/>",
+        "<svg xmlns:a=\"urn:x\" xmlns:b=\"urn:x\" a:id=\"one\" b:id=\"two\"/>",
+        "<![CDATA[ ]]><svg/>",
+        "&#32;<svg/>",
+        " <?xml version=\"1.0\"?><svg/>",
+        "<?xml version=\"1.1\"?><svg/>",
+        "<?xml version=\"1.0\" encoding=\"UTF-16\"?><svg/>",
+        "<?xml version=\"1.0\" extra=\"value\"?><svg/>",
+    ] {
+        assert!(validate_xml(svg).is_err(), "{svg}");
+    }
+}
+
+#[test]
+fn rejects_css_that_survived_sanitization() {
+    for svg in [
+        "<svg><style>@import url('a.css');</style></svg>",
+        "<svg><style>.safe{}<!-- split -->.bad{animation:spin 1s}</style></svg>",
+        "<svg><style><g/>.safe{fill:red}</style></svg>",
+        "<svg><path style=\"animation:spin 1s\"/></svg>",
+        "<svg><path style=\"fill:url(javascript:x)\"/></svg>",
+        "<svg><path style=\"background:url(../image.png)\"/></svg>",
+        "<svg><style>.node{background:url(https://example.com/image.png)}</style></svg>",
+        "<svg><path href=\"java&#x73;cript:alert(1)\"/></svg>",
+        "<svg><path onclick=\"alert(1)\"/></svg>",
+    ] {
+        assert!(validate(svg).is_err(), "{svg}");
+    }
+}
+
+#[test]
+fn rejects_guarded_attributes_in_namespaces_consumed_by_usvg() {
+    let namespaces = [
+        ("s", r#"xmlns:s="http://www.w3.org/2000/svg""#),
+        ("q", r#"xmlns:q="http://www.w3.org/1999/xlink""#),
+        ("xml", ""),
+    ];
+    let guarded_attributes = [
+        ("style", "animation:spin 1s"),
+        ("fill", "url(file:///tmp/paint.svg#paint)"),
+        ("width", "NaN"),
+        ("transform", "rotate(NaN)"),
+        ("d", "M 0 NaN"),
+    ];
+
+    for (prefix, declaration) in namespaces {
+        for (name, value) in guarded_attributes {
+            let svg = format!(r#"<svg {declaration}><path {prefix}:{name}="{value}"/></svg>"#);
+            assert!(validate(&svg).is_err(), "{svg}");
+        }
+    }
+}
+
+#[test]
+fn ignores_guarded_attribute_names_in_namespaces_ignored_by_usvg() {
+    let svg = r#"<svg xmlns:style="urn:example:ignored"><path style:style="animation:spin 1s" style:fill="url(file:///tmp/paint.svg#paint)" style:width="NaN" style:transform="rotate(NaN)" style:d="M 0 NaN"/></svg>"#;
+
+    validate(svg).unwrap();
+}
+
+#[test]
+fn rejects_non_positive_root_dimensions_from_the_first_usvg_projection() {
+    for (name, value) in [
+        ("width", "0"),
+        ("width", "-1px"),
+        ("height", "0%"),
+        ("height", "-0.5em"),
+    ] {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" {name}="{value}" viewBox="0 0 10 10"/>"#
+        );
+        let error = validate(&svg).expect_err("non-positive root dimensions must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("root SVG {name} must be a positive length")),
+            "{error}"
+        );
+    }
+
+    let error = validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" s:width="0" width="200" viewBox="0 0 10 10"/>"#,
+        )
+        .expect_err("the first usvg-projected width must define the terminal contract");
+    assert!(
+        error
+            .to_string()
+            .contains("root SVG width must be a positive length"),
+        "{error}"
+    );
+}
+
+#[test]
+fn root_dimension_validation_ignores_other_namespaces_and_child_geometry() {
+    validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="urn:ignored" i:width="0" width="100%" height="10em" viewBox="0 0 10 10"><rect width="0" height="-1"/></svg>"#,
+        )
+        .unwrap();
+}
+
+#[test]
+fn native_coordinate_limits_cover_root_and_canvas_values_without_limiting_raw_svg() {
+    let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE;
+    let beyond = maximum + 1;
+    for svg in [
+        format!(r#"<svg viewBox="{beyond} 0 1 1"/>"#),
+        format!(r#"<svg viewBox="0 -{beyond} 1 1"/>"#),
+        format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#),
+        format!(r#"<svg viewBox="{maximum} 0 1 1"/>"#),
+        format!(r#"<svg viewBox="0 {maximum} 1 1"/>"#),
+        format!(r#"<svg width="{beyond}px"/>"#),
+        format!(r#"<svg height="{beyond}"/>"#),
+        format!(r#"<svg style="fill:red; max-width: {beyond}px;"/>"#),
+        format!(r#"<svg><linearGradient gradientUnits="userSpaceOnUse" x2="{beyond}"/></svg>"#),
+        format!(r#"<svg><radialGradient gradientUnits="userSpaceOnUse" cx="{beyond}px"/></svg>"#),
+        format!(r#"<svg><radialGradient gradientUnits="userSpaceOnUse" r="{beyond}"/></svg>"#),
+        format!(
+            r#"<svg><g data-merman-theme-canvas-layer="0" transform="translate({beyond} 0)"><rect/></g></svg>"#
+        ),
+        format!(r#"<svg><pattern patternTransform="translate(0 -{beyond})"/></svg>"#),
+    ] {
+        check_budget(&svg, usize::MAX).expect("raw SVG budgets have no native coordinate cap");
+        let Error::ResourceLimitExceeded(error) = validate(&svg).unwrap_err() else {
+            panic!("expected native coordinate limit: {svg}");
+        };
+        assert_eq!(
+            error.limit,
+            crate::resources::SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID
+        );
+        assert_eq!(
+            error.phase,
+            crate::resources::ResourceLimitPhase::SvgPostprocess
+        );
+        assert_eq!(error.max, maximum);
+        assert_eq!(error.actual, beyond);
+    }
+    validate(&format!(
+            r#"<svg xmlns:i="urn:ignored" i:width="{beyond}" width="100%" height="10em" style="max-width:{maximum}px" viewBox="0 0 {maximum} {maximum}"><linearGradient x2="100%"/></svg>"#,
+        ))
+        .expect("the native cap is inclusive and relative lengths are not pixel magnitudes");
+}
+
+#[test]
+fn native_coordinate_limit_errors_remain_sticky_in_execution() {
+    let beyond = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE + 1;
+    let control = merman_model::OperationControl::new();
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let error = validate_resvg_compatible_svg_with_execution(
+        &format!(r#"<svg viewBox="0 0 {beyond} 1"/>"#),
+        SvgPostprocessExecution::new(&session),
+    )
+    .unwrap_err();
+    assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+    let terminal = control
+        .terminal_checkpoint_at(merman_model::OperationPhase::Export)
+        .unwrap_err();
+    control.cancel();
+    assert_eq!(
+        control.terminal_checkpoint_at(merman_model::OperationPhase::Emit),
+        Err(terminal)
+    );
+}
+
+#[test]
+fn rejects_malformed_approved_data_image_payloads() {
+    for value in [
+        "data:image/png;base64,AA*A",
+        "data:image/png;base64,A===",
+        "data:image/png,%",
+        "data:image/png,%GG",
+        "data:image/png;base64,AA%GG",
+    ] {
+        let svg = format!(r#"<svg><image href="{value}"/></svg>"#);
+        assert!(validate(&svg).is_err(), "{svg}");
+    }
+}
+
+#[test]
+fn rejects_external_render_resources_that_survive_terminal_sanitization() {
+    for svg in [
+        r#"<svg><image href="/tmp/secret.png"/></svg>"#,
+        r#"<svg><image href="../secret.png"/></svg>"#,
+        r#"<svg><image href="bare.png"/></svg>"#,
+        r#"<svg><image href="//example.com/image.png"/></svg>"#,
+        r#"<svg><image href="\\server\share\secret.png"/></svg>"#,
+        r#"<svg><image href="https://example.com/image.png"/></svg>"#,
+        r##"<svg><image href="#image"/></svg>"##,
+        r#"<svg><image href="data:image/png"/></svg>"#,
+        r#"<svg><image href="d a t a:image/png;base64,AAAA"/></svg>"#,
+        r#"<svg><image href="data:image /png;base64,AAAA"/></svg>"#,
+        r#"<svg><image href="data:image/svg+xml;base64,PHN2Zy8+"/></svg>"#,
+        r#"<svg><feImage href="./filter.png"/></svg>"#,
+        r#"<svg><use href="sprites.svg#shape"/></svg>"#,
+        r#"<svg><use href="data:image/png;base64,AAAA"/></svg>"#,
+        r#"<svg><textPath href="text.svg#path">text</textPath></svg>"#,
+        r##"<svg xml:base="/tmp/"><image href="#image"/></svg>"##,
+        r##"<svg xmlns:b="http://www.w3.org/XML/1998/namespace"><g b:base="../nested/"><image href="#image"/></g></svg>"##,
+        r#"<svg xmlns:q="http://www.w3.org/1999/xlink"><image q:href="../secret.png"/></svg>"#,
+        r#"<svg><a href="data:image/png;base64,AAAA"><text>data link</text></a></svg>"#,
+    ] {
+        assert!(validate(svg).is_err(), "{svg}");
+    }
+}
+
+#[test]
+fn rejects_svg_deeper_than_downstream_recursive_renderers_support() {
+    let depth = crate::resources::MAX_RESVG_TREE_DEPTH + 1;
+    let svg = nested_group_svg(depth);
+
+    let error =
+        validate_resvg_compatible_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap_err();
+
+    assert!(
+        error.to_string().contains("svg_backend_tree_depth"),
+        "{error}"
+    );
+}
+
+#[test]
+fn well_formed_svg_validation_does_not_apply_raster_backend_depth_limits() {
+    let svg = nested_group_svg(crate::resources::MAX_RESVG_TREE_DEPTH + 1);
+
+    validate_well_formed_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+        .expect("standalone XML validation must not inherit a raster backend capability limit");
+}
+
+#[test]
+fn rejects_svg_element_count_before_usvg_parsing() {
+    let svg = "<svg><g/><g/></svg>";
+    let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgElements, 2)
+        .unwrap();
+
+    let error = validate_resvg_compatible_svg(svg, limits).unwrap_err();
+
+    assert!(error.to_string().contains("max_svg_elements"), "{error}");
+}
+
+#[test]
+fn controlled_validation_prefers_cancellation_to_the_next_structure_limit() {
+    let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgElements, 1)
+        .unwrap();
+    let mut checkpoints = 0usize;
+    let error = validate_well_formed_svg_with_checkpoint("<svg><g/></svg>", limits, &mut || {
+        checkpoints += 1;
+        if checkpoints == 2 {
+            Err(Error::Cancelled(merman_model::OperationCancelled {
+                phase: merman_model::OperationPhase::Postprocess,
+                reason: merman_model::CancelReason::Requested,
+            }))
+        } else {
+            Ok(())
+        }
+    })
+    .unwrap_err();
+
+    let Error::Cancelled(error) = error else {
+        panic!("expected structured cancellation before the SVG element limit");
+    };
+    assert_eq!(error.phase, merman_model::OperationPhase::Postprocess);
+    assert_eq!(error.reason, merman_model::CancelReason::Requested);
+}
+
+fn check_budget(svg: &str, limit: usize) -> Result<()> {
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgElements, limit)
+        .unwrap();
+    check_svg_resource_budget_with_controls(svg, &mut || Ok(()), &mut |elements, _depth| {
+        policy.check_svg_element_count(elements).map_err(Into::into)
+    })
+}
+
+fn ordinary_budget_fixtures() -> Vec<String> {
+    vec![
+            "<svg/>".to_owned(),
+            nested_group_svg(64),
+            branching_use_svg(8),
+            r##"<svg><defs><g id="source"><rect/><g><path/></g></g></defs><g><use href="#source"/><rect/></g><use href="#source"/></svg>"##.to_owned(),
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><defs><g id="a"><rect/></g><g id="b"/><marker id="m"><path/></marker></defs><use href="#b" x:href="&#35;a"/><path d="M0 0L1 1L2 2" marker-mid="url(&#35;m)" s:marker-mid="none"/></svg>"##.to_owned(),
+            r##"<svg><defs><filter id="f"><feImage href="#a"/></filter><mask id="m"><rect/></mask><clipPath id="c"><path/></clipPath><g id="a"><rect filter="url(#f)"/></g></defs><use href="#a"/><use href="#a"/></svg>"##.to_owned(),
+            r##"<svg><g id="a"><use href="#a"/></g><use href="#missing"/></svg>"##.to_owned(),
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div xmlns="http://www.w3.org/1999/xhtml" title="&quot;">🙂 &amp; label</div></foreignObject><style>.a{filter:blur(2px)}</style><g marker-mid="url(https://example.test/m)"/></svg>"##.to_owned(),
+            r##"<svg><g id="a"/><path id="a"/><use href="#a"/></svg>"##.to_owned(),
+            r##"<svg><path marker-mid="url(#m)"/><g id="m"/><rect title="&unknown;"/></svg>"##.to_owned(),
+            r#"<svg><g/><rect width="1" width="2"/></svg>"#.to_owned(),
+            r#"<svg xmlns:a="urn:x" xmlns:b="urn:x"><g/><rect a:key="1" b:key="2"/></svg>"#.to_owned(),
+            "<svg><g/><unknown:rect/></svg>".to_owned(),
+            "<svg><g/><rect/></g></svg>".to_owned(),
+            "<svg><g/><rect/></svg><svg/>".to_owned(),
+            "<svg><g/><rect title=\"<\"/></svg>".to_owned(),
+            "<?xml version=\"1.1\"?><svg/>".to_owned(),
+            "<!DOCTYPE svg><svg/>".to_owned(),
+            "<svg><g/><?bad value?></svg>".to_owned(),
+            "<svg><g/>text ]]> tail</svg>".to_owned(),
+            "<svg><g/><![CDATA[text]]></svg>trailing".to_owned(),
+            String::new(),
+        ]
+}
+
+#[test]
+fn single_traversal_matches_two_pass_results_and_budget_observations() {
+    for svg in ordinary_budget_fixtures() {
+        for limit in [1, 2, 5, 32, 100, 10_000, usize::MAX] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgElements, limit)
+                .unwrap();
+            let mut old_observations = Vec::new();
+            let old = two_pass_reference_budget(&svg, &mut || Ok(()), &mut |n, depth| {
+                old_observations.push((n, depth));
+                policy.check_svg_element_count(n).map_err(Into::into)
+            });
+            let mut new_observations = Vec::new();
+            let new =
+                check_svg_resource_budget_with_controls(&svg, &mut || Ok(()), &mut |n, depth| {
+                    new_observations.push((n, depth));
+                    policy.check_svg_element_count(n).map_err(Into::into)
+                });
+            assert_eq!(
+                format!("{old:?}"),
+                format!("{new:?}"),
+                "{svg:?}, limit {limit}"
+            );
+            assert_eq!(old_observations, new_observations, "{svg:?}, limit {limit}");
+        }
+    }
+}
+
+#[test]
+fn graph_adaptation_observes_cancellation_during_node_and_edge_work() {
+    for dependencies in [vec![Vec::new(); 1024], vec![vec![(0, 1); 1024]]] {
+        let real_nodes = dependencies.len();
+        let mut total = 0;
+        let result = ReferenceDependencyGraph::with_checkpoints(
+            dependencies.clone(),
+            real_nodes,
+            &mut || {
+                total += 1;
+                Ok::<(), usize>(())
+            },
+        );
+        assert!(result.is_ok());
+        assert!(
+            total > 8,
+            "both long node rows and long edge rows need bounded checkpoints"
+        );
+        for cancel_at in 1..=total {
+            let mut checkpoints = 0;
+            let result = ReferenceDependencyGraph::with_checkpoints(
+                dependencies.clone(),
+                real_nodes,
+                &mut || {
+                    checkpoints += 1;
+                    if checkpoints == cancel_at {
+                        Err(cancel_at)
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+            assert!(matches!(result, Err(at) if at == cancel_at));
+            assert_eq!(checkpoints, cancel_at);
+        }
+    }
+}
+
+#[test]
+fn ordinary_reference_summary_does_not_materialize_discarded_occurrences() {
+    let svg = branching_use_svg(8);
+    let mut summary = None;
+    let (result, work) = measure_reference_analysis_work(|| {
+        check_svg_resource_budget_with_controls(&svg, &mut || Ok(()), &mut |elements, depth| {
+            summary = Some((elements, depth));
+            Ok(())
+        })
+    });
+    result.unwrap();
+    let (detailed, detailed_work) = measure_reference_analysis_work(|| {
+        validate_resvg_compatible_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+    });
+    let detailed = detailed.unwrap();
+
+    assert_eq!(
+        summary,
+        Some((detailed.expanded_elements(), detailed.max_tree_depth()))
+    );
+    assert!(work.dependency_nodes > 0, "expansion still needs the graph");
+    assert_eq!(
+        work.postorder_slots, 0,
+        "ordinary callers discard postorder"
+    );
+    assert_eq!(
+        work.occurrence_slots, 0,
+        "ordinary callers discard occurrences"
+    );
+    assert_eq!(
+        work.occurrence_edges, 0,
+        "ordinary callers need no occurrence walk"
+    );
+    assert!(detailed_work.postorder_slots > 0);
+    assert!(detailed_work.occurrence_slots > 0);
+    assert!(detailed_work.occurrence_edges > 0);
+    assert!(detailed.raw_element_occurrences().iter().any(|&n| n > 1));
+}
+
+#[test]
+fn raw_svg_budget_preserves_sticky_expansion_limit_errors() {
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgElements, 100)
+        .unwrap();
+    let control = merman_model::OperationControl::new();
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let result = check_svg_resource_budget_with_execution(
+        &branching_use_svg(8),
+        SvgPostprocessExecution::new(&session),
+    );
+    assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
+    let terminal = control
+        .terminal_checkpoint_at(merman_model::OperationPhase::Export)
+        .unwrap_err();
+    control.cancel();
+    assert_eq!(
+        control.terminal_checkpoint_at(merman_model::OperationPhase::Emit),
+        Err(terminal)
+    );
+}
+
+#[test]
+fn raw_svg_budget_observes_cancellation_before_xml_work() {
+    let control = merman_model::OperationControl::new();
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    let (result, work) = measure_reference_analysis_work(|| {
+        check_svg_resource_budget_with_execution(
+            &branching_use_svg(8),
+            SvgPostprocessExecution::new(&session),
+        )
+    });
+    assert!(matches!(result, Err(Error::Cancelled(_))));
+    assert_eq!(work, ReferenceAnalysisWork::default());
+}
+
+#[test]
+fn validated_no_expansion_uses_xml_metrics_without_dependency_planning() {
+    let fixtures = [
+        "<svg/>",
+        r##"<svg><defs><linearGradient id="paint"><stop/></linearGradient><marker id="unused"><path d="M0 0L1 1"/></marker></defs><g id="a"><rect fill="url(#paint)"/></g><g id="a"/></svg>"##,
+        r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g s:id="same"/><g id="same"/></defs><style>.rect{fill:red}</style><path d="M0 0L1 1" marker-start="none" marker-mid="none" marker-end="none"/></svg>"##,
+    ];
+    for svg in fixtures {
+        let raw = validate_well_formed_svg_with_controls(svg, &mut || Ok(()), &mut |_, _| Ok(()))
+            .unwrap();
+        let mut summary = None;
+        let (ordinary, ordinary_work) = measure_reference_analysis_work(|| {
+            check_svg_resource_budget_with_controls(svg, &mut || Ok(()), &mut |elements, depth| {
+                summary = Some((elements, depth));
+                Ok(())
+            })
+        });
+        ordinary.unwrap();
+        assert_eq!(summary, Some((raw.elements, raw.max_tree_depth)), "{svg}");
+        assert_eq!(ordinary_work, ReferenceAnalysisWork::default(), "{svg}");
+
+        let (detailed, detailed_work) = measure_reference_analysis_work(|| {
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+        });
+        let detailed = detailed.unwrap();
+        assert_eq!(detailed.expanded_elements(), raw.elements, "{svg}");
+        assert_eq!(detailed.max_tree_depth(), raw.max_tree_depth, "{svg}");
+        assert_eq!(detailed.raw_element_occurrences(), vec![1; raw.elements]);
+        assert_eq!(detailed_work.dependency_nodes, 0, "{svg}");
+        assert_eq!(detailed_work.postorder_slots, 0, "{svg}");
+        assert_eq!(detailed_work.occurrence_edges, 0, "{svg}");
+    }
+}
+
+#[test]
+fn reference_summary_keeps_effect_and_marker_expansion_in_the_shared_planner() {
+    let fixtures = [
+            branching_use_svg(8),
+            r##"<svg><defs><filter id="f"><feGaussianBlur/></filter><mask id="m"><rect/></mask><clipPath id="c"><path/></clipPath></defs><rect/></svg>"##.to_owned(),
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="shared"/><marker id="shared"><path/></marker><unknown id="shared"/><g s:id="aliased"><rect/></g><filter><feImage href="#aliased"/></filter></defs><path d="M0 0L1 1L2 2" marker-mid="url(#shared)" s:d="M0 0" s:marker-mid="none"/><use href="#shared"/></svg>"##.to_owned(),
+        ];
+    for svg in fixtures {
+        let detailed = validate_resvg_compatible_svg(
+            &svg,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let mut summary = None;
+        let (ordinary, work) = measure_reference_analysis_work(|| {
+            check_svg_resource_budget_with_controls(&svg, &mut || Ok(()), &mut |elements, depth| {
+                summary = Some((elements, depth));
+                Ok(())
+            })
+        });
+        ordinary.unwrap();
+        assert!(work.dependency_nodes > 0, "{svg}");
+        assert_eq!(
+            summary,
+            Some((detailed.expanded_elements(), detailed.max_tree_depth())),
+            "{svg}"
+        );
+        check_budget(&svg, detailed.expanded_elements()).unwrap();
+        let error = check_budget(&svg, detailed.expanded_elements() - 1).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+}
+
+#[test]
+fn no_expansion_summary_preserves_every_xml_cancellation_boundary() {
+    let svg = r##"<svg><style>.rect{fill:red}</style><defs><g id="a"/><g id="a"/></defs><text>🙂 &amp; label</text><rect/></svg>"##;
+    assert_budget_cancellation_at_every_checkpoint(svg);
+    for invalid in [
+        "<svg><rect/></svg>\u{0}",
+        "<svg><rect title=\"&unknown;\"/></svg>",
+        "<svg><rect/></svg><svg/>",
+        "<svg><g><rect/></svg>",
+        "<svg xmlns:a=\"urn:same\" xmlns:b=\"urn:same\"><rect a:key=\"1\" b:key=\"2\"/></svg>",
+    ] {
+        let xml = validate_xml(invalid).unwrap_err();
+        let summary = check_budget(invalid, usize::MAX).unwrap_err();
+        assert_eq!(format!("{xml:?}"), format!("{summary:?}"), "{invalid:?}");
+    }
+}
+
+#[test]
+fn ordinary_budget_check_retains_host_markup_and_css_without_native_certification() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edge{marker-mid:url(#m)} text{font-family:Inter;filter:blur(2px)}</style><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(2px)">label</div></foreignObject><defs><marker id="m"><path d="M0 0L1 1"/></marker></defs><g marker-end="url(#m)"><path class="edge" d="M0 0L1 1L2 2"/></g></svg>"##;
+    check_budget(svg, 32).unwrap();
+    assert!(
+        validate(svg).is_err(),
+        "budget success must not imply native compatibility"
+    );
+}
+
+#[test]
+fn ordinary_budget_check_rejects_analyzable_expansion_despite_host_markup() {
+    let svg = branching_use_svg(6).replace("</svg>", "<foreignObject/></svg>");
+    let error = check_budget(&svg, 100).unwrap_err();
+    assert!(error.to_string().contains("max_svg_elements"), "{error}");
+}
+
+#[test]
+fn ordinary_budget_check_does_not_use_native_backend_ceilings() {
+    check_budget(
+        &nested_group_svg(crate::resources::MAX_RESVG_TREE_DEPTH + 1),
+        10_000,
+    )
+    .unwrap();
+    let svg = branching_use_svg(20);
+    let error = check_budget(&svg, 2_000_000).unwrap_err();
+    assert!(error.to_string().contains("max_svg_elements"), "{error}");
+}
+
+#[test]
+fn ordinary_budget_check_shares_native_reference_attribute_precedence() {
+    let fixtures = [
+        r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="shared"/><marker id="shared"><image href="data:image/png;base64,AAAA"/></marker><unknown id="shared"/><g s:id="aliased"><rect/><rect/></g><filter><feImage href="#aliased"/></filter></defs><path d="M0 0L1 1L2 2L3 3" marker-mid="url(#shared)" s:d="M0 0" s:marker-mid="none"/><use href="#shared"/></svg>"##,
+        r##"<svg><defs><g id="source"><rect/><rect/><rect/></g><g id="other"/><filter><feImage xml:href="#source" href="#other"/></filter><mask><rect/></mask><clipPath><rect/></clipPath></defs></svg>"##,
+        r##"<svg xmlns:xlink="http://www.w3.org/1999/xlink"><defs><g id="source"><rect/><rect/><rect/></g><g id="other"/></defs><use href="#other" xlink:href="#source"/></svg>"##,
+    ];
+    for svg in fixtures {
+        let native =
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+                .unwrap();
+        let expected = native.expanded_elements();
+        check_budget(svg, expected).unwrap();
+        let error = check_budget(svg, expected - 1).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+}
+
+#[test]
+fn use_expansion_charges_the_href_selected_by_usvg() {
+    for (href, expanded, source_occurrences) in [
+        (r##"href="#source""##, 14, 2),
+        (r##"x:href="#source""##, 14, 2),
+        (r##"x:href="#source" xml:href="#other""##, 14, 2),
+        (r##"href="#other" x:href="#source""##, 10, 1),
+        (r##"x:href="#source" href="#other""##, 10, 1),
+        (r##"xml:href="#source" href="#other""##, 10, 1),
+        (r##"xml:href="#source""##, 9, 1),
+        (r##"s:href="#source""##, 9, 1),
+        (r##"q:href="#source""##, 9, 1),
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" xmlns:q="urn:other"><defs><g id="source"><rect/><rect/><rect/><rect/></g><g id="other"/></defs><use {href}/></svg>"##,
+        );
+        let plan = validate_resvg_compatible_svg(
+            &svg,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        assert_eq!(plan.expanded_elements(), expanded, "{href}");
+        assert_eq!(
+            plan.raw_element_occurrences()[3],
+            source_occurrences,
+            "{href}"
+        );
+        check_budget(&svg, expanded).unwrap();
+        assert!(check_budget(&svg, expanded - 1).is_err(), "{href}");
+    }
+}
+
+#[test]
+fn use_id_resolution_keeps_the_first_local_name_across_namespaces() {
+    for id in [
+        r#"id="source""#,
+        r#"xml:id="source""#,
+        r#"q:id="source""#,
+        r#"q:id="source" id="other""#,
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g {id}><rect/><rect/><rect/><rect/></g></defs><use href="#source"/></svg>"##,
+        );
+        let plan = validate_resvg_compatible_svg(
+            &svg,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        assert_eq!(plan.expanded_elements(), 13, "{id}");
+        check_budget(&svg, 13).unwrap();
+        assert!(check_budget(&svg, 12).is_err(), "{id}");
+    }
+}
+
+#[test]
+fn resource_closure_accepts_raw_only_use_targets() {
+    for href in [r##"href="#source""##, r##"x:href="#source""##] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source" id="parsed-source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+        );
+        let terminal = validate_resvg_compatible_svg(
+            &svg,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        assert_eq!(
+            terminal.resource_closure.available_fragment_ids(),
+            &["parsed-source", "source"],
+            "{href}",
+        );
+        assert_eq!(
+            terminal.resource_closure.referenced_fragment_ids(),
+            &["source"],
+            "{href}",
+        );
+        assert!(terminal.resource_closure.is_closed());
+    }
+}
+
+#[test]
+fn resource_closure_rejects_raw_only_paint_targets() {
+    for id in [r#"q:id="paint""#, r#"q:id="paint" id="other""#] {
+        for paint in [r##"fill="url(#paint)""##, r##"style="fill:url(#paint)""##] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" width="20" height="20"><defs><linearGradient {id}><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><rect width="20" height="20" {paint}/></svg>"##,
+            );
+            let error = validate(&svg).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("missing same-document fragment #paint"),
+                "{id} {paint}: {error}",
+            );
+        }
+    }
+}
+
+#[test]
+fn resource_closure_checks_same_named_targets_in_each_id_domain() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g q:id="shared" id="raw-group"><rect width="1" height="1"/></g><linearGradient q:id="raw-gradient" id="shared"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><use href="#shared"/><rect width="20" height="20" fill="url(#shared)"/></svg>"##;
+    let terminal =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+    assert_eq!(
+        terminal.resource_closure.available_fragment_ids(),
+        &["raw-gradient", "raw-group", "shared"],
+    );
+    assert_eq!(
+        terminal.resource_closure.referenced_fragment_ids(),
+        &["shared"],
+    );
+    for missing in [
+        svg.replace(r#"q:id="shared""#, r#"q:id="missing-raw""#),
+        svg.replace(r#" id="shared""#, r#" id="missing-parsed""#),
+    ] {
+        let error = validate(&missing).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("missing same-document fragment #shared"),
+            "{missing}: {error}",
+        );
+    }
+}
+
+#[test]
+fn resource_closure_observes_only_selected_use_targets() {
+    for href in [
+        r##"href="#source" x:href="#missing""##,
+        r##"x:href="#missing" href="#source""##,
+        r##"xml:href="#missing" x:href="#source""##,
+        r##"q:href="#missing" href="#source" x:href="#also-missing""##,
+        r##"xml:href="#missing" href="#source""##,
+        r##"q:href="#missing" href="#source""##,
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+        );
+        let terminal = validate_resvg_compatible_svg(
+            &svg,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        assert_eq!(
+            terminal.resource_closure.referenced_fragment_ids(),
+            &["source"],
+            "{href}",
+        );
+    }
+    for href in [
+        r##"href="#missing" x:href="#source""##,
+        r##"x:href="#source" href="#missing""##,
+        r##"xml:href="#source" href="#missing""##,
+        r##"q:href="#source" href="#missing""##,
+    ] {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+        );
+        let error = validate(&svg).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("missing same-document fragment #missing"),
+            "{href}: {error}",
+        );
+    }
+}
+
+#[test]
+fn second_passes_preserve_xml_duplicate_attribute_rejection() {
+    for svg in [
+        r#"<svg width="10" height="10" width="20"/>"#,
+        r#"<svg xmlns:a="urn:same" xmlns:b="urn:same" a:key="1" b:key="2"/>"#,
+        r#"<svg xmlns:a="urn:first" xmlns:a="urn:second"/>"#,
+        r#"<svg><g><rect id="a" id="b"/></g></svg>"#,
+        r#"<svg xmlns:h="http://www.w3.org/1999/xhtml"><foreignObject><h:div title="a" title="b"/></foreignObject></svg>"#,
+    ] {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let xml_error =
+            validate_well_formed_svg_with_checkpoint(svg, policy, &mut || Ok(())).unwrap_err();
+        for error in [
+            check_budget(svg, 10_000).unwrap_err(),
+            validate(svg).unwrap_err(),
+        ] {
+            assert_eq!(format!("{error:?}"), format!("{xml_error:?}"), "{svg}");
+        }
+    }
+    // Equal local names in distinct namespaces are not duplicate expanded names.
+    let distinct = r#"<svg width="10" height="10" xmlns:a="urn:first" xmlns:b="urn:second" a:key="1" b:key="2"/>"#;
+    check_budget(distinct, 10_000).unwrap();
+    validate(distinct).unwrap();
+}
+
+#[test]
+fn ordinary_budget_check_preserves_xml_namespace_errors() {
+    assert!(check_budget("<svg><unknown:rect/></svg>", 1_000).is_err());
+}
+
+#[test]
+fn ordinary_budget_check_leaves_unresolved_expansion_unverified() {
+    let cycle = r##"<svg><g id="recursive"><use href="#recursive"/></g></svg>"##;
+    let missing = r##"<svg><use href="#missing"/></svg>"##;
+    for svg in [cycle, missing] {
+        check_budget(svg, 1_000).unwrap();
+        assert!(
+            validate(svg).is_err(),
+            "ordinary budget success must not certify {svg}"
+        );
+    }
+    let error = check_budget(cycle, 2).unwrap_err();
+    assert!(error.to_string().contains("max_svg_elements"), "{error}");
+}
+
+#[test]
+fn ordinary_budget_check_preserves_cancellation_at_every_checkpoint() {
+    assert_budget_cancellation_at_every_checkpoint(&branching_use_svg(8));
+}
+
+#[test]
+fn effect_budget_check_preserves_cancellation_at_every_checkpoint() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="filter"><feGaussianBlur stdDeviation="1"/></filter><mask id="mask"><rect width="10" height="10"/></mask><clipPath id="clip"><rect width="10" height="10"/></clipPath><g id="source"><rect filter="url(#filter)" mask="url(#mask)" clip-path="url(#clip)"/></g></defs><use href="#source"/><use href="#source"/></svg>"##;
+    assert_budget_cancellation_at_every_checkpoint(svg);
+}
+
+#[test]
+fn marker_budget_check_preserves_cancellation_at_every_checkpoint() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="m"><path d="M0 0L1 1"/></marker></defs><path d="M0 0L1 1L2 2" marker-start="url(#m)" marker-mid="url(#m)" marker-end="url(#m)"/><path marker-start="url(https://example.test/start)" marker-mid="url(https://example.test/mid)" marker-end="url(https://example.test/end)"/></svg>"##;
+    assert_budget_cancellation_at_every_checkpoint(svg);
+}
+
+fn assert_budget_cancellation_at_every_checkpoint(svg: &str) {
+    let mut total_checkpoints = 0;
+    check_svg_resource_budget_with_controls(
+        svg,
+        &mut || {
+            total_checkpoints += 1;
+            Ok(())
+        },
+        &mut |_, _| Ok(()),
+    )
+    .unwrap();
+    assert!(total_checkpoints > 0);
+
+    // Exercise every observed cancellation boundary without fixing the traversal's schedule.
+    for cancel_at in 1..=total_checkpoints {
+        let mut checkpoints = 0;
+        let error = check_svg_resource_budget_with_controls(
+            svg,
+            &mut || {
+                checkpoints += 1;
+                if checkpoints == cancel_at {
+                    Err(Error::Cancelled(merman_model::OperationCancelled {
+                        phase: merman_model::OperationPhase::Postprocess,
+                        reason: merman_model::CancelReason::Requested,
+                    }))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::Cancelled(merman_model::OperationCancelled {
+                phase: merman_model::OperationPhase::Postprocess,
+                reason: merman_model::CancelReason::Requested,
+            })
+        ));
+        assert_eq!(checkpoints, cancel_at);
+    }
+}
+
+#[test]
+fn ordinary_budget_check_preserves_cancellation() {
+    let mut checkpoints = 0;
+    let error = check_svg_resource_budget_with_controls(
+        &branching_use_svg(8),
+        &mut || {
+            checkpoints += 1;
+            if checkpoints == 50 {
+                Err(Error::Cancelled(merman_model::OperationCancelled {
+                    phase: merman_model::OperationPhase::Postprocess,
+                    reason: merman_model::CancelReason::Requested,
+                }))
+            } else {
+                Ok(())
+            }
+        },
+        &mut |_, _| Ok(()),
+    )
+    .unwrap_err();
+    assert!(matches!(error, Error::Cancelled(_)), "{error}");
+    assert_eq!(checkpoints, 50);
+}
+
+fn branching_use_svg(levels: usize) -> String {
+    let mut svg =
+        String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><rect/></g>"#);
+    for index in 0..levels {
+        let target = if index + 1 == levels {
+            "leaf".to_owned()
+        } else {
+            format!("use-{}", index + 1)
+        };
+        svg.push_str(&format!(
+            r##"<g id="use-{index}"><use href="#{target}"/><use href="#{target}"/></g>"##
+        ));
+    }
+    svg.push_str(r##"</defs><use href="#use-0"/></svg>"##);
+    svg
+}
+
+#[test]
+fn reference_accounting_saturates_without_materializing_expanded_nodes() {
+    let graph = LegacyReferenceDependencyGraph {
+        dependencies: vec![vec![(1, usize::MAX), (1, 2)], vec![(2, 2)], vec![]],
+        real_nodes: 3,
+    };
+    let plan = plan_svg_reference_dependencies(&graph).unwrap();
+    assert_eq!(plan.expanded_elements(), usize::MAX);
+    assert_eq!(plan.raw_element_occurrences(), &[1, usize::MAX, usize::MAX]);
+    assert_eq!(plan.max_tree_depth(), 2);
+    let graph = ReferenceDependencyGraph::new(graph.dependencies, graph.real_nodes);
+    let (summary, work) = measure_reference_analysis_work(|| {
+        summarize_svg_reference_dependencies_with_checkpoints(&graph, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        })
+    });
+    let summary = summary
+        .map_err(|error| match error {
+            ReferencePlanningError::Invalid(message) => message,
+            ReferencePlanningError::Checkpoint(error) => match error {},
+        })
+        .unwrap();
+    assert_eq!(summary.elements, plan.expanded_elements());
+    assert_eq!(summary.max_tree_depth, plan.max_tree_depth());
+    assert_eq!(work.postorder_slots, 0);
+    assert_eq!(work.occurrence_slots, 0);
+    assert_eq!(work.occurrence_edges, 0);
+}
+
+#[test]
+fn marker_accounting_is_not_truncated_to_a_native_backend_ceiling() {
+    let source_len = crate::resources::MAX_RESVG_TREE_NODES;
+    assert_eq!(
+        marker_mid_instance_upper_bound("path", source_len),
+        source_len * 4 + 16
+    );
+    assert_eq!(
+        marker_mid_instance_upper_bound("polygon", source_len),
+        source_len + 4
+    );
+    assert_eq!(
+        marker_mid_instance_upper_bound("path", usize::MAX),
+        usize::MAX
+    );
+}
+
+#[test]
+fn rejects_branching_use_expansion_before_usvg_parsing() {
+    let svg = branching_use_svg(6);
+    let unrestricted =
+        validate_resvg_compatible_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+    assert!(unrestricted.expanded_elements() > 100);
+    assert!(
+        unrestricted
+            .raw_element_occurrences()
+            .iter()
+            .any(|occurrences| *occurrences > 1)
+    );
+
+    let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgElements, 100)
+        .unwrap();
+    let error = validate_resvg_compatible_svg(&svg, limits).unwrap_err();
+
+    assert!(error.to_string().contains("max_svg_elements"), "{error}");
+}
+
+#[test]
+fn local_filter_images_and_marker_fanout_contribute_to_the_pre_usvg_plan() {
+    let filter_svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="source"><image href="data:image/png;base64,AAAA"/></g><filter id="filter"><feImage href="#source"/><feImage href="#source"/></filter></defs></svg>"##;
+    let filter_plan = validate_resvg_compatible_svg(
+        filter_svg,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .unwrap();
+    assert!(
+        filter_plan
+            .raw_element_occurrences()
+            .iter()
+            .any(|occurrences| *occurrences >= 3)
+    );
+
+    let marker_svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="marker"><image href="data:image/png;base64,AAAA"/></marker></defs><path d="M0 0L1 1L2 2L3 3L4 4" marker-mid="url(#marker)"/></svg>"##;
+    let marker_plan = validate_resvg_compatible_svg(
+        marker_svg,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .unwrap();
+    assert!(
+        marker_plan
+            .raw_element_occurrences()
+            .iter()
+            .any(|occurrences| *occurrences > 4)
+    );
+}
+
+#[test]
+fn reference_plan_matches_usvg_namespace_alias_and_first_attribute_semantics() {
+    let fe_image_svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><defs><g id="source"><rect/><rect/><rect/><rect/><rect/></g><g id="other"/><filter><feImage x:href="#source" xml:href="#missing" href="#other"/></filter></defs></svg>"##;
+    let fe_image_plan = validate_resvg_compatible_svg(
+        fe_image_svg,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .unwrap();
+    assert_eq!(fe_image_plan.raw_element_occurrences()[2], 1);
+    assert!(fe_image_plan.raw_element_occurrences()[8] > 1);
+    assert_eq!(
+        fe_image_plan.resource_closure.referenced_fragment_ids(),
+        &["other"]
+    );
+
+    let marker_svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><defs><marker id="marker"><image href="data:image/png;base64,AAAA"/></marker></defs><path d="M0 0L1 1L2 2L3 3L4 4" marker-mid="url(#marker)" s:d="M0 0" s:marker-mid="none"/></svg>"##;
+    let marker_plan = validate_resvg_compatible_svg(
+        marker_svg,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .unwrap();
+    assert!(
+        marker_plan
+            .raw_element_occurrences()
+            .iter()
+            .any(|occurrences| *occurrences > 4),
+        "later namespace aliases must not override the first projected geometry or marker attribute"
+    );
+}
+
+#[test]
+fn reference_plan_matches_usvg_use_and_parsed_tree_id_resolution() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><defs><g id="shared"/><marker id="shared"><image href="data:image/png;base64,AAAA"/></marker><unknown id="shared"/><g s:id="aliased"><image href="data:image/png;base64,BBBB"/></g><filter><feImage href="#aliased"/></filter></defs><path d="M0 0L1 1L2 2L3 3L4 4" marker-mid="url(#shared)"/><use href="#shared"/></svg>"##;
+    let plan =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+    let occurrences = plan.raw_element_occurrences();
+
+    assert_eq!(
+        occurrences[2], 2,
+        "<use> must resolve the first local-name XML id"
+    );
+    assert!(
+        occurrences[4] > 4,
+        "parsed duplicate ids must not shadow a resource-bearing marker"
+    );
+    assert!(
+        occurrences[7] >= 2,
+        "parsed-tree references must resolve namespace-aliased ids"
+    );
+}
+
+#[test]
+fn duplicate_parsed_id_dependencies_are_shared_without_changing_plan_semantics() {
+    const DUPLICATES: usize = 64;
+    const MARKERS: usize = 32;
+    const REFERENCES: usize = 64;
+
+    let real_nodes = 1 + DUPLICATES + REFERENCES;
+    let node = |is_marker, parsed_id: Option<&str>, references| ReferenceNode {
+        children: Vec::new(),
+        is_marker,
+        may_repeat_per_element: false,
+        use_id: None,
+        parsed_id: parsed_id.map(str::to_owned),
+        references,
+    };
+    let references = || {
+        vec![
+            ElementReference {
+                target: "shared".to_owned(),
+                multiplicity: 2,
+                target_kind: ReferenceTargetKind::ParsedElement,
+            },
+            ElementReference {
+                target: "shared".to_owned(),
+                multiplicity: 3,
+                target_kind: ReferenceTargetKind::Marker,
+            },
+        ]
+    };
+    let mut nodes = Vec::with_capacity(real_nodes);
+    nodes.push(node(false, None, Vec::new()));
+    nodes.extend((0..DUPLICATES).map(|index| node(index < MARKERS, Some("shared"), Vec::new())));
+    nodes.extend((0..REFERENCES).map(|_| node(false, None, references())));
+    nodes[0].children = (1..real_nodes).collect();
+
+    let graph = build_svg_reference_dependencies(&nodes);
+    let dependency_edges = graph.dependencies.iter().map(Vec::len).sum::<usize>();
+    assert_eq!(graph.real_nodes, real_nodes);
+    assert_eq!(graph.dependencies.len(), real_nodes + 2);
+    assert_eq!(dependency_edges, 2 * DUPLICATES + MARKERS + 3 * REFERENCES);
+
+    let plan = plan_svg_reference_dependencies(&graph).unwrap();
+    assert_eq!(
+        plan.expanded_elements(),
+        1 + DUPLICATES + REFERENCES * (1 + 2 * DUPLICATES + 3 * MARKERS)
+    );
+    assert_eq!(plan.max_tree_depth(), 2);
+    assert_eq!(plan.raw_element_occurrences().len(), real_nodes);
+    for (index, &occurrences) in plan.raw_element_occurrences()[1..=DUPLICATES]
+        .iter()
+        .enumerate()
+    {
+        let expected = if index < MARKERS {
+            1 + 5 * REFERENCES
+        } else {
+            1 + 2 * REFERENCES
+        };
+        assert_eq!(occurrences, expected);
+    }
+    assert!(
+        plan.raw_element_occurrences()[1 + DUPLICATES..]
+            .iter()
+            .all(|&occurrences| occurrences == 1)
+    );
+    let (facts, _) = compact_facts_from_legacy_nodes(&nodes);
+    let (graph, effects) = build_reference_fact_dependencies(facts, None, &mut || {
+        Ok::<(), std::convert::Infallible>(())
+    })
+    .unwrap();
+    assert_eq!(graph.ranges.len(), real_nodes + 2);
+    assert_eq!(graph.edges.len(), dependency_edges);
+    let actual =
+        analyze_compact_reference_dependencies::<true, _>(&graph, &effects, None, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .map(SvgReferenceAnalysis::into_detailed_plan)
+        .map_err(|error| match error {
+            ReferencePlanningError::Invalid(message) => message,
+            ReferencePlanningError::Checkpoint(error) => match error {},
+        })
+        .unwrap();
+    assert_eq!(actual, plan);
+}
+
+#[test]
+fn effect_plan_matches_two_pass_reference_for_shared_nested_and_saturated_graphs() {
+    let node = || ReferenceNode {
+        children: Vec::new(),
+        is_marker: false,
+        may_repeat_per_element: false,
+        use_id: None,
+        parsed_id: None,
+        references: Vec::new(),
+    };
+    let reference = |target: &str, multiplicity, target_kind| ElementReference {
+        target: target.to_owned(),
+        multiplicity,
+        target_kind,
+    };
+    for effects in [&[][..], &[4], &[6], &[4, 6], &[4, 5, 6]] {
+        for multiplicity in [1, 3, usize::MAX] {
+            for cyclic in [false, true] {
+                let mut nodes = (0..10).map(|_| node()).collect::<Vec<_>>();
+                nodes[0].children = vec![1, 4, 6, 9];
+                nodes[1].children = vec![2, 3];
+                nodes[4].children = vec![5];
+                nodes[6].children = vec![7, 8];
+                nodes[2].parsed_id = Some("shared".to_owned());
+                nodes[3].parsed_id = Some("shared".to_owned());
+                nodes[3].is_marker = true;
+                nodes[4].use_id = Some("effect".to_owned());
+                nodes[5].references = vec![reference(
+                    "shared",
+                    multiplicity,
+                    ReferenceTargetKind::ParsedElement,
+                )];
+                nodes[7].references = vec![reference(
+                    "shared",
+                    multiplicity,
+                    ReferenceTargetKind::Marker,
+                )];
+                nodes[9].references = vec![reference(
+                    "effect",
+                    multiplicity,
+                    ReferenceTargetKind::UseElement,
+                )];
+                if cyclic {
+                    nodes[2].references =
+                        vec![reference("effect", 1, ReferenceTargetKind::UseElement)];
+                }
+                for &index in effects {
+                    nodes[index].may_repeat_per_element = true;
+                }
+
+                // Keep the original two evaluations as the differential oracle, including
+                // its frozen baseline multiplier and virtual duplicate-ID candidate groups.
+                let mut graph = build_svg_reference_dependencies(&nodes);
+                let expected = plan_svg_reference_dependencies(&graph).and_then(|baseline| {
+                    for &index in effects {
+                        graph.dependencies[0].push((index, baseline.expanded_elements()));
+                    }
+                    plan_svg_reference_dependencies(&graph)
+                });
+                let (facts, structure) = compact_facts_from_legacy_nodes(&nodes);
+                let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
+                    facts,
+                    structure,
+                    None,
+                    &mut || Ok::<(), std::convert::Infallible>(()),
+                )
+                .map(SvgReferenceAnalysis::into_detailed_plan)
+                .map_err(|error| match error {
+                    ReferencePlanningError::Invalid(message) => message,
+                    ReferencePlanningError::Checkpoint(error) => match error {},
+                });
+                assert_eq!(actual, expected, "{effects:?}, {multiplicity}, {cyclic}");
+
+                let (summary, work) = measure_reference_analysis_work(|| {
+                    analyze_svg_reference_facts_with_checkpoints::<false, _>(
+                        compact_facts_from_legacy_nodes(&nodes).0,
+                        structure,
+                        None,
+                        &mut || Ok::<(), std::convert::Infallible>(()),
+                    )
+                });
+                let summary =
+                    summary
+                        .map(|analysis| analysis.structure)
+                        .map_err(|error| match error {
+                            ReferencePlanningError::Invalid(message) => message,
+                            ReferencePlanningError::Checkpoint(error) => match error {},
+                        });
+                let expected_structure = expected
+                    .as_ref()
+                    .map(|plan| SvgStructureMetrics {
+                        elements: plan.expanded_elements(),
+                        max_tree_depth: plan.max_tree_depth(),
+                    })
+                    .map_err(Clone::clone);
+                assert_eq!(
+                    summary, expected_structure,
+                    "summary: {effects:?}, {multiplicity}, {cyclic}"
+                );
+                assert_eq!(work.postorder_slots, 0);
+                assert_eq!(work.occurrence_slots, 0);
+                assert_eq!(work.occurrence_edges, 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn effect_definitions_charge_resource_descendants_for_every_possible_application() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><image id="source" href="data:image/png;base64,AAAA"/><filter id="filter"><feImage href="#source"/></filter><mask id="mask"><image href="data:image/png;base64,BBBB"/></mask></defs><style>.all{filter:url(#filter);mask:url(#mask)}</style><rect class="all"/><rect class="all"/><rect class="all"/></svg>"##;
+    let plan =
+        validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+
+    assert!(
+        plan.raw_element_occurrences()
+            .iter()
+            .filter(|&&occurrences| occurrences > 1)
+            .count()
+            >= 4,
+        "filter and mask descendants must be charged beyond their one source occurrence"
+    );
+}
+
+#[test]
+fn effect_definitions_charge_use_expanded_application_instances() {
+    let mut svg = String::from(
+        r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><image id="source" href="data:image/png;base64,AAAA"/><filter id="filter"><feImage href="#source"/></filter><g id="leaf"><rect filter="url(#filter)"/></g>"##,
+    );
+    for index in 0..5 {
+        let target = if index == 0 {
+            "leaf".to_owned()
+        } else {
+            format!("fanout-{}", index - 1)
+        };
+        svg.push_str(&format!(
+            r##"<g id="fanout-{index}"><use href="#{target}"/><use href="#{target}"/></g>"##
+        ));
+    }
+    svg.push_str(r##"</defs><use href="#fanout-4"/></svg>"##);
+
+    let plan =
+        validate_resvg_compatible_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+    let raw_nodes = plan.raw_element_occurrences().len();
+
+    assert!(
+        plan.raw_element_occurrences()[2] > raw_nodes.saturating_mul(2),
+        "filter image must be charged for <use>-expanded effect applications: {plan:?}"
+    );
+}
+
+#[test]
+fn same_document_reference_parsing_delegates_to_svgtypes() {
+    assert_eq!(same_document_href_target("#target\t"), Some("target\t"));
+    assert_eq!(
+        same_document_marker_target("url(#target\t)").unwrap(),
+        Some("target\t")
+    );
+    assert_eq!(
+        same_document_marker_target("url('#target\u{a0}')").unwrap(),
+        Some("target")
+    );
+}
+
+#[test]
+fn rejects_css_and_inherited_marker_references_that_bypass_static_fanout() {
+    let css_error = validate(
+            r##"<svg><defs><marker id="m"><path d="M0 0L1 1"/></marker></defs><style>.edge{marker-mid:url(#m)}</style><path class="edge" d="M0 0L1 1L2 2"/></svg>"##,
+        )
+        .unwrap_err();
+    assert!(css_error.to_string().contains("CSS marker"), "{css_error}");
+
+    let inherited_error = validate(
+            r##"<svg><defs><marker id="m"><path d="M0 0L1 1"/></marker></defs><g marker-end="url(#m)"><path d="M0 0L1 1"/></g></svg>"##,
+        )
+        .unwrap_err();
+    assert!(
+        inherited_error
+            .to_string()
+            .contains("cannot be bounded before usvg"),
+        "{inherited_error}"
+    );
+}
+
+#[test]
+fn rejects_cyclic_same_document_expansion_references() {
+    for svg in [
+        r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="first"><use href="#second"/></g><g id="second"><use href="#first"/></g></defs><use href="#first"/></svg>"##,
+        r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="loop"><filter><feImage href="#loop"/></filter></g><unknown id="loop"/></defs></svg>"##,
+    ] {
+        let error = validate(svg).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("same-document SVG expansion references contain a cycle"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn does_not_claim_a_browser_dom_sanitizer_policy() {
+    let svg = r#"<svg xmlns:q="http://www.w3.org/1999/xlink"><a href="https://example.com" q:href="../guide"><text>link</text></a></svg>"#;
+
+    validate(svg).unwrap();
+}
