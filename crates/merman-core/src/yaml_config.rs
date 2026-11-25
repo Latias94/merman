@@ -4,6 +4,7 @@ use crate::{OperationControl, OperationControlResult};
 #[cfg(feature = "editor-facts")]
 use granit_parser::Span;
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
+use merman_model::json::{JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
@@ -992,25 +993,18 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
         YamlNode::Scalar {
             value: Value::String(value),
             ..
-        } => size_of::<Value>().saturating_add(value.len()),
+        } => JSON_VALUE_CHARGE_BYTES.saturating_add(value.len()),
         YamlNode::Scalar {
             value:
                 Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_),
             ..
-        } => size_of::<Value>(),
-        YamlNode::Sequence(items) => size_of::<Value>()
+        } => JSON_VALUE_CHARGE_BYTES,
+        YamlNode::Sequence(items) => JSON_VALUE_CHARGE_BYTES
             .saturating_add(size_of::<Vec<Value>>())
-            .saturating_add(items.len().saturating_mul(size_of::<Value>())),
+            .saturating_add(items.len().saturating_mul(JSON_VALUE_CHARGE_BYTES)),
         YamlNode::Mapping(entries) => entries.iter().fold(
-            size_of::<Value>()
-                .saturating_add(size_of::<Map<String, Value>>())
-                .saturating_add(
-                    entries.len().saturating_mul(
-                        size_of::<String>()
-                            .saturating_add(size_of::<Value>())
-                            .saturating_add(size_of::<usize>().saturating_mul(4)),
-                    ),
-                ),
+            (2 * JSON_VALUE_CHARGE_BYTES)
+                .saturating_add(entries.len().saturating_mul(JSON_OBJECT_ENTRY_CHARGE_BYTES)),
             |total, (key, _)| total.saturating_add(key.len()),
         ),
     }
@@ -1495,20 +1489,15 @@ config: *defaults
     #[test]
     fn caller_can_apply_a_stricter_yaml_materialization_budget() {
         let control = OperationControl::new();
-        let result = parse_yaml_value_with_limits_controlled(
-            "values: [one, two, three, four]\n",
-            1024,
-            16,
-            8,
-            &control,
-        )
-        .expect("active control");
-
-        let error = result.expect_err("the caller budget must reject materialization");
-        assert!(
-            error.contains("safe materialization budget"),
-            "unexpected error: {error}"
-        );
+        let input = "name: [one, two]\n";
+        let bytes = 8 * JSON_VALUE_CHARGE_BYTES + 10 * size_of::<usize>() + 10;
+        let parse = |budget| {
+            parse_yaml_value_with_limits_controlled(input, 1024, 16, budget, &control)
+                .expect("active control")
+        };
+        assert_eq!(parse(bytes), Ok(json!({ "name": ["one", "two"] })));
+        let error = parse(bytes - 1).expect_err("the caller budget must reject materialization");
+        assert!(error.contains("safe materialization budget"), "{error}");
     }
 
     #[test]
