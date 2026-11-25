@@ -1,9 +1,9 @@
 // Run an expanded workload plan against one installed Node SVG renderer.
-import { execFileSync, fork } from "node:child_process";
+import { execFileSync, fork, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { arch, cpus, hostname, platform, release, tmpdir } from "node:os";
+import { arch, constants, cpus, hostname, platform, release, tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,7 +16,8 @@ const validator = fileURLToPath(new URL("../merman_bench/svg.py", import.meta.ur
 const DEFAULT_WARMUP = { max_calls: 20, max_ms: 150 };
 const VALIDATION_BATCH_BYTES = 32 * 1024 * 1024;
 const SITE_LAYOUTS = ["dagre", "elk", "shoal"];
-const FLOWCHART_TYPES = new Set(["flowchart", "flowchart-v2", "agentflow", "swimlane"]);
+const posixProcessGroups = process.platform !== "win32";
+const SCENARIO_LIFETIME_FD = 4;
 
 function resolveImport(specifier, cwd) {
   // Let Node select the same conditional export as an import in the consumer project.
@@ -218,11 +219,33 @@ function scenarioIdentity({ index, id, origin, requests }) {
   return { index, id, origin, requests: identities };
 }
 
-function validateOutputs(jobs) {
-  const python = process.platform === "win32" ? "python" : "python3";
-  return JSON.parse(execFileSync(python, ["-B", "-X", "utf8", validator], {
+function validateOutputs(jobs, lifetimeFd) {
+  const args = ["-B", "-X", "utf8", validator];
+  const options = {
     input: JSON.stringify(jobs), encoding: "utf8", maxBuffer: Infinity, stdio: ["pipe", "pipe", "inherit"],
-  }));
+  };
+  if (!posixProcessGroups) {
+    return JSON.parse(execFileSync("python", args, options));
+  }
+
+  if (lifetimeFd !== undefined) options.stdio.push(lifetimeFd);
+  // Reap Python before returning. Its exit status takes precedence over a secondary stdin EPIPE.
+  const { status, signal, error, stdout } = spawnSync("python3", args, options);
+  if (signal || (status !== null && status !== 0)) {
+    throw new Error(`SVG validator failed (${signal ?? `exit ${status}`})`);
+  }
+  if (error) throw error;
+  return JSON.parse(stdout);
+}
+
+// Only assert literal root IDs in the subset that Merman's SVG ID sanitizer preserves.
+function preservesRootId(id) {
+  return /^[A-Za-z](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*$/u.test(id) && id !== "m";
+}
+
+function rootId(svg) {
+  const match = /^<svg(?:\s+[^\s=<>]+\s*=\s*(?:"[^"]*"|'[^']*'))*?\s+id\s*=\s*(?:"([^"]*)"|'([^']*)')/u.exec(svg.trimStart());
+  return match?.[1] ?? match?.[2] ?? null;
 }
 
 function observedOutput(attempt) {
@@ -309,6 +332,9 @@ function deferredValidation(requests, validate, directory, maxBytes) {
         const error = failed ? { code: result.code, message: result.message } : null;
         const diagnostic = error && JSON.stringify(error);
         const svg = result.output_sha256 === null ? null : attempt.svg;
+        if (svg !== null && (requests[index].expected_root_id !== undefined || requests[index].omits_diagram_id)) {
+          result.svg_root_id = rootId(svg);
+        }
         // The validator sees lone surrogates in JSON. The report's UTF-8 hash replaces them.
         const svgKey = svg !== null && !svg.isWellFormed()
           ? `escaped:${sha256(JSON.stringify(svg))}` : result.output_sha256;
@@ -374,6 +400,17 @@ export async function measureScenario(requests, render, {
 }
 
 function summarizeBatch(requests, { elapsed_ms, firstReturnMs, results }, importStart) {
+  for (const [index, result] of results.entries()) {
+    if (result.status !== "ok") continue;
+    const { expected_root_id, omits_diagram_id } = requests[index];
+    if (omits_diagram_id) {
+      result.status = "diagram-id-not-applied";
+      result.message = "This no-options bridge call omits the frozen diagram_id.";
+    } else if (expected_root_id !== undefined && result.svg_root_id !== expected_root_id) {
+      result.status = "diagram-id-mismatch";
+      result.message = `Expected SVG root id ${JSON.stringify(expected_root_id)}, found ${JSON.stringify(result.svg_root_id)}.`;
+    }
+  }
   const successes = results.filter((item) => item.status === "ok");
   const first = results[0];
   const firstDrew = first?.status === "ok" &&
@@ -389,13 +426,69 @@ function summarizeBatch(requests, { elapsed_ms, firstReturnMs, results }, import
   };
 }
 
+function noOptionsBridge(engine, variant) {
+  return engine === "merman" && variant?.options_json === null;
+}
+
+function fieldValueEnd(text, objectStart, key, expectedToken) {
+  // The template is already valid JSON. Locate the field without rewriting the option bytes.
+  let depth = 0;
+  const tokens = /"(?:[^"\\]|\\.)*"|[{}\[\]]/gu;
+  tokens.lastIndex = objectStart;
+  const value = /[ \t\r\n]*:[ \t\r\n]*(\{|null)/uy;
+  for (const { 0: token, index } of text.matchAll(tokens)) {
+    if (token === "{" || token === "[") depth++;
+    else if (token === "}" || token === "]") {
+      if (--depth === 0) break;
+    } else if (depth === 1 && JSON.parse(token) === key) {
+      value.lastIndex = index + token.length;
+      if (value.exec(text)?.[1] === expectedToken) return value.lastIndex;
+    }
+  }
+  throw new Error(`Could not locate the ${key} Options JSON field`);
+}
+
+function optionsWithPlanId(text = "{}") {
+  const options = JSON.parse(text);
+  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    throw new Error("A Merman variant requires an Options JSON object");
+  }
+  const { svg } = options;
+  if (svg != null && (typeof svg !== "object" || Array.isArray(svg))) {
+    throw new Error("A Merman variant requires svg options to be an object or null");
+  }
+  if (svg && Object.hasOwn(svg, "diagram_id") && svg.diagram_id !== null) {
+    return (id) => {
+      if (svg.diagram_id !== id) throw new Error(`svg.diagram_id conflicts with frozen diagram_id ${JSON.stringify(id)}`);
+      return { optionsJson: text };
+    };
+  }
+  const root = text.indexOf("{");
+  const offset = svg === undefined ? root + 1 : fieldValueEnd(text, root, "svg", svg === null ? "null" : "{");
+  const insertId = (prefix, suffix) => (id) => ({ optionsJson: prefix + JSON.stringify(id) + suffix });
+  if (svg === null) return insertId(text.slice(0, offset - 4) + '{"diagram_id":', "}" + text.slice(offset));
+  if (svg?.diagram_id === null) {
+    const idEnd = fieldValueEnd(text, offset - 1, "diagram_id", "null");
+    return insertId(text.slice(0, idEnd - 4), text.slice(idEnd));
+  }
+  const comma = Object.keys(svg ?? options).length ? "," : "";
+  const prefix = text.slice(0, offset) + (svg ? '"diagram_id":' : '"svg":{"diagram_id":');
+  const suffix = (svg ? "" : "}") + comma + text.slice(offset);
+  return insertId(prefix, suffix);
+}
+
 async function runScenario({ product, engine, variant, scenario, samples, warmup, drawingDir, validationDirectory }) {
   const merman = engine === "merman";
   const siteLayout = variant?.site_layout;
-  const directOptions = typeof variant?.options_json === "string" ? { optionsJson: variant.options_json } : undefined;
+  const omitId = noOptionsBridge(engine, variant);
+  const planOptions = merman && !omitId ? optionsWithPlanId(variant?.options_json) : null;
   const requests = scenario.requests.map(({ source, diagram_id, expected_labels, expected_outcome }) => {
     const request = { source, diagram_id, expected_labels, expected_outcome };
-    if (merman) request.options = variant ? directOptions : { optionsJson: JSON.stringify({ svg: { diagram_id } }) };
+    if (planOptions) {
+      request.options = planOptions(diagram_id);
+      if (preservesRootId(diagram_id)) request.expected_root_id = diagram_id;
+    }
+    if (omitId) request.omits_diagram_id = true;
     if (engine === "pele") request.options = { idPrefix: diagram_id, now: 0 };
     return request;
   });
@@ -411,7 +504,7 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
   try {
     let render;
     if (merman && typeof instance?.renderSvgSync === "function") {
-      render = variant && !directOptions
+      render = omitId
         ? ({ source }) => instance.renderSvgSync(source)
         : ({ source, options }) => instance.renderSvgSync(source, options);
     } else if (engine === "pele" && typeof api.render === "function") {
@@ -421,7 +514,10 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     } else {
       throw new Error(`Missing ${products[engine].render_api} in ${product.entry}`);
     }
-    const options = { samples, warmup, validationDirectory, asyncSvg: engine === "mermaid-v13", importStart: start };
+    const options = {
+      samples, warmup, validationDirectory, asyncSvg: engine === "mermaid-v13", importStart: start,
+      validate: (jobs) => validateOutputs(jobs, posixProcessGroups ? SCENARIO_LIFETIME_FD : undefined),
+    };
     if (drawingDir && scenario.drawingIndices.length) {
       options.afterLastBatch = (attempts, results) => {
         mkdirSync(drawingDir, { recursive: true });
@@ -437,15 +533,10 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     const { cold_batch, warm_samples } = measured;
     const peakRss = process.resourceUsage().maxRSS;
     const layoutPlans = siteLayout && requests.map(({ source, options, diagram_id }, index) => {
-      if (cold_batch.results[index].status !== "ok") return null;
+      if (!["ok", "diagram-id-not-applied"].includes(cold_batch.results[index].status)) return null;
       const { ready, diagram_type, required_capability_ids } = JSON.parse(instance.svgPlanJsonSync(source, options));
-      const layouts = SITE_LAYOUTS.filter((layout) => required_capability_ids.includes(`layout-${layout}`));
-      // Older packages did not report Dagre as a separate capability. Other requested backends
-      // require an explicit witness in families where the site layout is selectable.
-      const layoutMismatch = layouts.length
-        ? layouts.length !== 1 || layouts[0] !== siteLayout
-        : siteLayout !== "dagre" && FLOWCHART_TYPES.has(diagram_type);
-      if (!ready || layoutMismatch) {
+      const layouts = required_capability_ids.filter((id) => id.startsWith("layout-"));
+      if (!ready || layouts.length !== 1 || layouts[0] !== `layout-${siteLayout}`) {
         const capabilities = required_capability_ids.join(", ") || "no required capabilities";
         throw new Error(`${diagram_id}: requested ${siteLayout}. SVG plan reports ${capabilities}.`);
       }
@@ -495,20 +586,86 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
   }
 }
 
+function killProcessGroup(pid) {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
+
+function forkScenario(mode, { detached = false, lifetimePipe } = {}) {
+  // Package stdout and stderr are diagnostics. Only IPC carries the measured row.
+  const stdio = ["ignore", 2, 2, "ipc"];
+  if (lifetimePipe !== undefined) stdio[SCENARIO_LIFETIME_FD] = lifetimePipe;
+  return fork(fileURLToPath(import.meta.url), [mode], { execArgv: [], stdio, detached });
+}
+
+function superviseScenario() {
+  // The group leader stays alive through worker failure, so signaling the group cannot hit a reused ID.
+  const stopGroup = () => killProcessGroup(process.pid);
+  process.once("disconnect", stopGroup);
+  process.once("message", (input) => {
+    const worker = forkScenario("--scenario-worker", { lifetimePipe: SCENARIO_LIFETIME_FD });
+    let reply;
+    let workerError;
+    worker.once("message", (message) => { reply = message; });
+    worker.once("error", (error) => { workerError = errorMessage(error); });
+    worker.once("close", (code, signal) => {
+      if (code === 0 && reply?.row) {
+        process.send(reply, (error) => {
+          if (error) stopGroup();
+          else process.off("disconnect", stopGroup);
+        });
+      } else {
+        process.send({ error: reply?.error ?? workerError ?? signal ?? `exit ${code}` }, stopGroup);
+      }
+    });
+    worker.send(input);
+  });
+}
+
 function isolatedScenario(input, timeoutSeconds) {
   const validationDirectory = mkdtempSync(path.join(tmpdir(), "merman-node-validation-"));
+  let onInterrupt;
+  let interruptedBy;
   return new Promise((resolve, reject) => {
-    // Package stdout and stderr are diagnostics. Only IPC carries the measured row.
-    const child = fork(fileURLToPath(import.meta.url), ["--scenario-worker"], {
-      execArgv: [], stdio: ["ignore", 2, 2, "ipc"],
-    });
+    const child = posixProcessGroups
+      ? forkScenario("--scenario-supervisor", { detached: true, lifetimePipe: "pipe" })
+      : forkScenario("--scenario-worker");
+    // The inherited pipe keeps `close` pending until any in-flight validator has also exited.
+    child.stdio[SCENARIO_LIFETIME_FD]?.resume();
+    const stopWorker = () => {
+      if (!posixProcessGroups) child.kill("SIGKILL");
+      else if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+        killProcessGroup(child.pid);
+      }
+    };
+    if (posixProcessGroups) {
+      // A terminal interrupt reaches the collector instead of the detached scenario group.
+      onInterrupt = (signal) => {
+        interruptedBy ??= signal;
+        stopWorker();
+      };
+      process.on("SIGINT", onInterrupt);
+      process.on("SIGTERM", onInterrupt);
+    }
     let reply;
+    let childError;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      stopWorker();
     }, Math.ceil(timeoutSeconds * 1000));
-    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("error", (error) => {
+      if (posixProcessGroups) {
+        childError = error;
+        stopWorker();
+      } else {
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
     child.once("message", (message) => { reply = message; });
     child.once("close", (code, signal) => {
       clearTimeout(timer);
@@ -516,6 +673,8 @@ function isolatedScenario(input, timeoutSeconds) {
         const error = new Error(`Scenario ${input.scenario.index} (${input.scenario.id}) timed out after ${timeoutSeconds}s`);
         error.code = "ETIMEDOUT";
         reject(error);
+      } else if (childError) {
+        reject(childError);
       } else if (code === 0 && reply?.row) {
         resolve(reply.row);
       } else {
@@ -525,11 +684,16 @@ function isolatedScenario(input, timeoutSeconds) {
     });
     child.send({ ...input, validationDirectory });
   }).finally(() => {
+    if (onInterrupt) {
+      process.off("SIGINT", onInterrupt);
+      process.off("SIGTERM", onInterrupt);
+    }
     try {
       rmSync(validationDirectory, { recursive: true, force: true, maxRetries: 3 });
     } catch (error) {
       console.error(`Could not remove the SVG validation scratch directory ${validationDirectory}: ${errorMessage(error)}`);
     }
+    if (interruptedBy) process.exit(128 + constants.signals[interruptedBy]);
   });
 }
 
@@ -549,7 +713,7 @@ async function main() {
       !/^[1-9]\d*$/u.test(values.samples) || !Number.isSafeInteger(samples) ||
       !["warmup-calls", "warmup-ms"].every((key) => /^\d+$/u.test(values[key]) && Number.isSafeInteger(Number(values[key]))) ||
       !(timeoutSeconds > 0 && timeoutSeconds * 1000 <= 2_147_483_647)) {
-    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
+    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nPass --options-json={} to match the plan IDs in a named Merman variant. Omitting --options-json in a named variant collects a no-options diagnostic without a timing ratio.\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
   }
   if (values["all-drawings"] && !values["drawing-dir"]) throw new Error("--all-drawings requires --drawing-dir");
   const label = values["variant-label"];
@@ -577,6 +741,7 @@ async function main() {
   const collectorFiles = ["node_runner.mjs", "../workloads.json", "../merman_bench/svg.py"];
   const report = {
     schema_version: 1, surface: "node", output_format: "svg", engine, backend: product.backend,
+    diagram_id_mode: noOptionsBridge(engine, variant) ? "omitted" : "plan",
     ...(variant ? { variant } : {}),
     ...(drawingDir ? { drawing_dir: drawingDir } : {}),
     // The existing comparison gate uses this fingerprint to withhold ratios across collection recipes.
@@ -633,7 +798,9 @@ async function main() {
 }
 
 if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
-  if (process.send && process.argv[2] === "--scenario-worker") {
+  if (process.send && process.argv[2] === "--scenario-supervisor") {
+    superviseScenario();
+  } else if (process.send && process.argv[2] === "--scenario-worker") {
     process.once("message", async (input) => {
       try {
         process.send({ row: await runScenario(input) });

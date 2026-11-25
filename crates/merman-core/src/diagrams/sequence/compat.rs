@@ -34,8 +34,8 @@ pub(crate) fn parse_sequence(code: &str, meta: &SourcePresentationMetadata) -> R
         &OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled");
-    let source = construction
-        .map_err(|failure| failure.into_parse_error_for_type(&meta.diagram_type, code.len()))?;
+    let source =
+        construction.map_err(|failure| failure.into_parse_error_for_type(&meta.diagram_type))?;
     render_model_to_compat_json(&source.db.into_model(), meta)
 }
 
@@ -59,7 +59,7 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
                 editor_facts.expect("Sequence combined parse requests editor facts"),
             )
         },
-        |failure| failure.into_error_and_editor_facts_for_type(&meta.diagram_type, code.len()),
+        |failure| failure.into_error_and_editor_facts_for_type(&meta.diagram_type),
     );
     control.checkpoint()?;
     Ok(parsed)

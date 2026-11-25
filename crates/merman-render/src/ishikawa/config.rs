@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, json_mermaid_font_size_number};
+use crate::config::{ConfigLookup, config_bool, config_f64, json_mermaid_font_size_number};
 use serde_json::Value;
 
 const DEFAULT_PADDING: f64 = 20.0;
@@ -6,14 +6,14 @@ const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_FONT_SIZE: f64 = 14.0;
 
 pub(crate) struct IshikawaConfigView<'a> {
-    effective_config: &'a Value,
+    font_size: Option<&'a Value>,
     ishikawa_config: &'a Value,
 }
 
 impl<'a> IshikawaConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
-            effective_config,
+            font_size: effective_config.get("fontSize"),
             ishikawa_config: effective_config.get("ishikawa").unwrap_or(&Value::Null),
         }
     }
@@ -28,16 +28,11 @@ impl<'a> IshikawaConfigView<'a> {
                 .ishikawa_bool("useMaxWidth")
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
             font_size: self
-                .spacing_font_size()
+                .font_size
+                .and_then(json_mermaid_font_size_number)
                 .unwrap_or(DEFAULT_FONT_SIZE)
                 .max(1.0),
         }
-    }
-
-    fn spacing_font_size(&self) -> Option<f64> {
-        self.effective_config
-            .get("fontSize")
-            .and_then(json_mermaid_font_size_number)
     }
 
     fn ishikawa_bool(&self, key: &str) -> Option<bool> {

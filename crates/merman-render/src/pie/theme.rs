@@ -29,7 +29,10 @@ pub(crate) struct PieThemePlan {
 }
 
 impl PieThemePlan {
-    pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &serde_json::Value) -> Self {
+    pub(crate) fn baseline(
+        model: &PieDiagramModel,
+        effective_config: &impl crate::config::ConfigLookup,
+    ) -> Self {
         let mut fills = HashMap::new();
         for section in &model.sections {
             let (path, fallback) = MERMAID_PIE_PALETTE[fills.len() % MERMAID_PIE_PALETTE.len()];

@@ -1,3 +1,5 @@
+use crate::OperationControlResult;
+
 pub(crate) enum Action {
     SetDirection(String),
     SetAccTitle(String),
@@ -122,22 +124,13 @@ pub(super) struct ActionArena {
     class_id_links: usize,
 }
 
-type GrammarResult<T> =
-    std::result::Result<T, lalrpop_util::ParseError<usize, super::Tok, super::LexError>>;
-
 impl ActionArena {
-    pub(super) fn checkpoint(&mut self, control: &crate::OperationControl) -> GrammarResult<()> {
+    pub(super) fn checkpoint(
+        &mut self,
+        control: &crate::OperationControl,
+    ) -> OperationControlResult<()> {
         if self.construction_steps.is_multiple_of(128) {
-            control
-                .checkpoint()
-                .map_err(|error| lalrpop_util::ParseError::User {
-                    error: super::LexError {
-                        message: error.to_string(),
-                        span: crate::SourceSpan::new(0, 0),
-                        #[cfg(feature = "editor-facts")]
-                        expected_syntax: None,
-                    },
-                })?;
+            control.checkpoint()?;
         }
         self.construction_steps = self.construction_steps.saturating_add(1);
         Ok(())
@@ -147,7 +140,7 @@ impl ActionArena {
         &mut self,
         actions: impl IntoIterator<Item = Action>,
         control: &crate::OperationControl,
-    ) -> GrammarResult<ActionList> {
+    ) -> OperationControlResult<ActionList> {
         let mut list = ActionList::default();
         for action in actions {
             self.checkpoint(control)?;
@@ -173,7 +166,7 @@ impl ActionArena {
         first: ActionList,
         rest: ActionList,
         control: &crate::OperationControl,
-    ) -> GrammarResult<ActionList> {
+    ) -> OperationControlResult<ActionList> {
         self.checkpoint(control)?;
         if let (Some(tail), Some(head)) = (first.tail, rest.head) {
             self.records[tail].next = Some(head);
@@ -192,7 +185,7 @@ impl ActionArena {
         &mut self,
         id: String,
         control: &crate::OperationControl,
-    ) -> GrammarResult<ClassIdList> {
+    ) -> OperationControlResult<ClassIdList> {
         self.checkpoint(control)?;
         let index = self.class_ids.len();
         self.class_ids.push(ClassIdRecord {
@@ -210,7 +203,7 @@ impl ActionArena {
         first: (ActionList, ClassIdList),
         rest: (ActionList, ClassIdList),
         control: &crate::OperationControl,
-    ) -> GrammarResult<(ActionList, ClassIdList)> {
+    ) -> OperationControlResult<(ActionList, ClassIdList)> {
         let actions = self.concat(first.0, rest.0, control)?;
         if let (Some(tail), Some(head)) = (first.1.tail, rest.1.head) {
             self.class_ids[tail].next = Some(head);
@@ -234,7 +227,7 @@ impl ActionArena {
         label: Option<String>,
         body: (ActionList, ClassIdList),
         control: &crate::OperationControl,
-    ) -> GrammarResult<ActionList> {
+    ) -> OperationControlResult<ActionList> {
         let mut class_ids = Vec::new();
         let mut next = body.1.head;
         while let Some(index) = next {

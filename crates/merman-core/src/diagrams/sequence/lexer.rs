@@ -77,12 +77,6 @@ pub(crate) struct LexError {
     pub span: SourceSpan,
 }
 
-impl crate::error::ParseErrorSourceSpan for LexError {
-    fn source_span(&self) -> Option<crate::SourceSpan> {
-        Some(self.span)
-    }
-}
-
 pub(super) struct Lexer<'input> {
     scanner: SequenceScanner<'input>,
 }
@@ -103,6 +97,7 @@ impl TokenScanner for Lexer<'_> {
     }
 }
 
+#[cfg(test)]
 impl Iterator for Lexer<'_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 

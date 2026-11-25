@@ -16,13 +16,13 @@ mod db;
 mod lifecycle_tests;
 mod model;
 mod parse;
+mod parser;
 #[cfg(feature = "presentation")]
 mod render_model;
 #[cfg(test)]
 mod terminal;
 
 pub(super) use merman_model::families::state::CSS_EDGE_NOTE_EDGE;
-pub(crate) use merman_model::families::state::{StateStatementClick, StateStatementRelation};
 
 pub(crate) use model::{
     StateDiagramModel, StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord,
@@ -48,12 +48,6 @@ pub(crate) use parse::parse_state_json_and_editor_facts;
 pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
 
 pub(crate) use ast::{StateDocumentId, StateStatement, StateStatementNote, StateStatementState};
-
-include_checked_in_lalrpop_parser!(
-    #[allow(clippy::empty_line_after_outer_attr, clippy::filter_map_identity)]
-    state_grammar,
-    "state_grammar.rs"
-);
 
 #[derive(Debug, Clone)]
 pub(crate) struct SpannedDirection {
@@ -85,7 +79,7 @@ pub(crate) enum Tok {
     Choice(String),
     Concurrent,
     HideEmptyDescription,
-    ScaleWidth(usize),
+    ScaleWidth,
     ClassDef,
     ClassDefId(String),
     ClassDefStyleOpts(String),
@@ -130,12 +124,6 @@ impl LexError {
             #[cfg(feature = "editor-facts")]
             expected_syntax: None,
         }
-    }
-}
-
-impl crate::error::ParseErrorSourceSpan for LexError {
-    fn source_span(&self) -> Option<crate::SourceSpan> {
-        self.span
     }
 }
 
@@ -468,12 +456,9 @@ impl<'input> Lexer<'input> {
                 if self.pos == width_start {
                     return Some(Err(LexError::new("Expected a width number after 'scale'")));
                 }
-                let width: usize = match self.input[width_start..self.pos].parse() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        return Some(Err(LexError::new("Invalid width number after 'scale'")));
-                    }
-                };
+                if self.input[width_start..self.pos].parse::<usize>().is_err() {
+                    return Some(Err(LexError::new("Invalid width number after 'scale'")));
+                }
 
                 self.skip_ws();
                 if !self.starts_with_word_ci("width") {
@@ -481,7 +466,7 @@ impl<'input> Lexer<'input> {
                 }
                 self.pos += "width".len();
                 let _ = self.read_to_newline();
-                return Some(Ok((start, Tok::ScaleWidth(width), self.pos)));
+                return Some(Ok((start, Tok::ScaleWidth, self.pos)));
             }
 
             if self.starts_with_word_ci("click") {
@@ -1172,6 +1157,7 @@ impl TokenScanner for Lexer<'_> {
     }
 }
 
+#[cfg(test)]
 impl Iterator for Lexer<'_> {
     type Item = <Self as TokenScanner>::Event;
 

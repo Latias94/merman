@@ -1,5 +1,6 @@
 pub mod cose_bilkent;
 pub mod fcose;
+mod grid_cells;
 
 pub use fcose::{FcoseRandomPolicy, FcoseRandomSource};
 

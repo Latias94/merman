@@ -33,7 +33,7 @@ impl XyChartSeriesPaintPlan {
     }
 
     pub(crate) fn new(
-        config: &serde_json::Value,
+        config: &impl crate::config::ConfigLookup,
         model: &XyChartDiagramRenderModel,
         native: Option<&crate::theme::FamilyTheme>,
     ) -> Self {

@@ -15,6 +15,9 @@ use crate::random::{
 };
 use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
+mod port_remap;
+pub(crate) use port_remap::FlatPortRemap;
+
 pub(crate) struct ReorderNodePortsWorkContext {
     shared_reference_work: usize,
     self_loop_holder_scan_work: usize,
@@ -1188,6 +1191,15 @@ impl LGraph {
         node_index: usize,
         new_order: impl IntoIterator<Item = usize>,
     ) -> Option<Vec<usize>> {
+        self.reorder_node_ports_with_remap(node_index, new_order, None)
+    }
+
+    pub(crate) fn reorder_node_ports_with_remap(
+        &mut self,
+        node_index: usize,
+        new_order: impl IntoIterator<Item = usize>,
+        flat_remap: Option<&FlatPortRemap>,
+    ) -> Option<Vec<usize>> {
         let node = self.layerless_nodes.get(node_index)?;
         let port_count = node.ports.len();
         let new_order = new_order.into_iter().collect::<Vec<_>>();
@@ -1228,6 +1240,11 @@ impl LGraph {
 
         self.layerless_nodes[node_index].ports = reordered;
 
+        if let Some(remap) = flat_remap {
+            remap.apply(self, node_index, &old_to_new);
+            return Some(old_to_new);
+        }
+
         for edge in &mut self.edges {
             if edge.source.node == node_index {
                 edge.source.port = old_to_new[edge.source.port];
@@ -1246,15 +1263,7 @@ impl LGraph {
             if holder.node != node_index {
                 continue;
             }
-            for hyper_loop in &mut holder.hyper_loops {
-                for port in &mut hyper_loop.ports {
-                    port.port = old_to_new[port.port];
-                }
-                for edge in &mut hyper_loop.edges {
-                    edge.source_port = old_to_new[edge.source_port];
-                    edge.target_port = old_to_new[edge.target_port];
-                }
-            }
+            remap_self_loop_holder_ports(holder, &old_to_new);
         }
 
         let graph_id = self.id.clone();
@@ -1286,6 +1295,18 @@ impl LGraph {
         }
 
         Some(old_to_new)
+    }
+}
+
+fn remap_self_loop_holder_ports(holder: &mut SelfLoopHolder, old_to_new: &[usize]) {
+    for hyper_loop in &mut holder.hyper_loops {
+        for port in &mut hyper_loop.ports {
+            port.port = old_to_new[port.port];
+        }
+        for edge in &mut hyper_loop.edges {
+            edge.source_port = old_to_new[edge.source_port];
+            edge.target_port = old_to_new[edge.target_port];
+        }
     }
 }
 
@@ -1790,6 +1811,48 @@ mod tests {
             Some(vec![0, 1, 2])
         );
         assert_eq!(graph, before);
+    }
+
+    #[test]
+    fn flat_port_remap_matches_the_full_walk_across_permutations() {
+        let mut full = port_reorder_reference_graph();
+        let mut child = full.layerless_nodes[0].nested_graph.take().unwrap();
+        let external = child.layerless_nodes.pop().unwrap();
+        let mut foreign = external.clone();
+        foreign.origin_port.as_mut().unwrap().graph_id = "peer".to_string();
+        full.layerless_nodes.extend([external, foreign]);
+        full.layerless_nodes[1]
+            .ports
+            .push(LPort::new("out", 1, PortType::Output));
+        let mut parallel = full.edges[0].clone();
+        parallel.id = "parallel".to_string();
+        parallel.target.port = 1;
+        full.add_edge(parallel).unwrap();
+        let mut indexed = full.clone();
+        let remap = FlatPortRemap::new(&indexed, &mut NoopWorkControl).unwrap();
+
+        for (owner, order) in [
+            (0, vec![0, 1, 2]),
+            (0, vec![2, 0, 1]),
+            (1, vec![1, 0]),
+            (0, vec![0, 0, 1]),
+            (0, vec![1, 2, 0]),
+        ] {
+            let expected = full.reorder_node_ports_with_map(owner, order.clone());
+            assert_eq!(
+                indexed.reorder_node_ports_with_remap(owner, order, Some(&remap)),
+                expected
+            );
+            assert_eq!(indexed, full);
+        }
+        assert_eq!(
+            indexed.layerless_nodes[3]
+                .origin_port
+                .as_ref()
+                .unwrap()
+                .port,
+            PortRef { node: 0, port: 2 }
+        );
     }
 
     #[test]

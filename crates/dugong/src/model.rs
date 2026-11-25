@@ -3,6 +3,8 @@
 //! These are intentionally lightweight and `Clone`-friendly to support deterministic tests and
 //! parity-oriented porting from upstream JS.
 
+use crate::graphlib::EdgeKey;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RankDir {
     #[default]
@@ -59,18 +61,58 @@ pub struct NodeLabel {
     pub y: Option<f64>,
     pub rank: Option<i32>,
     pub order: Option<usize>,
-    pub dummy: Option<String>,
+    pub dummy: Option<DummyKind>,
     pub labelpos: Option<LabelPos>,
-    pub edge_label: Option<EdgeLabel>,
-    pub edge_obj: Option<crate::graphlib::EdgeKey>,
+    pub dummy_edge: DummyEdge,
     pub min_rank: Option<i32>,
     pub max_rank: Option<i32>,
-    pub border_type: Option<String>,
+    pub border_type: Option<BorderSide>,
     pub border_left: Vec<Option<String>>,
     pub border_right: Vec<Option<String>>,
     pub border_top: Option<String>,
     pub border_bottom: Option<String>,
-    pub self_edges: Vec<SelfEdge>,
+    pub self_edges: Vec<OriginalEdge>,
+}
+
+/// The role of a temporary Dagre node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DummyKind {
+    Edge,
+    EdgeLabel,
+    EdgeProxy,
+    Border,
+    NestingRoot,
+    SelfEdge,
+    /// A generic dummy used by callers of the individual layout stages.
+    Other,
+}
+
+/// The side of a rank's compound border segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BorderSide {
+    Left,
+    Right,
+}
+
+/// The original edge data needed by a temporary layout node.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum DummyEdge {
+    /// Ordinary nodes and interior chain dummies own no original edge data.
+    #[default]
+    None,
+    /// A rank proxy only needs to identify the edge receiving its rank.
+    RankProxy(Box<EdgeKey>),
+    /// A chain head or positioned self-loop dummy owns the edge it will restore.
+    Original(Box<OriginalEdge>),
+}
+
+impl DummyEdge {
+    pub(crate) fn original(&self) -> Option<&OriginalEdge> {
+        match self {
+            Self::Original(edge) => Some(edge),
+            Self::None | Self::RankProxy(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -106,9 +148,10 @@ pub struct EdgeLabel {
     pub points: Vec<Point>,
 }
 
+/// Key and label of an edge temporarily replaced by layout dummies.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SelfEdge {
-    pub edge_obj: crate::graphlib::EdgeKey,
+pub struct OriginalEdge {
+    pub key: EdgeKey,
     pub label: EdgeLabel,
 }
 

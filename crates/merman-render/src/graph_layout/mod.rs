@@ -1,6 +1,15 @@
 //! Shared boundary between measured diagram families, graph solvers, and path painting.
 
 #[cfg(all(
+    any(feature = "layout-shoal", test),
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(crate) mod axis_clearance;
+#[cfg(all(
     feature = "layout-shoal",
     any(
         feature = "diagram-architecture",
@@ -66,7 +75,7 @@ pub(crate) struct AxisRoutes {
     pub(crate) nodes: Vec<contour::ShapePortProfile>,
     pub(crate) group_parents: Vec<Option<u32>>,
     pub(crate) border_stitches: Vec<BorderStitch>,
-    pub(crate) clearance: route_paint::Clearance,
+    pub(crate) clearance: axis_clearance::AxisClearance,
     pub(crate) routes: Vec<Option<RouteTopology>>,
 }
 

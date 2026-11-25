@@ -27,8 +27,6 @@ mod model_order_work_tests;
 #[cfg(test)]
 mod permutation_work_tests;
 mod relations;
-#[cfg(test)]
-mod snapshot_work_tests;
 pub mod sweep;
 
 pub(crate) fn initialize_crossing_minimization_port_ids(graph: &mut LGraph) {
@@ -80,9 +78,9 @@ pub struct SweepCopy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PortOrderKey {
-    crossing_minimization_id: Option<usize>,
-    fallback_id: String,
+pub enum PortOrderKey {
+    CrossingId(usize),
+    FallbackId(String),
 }
 
 impl SweepCopy {
@@ -98,9 +96,10 @@ impl SweepCopy {
                             graph.layerless_nodes[*node]
                                 .ports
                                 .iter()
-                                .map(|port| PortOrderKey {
-                                    crossing_minimization_id: port.crossing_minimization_id,
-                                    fallback_id: port.id.clone(),
+                                .map(|port| match port.crossing_minimization_id {
+                                    // A saved crossing ID always looks up in the numeric namespace.
+                                    Some(id) => PortOrderKey::CrossingId(id),
+                                    None => PortOrderKey::FallbackId(port.id.clone()),
                                 })
                                 .collect()
                         })
@@ -168,10 +167,10 @@ fn port_order_indices_by_id(
 
     let use_crossing_ids = port_ids
         .iter()
-        .any(|key| key.crossing_minimization_id.is_some());
+        .any(|key| matches!(key, PortOrderKey::CrossingId(_)));
     let use_fallback_ids = port_ids
         .iter()
-        .any(|key| key.crossing_minimization_id.is_none());
+        .any(|key| matches!(key, PortOrderKey::FallbackId(_)));
     let mut by_crossing_id = HashMap::<usize, Vec<usize>>::new();
     let mut by_fallback_id = HashMap::<&str, Vec<usize>>::new();
     // Pop the smallest current index first, preserving the original first-unused match.
@@ -190,10 +189,9 @@ fn port_order_indices_by_id(
     let mut order = Vec::with_capacity(port_ids.len());
     let mut used = vec![false; ports.len()];
     for port_key in port_ids {
-        let candidates = if let Some(id) = port_key.crossing_minimization_id {
-            by_crossing_id.get_mut(&id)?
-        } else {
-            by_fallback_id.get_mut(port_key.fallback_id.as_str())?
+        let candidates = match port_key {
+            PortOrderKey::CrossingId(id) => by_crossing_id.get_mut(id)?,
+            PortOrderKey::FallbackId(id) => by_fallback_id.get_mut(id.as_str())?,
         };
         let index = loop {
             let index = candidates.pop()?;
@@ -218,18 +216,17 @@ fn port_order_lookup_work_units(
     let mut work = checked_mul(ports.len(), 8)?;
     if keys
         .iter()
-        .any(|key| key.crossing_minimization_id.is_none())
+        .any(|key| matches!(key, PortOrderKey::FallbackId(_)))
     {
         // Numeric crossing IDs need no string hashing. Fallback keys additionally read
         // the current IDs once during indexing and the saved IDs once during lookup.
         work = checked_sum([
             work,
             checked_sum(ports.iter().map(|port| port.id.len()))?,
-            checked_sum(
-                keys.iter()
-                    .filter(|key| key.crossing_minimization_id.is_none())
-                    .map(|key| key.fallback_id.len()),
-            )?,
+            checked_sum(keys.iter().filter_map(|key| match key {
+                PortOrderKey::CrossingId(_) => None,
+                PortOrderKey::FallbackId(id) => Some(id.len()),
+            }))?,
         ])?;
     }
     Ok(work)
@@ -791,57 +788,6 @@ fn sorted_nodes_with_relation_state(
     Ok(order)
 }
 
-// The comparator updates a transitive relation only when a pair is not already cached. Bound
-// both possible update directions using the sets that exist for this comparison, preserving
-// the source stable-sort call order without a second sorting pass or an owner-wide square.
-fn model_order_relation_work(
-    first: usize,
-    second: usize,
-    bigger: &HashMap<usize, HashSet<usize>>,
-    smaller: &HashMap<usize, HashSet<usize>>,
-) -> Result<usize, WorkError> {
-    if bigger.get(&first).is_some_and(|set| set.contains(&second))
-        || bigger.get(&second).is_some_and(|set| set.contains(&first))
-        || smaller.get(&first).is_some_and(|set| set.contains(&second))
-        || smaller.get(&second).is_some_and(|set| set.contains(&first))
-    {
-        return Ok(1);
-    }
-    checked_add(
-        1,
-        model_order_relation_update_work(first, second, bigger, smaller)?.max(
-            model_order_relation_update_work(second, first, bigger, smaller)?,
-        ),
-    )
-}
-
-fn model_order_relation_update_work(
-    large: usize,
-    small: usize,
-    bigger: &HashMap<usize, HashSet<usize>>,
-    smaller: &HashMap<usize, HashSet<usize>>,
-) -> Result<usize, WorkError> {
-    let smaller_relations = bigger.get(&small).map_or(0, HashSet::len);
-    let larger_relations = smaller.get(&large).map_or(0, HashSet::len);
-    model_order_relation_update_work_from_counts(smaller_relations, larger_relations)
-}
-
-fn model_order_relation_update_work_from_counts(
-    smaller_relations: usize,
-    larger_relations: usize,
-) -> Result<usize, WorkError> {
-    let union_attempts = checked_mul(smaller_relations, larger_relations)?;
-    checked_sum([
-        smaller_relations,
-        larger_relations,
-        2,
-        checked_mul(smaller_relations, 2)?,
-        checked_mul(larger_relations, 2)?,
-        union_attempts,
-        union_attempts,
-    ])
-}
-
 pub fn long_edge_target_node_preprocessing(
     graph: &mut LGraph,
     node: usize,
@@ -1134,7 +1080,7 @@ impl<'a> ModelOrderNodeComparator<'a> {
         n2: usize,
         work: &mut dyn WorkControl,
     ) -> Result<NodeComparison, WorkError> {
-        if let Some(ordering) = self.cached_ordering(n1, n2) {
+        if let Some(ordering) = self.relations.cached_ordering(n1, n2) {
             return Ok(NodeComparison::Order(ordering));
         }
 
@@ -1354,22 +1300,13 @@ impl<'a> ModelOrderNodeComparator<'a> {
         Ok(None)
     }
 
-    fn cached_ordering(&mut self, first: usize, second: usize) -> Option<Ordering> {
-        self.relations.cached_ordering(first, second)
-    }
-
     fn update_bigger_smaller(
         &mut self,
         bigger: usize,
         smaller: usize,
         work: &mut dyn WorkControl,
     ) -> Result<(), WorkError> {
-        let units = model_order_relation_update_work(
-            bigger,
-            smaller,
-            &self.relations.bigger_than,
-            &self.relations.smaller_than,
-        )?;
+        let units = self.relations.update_work(bigger, smaller, work)?;
         work.check(units)?;
         work.charge(units)?;
         self.relations.update(bigger, smaller);
@@ -1421,19 +1358,16 @@ impl<'a> ModelOrderPortComparator<'a> {
         original_p2: usize,
         work: &mut dyn WorkControl,
     ) -> Result<Ordering, WorkError> {
-        let units = model_order_relation_work(
-            original_p1,
-            original_p2,
-            &self.relations.bigger_than,
-            &self.relations.smaller_than,
-        )?;
+        let (units, cached) = self
+            .relations
+            .comparison_work(original_p1, original_p2, work)?;
         work.check(units)?;
         work.charge(units)?;
         let p1 = original_p1;
         let p2 = original_p2;
         let p1_side = self.graph.layerless_nodes[self.node].ports[p1].side;
 
-        if let Some(ordering) = self.cached_ordering(p1, p2) {
+        if let Some(ordering) = cached {
             return Ok(ordering);
         }
 
@@ -1630,10 +1564,6 @@ impl<'a> ModelOrderPortComparator<'a> {
             self.update_bigger_smaller(p1, p2);
         }
         result
-    }
-
-    fn cached_ordering(&mut self, first: usize, second: usize) -> Option<Ordering> {
-        self.relations.cached_ordering(first, second)
     }
 
     fn update_bigger_smaller(&mut self, bigger: usize, smaller: usize) {
@@ -1873,8 +1803,8 @@ mod tests {
             assert_eq!(order, (0..length).collect::<Vec<_>>());
             // The first source comparison records port 0 < port 1. Reversing
             // the first call (as Rust sort_by can do) records the opposite.
-            assert!(comparator.relations.smaller_than[&0].contains(&1));
-            assert!(comparator.relations.bigger_than[&1].contains(&0));
+            assert!(comparator.relations.smaller_members(0).contains(&1));
+            assert!(comparator.relations.bigger_members(1).contains(&0));
         }
     }
 
@@ -2249,16 +2179,23 @@ mod tests {
 
     #[test]
     fn model_order_relation_work_tracks_current_sets_and_cached_pairs() {
-        let mut bigger = HashMap::new();
-        let mut smaller = HashMap::new();
-        assert_eq!(model_order_relation_work(0, 1, &bigger, &smaller), Ok(3));
-        bigger.insert(0, HashSet::from([1]));
-        smaller.insert(1, HashSet::from([0]));
-        assert_eq!(model_order_relation_work(0, 1, &bigger, &smaller), Ok(1));
-        assert_eq!(model_order_relation_work(1, 0, &bigger, &smaller), Ok(1));
+        let mut relations = ModelOrderRelations::default();
+        let work = &mut crate::work::NoopWorkControl;
+        assert_eq!(relations.comparison_work(0, 1, work), Ok((3, None)));
+        relations.update(0, 1);
+        assert_eq!(
+            relations.comparison_work(0, 1, work),
+            Ok((1, Some(Ordering::Greater)))
+        );
+        assert_eq!(
+            relations.comparison_work(1, 0, work),
+            Ok((1, Some(Ordering::Less)))
+        );
         // Unrelated owners cannot inflate the cost of comparing this pair.
-        bigger.insert(99, (100..200).collect());
-        assert_eq!(model_order_relation_work(2, 3, &bigger, &smaller), Ok(3));
+        for member in 100..200 {
+            relations.update(99, member);
+        }
+        assert_eq!(relations.comparison_work(2, 3, work), Ok((3, None)));
     }
 
     #[test]
@@ -2267,20 +2204,16 @@ mod tests {
         for owner in 0..500 {
             relations.update(owner, owner + 1);
         }
-        let units = model_order_relation_update_work(
-            501,
-            0,
-            &relations.bigger_than,
-            &relations.smaller_than,
-        )
-        .unwrap();
+        let units = relations
+            .update_work(501, 0, &mut crate::work::NoopWorkControl)
+            .unwrap();
         assert!(
             units < 2_000,
             "one-sided update was charged as dense work: {units}"
         );
         relations.update(501, 0);
-        assert_eq!(relations.bigger_than[&501].len(), 501);
-        assert_eq!(relations.smaller_than[&0].len(), 1);
+        assert_eq!(relations.bigger_members(501).len(), 501);
+        assert_eq!(relations.smaller_members(0).len(), 1);
     }
 
     #[test]
@@ -2347,7 +2280,7 @@ mod tests {
             comparator.compare_with_work(258, 1, &mut measured),
             Ok(Ordering::Less)
         );
-        assert!(comparator.relations.bigger_than[&1].contains(&258));
+        assert!(comparator.relations.bigger_members(1).contains(&258));
         let required = usize::MAX - measured.0;
 
         let mut comparator =
@@ -2357,7 +2290,7 @@ mod tests {
             comparator.compare_with_work(258, 1, &mut insufficient),
             Err(WorkError::Interrupted)
         );
-        assert!(!comparator.relations.bigger_than[&1].contains(&258));
+        assert!(!comparator.relations.bigger_members(1).contains(&258));
         assert_eq!(graph, before);
     }
 
@@ -2894,9 +2827,9 @@ mod tests {
             graph.layerless_nodes[0].ports[port.port].crossing_minimization_id = crossing_id;
             graph.layerless_nodes[0].ports[port.port].id = id.to_string();
         }
-        let key = |crossing_minimization_id, fallback_id: &str| PortOrderKey {
-            crossing_minimization_id,
-            fallback_id: fallback_id.to_string(),
+        let key = |crossing_minimization_id, fallback_id: &str| match crossing_minimization_id {
+            Some(id) => PortOrderKey::CrossingId(id),
+            None => PortOrderKey::FallbackId(fallback_id.to_string()),
         };
         let mixed = [
             key(None, "same"),
@@ -2928,6 +2861,42 @@ mod tests {
             port_order_indices_by_id(&graph, 0, &missing),
             None,
             "a saved numeric ID must never fall back to the external ID"
+        );
+    }
+
+    #[test]
+    fn sweep_copy_restores_a_cloned_mixed_snapshot_and_prices_fallback_bytes() {
+        let mut graph = graph(vec![node("A")], vec![]);
+        graph.set_node_layer(0, 0);
+        graph.layerless_nodes[0].ports.clear();
+        let ports = [
+            (Some(7), "duplicate"),
+            (None, "fallback🦀"),
+            (Some(8), "duplicate"),
+            (None, "last"),
+        ];
+        for (crossing_id, id) in ports {
+            let reference = graph
+                .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+                .unwrap();
+            let port = &mut graph.layerless_nodes[0].ports[reference.port];
+            port.crossing_minimization_id = crossing_id;
+            port.id = id.to_owned();
+        }
+        let copy = SweepCopy::new(&graph, &[vec![0]]).clone();
+        let keys = &copy.port_orders[0][0];
+        assert!(matches!(keys[0], PortOrderKey::CrossingId(7)));
+        assert!(matches!(&keys[1], PortOrderKey::FallbackId(id) if id == "fallback🦀"));
+        assert!(graph.reorder_node_ports(0, [3, 2, 1, 0]));
+        assert_eq!(port_order_lookup_work_units(&graph, 0, keys), Ok(82));
+        assert!(copy.transfer_node_and_port_orders_to_graph(&mut graph, false));
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| (port.crossing_minimization_id, port.id.as_str()))
+                .collect::<Vec<_>>(),
+            ports
         );
     }
 }

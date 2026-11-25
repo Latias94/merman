@@ -20,7 +20,8 @@ We need:
 
 - Implement `stateDiagram` parsing in `merman-core` using:
   - A small stateful handwritten lexer in Rust (mirroring Jison start conditions where relevant).
-  - A LALRPOP grammar that builds a statement list (similar to the upstream statement shapes).
+  - A handwritten predictive parser over spanned lexer events. It uses an explicit stack for open
+    composites and adds their statement lists to the document arena in closing order.
   - An in-memory DB (`StateDb`) that:
     - Applies Mermaid v2 start/end rewriting (`[*]` -> `root_start`/`root_end`, nested via parent id).
     - Applies class/style statements (`classDef`, `class`, `style`) to states.
@@ -28,11 +29,8 @@ We need:
 
 ## Consequences
 
-- Pros:
-  - Keeps parsing fully within Rust while preserving upstream lexer concepts.
-  - Enables incremental parity via spec-port tests without a JS toolchain dependency.
-  - Matches the repository-wide approach used by `classDiagram` and `erDiagram`.
-- Cons:
-  - Some upstream features (notes, clicks, full layout data) will require iterative expansion.
-  - Error reporting will need future work to match Mermaid diagnostics precisely.
+- The shared token cursor carries lexer spans and checks cancellation as it delivers tokens.
+- The parser owns expected tokens for each syntax boundary, including the end of a composite.
+- The editor reads the same lexical event tape and can recover symbols after a syntax error.
+- Source fixtures and malformed token sequences exercise syntax, diagnostics, and document order.
 

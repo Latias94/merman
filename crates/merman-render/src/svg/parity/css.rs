@@ -548,7 +548,7 @@ impl PreparedCommonCss {
 
     pub(crate) fn with_configured_root_font_family(
         mut self,
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> Self {
         self.root_font_family_override =
             Some(crate::config::config_root_font_family_css(effective_config));
@@ -556,7 +556,7 @@ impl PreparedCommonCss {
     }
 
     pub(crate) fn with_resolved_typography(
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
         font_family: String,
         font_size_css: String,
     ) -> Self {

@@ -19,7 +19,8 @@ We need:
 
 - Implement `erDiagram` parsing in `merman-core` using:
   - A small stateful handwritten lexer in Rust (mirroring Jison state transitions).
-  - A LALRPOP grammar that produces a sequence of semantic actions.
+  - A handwritten predictive parser that appends attributes in source order and builds semantic
+    actions over spanned lexer events.
   - An in-memory DB (`ErDb`) that applies actions and produces the output model.
 
 ## Consequences

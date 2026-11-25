@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_css_number_or_string, config_f64};
+use crate::config::{ConfigLookup, config_bool, config_css_number_or_string, config_f64};
 use merman_model::families::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -27,7 +27,7 @@ pub(crate) struct PacketConfigView<'a> {
 }
 
 impl<'a> PacketConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
             packet_config: effective_config.get("packet").unwrap_or(&Value::Null),
             packet_theme: effective_config

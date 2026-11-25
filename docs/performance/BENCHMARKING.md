@@ -88,7 +88,9 @@ labels. Pixel variation is evidence of content. Geometry, label placement and sh
 have their own drawing checks. A PNG above 64 MiB encoded or 16,777,216 pixels is recorded as
 `observer-limit` and its timing is excluded. An interrupted Node scenario records its worker failure and its
 unmeasured requests. The matrix continues with a new process for the next scenario and compares
-the observed common requests. The process exit status and bundle retain the collection failure.
+the observed common requests. On POSIX the collector waits for the interrupted worker and its SVG
+validator to exit before starting the next scenario. The process exit status and bundle retain the
+collection failure.
 Keep the browser comparison in its existing Chromium harness. The [runbook](RUNBOOK.md#run-an-ordered-workload)
 includes reproduction commands and external corpus imports.
 
@@ -937,9 +939,13 @@ executable digest and outcome. Preserve the raw samples with the report for repl
 
 Use the same frozen workload plan to compare the pinned Pele and Mermaid v13 products. `bench.py
 node` retains coverage, output checks, and warm samples per product. A variant can select a local
-Merman entry and an explicit site layout. Cold CLI, native Rust, Node N-API, Node WASM, and browser
-results have distinct execution and output boundaries. Use the runner for each boundary and report
-only qualified matching requests. [Node reference workflow](RUNBOOK.md#run-an-ordered-workload)
+Merman entry and an explicit site layout. Comparable variants pass the plan's diagram ID on every
+request and require explicit capability evidence for a declared layout. A named Merman no-options
+diagnostic records its direct calls and has no comparison ratio. Published round comparisons check
+the original worker rows against the frozen plan and replay eligible pairs from their measured
+batches. Cold CLI, native Rust, Node N-API, Node WASM, and browser results have distinct execution
+and output boundaries. Use the runner for each boundary and report only qualified matching
+requests. [Node reference workflow](RUNBOOK.md#run-an-ordered-workload)
 
 ## Browser comparison with Mermaid.js
 

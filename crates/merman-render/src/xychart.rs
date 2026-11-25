@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64_css_px as config_f64};
+use crate::config::{ConfigLookup, config_bool, config_f64_css_px as config_f64};
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
@@ -169,7 +169,7 @@ fn default_axis_config() -> AxisConfig {
     }
 }
 
-fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
+fn parse_axis_config(effective_config: &impl ConfigLookup, axis_key: &str) -> AxisConfig {
     let base = default_axis_config();
     let Some(v) = effective_config
         .get("xyChart")
@@ -218,7 +218,10 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
     }
 }
 
-fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderModel) -> ChartConfig {
+fn parse_chart_config(
+    effective_config: &impl ConfigLookup,
+    model: &XyChartDiagramRenderModel,
+) -> ChartConfig {
     ChartConfig {
         width: config_f64(effective_config, &["xyChart", "width"]).unwrap_or(700.0),
         height: config_f64(effective_config, &["xyChart", "height"]).unwrap_or(500.0),

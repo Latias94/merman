@@ -5,7 +5,7 @@
 
 use crate::graphlib::Graph;
 use crate::work::{checked_add, checked_mul, checked_unparented_leaf_parent_batch_work};
-use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{BorderSide, DummyKind, EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 use rustc_hash::FxHashMap;
 
@@ -210,12 +210,6 @@ fn add_border_segments_for_node(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum BorderSide {
-    Left,
-    Right,
-}
-
 fn add_border_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ids: &mut DummyNodeIdGen,
@@ -224,9 +218,9 @@ fn add_border_node(
     side: BorderSide,
     parent_assignments: &mut Vec<(usize, usize)>,
 ) -> Result<String, WorkError> {
-    let (border_type, prefix) = match side {
-        BorderSide::Left => ("borderLeft", "_bl"),
-        BorderSide::Right => ("borderRight", "_br"),
+    let prefix = match side {
+        BorderSide::Left => "_bl",
+        BorderSide::Right => "_br",
     };
     let curr = ids.add_dummy_node(
         g,
@@ -234,8 +228,8 @@ fn add_border_node(
             width: 0.0,
             height: 0.0,
             rank: Some(rank),
-            dummy: Some("border".to_string()),
-            border_type: Some(border_type.to_string()),
+            dummy: Some(DummyKind::Border),
+            border_type: Some(side),
             ..Default::default()
         },
         prefix,

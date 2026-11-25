@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -60,8 +60,8 @@ function plan(dir, scenarios) {
   return raw;
 }
 
-function run(dir, engine, extra = []) {
-  const result = spawnSync(process.execPath, [cli, "--plan", "plan.json", "--engine", engine, ...extra], {
+function run(dir, engine, extra = [], runner = cli) {
+  const result = spawnSync(process.execPath, [runner, "--plan", "plan.json", "--engine", engine, ...extra], {
     cwd: dir, encoding: "utf8", timeout: 20_000,
   });
   if (result.error) throw result.error;
@@ -73,7 +73,7 @@ const drawModule = `
   let calls = 0;
   function draw(source, id) {
     console.log("call", ++calls, id);
-    return '<svg><text>' + id + ' ' + Buffer.from(source).toString('base64') + ' 夜</text></svg>';
+    return '<svg id="' + id + '"><text>' + id + ' ' + Buffer.from(source).toString('base64') + ' 夜</text></svg>';
   }
   export function createNodeEngine() {
     console.log('create');
@@ -89,65 +89,134 @@ const drawModule = `
   }
 `;
 
-test("Merman variants omit direct options or pass their exact text on every render", (t) => {
+test("Merman forwards the frozen ID on every bridge stage and marks no-options calls ineligible", (t) => {
   const dir = project(t);
-  const optionsJson = ' { "svg": { "diagram_id": "explicit:id=one" } } ';
-  const svg = (label) => `<svg data-variant="${label}"><text>Drawing</text></svg>`;
+  const optionsJson = ' { "site_config": {"svg": {"string": "{\\\"}"}}, "\\u0073vg": { "pipeline": "readable" } } ';
+  const explicit = (id) => optionsJson.replace('{ "pipeline"', `{"diagram_id":${JSON.stringify(id)}, "pipeline"`);
+  const svg = (id) => `<svg class="test" id="${id}"><text>Drawing</text></svg>`;
   install(dir, "@mermanjs/node", `
     export function createNodeEngine({ bindingOptions }) {
       const layout = bindingOptions.site_config.layout;
-      if (!["shoal", "elk"].includes(layout)) throw new Error("wrong site layout");
-      const modes = new Set();
+      const sources = { first: 'fixed', second: 'rotating' };
       let draws = 0;
+      let probes = 0;
+      let omitted;
+      let wrongRequest = false;
+      const expected = ${JSON.stringify({ first: explicit("fixed"), second: explicit("rotating") })};
       return {
         runtimeCatalog: { package_version: "1.2.3" },
-        renderSvgSync(source, options) {
+        renderSvgSync(source, opts) {
           draws++;
-          let mode = "invalid";
-          if (source === "diagram" && arguments.length === 1) mode = "none";
-          if (source === "diagram" && arguments.length === 2 && options?.optionsJson === ${JSON.stringify(optionsJson)}) {
-            mode = "explicit";
-          }
-          modes.add(mode);
-          return ${JSON.stringify(svg("LABEL"))}.replace("LABEL", mode);
+          omitted ??= arguments.length === 1;
+          wrongRequest ||= draws % 2 !== (source === 'first' ? 1 : 0) ||
+              (omitted ? arguments.length !== 1 : opts?.optionsJson !== expected[source]);
+          return ${JSON.stringify(svg("ROOT"))}.replace('ROOT', omitted ? 'merman' : sources[source]);
         },
-        svgPlanJsonSync(source, options) {
-          const expected = modes.has("explicit") ? ${JSON.stringify(optionsJson)} : undefined;
-          if (draws !== 6 || source !== "diagram" || options?.optionsJson !== expected) throw new Error("wrong layout probe");
-          return JSON.stringify({ ready: true, diagram_type: "flowchart-v2",
-            required_capability_ids: layout === "shoal" ? ["layout-shoal"] : [] });
+        svgPlanJsonSync(source, opts) {
+          if (draws !== 8 || !sources[source] || opts?.optionsJson !== (omitted ? undefined : expected[source])) {
+            throw new Error('wrong layout probe');
+          }
+          probes++;
+          return JSON.stringify({ ready: true, diagram_type: 'flowchart-v2', required_capability_ids: ['layout-' + layout] });
         },
         dispose() {
-          if (modes.size !== 1 || modes.has("invalid")) throw new Error("changed direct options");
+          if (draws !== 8 || probes !== 2 || wrongRequest) throw new Error('wrong render or layout probe');
         },
       };
     }
   `);
-  plan(dir, [{ id: "doc", requests: [{ ...request("diagram", "frozen-occurrence"), expected_labels: ["Drawing"] }] }]);
-  const fingerprints = [];
+  const requests = [request("first", "fixed"), request("second", "rotating")];
+  plan(dir, [{ id: "doc", requests }]);
   for (const [label, text] of [["none", null], ["explicit", optionsJson]]) {
-    const args = ["--variant-label", label, "--site-layout", "shoal", "--warmup-calls", "2", "--warmup-ms", "10000"];
+    const args = ["--variant-label", label, "--site-layout", "shoal", "--samples", "2",
+      "--warmup-calls", "2", "--warmup-ms", "10000"];
     if (text !== null) args.push(`--options-json=${text}`);
     const { report, status, stderr } = run(dir, "merman", args);
     assert.equal(status, 0, stderr);
     assert.equal(report.engine, "merman");
     assert.deepEqual(report.variant, { label, options_json: text, site_layout: "shoal" });
-    fingerprints.push(report.collector_sha256);
+    assert.equal(report.diagram_id_mode, text === null ? "omitted" : "plan");
     const [row] = report.scenarios;
-    assert.equal(row.requests[0].diagram_id, "frozen-occurrence");
+    assert.deepEqual(row.requests.map((r) => r.diagram_id), ["fixed", "rotating"]);
     assert.equal(row.warmup.calls, 2);
-    assert.deepEqual(row.layout_plans, [{ diagram_type: "flowchart-v2", required_capability_ids: ["layout-shoal"] }]);
+    assert.deepEqual(row.layout_plans, Array.from({ length: 2 }, () =>
+      ({ diagram_type: "flowchart-v2", required_capability_ids: ["layout-shoal"] })));
+    assert.equal(row.coverage.full_batch_comparable, text !== null);
     for (const batch of [row.cold_batch, ...row.warm_samples]) {
-      assert.equal(batch.results[0].status, "ok");
-      assert.equal(batch.results[0].output_sha256, sha256(svg(label)));
+      if (text === null) assert.equal(batch.complete_batch_ms, null);
+      for (const [i, result] of batch.results.entries()) {
+        const id = text === null ? "merman" : requests[i].diagram_id;
+        assert.equal(result.status, text === null ? "diagram-id-not-applied" : "ok");
+        assert.equal(result.svg_root_id, id);
+        assert.equal(result.output_sha256, sha256(svg(id)));
+      }
     }
   }
-  assert.equal(fingerprints[0], fingerprints[1]);
+  const conflict = run(dir, "merman", ["--variant-label", "conflict", '--options-json={"svg":{"diagram_id":"fixed"}}']);
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.report.scenarios[0].error, /svg\.diagram_id conflicts with frozen diagram_id "rotating"/u);
+});
 
-  const { report, status } = run(dir, "merman", ["--variant-label", "elk", "--site-layout", "elk",
-    "--warmup-calls", "2", "--warmup-ms", "10000"]);
+test("Merman fills nullable SVG options and passes normalized-id inputs verbatim to the SDK", (t) => {
+  const dir = project(t);
+  const id = 'scope 雪: "well-formed"';
+  install(dir, "@mermanjs/node", `
+    export function createNodeEngine() { return {
+      runtimeCatalog: { package_version: '1.2.3' },
+      renderSvgSync(source, { optionsJson }) {
+        if (JSON.parse(optionsJson).svg.diagram_id !== ${JSON.stringify(id)}) throw new Error('lost original ID');
+        return '<svg id="scope"><text>Drawing</text></svg>';
+      },
+      dispose() {},
+    }; }
+  `);
+  plan(dir, [{ id: "doc", requests: [request("source", id)] }]);
+  for (const options of ['{"svg":null}', '{"svg":{"diagram_id":null}}']) {
+    const { report, status, stderr } = run(dir, "merman", ["--variant-label", "matched", `--options-json=${options}`,
+      "--samples", "1", "--warmup-calls", "0"]);
+    assert.equal(status, 0, stderr);
+    assert.equal(report.scenarios[0].coverage.full_batch_comparable, true);
+  }
+});
+
+test("Merman requires an explicit layout capability and verifies the actual root ID after rendering", (t) => {
+  const dir = project(t);
+  const options = ' { "svg": { "diagram_id": "fixed" } } ';
+  const trapSvg = `<svg data-ignored=' id="fixed"' id="wrong"><text>Drawing</text></svg>`;
+  install(dir, "@mermanjs/node", `
+    export function createNodeEngine() {
+      return {
+        runtimeCatalog: { package_version: '1.2.3', capabilities: { capability_ids: ['layout-dagre'] } },
+        renderSvgSync(source, { optionsJson }) {
+          const { svg: { diagram_id: id } } = JSON.parse(optionsJson);
+          if (optionsJson !== ${JSON.stringify(options)}) throw new Error('rewritten explicit ID');
+          if (source === 'wrong-root') return ${JSON.stringify(trapSvg)};
+          if (source === 'missing-root') return '<svg><text id="' + id + '">Drawing</text></svg>';
+          return '<svg xmlns="http://www.w3.org/2000/svg" id="' + id + '"><text>Drawing</text></svg>';
+        },
+        svgPlanJsonSync(source) {
+          const required_capability_ids = source === 'silent' ? [] :
+            (source === 'fixed-layout' ? ['layout-cytoscape'] : ['layout-dagre', 'math']);
+          return JSON.stringify({ready: true, diagram_type: 'flowchart-v2', required_capability_ids});
+        },
+        dispose() {},
+      };
+    }
+  `);
+  const names = ["silent", "fixed-layout", "wrong-root", "missing-root", "literal"];
+  plan(dir, names.map((name) => ({ id: name, requests: [request(name, "fixed")] })));
+  const { report, status } = run(dir, "merman", ["--variant-label", "dagre", "--site-layout", "dagre",
+    `--options-json=${options}`, "--samples", "1", "--warmup-calls", "0"]);
   assert.equal(status, 1);
-  assert.match(report.scenarios[0].error, /requested elk\. SVG plan reports no required capabilities/u);
+  const [empty, fixed, wrong, missing, good] = report.scenarios;
+  assert.match(empty.error, /requested dagre\. SVG plan reports no required capabilities/u);
+  assert.match(fixed.error, /requested dagre\. SVG plan reports layout-cytoscape/u);
+  for (const [row, id] of [[wrong, "wrong"], [missing, null]]) {
+    assert.equal(row.warm_samples[0].complete_batch_ms, null);
+    assert.equal(row.warm_samples[0].results[0].status, "diagram-id-mismatch");
+    assert.equal(row.warm_samples[0].results[0].svg_root_id, id);
+  }
+  assert.equal(good.coverage.full_batch_comparable, true);
 });
 
 test("public entries isolate duplicate scenarios, reuse one engine and preserve source bytes and IDs", (t) => {
@@ -199,7 +268,7 @@ test("public entries isolate duplicate scenarios, reuse one engine and preserve 
         for (const [i, result] of batch.results.entries()) {
           const { fixture, source, diagram_id } = requests[i];
           assert.deepEqual(row.requests[i], { fixture, diagram_id, source_sha256: sha256(source), expected_outcome: "draw" });
-          const svg = `<svg><text>${diagram_id} ${Buffer.from(source).toString("base64")} 夜</text></svg>`;
+          const svg = `<svg id="${diagram_id}"><text>${diagram_id} ${Buffer.from(source).toString("base64")} 夜</text></svg>`;
           assert.equal(result.status, "ok");
           assert.equal(result.output_bytes, Buffer.byteLength(svg));
           assert.equal(result.output_sha256, sha256(svg));
@@ -712,6 +781,119 @@ test("mid-plan request exceptions, process exits and timeouts preserve every ind
   }
 });
 
+function validatorScenario(t, mode) {
+  const dir = project(t);
+  const runner = path.join(dir, "collectors", "node_runner.mjs");
+  mkdirSync(path.dirname(runner));
+  mkdirSync(path.join(dir, "merman_bench"));
+  copyFileSync(cli, runner);
+  copyFileSync(new URL("../workloads.json", import.meta.url), path.join(dir, "workloads.json"));
+  writeFileSync(path.join(dir, "validator-case"), mode);
+  writeFileSync(path.join(dir, "merman_bench", "svg.py"), `
+import json, os, sys, time
+from pathlib import Path
+
+mode = Path("validator-case").read_text()
+pid = Path("validator-pid")
+
+def mark_started():
+    Path("starting").write_text(str(os.getpid()))
+    Path("starting").rename(pid)
+
+def hold():
+    deadline = time.monotonic() + 8
+    while not Path("release-validator").exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+# Close stdin without consuming the 4 MiB job so the collector encounters EPIPE.
+if mode.startswith("epipe-") and not pid.exists():
+    mark_started()
+    os.close(0)
+    if mode == "epipe-exit":
+        time.sleep(1)
+        sys.exit(7)
+    hold()
+    sys.exit(0)
+
+jobs = json.load(sys.stdin)
+if any(f"<text>{mode}</text>" in job["svg"] for job in jobs):
+    mark_started()
+    if mode != "normal":
+        hold()
+print(json.dumps([{"status": "ok", "output_class": "draw"} for _ in jobs]))
+`);
+  install(dir, "@mermanjs/node", `
+    import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+    import { Worker } from 'node:worker_threads';
+    function validatorState() {
+      const pid = readFileSync('validator-pid', 'utf8');
+      try {
+        return /^State:\\s+(\\w)/m.exec(readFileSync('/proc/' + pid + '/status', 'utf8'))[1];
+      } catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
+        return 'gone';
+      }
+    }
+    export function createNodeEngine() {
+      let source;
+      let killer;
+      return {
+        runtimeCatalog: { package_version: '1.2.3' },
+        renderSvgSync(input, { optionsJson }) {
+          source = input;
+          if (source === 'worker-exit' && !killer) {
+            killer = new Worker(
+              "const { existsSync } = require('node:fs'); setInterval(() => {" +
+              "if (existsSync('validator-pid')) process.kill(process.pid, 'SIGKILL'); }, 10);",
+              { eval: true },
+            ).unref();
+          }
+          if (source === 'after' && !existsSync('validator-state')) {
+            try { writeFileSync('validator-state', validatorState()); }
+            finally { writeFileSync('release-validator', ''); }
+          }
+          const id = JSON.parse(optionsJson).svg.diagram_id;
+          const text = source.startsWith('epipe-') ? 'x'.repeat(4 * 1024 * 1024) : source;
+          return '<svg id="' + id + '"><text>' + text + '</text></svg>';
+        },
+        dispose() {
+          if (!source.startsWith('epipe-')) return;
+          const state = validatorState();
+          writeFileSync('validator-at-dispose', state);
+          // Turn premature disposal into a failure the collector must isolate.
+          if (!['gone', 'Z', 'X'].includes(state)) process.exit(73);
+        },
+      };
+    }
+  `);
+  plan(dir, [mode, "after"].map((id) => ({ id, requests: [request(id, id)] })));
+  return { dir, ...run(dir, "merman", ["--samples", "1", "--warmup-calls", "0", "--timeout-seconds", "3"], runner) };
+}
+
+for (const [mode, expectedStatus, expectedError] of [
+  ["normal", undefined, null],
+  ["timeout", "timeout", /timed out after 3s/u],
+  ["epipe-timeout", "timeout", /timed out after 3s/u],
+  ["epipe-exit", "failed", /SVG validator failed \(exit 7\)/u],
+  ["worker-exit", "failed", /SIGKILL/u],
+]) {
+  test(`Linux retires the SVG validator before the next scenario (${mode})`, { skip: process.platform !== "linux" }, (t) => {
+    const { dir, report, status, stderr } = validatorScenario(t, mode);
+    const [first, after] = report.scenarios;
+    assert.equal(after.coverage.full_batch_comparable, true, stderr);
+    const state = readFileSync(path.join(dir, "validator-state"), "utf8");
+    assert.match(state, /^(?:gone|Z|X)$/u, `validator still alive at the next render (Linux state ${state})`);
+    assert.equal(status, expectedStatus ? 1 : 0, stderr);
+    assert.equal(first.status, expectedStatus, stderr);
+    if (expectedError) assert.match(first.error, expectedError);
+    else assert.equal(first.coverage.full_batch_comparable, true);
+    if (mode === "epipe-exit") {
+      const disposeState = readFileSync(path.join(dir, "validator-at-dispose"), "utf8");
+      assert.match(disposeState, /^(?:gone|Z|X)$/u);
+    }
+  });
+}
+
 test("module identity distinguishes Node-WASM and rejects browser entries and mismatched runtimes", (t) => {
   const dir = project(t);
   plan(dir, [{ id: "one", requests: [request("source", "one")] }]);
@@ -760,7 +942,7 @@ test("native identity follows the candidate's loaded optional addon across same-
     mkdirSync(target, { recursive: true });
     writeFileSync(path.join(target, "package.json"), JSON.stringify({ name: `@mermanjs/node-${id}`, version: "1.2.3", main: "merman.node" }));
     const file = path.join(target, "merman.node");
-    writeFileSync(file, `module.exports = () => '<svg><rect/></svg>'; // ${build}`);
+    writeFileSync(file, `module.exports = () => '<svg id="one"><rect/></svg>'; // ${build}`);
     return file;
   };
   addon(dir, "selected", "unrelated consumer installation");
@@ -803,7 +985,7 @@ test("WASM identity checks the loaded glue and the compiled module against the p
     import { createRequire } from 'node:module';
     const wasm = createRequire(import.meta.url)('../artifact/merman_node.cjs');
     export function createNodeEngine() { return { runtimeCatalog: { package_version: '1.2.3' },
-      renderSvgSync() { return '<svg><text>' + wasm.v() + '</text></svg>'; }, dispose() {} }; }
+      renderSvgSync() { return '<svg id="one"><text>' + wasm.v() + '</text></svg>'; }, dispose() {} }; }
   `);
   const artifacts = path.join(path.dirname(entry), "..", "artifact");
   mkdirSync(artifacts);

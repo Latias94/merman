@@ -1,8 +1,8 @@
 use merman_layout_shoal::{
     Axis, CyclePolicy, Direction, EdgeGeometry, EdgeSpec, Endpoint, Graph, GroupId, GroupSpec,
-    LayoutError, LayoutOutput, LayoutScratch, MarkerMetrics, NodeId, NodeSpec, NoopWorkControl,
-    Options, PackingPolicy, Point, PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size,
-    WorkControl, WorkError, layout, layout_with_control,
+    LayoutError, LayoutGeometry, LayoutOutput, LayoutScratch, MarkerMetrics, NodeId, NodeSpec,
+    NoopWorkControl, Options, PackingPolicy, Point, PortSideHint, Rect, RoutePoint, RoutingStyle,
+    Side, Size, WorkControl, WorkError, layout, layout_geometry_with_control, layout_with_control,
 };
 
 const DIRECTIONS: [Direction; 4] = [
@@ -951,6 +951,34 @@ fn measured(g: &Graph, options: &Options) -> (LayoutOutput, Meter) {
     let drawing =
         layout_with_control(g, options, &mut LayoutScratch::default(), &mut meter).unwrap();
     (drawing, meter)
+}
+
+#[test]
+fn geometry_only_omits_flat_crossing_work_and_preserves_preview_geometry() {
+    let g = graph(
+        vec![size(42.0, 24.0); 4],
+        vec![edge(0, 2), edge(0, 3), edge(1, 2), edge(1, 3)],
+    );
+    for capture_node_ranks in [false, true] {
+        let mut options = Options::default();
+        options.capture_node_ranks = capture_node_ranks;
+        let (full, full_meter) = measured(&g, &options);
+        assert!(full.stats.routed_crossings > 0);
+        let mut geometry_meter = Meter::default();
+        let geometry = layout_geometry_with_control(
+            &g,
+            &options,
+            &mut LayoutScratch::default(),
+            &mut geometry_meter,
+        )
+        .unwrap();
+        assert_eq!(geometry, LayoutGeometry::from(full));
+        if capture_node_ranks {
+            assert_eq!(geometry_meter.total, full_meter.total);
+        } else {
+            assert!(geometry_meter.total < full_meter.total);
+        }
+    }
 }
 
 #[test]

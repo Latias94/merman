@@ -301,8 +301,8 @@ cargo run --locked -p xtask -- verify --strict
 The [verifier](../../crates/xtask/src/cmd/verify.rs) owns formatting, workspace Clippy with all
 targets/features, the feature matrix, workspace `nextest` and doctests, materialized reference
 verification, generated contracts, alignment, and the `structure`, `parity`, and `parity-root` DOM
-suite. Its [generated checks](../../crates/xtask/src/cmd/snapshots.rs) include LALRPOP, editor
-contracts, and Web/Playground catalogs. Strict also runs Web contracts/build/smoke/prepack,
+suite. Its [generated checks](../../crates/xtask/src/cmd/snapshots.rs) include editor contracts and
+Web/Playground catalogs. Strict also runs Web contracts/build/smoke/prepack,
 Playground unit/lint/build and desktop Chromium plus focused Firefox/WebKit smoke, and VS Code
 package tests. Reuse this result for every covered checklist row; run covered checks again only
 to diagnose a failure or validate subsequent source/artifact changes.

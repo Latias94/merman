@@ -1,6 +1,7 @@
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 use crate::{Error, Result};
 use merman_model::families::packet::PacketDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 mod config;
 mod theme;
@@ -11,7 +12,7 @@ pub(crate) use theme::PacketTypographyThemePlan;
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramModel,
     diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
+    effective_config: &PresentationConfig,
 ) -> Result<PacketDiagramLayout> {
     let cfg = PacketConfigView::new(effective_config)
         .layout_settings()

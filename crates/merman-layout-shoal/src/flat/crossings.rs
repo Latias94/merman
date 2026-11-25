@@ -105,20 +105,27 @@ pub(super) fn pairs(
     });
     let mut pairs = BTreeSet::new();
     let mut active: Vec<usize> = Vec::new();
+    let mut previous_start = None;
     for (index, s) in segments.iter().enumerate() {
         work.visit(active.len() + 1)?;
-        let start = s.interval(horizontal).0;
-        active.retain(|&i| segments[i].interval(horizontal).1 >= start);
+        let (start, _) = s.interval(horizontal);
         let (low, high) = s.interval(!horizontal);
-        for &i in &active {
-            let t = &segments[i];
-            let (l, h) = t.interval(!horizontal);
-            if s.edge != t.edge && l <= high && h >= low && s.straddles(t) && t.straddles(s) {
-                let key = (s.edge.min(t.edge), s.edge.max(t.edge));
-                work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
-                pairs.insert(key);
-            }
-        }
+        visit_active(
+            &mut active,
+            &mut previous_start,
+            start,
+            |i| segments[i].interval(horizontal).1,
+            |i| {
+                let t = &segments[i];
+                let (l, h) = t.interval(!horizontal);
+                if s.edge != t.edge && l <= high && h >= low && s.straddles(t) && t.straddles(s) {
+                    let key = (s.edge.min(t.edge), s.edge.max(t.edge));
+                    work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
+                    pairs.insert(key);
+                }
+                Ok(())
+            },
+        )?;
         crate::work::push(&mut active, index)?;
     }
     Ok(pairs.len() as u64)
@@ -127,30 +134,67 @@ pub(super) fn pairs(
 fn shared_pairs(segments: &[Segment], horizontal: bool, work: &mut Work<'_>) -> LayoutResult<u64> {
     let mut pairs = BTreeSet::new();
     let mut active: Vec<&[Segment]> = Vec::new();
+    let mut previous_start = None;
     for owners in segments.chunk_by(|a, b| a.coordinates() == b.coordinates()) {
         let s = &owners[0];
         work.visit(active.len() + owners.len())?;
-        let start = s.interval(horizontal).0;
-        active.retain(|neighbors| neighbors[0].interval(horizontal).1 >= start);
+        let (start, _) = s.interval(horizontal);
         let (low, high) = s.interval(!horizontal);
-        for &neighbors in &active {
-            let t = &neighbors[0];
-            let (l, h) = t.interval(!horizontal);
-            if !(l <= high && h >= low && s.straddles(t) && t.straddles(s)) {
-                continue;
-            }
-            for first in owners {
-                for second in neighbors {
-                    work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
-                    if first.edge != second.edge {
-                        pairs.insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+        visit_active(
+            &mut active,
+            &mut previous_start,
+            start,
+            |neighbors| neighbors[0].interval(horizontal).1,
+            |neighbors| {
+                let t = &neighbors[0];
+                let (l, h) = t.interval(!horizontal);
+                if !(l <= high && h >= low && s.straddles(t) && t.straddles(s)) {
+                    return Ok(());
+                }
+                for first in owners {
+                    for second in neighbors {
+                        work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
+                        if first.edge != second.edge {
+                            pairs
+                                .insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+                        }
                     }
                 }
-            }
-        }
+                Ok(())
+            },
+        )?;
         crate::work::push(&mut active, owners)?;
     }
     Ok(pairs.len() as u64)
+}
+
+/// Evict expired entries at each new start while visiting live candidates in sweep order.
+fn visit_active<T: Copy>(
+    active: &mut Vec<T>,
+    previous_start: &mut Option<f64>,
+    start: f64,
+    end: impl Fn(T) -> f64,
+    mut visit: impl FnMut(T) -> LayoutResult<()>,
+) -> LayoutResult<()> {
+    // Retained entries already passed this start. The newly appended entry ends at
+    // or after its own start. Numeric equality matches the inclusive expiry test.
+    if previous_start.replace(start) == Some(start) {
+        return active.iter().copied().try_for_each(visit);
+    }
+
+    let mut kept = 0;
+    for index in 0..active.len() {
+        let entry = active[index];
+        if end(entry) >= start {
+            visit(entry)?;
+            if kept != index {
+                active[kept] = entry;
+            }
+            kept += 1;
+        }
+    }
+    active.truncate(kept);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded. ER, State, Sequence, Class, and the shared Flowchart/Swimlane grammar now use
+handwritten predictive parsers over their stateful lexers. See the family ADRs for the current
+implementation.
 
 ## Context
 

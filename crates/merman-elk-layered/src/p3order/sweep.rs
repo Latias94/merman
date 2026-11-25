@@ -18,7 +18,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::graph::{
-    LGraph, LNode, LNodeKind, PortRef, PortSide, PortType, ReorderNodePortsWorkContext,
+    FlatPortRemap, LGraph, LNode, LNodeKind, PortRef, PortSide, PortType,
+    ReorderNodePortsWorkContext,
 };
 use crate::options::{OrderingStrategy, PortConstraints};
 use crate::p3order::counting::{
@@ -244,6 +245,7 @@ struct BarycenterState {
 #[derive(Debug, Clone)]
 struct BarycenterPortDistributor {
     kind: PortDistributorKind,
+    flat_port_remap: Option<FlatPortRemap>,
     port_ranks: HashMap<usize, f64>,
     port_barycenters: HashMap<usize, f64>,
     node_positions: HashMap<usize, usize>,
@@ -265,6 +267,7 @@ impl BarycenterPortDistributor {
             .collect::<HashMap<_, _>>();
         Self {
             kind,
+            flat_port_remap: None,
             port_ranks: HashMap::new(),
             port_barycenters: HashMap::new(),
             node_positions,
@@ -596,7 +599,7 @@ impl BarycenterPortDistributor {
         if let Some(reorder_work) = reorder_work {
             charge_barycenter_work(work_control, reorder_work.node_work(graph, node)?)?;
         }
-        graph.reorder_node_ports(node, order);
+        graph.reorder_node_ports_with_remap(node, order, self.flat_port_remap.as_ref());
         Ok(())
     }
 
@@ -751,11 +754,18 @@ impl BarycenterSweepWork<'_> {
 
     /// Price the single graph before its first reordering. Its sweeps preserve layer
     /// membership, constraints and reference counts, so later attempts reuse the price.
-    fn sweep_units(&mut self, root: &LGraph) -> Result<(usize, usize), WorkError> {
+    fn sweep_units(
+        &mut self,
+        root: &LGraph,
+        distributor: &mut BarycenterPortDistributor,
+    ) -> Result<(usize, usize), WorkError> {
         match self.allowance {
             BarycenterSweepAllowance::Prepaid => Ok((0, 0)),
             BarycenterSweepAllowance::Deferred { scan, reorder } => {
-                let (first_layer, sweep) = single_graph_barycenter_sweep_work(root, scan, reorder)?;
+                let remap = FlatPortRemap::new(root, self.control)?;
+                let (first_layer, sweep) =
+                    single_graph_barycenter_sweep_work(root, scan, reorder, &remap)?;
+                distributor.flat_port_remap = Some(remap);
                 self.allowance = BarycenterSweepAllowance::Computed { first_layer, sweep };
                 Ok((first_layer, sweep))
             }
@@ -1096,7 +1106,14 @@ impl HierarchySweep {
             });
         }
 
-        let (first_layer_work, sweep_work) = work.sweep_units(root)?;
+        let (first_layer_work, sweep_work) = work.sweep_units(
+            root,
+            &mut self.infos[info_index]
+                .barycenter_heuristic
+                .as_mut()
+                .expect("barycenter graph info owns a heuristic")
+                .port_distributor,
+        )?;
         let should_set_first_layer_order = {
             let graph = graph_at_path(root, &self.infos[info_index].path);
             !first_try_with_initial_order
@@ -1939,23 +1956,8 @@ impl BarycenterHeuristic {
         ordering
     }
 
-    fn transitive_ordering(&mut self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
-        self.relations.bigger_than.entry(first).or_default();
-        self.relations.bigger_than.entry(second).or_default();
-        self.relations.smaller_than.entry(first).or_default();
-        self.relations.smaller_than.entry(second).or_default();
-
-        if self.relations.bigger_than[&first].contains(&second)
-            || self.relations.smaller_than[&second].contains(&first)
-        {
-            Some(std::cmp::Ordering::Greater)
-        } else if self.relations.bigger_than[&second].contains(&first)
-            || self.relations.smaller_than[&first].contains(&second)
-        {
-            Some(std::cmp::Ordering::Less)
-        } else {
-            None
-        }
+    fn transitive_ordering(&self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
+        self.relations.barycenter_ordering(first, second)
     }
 
     fn update_model_order_associations(
@@ -3351,7 +3353,7 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
         return Ok(false);
     }
     let scan = barycenter_scan_work(graph)?;
-    // SweepCopy always retains fallback port IDs, including when numeric IDs are available.
+    // Retain the conservative snapshot reservation, including the bytes of all port IDs.
     let snapshot = checked_add(
         scan,
         checked_sum(
@@ -3541,6 +3543,7 @@ fn single_graph_barycenter_sweep_work(
     graph: &LGraph,
     scan: usize,
     reorder: &ReorderNodePortsWorkContext,
+    remap: &FlatPortRemap,
 ) -> Result<(usize, usize), WorkError> {
     let mut layer_work = 0;
     let mut first_layer = 0;
@@ -3556,12 +3559,12 @@ fn single_graph_barycenter_sweep_work(
                 port_work,
                 node.ports.len(),
                 checked_n_log_n(node.ports.len())?,
-                reorder.node_work(graph, index)?,
+                remap.node_work(graph, index, reorder)?,
             ])?;
         }
     }
     // A node participates at most twice per sweep: once in the free layer and once
-    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
+    // in the fixed layer. Each possible reorder includes its owner-local reference rewrite.
     let sweep_work = checked_sum([
         layer_work,
         checked_mul(port_work, 2)?,
@@ -4833,6 +4836,87 @@ mod tests {
     }
 
     #[test]
+    fn compound_port_sweep_remaps_dummy_origins_in_current_side_order() {
+        use crate::graph::{GraphNodeRef, GraphPortRef, LPort};
+
+        let mut parent = LGraph::new("root", LayeredOptions::default());
+        let mut owner = LNode::new("owner", 10.0, 10.0, None);
+        let mut child = LGraph::new("child", LayeredOptions::default());
+        for (index, side) in [
+            PortSide::West,
+            PortSide::East,
+            PortSide::West,
+            PortSide::East,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut port = LPort::new(format!("port-{index}"), 0, PortType::Output);
+            port.side = side;
+            port.inside_connections = true;
+            if index < 2 {
+                port.port_dummy = Some(GraphNodeRef {
+                    graph_id: child.id.clone(),
+                    node: index,
+                });
+            }
+            owner.ports.push(port);
+            let mut dummy = LNode::new(format!("dummy-{index}"), 0.0, 0.0, None);
+            dummy.kind = LNodeKind::ExternalPort;
+            dummy.origin_port = Some(GraphPortRef {
+                graph_id: parent.id.clone(),
+                // The parent backlink wins when it disagrees with the numeric origin.
+                port: PortRef {
+                    node: 0,
+                    port: if index == 0 { 2 } else { index },
+                },
+            });
+            child.layerless_nodes.push(dummy);
+        }
+        let mut grandchild = LGraph::new("grandchild", LayeredOptions::default());
+        for graph_id in [&parent.id, &child.id] {
+            let mut dummy = LNode::new("nested-dummy", 0.0, 0.0, None);
+            dummy.origin_port = Some(GraphPortRef {
+                graph_id: graph_id.clone(),
+                port: PortRef { node: 0, port: 3 },
+            });
+            grandchild.layerless_nodes.push(dummy);
+        }
+        child.layerless_nodes[0].nested_graph = Some(Box::new(grandchild));
+        owner.nested_graph = Some(Box::new(child));
+        parent.layerless_nodes.push(owner);
+
+        for (right, dummy_layer, expected) in [(false, [0, 2], [2, 0]), (true, [3, 1], [3, 1])] {
+            let child = parent.layerless_nodes[0].nested_graph.as_ref().unwrap();
+            let order = parent_port_order_by_dummy_layer(child, &parent, &dummy_layer, 0, right);
+            assert_eq!(order, expected);
+            apply_parent_hierarchical_port_order_on_sweep_side(&mut parent, 0, right, &order);
+        }
+        let owner = &parent.layerless_nodes[0];
+        assert_eq!(
+            owner
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            ["port-2", "port-3", "port-0", "port-1"]
+        );
+        let child = owner.nested_graph.as_ref().unwrap();
+        let origin_slots = |graph: &LGraph| {
+            graph
+                .layerless_nodes
+                .iter()
+                .map(|node| node.origin_port.as_ref().unwrap().port.port)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(origin_slots(child), [0, 3, 0, 1]);
+        assert_eq!(
+            origin_slots(child.layerless_nodes[0].nested_graph.as_ref().unwrap()),
+            [1, 3]
+        );
+    }
+
+    #[test]
     fn hierarchical_sweep_saves_currently_best_snapshot_not_current_order() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         graph
@@ -4933,27 +5017,14 @@ mod tests {
             Some(Greater),
         ];
         for (mask, expected) in expected.into_iter().enumerate() {
-            heuristic.relations.clear();
-            for (bit, key, member) in [(0, 11, 23), (1, 23, 11)] {
-                if mask & (1 << bit) != 0 {
-                    heuristic
-                        .relations
-                        .bigger_than
-                        .entry(key)
-                        .or_default()
-                        .insert(member);
-                }
-            }
-            for (bit, key, member) in [(2, 11, 23), (3, 23, 11)] {
-                if mask & (1 << bit) != 0 {
-                    heuristic
-                        .relations
-                        .smaller_than
-                        .entry(key)
-                        .or_default()
-                        .insert(member);
-                }
-            }
+            let facts = |offset: usize| {
+                [(0usize, 11, 23), (1, 23, 11)]
+                    .into_iter()
+                    .filter(|(bit, _, _)| mask & (1usize << (bit + offset)) != 0usize)
+                    .map(|(_, key, member)| (key, HashSet::from([member])))
+                    .collect()
+            };
+            heuristic.relations = ModelOrderRelations::from_test_rows(&facts(0), &facts(2));
             assert_eq!(
                 heuristic.transitive_ordering(11, 23),
                 expected,
@@ -4982,8 +5053,7 @@ mod tests {
             let mut layer = vec![0, 1];
             heuristic.insertion_sort_by_model_order(&graph, &mut layer);
             assert_eq!(layer, [0, 1]);
-            assert!(heuristic.relations.bigger_than.is_empty());
-            assert!(heuristic.relations.smaller_than.is_empty());
+            assert!(heuristic.relations.is_clear());
         }
     }
 

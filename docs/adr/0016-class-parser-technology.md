@@ -20,30 +20,16 @@ We need a Rust implementation that is:
 
 ## Decision
 
-Implement `classDiagram` parsing using:
-
-- a stateful handwritten lexer (Rust), and
-- a LALRPOP grammar (Rust),
-
-mirroring Mermaid's Jison lexer states and operator precedence where relevant.
-
-The semantic output is a DB-like model (classes/relations/notes/namespaces) suitable for reuse by
-other crates (renderers, CLI, converters).
+Use a stateful lexer and a handwritten predictive grammar over normalized, spanned tokens. The
+parser keeps an explicit stack for namespace bodies and emits actions for the headless `ClassDb`.
+Renderers and converters consume the resulting classes, relations, notes, and namespaces.
 
 ## Consequences
 
-### Positive
-
-- Matches Mermaid's "lexer state" approach (e.g. class body member lines) closely, reducing
-  impedance mismatches.
-- Keeps the grammar maintainable while allowing precise token-level behavior where needed.
-- Enables incremental parity: we can add statements and edge cases without destabilizing unrelated
-  diagrams.
-
-### Negative
-
-- Requires ongoing maintenance of lexer states and tokenization details to reach full parity.
-- Error reporting parity (Jison expected tokens/locations) will require extra work.
+- The lexer owns class body member lines and token spans. The grammar owns statement boundaries,
+  expected tokens, and namespace replay order.
+- Cancellation is checked during scanning, normalization, parsing, and DB replay.
+- The editor can recover symbols from the normalized event tape after a grammar failure.
 
 ## References
 

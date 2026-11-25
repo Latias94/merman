@@ -78,7 +78,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
     model: &PacketDiagramModel,
     typography_theme: &crate::packet::PacketTypographyThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &merman_model::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {

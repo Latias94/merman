@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 const NONE: usize = usize::MAX;
-const CHUNK_BYTES: usize = 256;
+pub(super) const CHUNK_BYTES: usize = 256;
 const PARSE_WORK_BATCH: usize = 64;
 const WORK_BYTES_PER_UNIT: usize = 256;
 

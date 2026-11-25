@@ -4,29 +4,28 @@ use crate::SourceSpan;
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
-use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
-#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
 use crate::{
-    Error, MermaidConfig, OperationControl, OperationControlResult, SemanticMetadata,
-    parse_diagnostic::lalrpop_parse_diagnostic,
+    Error, MermaidConfig, OperationControl, OperationControlResult, ParseDiagnostic,
+    SemanticMetadata,
 };
 #[cfg(test)]
 use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::{HashMap, hash_map::Entry};
 
+#[cfg(feature = "editor-facts")]
 use super::Tok;
-use super::ast::{ActionArena, Actions};
+use super::ast::Action;
 use super::db::SequenceDb;
 #[cfg(feature = "editor-facts")]
 use super::db::box_color_and_title;
 use super::lexer::Lexer;
 use super::model::SequenceDiagramModel;
-use super::sequence_grammar;
+use super::parser::{self, LexicalEvent as SequenceLexicalEvent};
 
 #[cfg(test)]
 thread_local! {
@@ -43,11 +42,8 @@ pub(crate) fn sequence_syntax_construction_count() -> usize {
     SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-type SequenceLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
-type SequenceGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
-
 struct SequenceSyntaxOutcome {
-    actions: std::result::Result<Actions, SequenceGrammarError>,
+    actions: std::result::Result<Vec<Action>, ParseDiagnostic>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -81,17 +77,7 @@ impl SequenceSyntax {
             )?),
         };
         control.checkpoint()?;
-        let mut emitted = 0usize;
-        let controlled_events = events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
-            emitted = emitted.saturating_add(1);
-            active
-        });
-        let mut arena = ActionArena::default();
-        let actions = sequence_grammar::ActionsParser::new()
-            .parse(&mut arena, control, controlled_events)
-            .map(|list| arena.into_actions(list));
-        control.checkpoint()?;
+        let actions = parser::parse(events.into_iter(), control)?;
         Ok(SequenceSyntaxOutcome {
             actions,
             #[cfg(feature = "editor-facts")]
@@ -108,7 +94,7 @@ pub(super) struct SequenceSemanticSource {
 
 pub(super) enum SequenceSemanticFailure {
     Grammar {
-        error: SequenceGrammarError,
+        diagnostic: ParseDiagnostic,
         #[cfg(feature = "editor-facts")]
         editor_facts: Option<EditorSemanticFacts>,
     },
@@ -120,20 +106,13 @@ pub(super) enum SequenceSemanticFailure {
 }
 
 impl SequenceSemanticFailure {
-    pub(super) fn into_parse_error_for_type(
-        self,
-        diagram_type: &str,
-        fallback_offset: usize,
-    ) -> Error {
+    pub(super) fn into_parse_error_for_type(self, diagram_type: &str) -> Error {
         match self {
             Self::Grammar {
-                error,
+                diagnostic,
                 #[cfg(feature = "editor-facts")]
                     editor_facts: _,
-            } => Error::diagram_parse_diagnostic(
-                diagram_type.to_string(),
-                lalrpop_parse_diagnostic(&error, fallback_offset),
-            ),
+            } => Error::diagram_parse_diagnostic(diagram_type.to_string(), diagnostic),
             Self::Db {
                 message,
                 #[cfg(feature = "editor-facts")]
@@ -146,30 +125,23 @@ impl SequenceSemanticFailure {
     pub(super) fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
-        fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         match self {
             Self::Grammar {
-                error,
+                diagnostic,
                 editor_facts,
             } => {
-                let parse_error = Error::diagram_parse_diagnostic(
-                    diagram_type.to_string(),
-                    lalrpop_parse_diagnostic(&error, fallback_offset),
-                );
-                let span = match &error {
-                    lalrpop_util::ParseError::User { error } => error.span,
-                    _ => lalrpop_recovery_span(&error, fallback_offset),
-                };
                 let mut editor_facts =
                     editor_facts.expect("Sequence capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!(
                         "sequence parser recovered after parse error: {}",
-                        format_lalrpop_parse_error(&error)
+                        diagnostic.message(),
                     ),
-                    Some(span),
+                    diagnostic.span(),
                 );
+                let parse_error =
+                    Error::diagram_parse_diagnostic(diagram_type.to_string(), diagnostic);
                 (parse_error, editor_facts)
             }
             Self::Db {
@@ -220,7 +192,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
         #[cfg(feature = "editor-facts")]
         Err(failure) if editor_demand.needs_recovery() => {
             let (error, editor_facts) =
-                failure.into_error_and_editor_facts_for_type(&meta.diagram_type, code.len());
+                failure.into_error_and_editor_facts_for_type(&meta.diagram_type);
             SemanticConstruction {
                 model: Err(error),
                 #[cfg(feature = "editor-facts")]
@@ -228,7 +200,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
             }
         }
         Err(failure) => SemanticConstruction {
-            model: Err(failure.into_parse_error_for_type(&meta.diagram_type, code.len())),
+            model: Err(failure.into_parse_error_for_type(&meta.diagram_type)),
             #[cfg(feature = "editor-facts")]
             editor_facts: None,
         },
@@ -256,9 +228,9 @@ pub(super) fn construct_sequence_semantic_source(
     )?;
     let actions = match actions {
         Ok(actions) => actions,
-        Err(error) => {
+        Err(diagnostic) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {
-                error,
+                diagnostic,
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
@@ -285,7 +257,7 @@ pub(super) fn construct_sequence_semantic_source(
 }
 
 fn build_sequence_db(
-    actions: Actions,
+    actions: Vec<Action>,
     wrap_enabled: Option<bool>,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
@@ -876,30 +848,17 @@ mod tests {
         )
     }
 
-    fn carrier_actions(source: &str, expected: (usize, usize)) -> Actions {
-        let control = OperationControl::new();
-        let mut arena = ActionArena::default();
-        let root = sequence_grammar::ActionsParser::new()
-            .parse(&mut arena, &control, Lexer::new(source))
-            .expect("Sequence grammar accepts carrier workload");
-        assert_eq!(arena.carrier_counts(), expected);
-        println!(
-            "source_bytes={} action_records={} action_links={}",
-            source.len(),
-            expected.0,
-            expected.1,
-        );
-        arena.into_actions(root)
+    fn parser_actions(source: &str) -> Vec<Action> {
+        parser::parse(Lexer::new(source), &OperationControl::new())
+            .unwrap()
+            .expect("Sequence parser accepts the workload")
     }
 
     #[test]
-    fn grammar_carriers_attach_each_event_once_at_increasing_width_and_depth() {
+    fn sequence_parser_emits_each_action_once_at_increasing_width_and_depth() {
         for size in [8, 128, 1_024] {
             let flat = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(size));
-            assert_eq!(
-                carrier_actions(&flat, (size * 3, size * 3 - 1)).count(),
-                size * 3
-            );
+            assert_eq!(parser_actions(&flat).len(), size * 3);
 
             let mut nested = String::from("sequenceDiagram\n");
             for index in 0..size {
@@ -907,49 +866,36 @@ mod tests {
             }
             nested.push_str("A->>B: message\n");
             nested.push_str(&"end\n".repeat(size));
-            assert_eq!(
-                carrier_actions(&nested, (size * 2 + 3, size * 2 + 2)).count(),
-                size * 2 + 3
-            );
+            assert_eq!(parser_actions(&nested).len(), size * 2 + 3);
 
             let mut boxed = String::from("sequenceDiagram\nbox Team\n");
             for index in 0..size {
                 writeln!(boxed, "participant P{index}").unwrap();
             }
             boxed.push_str("end\n");
-            assert_eq!(
-                carrier_actions(&boxed, (size + 2, size + 1)).count(),
-                size + 2
-            );
+            assert_eq!(parser_actions(&boxed).len(), size + 2);
 
             let mut branched = String::from("sequenceDiagram\nalt Start\nA->>B: first\n");
             for index in 0..size {
                 writeln!(branched, "else E{index}\nA->>B: branch").unwrap();
             }
             branched.push_str("end\n");
-            assert_eq!(
-                carrier_actions(&branched, (size * 4 + 5, size * 4 + 4)).count(),
-                size * 4 + 5
-            );
+            assert_eq!(parser_actions(&branched).len(), size * 4 + 5);
         }
     }
 
     #[test]
-    fn grammar_carrier_reductions_observe_cancellation() {
+    fn sequence_action_emission_observes_cancellation() {
         let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(1_024));
+        let seen = Cell::new(0);
+        let events = Lexer::new(&source).inspect(|_| seen.set(seen.get() + 1));
         let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
-        let mut arena = ActionArena::default();
-        let error = sequence_grammar::ActionsParser::new()
-            .parse(&mut arena, &control, Lexer::new(&source))
+        let error = parser::parse(events, &control)
             .err()
-            .expect("construction checkpoint interrupts reductions");
-        assert!(matches!(error, lalrpop_util::ParseError::User { .. }));
-        assert!(arena.carrier_counts().0 < 1_024 * 3);
-        assert_eq!(
-            control.checkpoint().unwrap_err().reason,
-            crate::CancelReason::Requested
-        );
+            .expect("construction checkpoint interrupts action emission");
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert!(seen.get() < 128);
     }
 
     #[test]
@@ -1025,7 +971,7 @@ mod tests {
     #[test]
     fn cancelled_replay_releases_remaining_flat_events() {
         let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
-        let actions = carrier_actions(&source, (256 * 3, 256 * 3 - 1));
+        let actions = parser_actions(&source);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(16);
         let Err(error) = build_sequence_db(actions, None, &control) else {

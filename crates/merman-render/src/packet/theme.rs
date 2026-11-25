@@ -21,7 +21,6 @@ pub(crate) struct PacketNativeTypography {
 
 impl PacketTypographyThemePlan {
     fn from_config(config: &PresentationConfig) -> Self {
-        let config = config.as_value();
         Self {
             css_binding: super::PacketConfigView::new(config).style_settings(),
             font_family_css: crate::config::config_font_family_css(config).into_boxed_str(),
@@ -36,7 +35,7 @@ impl PacketTypographyThemePlan {
     pub(crate) fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
         let mut plan = Self::from_config(config);
         let Some(theme) = native else { return plan };
-        let packet = super::PacketConfigView::new(config.as_value());
+        let packet = super::PacketConfigView::new(config);
         let roles = &theme.roles;
         let css = &mut plan.css_binding;
         let owns_style =
@@ -114,7 +113,7 @@ impl PacketTypographyThemePlan {
             css.block_stroke_width = theme.form.stroke_width.to_string().into();
         }
         plan.root_font_size_px =
-            crate::config::configured_theme_font_size_css_or_root_number_px(config.as_value())
+            crate::config::configured_theme_font_size_css_or_root_number_px(config)
                 .filter(|(_, path)| config.explicit_config_owns_path(path))
                 .map_or(base_size, |(size, _)| size);
         let explicit_font = ["themeVariables.fontFamily", "fontFamily"]

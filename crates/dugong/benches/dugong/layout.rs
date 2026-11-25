@@ -1,7 +1,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::position::bk::{find_type1_conflicts, position_x_with_layering};
-use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
+use dugong::{DummyKind, EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
 use std::hint::black_box;
 
 const LAYER_COUNTS: [usize; 6] = [5, 10, 20, 40, 80, 160];
@@ -321,7 +321,7 @@ fn build_conflict_index_graph(
                     height: 72.0,
                     rank: Some(rank as i32),
                     order: Some(order),
-                    dummy: is_segment.then(|| "edge".to_string()),
+                    dummy: is_segment.then_some(DummyKind::Edge),
                     ..Default::default()
                 },
             );
@@ -401,7 +401,7 @@ fn build_type2_fallback_graph(
             NodeLabel {
                 rank: Some(0),
                 order: (!missing_border_order || id != "north-high").then_some(order),
-                dummy: Some("dummy".to_string()),
+                dummy: Some(DummyKind::Other),
                 ..Default::default()
             },
         );
@@ -418,14 +418,11 @@ fn build_type2_fallback_graph(
             NodeLabel {
                 rank: Some(1),
                 order: Some(order),
-                dummy: Some(
-                    if id.starts_with("border-") {
-                        "border"
-                    } else {
-                        "dummy"
-                    }
-                    .to_string(),
-                ),
+                dummy: Some(if id.starts_with("border-") {
+                    DummyKind::Border
+                } else {
+                    DummyKind::Other
+                }),
                 ..Default::default()
             },
         );

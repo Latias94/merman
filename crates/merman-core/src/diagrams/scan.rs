@@ -24,6 +24,75 @@ pub(crate) trait TokenScanner {
     }
 }
 
+/// A forward cursor over spanned lexical events, with one buffered lookahead.
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state",
+    feature = "diagram-sequence"
+))]
+pub(crate) struct TokenStream<'a, I: Iterator> {
+    events: std::iter::Peekable<I>,
+    control: &'a crate::OperationControl,
+    fetched: usize,
+    checked_lookahead: bool,
+    previous_end: usize,
+}
+
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state",
+    feature = "diagram-sequence"
+))]
+impl<'a, I, T, E> TokenStream<'a, I>
+where
+    I: Iterator<Item = Result<(usize, T, usize), E>>,
+{
+    pub(crate) fn new(events: I, control: &'a crate::OperationControl) -> Self {
+        Self {
+            events: events.peekable(),
+            control,
+            fetched: 0,
+            checked_lookahead: false,
+            previous_end: 0,
+        }
+    }
+
+    pub(crate) fn peek(&mut self) -> crate::OperationControlResult<Option<&I::Item>> {
+        let event = self.events.peek();
+        if !self.checked_lookahead && event.is_some() {
+            if self.fetched.is_multiple_of(128) {
+                self.control.checkpoint()?;
+            }
+            self.checked_lookahead = true;
+            self.fetched = self.fetched.saturating_add(1);
+        }
+        Ok(event)
+    }
+
+    pub(crate) fn bump(&mut self) -> crate::OperationControlResult<Option<I::Item>> {
+        if self.peek()?.is_none() {
+            return Ok(None);
+        }
+        let event = self.events.next();
+        self.checked_lookahead = false;
+        if let Some(Ok((_, _, end))) = &event {
+            self.previous_end = *end;
+        }
+        Ok(event)
+    }
+
+    /// The end of the last consumed token, excluding skipped input.
+    pub(crate) const fn previous_end(&self) -> usize {
+        self.previous_end
+    }
+}
+
 pub(crate) fn collect_lexical_events<S: TokenScanner>(
     scanner: &mut S,
     control: &crate::OperationControl,

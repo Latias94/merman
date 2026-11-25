@@ -17,7 +17,7 @@ fn render_pie_slices(
     slices: &[crate::model::PieSliceLayout],
     radius: f64,
     inner_radius: f64,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
 ) -> Result<()> {
     let highlight = crate::config::config_string(effective_config, &["pie", "highlightSlice"])
         .unwrap_or_default();
@@ -39,7 +39,7 @@ fn render_pie_slices(
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramModel,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let paint_plan = crate::pie::PieThemePlan::baseline(model, effective_config);
@@ -56,7 +56,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     layout: &PieDiagramLayout,
     model: &PieDiagramModel,
     paint_plan: &crate::pie::PieThemePlan,
-    effective_config: &serde_json::Value,
+    effective_config: &impl crate::config::ConfigLookup,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
