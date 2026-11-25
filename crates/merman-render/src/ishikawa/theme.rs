@@ -17,8 +17,7 @@ pub(crate) struct IshikawaTypographyPlan {
 }
 
 impl IshikawaTypographyPlan {
-    pub(crate) fn resolve(effective_config: &PresentationConfig, spacing_font_size: f64) -> Self {
-        let config = effective_config.as_value();
+    pub(crate) fn resolve(config: &PresentationConfig, spacing_font_size: f64) -> Self {
         let font_size_css =
             crate::config::config_css_number_or_string(config, &["themeVariables", "fontSize"])
                 .or_else(|| crate::config::config_css_number_or_string(config, &["fontSize"]))
@@ -26,7 +25,7 @@ impl IshikawaTypographyPlan {
         let (resolved_size, important) = resolve_text_size(&font_size_css);
         let font_size = resolved_size.unwrap_or(16.0);
         let text_style = crate::text::TextStyle {
-            font_family: Some(crate::config::config_font_family_css(effective_config)),
+            font_family: Some(crate::config::config_font_family_css(config)),
             font_size,
             ..Default::default()
         };
@@ -80,7 +79,7 @@ impl IshikawaTypographyPlan {
         .into_iter()
         .filter(|(path, _)| config.explicit_config_owns_path(path))
         .find_map(|(_, path)| {
-            crate::config::config_css_number_or_string(config.as_value(), path)
+            crate::config::config_css_number_or_string(config, path)
                 .filter(|size| css_font_size_value_override(size).is_some())
         });
         if let Some(size_css) = authored_size {
@@ -154,7 +153,7 @@ impl IshikawaTextThemePlan {
         config: &PresentationConfig,
         typography: IshikawaTypographyPlan,
     ) -> Self {
-        let mut css_binding = IshikawaCssBinding::resolve(config.as_value());
+        let mut css_binding = IshikawaCssBinding::resolve(config);
         if let Some(theme) = native {
             css_binding.apply_native(theme, config);
         }

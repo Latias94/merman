@@ -939,7 +939,7 @@ fn prepare_packet_family<'parsed>(
     let layout = crate::packet::layout_packet_diagram_typed(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
+        &meta.effective_config,
     )?;
     Ok(BuiltinFamilyArtifact::Packet(Box::new(
         PacketFamilyArtifact {
@@ -1130,8 +1130,8 @@ fn prepare_ishikawa_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution.native_family_theme();
-    let mut cfg = crate::ishikawa::IshikawaConfigView::new(meta.effective_config.as_value())
-        .layout_settings();
+    let mut cfg =
+        crate::ishikawa::IshikawaConfigView::new(&meta.effective_config).layout_settings();
     let mut typography =
         crate::ishikawa::IshikawaTypographyPlan::resolve(&meta.effective_config, cfg.font_size);
     if let Some(theme) = native {
