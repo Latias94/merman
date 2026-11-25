@@ -1,0 +1,25 @@
+[package]
+name = "merman-render-charts"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Layout, geometry, and presentation for Merman's chart families."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie"]
+
+[dependencies]
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
+merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
+merman-theme-contract = { workspace = true, optional = true }
+ryu-js = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

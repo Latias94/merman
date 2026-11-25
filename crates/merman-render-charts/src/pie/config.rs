@@ -1,4 +1,4 @@
-use crate::config::{
+use merman_render_core::config::{
     ConfigLookup, config_bool, config_f64, config_string, json_mermaid_font_size_number, value_at,
 };
 use serde_json::Value;
@@ -16,7 +16,7 @@ pub(super) fn pie_outer_stroke_width(config: &impl ConfigLookup) -> f64 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PieLegendPosition {
+pub enum PieLegendPosition {
     Top,
     Bottom,
     Left,
@@ -24,18 +24,18 @@ pub(crate) enum PieLegendPosition {
     Center,
 }
 
-pub(crate) struct PieConfigView<'a> {
+pub struct PieConfigView<'a> {
     pie_config: &'a Value,
 }
 
 impl<'a> PieConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
+    pub fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
             pie_config: effective_config.get("pie").unwrap_or(&Value::Null),
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> PieLayoutSettings {
+    pub(super) fn layout_settings(&self) -> PieLayoutSettings {
         PieLayoutSettings {
             text_position: self
                 .pie_f64("textPosition")
@@ -44,7 +44,7 @@ impl<'a> PieConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> PieRenderSettings {
+    pub fn render_settings(&self) -> PieRenderSettings {
         PieRenderSettings {
             donut_hole: self.donut_hole(),
             legend_position: self.legend_position(),
@@ -94,16 +94,16 @@ impl<'a> PieConfigView<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PieLayoutSettings {
-    pub(crate) text_position: f64,
-    pub(crate) legend_position: PieLegendPosition,
+pub(super) struct PieLayoutSettings {
+    pub(super) text_position: f64,
+    pub(super) legend_position: PieLegendPosition,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PieRenderSettings {
-    pub(crate) donut_hole: f64,
-    pub(crate) legend_position: PieLegendPosition,
-    pub(crate) use_max_width: bool,
+pub struct PieRenderSettings {
+    pub donut_hole: f64,
+    pub legend_position: PieLegendPosition,
+    pub use_max_width: bool,
 }
 
 #[cfg(test)]

@@ -617,10 +617,10 @@ fn prepare_pie_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::pie::{PieAppearance, PieNativeStyle};
+    use crate::pie::PieAppearance;
 
     if let Some(theme) = execution.native_family_theme() {
-        let (layout, style) = PieNativeStyle::prepare(
+        let (layout, style) = crate::pie::prepare_native_pie(
             theme,
             model,
             meta.title.as_deref(),

@@ -29,6 +29,7 @@ on:
       - "crates/merman-model/**"
       - "crates/merman-markup/**"
       - "crates/merman-render/**"
+      - "crates/merman-render-charts/**"
       - "crates/merman-render-core/**"
       - "crates/merman-render-structured/**"
       - "crates/roughr/**"

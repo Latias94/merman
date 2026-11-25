@@ -64,6 +64,12 @@ consumes canonical model data and uses the shared CSS and text contracts in `mer
 `merman-render` dispatches to it through the existing `diagram-packet` and `diagram-railroad`
 features and supplies the operation's text measurement to Railroad.
 
+### Chart rendering
+
+`merman-render-charts` owns typed layout, style binding, and geometry for Pie. `merman-render`
+supplies text metrics and assembles the chart into a scoped SVG document under the render
+operation's output policy.
+
 ### Frozen presentation is distinct from engine initialization
 
 Shared presentation data includes the pure full payloads, exact render facts, normalized theme recipe and frozen resolved configuration/ownership used by terminal or graphical output. Core retains mutable detector journals, the actual history-based freeze computation, initialization caches, theme evaluation and source construction. Equal final configuration values do not prove equal authored authority.

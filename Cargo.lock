@@ -2674,6 +2674,7 @@ dependencies = [
  "merman-layout-shoal",
  "merman-markup",
  "merman-model",
+ "merman-render-charts",
  "merman-render-core",
  "merman-render-structured",
  "merman-theme-contract",
@@ -2697,6 +2698,18 @@ dependencies = [
  "thiserror 2.0.21",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "merman-render-charts"
+version = "0.11.0"
+dependencies = [
+ "merman-model",
+ "merman-render-core",
+ "merman-theme-contract",
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

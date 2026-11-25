@@ -316,20 +316,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pie_path_rounding_uses_javascript_negative_half_ties() {
-        for (value, expected) in [
-            (0.0005, "0.001"),
-            (-0.0005, "0"),
-            (0.0015, "0.002"),
-            (-0.0015, "-0.001"),
-            (1.2345, "1.235"),
-            (-1.2345, "-1.234"),
-        ] {
-            assert_eq!(pie_path_number(value).to_string(), expected, "{value}");
-        }
-    }
-
     #[derive(Default)]
     struct RejectAfterFirstWrite {
         write_attempts: usize,

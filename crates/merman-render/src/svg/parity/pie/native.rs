@@ -9,7 +9,6 @@ use crate::pie::{
 };
 use crate::theme::{Color, canvas_svg::write_color, pattern_svg::data_pattern};
 use merman_model::families::pie::PieDiagramModel;
-use merman_theme_contract::v2::Paint;
 
 pub(crate) fn render_native_pie_svg(
     layout: &PieDiagramLayout,
@@ -56,15 +55,12 @@ pub(crate) fn render_native_pie_svg(
         out.checkpoint()?;
     }
 
-    let host_canvas = background.map(Paint::Solid);
-    let native = session.native_theme();
-    let export_ink = native.and_then(|theme| {
-        style.data.fill_inks_for_export(
-            host_canvas.as_ref().unwrap_or(&style.canvas),
-            style.slice_opacity,
-            theme.export_backdrop()?,
-        )
-    });
+    let percentage_ink = style.percentage_ink(
+        background,
+        session
+            .native_theme()
+            .map(|theme| (theme.resolved().appearance(), theme.export_backdrop())),
+    );
     for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
         let _ = write!(
             &mut out,
@@ -72,17 +68,8 @@ pub(crate) fn render_native_pie_svg(
             fmt(slice.text_x),
             fmt(slice.text_y)
         );
-        let ink = match (&export_ink, background, native) {
-            (Some(inks), _, _) => inks[ordinal % inks.len()],
-            (None, Some(canvas), Some(theme)) => style.data.fill_ink_for_canvas(
-                ordinal,
-                canvas,
-                style.slice_opacity,
-                theme.resolved().appearance(),
-            ),
-            _ => style.data.fill_ink(ordinal),
-        };
-        if uses_pattern(style, ordinal) {
+        let ink = percentage_ink(ordinal);
+        if style.uses_pattern(ordinal) {
             // Keep a contrasting edge around the glyphs where they cross pattern marks.
             let black = Color::rgb(0, 0, 0);
             let white = Color::rgb(255, 255, 255);
@@ -109,7 +96,9 @@ pub(crate) fn render_native_pie_svg(
 
     let legend_size = fmt(PIE_LEGEND_RECT_SIZE_PX);
     let legend_text_x = fmt(PIE_LEGEND_RECT_SIZE_PX + PIE_LEGEND_SPACING_PX);
-    let legend_text_y = fmt(native_legend_baseline_y(&style.label));
+    let legend_text_y = fmt(native_legend_baseline_y(
+        crate::text::svg_title_bbox_vertical_extents_px(&style.label),
+    ));
     for (ordinal, item) in layout.legend_items.iter().enumerate() {
         let _ = write!(
             &mut out,
@@ -134,10 +123,6 @@ pub(crate) fn render_native_pie_svg(
     root.complete(out.finish()?)
 }
 
-fn uses_pattern(style: &PieNativeStyle, ordinal: usize) -> bool {
-    style.data.pattern_encoding && !ordinal.is_multiple_of(6)
-}
-
 fn write_patterns(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
@@ -150,7 +135,7 @@ fn write_patterns(
 
     out.push_str("<defs>");
     let mut pattern = String::new();
-    for ordinal in (1..category_count).filter(|ordinal| uses_pattern(style, *ordinal)) {
+    for ordinal in (1..category_count).filter(|ordinal| style.uses_pattern(*ordinal)) {
         let id = format!("{diagram_id}-pie-data-{ordinal}");
         out.checkpoint()?;
         pattern.clear();
@@ -174,7 +159,7 @@ fn write_data_fill(
     style: &PieNativeStyle,
     ordinal: usize,
 ) {
-    if uses_pattern(style, ordinal) {
+    if style.uses_pattern(ordinal) {
         let _ = write!(out, r#"fill="url(#{diagram_id}-pie-data-{ordinal})""#);
         if style.slice_opacity != 1.0 {
             let _ = write!(out, r#" fill-opacity="{}""#, fmt(style.slice_opacity));
