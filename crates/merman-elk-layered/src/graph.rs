@@ -1224,21 +1224,24 @@ impl LGraph {
             return Some(new_order);
         }
 
-        let old_ports = std::mem::take(&mut self.layerless_nodes[node_index].ports);
-        let mut movable_ports = old_ports.into_iter().map(Some).collect::<Vec<_>>();
-        let mut old_to_new = vec![0usize; movable_ports.len()];
-        let mut reordered = Vec::with_capacity(movable_ports.len());
-
-        for (new_index, old_index) in new_order.into_iter().enumerate() {
-            old_to_new[old_index] = new_index;
-            let mut port = movable_ports[old_index]
-                .take()
-                .expect("validated port order visits each port exactly once");
-            port.node = node_index;
-            reordered.push(port);
+        let ports = &mut self.layerless_nodes[node_index].ports;
+        let mut old_to_new = vec![0usize; port_count];
+        // Validation marked every slot as seen. Clear each slot as its cycle is installed.
+        // The first port moves through the cycle, so its final slot needs no swap.
+        for start in 0..port_count {
+            let mut destination = start;
+            while seen[destination] {
+                seen[destination] = false;
+                let source = new_order[destination];
+                old_to_new[source] = destination;
+                if source != start {
+                    ports.swap(destination, source);
+                }
+                ports[destination].node = node_index;
+                destination = source;
+            }
         }
-
-        self.layerless_nodes[node_index].ports = reordered;
+        drop(new_order);
 
         if let Some(remap) = flat_remap {
             remap.apply(self, node_index, &old_to_new);
@@ -1898,6 +1901,27 @@ mod tests {
         }
         assert_eq!(graph.reorder_node_ports_with_map(99, []), None);
         assert_eq!(graph, before);
+    }
+
+    #[test]
+    fn nonidentity_port_reorder_normalizes_ports_in_disjoint_cycles_and_fixed_slots() {
+        let mut graph = port_reorder_reference_graph();
+        let ports = &mut graph.layerless_nodes[1].ports;
+        ports[0].node = 99;
+        ports.extend((1..6).map(|index| LPort::new(format!("p{index}"), 99, PortType::Output)));
+        let order = [2, 0, 1, 3, 5, 4];
+        let expected = order.map(|old_index| {
+            let mut port = ports[old_index].clone();
+            port.node = 1;
+            port
+        });
+
+        assert_eq!(
+            graph.reorder_node_ports_with_map(1, order),
+            Some(vec![1, 2, 0, 3, 5, 4])
+        );
+        assert_eq!(graph.layerless_nodes[1].ports, expected);
+        assert_eq!(graph.edges[0].target, PortRef { node: 1, port: 1 });
     }
 
     #[test]
