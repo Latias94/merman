@@ -6,8 +6,8 @@ use merman_model::warnings::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowNodeSyntax, FlowSubGraph,
-    FlowchartAst, LinkStylePos, Node, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
+    ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowSubGraph, FlowchartAst, LinkStylePos,
+    Node, NodeAction, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
@@ -330,7 +330,7 @@ impl<'a> FlowchartSemanticContext<'a> {
 
     fn observe_node_group(
         &mut self,
-        nodes: &[Node],
+        nodes: &[NodeAction],
         active_subgraphs: &HashMap<String, usize>,
         seen_vertex_ids: &mut HashSet<String>,
         vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
@@ -345,21 +345,17 @@ impl<'a> FlowchartSemanticContext<'a> {
                 self.vertex_calls.push(node.id.clone());
                 seen_vertex_ids.insert(node.id.clone());
                 if let Some(style) = vertex_css.get_mut(&node.id) {
-                    let style = style.get_or_insert_default();
-                    style.styles.extend(node.styles.iter().cloned());
+                    style.get_or_insert_default();
                 }
 
                 let target = &mut self.nodes[self.node_index[&node.id]];
-                if node.label.is_some() {
-                    target.label.clone_from(&node.label);
-                    target.label_type = node.label_type.clone();
-                    target.label_span = node.label_span;
-                    target.label_selection = node.label_selection;
+                if let Some(label) = &node.label {
+                    target.label = Some(label.text.clone());
+                    target.label_type = label.kind.clone();
                 }
                 if node.shape.is_some() {
                     target.shape.clone_from(&node.shape);
                 }
-                target.styles.extend(node.styles.iter().cloned());
             }
 
             // A styledVertex calls setClass after addVertex, even when addVertex routed
@@ -611,21 +607,15 @@ impl<'a> FlowchartSemanticContext<'a> {
     fn ensure_authored_node(&mut self, id: &str) -> usize {
         if let Some(&idx) = self.node_index.get(id) {
             self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-            self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
             return idx;
         }
         let idx = self.nodes.len();
         self.nodes.push(Node {
             id: id.to_string(),
             provenance: FlowNodeProvenance::Authored,
-            syntax: FlowNodeSyntax::ExplicitDefinition,
-            id_span: None,
             label: None,
             label_type: TitleKind::Text,
-            label_span: None,
-            label_selection: None,
             shape: None,
-            shape_data: None,
             icon: None,
             form: None,
             pos: None,

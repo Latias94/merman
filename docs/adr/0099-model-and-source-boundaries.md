@@ -49,12 +49,17 @@ Core and Render use the same markup implementation. This avoids putting expensiv
 
 ### Route painting is independent of diagram families
 
-`merman-render-core` owns layout coordinates and the geometry that turns a solved route into an
-SVG path, including marker setback, bounds, and obstacle clearance. Diagram families retain
+`merman-render-core` owns layout coordinates, the shared node, edge, cluster, and label types, and
+the geometry that turns a solved route into an SVG path, including marker setback, bounds, and
+obstacle clearance. Diagram families retain
 semantic bindings, work accounting, and projection into the layout solver. Shoal and the path
 builder exchange the same route point types.
 
 ### Flow diagrams
+
+`merman-core-flow` owns Flowchart and Swimlane tokenization and predictive syntax parsing, and
+the shared presentation lexer used by Agentflow. Core owns model construction, source mapping,
+diagnostics, and editor recovery.
 
 `merman-render-flow` owns Flowchart, Swimlane, and Agentflow shape geometry. It resolves shape
 aliases and image and icon dimensions, and supplies organic outlines and BPMN connector
@@ -98,6 +103,9 @@ supplies text metrics and assembles the chart into a scoped SVG document under t
 operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
 bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
 supplies text metrics and emits the SVG for both families.
+The chart crate owns Radar layout and its point and radius codecs, as well as Venn layout and
+its solver. For both families, `merman-render` supplies theme precedence, the operation work
+meter, and SVG emission.
 
 ### Frozen presentation is distinct from engine initialization
 

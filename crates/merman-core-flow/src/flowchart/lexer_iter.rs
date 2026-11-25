@@ -1,7 +1,8 @@
+use super::tokens::FlowchartLexicalEvent;
 use super::{LexError, Lexer, Tok};
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+    type Item = FlowchartLexicalEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.next_token();
@@ -65,14 +66,11 @@ impl Lexer<'_> {
                 .unwrap_or(rest.len());
             self.pos += rest.find(['\n', ';']).unwrap_or(rest.len());
             self.allow_header_direction = false;
-            let span = crate::SourceSpan::new(start, start + value_len);
+            let span = merman_model::SourceSpan::new(start, start + value_len);
             return Some(Err({
                 let error = LexError::with_span("invalid flowchart direction", span);
                 #[cfg(feature = "editor-facts")]
-                let error = error.expecting(
-                    crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-                    span,
-                );
+                let error = error.expecting(super::FlowchartExpectationKind::DirectionValue, span);
                 error
             }));
         }
@@ -174,7 +172,7 @@ impl Lexer<'_> {
         self.pos += self.input[start..].chars().next().unwrap().len_utf8();
         Some(Err(LexError::with_span(
             format!("Unexpected character at {start}"),
-            crate::SourceSpan::new(start, self.pos),
+            merman_model::SourceSpan::new(start, self.pos),
         )))
     }
 }

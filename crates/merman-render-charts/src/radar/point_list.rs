@@ -1,4 +1,4 @@
-use crate::model::LayoutPoint;
+use merman_render_core::LayoutPoint;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 

@@ -1,10 +1,10 @@
+#[cfg(feature = "editor-facts")]
+use super::FlowchartLexicalExpectation;
 #[cfg(any(test, feature = "editor-facts"))]
 use super::LexError;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use super::{Edge, Node, SubgraphHeader};
-#[cfg(feature = "editor-facts")]
-use crate::EditorExpectedSyntax;
-use crate::SourceSpan;
+use super::{LabeledText, LinkToken, SubgraphHeader};
+use merman_model::SourceSpan;
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(
@@ -15,16 +15,16 @@ use crate::SourceSpan;
     )
 )]
 #[cfg(feature = "editor-facts")]
-pub(crate) struct FlowchartDirectiveEditorEvidence {
-    expected_syntax: [Option<EditorExpectedSyntax>; 3],
+pub struct FlowchartDirectiveEditorEvidence {
+    expected_syntax: [Option<FlowchartLexicalExpectation>; 3],
 }
 
 #[cfg(feature = "editor-facts")]
 impl FlowchartDirectiveEditorEvidence {
-    pub(crate) fn new(
-        directive: EditorExpectedSyntax,
-        first: Option<EditorExpectedSyntax>,
-        following: Option<EditorExpectedSyntax>,
+    pub fn new(
+        directive: FlowchartLexicalExpectation,
+        first: Option<FlowchartLexicalExpectation>,
+        following: Option<FlowchartLexicalExpectation>,
     ) -> Self {
         Self {
             expected_syntax: [Some(directive), first, following],
@@ -32,38 +32,41 @@ impl FlowchartDirectiveEditorEvidence {
     }
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub(crate) fn iter(&self) -> impl Iterator<Item = EditorExpectedSyntax> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = FlowchartLexicalExpectation> + '_ {
         self.expected_syntax.iter().flatten().copied()
     }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg(feature = "editor-facts")]
-pub(crate) struct FlowchartClickEditorEvidence {
-    action: Option<EditorExpectedSyntax>,
-    payload: Option<EditorExpectedSyntax>,
+pub struct FlowchartClickEditorEvidence {
+    action: Option<FlowchartLexicalExpectation>,
+    payload: Option<FlowchartLexicalExpectation>,
 }
 
 #[cfg(feature = "editor-facts")]
 impl FlowchartClickEditorEvidence {
-    pub(crate) fn new(action: Option<SourceSpan>, payload: Option<SourceSpan>) -> Self {
+    pub fn new(action: Option<SourceSpan>, payload: Option<SourceSpan>) -> Self {
         Self {
             action: action.map(|span| {
-                EditorExpectedSyntax::new(crate::EditorExpectedSyntaxKind::InteractionAction, span)
+                FlowchartLexicalExpectation::new(
+                    super::FlowchartExpectationKind::InteractionAction,
+                    span,
+                )
             }),
             payload: payload.map(|span| {
-                EditorExpectedSyntax::new(crate::EditorExpectedSyntaxKind::Payload, span)
+                FlowchartLexicalExpectation::new(super::FlowchartExpectationKind::Payload, span)
             }),
         }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = EditorExpectedSyntax> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = FlowchartLexicalExpectation> + '_ {
         [self.action, self.payload].into_iter().flatten()
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StyleStmt {
+pub struct StyleStmt {
     pub target: String,
     pub target_span: Option<SourceSpan>,
     pub styles: Vec<String>,
@@ -76,7 +79,7 @@ pub(crate) struct StyleStmt {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ClassDefStmt {
+pub struct ClassDefStmt {
     pub ids: Vec<String>,
     #[cfg(feature = "editor-facts")]
     pub id_spans: Vec<SourceSpan>,
@@ -90,7 +93,7 @@ pub(crate) struct ClassDefStmt {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ClassAssignStmt {
+pub struct ClassAssignStmt {
     pub targets: Vec<String>,
     #[cfg(feature = "editor-facts")]
     pub target_spans: Vec<SourceSpan>,
@@ -102,7 +105,7 @@ pub(crate) struct ClassAssignStmt {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum ClickAction {
+pub enum ClickAction {
     Callback,
     Link {
         href: String,
@@ -118,7 +121,7 @@ pub(crate) enum ClickAction {
         reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
     )
 )]
-pub(crate) struct ClickStmt {
+pub struct ClickStmt {
     pub ids: Vec<String>,
     #[cfg(feature = "editor-facts")]
     pub id_spans: Vec<SourceSpan>,
@@ -133,13 +136,13 @@ pub(crate) struct ClickStmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LinkStylePos {
+pub enum LinkStylePos {
     Default,
     Index(usize),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LinkStyleStmt {
+pub struct LinkStyleStmt {
     pub positions: Vec<LinkStylePos>,
     pub interpolate: Option<String>,
     pub styles: Vec<String>,
@@ -147,29 +150,59 @@ pub(crate) struct LinkStyleStmt {
 
 #[derive(Debug, Clone)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct FlowchartAst {
+pub struct FlowchartAst {
     pub keyword: String,
     pub direction: Option<String>,
     pub header_span: SourceSpan,
-    pub statements: StatementArena,
-    pub root: StatementList,
+    pub(super) statements: StatementArena,
+    pub(super) root: StatementList,
 }
 
 #[derive(Debug, Clone)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct SubgraphBlock {
+pub struct SubgraphBlock {
     pub header: SubgraphHeader,
-    pub statements: StatementList,
+    pub(super) statements: StatementList,
+}
+
+/// An authored node occurrence. Database defaults and mutations are applied during replay.
+#[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub struct NodeAction {
+    pub id: String,
+    pub id_span: Option<SourceSpan>,
+    pub label: Option<LabeledText>,
+    pub shape: Option<String>,
+    pub shape_data: Option<String>,
+    pub classes: Vec<String>,
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+impl NodeAction {
+    pub fn is_explicit(&self) -> bool {
+        self.label.is_some() || self.shape_data.is_some() || !self.classes.is_empty()
+    }
+}
+
+/// One edge from an admitted Cartesian product, in source expansion order.
+#[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub struct EdgeAction {
+    pub from: String,
+    pub to: String,
+    pub id: Option<String>,
+    pub link: LinkToken,
+    pub label: Option<LabeledText>,
 }
 
 #[derive(Debug, Clone)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) enum Stmt {
+pub enum Stmt {
     Chain {
-        node_groups: Vec<Vec<Node>>,
-        edge_groups: Vec<Vec<Edge>>,
+        node_groups: Vec<Vec<NodeAction>>,
+        edge_groups: Vec<Vec<EdgeAction>>,
     },
-    Node(Box<Node>),
+    Node(Box<NodeAction>),
     Subgraph(SubgraphBlock),
     AccessibilityValue(String),
     Direction(String),
@@ -187,11 +220,11 @@ pub(crate) enum Stmt {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct StatementId(usize);
+pub(super) struct StatementId(usize);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct StatementList {
+pub(super) struct StatementList {
     head: Option<StatementId>,
 }
 
@@ -205,7 +238,7 @@ struct StatementRecord {
 /// Each parser fragment owns only IDs; the arena owns every statement exactly once.
 #[derive(Debug, Clone, Default)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct StatementArena {
+pub(super) struct StatementArena {
     records: Vec<StatementRecord>,
     construction_steps: usize,
 }
@@ -227,8 +260,8 @@ impl StatementListBuilder {
         &mut self,
         statement: Stmt,
         arena: &mut StatementArena,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<()> {
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<()> {
         arena.checkpoint(control)?;
         let id = StatementId(arena.records.len());
         arena.records.push(StatementRecord {
@@ -249,8 +282,8 @@ impl StatementListBuilder {
 impl StatementArena {
     pub(super) fn checkpoint(
         &mut self,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<()> {
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<()> {
         if self.construction_steps.is_multiple_of(128) {
             control.checkpoint()?;
         }
@@ -261,7 +294,7 @@ impl StatementArena {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartAst {
-    pub(crate) fn walk(&self) -> StatementWalk<'_> {
+    pub fn walk(&self) -> impl Iterator<Item = StatementEvent<'_>> + '_ {
         StatementWalk {
             arena: &self.statements,
             frames: vec![StatementWalkFrame {
@@ -273,7 +306,7 @@ impl FlowchartAst {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) enum StatementEvent<'a> {
+pub enum StatementEvent<'a> {
     Enter(&'a Stmt),
     Exit(&'a SubgraphBlock),
 }
@@ -285,7 +318,7 @@ struct StatementWalkFrame {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) struct StatementWalk<'a> {
+pub(super) struct StatementWalk<'a> {
     arena: &'a StatementArena,
     frames: Vec<StatementWalkFrame>,
 }
@@ -321,15 +354,16 @@ impl<'a> Iterator for StatementWalk<'a> {
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, OperationControl, SemanticMetadata};
+    use merman_model::{CancelReason, OperationControl};
 
-    fn metadata() -> SemanticMetadata {
-        SemanticMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            semantic_config: MermaidConfig::empty_object(),
-            title: None,
-        }
+    fn syntax(source: &str) -> FlowchartAst {
+        use super::super::{Lexer, parse_flowchart};
+
+        let control = OperationControl::new();
+        let lexer = Lexer::new(source).with_control(&control);
+        parse_flowchart(lexer, &control, 500, source.len())
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
@@ -339,7 +373,7 @@ mod tests {
             for index in 0..width {
                 source.push_str(&format!("n{index}\n"));
             }
-            let ast = super::super::parse_flowchart_ast(&source, &metadata()).unwrap();
+            let ast = syntax(&source);
             assert_eq!(ast.statements.records.len(), width);
             assert_eq!(ast.statements.construction_steps, width * 2);
             let ids = ast
@@ -361,7 +395,7 @@ mod tests {
     #[test]
     fn flowchart_statement_walker_preserves_enter_and_completion_order() {
         let source = "flowchart TB\nsubgraph outer\nA\nsubgraph inner\nB\nend\nC\nend\nD\n";
-        let ast = super::super::parse_flowchart_ast(source, &metadata()).unwrap();
+        let ast = syntax(source);
         let events = ast
             .walk()
             .map(|event| match event {
@@ -406,18 +440,17 @@ mod tests {
         let control = OperationControl::new();
         // Arena construction checks again before the next token delivery checkpoint.
         control.cancel_after_checkpoints(first_close / 128 + 2);
-        let edge_budget = super::super::flowchart_edge_budget(&metadata());
-        let result = super::super::parser::parse(
+        let result = super::super::parse_flowchart(
             tokens.into_iter().enumerate().map(|(index, token)| {
                 seen.set(index + 1);
                 Ok((index, token, index + 1))
             }),
             &control,
-            &edge_budget,
+            500,
             first_close + 512,
         );
-        assert_eq!(result.unwrap_err().reason, crate::CancelReason::Requested);
+        assert_eq!(result.unwrap_err().reason, CancelReason::Requested);
         assert_eq!(seen.get(), first_close + 65);
-        super::super::parse_flowchart_ast("flowchart TB\nA-->B\n", &metadata()).unwrap();
+        syntax("flowchart TB\nA-->B\n");
     }
 }

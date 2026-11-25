@@ -1,7 +1,8 @@
 use super::{
-    Edge, FlowNodeProvenance, FlowNodeSyntax, FlowchartAst, Node, StatementEvent, Stmt, TitleKind,
+    Edge, EdgeAction, FlowNodeProvenance, FlowchartAst, Node, NodeAction, StatementEvent, Stmt,
+    TitleKind,
 };
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use crate::{OperationControl, OperationControlResult};
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct FlowchartBuildState {
@@ -63,30 +64,16 @@ impl FlowchartBuildState {
                     if self.used_edge_ids.contains(&n.id) {
                         continue;
                     }
-                    self.reserve_node(&n.id, FlowNodeProvenance::Authored, n.syntax, n.id_span);
+                    self.reserve_node(&n.id, FlowNodeProvenance::Authored);
                 }
-                Stmt::ShapeData {
-                    target,
-                    target_span,
-                    ..
-                } => {
+                Stmt::ShapeData { target, .. } => {
                     if !self.used_edge_ids.contains(target) {
-                        self.reserve_node(
-                            target,
-                            FlowNodeProvenance::Authored,
-                            FlowNodeSyntax::ExplicitDefinition,
-                            *target_span,
-                        );
+                        self.reserve_node(target, FlowNodeProvenance::Authored);
                     }
                 }
                 Stmt::Style(style) => {
                     if !self.used_edge_ids.contains(&style.target) {
-                        self.reserve_node(
-                            &style.target,
-                            FlowNodeProvenance::Authored,
-                            FlowNodeSyntax::ExplicitDefinition,
-                            style.target_span,
-                        );
+                        self.reserve_node(&style.target, FlowNodeProvenance::Authored);
                     }
                 }
                 Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
@@ -103,7 +90,7 @@ impl FlowchartBuildState {
 
     fn reserve_group(
         &mut self,
-        nodes: &[Node],
+        nodes: &[NodeAction],
         has_edges: bool,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
@@ -114,26 +101,18 @@ impl FlowchartBuildState {
             if self.used_edge_ids.contains(&node.id) {
                 continue;
             }
-            let provenance = if has_edges
-                && node.syntax == FlowNodeSyntax::BareReference
-                && self.subgraph_ids.contains(&node.id)
-            {
-                FlowNodeProvenance::SubgraphAnchor
-            } else {
-                node.provenance
-            };
-            self.reserve_node(&node.id, provenance, node.syntax, node.id_span);
+            let provenance =
+                if has_edges && !node.is_explicit() && self.subgraph_ids.contains(&node.id) {
+                    FlowNodeProvenance::SubgraphAnchor
+                } else {
+                    FlowNodeProvenance::Authored
+                };
+            self.reserve_node(&node.id, provenance);
         }
         Ok(())
     }
 
-    fn reserve_node(
-        &mut self,
-        id: &str,
-        provenance: FlowNodeProvenance,
-        syntax: FlowNodeSyntax,
-        id_span: Option<SourceSpan>,
-    ) {
+    fn reserve_node(&mut self, id: &str, provenance: FlowNodeProvenance) {
         if let Some(&idx) = self.node_index.get(id) {
             if matches!(provenance, FlowNodeProvenance::Authored) {
                 self.nodes[idx].provenance = FlowNodeProvenance::Authored;
@@ -147,14 +126,9 @@ impl FlowchartBuildState {
         self.nodes.push(Node {
             id: id.to_string(),
             provenance,
-            syntax,
-            id_span,
             label: None,
             label_type: TitleKind::Text,
-            label_span: None,
-            label_selection: None,
             shape: None,
-            shape_data: None,
             icon: None,
             form: None,
             pos: None,
@@ -170,13 +144,13 @@ impl FlowchartBuildState {
         });
     }
 
-    fn push_edge(&mut self, mut e: Edge) {
-        let key = (e.from.clone(), e.to.clone());
+    fn push_edge(&mut self, mut edge: EdgeAction) {
+        let key = (edge.from.clone(), edge.to.clone());
         let existing = *self.edge_pair_counts.get(&key).unwrap_or(&0);
 
-        let mut final_id = e.id.clone();
+        let mut final_id = edge.id.clone();
         let mut is_user_defined_id = false;
-        if let Some(user_id) = e.id.clone() {
+        if let Some(user_id) = edge.id.clone() {
             if !self.used_edge_ids.contains(&user_id) {
                 is_user_defined_id = true;
                 self.used_edge_ids.insert(user_id);
@@ -187,7 +161,7 @@ impl FlowchartBuildState {
 
         if final_id.is_none() {
             let counter = if existing == 0 { 0 } else { existing + 1 };
-            final_id = Some(format!("L_{}_{}_{}", e.from, e.to, counter));
+            final_id = Some(format!("L_{}_{}_{}", edge.from, edge.to, counter));
             if let Some(id) = final_id.clone() {
                 self.used_edge_ids.insert(id);
             }
@@ -195,65 +169,47 @@ impl FlowchartBuildState {
 
         self.edge_pair_counts.insert(key, existing + 1);
 
-        e.id = final_id;
-        e.is_user_defined_id = is_user_defined_id;
-        e.link.length = e.link.length.min(10);
-        self.edges.push(e);
+        edge.link.length = edge.link.length.min(10);
+        let (label, label_type) = edge.label.map_or((None, TitleKind::Text), |label| {
+            (Some(label.text), label.kind)
+        });
+        self.edges.push(Edge {
+            from: edge.from,
+            to: edge.to,
+            id: final_id,
+            link: edge.link,
+            label,
+            label_type,
+            style: Vec::new(),
+            classes: Vec::new(),
+            interpolate: None,
+            is_user_defined_id,
+            animate: None,
+            animation: None,
+            step: None,
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::parse_flowchart_ast;
     use super::*;
-    use crate::diagrams::flowchart::TitleKind;
 
     #[test]
     fn single_large_chain_observes_cancellation_inside_node_projection() {
         let nodes = (0..256)
-            .map(|index| Node {
-                id: format!("n{index}"),
-                provenance: FlowNodeProvenance::Authored,
-                syntax: FlowNodeSyntax::ExplicitDefinition,
-                id_span: None,
-                label: None,
-                label_type: TitleKind::Text,
-                label_span: None,
-                label_selection: None,
-                shape: None,
-                shape_data: None,
-                icon: None,
-                form: None,
-                pos: None,
-                img: None,
-                constraint: None,
-                asset_width: None,
-                asset_height: None,
-                styles: Vec::new(),
-                classes: Vec::new(),
-                link: None,
-                link_target: None,
-                have_callback: false,
-            })
-            .collect();
-        let mut statements = super::super::StatementArena::default();
-        let construction_control = OperationControl::new();
-        let mut root = super::super::ast::StatementListBuilder::default();
-        root.push(
-            Stmt::Chain {
-                node_groups: vec![nodes],
-                edge_groups: Vec::new(),
-            },
-            &mut statements,
-            &construction_control,
-        )
-        .unwrap();
-        let ast = FlowchartAst {
-            keyword: "flowchart".to_string(),
-            direction: Some("TB".to_string()),
-            header_span: crate::SourceSpan::new(0, 0),
-            statements,
-            root: root.finish(),
+            .map(|index| format!("n{index}"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        let source = format!("flowchart TB\n{nodes}\n");
+        let meta = crate::SemanticMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
         };
+        let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
         let mut build = FlowchartBuildState::new(HashSet::new());
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);

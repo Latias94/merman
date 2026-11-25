@@ -6,9 +6,17 @@
 #[doc(hidden)]
 pub mod pie;
 
+#[cfg(feature = "diagram-radar")]
+#[doc(hidden)]
+pub mod radar;
+
 #[cfg(feature = "diagram-sankey")]
 #[doc(hidden)]
 pub mod sankey;
+
+#[cfg(feature = "diagram-venn")]
+#[doc(hidden)]
+pub mod venn;
 
 #[cfg(feature = "diagram-xychart")]
 #[doc(hidden)]

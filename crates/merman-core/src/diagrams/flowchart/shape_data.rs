@@ -102,8 +102,6 @@ pub(super) fn apply_shape_data_value_to_node(
                 if let Some(label) = metadata_string(v) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
-                    node.label_span = None;
-                    node.label_selection = None;
                 }
             }
             "labelType" => {
@@ -167,8 +165,6 @@ pub(super) fn apply_shape_data_value_to_node(
         let current_text = node.label.as_deref().unwrap_or(node.id.as_str());
         if current_text == node.id {
             node.label = Some(String::new());
-            node.label_span = None;
-            node.label_selection = None;
         }
     }
 

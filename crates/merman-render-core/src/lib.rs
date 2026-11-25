@@ -9,6 +9,7 @@ pub mod config;
 #[doc(hidden)]
 pub mod entities;
 mod geometry;
+mod layout;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod mermaid_style;
@@ -41,5 +42,6 @@ pub mod theme_svg;
 pub mod xml;
 
 pub use geometry::{Bounds, LayoutPoint};
+pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[cfg(feature = "svg-output")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};

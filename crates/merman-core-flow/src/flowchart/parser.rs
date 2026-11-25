@@ -1,21 +1,14 @@
 //! Predictive grammar shared by Flowchart and Swimlane.
 
-use super::ast::StatementListBuilder;
+use super::ast::{EdgeAction, NodeAction, StatementArena, StatementListBuilder};
 use super::{
-    Edge, FlowNodeProvenance, FlowNodeSyntax, FlowchartAst, LabeledText, LexError, LinkToken, Node,
-    NodeLabelToken, StatementArena, Stmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok,
-    flowchart_edge_limit_error,
+    FlowchartAst, FlowchartLexicalEvent, LabeledText, LexError, LinkToken, NodeLabelToken, Stmt,
+    SubgraphBlock, SubgraphHeader, Tok,
 };
-use crate::diagrams::scan::TokenStream;
-use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
-use crate::{
-    OperationCancelled, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, SourceSpan,
-};
-use std::cell::Cell;
+use merman_core_preprocess::scan::TokenStream;
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
 
 type Token = (usize, Tok, usize);
-pub(super) type LexicalEvent = Result<Token, LexError>;
 
 macro_rules! terminals {
     ($($variant:ident $(($payload:tt))? => $name:literal),+ $(,)?) => {
@@ -26,6 +19,12 @@ macro_rules! terminals {
         const TERMINAL_NAMES: &[&str] = &[$($name),+];
 
         impl Terminal {
+            const fn variant_name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => stringify!($variant)),+
+                }
+            }
+
             const fn of(token: &Tok) -> Self {
                 match token {
                     $(Tok::$variant $(($payload))? => Self::$variant),+
@@ -70,8 +69,11 @@ use Terminal::{
     SubgraphHeader as SubgraphHeaderToken,
 };
 
-#[derive(Clone, Copy, Default)]
-struct Expected(u32);
+/// Terminals accepted at a failing position, in Mermaid-compatible order.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FlowchartExpectedTokens(u32);
+
+use FlowchartExpectedTokens as Expected;
 
 impl Expected {
     const fn new(terminals: &[Terminal]) -> Self {
@@ -100,7 +102,7 @@ impl Expected {
         self.0 & Self::one(terminal).0 != 0
     }
 
-    fn names(self) -> impl Iterator<Item = &'static str> {
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
         TERMINAL_NAMES
             .iter()
             .copied()
@@ -124,31 +126,27 @@ const STATEMENTS: Expected = Expected::new(&[
 const BODY: Expected = STATEMENTS.union(SEPARATORS);
 const CONTINUE_GROUP: Expected = Expected::new(&[Amp, Arrow, EdgeId]);
 
-/// The strict diagnostic and the editor's recovery anchor can differ for lexer errors.
+/// A failure in parser-input byte coordinates. Core assigns public wording and maps the spans.
 #[derive(Debug)]
-pub(super) struct SyntaxError {
-    pub(super) diagnostic: ParseDiagnostic,
-    #[cfg(feature = "editor-facts")]
-    pub(super) recovery_span: SourceSpan,
-}
-
-impl SyntaxError {
-    fn new(
+pub enum FlowchartSyntaxDiagnostic {
+    User {
         message: String,
+        span: Option<SourceSpan>,
+        recovery_span: SourceSpan,
+    },
+    UnexpectedToken {
+        token: &'static str,
         span: SourceSpan,
-        kind: ParseDiagnosticSpanKind,
-        _recovery_span: SourceSpan,
-    ) -> Self {
-        Self {
-            diagnostic: ParseDiagnostic::new(message).with_span(span, kind),
-            #[cfg(feature = "editor-facts")]
-            recovery_span: _recovery_span,
-        }
-    }
+        expected: FlowchartExpectedTokens,
+    },
+    UnexpectedEof {
+        offset: usize,
+        expected: FlowchartExpectedTokens,
+    },
 }
 
 enum Failure {
-    Syntax(SyntaxError),
+    Syntax(FlowchartSyntaxDiagnostic),
     Cancelled(OperationCancelled),
 }
 
@@ -160,17 +158,18 @@ impl From<OperationCancelled> for Failure {
 
 type ParseResult<T> = Result<T, Failure>;
 
-pub(super) fn parse(
-    events: impl Iterator<Item = LexicalEvent>,
+/// Parses one strict lexical stream with the resolved maxEdges limit.
+pub fn parse_flowchart(
+    events: impl Iterator<Item = FlowchartLexicalEvent>,
     control: &OperationControl,
-    edge_budget: &Cell<usize>,
+    max_edges: usize,
     source_len: usize,
-) -> OperationControlResult<Result<FlowchartAst, SyntaxError>> {
+) -> OperationControlResult<Result<FlowchartAst, FlowchartSyntaxDiagnostic>> {
     let outcome = Parser {
         input: TokenStream::new(events, control),
         statements: StatementArena::default(),
         control,
-        edge_budget,
+        remaining_edges: max_edges,
         source_len,
     }
     .document();
@@ -236,11 +235,11 @@ struct Parser<'a, I: Iterator> {
     input: TokenStream<'a, I>,
     statements: StatementArena,
     control: &'a OperationControl,
-    edge_budget: &'a Cell<usize>,
+    remaining_edges: usize,
     source_len: usize,
 }
 
-impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
+impl<I: Iterator<Item = FlowchartLexicalEvent>> Parser<'_, I> {
     fn peek(&mut self) -> ParseResult<Option<Terminal>> {
         match self.input.peek()? {
             Some(Ok((_, token, _))) => Ok(Some(Terminal::of(token))),
@@ -264,34 +263,27 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
         Err(self.failed(event, expected))
     }
 
-    fn failed(&self, event: Option<LexicalEvent>, expected: Expected) -> Failure {
-        use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
-        let (message, span, kind) = match event {
-            Some(Ok((start, token, end))) => (
-                unexpected_token_message(&token, expected.names()),
-                SourceSpan::new(start, end),
-                Exact,
-            ),
+    fn failed(&self, event: Option<FlowchartLexicalEvent>, expected: Expected) -> Failure {
+        Failure::Syntax(match event {
+            Some(Ok((start, token, end))) => FlowchartSyntaxDiagnostic::UnexpectedToken {
+                token: Terminal::of(&token).variant_name(),
+                span: SourceSpan::new(start, end),
+                expected,
+            },
             Some(Err(error)) => return self.user_error(error),
-            None => {
-                let offset = self.input.previous_end();
-                (
-                    unexpected_eof_message(expected.names()),
-                    SourceSpan::new(offset, offset),
-                    InsertionPoint,
-                )
-            }
-        };
-        Failure::Syntax(SyntaxError::new(message, span, kind, span))
+            None => FlowchartSyntaxDiagnostic::UnexpectedEof {
+                offset: self.input.previous_end(),
+                expected,
+            },
+        })
     }
 
     fn user_error(&self, error: LexError) -> Failure {
-        use ParseDiagnosticSpanKind::{Exact, Fallback};
-        let recovery = SourceSpan::new(self.source_len, self.source_len);
-        let (span, kind) = error
-            .span
-            .map_or((recovery, Fallback), |span| (span, Exact));
-        Failure::Syntax(SyntaxError::new(error.message, span, kind, recovery))
+        Failure::Syntax(FlowchartSyntaxDiagnostic::User {
+            message: error.message,
+            span: error.span,
+            recovery_span: SourceSpan::new(self.source_len, self.source_len),
+        })
     }
 
     fn header(&mut self) -> ParseResult<(String, Option<String>, SourceSpan)> {
@@ -415,7 +407,7 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
         }
     }
 
-    fn node_group(&mut self, first: Node, nested: bool) -> ParseResult<Vec<Node>> {
+    fn node_group(&mut self, first: NodeAction, nested: bool) -> ParseResult<Vec<NodeAction>> {
         let mut nodes = vec![first];
         while self.peek()? == Some(Amp) {
             self.require(Expected::one(Amp))?;
@@ -433,7 +425,7 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
         span: SourceSpan,
         nested: bool,
         statement_head: bool,
-    ) -> ParseResult<Node> {
+    ) -> ParseResult<NodeAction> {
         let mut next = self.peek()?;
         let label = if next == Some(NodeLabel) {
             let (_, Tok::NodeLabel(label), _) = self.require(Expected::one(NodeLabel))? else {
@@ -490,48 +482,21 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
             return self.unexpected(expected);
         }
 
-        let explicit = label.is_some() || shape_data.is_some() || !classes.is_empty();
-        let (shape, label, label_type, label_span, label_selection) = match label {
-            Some(NodeLabelToken { shape, text, .. }) => (
-                Some(shape),
-                Some(text.text),
-                text.kind,
-                text.span,
-                text.selection,
-            ),
-            None => (None, None, TitleKind::Text, None, None),
-        };
-        Ok(Node {
+        let (shape, label) = label
+            .map_or((None, None), |NodeLabelToken { shape, text, .. }| {
+                (Some(shape), Some(text))
+            });
+        Ok(NodeAction {
             id,
-            provenance: FlowNodeProvenance::Authored,
-            syntax: if explicit {
-                FlowNodeSyntax::ExplicitDefinition
-            } else {
-                FlowNodeSyntax::BareReference
-            },
             id_span: Some(span),
             label,
-            label_type,
-            label_span,
-            label_selection,
             shape,
             shape_data,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            styles: Vec::new(),
             classes,
-            link: None,
-            link_target: None,
-            have_callback: false,
         })
     }
 
-    fn chain(&mut self, first: Vec<Node>, nested: bool) -> ParseResult<Stmt> {
+    fn chain(&mut self, first: Vec<NodeAction>, nested: bool) -> ParseResult<Stmt> {
         let mut segments = Vec::new();
         while matches!(self.peek()?, Some(Arrow | EdgeId)) {
             segments.push(self.edge_segment(nested)?);
@@ -583,7 +548,11 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
         })
     }
 
-    fn expand_edges(&mut self, from: &[Node], segment: &EdgeSegment) -> ParseResult<Vec<Edge>> {
+    fn expand_edges(
+        &mut self,
+        from: &[NodeAction],
+        segment: &EdgeSegment,
+    ) -> ParseResult<Vec<EdgeAction>> {
         let to = &segment.target;
         let span = from
             .first()
@@ -595,14 +564,14 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
                 span,
             ))
         })?;
-        let remaining = self.edge_budget.get();
+        let remaining = self.remaining_edges;
         if requested > remaining {
             return Err(self.user_error(flowchart_edge_limit_error(
                 format!("Flowchart edge limit exceeded: this edge group would create {requested} edges, but only {remaining} of the maxEdges budget remain"),
                 span,
             )));
         }
-        self.edge_budget.set(remaining - requested);
+        self.remaining_edges = remaining - requested;
 
         let mut edges = Vec::with_capacity(requested);
         for source in from {
@@ -614,23 +583,12 @@ impl<I: Iterator<Item = LexicalEvent>> Parser<'_, I> {
                 } else {
                     None
                 };
-                let label = segment.label.as_ref();
-                edges.push(Edge {
+                edges.push(EdgeAction {
                     from: source.id.clone(),
                     to: target.id.clone(),
                     id,
                     link: segment.link.clone(),
-                    label: label.map(|label| label.text.clone()),
-                    label_type: label.map_or(TitleKind::Text, |label| label.kind.clone()),
-                    label_span: label.and_then(|label| label.span),
-                    label_selection: label.and_then(|label| label.selection),
-                    style: Vec::new(),
-                    classes: Vec::new(),
-                    interpolate: None,
-                    is_user_defined_id: false,
-                    animate: None,
-                    animation: None,
-                    step: None,
+                    label: segment.label.clone(),
                 });
             }
         }
@@ -642,5 +600,57 @@ struct EdgeSegment {
     id: Option<String>,
     link: LinkToken,
     label: Option<LabeledText>,
-    target: Vec<Node>,
+    target: Vec<NodeAction>,
+}
+
+fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpan>) -> LexError {
+    let message = message.into();
+    match span {
+        Some(span) => LexError::with_span(message, span),
+        None => LexError::new(message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flowchart::FlowchartLexer;
+
+    fn error(source: &str, max_edges: usize) -> FlowchartSyntaxDiagnostic {
+        let control = OperationControl::new();
+        let lexer = FlowchartLexer::new(source).with_control(&control);
+        parse_flowchart(lexer, &control, max_edges, source.len())
+            .unwrap()
+            .unwrap_err()
+    }
+
+    #[test]
+    fn malformed_later_segment_wins_over_the_edge_budget_for_the_same_chain() {
+        let source = "flowchart TB\na & b --> c & d -->";
+        let FlowchartSyntaxDiagnostic::UnexpectedEof { offset, expected } = error(source, 0) else {
+            panic!("expected the last segment's missing target");
+        };
+        assert_eq!(offset, source.len());
+        assert_eq!(expected.names().collect::<Vec<_>>(), ["Id", "EdgeLabel"]);
+    }
+
+    #[test]
+    fn finished_chain_charges_its_budget_before_the_next_statement() {
+        let source = "flowchart TB\na & b --> c & d\nend";
+        let FlowchartSyntaxDiagnostic::User {
+            message,
+            span,
+            recovery_span,
+        } = error(source, 3)
+        else {
+            panic!("expected the completed edge chain to exceed maxEdges first");
+        };
+        assert_eq!(
+            message,
+            "Flowchart edge limit exceeded: this edge group would create 4 edges, but only 3 of the maxEdges budget remain"
+        );
+        let start = "flowchart TB\n".len();
+        assert_eq!(span, Some(SourceSpan::new(start, start + 1)));
+        assert_eq!(recovery_span, SourceSpan::new(source.len(), source.len()));
+    }
 }

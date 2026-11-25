@@ -4,7 +4,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
     LinkStyleStmt, StyleStmt, TitleKind,
 };
-use crate::{SourceSpan, diagrams::scan::is_ecmascript_whitespace};
+use merman_model::{SourceSpan, text::is_ecmascript_whitespace};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let (payload, kind) = parse_node_label_payload(raw)?;
@@ -963,11 +963,11 @@ mod tests {
                     .get(span.start..span.end)
                     .expect("interaction spans must stay on UTF-8 character boundaries");
                 match expected.kind {
-                    crate::EditorExpectedSyntaxKind::InteractionAction => {
+                    crate::flowchart::FlowchartExpectationKind::InteractionAction => {
                         #[cfg(feature = "editor-facts")]
                         assert_eq!(actual, "href")
                     }
-                    crate::EditorExpectedSyntaxKind::Payload => {
+                    crate::flowchart::FlowchartExpectationKind::Payload => {
                         assert_eq!(actual, expected_payload)
                     }
                     _ => panic!("unexpected click interaction evidence"),

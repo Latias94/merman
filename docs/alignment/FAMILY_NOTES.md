@@ -557,7 +557,7 @@ statement completion. Semantic construction and editor facts share the same curs
 retains completed statements and resumes at a following statement with original source ranges.
 
 Owners: [Venn parser](../../crates/merman-core/src/diagrams/venn.rs),
-[Venn layout](../../crates/merman-render/src/venn.rs),
+[Venn layout](../../crates/merman-render-charts/src/venn/layout.rs),
 [Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs), and
 [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs).
 
@@ -835,7 +835,7 @@ Numeric tokens convert directly to binary64 in every option and curve slot, with
 intermediate integer range. The final authored ticks assignment wins before the upper limit is
 applied. Canonical models retain nonfinite values; compatibility JSON projects them as null.
 
-Owners: [layout](../../crates/merman-render/src/radar.rs),
+Owners: [layout](../../crates/merman-render-charts/src/radar/layout.rs),
 [theme evidence](../../crates/merman-render/src/radar/theme.rs), and
 [SVG tests](../../crates/merman-render/tests/radar_svg_test.rs).
 

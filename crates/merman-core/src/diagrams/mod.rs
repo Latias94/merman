@@ -34,11 +34,7 @@ pub(crate) mod er;
 pub(crate) mod error_diagram;
 #[cfg(feature = "diagram-event-modeling")]
 pub(crate) mod eventmodeling;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) mod flowchart;
 #[cfg(feature = "diagram-gantt")]
 pub(crate) mod gantt;

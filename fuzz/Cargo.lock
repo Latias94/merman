@@ -948,6 +948,7 @@ dependencies = [
  "granit-parser",
  "indexmap",
  "json5",
+ "merman-core-flow",
  "merman-core-graph",
  "merman-core-preprocess",
  "merman-core-sequence",
@@ -960,6 +961,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-general-category",
+]
+
+[[package]]
+name = "merman-core-flow"
+version = "0.11.0"
+dependencies = [
+ "merman-core-preprocess",
+ "merman-model",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1180,6 +1190,8 @@ name = "merman-render-charts"
 version = "0.11.0"
 dependencies = [
  "cssparser",
+ "indexmap",
+ "libm",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
@@ -1187,6 +1199,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

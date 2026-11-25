@@ -3,11 +3,6 @@
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
 use crate::SourcePresentationMetadata;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    all(feature = "diagram-agentflow", feature = "editor-facts")
-))]
 use crate::SourceSpan;
 #[cfg(all(
     feature = "editor-facts",
@@ -35,7 +30,7 @@ use merman_model::families::flowchart::FlowDroppedSubgraphMember;
 use serde_json::Value;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use serde_json::json;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(test)]
 use std::cell::Cell;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::collections::{HashMap, HashSet};
@@ -43,6 +38,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 thread_local! {
     static FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+    static FLOWCHART_ACCESSIBILITY_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
@@ -57,17 +53,14 @@ pub(crate) fn flowchart_token_trace_construction_count() -> usize {
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 pub(crate) fn reset_flowchart_accessibility_scan_count() {
-    accessibility::reset_flowchart_accessibility_scan_count();
+    FLOWCHART_ACCESSIBILITY_SCAN_COUNT.set(0);
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 pub(crate) fn flowchart_accessibility_scan_count() -> usize {
-    accessibility::flowchart_accessibility_scan_count()
+    FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get()
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-mod accessibility;
-mod ast;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod build;
 #[cfg(all(
@@ -80,27 +73,33 @@ mod editor_rename;
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
 pub(crate) use editor_rename::rename_preserves_targets;
-mod lex;
-mod lexer;
-mod lexer_iter;
 mod link;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod mermaid_12_3_tests;
 mod model;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-mod parser;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod semantic;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod shape_data;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod subgraph;
-mod text;
-mod tokens;
 
-use text::{is_ecmascript_trim_char, parse_edge_label_text, parse_label_text};
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use text::{title_kind_str, trim_flowdb_label_text};
+use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_name_message};
+use crate::{ParseDiagnostic, ParseDiagnosticSpanKind};
+#[cfg(any(test, feature = "editor-facts"))]
+use merman_core_flow::flowchart::FlowchartToken as Tok;
+#[cfg(feature = "editor-facts")]
+use merman_core_flow::flowchart::{
+    ClassAssignStmt, ClassDefStmt, ClickStmt, FlowchartAccessibilityStatement,
+    FlowchartExpectationKind, FlowchartLexicalError as LexError, FlowchartLexicalEvent,
+    FlowchartLexicalExpectation, LabeledText, StyleStmt, SubgraphHeader, shape_value_expected_span,
+};
+use merman_core_flow::flowchart::{
+    ClickAction, EdgeAction, FlowchartAccessibility, FlowchartAst, FlowchartLexer as Lexer,
+    FlowchartSyntaxDiagnostic, LinkStylePos, LinkToken, NodeAction, StatementEvent, Stmt,
+    SubgraphBlock, TitleKind, parse_flowchart, trim_flowdb_label_text,
+};
+use merman_model::text::is_ecmascript_whitespace as is_ecmascript_trim_char;
 
 #[cfg(feature = "presentation")]
 #[doc(hidden)]
@@ -110,30 +109,15 @@ pub(crate) use model::{
     FlowNodeProvenance, FlowSubgraph, FlowchartModel, FlowchartSubgraphStyles,
 };
 
-pub(crate) use model::{LabeledText, LinkToken, SubgraphHeader, TitleKind};
-
-pub(crate) use ast::{
-    ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LinkStylePos, LinkStyleStmt, StyleStmt,
-};
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use ast::{FlowchartAst, StatementArena, StatementEvent, Stmt, SubgraphBlock};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::FlowchartRenderLabelSources;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use model::sanitize_common_db_fields;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
+use model::{Edge, EdgeDefaults, FlowSubgraphVertexStyle, Node};
 
-pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use accessibility::FlowchartAccessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use build::FlowchartBuildState;
-use lexer::Lexer;
-#[cfg(feature = "editor-facts")]
-pub(crate) use lexer::node_rename_text;
-use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -142,32 +126,6 @@ use shape_data::{
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use subgraph::SubgraphBuilder;
-
-#[cfg(feature = "diagram-agentflow")]
-/// Lex the presentation directives shared by Flowchart and Agentflow.
-/// Family-specific mutation order remains the caller's responsibility.
-pub(crate) fn lex_presentation_statement(
-    source: &str,
-) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-    let mut lexer = Lexer::new(source);
-    lexer
-        .lex_style_stmt()
-        .or_else(|| lexer.lex_classdef_stmt())
-        .or_else(|| lexer.lex_class_assign_stmt())
-        .or_else(|| lexer.lex_click_stmt())
-        .or_else(|| lexer.lex_link_style_stmt())
-}
-
-#[cfg(feature = "editor-facts")]
-pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
-    // A name is a fragment. The edited document supplies the actual following delimiter.
-    let probe = [candidate, ";"].concat();
-    let mut lexer = Lexer::new(&probe);
-    matches!(
-        (lexer.next(), lexer.next()),
-        (Some(Ok((0, Tok::Id(_), end))), Some(Ok((_, Tok::Sep, _)))) if end == candidate.len()
-    )
-}
 
 #[derive(Debug, Clone)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -285,23 +243,23 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
     control.checkpoint()?;
     let mut trace = construct_flowchart_token_trace(code, control)?;
     let accessibility = std::mem::take(&mut trace.accessibility);
-    let edge_budget = flowchart_edge_budget(meta);
+    let max_edges = flowchart_max_edges(meta);
     control.checkpoint()?;
     let (model, facts) =
-        match parser::parse(trace.parser_items(), control, &edge_budget, code.len())? {
+        match parse_flowchart(trace.parser_items(), control, max_edges, code.len())? {
             Ok(ast) => {
                 let mut facts = EditorSemanticFacts::new();
                 if editor_demand.captures_rich() {
                     facts = editor_facts_from_flowchart_ast(&ast, control)?;
                     control.checkpoint()?;
                     collect_accessibility_directive_prefixes(
-                        &accessibility.statements,
+                        accessibility.statements(),
                         &mut facts,
                         control,
                     )?;
                     collect_expected_syntax_from_tokens(code, &trace, &mut facts, control)?;
                 }
-                let (acc_title, acc_descr) = accessibility.metadata(code);
+                let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
                 let model = match parse_flowchart_semantic_source_from_ast_controlled(
                     ast, acc_title, acc_descr, meta, false, control,
                 )? {
@@ -312,19 +270,21 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                 (model, facts)
             }
             Err(error) => {
+                let (diagnostic, recovery_span) = flowchart_parse_diagnostic(error);
                 let (facts, eof_insertion) = flowchart_recovery_facts(
                     code,
                     trace,
-                    &accessibility.statements,
-                    &error,
+                    accessibility.statements(),
+                    &diagnostic,
+                    recovery_span,
                     editor_demand,
                     control,
                 )?;
                 let diagnostic = match eof_insertion {
-                    Some(insertion) => error
-                        .diagnostic
-                        .map_span(|_| SourceSpan::new(insertion, insertion)),
-                    None => error.diagnostic,
+                    Some(insertion) => {
+                        diagnostic.map_span(|_| SourceSpan::new(insertion, insertion))
+                    }
+                    None => diagnostic,
                 };
                 let error =
                     Error::diagram_parse_diagnostic(meta.diagram_type().to_string(), diagnostic);
@@ -471,7 +431,7 @@ fn parse_flowchart_semantic_source_controlled_with_render_context<M: FlowchartMe
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
-    let (acc_title, acc_descr) = accessibility.metadata(code);
+    let (acc_title, acc_descr) = flowchart_accessibility_metadata(&accessibility, code);
     parse_flowchart_semantic_source_from_ast_controlled(
         ast,
         acc_title,
@@ -489,13 +449,14 @@ fn parse_flowchart_ast_controlled<M: FlowchartMetadata>(
     control: &OperationControl,
 ) -> OperationControlResult<Result<(FlowchartAst, FlowchartAccessibility)>> {
     control.checkpoint()?;
-    let edge_budget = flowchart_edge_budget(meta);
-    let mut lexer = Lexer::new(code).with_control(control);
-    let parsed = parser::parse(lexer.by_ref(), control, &edge_budget, code.len())?;
+    let max_edges = flowchart_max_edges(meta);
+    let mut lexer = controlled_flowchart_lexer(Lexer::new(code), control);
+    let parsed = parse_flowchart(lexer.by_ref(), control, max_edges, code.len())?;
     Ok(parsed
-        .map(|ast| (ast, lexer.accessibility))
+        .map(|ast| (ast, lexer.into_accessibility()))
         .map_err(|error| {
-            Error::diagram_parse_diagnostic(meta.diagram_type().to_string(), error.diagnostic)
+            let (diagnostic, _) = flowchart_parse_diagnostic(error);
+            Error::diagram_parse_diagnostic(meta.diagram_type().to_string(), diagnostic)
         }))
 }
 
@@ -672,25 +633,67 @@ fn prepare_flowchart_shape_data_document(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 const DEFAULT_FLOWCHART_MAX_EDGES: usize = 500;
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-fn flowchart_edge_budget<M: FlowchartMetadata>(meta: &M) -> Cell<usize> {
-    let max_edges = meta
-        .diagram_config()
+fn flowchart_max_edges<M: FlowchartMetadata>(meta: &M) -> usize {
+    meta.diagram_config()
         .get("maxEdges")
         .and_then(Value::as_u64)
         .map_or(DEFAULT_FLOWCHART_MAX_EDGES, |value| {
             usize::try_from(value).unwrap_or(usize::MAX)
-        });
-    Cell::new(max_edges)
+        })
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpan>) -> LexError {
-    let message = message.into();
-    match span {
-        Some(span) => LexError::with_span(message, span),
-        None => LexError::new(message),
-    }
+fn controlled_flowchart_lexer<'a>(lexer: Lexer<'a>, control: &OperationControl) -> Lexer<'a> {
+    #[cfg(test)]
+    FLOWCHART_ACCESSIBILITY_SCAN_COUNT
+        .set(FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get().saturating_add(1));
+    lexer.with_control(control)
+}
+
+fn flowchart_accessibility_metadata(
+    accessibility: &FlowchartAccessibility,
+    code: &str,
+) -> (Option<String>, Option<String>) {
+    let (title, description) = accessibility.value_spans();
+    let value = |span: SourceSpan| code[span.start..span.end].to_owned();
+    (title.map(value), description.map(value))
+}
+
+fn flowchart_parse_diagnostic(error: FlowchartSyntaxDiagnostic) -> (ParseDiagnostic, SourceSpan) {
+    use ParseDiagnosticSpanKind::{Exact, Fallback, InsertionPoint};
+
+    let (message, span, kind, recovery) = match error {
+        FlowchartSyntaxDiagnostic::User {
+            message,
+            span,
+            recovery_span,
+        } => {
+            let kind = if span.is_some() { Exact } else { Fallback };
+            (message, span.unwrap_or(recovery_span), kind, recovery_span)
+        }
+        FlowchartSyntaxDiagnostic::UnexpectedToken {
+            token,
+            span,
+            expected,
+        } => (
+            unexpected_token_name_message(token, expected.names()),
+            span,
+            Exact,
+            span,
+        ),
+        FlowchartSyntaxDiagnostic::UnexpectedEof { offset, expected } => {
+            let span = SourceSpan::new(offset, offset);
+            (
+                unexpected_eof_message(expected.names()),
+                span,
+                InsertionPoint,
+                span,
+            )
+        }
+    };
+    (
+        ParseDiagnostic::new(message).with_span(span, kind),
+        recovery,
+    )
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -702,10 +705,6 @@ fn parse_flowchart_ast<M: FlowchartMetadata>(code: &str, meta: &M) -> Result<Flo
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
 type FlowchartToken = (usize, Tok, usize);
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "editor-facts")]
-type FlowchartLexerItem = std::result::Result<FlowchartToken, LexError>;
-
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
 enum FlowchartTracedItem {
@@ -727,7 +726,7 @@ struct FlowchartTokenTrace {
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
 impl FlowchartTokenTrace {
-    fn parser_items(&self) -> impl Iterator<Item = FlowchartLexerItem> + '_ {
+    fn parser_items(&self) -> impl Iterator<Item = FlowchartLexicalEvent> + '_ {
         self.items.iter().map(|item| match item {
             FlowchartTracedItem::Token(token) => Ok(token.clone()),
             FlowchartTracedItem::RecoveredToken { strict_error, .. }
@@ -786,7 +785,7 @@ fn construct_flowchart_token_trace(
     );
 
     let mut items = Vec::new();
-    let mut lexer = Lexer::recovering(code).with_control(control);
+    let mut lexer = controlled_flowchart_lexer(Lexer::recovering(code), control);
     for item in lexer.by_ref() {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
@@ -815,7 +814,7 @@ fn construct_flowchart_token_trace(
     control.checkpoint()?;
     Ok(FlowchartTokenTrace {
         items,
-        accessibility: lexer.accessibility,
+        accessibility: lexer.into_accessibility(),
     })
 }
 
@@ -903,8 +902,7 @@ fn recover_flowchart_editor_facts_from_tokens(
             has_eof_expected |= error.expected_syntax.iter().any(|expected| {
                 matches!(
                     expected.kind,
-                    EditorExpectedSyntaxKind::NodeIdentifier
-                        | EditorExpectedSyntaxKind::FlowchartOperator
+                    FlowchartExpectationKind::NodeIdentifier | FlowchartExpectationKind::Operator
                 ) && expected.span.end == code.len()
             });
             if editor_demand.captures_rich() {
@@ -927,7 +925,8 @@ fn flowchart_recovery_facts(
     parser_code: &str,
     trace: FlowchartTokenTrace,
     accessibility_statements: &[FlowchartAccessibilityStatement],
-    error: &parser::SyntaxError,
+    diagnostic: &ParseDiagnostic,
+    recovery_span: SourceSpan,
     editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<(EditorSemanticFacts, Option<usize>)> {
@@ -936,14 +935,14 @@ fn flowchart_recovery_facts(
     if editor_demand.captures_rich() {
         collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
     }
-    let eof_insertion = flowchart_eof_recovery_insertion(error, parser_code, has_eof_expected);
+    let eof_insertion = flowchart_eof_recovery_insertion(diagnostic, parser_code, has_eof_expected);
     let span = eof_insertion
         .map(|insertion| SourceSpan::new(insertion, insertion))
-        .unwrap_or(error.recovery_span);
+        .unwrap_or(recovery_span);
     facts.mark_recovered_from_parse_error(
         format!(
             "flowchart parser recovered after parse error: {}",
-            error.diagnostic.message(),
+            diagnostic.message(),
         ),
         Some(span),
     );
@@ -954,11 +953,11 @@ fn flowchart_recovery_facts(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
 fn flowchart_eof_recovery_insertion(
-    error: &parser::SyntaxError,
+    diagnostic: &ParseDiagnostic,
     code: &str,
     has_eof_expected: bool,
 ) -> Option<usize> {
-    if error.diagnostic.span_kind() != crate::ParseDiagnosticSpanKind::InsertionPoint {
+    if diagnostic.span_kind() != crate::ParseDiagnosticSpanKind::InsertionPoint {
         return None;
     }
     let insertion = code.trim_end_matches(['\r', '\n']).len();
@@ -1224,12 +1223,11 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                             }
                             continue;
                         }
-                        let occurrence =
-                            if edge_groups.is_empty() || node_defines_flowchart_entity(node) {
-                                FlowchartNodeOccurrence::Definition
-                            } else {
-                                FlowchartNodeOccurrence::RelationEndpoint
-                            };
+                        let occurrence = if edge_groups.is_empty() || node.is_explicit() {
+                            FlowchartNodeOccurrence::Definition
+                        } else {
+                            FlowchartNodeOccurrence::RelationEndpoint
+                        };
                         push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
                     }
                     if let Some(edges) = group_index
@@ -1304,7 +1302,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
 #[cfg(feature = "editor-facts")]
 fn push_flowchart_node_symbol(
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
-    node: &Node,
+    node: &NodeAction,
     seen_entities: &mut HashSet<String>,
     occurrence: FlowchartNodeOccurrence,
 ) {
@@ -1333,15 +1331,8 @@ fn push_flowchart_node_symbol(
         );
     }
 
-    if let Some(label) = node.label.as_deref() {
-        push_flowchart_payload_symbol(
-            #[cfg(feature = "editor-facts")]
-            facts,
-            label,
-            "flowchart node label",
-            node.label_span,
-            node.label_selection,
-        );
+    if let Some(label) = &node.label {
+        push_flowchart_labeled_payload_symbol(facts, label, None, "flowchart node label");
     }
 }
 
@@ -1355,21 +1346,15 @@ enum FlowchartNodeOccurrence {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
-fn node_defines_flowchart_entity(node: &Node) -> bool {
-    node.label.is_some() || node.shape_data.is_some() || !node.classes.is_empty()
-}
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "editor-facts")]
 fn push_flowchart_edge_label_symbol(
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
-    edge: &Edge,
+    edge: &EdgeAction,
     emitted_spans: &mut HashSet<(usize, usize)>,
 ) {
-    let Some(label) = edge.label.as_deref() else {
+    let Some(label) = &edge.label else {
         return;
     };
-    let Some(span) = edge.label_span else {
+    let Some(span) = label.span else {
         return;
     };
     if !emitted_spans.insert((span.start, span.end)) {
@@ -1378,10 +1363,10 @@ fn push_flowchart_edge_label_symbol(
     push_flowchart_payload_symbol(
         #[cfg(feature = "editor-facts")]
         facts,
-        label,
+        &label.text,
         "flowchart edge label",
         Some(span),
-        edge.label_selection,
+        label.selection,
     );
 }
 
@@ -1482,10 +1467,26 @@ fn push_flowchart_click_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Click
 #[cfg(feature = "editor-facts")]
 fn push_flowchart_expected_syntax(
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
-    expected_syntax: impl IntoIterator<Item = EditorExpectedSyntax>,
+    expected_syntax: impl IntoIterator<Item = FlowchartLexicalExpectation>,
 ) {
     for expected in expected_syntax {
-        facts.push_expected_syntax(expected);
+        let kind = match expected.kind {
+            FlowchartExpectationKind::Directive => EditorExpectedSyntaxKind::Directive,
+            FlowchartExpectationKind::NodeIdentifier => EditorExpectedSyntaxKind::NodeIdentifier,
+            FlowchartExpectationKind::StyleValue => EditorExpectedSyntaxKind::StyleValue,
+            FlowchartExpectationKind::ClassName => EditorExpectedSyntaxKind::ClassName,
+            FlowchartExpectationKind::IdList => EditorExpectedSyntaxKind::IdList,
+            FlowchartExpectationKind::InteractionAction => {
+                EditorExpectedSyntaxKind::InteractionAction
+            }
+            FlowchartExpectationKind::Payload => EditorExpectedSyntaxKind::Payload,
+            FlowchartExpectationKind::ShapeValue => EditorExpectedSyntaxKind::ShapeValue,
+            FlowchartExpectationKind::DirectionValue => {
+                EditorExpectedSyntaxKind::FlowchartDirectionValue
+            }
+            FlowchartExpectationKind::Operator => EditorExpectedSyntaxKind::FlowchartOperator,
+        };
+        facts.push_expected_syntax(EditorExpectedSyntax::new(kind, expected.span));
     }
 }
 
@@ -1610,96 +1611,6 @@ fn push_flowchart_shape_trigger_expected_syntax(span: SourceSpan, facts: &mut Ed
     ));
 }
 
-#[cfg(feature = "editor-facts")]
-pub(super) fn shape_value_expected_span(
-    code: &str,
-    start: usize,
-    end: usize,
-) -> Option<SourceSpan> {
-    let raw = code.get(start..end)?;
-    let body = raw.strip_prefix("@{")?;
-    let body = body.strip_suffix('}').unwrap_or(body);
-    let body_base = start + 2;
-    let mut pos = 0usize;
-    let mut in_string: Option<char> = None;
-    let mut depth = 0usize;
-
-    while pos < body.len() {
-        let Some(ch) = body[pos..].chars().next() else {
-            break;
-        };
-        if let Some(quote) = in_string {
-            if ch == '\\' {
-                pos += ch.len_utf8();
-                if pos < body.len() {
-                    let Some(escaped) = body[pos..].chars().next() else {
-                        break;
-                    };
-                    pos += escaped.len_utf8();
-                }
-                continue;
-            }
-            if ch == quote {
-                in_string = None;
-            }
-            pos += ch.len_utf8();
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => {
-                in_string = Some(ch);
-                pos += ch.len_utf8();
-            }
-            '{' | '[' | '(' => {
-                depth += 1;
-                pos += ch.len_utf8();
-            }
-            '}' => {
-                if depth == 0 {
-                    break;
-                }
-                depth -= 1;
-                pos += ch.len_utf8();
-            }
-            ']' | ')' => {
-                depth = depth.saturating_sub(1);
-                pos += ch.len_utf8();
-            }
-            _ => {
-                if depth == 0 && body[pos..].starts_with("shape") && shape_key_boundary(body, pos) {
-                    let mut key_end = pos + "shape".len();
-                    while let Some(ch) = body[key_end..].chars().next() {
-                        if ch.is_whitespace() {
-                            key_end += ch.len_utf8();
-                        } else {
-                            break;
-                        }
-                    }
-                    if body[key_end..].starts_with(':') {
-                        let mut value_start = key_end + 1;
-                        while let Some(ch) = body[value_start..].chars().next() {
-                            if ch.is_whitespace() {
-                                value_start += ch.len_utf8();
-                            } else {
-                                break;
-                            }
-                        }
-                        let value_end = shape_value_end(body, value_start);
-                        return Some(SourceSpan::new(
-                            body_base + value_start,
-                            body_base + value_end,
-                        ));
-                    }
-                }
-                pos += ch.len_utf8();
-            }
-        }
-    }
-
-    None
-}
-
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
 fn collect_accessibility_directive_prefixes(
@@ -1720,71 +1631,6 @@ fn collect_accessibility_directive_prefixes(
         }
     }
     control.checkpoint()
-}
-
-#[cfg(feature = "editor-facts")]
-fn shape_key_boundary(body: &str, pos: usize) -> bool {
-    let before = if pos == 0 {
-        None
-    } else {
-        body[..pos].chars().next_back()
-    };
-    let after = body[pos + "shape".len()..].chars().next();
-
-    before.is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
-        && after.is_none_or(|ch| ch.is_whitespace() || ch == ':')
-}
-
-#[cfg(feature = "editor-facts")]
-fn shape_value_end(body: &str, start: usize) -> usize {
-    if start >= body.len() {
-        return start;
-    }
-
-    let Some(first) = body[start..].chars().next() else {
-        return start;
-    };
-
-    match first {
-        '"' | '\'' => {
-            let quote = first;
-            let mut pos = start + 1;
-            while pos < body.len() {
-                let Some(ch) = body[pos..].chars().next() else {
-                    break;
-                };
-                if ch == '\\' {
-                    pos += ch.len_utf8();
-                    if pos < body.len() {
-                        let Some(escaped) = body[pos..].chars().next() else {
-                            break;
-                        };
-                        pos += escaped.len_utf8();
-                    }
-                    continue;
-                }
-                if ch == quote {
-                    pos += ch.len_utf8();
-                    break;
-                }
-                pos += ch.len_utf8();
-            }
-            pos
-        }
-        _ => {
-            let mut pos = start;
-            while pos < body.len() {
-                let Some(ch) = body[pos..].chars().next() else {
-                    break;
-                };
-                match ch {
-                    ',' | '}' | '\n' | '\r' | ' ' | '\t' => break,
-                    _ => pos += ch.len_utf8(),
-                }
-            }
-            pos
-        }
-    }
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1826,7 +1672,7 @@ fn flowchart_subgraph_symbol_id(header: &SubgraphHeader) -> Option<(String, Sour
     let raw_span = header.raw_id_span?;
     let raw = header.raw_id.as_str();
     let trimmed = trim_flowdb_label_text(raw);
-    let selection = text::borrowed_span(raw, trimmed);
+    let leading = raw.len() - raw.trim_start_matches(is_ecmascript_trim_char).len();
     let name = trimmed.to_string();
     if name.is_empty() {
         return None;
@@ -1834,8 +1680,8 @@ fn flowchart_subgraph_symbol_id(header: &SubgraphHeader) -> Option<(String, Sour
     Some((
         name,
         SourceSpan::new(
-            raw_span.start + selection.start,
-            raw_span.start + selection.end,
+            raw_span.start + leading,
+            raw_span.start + leading + trimmed.len(),
         ),
     ))
 }
@@ -2053,14 +1899,9 @@ fn append_missing_subgraph_nodes(
             nodes.push(Node {
                 id: subgraph.id.clone(),
                 provenance: FlowNodeProvenance::SubgraphAnchor,
-                syntax: FlowNodeSyntax::BareReference,
-                id_span: None,
                 label: None,
                 label_type: TitleKind::Text,
-                label_span: None,
-                label_selection: None,
                 shape: None,
-                shape_data: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -2099,7 +1940,7 @@ fn flow_node_to_model(
         id: n.id,
         provenance: n.provenance,
         label: Some(label),
-        label_type: Some(title_kind_str(&n.label_type).to_string()),
+        label_type: Some(n.label_type.as_str().to_string()),
         layout_shape: Some(layout_shape),
         shape: n.shape,
         icon: n.icon,
@@ -2141,15 +1982,15 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
             "flowchart edge id missing".to_string(),
         )
     })?;
-    let edge_type = e.link.compatibility_edge_type().to_string();
-    let stroke = e.link.compatibility_stroke().to_string();
+    let edge_type = link::compatibility_edge_type(&e.link).to_string();
+    let stroke = link::compatibility_stroke(&e.link).to_string();
 
     Ok(FlowEdge {
         id,
         from: e.from,
         to: e.to,
         label,
-        label_type: Some(title_kind_str(&e.label_type).to_string()),
+        label_type: Some(e.label_type.as_str().to_string()),
         edge_type: Some(edge_type),
         arrow: e.link.end,
         start_marker: e.link.start_marker,
@@ -3511,9 +3352,3 @@ A -->|second &lt; owner| B
         assert!(!super::subgraph::subgraphs_exist(&subgraphs, "l"));
     }
 }
-
-#[cfg(all(
-    feature = "editor-facts",
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
-use accessibility::FlowchartAccessibilityStatement;

@@ -1,0 +1,28 @@
+[package]
+name = "merman-core-flow"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Syntax parsing for Merman's Mermaid Flowchart and Swimlane diagrams."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-flowchart = ["merman-model/diagram-flowchart", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
+diagram-swimlane = ["merman-model/diagram-swimlane", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
+diagram-agentflow = ["merman-model/diagram-agentflow", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode", "dep:thiserror"]
+editor-facts = []
+
+[dependencies]
+merman-core-preprocess = { workspace = true, optional = true }
+merman-model.workspace = true
+thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }

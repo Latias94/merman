@@ -16,8 +16,11 @@ combination is important for 1:1 compatibility because:
 
 ## Decision
 
-- Use the shared stateful lexer for token spans and the handwritten parser in
-  `crates/merman-core/src/diagrams/flowchart/parser.rs` for Flowchart and Swimlane.
+- Use the shared stateful lexer and handwritten parser in `merman-core-flow` for Flowchart and
+  Swimlane. Agentflow reuses the presentation directive lexer and keeps its own grammar and
+  database replay.
+- Return spanned syntax actions and structured grammar failures. `merman-core` owns model
+  construction, sanitization, diagnostics in original source coordinates, and editor facts.
 - Keep open subgraphs on an explicit frame stack and append completed statements to the arena in
   walk order. Apply the edge budget before expanding each accepted edge group.
 - Preserve the strict diagnostic alongside the recovery anchor used by the editor token trace.

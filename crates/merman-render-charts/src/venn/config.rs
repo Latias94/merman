@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64};
+use merman_render_core::config::{config_bool, config_f64};
 use serde_json::Value;
 
 pub(super) const DEFAULT_SVG_WIDTH: f64 = 800.0;
@@ -8,18 +8,18 @@ pub(super) const DEFAULT_PADDING: f64 = 15.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_USE_DEBUG_LAYOUT: bool = false;
 
-pub(crate) struct VennConfigView<'a> {
+pub(super) struct VennConfigView<'a> {
     venn_config: &'a Value,
 }
 
 impl<'a> VennConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub(super) fn new(effective_config: &'a Value) -> Self {
         Self {
             venn_config: effective_config.get("venn").unwrap_or(&Value::Null),
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> VennLayoutSettings {
+    pub(super) fn layout_settings(&self) -> VennLayoutSettings {
         VennLayoutSettings {
             width: self.venn_f64("width").unwrap_or(DEFAULT_SVG_WIDTH).max(1.0),
             height: self
@@ -46,12 +46,12 @@ impl<'a> VennConfigView<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct VennLayoutSettings {
-    pub(crate) width: f64,
-    pub(crate) height: f64,
-    pub(crate) padding: f64,
-    pub(crate) use_max_width: bool,
-    pub(crate) use_debug_layout: bool,
+pub(super) struct VennLayoutSettings {
+    pub(super) width: f64,
+    pub(super) height: f64,
+    pub(super) padding: f64,
+    pub(super) use_max_width: bool,
+    pub(super) use_debug_layout: bool,
 }
 
 #[cfg(test)]

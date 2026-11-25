@@ -1,5 +1,5 @@
 use super::{LexError, TitleKind};
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Default)]
@@ -229,15 +229,6 @@ pub(super) fn parse_quoted_label(raw: &str) -> Result<(&str, TitleKind), LexErro
     token.ok_or_else(invalid)
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(super) fn title_kind_str(kind: &TitleKind) -> &'static str {
-    match kind {
-        TitleKind::Text => "text",
-        TitleKind::String => "string",
-        TitleKind::Markdown => "markdown",
-    }
-}
-
 pub(super) fn unquote(s: &str) -> String {
     if s.starts_with('"')
         && let Ok((payload, kind)) = parse_quoted_label(s)
@@ -255,10 +246,10 @@ pub(super) fn unquote(s: &str) -> String {
 }
 
 pub(super) fn is_ecmascript_trim_char(ch: char) -> bool {
-    crate::diagrams::scan::is_ecmascript_whitespace(ch)
+    merman_model::text::is_ecmascript_whitespace(ch)
 }
 
-pub(super) fn trim_flowdb_label_text(text: &str) -> &str {
+pub fn trim_flowdb_label_text(text: &str) -> &str {
     // Mermaid FlowDB calls JavaScript String.trim() on parser-produced text before sanitizing or
     // decoding HTML entities. Keep the exact ECMAScript trim set: Rust's str::trim() differs for
     // U+0085 and U+FEFF, and decoding first would erase the distinction between direct NBSP and
@@ -331,7 +322,8 @@ pub(super) fn strip_wrapping_backticks(s: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::{LabelScanner, parse_edge_label_text, parse_label_text};
-    use crate::diagrams::flowchart::TitleKind;
+    use crate::flowchart::TitleKind;
+    use merman_model::OperationControl;
 
     #[test]
     fn ordinary_label_scans_reuse_distant_successful_results() {
@@ -426,7 +418,7 @@ mod tests {
             scanner.find_unquoted_delim(&source, 0, "]").unwrap(),
             Some(256),
         );
-        let control = crate::OperationControl::new().for_phase(crate::OperationPhase::Parse);
+        let control = OperationControl::new().for_phase(merman_model::OperationPhase::Parse);
         control.cancel_after_checkpoints(0);
         scanner.set_control(&control);
         assert!((0..4096).any(|_| scanner.find_unquoted_delim(&source, 0, "]").is_err()));
@@ -439,7 +431,7 @@ mod tests {
     fn ordinary_label_scans_observe_cancellation_while_recording_ranges() {
         let source = format!("{}]", "\"x\"".repeat(900));
         let mut scanner = LabelScanner::default();
-        let control = crate::OperationControl::new().for_phase(crate::OperationPhase::Parse);
+        let control = OperationControl::new().for_phase(merman_model::OperationPhase::Parse);
         control.cancel_after_checkpoints(0);
         scanner.set_control(&control);
         assert!(scanner.find_unquoted_delim(&source, 0, "]").is_err());

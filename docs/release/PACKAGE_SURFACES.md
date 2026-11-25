@@ -82,7 +82,8 @@ compatible version requirements and intentional upgrade exceptions.
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 `merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
-behind `merman-core`. `merman-core-graph` provides Class, ER, and State syntax parsing.
+behind `merman-core`. `merman-core-flow` provides Flowchart and Swimlane parsing and Agentflow's
+shared presentation lexer. `merman-core-graph` provides Class, ER, and State syntax parsing.
 `merman-core-sequence` provides Sequence syntax parsing. `merman-core-structured` provides Packet
 syntax parsing and the four Railroad dialects.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
@@ -90,8 +91,9 @@ contracts. `merman-render-structured` provides Packet and Railroad layout and SV
 the existing `diagram-packet` and `diagram-railroad` features.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 
-`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`, Sankey layout
-through `diagram-sankey`, and XY Chart layout and plot geometry through `diagram-xychart`.
+`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`. It provides
+Radar, Sankey, and Venn layout through `diagram-radar`, `diagram-sankey`, and `diagram-venn`.
+`diagram-xychart` selects XY Chart layout and plot geometry.
 `merman-render-flow` provides shape geometry through `diagram-flowchart`, `diagram-swimlane`,
 and `diagram-agentflow`.
 `merman-render-graph` provides ER relationship markers through `diagram-er`.

@@ -129,41 +129,6 @@ fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels
     );
     for repetitions in [0, 64, 128, 256] {
         let source = format!("flowchart TD\n{}{suffix}", "A[\"`\"]\n".repeat(repetitions));
-        let mut lexer = Lexer::recovering(&source);
-        let tokens = lexer
-            .by_ref()
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .unwrap();
-        let labels = tokens
-            .iter()
-            .filter_map(|(_, token, _)| match token {
-                Tok::NodeLabel(label) => Some(label),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(labels.len(), repetitions + 3);
-        assert!(
-            labels[..repetitions]
-                .iter()
-                .all(|label| label.recovery_error.is_some())
-        );
-        assert!(
-            labels[repetitions..]
-                .iter()
-                .all(|label| label.recovery_error.is_none())
-        );
-        assert_eq!(labels[repetitions].text.kind, TitleKind::Markdown);
-        assert_eq!(labels[repetitions + 1].text.kind, TitleKind::String);
-        for label in &labels[repetitions..repetitions + 2] {
-            assert_eq!(label.text.text, "first\n雪 [value] (round) | -->\nlast");
-        }
-        assert_eq!(labels[repetitions + 2].text.text, "valid");
-        assert!(
-            lexer.label_scan_work() <= 4 * source.len(),
-            "quote scan work must be linear: {repetitions} lines, {} steps for {} bytes",
-            lexer.label_scan_work(),
-            source.len(),
-        );
         assert_eq!(
             parse_flowchart_model_for_render(&source, &metadata()).is_ok(),
             repetitions == 0,
@@ -174,16 +139,8 @@ fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels
 
 #[cfg(feature = "editor-facts")]
 #[test]
-fn long_label_scan_observes_cancellation_before_materializing_its_payload() {
+fn flowchart_editor_trace_propagates_label_scan_cancellation() {
     let source = format!("flowchart TD\nA[\"`{}`\"]\n", "雪".repeat(32_768));
-    let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-    control.cancel_after_checkpoints(0);
-    let mut lexer = Lexer::recovering(&source).with_control(&control);
-    assert!(lexer.by_ref().any(|item| item.is_err()));
-    assert!(control.is_cancelled());
-    assert_eq!(lexer.label_scan_work(), 4096);
-    assert!(lexer.next().is_none());
-
     let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
     control.cancel_after_checkpoints(1);
     assert!(matches!(
@@ -769,10 +726,10 @@ fn single_node_special_character_ids_preserve_token_boundaries() {
         assert!(
             error
                 .expected_syntax
-                .contains(&crate::EditorExpectedSyntax::new(
-                    crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                .contains(&FlowchartLexicalExpectation {
+                    kind: FlowchartExpectationKind::Operator,
                     span,
-                )),
+                }),
             "{source:?}"
         );
     }
@@ -1303,18 +1260,4 @@ fn closing_a_subgraph_consumes_the_indentation_before_a_direction_match() {
         ));
         assert_eq!(model.subgraphs.last().unwrap().dir.as_deref(), Some("LR"));
     }
-}
-
-#[test]
-fn direction_value_selection_follows_the_greedy_upstream_rule() {
-    let source = "direction LR direction TBfoo direction TBbar";
-    let Some(Ok((_, super::Tok::DirectionStmt(statement), end))) = super::Lexer::new(source).next()
-    else {
-        panic!("expected a Flowchart direction statement");
-    };
-    assert_eq!(statement.direction, "TB");
-    let matched = super::lexer::match_direction(source, source).unwrap();
-    assert_eq!(matched.offset, source.rfind("TB").unwrap());
-    assert_eq!(statement.completion_span, None);
-    assert_eq!(end, source.len());
 }

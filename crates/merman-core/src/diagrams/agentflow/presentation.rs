@@ -1,8 +1,11 @@
 use super::{AgentflowAuthoredStyles, Declaration, ParseFailure, Parser};
 use crate::SourceSpan;
-use crate::diagrams::flowchart::{self, ClickAction, FlowEdgeDefaults, LinkStylePos, Tok};
 #[cfg(feature = "editor-facts")]
 use crate::{EditorSemanticKind, EditorSemanticSymbol};
+use merman_core_flow::flowchart::{
+    ClickAction, LinkStylePos, PresentationStatement, lex_presentation_statement,
+};
+use merman_model::families::flowchart::FlowEdgeDefaults;
 use serde_json::{Map, Value};
 
 pub(super) fn add_edge(authored: &mut AgentflowAuthoredStyles, id: &str, label_type: Option<&str>) {
@@ -67,10 +70,10 @@ impl Parser<'_> {
         source: &str,
         start: usize,
     ) -> Result<bool, ParseFailure> {
-        let Some(result) = flowchart::lex_presentation_statement(source) else {
+        let Some(result) = lex_presentation_statement(source) else {
             return Ok(false);
         };
-        let (_, token, end) = result.map_err(|error| {
+        let (_, statement, end) = result.map_err(|error| {
             self.failure(
                 error.message,
                 error
@@ -85,8 +88,8 @@ impl Parser<'_> {
                 SourceSpan::new(start + end, start + source.len()),
             ));
         }
-        match token {
-            Tok::StyleStmt(style) => {
+        match statement {
+            PresentationStatement::Style(style) => {
                 if style.styles.is_empty() || !super::is_style_identifier(&style.target) {
                     return Err(
                         self.failure("expected style value", SourceSpan::new(start, start + end))
@@ -137,7 +140,7 @@ impl Parser<'_> {
                         .extend(style.styles);
                 }
             }
-            Tok::ClassDefStmt(class) => {
+            PresentationStatement::ClassDef(class) => {
                 if class.styles.is_empty()
                     || class.ids.iter().any(|id| !super::is_style_identifier(id))
                 {
@@ -175,7 +178,7 @@ impl Parser<'_> {
                     }
                 }
             }
-            Tok::ClassAssignStmt(class) => {
+            PresentationStatement::ClassAssign(class) => {
                 if !super::is_style_identifier(&class.class_name)
                     || class
                         .targets
@@ -206,7 +209,7 @@ impl Parser<'_> {
                     }
                 }
             }
-            Tok::ClickStmt(click) => {
+            PresentationStatement::Click(click) => {
                 #[cfg(feature = "editor-facts")]
                 let entries = click.ids.iter().zip(&click.id_spans);
                 #[cfg(not(feature = "editor-facts"))]
@@ -260,7 +263,7 @@ impl Parser<'_> {
                     }
                 }
             }
-            Tok::LinkStyleStmt(style) => {
+            PresentationStatement::LinkStyle(style) => {
                 if style.styles.is_empty() && style.interpolate.is_none() {
                     return Err(self.failure(
                         "expected link style value",
@@ -303,7 +306,6 @@ impl Parser<'_> {
                     }
                 }
             }
-            _ => unreachable!("presentation lexer returns only presentation tokens"),
         }
         Ok(true)
     }

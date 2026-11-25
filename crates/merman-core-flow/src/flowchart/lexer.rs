@@ -9,9 +9,11 @@ use super::{
 #[cfg(feature = "editor-facts")]
 use super::{ClickAction, ClickStmt};
 #[cfg(feature = "editor-facts")]
-use crate::{EditorExpectedSyntax, EditorExpectedSyntaxKind};
-use crate::{OperationControl, SourceSpan};
+use super::{FlowchartExpectationKind, FlowchartLexicalExpectation};
 use merman_core_preprocess::scan::is_mermaid_unicode_text;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_model::OperationControl;
+use merman_model::SourceSpan;
 use std::collections::VecDeque;
 
 #[cfg(feature = "editor-facts")]
@@ -61,7 +63,7 @@ fn directive_error<I>(
     expected_syntax: I,
 ) -> LexError
 where
-    I: IntoIterator<Item = (EditorExpectedSyntaxKind, SourceSpan)>,
+    I: IntoIterator<Item = (FlowchartExpectationKind, SourceSpan)>,
 {
     for (kind, span) in expected_syntax {
         error = error.expecting(kind, span);
@@ -104,13 +106,13 @@ fn trailing_value_slot(
 #[cfg(feature = "editor-facts")]
 fn directive_editor_evidence(
     statement_span: SourceSpan,
-    first: Option<(EditorExpectedSyntaxKind, SourceSpan)>,
-    following: Option<(EditorExpectedSyntaxKind, SourceSpan)>,
+    first: Option<(FlowchartExpectationKind, SourceSpan)>,
+    following: Option<(FlowchartExpectationKind, SourceSpan)>,
 ) -> FlowchartDirectiveEditorEvidence {
     FlowchartDirectiveEditorEvidence::new(
-        EditorExpectedSyntax::new(EditorExpectedSyntaxKind::Directive, statement_span),
-        first.map(|(kind, span)| EditorExpectedSyntax::new(kind, span)),
-        following.map(|(kind, span)| EditorExpectedSyntax::new(kind, span)),
+        FlowchartLexicalExpectation::new(FlowchartExpectationKind::Directive, statement_span),
+        first.map(|(kind, span)| FlowchartLexicalExpectation::new(kind, span)),
+        following.map(|(kind, span)| FlowchartLexicalExpectation::new(kind, span)),
     )
 }
 
@@ -176,7 +178,7 @@ fn link_prefix_len(bytes: &[u8]) -> Option<usize> {
 }
 
 #[cfg(feature = "editor-facts")]
-pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> String {
+pub fn node_rename_text(name: &str, preceding: &str, following: &str) -> String {
     let mut text = String::with_capacity(name.len() + 2);
     // An open LINK can consume a marker or an extra dash from the target.
     let adds_marker = name.starts_with(['o', 'x'])
@@ -302,7 +304,8 @@ pub(super) fn match_direction(input: &str, prefix: &str) -> Option<DirectionMatc
     })
 }
 
-pub(super) struct Lexer<'input> {
+/// Stateful Mermaid lexer. Offsets refer to the supplied parser input.
+pub struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
     pub(super) pending: VecDeque<std::result::Result<(usize, Tok, usize), LexError>>,
@@ -326,7 +329,7 @@ impl<'input> Lexer<'input> {
         if dir == "TD" { "TB" } else { dir }
     }
 
-    pub(super) fn new(input: &'input str) -> Self {
+    pub fn new(input: &'input str) -> Self {
         Self {
             input,
             pos: 0,
@@ -347,12 +350,15 @@ impl<'input> Lexer<'input> {
     }
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub(super) fn with_control(mut self, control: &OperationControl) -> Self {
+    pub fn with_control(mut self, control: &OperationControl) -> Self {
         self.label_scanner.set_control(control);
         self.control = Some(control.clone());
-        #[cfg(test)]
-        super::accessibility::record_flowchart_accessibility_scan();
         self
+    }
+
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub fn into_accessibility(self) -> super::FlowchartAccessibility {
+        self.accessibility
     }
 
     #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
@@ -375,7 +381,7 @@ impl<'input> Lexer<'input> {
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     #[cfg(feature = "editor-facts")]
-    pub(super) fn recovering(input: &'input str) -> Self {
+    pub fn recovering(input: &'input str) -> Self {
         let mut lexer = Self {
             recover_partial_node_labels: true,
             ..Self::new(input)
@@ -705,10 +711,8 @@ impl<'input> Lexer<'input> {
             .map_or(self.input.len(), |offset| direction_end + offset);
         let selection = SourceSpan::new(direction_start, direction_end);
 
-        let error = LexError::with_span("invalid flowchart direction", selection).expecting(
-            crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-            selection,
-        );
+        let error = LexError::with_span("invalid flowchart direction", selection)
+            .expecting(super::FlowchartExpectationKind::DirectionValue, selection);
 
         self.pos = statement_end;
 
@@ -924,7 +928,7 @@ impl<'input> Lexer<'input> {
         Some(Err({
             let error = LexError::with_span("Unterminated shape data (missing `}`)", span);
             #[cfg(feature = "editor-facts")]
-            let error = error.expecting(crate::EditorExpectedSyntaxKind::ShapeValue, expected);
+            let error = error.expecting(super::FlowchartExpectationKind::ShapeValue, expected);
             error
         }))
     }
@@ -991,8 +995,8 @@ impl<'input> Lexer<'input> {
                 {
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
-                        target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
-                        style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                        target.map(|span| (FlowchartExpectationKind::NodeIdentifier, span)),
+                        style_slot.map(|span| (FlowchartExpectationKind::StyleValue, span)),
                     );
                 }
                 Some(Ok((start, Tok::StyleStmt(stmt), end)))
@@ -1005,10 +1009,10 @@ impl<'input> Lexer<'input> {
                         "style",
                         statement_span,
                         target
-                            .map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span))
+                            .map(|span| (FlowchartExpectationKind::NodeIdentifier, span))
                             .into_iter()
                             .chain((target.is_none()).then_some((
-                                EditorExpectedSyntaxKind::NodeIdentifier,
+                                FlowchartExpectationKind::NodeIdentifier,
                                 SourceSpan::new(end, end),
                             ))),
                     )
@@ -1051,8 +1055,8 @@ impl<'input> Lexer<'input> {
                     lex::attach_classdef_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
-                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
-                        style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                        class_name.map(|span| (FlowchartExpectationKind::ClassName, span)),
+                        style_slot.map(|span| (FlowchartExpectationKind::StyleValue, span)),
                     );
                 }
                 Some(Ok((start, Tok::ClassDefStmt(stmt), end)))
@@ -1064,7 +1068,7 @@ impl<'input> Lexer<'input> {
                         error,
                         "classDef",
                         statement_span,
-                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                        class_name.map(|span| (FlowchartExpectationKind::ClassName, span)),
                     )
                 }
                 #[cfg(not(feature = "editor-facts"))]
@@ -1105,8 +1109,8 @@ impl<'input> Lexer<'input> {
                     lex::attach_class_assign_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
-                        targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
-                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                        targets.map(|span| (FlowchartExpectationKind::IdList, span)),
+                        class_name.map(|span| (FlowchartExpectationKind::ClassName, span)),
                     );
                 }
                 Some(Ok((start, Tok::ClassAssignStmt(stmt), end)))
@@ -1121,11 +1125,11 @@ impl<'input> Lexer<'input> {
                             error,
                             "class",
                             statement_span,
-                            [(EditorExpectedSyntaxKind::IdList, target)]
+                            [(FlowchartExpectationKind::IdList, target)]
                                 .into_iter()
                                 .chain(
                                     class_name
-                                        .map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                                        .map(|span| (FlowchartExpectationKind::ClassName, span)),
                                 ),
                         )
                     }
@@ -1172,7 +1176,7 @@ impl<'input> Lexer<'input> {
                 {
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
-                        target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
+                        target.map(|span| (FlowchartExpectationKind::NodeIdentifier, span)),
                         None,
                     );
                 }
@@ -1188,7 +1192,7 @@ impl<'input> Lexer<'input> {
                             error,
                             "click",
                             statement_span,
-                            [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
+                            [(FlowchartExpectationKind::NodeIdentifier, target)],
                         )
                     }
                     #[cfg(not(feature = "editor-facts"))]
@@ -1214,7 +1218,7 @@ impl<'input> Lexer<'input> {
                             #[cfg(feature = "editor-facts")]
                             editor_evidence: directive_editor_evidence(
                                 statement_span,
-                                Some((EditorExpectedSyntaxKind::NodeIdentifier, target)),
+                                Some((FlowchartExpectationKind::NodeIdentifier, target)),
                                 None,
                             ),
                             #[cfg(feature = "editor-facts")]
@@ -1639,7 +1643,7 @@ impl<'input> Lexer<'input> {
                             );
                             #[cfg(feature = "editor-facts")]
                             let error = error.expecting(
-                                crate::EditorExpectedSyntaxKind::Payload,
+                                super::FlowchartExpectationKind::Payload,
                                 SourceSpan::new(self.pos, self.pos),
                             );
                             error
@@ -1701,10 +1705,8 @@ impl<'input> Lexer<'input> {
                     let error =
                         LexError::with_span("incomplete flowchart edge operator", selection);
                     #[cfg(feature = "editor-facts")]
-                    let error = error.expecting(
-                        crate::EditorExpectedSyntaxKind::FlowchartOperator,
-                        selection,
-                    );
+                    let error =
+                        error.expecting(super::FlowchartExpectationKind::Operator, selection);
                     error
                 }));
             }
@@ -1744,7 +1746,7 @@ impl<'input> Lexer<'input> {
                                 let error = LexError::with_span(error.message, raw_span);
                                 #[cfg(feature = "editor-facts")]
                                 let error = error
-                                    .expecting(crate::EditorExpectedSyntaxKind::Payload, raw_span);
+                                    .expecting(super::FlowchartExpectationKind::Payload, raw_span);
                                 error
                             };
                             if self.recover_partial_node_labels
@@ -1820,7 +1822,7 @@ impl<'input> Lexer<'input> {
             );
             #[cfg(feature = "editor-facts")]
             let error = error.expecting(
-                crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                super::FlowchartExpectationKind::Operator,
                 SourceSpan::new(start_match.operator_span.start, after_start),
             );
             error
@@ -2334,10 +2336,26 @@ fn labeled_text_with_spans(
     text
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests {
+    use super::super::{StatementEvent, Stmt, parse_flowchart};
     use super::*;
-    use crate::{SemanticDiagramModel, SemanticParser};
+
+    fn authored_labels(source: &str) -> Vec<String> {
+        let control = OperationControl::new();
+        let lexer = Lexer::new(source).with_control(&control);
+        let ast = parse_flowchart(lexer, &control, 500, source.len())
+            .unwrap()
+            .unwrap();
+        ast.walk()
+            .filter_map(|event| match event {
+                StatementEvent::Enter(Stmt::Node(node)) => {
+                    node.label.as_ref().map(|label| label.text.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
 
     fn assert_linear_label_scan_work(lexer: &Lexer<'_>, source: &str) {
         assert!(
@@ -2349,7 +2367,6 @@ mod tests {
     }
 
     fn assert_repeated_slanted_label_scan_work(open: &str, close: &str, shape: &str, suffix: &str) {
-        let parser = SemanticParser::new();
         let header = "flowchart TD\n";
         let statement = format!("A{open}x{close}\n");
         for repetitions in [64, 128, 256] {
@@ -2384,15 +2401,9 @@ mod tests {
                 );
                 assert!(label.recovery_error.is_none());
             }
-            let parsed = parser
-                .parse_diagram_sync(&source)
-                .expect("repeated definitions of the same node must parse");
-            let SemanticDiagramModel::Flowchart(model) = parsed.model else {
-                panic!("expected Flowchart model");
-            };
-            assert_eq!(model.nodes.len(), 1 + usize::from(!suffix.is_empty()));
-            assert_eq!(model.nodes[0].id, "A");
-            assert_eq!(model.nodes[0].label.as_deref(), Some("x"));
+            let labels = authored_labels(&source);
+            assert_eq!(labels.len(), repetitions + usize::from(!suffix.is_empty()));
+            assert!(labels[..repetitions].iter().all(|label| label == "x"));
             assert_linear_label_scan_work(&lexer, &source);
         }
     }
@@ -2479,14 +2490,9 @@ mod tests {
                     assert_eq!(&source[selection.start..selection.end], payload);
                     assert!(label.recovery_error.is_none());
                 }
-                let parsed = SemanticParser::new()
-                    .parse_diagram_sync(&source)
-                    .expect("quoted closers must stay inside the multiline payload");
-                let SemanticDiagramModel::Flowchart(model) = parsed.model else {
-                    panic!("expected Flowchart model");
-                };
-                assert_eq!(model.nodes.len(), 2);
-                assert_eq!(model.nodes[0].label, Some(payload.replace("\r\n", "\n")));
+                let authored = authored_labels(&source);
+                assert_eq!(authored.len(), 65);
+                assert!(authored[..64].iter().all(|label| label == payload));
                 assert_linear_label_scan_work(&lexer, &source);
             }
         }
@@ -2499,7 +2505,8 @@ mod tests {
             for payload in ["x".repeat(32768), "雪😀x".repeat(8192)] {
                 let source = format!("flowchart TD\nA{open}{payload}{close}\n");
                 for recover in [false, true] {
-                    let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                    let control =
+                        OperationControl::new().for_phase(merman_model::OperationPhase::Parse);
                     control.cancel_after_checkpoints(0);
                     let mut lexer = if recover {
                         Lexer::recovering(&source)
@@ -2588,7 +2595,13 @@ mod tests {
                         assert_eq!(labels[index], (start, end));
                     }
                 }
-                assert!(SemanticParser::new().parse_diagram_sync(&source).is_err());
+                let control = OperationControl::new();
+                let strict = Lexer::new(&source).with_control(&control);
+                assert!(
+                    parse_flowchart(strict, &control, 500, source.len())
+                        .unwrap()
+                        .is_err()
+                );
                 assert_linear_label_scan_work(&lexer, &source);
             }
         }
@@ -2604,5 +2617,78 @@ mod tests {
     #[test]
     fn ordinary_label_scans_are_linear_after_recovered_unterminated_labels() {
         assert_unterminated_node_label_scan_work(true);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels() {
+        let suffix = concat!(
+            "B[\"`first\n雪 [value] (round) | -->\nlast`\"]\n",
+            "C[\"first\n雪 [value] (round) | -->\nlast\"]\nD[valid]\n",
+        );
+        for repetitions in [0, 64, 128, 256] {
+            let source = format!("flowchart TD\n{}{suffix}", "A[\"`\"]\n".repeat(repetitions));
+            let mut lexer = Lexer::recovering(&source);
+            let tokens = lexer
+                .by_ref()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap();
+            let labels = tokens
+                .iter()
+                .filter_map(|(_, token, _)| match token {
+                    Tok::NodeLabel(label) => Some(label),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(labels.len(), repetitions + 3);
+            assert!(
+                labels[..repetitions]
+                    .iter()
+                    .all(|label| label.recovery_error.is_some())
+            );
+            assert!(
+                labels[repetitions..]
+                    .iter()
+                    .all(|label| label.recovery_error.is_none())
+            );
+            assert_eq!(labels[repetitions].text.kind, TitleKind::Markdown);
+            assert_eq!(labels[repetitions + 1].text.kind, TitleKind::String);
+            for label in &labels[repetitions..repetitions + 2] {
+                assert_eq!(label.text.text, "first\n雪 [value] (round) | -->\nlast");
+            }
+            assert_eq!(labels[repetitions + 2].text.text, "valid");
+            assert!(
+                lexer.label_scan_work() <= 4 * source.len(),
+                "quote scan work must be linear: {repetitions} lines, {} steps for {} bytes",
+                lexer.label_scan_work(),
+                source.len(),
+            );
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn long_label_scan_observes_cancellation_before_materializing_its_payload() {
+        let source = format!("flowchart TD\nA[\"`{}`\"]\n", "雪".repeat(32_768));
+        let control = OperationControl::new().for_phase(merman_model::OperationPhase::Parse);
+        control.cancel_after_checkpoints(0);
+        let mut lexer = Lexer::recovering(&source).with_control(&control);
+        assert!(lexer.by_ref().any(|item| item.is_err()));
+        assert!(control.is_cancelled());
+        assert_eq!(lexer.label_scan_work(), 4096);
+        assert!(lexer.next().is_none());
+    }
+
+    #[test]
+    fn direction_value_selection_follows_the_greedy_upstream_rule() {
+        let source = "direction LR direction TBfoo direction TBbar";
+        let Some(Ok((_, Tok::DirectionStmt(statement), end))) = Lexer::new(source).next() else {
+            panic!("expected a Flowchart direction statement");
+        };
+        assert_eq!(statement.direction, "TB");
+        let matched = match_direction(source, source).unwrap();
+        assert_eq!(matched.offset, source.rfind("TB").unwrap());
+        assert_eq!(statement.completion_span, None);
+        assert_eq!(end, source.len());
     }
 }

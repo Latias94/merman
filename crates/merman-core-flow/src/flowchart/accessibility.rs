@@ -1,39 +1,15 @@
-#[cfg(test)]
-use std::cell::Cell;
-
 use super::{LexError, Lexer, Tok, is_ecmascript_trim_char};
-use crate::{OperationControl, OperationControlResult, SourceSpan};
-
-#[cfg(test)]
-thread_local! {
-    static FLOWCHART_ACCESSIBILITY_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
-}
-
-#[cfg(test)]
-pub(super) fn reset_flowchart_accessibility_scan_count() {
-    FLOWCHART_ACCESSIBILITY_SCAN_COUNT.set(0);
-}
-
-#[cfg(test)]
-pub(super) fn flowchart_accessibility_scan_count() -> usize {
-    FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get()
-}
-
-#[cfg(test)]
-pub(super) fn record_flowchart_accessibility_scan() {
-    FLOWCHART_ACCESSIBILITY_SCAN_COUNT
-        .set(FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get().saturating_add(1));
-}
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FlowchartAccessibilityDirective {
+pub enum FlowchartAccessibilityDirective {
     Title,
     Description,
 }
 
 #[cfg(feature = "editor-facts")]
 impl FlowchartAccessibilityDirective {
-    pub(super) const fn prefix(self) -> &'static str {
+    pub const fn prefix(self) -> &'static str {
         match self {
             Self::Title => "accTitle",
             Self::Description => "accDescr",
@@ -43,10 +19,10 @@ impl FlowchartAccessibilityDirective {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg(feature = "editor-facts")]
-pub(super) struct FlowchartAccessibilityStatement {
-    pub(super) directive: FlowchartAccessibilityDirective,
-    pub(super) complete: bool,
-    pub(super) span: SourceSpan,
+pub struct FlowchartAccessibilityStatement {
+    pub directive: FlowchartAccessibilityDirective,
+    pub complete: bool,
+    pub span: SourceSpan,
 }
 
 /// Accessibility values and editor facts collected at the authoritative lexer's plain cursor.
@@ -54,7 +30,7 @@ pub(super) struct FlowchartAccessibilityStatement {
 /// Labels, metadata and presentation arguments are consumed by their existing lexer owners,
 /// so their interior text never reaches this collector. The original source stays unchanged.
 #[derive(Default)]
-pub(super) struct FlowchartAccessibility {
+pub struct FlowchartAccessibility {
     title: Option<SourceSpan>,
     description: Option<SourceSpan>,
     #[cfg(feature = "editor-facts")]
@@ -64,9 +40,13 @@ pub(super) struct FlowchartAccessibility {
 }
 
 impl FlowchartAccessibility {
-    pub(super) fn metadata(&self, input: &str) -> (Option<String>, Option<String>) {
-        let value = |span: SourceSpan| input[span.start..span.end].to_owned();
-        (self.title.map(value), self.description.map(value))
+    pub const fn value_spans(&self) -> (Option<SourceSpan>, Option<SourceSpan>) {
+        (self.title, self.description)
+    }
+
+    #[cfg(feature = "editor-facts")]
+    pub fn statements(&self) -> &[FlowchartAccessibilityStatement] {
+        &self.statements
     }
 }
 
