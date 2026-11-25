@@ -337,6 +337,10 @@ impl DirectedNodeAdjacency {
         }
     }
 
+    pub(in crate::graph) fn contains_link(&self, v_ix: usize, w_ix: usize) -> bool {
+        self.link_index.contains_key(&(v_ix, w_ix))
+    }
+
     pub(in crate::graph) fn successor_count(&self, v_ix: usize) -> usize {
         self.successors[v_ix].len
     }

@@ -476,55 +476,28 @@ struct FlowchartClusterDbEntry {
     external_connections: bool,
 }
 
-fn flowchart_find_common_edges(
+fn flowchart_has_common_edge(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    id1: &str,
-    id2: &str,
+    cluster_id: &str,
+    leaf_id: &str,
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<Vec<(String, String)>> {
-    let edge_snapshot_work =
-        work_control.checked_add(graph.edge_slot_count(), graph.edge_count())?;
-    work_control.charge_adapter(edge_snapshot_work)?;
-    let edges1 = graph
-        .edges()
-        .filter(|edge| edge.v == id1 || edge.w == id1)
-        .map(|edge| (edge.v.clone(), edge.w.clone()))
-        .collect::<Vec<_>>();
-    work_control.charge_adapter(edge_snapshot_work)?;
-    let edges2 = graph
-        .edges()
-        .filter(|edge| edge.v == id2 || edge.w == id2)
-        .map(|edge| (edge.v.clone(), edge.w.clone()))
-        .collect::<Vec<_>>();
-
-    work_control.charge_adapter(edges1.len())?;
-    let edges1_prim = edges1
-        .into_iter()
-        .map(|(v, w)| {
-            (
-                if v == id1 { id2.to_string() } else { v },
-                // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w` side
-                // back to `id1` rather than `id2`.
-                if w == id1 { id1.to_string() } else { w },
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let mut out = Vec::new();
-    for edge in edges1_prim {
-        let mut found = false;
-        for candidate in &edges2 {
-            work_control.charge_adapter(1)?;
-            if candidate == &edge {
-                found = true;
-                break;
-            }
-        }
-        if found {
-            out.push(edge);
-        }
+) -> Result<bool> {
+    debug_assert_ne!(cluster_id, leaf_id);
+    let has_edges = graph.edge_count() != 0;
+    work_control.charge_adapter(usize::from(has_edges))?;
+    if !has_edges {
+        return Ok(false);
     }
-    Ok(out)
+    let (Some(cluster_ix), Some(leaf_ix)) = (graph.node_ix(cluster_id), graph.node_ix(leaf_id))
+    else {
+        return Ok(false);
+    };
+    // Mermaid rewrites the source of cluster edges to the leaf but keeps the target.
+    // An unchanged incoming edge can only match if it starts at the leaf.
+    if graph.has_pinned_successor_ix(leaf_ix, cluster_ix) {
+        return Ok(true);
+    }
+    graph.try_has_common_pinned_successor_ix(cluster_ix, leaf_ix, || work_control.charge_adapter(1))
 }
 
 fn flowchart_find_non_cluster_child(
@@ -562,7 +535,7 @@ fn flowchart_find_non_cluster_child(
             stack.extend(graph.children(&node).into_iter().rev().map(str::to_string));
             continue;
         }
-        if !flowchart_find_common_edges(graph, cluster_id, &node, work_control)?.is_empty() {
+        if flowchart_has_common_edge(graph, cluster_id, &node, work_control)? {
             reserve = Some(node);
         } else {
             return Ok(Some(node));
