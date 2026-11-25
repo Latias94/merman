@@ -184,3 +184,47 @@ fn embedded_image_budget_charges_the_effective_href_in_each_encoder() {
         }
     }
 }
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn blocked_image_href_does_not_activate_or_charge_the_xlink_fallback() {
+    let blue = format!(r#"link:href="data:image/png;base64,{BLUE_PIXEL}""#);
+    let blocked = r#"href="not-present.png""#;
+    let svg = |attributes: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:link="http://www.w3.org/1999/xlink" width="20" height="20"><image {attributes} width="20" height="20"/></svg>"#
+        )
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let render_image = |attributes: &str, max: &str| {
+            render(
+                format,
+                &["--input-kind=svg", "--embedded-image-max-total-bytes", max],
+                &svg(attributes),
+            )
+        };
+        let blank = success(render_image("", "68"));
+        for attributes in [format!("{blocked} {blue}"), format!("{blue} {blocked}")] {
+            assert_eq!(success(render_image(&attributes, "68")), blank, "{format}");
+        }
+        let visible = success(render_image(&blue, "69"));
+        assert!(visible != blank, "{format}: the active alias must paint");
+        let limited = render_image(&blue, "68");
+        assert_eq!(limited.status.code(), Some(1), "{format}: {limited:?}");
+        assert!(limited.stdout.is_empty(), "{format}");
+        let stderr = String::from_utf8_lossy(&limited.stderr);
+        assert!(
+            stderr.contains("max_total_embedded_image_bytes")
+                && stderr.contains("actual=69 maximum=68"),
+            "{format}: {stderr}"
+        );
+    }
+}

@@ -19,7 +19,7 @@ use super::builtin::css_sanitize::{
 };
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 use super::text_tracking::{
-    SvgCharacterEvents, SvgFontSeal, SvgTextContent, SvgTextContentTracker,
+    SvgCharacterEvents, SvgFontSeal, SvgTextContent, SvgTextContentTracker, SvgUseTextSpace,
 };
 use super::{SvgPostprocessExecution, SvgReferencePlan, checkpoint_loop};
 
@@ -749,6 +749,7 @@ fn check_svg_resource_budget_with_controls(
     let summary = match analyze_svg_reference_facts_with_checkpoints::<false, _>(
         references,
         raw_structure,
+        None,
         checkpoint,
     ) {
         Ok(summary) => summary,
@@ -782,6 +783,7 @@ impl SvgReferencePlan {
         match analyze_svg_reference_facts_with_checkpoints::<true, _>(
             facts,
             structure,
+            None,
             &mut checkpoint,
         ) {
             Ok(analysis) => Ok(analysis.into_detailed_plan()),
@@ -817,6 +819,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     let mut resource_closure = SvgResourceClosureBuilder::default();
     let mut inline_raster_sources = Vec::new();
     let mut text_content = SvgTextContentTracker::default();
+    let mut use_text_space = SvgUseTextSpace::default();
     let mut text_targets = Vec::<OpenTextTarget>::new();
     let mut character_events = SvgCharacterEvents::default();
     let mut fallback_css_residual = false;
@@ -846,19 +849,33 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     check_coordinate,
                 )?;
                 let parent = reference_stack.last().copied();
-                let preserve_space = validated
+                let space_override = validated
                     .preserve_space
-                    .unwrap_or_else(|| parent.is_some_and(|(_, preserve)| preserve));
+                    .map(|preserve| (depth, preserve))
+                    .or_else(|| parent.and_then(|(_, space)| space));
+                let preserves_space = space_override.is_some_and(|(_, preserve)| preserve);
+                let local_name = element.local_name();
+                let element_name = local_name.as_ref();
+                let index = references.parents.len();
+                if validated.preserve_space == Some(false) {
+                    use_text_space.observe_reset(index);
+                }
+                if validated.is_svg_element
+                    && element_name == "use"
+                    && validated.references[0].is_some()
+                {
+                    use_text_space.observe_use(index, preserves_space);
+                }
                 if !is_empty
                     && validated.is_svg_element
-                    && element.local_name().as_ref().eq_ignore_ascii_case("text")
+                    && element_name.eq_ignore_ascii_case("text")
                 {
-                    text_content.observe_start(depth, preserve_space);
+                    text_content.observe_start(depth, index, preserves_space);
                 }
-                if validated.is_svg_element && element.local_name().as_ref() == "tref" {
+                if validated.is_svg_element && element_name == "tref" {
                     text_content.observe_tref(
                         validated.local_text_reference.take(),
-                        preserve_space,
+                        space_override,
                         (!is_empty).then_some(depth),
                     );
                 }
@@ -891,7 +908,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     if opens_style {
                         style_text = Some(OpenStyle { css: String::new() });
                     }
-                    reference_stack.push((index, preserve_space));
+                    reference_stack.push((index, space_override));
                 }
             }
             Event::End(element) => {
@@ -998,7 +1015,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     checkpoint()?;
     // A tref copies raw descendant character data, including forward targets. Just like usvg,
     // use the first raw local-name ID, and do not expand links inside the referenced subtree.
-    let text_elements = {
+    let (mut text_elements, whitespace_text) = {
         let mut text_by_id = HashMap::new();
         if text_content.has_pending_text() {
             for (iteration, identity) in references.identities.iter().enumerate() {
@@ -1010,12 +1027,14 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         }
         text_content.text_element_count(
             |id| text_by_id.get(id).copied().unwrap_or_default(),
+            use_text_space.has_preserving_use(),
             &mut checkpoint,
         )?
     };
     let reference_plan = match analyze_svg_reference_facts_with_checkpoints::<true, _>(
         references,
         raw_structure,
+        (!whitespace_text.is_empty()).then_some(&mut use_text_space),
         &mut checkpoint,
     ) {
         Ok(plan) => plan.into_detailed_plan(),
@@ -1029,6 +1048,10 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         reference_plan.expanded_elements(),
         reference_plan.max_tree_depth(),
     )?;
+    for (iteration, element) in whitespace_text.into_iter().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        text_elements += usize::from(use_text_space.preserves(element));
+    }
     let resource_closure = resource_closure.finish().map_err(validation_error)?;
     let font_seal = if text_elements == 0 {
         SvgFontSeal::not_required()
@@ -1916,6 +1939,7 @@ impl SvgReferenceAnalysis {
 fn analyze_svg_reference_facts_with_checkpoints<const DETAILED: bool, E>(
     facts: SvgReferenceFacts,
     structure: SvgStructureMetrics,
+    mut use_text_space: Option<&mut SvgUseTextSpace>,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
     checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
@@ -1936,9 +1960,15 @@ fn analyze_svg_reference_facts_with_checkpoints<const DETAILED: bool, E>(
             raw_element_occurrences,
         });
     }
-    let (graph, effects) = build_reference_fact_dependencies(facts, checkpoint)
-        .map_err(ReferencePlanningError::Checkpoint)?;
-    analyze_compact_reference_dependencies::<DETAILED, _>(&graph, &effects, checkpoint)
+    let (graph, effects) =
+        build_reference_fact_dependencies(facts, use_text_space.as_deref_mut(), checkpoint)
+            .map_err(ReferencePlanningError::Checkpoint)?;
+    analyze_compact_reference_dependencies::<DETAILED, _>(
+        &graph,
+        &effects,
+        use_text_space,
+        checkpoint,
+    )
 }
 
 struct ParsedIdCandidates {
@@ -1954,6 +1984,7 @@ impl ParsedIdCandidates {
 
 fn build_reference_fact_dependencies<E>(
     facts: SvgReferenceFacts,
+    mut use_text_space: Option<&mut SvgUseTextSpace>,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<(ReferenceDependencyGraph, Vec<usize>), E> {
     let SvgReferenceFacts {
@@ -2017,6 +2048,11 @@ fn build_reference_fact_dependencies<E>(
             )?,
         };
         if let Some(target) = target {
+            if matches!(reference.target_kind, ReferenceTargetKind::UseElement)
+                && let Some(space) = use_text_space.as_deref_mut()
+            {
+                space.resolve_use_target(source, target);
+            }
             graph.ranges[source].end += 1;
             resolved_references.push((source, target, reference.multiplicity));
         }
@@ -2041,14 +2077,16 @@ fn build_reference_fact_dependencies<E>(
         end += count;
     }
     graph.edges.resize(end, (0, 0));
-    // Each actual tree edge is written directly to its final arena once. The parent arena is
-    // consumed, rather than allocating child lists and then copying them into a second graph.
-    for (index, parent) in parents.into_iter().enumerate().skip(1) {
+    // Each actual tree edge is written directly to its final arena once, without child lists.
+    for (index, &parent) in parents.iter().enumerate().skip(1) {
         checkpoint_loop(index, checkpoint)?;
         graph.edges[graph.ranges[parent].start] = (index, 1);
         graph.ranges[parent].start += 1;
         #[cfg(test)]
         record_reference_analysis_work(|work| work.tree_edges += 1);
+    }
+    if let Some(space) = use_text_space {
+        space.set_parents(parents);
     }
     for (iteration, (source, target, multiplicity)) in resolved_references.into_iter().enumerate() {
         checkpoint_loop(iteration, checkpoint)?;
@@ -2111,13 +2149,14 @@ pub(super) fn summarize_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgStructureMetrics, E> {
-    analyze_compact_reference_dependencies::<false, _>(graph, &[], checkpoint)
+    analyze_compact_reference_dependencies::<false, _>(graph, &[], None, checkpoint)
         .map(|analysis| analysis.structure)
 }
 
 fn analyze_compact_reference_dependencies<const DETAILED: bool, E>(
     graph: &ReferenceDependencyGraph,
     effects: &[usize],
+    mut use_text_space: Option<&mut SvgUseTextSpace>,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
     // User element budgets can exceed a native backend's ceiling. Count independently of that
@@ -2234,6 +2273,9 @@ fn analyze_compact_reference_dependencies<const DETAILED: bool, E>(
     let mut occurrence_dependency_iteration = 0usize;
     for (iteration, index) in postorder.into_iter().rev().enumerate() {
         checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+        if let Some(space) = use_text_space.as_deref_mut() {
+            space.inherit_in_reference_order(index);
+        }
         let occurrences = raw_element_occurrences[index];
         for &(dependency, multiplicity) in graph.dependencies(index) {
             checkpoint_loop(occurrence_dependency_iteration, checkpoint)
@@ -3393,6 +3435,65 @@ mod tests {
                 validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native())
                     .unwrap();
             assert_eq!(validated.text_elements, 1, "{svg}");
+        }
+    }
+
+    #[test]
+    fn tref_local_preserve_still_allows_single_fragment_edge_trimming() {
+        for (target, expected) in [(" ", 0), ("&#x20;\t", 0), ("\n&#x20;\t", 1)] {
+            let svg = format!(
+                r##"<svg><defs><g id="target">{target}</g><g id="empty"/></defs><text><tref href="#empty"/><tref xml:space="preserve" href="#target"/></text></svg>"##
+            );
+            let validated =
+                validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native())
+                    .unwrap();
+            assert_eq!(validated.text_elements, expected, "{svg}");
+        }
+    }
+
+    #[test]
+    fn use_space_follows_only_effective_clone_links_and_respects_resets() {
+        let template = r##"<g id="template" SPACE><g><text><tref href="#spaces"/></text></g></g>"##;
+        let link = r##"<use q:href="#template"/>"##;
+        let preserves = r##"<use href="#chain" xml:space="preserve"/>"##;
+        for (template_space, chain, outer, expected) in [
+            ("", link, preserves, 1),
+            (
+                "",
+                link,
+                r##"<g xml:space="preserve"><use href="#chain"/></g>"##,
+                1,
+            ),
+            (r#"xml:space="default""#, link, preserves, 0),
+            (
+                "",
+                r##"<use q:href="#template" xml:space="default"/>"##,
+                preserves,
+                0,
+            ),
+            (
+                "",
+                r##"<use q:href="#template" href="#blank"/>"##,
+                preserves,
+                0,
+            ),
+            ("", link, r##"<use href="#chain"/>"##, 0),
+            (
+                "",
+                link,
+                r##"<feImage href="#chain" xml:space="preserve"/>"##,
+                0,
+            ),
+        ] {
+            let template = template.replace("SPACE", template_space);
+            let svg = format!(
+                r#"<svg xmlns:q="http://www.w3.org/1999/xlink">{outer}<defs><g id="chain">{chain}</g>{template}<g id="spaces">     </g><g id="blank"/></defs></svg>"#
+            );
+            let validated =
+                validate_resvg_compatible_svg(&svg, RenderResourcePolicy::trusted_native())
+                    .unwrap();
+            assert_eq!(validated.text_elements, expected, "{svg}");
+            assert_eq!(validated.font_seal.is_complete(), expected == 0, "{svg}");
         }
     }
 
@@ -4820,16 +4921,14 @@ mod tests {
                 .all(|&occurrences| occurrences == 1)
         );
         let (facts, _) = compact_facts_from_legacy_nodes(&nodes);
-        let (graph, effects) =
-            build_reference_fact_dependencies(
-                facts,
-                &mut || Ok::<(), std::convert::Infallible>(()),
-            )
-            .unwrap();
+        let (graph, effects) = build_reference_fact_dependencies(facts, None, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .unwrap();
         assert_eq!(graph.ranges.len(), real_nodes + 2);
         assert_eq!(graph.edges.len(), dependency_edges);
         let actual =
-            analyze_compact_reference_dependencies::<true, _>(&graph, &effects, &mut || {
+            analyze_compact_reference_dependencies::<true, _>(&graph, &effects, None, &mut || {
                 Ok::<(), std::convert::Infallible>(())
             })
             .map(SvgReferenceAnalysis::into_detailed_plan)
@@ -4904,6 +5003,7 @@ mod tests {
                     let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
                         facts,
                         structure,
+                        None,
                         &mut || Ok::<(), std::convert::Infallible>(()),
                     )
                     .map(SvgReferenceAnalysis::into_detailed_plan)
@@ -4917,6 +5017,7 @@ mod tests {
                         analyze_svg_reference_facts_with_checkpoints::<false, _>(
                             compact_facts_from_legacy_nodes(&nodes).0,
                             structure,
+                            None,
                             &mut || Ok::<(), std::convert::Infallible>(()),
                         )
                     });

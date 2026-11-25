@@ -43,6 +43,7 @@ pub struct PositionedGlyph {
     units_per_em: u16,
     /// The font size the glyph should be scaled to.
     font_size: f32,
+    has_visible_decoration: bool,
     /// The ID of the glyph.
     pub id: GlyphId,
     /// The text from the original string that corresponds to that glyph.
@@ -158,14 +159,25 @@ pub struct Span {
 }
 
 impl Span {
-    pub(crate) fn has_visible_paint(&self) -> bool {
+    /// Returns whether the span has visible glyph paint or a painted text decoration.
+    ///
+    /// A continuous decoration can cover this span even when its path is stored on another span.
+    pub fn has_visible_paint(&self) -> bool {
         self.visible
             && (crate::has_nontransparent_paint(self.fill.as_ref(), self.stroke.as_ref())
                 || [&self.underline, &self.overline, &self.line_through]
                     .into_iter()
                     .flatten()
-                    .any(|path| crate::has_nontransparent_paint(path.fill(), path.stroke())))
+                    .any(|path| decoration_has_visible_paint(path))
+                || self
+                    .positioned_glyphs
+                    .first()
+                    .is_some_and(|glyph| glyph.has_visible_decoration))
     }
+}
+
+fn decoration_has_visible_paint(path: &Path) -> bool {
+    path.is_visible() && crate::has_nontransparent_paint(path.fill(), path.stroke())
 }
 
 #[derive(Clone, Debug)]
@@ -409,7 +421,7 @@ fn append_chunk_geometry(
         TextFlow::Linear => resolve_baseline(span, font, text_node.writing_mode),
         TextFlow::Path(_) => 0.0,
     };
-    let mut decoration_ranges = [0..0, 0..0, 0..0];
+    let mut decoration_ranges: [DecorationRange; 3] = Default::default();
     for (index, span) in chunk.spans.iter().enumerate() {
         let font = match primary_font(fonts_cache, span) {
             Some((_, font)) => font,
@@ -418,11 +430,12 @@ fn append_chunk_geometry(
 
         let baseline = baseline_for(span, font);
         let span_ts = text_ts.pre_translate(x, y).pre_translate(0.0, baseline);
+        let mut has_visible_decoration = false;
         let mut decoration = |line: DecorationLine| {
             let paint = line.style(&span.decoration)?;
-            let offset = line.offset(font, text_node.writing_mode);
             let range = &mut decoration_ranges[line as usize];
             if index >= range.end {
+                let offset = line.offset(font, text_node.writing_mode);
                 let following = chunk.spans[index + 1..]
                     .iter()
                     .take_while(|next| {
@@ -435,20 +448,28 @@ fn append_chunk_geometry(
                             })
                     })
                     .count();
-                *range = index..index + 1 + following;
+                let end = index + 1 + following;
+                let path_owner = match line {
+                    DecorationLine::LineThrough => end - 1,
+                    _ => index,
+                };
+                let bytes = span.start..chunk.spans[end - 1].end;
+                let runs = collect_decoration_spans(bytes, chunk, clusters, line);
+                let path = convert_decoration(offset, span, font, paint, &runs, span_ts);
+                *range = DecorationRange {
+                    end,
+                    path_owner,
+                    visible_paint: path.as_ref().is_some_and(decoration_has_visible_paint),
+                    path: path.map(Box::new),
+                };
             }
-            let owner = match line {
-                DecorationLine::LineThrough => range.end - 1,
-                _ => range.start,
-            };
-            if owner != index {
+            has_visible_decoration |= range.visible_paint;
+            if index != range.path_owner {
                 return None;
             }
-            let bytes = chunk.spans[range.start].start..chunk.spans[range.end - 1].end;
-            let runs = collect_decoration_spans(bytes, chunk, clusters, line);
-            let path = convert_decoration(offset, span, font, paint.clone(), &runs, span_ts)?;
+            let path = range.path.take()?;
             geometry.bbox = geometry.bbox.expand(path.data.bounds());
-            Some(Box::new(path))
+            Some(path)
         };
         let underline = decoration(DecorationLine::Underline);
         let overline = decoration(DecorationLine::Overline);
@@ -484,6 +505,7 @@ fn append_chunk_geometry(
                 },
                 span_fragments,
                 span_ts,
+                has_visible_decoration,
             );
         }
     }
@@ -494,6 +516,7 @@ fn append_font_spans(
     mut span: Span,
     fragments: Vec<GlyphCluster>,
     span_ts: Transform,
+    has_visible_decoration: bool,
 ) {
     if fragments.is_empty() {
         spans.push(span);
@@ -521,6 +544,7 @@ fn append_font_spans(
                 for glyph in &mut cluster.glyphs {
                     glyph.cluster_ts = cluster_ts;
                     glyph.span_ts = span_ts;
+                    glyph.has_visible_decoration = has_visible_decoration;
                 }
                 cluster.glyphs
             })
@@ -579,6 +603,14 @@ fn convert_span(
     let bbox = bboxes.compute_tight_bounds()?.to_non_zero_rect()?;
 
     Some((span_clusters, bbox))
+}
+
+#[derive(Default)]
+struct DecorationRange {
+    end: usize,
+    path_owner: usize,
+    visible_paint: bool,
+    path: Option<Box<Path>>,
 }
 
 #[derive(Clone, Copy)]
@@ -710,11 +742,11 @@ fn collect_decoration_spans(
     spans
 }
 
-pub(crate) fn convert_decoration(
+fn convert_decoration(
     dy: f32,
     span: &TextSpan,
     font: &ResolvedFont,
-    mut decoration: TextDecorationStyle,
+    decoration: &TextDecorationStyle,
     decoration_spans: &[DecorationSpan],
     transform: Transform,
 ) -> Option<Path> {
@@ -747,8 +779,8 @@ pub(crate) fn convert_decoration(
     Some(Path::new(
         Box::default(),
         span.visible,
-        decoration.fill.take(),
-        decoration.stroke.take(),
+        decoration.fill.clone(),
+        decoration.stroke.clone(),
         PaintOrder::default(),
         ShapeRendering::default(),
         Arc::new(path_data),
@@ -1602,6 +1634,7 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, rtl: bool) -> GlyphCluster 
             span_ts: Transform::default(),
             units_per_em: glyph.font.units_per_em.get(),
             font_size: glyph.font.size.get(),
+            has_visible_decoration: false,
             font: glyph.font.id,
             text: glyph.text.clone(),
             id: glyph.id,

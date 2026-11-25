@@ -219,9 +219,9 @@ impl SvgFinalizationReport {
         &self.resource_closure
     }
 
-    /// Returns the number of terminal SVG `<text>` elements with character content,
-    /// including character data copied from local `<tref>` targets. Collapsible spaces from
-    /// those targets can separate adjacent text runs without requiring a font on their own.
+    /// Returns the number of terminal SVG `<text>` sources with character content,
+    /// including character data copied from local `<tref>` targets. Copied spaces count when
+    /// preserved in the source or a `<use>` instance, but not when trimmed from a lone fragment.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
     }
@@ -1251,6 +1251,47 @@ mod tests {
                 .process_resvg_compatible(invalid, &session)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn blocked_resource_links_do_not_activate_lower_priority_fragments() {
+        let svg = r##"<svg xmlns:q="http://www.w3.org/1999/xlink" xmlns:other="urn:other"><defs><filter id="filter"><feImage q:href="#hidden" href="blocked.png"/></filter><linearGradient href="blocked.svg" q:href="#hidden"/></defs><use q:href="#hidden" href="blocked.svg"/><text><tref href="#hidden" q:href="blocked.svg"/><tref other:href="blocked.svg" href="#hidden"/></text></svg>"##;
+        let session = render_session();
+        let sealed = finalize_resvg_svg(svg, &session).unwrap();
+        assert!(!sealed.as_str().contains("blocked."));
+        assert!(sealed.as_str().contains(r#"other:href="""#));
+        assert!(
+            sealed
+                .resource_closure()
+                .referenced_fragment_ids()
+                .is_empty()
+        );
+        assert_eq!(sealed.finalization_report().text_element_count(), 0);
+        let again = finalize_resvg_svg(sealed.as_str(), &session).unwrap();
+        assert_eq!(again.as_str(), sealed.as_str());
+    }
+
+    #[test]
+    fn whitespace_inherited_by_use_does_not_bypass_expansion_limits() {
+        let svg = r##"<svg><defs><g id="spaces">     </g><g id="label"><text><tref href="#spaces"/></text></g></defs><use href="#label" xml:space="preserve"/><use href="#label" xml:space="preserve"/></svg>"##;
+        let session = |max_elements| {
+            crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    crate::resources::RenderResourcePolicy::trusted_native()
+                        .with_limit(
+                            crate::resources::ResourceLimitId::MaxSvgElements,
+                            max_elements,
+                        )
+                        .unwrap(),
+                )
+                .begin_session()
+                .unwrap()
+        };
+        let error = finalize_resvg_svg(svg, &session(13)).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+        let sealed = finalize_resvg_svg(svg, &session(14)).unwrap();
+        assert_eq!(sealed.reference_plan().expanded_elements(), 14);
+        assert_eq!(sealed.finalization_report().text_element_count(), 1);
     }
 
     #[test]

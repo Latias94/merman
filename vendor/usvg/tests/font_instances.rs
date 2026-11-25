@@ -1057,6 +1057,44 @@ fn splitting_a_stroked_ligature_adds_no_decoration_edges() {
 }
 
 #[test]
+fn coalesced_decorations_keep_their_flattened_paths_and_paint_order() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let attrs = "font-size='50' fill='none' stroke='black' text-decoration='underline overline line-through'";
+    let whole = render(&options, attrs, "<tspan stroke='none'>AQ</tspan>");
+    let split = render(
+        &options,
+        attrs,
+        "<tspan stroke='none'>A<tspan>Q</tspan></tspan>",
+    );
+    let [first, last] = text(&split).layouted() else {
+        panic!("expected two positioned spans");
+    };
+    assert!(first.overline.is_some() && first.underline.is_some() && first.line_through.is_none());
+    assert!(last.overline.is_none() && last.underline.is_none() && last.line_through.is_some());
+
+    fn painted_paths(tree: &Tree) -> impl Iterator<Item = &usvg::Path> {
+        text(tree)
+            .flattened()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                Node::Path(path) if path.is_visible() && path.stroke().is_some() => {
+                    Some(path.as_ref())
+                }
+                _ => None,
+            })
+    }
+    assert_eq!(painted_paths(&whole).count(), 3);
+    assert!(
+        painted_paths(&whole)
+            .map(usvg::Path::data)
+            .eq(painted_paths(&split).map(usvg::Path::data))
+    );
+}
+
+#[test]
 fn vertical_overline_is_half_a_font_height_from_the_strike() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());

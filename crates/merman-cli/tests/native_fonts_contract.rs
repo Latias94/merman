@@ -2444,6 +2444,106 @@ fn raw_svg_tref_preserves_collapsed_spacing_between_text_fragments() {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
+fn raw_svg_use_inherits_space_for_copied_text_before_selecting_fonts() {
+    let font = font();
+    let no_fonts = ["--font-system=off"];
+    let explicit = [no_fonts[0], "--font-file", font.as_str()];
+    let text = |attributes: &str, content: &str| {
+        format!(
+            r#"<text x="10" y="40" font-family="Cousine" font-size="32" text-decoration="underline"{attributes}>{content}</text>"#
+        )
+    };
+    let svg = |content: &str| {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">{content}</svg>"#
+        )
+    };
+    let blank = svg("");
+    let direct = svg(&text(r#" xml:space="preserve""#, "     "));
+    let referenced = svg(&format!(
+        r##"<defs><g id="spaces">     </g><g id="label">{}</g></defs><use href="#label" xml:space="preserve"/>"##,
+        text("", r##"<tref href="#spaces"/>"##)
+    ));
+    let trimmed = svg(&format!(
+        r#"<defs><g id="space"> </g></defs>{}"#,
+        text("", r##"<tref href="#space" xml:space="preserve"/>"##)
+    ));
+
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let blank = raw_conversion(format, &blank, &no_fonts);
+        let direct_explicit = raw_conversion(format, &direct, &explicit);
+        let referenced_explicit = raw_conversion(format, &referenced, &explicit);
+        let trimmed_explicit = raw_conversion(format, &trimmed, &explicit);
+        let trimmed_off = raw_conversion(format, &trimmed, &no_fonts);
+        for output in [
+            &blank,
+            &direct_explicit,
+            &referenced_explicit,
+            &trimmed_explicit,
+            &trimmed_off,
+        ] {
+            assert!(output.status.success(), "{format}: {output:?}");
+        }
+        assert!(
+            referenced_explicit.stdout == direct_explicit.stdout
+                && referenced_explicit.stdout != blank.stdout,
+            "{format}: the inherited spaces must paint an underline"
+        );
+        assert!(
+            trimmed_off.stdout == blank.stdout && trimmed_explicit.stdout == blank.stdout,
+            "{format}: the text root must trim the sole copied space"
+        );
+        let missing_font = raw_conversion(format, &referenced, &no_fonts);
+        let stderr = String::from_utf8_lossy(&missing_font.stderr);
+        assert_eq!(missing_font.status.code(), Some(2), "{format}: {stderr}");
+        assert!(missing_font.stdout.is_empty(), "{format}");
+        assert!(stderr.contains("--font-system off"), "{format}: {stderr}");
+
+        #[cfg(all(
+            windows,
+            any(
+                feature = "platform-system-font-default",
+                feature = "windows-platform-font-default"
+            )
+        ))]
+        {
+            let direct = direct.replace("Cousine", "sans-serif");
+            let referenced = referenced.replace("Cousine", "sans-serif");
+            let direct = raw_conversion(format, &direct, &[]);
+            let default = raw_conversion(format, &referenced, &[]);
+            for output in [&direct, &default] {
+                assert!(output.status.success(), "{format}: {output:?}");
+            }
+            assert!(
+                default.stdout == direct.stdout && default.stdout != blank.stdout,
+                "{format}: automatic font selection must paint the inherited underline"
+            );
+            let budget = ["--font-max-bytes=1"];
+            let limited = raw_conversion(format, &referenced, &budget);
+            let stderr = String::from_utf8_lossy(&limited.stderr);
+            assert_eq!(limited.status.code(), Some(1), "{format}: {stderr}");
+            assert!(limited.stdout.is_empty(), "{format}");
+            assert!(
+                stderr.contains("while painting text") && stderr.contains("--font-max-bytes "),
+                "{format}: {stderr}"
+            );
+            let trimmed = raw_conversion(format, &trimmed, &budget);
+            assert!(trimmed.status.success(), "{format}: {trimmed:?}");
+            assert_eq!(trimmed.stdout, blank.stdout, "{format}");
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
 fn raw_svg_resource_links_use_the_effective_href() {
     let font = font();
     let cases = [
