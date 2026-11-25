@@ -82,7 +82,6 @@ pub(super) fn with_flowchart_paint_context<T>(
     let node_border_color = &render_config.node_border_color;
     let node_stroke_width = render_config.node_stroke_width;
     let edge_corner_radius = render_config.edge_corner_radius;
-    let compact_edge_corners = render_config.compact_edge_corners;
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
@@ -267,7 +266,6 @@ pub(super) fn with_flowchart_paint_context<T>(
         node_border_color,
         node_stroke_width,
         edge_corner_radius,
-        compact_edge_corners,
         default_edge_interpolate,
         default_edge_style,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),

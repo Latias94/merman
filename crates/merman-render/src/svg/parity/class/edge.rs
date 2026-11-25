@@ -203,10 +203,8 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             } else if native_curve == Some("step") {
                 super::super::curve::curve_step_path_d_and_bounds(edge_curve_source)
             } else if ctx.uses_elk_adapter_dom && native_curve.is_none() {
-                super::super::curve::curve_rounded_path_d_and_bounds(
-                    edge_curve_source,
-                    5.0,
-                    false,
+                (
+                    super::super::curve::curve_rounded_path_d(edge_curve_source, 5.0),
                     None,
                 )
             } else if edge_curve_source.len() == 2 {

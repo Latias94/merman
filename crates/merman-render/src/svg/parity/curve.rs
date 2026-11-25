@@ -185,21 +185,12 @@ pub(super) fn curve_geometry(
     points: &[LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
 ) -> CurveGeometry {
     let mut metrics = BoundsBuilder {
         serialized_coordinates: true,
         ..BoundsBuilder::default()
     };
-    let d = interpolate_path(
-        points,
-        interpolate,
-        rounded_radius,
-        compact_corners,
-        rounded_corner_mask,
-        Some(&mut metrics),
-    );
+    let d = interpolate_path(points, interpolate, rounded_radius, Some(&mut metrics));
     CurveGeometry {
         d,
         bounds: metrics.bounds,
@@ -207,15 +198,13 @@ pub(super) fn curve_geometry(
 }
 
 pub(super) fn interpolated_path_d(points: &[LayoutPoint], interpolate: &str) -> String {
-    interpolate_path(points, interpolate, 5.0, false, None, None)
+    interpolate_path(points, interpolate, 5.0, None)
 }
 
 fn interpolate_path(
     points: &[LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
     bounds: Option<&mut BoundsBuilder>,
 ) -> String {
     match interpolate {
@@ -230,13 +219,7 @@ fn interpolate_path(
         "cardinal" => curve_cardinal_path_d_impl(points, 0.0, bounds),
         "monotoneX" => curve_monotone_path_d_impl(points, false, bounds),
         "monotoneY" => curve_monotone_path_d_impl(points, true, bounds),
-        "rounded" => curve_rounded_path_d_impl(
-            points,
-            rounded_radius,
-            compact_corners,
-            rounded_corner_mask,
-            bounds,
-        ),
+        "rounded" => curve_rounded_path_d_impl(points, rounded_radius, bounds),
         // Unknown curve names fall back to Mermaid's historical basis curve.
         _ => curve_basis_path_d_impl(points, bounds),
     }
@@ -552,23 +535,13 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
     out
 }
 
-pub(super) fn curve_rounded_path_d_and_bounds(
-    points: &[LayoutPoint],
-    radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
-) -> (String, Option<SvgPathBounds>) {
-    (
-        curve_rounded_path_d_impl(points, radius, compact_corners, rounded_corner_mask, None),
-        None,
-    )
+pub(super) fn curve_rounded_path_d(points: &[LayoutPoint], radius: f64) -> String {
+    curve_rounded_path_d_impl(points, radius, None)
 }
 
 fn curve_rounded_path_d_impl(
     points: &[LayoutPoint],
     radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
     mut bounds: Option<&mut BoundsBuilder>,
 ) -> String {
     if points.len() < 2 {
@@ -600,16 +573,6 @@ fn curve_rounded_path_d_impl(
 
         let prev = &points[idx - 1];
         let next = &points[idx + 1];
-        if rounded_corner_mask.is_some_and(|mask| mask.get(idx) == Some(&false)) {
-            emit_cmd_pair_impl(
-                &mut out,
-                bounds.as_deref_mut(),
-                'L',
-                PathPoint::from_layout(curr),
-            );
-            continue;
-        }
-
         let dx1 = curr.x - prev.x;
         let dy1 = curr.y - prev.y;
         let dx2 = next.x - curr.x;
@@ -642,13 +605,9 @@ fn curve_rounded_path_d_impl(
             continue;
         }
 
-        let mermaid_cut = radius / (angle / 2.0).sin();
-        let radius_cut = if compact_corners {
-            mermaid_cut.min(radius * (angle / 2.0).tan())
-        } else {
-            mermaid_cut
-        };
-        let cut_len = radius_cut.min(len1 / 2.0).min(len2 / 2.0);
+        let cut_len = (radius / (angle / 2.0).sin())
+            .min(len1 / 2.0)
+            .min(len2 / 2.0);
         let start = PathPoint::new(curr.x - nx1 * cut_len, curr.y - ny1 * cut_len);
         let end = PathPoint::new(curr.x + nx2 * cut_len, curr.y + ny2 * cut_len);
 

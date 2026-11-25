@@ -7,16 +7,8 @@ pub(super) fn curve_path_geometry(
     points: &[crate::model::LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
-    compact_edge_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
 ) -> CurveGeometry {
-    let mut geometry = curve_geometry(
-        points,
-        interpolate,
-        rounded_radius,
-        compact_edge_corners,
-        rounded_corner_mask,
-    );
+    let mut geometry = curve_geometry(points, interpolate, rounded_radius);
     geometry.d = maybe_close_single_point_path(geometry.d, points);
     if geometry.d == "Z" {
         // The rounded generator has no segments for a singleton and emits a bare close.
@@ -75,23 +67,21 @@ mod tests {
                 y: 1.0e17,
             },
         ];
-        let corner_mask = [true, false, true, true, true];
-        for (kind, compact, mask) in [
-            ("basis", false, None),
-            ("linear", false, None),
-            ("natural", false, None),
-            ("bumpX", false, None),
-            ("bumpY", false, None),
-            ("catmullRom", false, None),
-            ("step", false, None),
-            ("stepAfter", false, None),
-            ("stepBefore", false, None),
-            ("cardinal", false, None),
-            ("monotoneX", false, None),
-            ("monotoneY", false, None),
-            ("rounded", false, None),
-            ("rounded", true, Some(corner_mask.as_slice())),
-            ("unrecognized", false, None),
+        for kind in [
+            "basis",
+            "linear",
+            "natural",
+            "bumpX",
+            "bumpY",
+            "catmullRom",
+            "step",
+            "stepAfter",
+            "stepBefore",
+            "cardinal",
+            "monotoneX",
+            "monotoneY",
+            "rounded",
+            "unrecognized",
         ] {
             for route in [
                 &points[..0],
@@ -100,7 +90,7 @@ mod tests {
                 &points[..],
                 &large_coordinates,
             ] {
-                let geometry = curve_path_geometry(route, kind, 5.0, compact, mask);
+                let geometry = curve_path_geometry(route, kind, 5.0);
                 let bounds_bits = |bounds: path_bounds::SvgPathBounds| {
                     [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
                 };
@@ -120,7 +110,7 @@ mod tests {
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: 10.0, y: 4.0 },
         ];
-        let geometry = curve_path_geometry(&points, "basis", 5.0, false, None);
+        let geometry = curve_path_geometry(&points, "basis", 5.0);
         assert_eq!(geometry.d, "M0,0L10,4");
     }
 
@@ -136,7 +126,7 @@ mod tests {
             ("bumpX", "M0,0C10,0,10,10,20,10C30,10,30,0,40,0"),
             ("bumpY", "M0,0C0,5,20,5,20,10C20,5,40,5,40,0"),
         ] {
-            let geometry = curve_path_geometry(&points, curve, 5.0, false, None);
+            let geometry = curve_path_geometry(&points, curve, 5.0);
             assert_eq!(geometry.d, expected);
             assert!(geometry.bounds.is_some());
         }
@@ -170,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_rounded_corners_do_not_overrun_shallow_elk_endpoint_turns() {
+    fn rounded_corners_keep_mermaid_half_segment_cut_on_shallow_turns() {
         let line_data = vec![
             crate::model::LayoutPoint {
                 x: 130.484,
@@ -190,25 +180,10 @@ mod tests {
             },
         ];
 
-        let parity = curve_path_geometry(&line_data, "rounded", 12.0, false, None).d;
-        let compact = curve_path_geometry(&line_data, "rounded", 12.0, true, None).d;
-
+        let parity = curve_path_geometry(&line_data, "rounded", 12.0).d;
         assert!(
             parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
             "expected the Mermaid-compatible half-segment cut: {parity}"
-        );
-        assert!(
-            compact.starts_with("M130.484,214.303L135.168,228.356Q135.784,230.203 135.784,232.15"),
-            "expected the compact tangent-length cut: {compact}"
-        );
-
-        let corner_mask = [true, false, true, true];
-        let adapter_linear =
-            curve_path_geometry(&line_data, "rounded", 12.0, true, Some(&corner_mask)).d;
-        assert!(
-            adapter_linear
-                .starts_with("M130.484,214.303L135.784,230.203L135.784,240.203Q135.784,250.203"),
-            "expected the endpoint adapter to stay linear while the ELK bend remains rounded: {adapter_linear}"
         );
     }
 }
