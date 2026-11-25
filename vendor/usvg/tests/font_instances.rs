@@ -1095,6 +1095,43 @@ fn coalesced_decorations_keep_their_flattened_paths_and_paint_order() {
 }
 
 #[test]
+fn decoration_paint_tracks_positive_layout_members() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for (position, spacing, missing_is_painted) in [
+        ("dx='0 32'", -25, false),
+        ("x='20 57'", -25, false),
+        ("", -25, false),
+        ("dx='0 32'", -20, true),
+    ] {
+        let tree = render(
+            &options,
+            "font-size='50' text-decoration='underline'",
+            &format!("<tspan fill='none' letter-spacing='{spacing}' {position}>ZQ</tspan>"),
+        );
+        let glyph_paint: Vec<_> = text(&tree)
+            .layouted()
+            .iter()
+            .flat_map(|span| {
+                span.positioned_glyphs.iter().map(|glyph| {
+                    (
+                        glyph.text.as_str(),
+                        glyph.id.0 == 0,
+                        span.glyph_has_visible_paint(glyph),
+                    )
+                })
+            })
+            .collect();
+        assert_eq!(
+            glyph_paint,
+            [("Z", false, true), ("Q", true, missing_is_painted)],
+            "{position} {spacing}"
+        );
+    }
+}
+
+#[test]
 fn vertical_overline_is_half_a_font_height_from_the_strike() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());

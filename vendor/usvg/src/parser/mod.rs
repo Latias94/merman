@@ -18,8 +18,6 @@ mod use_node;
 
 #[cfg(feature = "text")]
 mod text;
-#[cfg(feature = "text")]
-pub(crate) use converter::Cache;
 pub use image::{ImageHrefDataResolverFn, ImageHrefResolver, ImageHrefStringResolverFn};
 pub use options::{DEFAULT_MAX_DEPTH, Options};
 #[cfg(feature = "writer")]
@@ -180,6 +178,25 @@ impl crate::Tree {
     pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
         let doc = parse_document(text, opt)?;
         self::converter::convert_doc(&doc, opt)
+    }
+
+    /// Parses an SVG once and configures fonts at the first nonempty text span selected
+    /// for conversion, after reference expansion and whitespace trimming.
+    ///
+    /// Only the font database, default font family, and text resolvers supplied by `configure`
+    /// are used. If no text needs fonts, `configure` is not called. Returning `false` declines
+    /// conversion and the method returns `Ok(None)` without publishing a partial tree.
+    #[cfg(feature = "text")]
+    pub fn try_from_str_with_text_fonts(
+        text: &str,
+        opt: &Options,
+        configure: impl FnOnce(&mut Options<'static>) -> bool,
+    ) -> Result<Option<Self>, Error> {
+        let doc = parse_document(text, opt)?;
+        let mut cache = converter::Cache::new(&doc, opt.fontdb.clone());
+        cache.configure_text_fonts = Some(Box::new(configure));
+        let tree = converter::convert_doc_with_cache(&mut cache, opt)?;
+        Ok((!cache.text_fonts_declined).then_some(tree))
     }
 
     /// Parses a metric probe and also resolves the metric bbox x of its end-anchored twin.

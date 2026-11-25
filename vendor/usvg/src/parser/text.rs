@@ -114,6 +114,9 @@ pub(crate) fn convert(
         cache,
         &mut parent.text_font_omissions,
     );
+    if chunks.is_empty() || cache.text_fonts_declined {
+        return;
+    }
 
     let rendering_mode: TextRendering = text_node
         .find_attribute(AId::TextRendering)
@@ -154,8 +157,8 @@ pub(crate) fn convert(
     let probe_end_anchor = report_anchor && text::layout::can_probe_end_anchor(&text);
     let Some(end_x) = text::convert(
         &mut text,
-        state.opt,
-        cache,
+        cache.text_font_options.as_deref().unwrap_or(state.opt),
+        &mut cache.fonts,
         probe_end_anchor,
         &mut parent.text_font_omissions.no_primary_face,
     ) else {
@@ -265,6 +268,10 @@ fn collect_text_chunks_impl(
             continue;
         }
 
+        if child.text().is_empty() {
+            continue;
+        }
+
         if !parent.is_visible_element(state.opt) {
             iter_state.chars_count += child.text().chars().count();
             continue;
@@ -283,7 +290,13 @@ fn collect_text_chunks_impl(
             }
         };
 
-        let font = convert_font(parent, state);
+        if !cache.ensure_text_fonts() {
+            return;
+        }
+        let font = convert_font(
+            parent,
+            cache.text_font_options.as_deref().unwrap_or(state.opt),
+        );
 
         let raw_paint_order: svgtypes::PaintOrder =
             parent.find_attribute(AId::PaintOrder).unwrap_or_default();
@@ -482,7 +495,7 @@ fn resolve_text_flow_href(
     Some((id, path))
 }
 
-fn convert_font(node: SvgNode, state: &converter::State) -> Font {
+fn convert_font(node: SvgNode, options: &Options) -> Font {
     let style: Option<FontStyle> = node.find_attribute(AId::FontStyle);
     let stretch = conv_font_stretch(node);
     let authored_weight = resolve_font_weight(node);
@@ -538,20 +551,20 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
                 "Failed to parse {} value: '{}'. Falling back to {}.",
                 AId::FontFamily,
                 font_families,
-                state.opt.font_family
+                options.font_family
             );
         })
         .unwrap_or_default();
 
     if families.is_empty() {
-        families.push(FontFamily::Named(state.opt.font_family.clone()));
+        families.push(FontFamily::Named(options.font_family.clone()));
     }
 
     Font {
         families,
         language: node
             .find_attribute::<&str>(AId::XmlLang)
-            .or(state.opt.text_fallback.language.as_deref())
+            .or(options.text_fallback.language.as_deref())
             .filter(|tag| crate::text::is_language_tag(tag))
             .map(str::to_ascii_lowercase),
         style,

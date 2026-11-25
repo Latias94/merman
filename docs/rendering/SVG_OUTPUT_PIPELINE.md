@@ -56,8 +56,11 @@ Browser publication retains the Web package's DOM admission and mount checks.
 
 Native export uses the same effective SVG references for validation and resource admission.
 An image contributes the bytes of its selected source for each rendered instance. An empty
-higher-priority link retains precedence over its alternate attribute. A `<tref>` that contributes
-visible text requires a text environment even when its source is elsewhere in the document.
+higher-priority link retains precedence over its alternate attribute. PNG, JPEG and PDF prepare a
+font context when usvg first needs one for converted text, after reference expansion and whitespace
+trimming. The SVG finalization report counts authored text sources conservatively, including local
+`<tref>` elements and whitespace. Standalone SVG uses that source-level evidence for font
+self-containment without running the native parser.
 
 Native-font typography admission inspects canonical typed declaration owners; it does not expand
 compatibility JSON to discover styles. Layout JSON projects its semantic payload from the exact
@@ -298,8 +301,8 @@ normalizes retained anchor navigation once; the terminal validator treats parser
 value and does not decode entities again. The terminal checks recognized attribute namespaces and
 uses the backend's `href` precedence for the resource inventory and expansion plan. An unprefixed
 `href` takes precedence over XLink on ordinary resource links. Legacy `<tref>` first checks XLink
-and then the first attribute with the `href` local name. The font requirement includes character
-data copied from a local `<tref>` target, including a target declared later in the SVG.
+and then the first attribute with the `href` local name. Usvg decides whether character data copied
+from a local `<tref>` target needs fonts, including references to targets declared later in the SVG.
 The terminal validator resolves the same-document `<use>` graph before `usvg`, rejecting
 cycles and expanded node/depth limits while retaining occurrence counts for inline-image export
 budgets. It uses the same `svgtypes` IRI grammar as the pinned `usvg` dependency for local

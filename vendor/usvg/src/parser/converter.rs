@@ -49,6 +49,12 @@ pub struct Cache<'a> {
     pub(crate) fonts: crate::text::cache::FontCache,
     #[cfg(feature = "text")]
     pub(super) text_anchor_probe: Option<TextAnchorProbe>,
+    #[cfg(feature = "text")]
+    pub(super) configure_text_fonts: Option<ConfigureTextFonts<'a>>,
+    #[cfg(feature = "text")]
+    pub(super) text_font_options: Option<Box<Options<'static>>>,
+    #[cfg(feature = "text")]
+    pub(super) text_fonts_declined: bool,
 
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
@@ -71,6 +77,9 @@ pub struct Cache<'a> {
 }
 
 #[cfg(feature = "text")]
+type ConfigureTextFonts<'a> = Box<dyn FnOnce(&mut Options<'static>) -> bool + 'a>;
+
+#[cfg(feature = "text")]
 pub(super) struct TextAnchorProbe {
     pub(super) id: Box<str>,
     pub(super) supported: bool,
@@ -88,6 +97,12 @@ impl<'a> Cache<'a> {
 
             #[cfg(feature = "text")]
             text_anchor_probe: None,
+            #[cfg(feature = "text")]
+            configure_text_fonts: None,
+            #[cfg(feature = "text")]
+            text_font_options: None,
+            #[cfg(feature = "text")]
+            text_fonts_declined: false,
 
             clip_paths: HashMap::new(),
             masks: HashMap::new(),
@@ -105,6 +120,20 @@ impl<'a> Cache<'a> {
             filter_index: 0,
             image_index: 0,
         }
+    }
+
+    #[cfg(feature = "text")]
+    pub(super) fn ensure_text_fonts(&mut self) -> bool {
+        if let Some(configure) = self.configure_text_fonts.take() {
+            let mut options = Box::new(Options::default());
+            if !configure(&mut options) {
+                self.text_fonts_declined = true;
+                return false;
+            }
+            self.fonts.fontdb = options.fontdb.clone();
+            self.text_font_options = Some(options);
+        }
+        !self.text_fonts_declined
     }
 
     // TODO: macros?
@@ -390,6 +419,11 @@ pub(super) fn convert_doc_with_cache(cache: &mut Cache, opt: &Options) -> Result
         tree.root.children.push(Node::Group(Box::new(g)));
     }
 
+    #[cfg(feature = "text")]
+    if cache.text_fonts_declined {
+        return Ok(tree);
+    }
+
     // Clear cache to make sure that all `Arc<T>` objects have a single strong reference.
     cache.clip_paths.clear();
     cache.masks.clear();
@@ -537,6 +571,10 @@ pub(crate) fn convert_children(
     parent: &mut Group,
 ) {
     for node in parent_node.children() {
+        #[cfg(feature = "text")]
+        if cache.text_fonts_declined {
+            break;
+        }
         convert_element(node, state, cache, parent);
     }
 }
@@ -639,6 +677,10 @@ pub(crate) fn convert_clip_path_elements(
     parent: &mut Group,
 ) {
     for node in clip_node.children() {
+        #[cfg(feature = "text")]
+        if cache.text_fonts_declined {
+            break;
+        }
         let tag_name = match node.tag_name() {
             Some(v) => v,
             None => continue,

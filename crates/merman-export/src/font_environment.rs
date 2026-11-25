@@ -388,10 +388,9 @@ impl FinalTreeFontWalk<'_> {
             if !span.visible {
                 continue;
             }
-            let has_paint = span.has_visible_paint();
             for glyph in &span.positioned_glyphs {
                 export_checkpoint(self.control)?;
-                if glyph.id.0 == 0 && has_paint {
+                if glyph.id.0 == 0 && span.glyph_has_visible_paint(glyph) {
                     self.evidence.notdef_glyph_count =
                         self.evidence.notdef_glyph_count.saturating_add(1);
                 }
@@ -415,21 +414,6 @@ pub(crate) struct ExportFontEnvironment {
 
 impl ExportFontEnvironment {
     pub(crate) fn from_svg(svg: &ResvgCompatibleSvg) -> Result<Self> {
-        if svg.finalization_report().text_element_count() == 0 {
-            let fontdb = Arc::new(usvg::fontdb::Database::new());
-            return Ok(Self {
-                fontdb: Arc::clone(&fontdb),
-                default_family: String::new(),
-                resolver: usvg::FontResolver::default(),
-                plan: ExportFontPlanSeed {
-                    source_mode: ExportFontMode::SystemOnly,
-                    system_fonts: fontdb,
-                    recorder: Arc::new(FontResolutionRecorder::default()),
-                    #[cfg(feature = "native-fonts")]
-                    native_export: None,
-                },
-            });
-        }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         {
             Self::from_resources(svg.font_catalog(), svg.font_source_policy(), || {
@@ -441,6 +425,23 @@ impl ExportFontEnvironment {
             let _ = svg;
             Err(ExportError::FontSourceUnavailable)
         }
+    }
+
+    pub(crate) fn fontless_plan(options: &usvg::Options<'_>) -> ExportFontPlanSeed {
+        ExportFontPlanSeed {
+            source_mode: ExportFontMode::SystemOnly,
+            system_fonts: Arc::clone(&options.fontdb),
+            recorder: Arc::new(FontResolutionRecorder::default()),
+            #[cfg(feature = "native-fonts")]
+            native_export: None,
+        }
+    }
+
+    pub(crate) fn install(self, options: &mut usvg::Options<'_>) -> ExportFontPlanSeed {
+        options.fontdb = self.fontdb;
+        options.font_family = self.default_family;
+        options.font_resolver = self.resolver;
+        self.plan
     }
 
     #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
@@ -579,21 +580,6 @@ mod tests {
         );
 
         assert!(matches!(result, Err(ExportError::FontSourceUnavailable)));
-    }
-
-    #[test]
-    fn sealed_svg_without_text_needs_no_available_font_source() {
-        let session = RenderEnvironment::deterministic()
-            .with_font_source_policy(FontSourcePolicy::embedded_only())
-            .begin_session()
-            .unwrap();
-        let svg = finalize_resvg_svg(
-            r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h5v5z"/></svg>"#,
-            &session,
-        )
-        .unwrap();
-        let fonts = ExportFontEnvironment::from_svg(&svg).unwrap();
-        assert!(fonts.fontdb.is_empty());
     }
 
     #[test]
@@ -990,6 +976,39 @@ mod tests {
             let (_, report) = export("underline", style, content);
             assert_eq!(report.fonts().notdef_glyph_count(), 0, "{style} {content}");
             assert!(!report.fonts().unresolved_glyph_fallback());
+        }
+    }
+
+    #[cfg(all(feature = "native-fonts", feature = "png"))]
+    #[test]
+    fn strict_png_ignores_a_missing_glyph_without_a_painted_decoration_segment() {
+        let context = crate::NativeFontContext::from_font_bytes(
+            [include_bytes!("../tests/fonts/NotoSans-Latin-subset.ttf").to_vec()],
+            crate::NativeFontLimits::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let options = crate::RasterOptions::default().with_font_context(context.clone());
+        let strict = crate::RasterOptions::default()
+            .with_font_context(context.with_strict_glyph_coverage(true));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let seal = |position| {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="8" y="40" font-family="Noto Sans" font-size="31.25" text-decoration="underline overline line-through"><tspan fill="none" letter-spacing="-18.75" {position}>AQ</tspan></text></svg>"#
+            );
+            finalize_resvg_svg(&source, &session).unwrap()
+        };
+        let relative = seal(r#"dx="0 32""#);
+        let absolute = seal(r#"x="8 41.21875""#);
+        let (relative_png, relative_report) =
+            crate::svg_to_png_with_report(&relative, &options).unwrap();
+        let (absolute_png, absolute_report) =
+            crate::svg_to_png_with_report(&absolute, &options).unwrap();
+        assert_eq!(relative_png, absolute_png);
+        for (svg, report) in [(&absolute, absolute_report), (&relative, relative_report)] {
+            assert_eq!(report.fonts().notdef_glyph_count(), 0);
+            assert!(!report.fonts().unresolved_glyph_fallback());
+            assert_eq!(crate::svg_to_png(svg, &strict).unwrap(), absolute_png);
         }
     }
 

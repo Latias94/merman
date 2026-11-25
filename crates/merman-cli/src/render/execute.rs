@@ -1,3 +1,5 @@
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use super::prepare::PreparedRawSvgFonts;
 #[cfg(feature = "svg")]
 use super::prepare::{PreparedGraphicalOutput, PreparedGraphicalRender, PreparedGraphicalSource};
 use super::prepare::{PreparedSingleOutput, PreparedWorkflow};
@@ -388,22 +390,7 @@ fn execute_graphical_with_pipeline(
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::RenderError::from)?;
-            let font_context = if let Some(fonts) = &raw.fonts {
-                fonts.load(svg.finalization_report().text_element_count() != 0, control)?
-            } else {
-                None
-            };
-            let output = if let Some(context) = font_context {
-                crate::diagnostics::DiagnosticSink::new(
-                    prepared.quiet || !prepared.font_diagnostics,
-                    stderr,
-                )
-                .info("native fonts: raw SVG uses the selected font context for painting; geometry is unchanged");
-                std::borrow::Cow::Owned(prepared.output.clone().with_font_context(context))
-            } else {
-                std::borrow::Cow::Borrowed(&prepared.output)
-            };
-            execute_raw_svg(prepared, &output, svg, permit, control, stderr)
+            execute_raw_svg(prepared, raw.fonts.as_ref(), svg, permit, control, stderr)
         }
     }
 }
@@ -411,7 +398,7 @@ fn execute_graphical_with_pipeline(
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
-    output: &PreparedGraphicalOutput,
+    fonts: Option<&PreparedRawSvgFonts>,
     svg: merman::svg::ResvgCompatibleSvg,
     permit: super::admission::BackendPermit,
     control: &merman::OperationControl,
@@ -419,15 +406,13 @@ fn execute_raw_svg(
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "markdown")]
     let metadata = (None, None);
-    match output {
+    match &prepared.output {
         PreparedGraphicalOutput::Svg => Err(CliError::InvalidOutput(
             "SVG output entered the encoded backend".to_string(),
         )),
         #[cfg(feature = "png")]
         PreparedGraphicalOutput::Png { options } => {
-            let prepared_raster =
-                merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(merman::RenderError::from)?;
+            let prepared_raster = prepare_raw_svg_raster(&svg, options, fonts, control)?;
             let report =
                 prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Png);
             let actual_weight = super::admission::actual_raster_weight(
@@ -436,6 +421,7 @@ fn execute_raw_svg(
                 8,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_raw_svg_font_context(prepared, report.fonts(), stderr);
             report_raster_plan(prepared.quiet, report.raster(), stderr);
             report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
             report_native_export_quality(
@@ -460,9 +446,7 @@ fn execute_raw_svg(
         }
         #[cfg(feature = "jpeg")]
         PreparedGraphicalOutput::Jpeg { options } => {
-            let prepared_raster =
-                merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(merman::RenderError::from)?;
+            let prepared_raster = prepare_raw_svg_raster(&svg, options, fonts, control)?;
             let report =
                 prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Jpeg);
             let actual_weight = super::admission::actual_raster_weight(
@@ -471,6 +455,7 @@ fn execute_raw_svg(
                 10,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_raw_svg_font_context(prepared, report.fonts(), stderr);
             report_raster_plan(prepared.quiet, report.raster(), stderr);
             report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
             report_native_export_quality(
@@ -495,13 +480,25 @@ fn execute_raw_svg(
         }
         #[cfg(feature = "pdf")]
         PreparedGraphicalOutput::Pdf { options } => {
-            let prepared_pdf =
-                merman::svg::export::prepare_pdf_controlled(&svg, options, control.clone())
-                    .map_err(merman::RenderError::from)?;
+            use merman::svg::export;
+
+            let prepared_pdf = match fonts {
+                Some(fonts) => fonts.prepare_export(|load| {
+                    export::prepare_pdf_with_font_loader_controlled(
+                        &svg,
+                        options,
+                        control.clone(),
+                        load,
+                    )
+                })?,
+                None => export::prepare_pdf_controlled(&svg, options, control.clone())
+                    .map_err(merman::RenderError::from)?,
+            };
             let report = prepared_pdf.report();
             let actual_weight =
                 super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_raw_svg_font_context(prepared, report.fonts(), stderr);
             report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
             report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
             report_native_export_quality(
@@ -522,6 +519,39 @@ fn execute_raw_svg(
                 desc: metadata.1,
             })
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn prepare_raw_svg_raster(
+    svg: &merman::svg::ResvgCompatibleSvg,
+    options: &merman::svg::export::RasterOptions,
+    fonts: Option<&PreparedRawSvgFonts>,
+    control: &merman::OperationControl,
+) -> Result<merman::svg::export::PreparedRaster, CliError> {
+    use merman::svg::export;
+
+    match fonts {
+        Some(fonts) => fonts.prepare_export(|load| {
+            export::prepare_raster_with_font_loader_controlled(svg, options, control.clone(), load)
+        }),
+        None => export::prepare_raster_controlled(svg, options, control.clone())
+            .map_err(|error| merman::RenderError::from(error).into()),
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn report_raw_svg_font_context(
+    prepared: &PreparedGraphicalRender,
+    fonts: merman::svg::export::ExportFontPlan,
+    stderr: &SharedWriter,
+) {
+    if fonts.source_mode() == merman::svg::export::ExportFontMode::NativeContext {
+        crate::diagnostics::DiagnosticSink::new(
+            prepared.quiet || !prepared.font_diagnostics,
+            stderr,
+        )
+        .info("native fonts: raw SVG uses the selected font context for painting; geometry is unchanged");
     }
 }
 

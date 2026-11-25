@@ -108,6 +108,16 @@ pub(super) struct PreparedRawSvgFonts {
     sources: Vec<crate::cli::FontSource>,
 }
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+type RawSvgFontLoader<'a> = dyn FnMut(
+        bool,
+        &OperationControl,
+    ) -> Result<
+        Option<merman::svg::export::NativeFontContext>,
+        merman::svg::export::NativeFontError,
+    > + Send
+    + 'a;
+
 #[cfg(feature = "svg")]
 #[derive(Clone)]
 pub(super) enum PreparedGraphicalOutput {
@@ -128,23 +138,6 @@ pub(super) enum PreparedGraphicalOutput {
 
 #[cfg(feature = "svg")]
 impl PreparedGraphicalOutput {
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    pub(super) fn with_font_context(
-        mut self,
-        context: merman::svg::export::NativeFontContext,
-    ) -> Self {
-        match &mut self {
-            Self::Svg => {}
-            #[cfg(feature = "png")]
-            Self::Png { options } => options.font_context = Some(context),
-            #[cfg(feature = "jpeg")]
-            Self::Jpeg { options } => options.font_context = Some(context),
-            #[cfg(feature = "pdf")]
-            Self::Pdf { options } => options.font_context = Some(context),
-        }
-        self
-    }
-
     pub(super) fn target(&self, svg: merman::SvgRequest) -> merman::RenderTarget {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
@@ -759,24 +752,32 @@ impl PreparedRawSvgFonts {
         }))
     }
 
-    pub(super) fn load(
+    pub(super) fn prepare_export<T>(
         &self,
-        svg_uses_fonts: bool,
-        control: &OperationControl,
-    ) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
-        if self.sources.is_empty() {
-            if !svg_uses_fonts {
+        prepare: impl FnOnce(&mut RawSvgFontLoader<'_>) -> Result<T, merman::svg::export::ExportError>,
+    ) -> Result<T, CliError> {
+        use merman::svg::export::ExportError;
+
+        let mut loader_failed = false;
+        let result = prepare(&mut |needs_fonts, control| {
+            if self.sources.is_empty() && (!needs_fonts || !self.options.system_fonts) {
                 return Ok(None);
             }
-            if !self.options.system_fonts {
-                return Err(CliError::InvalidInput(
+            let mut options = self.options.clone();
+            options.system_fonts &= needs_fonts;
+            load_native_font_context(options, self.system, control)
+                .map(Some)
+                .inspect_err(|_| loader_failed = true)
+        });
+        result.map_err(|error| match error {
+            ExportError::FontSourceUnavailable if !self.options.system_fonts => {
+                CliError::InvalidInput(
                     "--font-system off requires explicit fonts to paint SVG text; provide --font-file or --font-dir".to_owned(),
-                ));
+                )
             }
-        }
-        let mut options = self.options.clone();
-        options.system_fonts &= svg_uses_fonts;
-        load_cli_font_context(options, self.system, &self.sources, control).map(Some)
+            ExportError::NativeFont(error) if loader_failed => native_font_error(error, &self.sources),
+            other => merman::RenderError::from(other).into(),
+        })
     }
 }
 
