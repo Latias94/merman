@@ -113,7 +113,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "2ecdeb3901889a38b3362a32f7d7afda0f66af3a6a21b44b6a95b7685e5d5f6e",
+    "cargo_lock_sha256": "e8dfd590c63001bfc2773bdf277ae32dadf22286d954764e994c59675a5e47eb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "f9ccf8c7aa9d341007962ee315c7ce6d39b30ee85a55c56567c11b9bb115028d"
   },
@@ -121,37 +121,37 @@
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 183,
-      "packages_sha256": "097dd001f4559b32f8db065281f2669159d95b66efd55b32f420bd24414ead63"
+      "package_count": 182,
+      "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios",
-      "package_count": 185,
-      "packages_sha256": "576343161920c1826cbe4eb9794b54721eb46ac10ba2874a1a7bbf2476645e20"
+      "package_count": 184,
+      "packages_sha256": "16e60556ecbad82146f0b2b3dc4df0bfe0253854f3c990a9823817b614f645df"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 185,
-      "packages_sha256": "576343161920c1826cbe4eb9794b54721eb46ac10ba2874a1a7bbf2476645e20"
+      "package_count": 184,
+      "packages_sha256": "16e60556ecbad82146f0b2b3dc4df0bfe0253854f3c990a9823817b614f645df"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 183,
-      "packages_sha256": "097dd001f4559b32f8db065281f2669159d95b66efd55b32f420bd24414ead63"
+      "package_count": 182,
+      "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-ios",
-      "package_count": 185,
-      "packages_sha256": "576343161920c1826cbe4eb9794b54721eb46ac10ba2874a1a7bbf2476645e20"
+      "package_count": 184,
+      "packages_sha256": "16e60556ecbad82146f0b2b3dc4df0bfe0253854f3c990a9823817b614f645df"
     }
   ],
   "dependency_closure": {
-    "package_count": 185,
-    "packages_sha256": "576343161920c1826cbe4eb9794b54721eb46ac10ba2874a1a7bbf2476645e20"
+    "package_count": 184,
+    "packages_sha256": "16e60556ecbad82146f0b2b3dc4df0bfe0253854f3c990a9823817b614f645df"
   },
   "licenses": [
     {
@@ -831,16 +831,6 @@
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
           "repository": "https://github.com/indexmap-rs/indexmap"
-        },
-        {
-          "name": "lalrpop-util",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [
-            "Niko Matsakis <niko@alum.mit.edu>"
-          ],
-          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lock_api",

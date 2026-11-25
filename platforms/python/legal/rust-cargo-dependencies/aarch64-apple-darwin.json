@@ -97,7 +97,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "2ecdeb3901889a38b3362a32f7d7afda0f66af3a6a21b44b6a95b7685e5d5f6e",
+    "cargo_lock_sha256": "e8dfd590c63001bfc2773bdf277ae32dadf22286d954764e994c59675a5e47eb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "5c18f57e656bcd15cb63c2e70d0cf3df3975adbdaa573f00d41d46cac1dc8a8e"
   },
@@ -105,13 +105,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 183,
-      "packages_sha256": "097dd001f4559b32f8db065281f2669159d95b66efd55b32f420bd24414ead63"
+      "package_count": 182,
+      "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
     }
   ],
   "dependency_closure": {
-    "package_count": 183,
-    "packages_sha256": "097dd001f4559b32f8db065281f2669159d95b66efd55b32f420bd24414ead63"
+    "package_count": 182,
+    "packages_sha256": "62c6663bfe4c272f51ff25fad48cdd946d64d7ee80e1c846ad79bbaa5c0f58b2"
   },
   "licenses": [
     {
@@ -791,16 +791,6 @@
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
           "repository": "https://github.com/indexmap-rs/indexmap"
-        },
-        {
-          "name": "lalrpop-util",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [
-            "Niko Matsakis <niko@alum.mit.edu>"
-          ],
-          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lock_api",

@@ -295,7 +295,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "2ecdeb3901889a38b3362a32f7d7afda0f66af3a6a21b44b6a95b7685e5d5f6e",
+    "cargo_lock_sha256": "e8dfd590c63001bfc2773bdf277ae32dadf22286d954764e994c59675a5e47eb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "f33062369734a1786c00d7b5a4dba3b88136dc5250915a2129def623d083e2db"
   },
@@ -303,73 +303,73 @@
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
-      "package_count": 160,
-      "packages_sha256": "efc635f50410572aa9f12b5359bd1c9b122f54d702aa56df2bb000b452db4302"
+      "package_count": 159,
+      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
-      "package_count": 159,
-      "packages_sha256": "bfdd7df0f5e8765b5307d3c9c2ed015fe0921f27dc0446046aec1fd7be4c89c2"
+      "package_count": 158,
+      "packages_sha256": "ff71da5b263e46b9588715f95c8fab6d6d6aa3408340acb5e8b0ce03d6a70e61"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
-      "package_count": 160,
-      "packages_sha256": "efc635f50410572aa9f12b5359bd1c9b122f54d702aa56df2bb000b452db4302"
+      "package_count": 159,
+      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 160,
-      "packages_sha256": "efc635f50410572aa9f12b5359bd1c9b122f54d702aa56df2bb000b452db4302"
+      "package_count": 159,
+      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 162,
-      "packages_sha256": "318c722c25d704346730045fa671bc7a0d5a5c94944b36853a1aff562dd42dbd"
+      "package_count": 161,
+      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 160,
-      "packages_sha256": "efc635f50410572aa9f12b5359bd1c9b122f54d702aa56df2bb000b452db4302"
+      "package_count": 159,
+      "packages_sha256": "9bb527a16224757c8efe47982f590139086c795561054315f53b0de18b9e30c6"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
-      "package_count": 162,
-      "packages_sha256": "14c0d50c071df9c40aa5b31b029399da7a1accebe1b677e97aad3be42583a152"
+      "package_count": 161,
+      "packages_sha256": "d68bb70b3e0ee6516ae73f59ecf9ed7613d004297d7184b1236e686d02834ea6"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 162,
-      "packages_sha256": "318c722c25d704346730045fa671bc7a0d5a5c94944b36853a1aff562dd42dbd"
+      "package_count": 161,
+      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
-      "package_count": 162,
-      "packages_sha256": "318c722c25d704346730045fa671bc7a0d5a5c94944b36853a1aff562dd42dbd"
+      "package_count": 161,
+      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 162,
-      "packages_sha256": "318c722c25d704346730045fa671bc7a0d5a5c94944b36853a1aff562dd42dbd"
+      "package_count": 161,
+      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
-      "package_count": 162,
-      "packages_sha256": "318c722c25d704346730045fa671bc7a0d5a5c94944b36853a1aff562dd42dbd"
+      "package_count": 161,
+      "packages_sha256": "5214b02f867769a4df19a4e4f6f9b1fc92b58bf65dcb32d34a26a7071819cd3f"
     }
   ],
   "dependency_closure": {
-    "package_count": 165,
-    "packages_sha256": "a17d7a50a85f55120cd6461f4c3ed9218d000ace619566de48526e910a1b9a4d"
+    "package_count": 164,
+    "packages_sha256": "15e9e0eca425a17463f3ffa08f25d3a9536f1da6b06031bf0a57b7772e5c3ca8"
   },
   "licenses": [
     {
@@ -922,16 +922,6 @@
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
           "repository": "https://github.com/indexmap-rs/indexmap"
-        },
-        {
-          "name": "lalrpop-util",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [
-            "Niko Matsakis <niko@alum.mit.edu>"
-          ],
-          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lock_api",

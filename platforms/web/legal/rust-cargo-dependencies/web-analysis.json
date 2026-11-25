@@ -73,13 +73,13 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "2ecdeb3901889a38b3362a32f7d7afda0f66af3a6a21b44b6a95b7685e5d5f6e",
+    "cargo_lock_sha256": "e8dfd590c63001bfc2773bdf277ae32dadf22286d954764e994c59675a5e47eb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "6df7e0c7cbf10d0517c21bdb69af517bf6ecdbda75043d1f1ef2e86992b6a15c"
   },
   "dependency_closure": {
-    "package_count": 94,
-    "packages_sha256": "ba6b2ea8720db4ed19739af140b61b3f16c4324a80d07091f794ff9d840f1a42"
+    "package_count": 93,
+    "packages_sha256": "0a7bdfad3de67827afd32b361251f94cdb70786fad7972cb57e446fcb69f136f"
   },
   "licenses": [
     {
@@ -450,16 +450,6 @@
             "The wasm-bindgen Developers"
           ],
           "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys"
-        },
-        {
-          "name": "lalrpop-util",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [
-            "Niko Matsakis <niko@alum.mit.edu>"
-          ],
-          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lock_api",
