@@ -100,9 +100,9 @@ system-clock = ["merman-model/system-clock"]
 system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
-benchmark-stages = ["merman-model/benchmark-stages"]
+benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchmark-stages"]
 layout-cytoscape = ["dep:manatee"]
-layout-dagre = ["dep:dugong"]
+layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk"]
 layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/layout-shoal"]
 math = [
@@ -117,7 +117,7 @@ math = [
 [dependencies]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
-merman-render-core = { workspace = true, features = ["resources"] }
+merman-render-core = { workspace = true, features = ["svg-output"] }
 base64.workspace = true
 cssparser.workspace = true
 data-url.workspace = true

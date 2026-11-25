@@ -2693,11 +2693,16 @@ dependencies = [
 name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
+ "dugong",
  "kurbo 0.13.1",
+ "memchr",
  "merman-core",
  "merman-layout-shoal",
+ "merman-markup",
  "merman-model",
+ "roxmltree 0.21.2",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-pub(crate) fn is_xml_1_0_char(ch: char) -> bool {
+pub fn is_xml_1_0_char(ch: char) -> bool {
     matches!(ch, '\u{9}' | '\u{A}' | '\u{D}')
         || matches!(
             ch,
@@ -9,7 +9,7 @@ pub(crate) fn is_xml_1_0_char(ch: char) -> bool {
 }
 
 /// Removes scalar values that XML 1.0 cannot serialize, without allocating for ordinary text.
-pub(crate) fn strip_forbidden_xml_1_0_chars(value: &str) -> Cow<'_, str> {
+pub fn strip_forbidden_xml_1_0_chars(value: &str) -> Cow<'_, str> {
     let Some((first_invalid, invalid)) = value.char_indices().find(|(_, ch)| !is_xml_1_0_char(*ch))
     else {
         return Cow::Borrowed(value);
@@ -28,7 +28,7 @@ pub(crate) fn strip_forbidden_xml_1_0_chars(value: &str) -> Cow<'_, str> {
 /// Enforces the XML 1.0 scalar-value contract while preserving an existing owned allocation when
 /// no normalization is required.
 #[cfg(test)]
-pub(crate) fn strip_forbidden_xml_1_0_chars_cow<'a>(value: Cow<'a, str>) -> Cow<'a, str> {
+fn strip_forbidden_xml_1_0_chars_cow<'a>(value: Cow<'a, str>) -> Cow<'a, str> {
     match strip_forbidden_xml_1_0_chars(value.as_ref()) {
         Cow::Borrowed(_) => value,
         Cow::Owned(normalized) => Cow::Owned(normalized),
@@ -39,7 +39,7 @@ pub(crate) fn strip_forbidden_xml_1_0_chars_cow<'a>(value: Cow<'a, str>) -> Cow<
 ///
 /// Valid borrowed and owned inputs retain their original storage. Allocation begins only after
 /// the first forbidden scalar is observed.
-pub(crate) fn strip_forbidden_xml_1_0_chars_cow_with_checkpoints<'a, E>(
+pub fn strip_forbidden_xml_1_0_chars_cow_with_checkpoints<'a, E>(
     value: Cow<'a, str>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Cow<'a, str>, E> {
@@ -68,7 +68,7 @@ pub(crate) fn strip_forbidden_xml_1_0_chars_cow_with_checkpoints<'a, E>(
     Ok(Cow::Owned(normalized))
 }
 
-pub(crate) fn is_valid_xml_entity_reference(entity: &str) -> bool {
+pub fn is_valid_xml_entity_reference(entity: &str) -> bool {
     if entity.is_empty() {
         return false;
     }
@@ -139,7 +139,7 @@ fn html_entity_reference_end(value: &str, amp: usize) -> Option<usize> {
 ///
 /// XML only defines five named entities. HTML entities such as `&nbsp;` are decoded to their
 /// Unicode value, while unknown references are preserved as literal text by escaping `&`.
-pub(crate) fn normalize_html_entities_for_xml(value: &str) -> Cow<'_, str> {
+pub fn normalize_html_entities_for_xml(value: &str) -> Cow<'_, str> {
     let value = strip_forbidden_xml_1_0_chars(value);
     if !value.as_bytes().contains(&b'&') {
         return value;

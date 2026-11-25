@@ -1147,8 +1147,12 @@ dependencies = [
 name = "merman-render-core"
 version = "0.11.0"
 dependencies = [
+ "dugong",
+ "memchr",
+ "merman-markup",
  "merman-model",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

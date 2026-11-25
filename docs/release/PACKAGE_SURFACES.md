@@ -82,7 +82,7 @@ compatible version requirements and intentional upgrade exceptions.
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 `merman-core-preprocess` provides source editing and byte-span mapping behind `merman-core`.
-`merman-render-core` provides shared layout and edge geometry behind `merman-render`.
+`merman-render-core` provides shared layout geometry, bounded SVG writing, and render contracts behind `merman-render`.
 Homebrew/core owns formula publication; this repository only validates the external formula after
 a stable release.
 

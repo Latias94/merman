@@ -14,7 +14,9 @@ third-party-bundle = true
 
 [features]
 default = []
+benchmark-stages = ["merman-model?/benchmark-stages"]
 route-paint = ["dep:kurbo"]
+layout-dagre = ["svg-output", "dep:dugong"]
 layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
 resources = ["dep:merman-model", "dep:thiserror"]
 resources-agentflow = ["resources", "merman-model/diagram-agentflow"]
@@ -24,14 +26,20 @@ resources-mindmap = ["resources", "merman-model/diagram-mindmap"]
 resources-sequence = ["resources", "merman-model/diagram-sequence"]
 resources-swimlane = ["resources", "merman-model/diagram-swimlane"]
 resources-zenuml = ["resources", "merman-model/diagram-zenuml"]
+svg-output = ["resources", "dep:memchr", "dep:merman-markup", "dep:serde_json", "merman-model/compat-json", "merman-model/html-entities"]
 test-support = []
 
 [dependencies]
+dugong = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+memchr = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-core = { workspace = true, features = ["diagram-flowchart", "diagram-zenuml", "presentation", "test-support"] }
+roxmltree.workspace = true

@@ -2107,6 +2107,7 @@ impl RenderSession {
                 .math_backend
                 .as_ref()
                 .is_some_and(|backend| backend.supports_resource_policy(self.resource_policy)),
+            _ => false,
         }
     }
 

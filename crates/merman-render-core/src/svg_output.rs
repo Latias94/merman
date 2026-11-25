@@ -9,7 +9,7 @@ const MAX_HINTED_SVG_CAPACITY: usize = 32 * 1024;
 ///
 /// Family writers intentionally depend on this narrow interface instead of `String`, allowing the
 /// operation boundary to reject an append before the backing allocation grows.
-pub(super) trait SvgOutput: fmt::Write {
+pub trait SvgOutput: fmt::Write {
     fn push_str(&mut self, value: &str);
     fn push(&mut self, value: char);
     fn len(&self) -> usize;
@@ -69,7 +69,7 @@ impl SvgOutput for String {
 /// The document sink continues to own retained-byte admission and operation failures. Quotes
 /// remain literal in character data, and forbidden XML scalars are removed during serialization.
 /// Keeping the trailing brackets across fragments also prevents a split `]]>` terminator.
-pub(in crate::svg::parity) struct XmlTextOutput<'a, S> {
+pub struct XmlTextOutput<'a, S> {
     out: &'a mut S,
     trailing_brackets: u8,
     #[cfg(feature = "benchmark-stages")]
@@ -77,7 +77,7 @@ pub(in crate::svg::parity) struct XmlTextOutput<'a, S> {
 }
 
 impl<'a, S: SvgOutput> XmlTextOutput<'a, S> {
-    pub(in crate::svg::parity) fn new(out: &'a mut S) -> Self {
+    pub fn new(out: &'a mut S) -> Self {
         Self {
             out,
             trailing_brackets: 0,
@@ -275,7 +275,7 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
 /// Producer-owned projected-byte accounting remains separate: some emitters reserve or charge
 /// their own contributions before serialization, so this document sink must not charge them a
 /// second time.
-pub(super) struct BoundedSvgOutput<'a> {
+pub struct BoundedSvgOutput<'a> {
     out: String,
     budget: SvgByteBudget<'a>,
     admitted_end: usize,
@@ -337,7 +337,7 @@ impl BoundedSvgOutputFailure {
 }
 
 impl<'a> BoundedSvgOutput<'a> {
-    pub(super) fn new(work_meter: &'a OperationWorkMeter) -> Self {
+    pub fn new(work_meter: &'a OperationWorkMeter) -> Self {
         Self {
             out: String::new(),
             budget: work_meter.svg_byte_budget(),
@@ -353,7 +353,7 @@ impl<'a> BoundedSvgOutput<'a> {
     }
 
     /// Continues writing a document whose retained bytes have already been admitted.
-    pub(super) fn resume(out: String, work_meter: &'a OperationWorkMeter) -> Self {
+    pub fn resume(out: String, work_meter: &'a OperationWorkMeter) -> Self {
         Self {
             admitted_end: out.len(),
             out,
@@ -361,7 +361,7 @@ impl<'a> BoundedSvgOutput<'a> {
         }
     }
 
-    pub(super) fn finish(self) -> crate::Result<String> {
+    pub fn finish(self) -> crate::Result<String> {
         match self.state.into_error() {
             Some(error) => Err(error),
             None => {
@@ -372,7 +372,7 @@ impl<'a> BoundedSvgOutput<'a> {
     }
 
     /// Writes a deferred fragment under the existing document budget and moves it into place.
-    pub(super) fn write_deferred_at(
+    pub fn write_deferred_at(
         &mut self,
         offset: usize,
         write: impl FnOnce(&mut Self) -> crate::Result<()>,
@@ -628,7 +628,7 @@ mod tests {
         assert!(serialized.contains("]]&gt;"));
         assert!(serialized.contains("&amp;amp;"));
         assert!(serialized.contains("\"quotes\" >"));
-        let document = crate::xml_dom::Document::parse(&serialized).unwrap();
+        let document = roxmltree::Document::parse(&serialized).unwrap();
         let css = document
             .descendants()
             .find(|node| node.has_tag_name("style"))
@@ -804,7 +804,7 @@ mod tests {
         }
         out.push_str("</style></svg>");
         assert_eq!(out, "<svg><style>A&amp;&lt;Ω]]&gt;\t\n\rB</style></svg>");
-        crate::xml_dom::Document::parse(&out).expect("the producer must emit valid XML");
+        roxmltree::Document::parse(&out).expect("the producer must emit valid XML");
     }
 
     #[test]
@@ -1095,7 +1095,7 @@ mod tests {
         }
     }
 
-    fn resource_limit(error: crate::Error) -> crate::ResourceLimitExceeded {
+    fn resource_limit(error: crate::Error) -> crate::resources::ResourceLimitExceeded {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected bounded SVG output to preserve its resource-limit failure");
         };
