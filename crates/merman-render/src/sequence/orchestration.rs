@@ -7,7 +7,6 @@ use super::actors::{
     SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
     sequence_actor_is_type_width_limited,
 };
-use super::block_geometry::SequenceBlockLayout;
 use super::block_steps::{
     BlockStepPlanContext, SequenceBlockPlan, is_block_end, is_block_section, is_block_start,
     plan_sequence_blocks,
@@ -25,6 +24,7 @@ use merman_model::families::sequence::{
     SequenceMessageKind,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_sequence::frame::SequenceBlockLayout;
 use std::collections::HashMap;
 
 pub(super) struct SequenceLayoutGraphContext<'a> {

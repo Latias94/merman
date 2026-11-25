@@ -1,7 +1,10 @@
+#[cfg(test)]
+use merman_render_sequence::frame::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX;
+pub(crate) use merman_render_sequence::frame::{
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
+};
+
 pub(crate) const SEQUENCE_MESSAGE_WRAP_PADDING_SIDES: f64 = 2.0;
-pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
-pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
-pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
 pub(crate) const SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT: f64 = 20.0;
 pub(crate) const SEQUENCE_ACTOR_POPUP_ROW_HEIGHT: f64 = 30.0;
 

@@ -573,35 +573,8 @@ pub struct ErDiagramLayout {
     pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
-/// A control-frame divider. Its horizontal endpoints are the enclosing frame's edges.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg(feature = "diagram-sequence")]
-pub struct SequenceFrameSectionLayout {
-    /// ID of the semantic `else`, `and`, or `option` message.
-    pub id: String,
-    pub label: String,
-    pub y: f64,
-}
-
-/// Final drawing bounds of a visible Sequence control frame, in diagram coordinates.
-///
-/// `x` and `y` are the top-left corner, unlike the center-based participant nodes. Frames
-/// retain source order, including nested frames. Background `rect` blocks remain in `nodes`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg(feature = "diagram-sequence")]
-pub struct SequenceFrameLayout {
-    /// ID of the semantic message that opens the frame.
-    pub id: String,
-    pub kind: merman_model::families::sequence::SequenceControlKind,
-    /// Semantic label before presentation-specific brackets, wrapping, and entity decoding.
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sections: Vec<SequenceFrameSectionLayout>,
-}
+pub use merman_render_sequence::frame::{SequenceFrameLayout, SequenceFrameSectionLayout};
 
 /// One completed activation bar, ordered by its activation-start occurrence.
 ///

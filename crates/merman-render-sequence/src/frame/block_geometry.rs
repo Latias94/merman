@@ -1,26 +1,25 @@
-use super::SequenceOperationCheckpoints;
-use super::constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
+use super::{
+    FrameCheckpoints, SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
+    SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
 };
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode};
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessage};
+use merman_render_core::{LayoutEdge, LayoutNode, Result};
 use rustc_hash::FxHashMap;
 
 /// Cursor replay state, consumed when preparing the final public drawing geometry.
 #[derive(Debug, Clone)]
-pub(super) struct SequenceBlockLayout {
-    pub(super) start_y: f64,
-    pub(super) stop_y: f64,
-    pub(super) start_x: Option<f64>,
-    pub(super) stop_x: Option<f64>,
-    pub(super) section_ys_by_id: FxHashMap<String, f64>,
+pub struct SequenceBlockLayout {
+    pub start_y: f64,
+    pub stop_y: f64,
+    pub start_x: Option<f64>,
+    pub stop_x: Option<f64>,
+    pub section_ys_by_id: FxHashMap<String, f64>,
 }
 
 pub(super) fn frame_x_from_actors(
     model: &SequenceDiagramModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    checkpoints: SequenceOperationCheckpoints<'_>,
+    checkpoints: FrameCheckpoints<'_>,
 ) -> Result<Option<(f64, f64)>> {
     let mut min_x = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;

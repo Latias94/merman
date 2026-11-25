@@ -3,8 +3,9 @@
 The `diagram-pie` feature provides typed layout, theme binding, and SVG content for Pie diagrams.
 `merman-render` supplies the operation's text measurement, root viewport, and SVG output policy.
 
-The `diagram-quadrant-chart` feature provides typed geometry and paint binding for Quadrant
-Chart. `merman-render` resolves native theme precedence and emits the SVG.
+The `diagram-quadrant-chart` feature provides typed geometry, paint binding, and SVG content
+for Quadrant Chart. `merman-render` resolves theme precedence and supplies the SVG root,
+accessibility, and stylesheet.
 
 The `diagram-radar` feature provides typed layout and the point and radius codecs for Radar.
 `merman-render` resolves the theme and writes the SVG.

@@ -104,8 +104,9 @@ admission, and the editor and compatibility projections.
 `merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
 facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
 
-`merman-render-sequence` owns participant geometry, glyphs, and lifelines. `merman-render` supplies
-the bounded SVG sink and diagram ID, places the labels, and retains traversal and operation checks.
+`merman-render-sequence` owns participant geometry, glyphs, lifelines, and prepared control
+frames. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter.
+It owns text and math measurement, label placement, and layout orchestration.
 
 ### Chart rendering
 
@@ -115,10 +116,10 @@ supplies text metrics and assembles the chart into a scoped SVG document under t
 operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
 bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
 supplies text metrics and emits the SVG for both families.
-The chart crate owns Quadrant Chart geometry and paint binding, Radar layout and its point and
-radius codecs, Treemap hierarchy layout, Venn layout and its solver, and Wardley layout and
-annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and SVG
-emission for these families.
+The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
+layout and its point and radius codecs, Treemap hierarchy layout, Venn layout and its solver, and
+Wardley layout and annotation boxes. `merman-render` supplies theme precedence, the operation work
+meter, and the SVG document and output policy.
 
 ### Frozen presentation is distinct from engine initialization
 

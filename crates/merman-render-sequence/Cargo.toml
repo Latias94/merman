@@ -12,5 +12,11 @@ readme = "README.md"
 [package.metadata.merman-legal]
 third-party-bundle = true
 
+[features]
+benchmark-stages = ["merman-model/benchmark-stages"]
+
 [dependencies]
+merman-model = { workspace = true, features = ["diagram-sequence"] }
 merman-render-core = { workspace = true, features = ["svg-output"] }
+rustc-hash.workspace = true
+serde.workspace = true

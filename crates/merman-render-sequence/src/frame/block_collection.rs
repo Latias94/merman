@@ -1,11 +1,10 @@
-use super::SequenceOperationCheckpoints;
+use super::FrameCheckpoints;
 use super::block_geometry::{SequenceBlockGeometry, SequenceBlockLayout};
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode};
 use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };
+use merman_render_core::{LayoutEdge, LayoutNode, Result};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -25,7 +24,7 @@ pub(super) struct SequenceBlock<'a> {
 impl<'a> SequenceBlock<'a> {
     pub(super) fn geometry(
         &self,
-        checkpoints: SequenceOperationCheckpoints<'_>,
+        checkpoints: FrameCheckpoints<'_>,
     ) -> Result<SequenceBlockGeometry<'a>> {
         let mut geometry = SequenceBlockGeometry::empty();
         for (index, section) in self.sections.iter().enumerate() {
@@ -53,7 +52,7 @@ pub(super) fn collect_sequence_blocks<'a>(
     edges_by_id: &FxHashMap<&str, &LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
-    checkpoints: SequenceOperationCheckpoints<'_>,
+    checkpoints: FrameCheckpoints<'_>,
 ) -> Result<(Vec<Option<usize>>, Vec<SequenceBlock<'a>>)> {
     collect_sequence_blocks_with(
         model,
@@ -74,7 +73,7 @@ fn collect_sequence_blocks_with<'a>(
     model: &'a SequenceDiagramModel,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     mut message_geometry: impl FnMut(&'a SequenceMessage) -> SequenceBlockGeometry<'a>,
-    checkpoints: SequenceOperationCheckpoints<'_>,
+    checkpoints: FrameCheckpoints<'_>,
 ) -> Result<(Vec<Option<usize>>, Vec<SequenceBlock<'a>>)> {
     let mut blocks_by_end_index = vec![None; model.messages.len()];
     let mut blocks = Vec::with_capacity(model.messages.len().div_ceil(2));
@@ -148,18 +147,13 @@ fn collect_sequence_blocks_with<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::collect_sequence_blocks_with;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use crate::sequence::block_geometry::SequenceBlockGeometry;
+    use super::{FrameCheckpoints, SequenceBlockGeometry, collect_sequence_blocks_with};
     use merman_model::families::sequence::{
         SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
     };
+    use merman_render_core::resources::{OperationWorkMeter, RenderResourcePolicy};
     use rustc_hash::FxHashMap;
     use std::collections::BTreeMap;
-
-    fn checkpoints(meter: &OperationWorkMeter) -> super::SequenceOperationCheckpoints<'_> {
-        super::SequenceOperationCheckpoints::for_emit(meter)
-    }
 
     fn message(
         id: String,
@@ -224,14 +218,14 @@ mod tests {
                 y += 1.0;
                 geometry
             },
-            checkpoints(&meter),
+            FrameCheckpoints(&meter),
         )
         .unwrap();
 
         assert_eq!(blocks.len(), DEPTH);
         assert_eq!(blocks_by_end_index.iter().flatten().count(), DEPTH);
         for block in blocks {
-            let geometry = block.geometry(checkpoints(&meter)).unwrap();
+            let geometry = block.geometry(FrameCheckpoints(&meter)).unwrap();
             assert_eq!(
                 geometry.frame_y_range(),
                 Some((0.0, CONTENT_MESSAGES as f64))
@@ -263,7 +257,7 @@ mod tests {
                 y += 1.0;
                 geometry
             },
-            checkpoints(&meter),
+            FrameCheckpoints(&meter),
         )
         .unwrap();
 

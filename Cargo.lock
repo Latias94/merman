@@ -2796,7 +2796,10 @@ dependencies = [
 name = "merman-render-sequence"
 version = "0.11.0"
 dependencies = [
+ "merman-model",
  "merman-render-core",
+ "rustc-hash 2.1.3",
+ "serde",
 ]
 
 [[package]]

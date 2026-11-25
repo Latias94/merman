@@ -1,28 +1,91 @@
-use super::SequenceLayoutCheckpoints;
-use super::block_collection::collect_sequence_blocks;
-use super::block_geometry::{SequenceBlockLayout, frame_x_from_actors, resolved_block_frame_x};
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode, SequenceFrameLayout, SequenceFrameSectionLayout};
-use merman_model::families::sequence::{SequenceControlKind, SequenceDiagramModel};
-use rustc_hash::FxHashMap;
+//! Prepared control-frame geometry and source/emission order projection.
 
-pub(super) struct SequenceFrameGeometry {
-    pub(super) frames: Vec<SequenceFrameLayout>,
-    /// Frame indices in message emission order, independent of source-ordered geometry.
-    pub(super) placements: Vec<Option<usize>>,
+mod block_collection;
+mod block_geometry;
+
+use merman_model::OperationPhase;
+use merman_model::families::sequence::{SequenceControlKind, SequenceDiagramModel};
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::{LayoutEdge, LayoutNode, Result};
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
+
+use block_collection::collect_sequence_blocks;
+pub use block_geometry::SequenceBlockLayout;
+use block_geometry::{frame_x_from_actors, resolved_block_frame_x};
+
+pub const SEQUENCE_CHECKPOINT_INTERVAL: usize = 64;
+pub const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
+pub const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
+pub const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
+
+#[derive(Clone, Copy)]
+struct FrameCheckpoints<'a>(&'a OperationWorkMeter);
+
+impl FrameCheckpoints<'_> {
+    fn checkpoint(self) -> Result<()> {
+        self.0
+            .checkpoint(OperationPhase::Layout)
+            .map_err(Into::into)
+    }
+
+    fn checkpoint_loop(self, iteration: usize) -> Result<()> {
+        if iteration.is_multiple_of(SEQUENCE_CHECKPOINT_INTERVAL) {
+            self.checkpoint()?;
+        }
+        Ok(())
+    }
 }
 
-pub(super) fn prepare_sequence_frame_geometry(
+/// A control-frame divider. Its horizontal endpoints are the enclosing frame's edges.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SequenceFrameSectionLayout {
+    /// ID of the semantic `else`, `and`, or `option` message.
+    pub id: String,
+    pub label: String,
+    pub y: f64,
+}
+
+/// Final drawing bounds of a visible Sequence control frame, in diagram coordinates.
+///
+/// `x` and `y` are the top-left corner, unlike the center-based participant nodes. Frames
+/// retain source order, including nested frames. Background `rect` blocks remain in `nodes`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SequenceFrameLayout {
+    /// ID of the semantic message that opens the frame.
+    pub id: String,
+    pub kind: SequenceControlKind,
+    /// Semantic label before presentation-specific brackets, wrapping, and entity decoding.
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<SequenceFrameSectionLayout>,
+}
+
+pub struct SequenceFrameGeometry {
+    pub frames: Vec<SequenceFrameLayout>,
+    /// Frame indices in message emission order, independent of source-ordered geometry.
+    pub placements: Vec<Option<usize>>,
+}
+
+/// Resolves final control-frame geometry from the prepared layout and the source messages.
+///
+/// The caller admits this linear pass on the operation work meter before constructing the input.
+pub fn prepare_sequence_frame_geometry(
     model: &SequenceDiagramModel,
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],
     block_layouts_by_id: &FxHashMap<String, SequenceBlockLayout>,
     label_box_width: f64,
-    checkpoints: SequenceLayoutCheckpoints<'_>,
+    work_meter: &OperationWorkMeter,
 ) -> Result<SequenceFrameGeometry> {
     #[cfg(feature = "benchmark-stages")]
     let _stage =
         merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
+    let checkpoints = FrameCheckpoints(work_meter);
     let mut nodes_by_id = FxHashMap::default();
     for (index, node) in nodes.iter().enumerate() {
         checkpoints.checkpoint_loop(index)?;
