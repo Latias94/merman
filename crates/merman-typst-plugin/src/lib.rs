@@ -118,9 +118,13 @@ fn typst_capabilities_json() -> Vec<u8> {
 }
 
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    match execute_typst_once_data(OperationKey::Svg, source, options_json) {
-        Ok(svg) => match std::str::from_utf8(&svg) {
-            Ok(svg) => typst_success_payload(RENDER_OPERATION, json!({ "svg": svg })),
+    match execute_typst_once(OperationKey::Svg, source, options_json) {
+        Ok((svg, theme_outcome)) => match std::str::from_utf8(&svg) {
+            Ok(svg) => typst_success_payload(
+                RENDER_OPERATION,
+                json!({ "svg": svg }),
+                theme_outcome.map(|outcome| json!({ "theme_outcome": outcome })),
+            ),
             Err(error) => typst_internal_error_payload(
                 RENDER_OPERATION,
                 format!("render_svg returned non-UTF-8 SVG: {error}"),
@@ -131,10 +135,10 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 }
 
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    match execute_typst_once_data(OperationKey::AnalysisJson, source, options_json) {
-        Ok(analysis_json) => match serde_json::from_slice::<Value>(&analysis_json) {
+    match execute_typst_once(OperationKey::AnalysisJson, source, options_json) {
+        Ok((analysis_json, _)) => match serde_json::from_slice::<Value>(&analysis_json) {
             Ok(analysis) => {
-                typst_success_payload(ANALYZE_OPERATION, json!({ "analysis": analysis }))
+                typst_success_payload(ANALYZE_OPERATION, json!({ "analysis": analysis }), None)
             }
             Err(error) => typst_internal_error_payload(
                 ANALYZE_OPERATION,
@@ -181,7 +185,7 @@ fn typst_theme_payload(
 ) -> Vec<u8> {
     match output {
         Ok(output) => match serde_json::from_slice::<Value>(&output) {
-            Ok(result) => typst_success_payload(operation, json!({ "result": result })),
+            Ok(result) => typst_success_payload(operation, json!({ "result": result }), None),
             Err(error) => typst_internal_error_payload(
                 operation,
                 format!("theme operation returned invalid canonical JSON: {error}"),
@@ -214,16 +218,19 @@ fn admit_typst_operation_id(
     Ok(operation_id)
 }
 
-fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
-    serde_json::to_vec(&typst_result_payload(
+fn typst_success_payload(operation: &str, data: Value, metadata: Option<Value>) -> Vec<u8> {
+    let mut payload = typst_result_payload(
         operation,
         merman_bindings_core::BindingStatus::Ok,
         None,
         None,
         None,
         Some(data),
-    ))
-    .expect("Typst result envelope is serializable")
+    );
+    if let Some(metadata) = metadata {
+        payload["metadata"] = metadata;
+    }
+    serde_json::to_vec(&payload).expect("Typst result envelope is serializable")
 }
 
 fn typst_binding_error_payload(
@@ -280,17 +287,18 @@ fn typst_result_payload(
     })
 }
 
-fn execute_typst_once_data(
+fn execute_typst_once(
     operation: OperationKey,
     source: &[u8],
     options_json: &[u8],
-) -> Result<Vec<u8>, BindingError> {
+) -> Result<(Vec<u8>, Option<Value>), BindingError> {
     let ceiling_override = typst_layout_work_ceiling(operation);
-    typst_artifact_contract().execute_once_data_with_resource_ceiling(
+    typst_artifact_contract().execute_once_with_resource_ceiling(
         BindingOperationRequest::new(operation.id(), source).with_options_json(options_json),
         TYPST_RESOURCE_PROFILE,
         ceiling_override.as_slice(),
         &[LAYOUT_WORK_LIMIT],
+        operation == OperationKey::Svg,
         apply_typst_options_policy,
     )
 }
@@ -1271,6 +1279,10 @@ mod tests {
         assert_success_envelope(&payload, RENDER_OPERATION);
         assert!(payload["data"]["svg"].as_str().unwrap().contains("<svg"));
         assert!(payload["data"]["svg"].as_str().unwrap().contains("Hello"));
+        assert_eq!(
+            payload["metadata"]["theme_outcome"]["mode"],
+            "mermaid_parity"
+        );
     }
 
     #[cfg(feature = "svg")]

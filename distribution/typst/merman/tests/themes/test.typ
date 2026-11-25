@@ -43,6 +43,20 @@
 #assert.eq(svg(source, theme: "forest"), svg(source, site-config: (theme: "forest")))
 #assert.eq(svg(source, profile: dark-profile, theme: "forest"), svg(source, theme: "forest"))
 
+#let dark-result = mermaid-result(source, profile: dark-profile)
+#assert(dark-result.ok)
+#let dark-outcome = dark-result.metadata.theme_outcome
+#assert.eq(dark-outcome.mode, "merman_native")
+#assert.eq(dark-outcome.preset_id, "studio")
+#assert.eq(dark-outcome.appearance, "dark")
+#assert.eq(type(dark-outcome.notices), array)
+#let source-first = mermaid-result(
+  "---\nconfig:\n  theme: forest\n---\n" + source,
+  options: (version: 4, theme: (preset: "studio", precedence: "source")),
+)
+#assert(source-first.ok)
+#assert.eq(source-first.metadata.theme_outcome.mode, "mermaid_parity")
+
 #let opaque = (version: 4, theme: (preset: "studio", appearance: "dark"), svg: (diagram_id: "opaque", pipeline: "readable"))
 #assert.eq(svg(source, options: opaque), svg(source, options: opaque, theme: "ignored", appearance: "ignored"))
 
@@ -71,6 +85,7 @@
 #assert(not unknown.ok)
 #assert.eq(unknown.operation, "render-svg")
 #assert.eq(unknown.svg, none)
+#assert.eq(unknown.metadata, none)
 #mermaid(source, theme: "unknown-typst-preset", document-context: true, error-mode: "placeholder")
 
 Theme fixture passed.
