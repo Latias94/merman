@@ -725,13 +725,14 @@ python3 scripts/crates_io_release.py publish-independent \
   --publication-repository Latias94/merman
 python3 scripts/crates_io_release.py registry-independent --observe-only \
   --package "$PACKAGE" --version "$VERSION" --sha256 "$ARCHIVE_SHA256" \
-  --publication-repository Latias94/merman
+  --source-sha "$SOURCE_SHA" --publication-repository Latias94/merman
 ```
 
-The repository option uses the maintainer's GitHub CLI authentication for deployment receipts,
-separate from the crates.io token. Keep the candidate directory and its `upload-attempted.json`
-or `registry-confirmed.json`. Continue observation with the original checksum after an uncertain
-response. Do not run the manual and workflow publishers for the same version concurrently. Once
+Manual candidates and uploads require the same receipt repository as the workflow. The repository
+option uses the maintainer's GitHub CLI authentication, separate from the crates.io token. Keep the
+original candidate directory, including any local attempt marker from an older publisher. Continue
+observation with the original checksum after an uncertain response. Do not run the manual and
+workflow publishers for the same version concurrently. Once
 the group is visible, build a fresh registry consumer with all three output features before releasing
 `merman-export` and its workspace dependents.
 Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
@@ -774,14 +775,16 @@ missing version must also pass a credential-free locked dry run without changing
 
 The protected publisher downloads the artifact by ID and verifies both digests and the producing
 run attempt. An immutable artifact holds the prepared bytes, but it does not indicate that they
-were sent. The publisher checks crates.io and its sparse index, then writes an `upload-intent`
-receipt before sending one `PUT` with those exact bytes. A partial observation, conflict, yank,
+were sent. The publisher checks crates.io and its sparse index, then writes one shared
+`upload-intent` receipt before sending one `PUT` with those exact bytes. No local intent file
+needs to be written between those operations. A partial observation, conflict, yank,
 registry query failure or failed receipt write does not send a request.
 
 The matching package, version, source commit and checksum are recorded as `registry-confirmed`
 when both registry endpoints confirm the archive. Shared receipts live in the repository's
-`crates.io-receipts` deployment records. They do not expire with Actions artifacts. Keep those
-records. Only the `crates.io` job has the crates.io publishing credential.
+`crates.io-receipts` deployment records. The publisher retains a shared confirmation before
+mirroring it in the local candidate directory. These records do not expire with Actions artifacts.
+Only the `crates.io` job has the crates.io publishing credential.
 
 A rerun or new dispatch without an intent or confirmation can still prepare the first upload,
 including after cancellation while retaining the candidate. Rerun all jobs to bind a new
@@ -793,7 +796,8 @@ Older dispatches without receipts require one operator reconciliation. If an old
 already exists, run `registry-independent --observe-only` with its original `--sha256`,
 `--source-sha` and `--publication-repository Latias94/merman` to record the exact match. If it is
 missing and you can establish that no send was attempted, use the manual frozen candidate flow.
-An unresolved attempt stays observation-only.
+An unresolved attempt stays observation-only. Do not dispatch pre-receipt workflow revisions for
+new uploads.
 
 After upload or a matching existing release, the verifier waits for both endpoints to report
 the exact checksum and records the confirmation. For a renderer fork it then compiles a fresh

@@ -174,18 +174,14 @@ def retain_receipt(candidate: FrozenCrate, path: Path) -> bool:
 
 
 def upload(
-    candidate: FrozenCrate, *, token: str, intent_path: Path,
-    retain_shared_intent: Callable[[], None] | None = None,
+    candidate: FrozenCrate, *, token: str, retain_intent: Callable[[], None],
 ) -> None:
     if not token or not token.isascii() or not token.isprintable() or any(char.isspace() for char in token):
         raise CrateArchiveError("invalid crates.io upload token")
     # Cargo's Registry Web API frames each original byte string with its u32 length.
     body = (struct.pack("<I", len(candidate.metadata)) + candidate.metadata
             + struct.pack("<I", len(candidate.archive)) + candidate.archive)
-    if retain_shared_intent is not None:
-        retain_shared_intent()
-    if not retain_receipt(candidate, intent_path):
-        raise CrateArchiveError("this candidate has an upload intent; observe registry propagation")
+    retain_intent()
     connection = http.client.HTTPSConnection("crates.io", timeout=60)
     try:
         connection.request("PUT", "/api/v1/crates/new", body, {

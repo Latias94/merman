@@ -24,18 +24,18 @@ OWNERS = {
 }
 
 
-def read_api(path: str, *, paginate: bool = False):
+def read_api(path: str, *, paginate: bool = False, gh_env: dict[str, str] | None = None):
     command = ["gh", "api", path]
     if paginate:
         command.extend(["--paginate", "--slurp"])
-    completed = subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+    completed = subprocess.run(command, check=True, capture_output=True, text=True, timeout=60, env=gh_env)
     return json.loads(completed.stdout)
 
 
-def paginated_records(path: str, field: str) -> list[dict]:
+def paginated_records(path: str, field: str, *, gh_env: dict[str, str] | None = None) -> list[dict]:
     """Reject incomplete or duplicated GitHub job/artifact listings."""
 
-    pages = read_api(path, paginate=True)
+    pages = read_api(path, paginate=True, gh_env=gh_env)
     if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
         raise ValueError(f"Invalid GitHub {field} pages")
     total = pages[0].get("total_count")
@@ -148,29 +148,34 @@ def _independent_receipt(
     return IndependentCrateReceipt(digest, sha, payload["state"])
 
 
-def read_independent_receipt(repository: str, name: str, version: str) -> IndependentCrateReceipt | None:
+def read_independent_receipt(
+    repository: str, name: str, version: str, *, gh_env: dict[str, str] | None = None,
+) -> IndependentCrateReceipt | None:
     endpoint, task = _independent_receipt_endpoint(repository, name, version)
     query = urlencode({"task": task, "environment": INDEPENDENT_RECEIPT_ENV, "per_page": 100})
     try:
-        pages = read_api(f"{endpoint}?{query}", paginate=True)
+        pages = read_api(f"{endpoint}?{query}", paginate=True, gh_env=gh_env)
     except subprocess.SubprocessError as exc:
         raise OSError("Cannot read independent crate receipts") from exc
     if not isinstance(pages, list) or not pages or any(not isinstance(page, list) for page in pages):
         raise ValueError("Invalid independent crate deployment listing")
     result = None
     for page in pages:
-        for deployment in reversed(page):
+        for deployment in page:
             if not isinstance(deployment, dict):
                 raise ValueError("Invalid independent crate deployment")
             receipt = _independent_receipt(deployment, task=task, name=name, version=version)
-            if result is not None and receipt.sha256 != result.sha256:
-                raise ValueError("Independent crate receipts disagree on the archive digest")
-            if result is None or receipt.state == "registry-confirmed":
+            if result is not None and (receipt.sha256, receipt.source_sha) != (result.sha256, result.source_sha):
+                raise ValueError("Independent crate receipts disagree on the archive digest or source")
+            if result is None or (result.state == "upload-intent" and receipt.state == "registry-confirmed"):
                 result = receipt
     return result
 
 
-def record_independent_receipt(repository: str, name: str, version: str, receipt: IndependentCrateReceipt) -> None:
+def record_independent_receipt(
+    repository: str, name: str, version: str, receipt: IndependentCrateReceipt,
+    *, gh_env: dict[str, str] | None = None,
+) -> None:
     endpoint, task = _independent_receipt_endpoint(repository, name, version)
     request = {
         "ref": receipt.source_sha,
@@ -185,7 +190,7 @@ def record_independent_receipt(repository: str, name: str, version: str, receipt
     try:
         completed = subprocess.run(
             ["gh", "api", "--method", "POST", endpoint, "--input", "-"],
-            input=json.dumps(request), check=True, capture_output=True, text=True, timeout=60,
+            input=json.dumps(request), check=True, capture_output=True, text=True, timeout=60, env=gh_env,
         )
     except subprocess.SubprocessError as exc:
         raise OSError(f"Cannot retain independent crate {receipt.state} receipt") from exc
@@ -216,16 +221,17 @@ def _legacy_independent_version(repo_root: Path, sha: str, manifest: str, packag
 
 def independent_crate_history(
     repository: str, run_id: int, before_attempt: int, *, name: str, version: str,
-    source_sha: str, repo_root: Path, manifest: str,
+    source_sha: str, repo_root: Path, manifest: str, gh_env: dict[str, str] | None = None,
 ) -> IndependentCrateReceipt | None:
     """Read operation receipts and detect versions predating the receipt protocol."""
-    recorded = read_independent_receipt(repository, name, version)
+    recorded = read_independent_receipt(repository, name, version, gh_env=gh_env)
     if recorded is not None:
         return recorded
     title = f"Release independent crate {name} {version}"
     try:
         runs = paginated_records(
             f"repos/{repository}/actions/workflows/{INDEPENDENT_WORKFLOW}/runs?per_page=100", "workflow_runs",
+            gh_env=gh_env,
         )
     except subprocess.SubprocessError as exc:
         raise OSError("Cannot inspect legacy independent crate runs") from exc
@@ -235,20 +241,24 @@ def independent_crate_history(
             or current.get("head_sha") != source_sha):
         raise ValueError("Current independent crate run identity is missing or changed")
     numbers = [run.get("run_number") for run in runs]
-    if (any(type(number) is not int or not 1 <= number <= len(runs) for number in numbers)
+    if (any(type(number) is not int or number < 1 for number in numbers)
             or len(set(numbers)) != len(runs)):
-        raise ValueError("Independent crate run history is incomplete; reconcile legacy runs manually")
+        raise ValueError("Invalid independent crate run numbers")
+    first_receipt_run = current["run_number"]
     for run in runs:
         run_title, sha = run.get("display_title"), run.get("head_sha")
         if not isinstance(run_title, str) or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("Invalid legacy independent crate workflow run")
         if run_title.startswith(INDEPENDENT_RECEIPT_RUN):
+            first_receipt_run = min(first_receipt_run, run["run_number"])
             continue
         if run_title == title or (
             not re.fullmatch(r"Release independent crate [a-z0-9_-]+ [0-9A-Za-z.+-]+", run_title)
             and _legacy_independent_version(repo_root, sha, manifest, name) == version
         ):
             raise ValueError(f"{name} {version} has legacy release history without a receipt; reconcile it manually")
+    if sum(number < first_receipt_run for number in numbers) != first_receipt_run - 1:
+        raise ValueError("Independent crate history before receipts is incomplete; reconcile legacy runs manually")
     return None
 
 

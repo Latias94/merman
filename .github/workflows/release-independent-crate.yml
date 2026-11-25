@@ -80,6 +80,7 @@ jobs:
       source_tree: ${{ steps.source.outputs.source_tree }}
       attempt: ${{ steps.source.outputs.attempt }}
       sha256: ${{ steps.history.outputs.sha256 || steps.candidate.outputs.sha256 }}
+      archive_source_sha: ${{ steps.history.outputs.source_sha || steps.source.outputs.source_sha }}
       receipt_sha256: ${{ steps.candidate.outputs.receipt_sha256 }}
       publish: ${{ steps.candidate.outputs.publish }}
       artifact_id: ${{ steps.freeze.outputs.artifact-id }}
@@ -128,16 +129,9 @@ jobs:
         if: ${{ steps.history.outputs.sha256 == '' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-
-          actual_version="$(cargo pkgid -p "$PACKAGE" | sed -E 's/.*[#@]//')"
-          if [[ "$actual_version" != "$VERSION" ]]; then
-            echo "::error::$PACKAGE version $actual_version does not match requested version $VERSION." >&2
-            exit 1
-          fi
 
           python3 - "$PACKAGE" <<'PY'
           from pathlib import Path
@@ -286,11 +280,12 @@ jobs:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
           SHA256: ${{ needs.preflight.outputs.sha256 }}
+          ARCHIVE_SOURCE_SHA: ${{ needs.preflight.outputs.archive_source_sha }}
         shell: bash
         run: |
           set -euo pipefail
           args=(registry-independent --observe-only --package "$PACKAGE" --version "$VERSION"
-            --sha256 "$SHA256" --publication-repository "$GITHUB_REPOSITORY")
+            --sha256 "$SHA256" --source-sha "$ARCHIVE_SOURCE_SHA" --publication-repository "$GITHUB_REPOSITORY")
           if [[ "$PACKAGE" != "roughr-merman" ]]; then
             args+=(--verify-fork-consumer)
           fi

@@ -948,12 +948,7 @@ def preflight_initial_batch(
 
 
 def _workspace_package(metadata: dict, package_name: str) -> PackageInfo:
-    plan = crates_io_publish_plan(metadata)
-    package = plan.packages.get(package_name)
-    if package is not None:
-        return package
-    workspace = _workspace_packages_by_name(metadata)
-    raw = workspace.get(package_name)
+    raw = _workspace_packages_by_name(metadata).get(package_name)
     if raw is None:
         raise CratesIoPublishError(f"unknown workspace package: {package_name}")
     manifest_path = raw.get("manifest_path")
@@ -999,6 +994,7 @@ def preflight_independent_crate(
     registry_index: str = CRATES_IO_INDEX,
     verify_fork_consumer: bool = False,
     stage_candidate: Callable[[PreparedCrate], None] | None = None,
+    require_published: bool = False,
 ) -> tuple[bool, PreparedCrate]:
     """Return the publication state and the verified archive.
 
@@ -1032,7 +1028,7 @@ def preflight_independent_crate(
         stage_candidate(prepared)
     exists = independent_version_exists(
         package.name, package.version, prepared.artifact_sha256,
-        registry_api=registry_api, registry_index=registry_index,
+        registry_api=registry_api, registry_index=registry_index, require_published=require_published,
     )
     if exists:
         if stage_candidate is None:
@@ -1108,31 +1104,9 @@ def _load_independent_candidate(args: argparse.Namespace) -> tuple[crates_io_arc
     )
 
 
-def _record_independent_candidate(
-    args: argparse.Namespace, candidate: crates_io_archive.FrozenCrate,
-) -> None:
-    crates_io_archive.retain_receipt(candidate, args.candidate_dir / "registry-confirmed.json")
-
-
-def _write_independent_receipt(
-    args: argparse.Namespace, repository: str, digest: str, *, state: str,
-    origin: release_attempt_history.IndependentCrateReceipt | None = None,
-) -> None:
-    if origin is not None:
-        if origin.sha256 != digest:
-            raise CratesIoPublishError("independent release receipts belong to a different archive")
-        if origin.state == state:
-            return
-    source = origin.source_sha if origin is not None else args.source_sha
-    if not GIT_OBJECT.fullmatch(source or ""):
-        raise CratesIoPublishError("a shared independent crate receipt requires its original --source-sha")
-    release_attempt_history.record_independent_receipt(
-        repository, args.package, args.version, release_attempt_history.IndependentCrateReceipt(digest, source, state),
-    )
-
-
 def _independent_command(
     args: argparse.Namespace, repo_root: Path, metadata: dict | None, token: str | None,
+    *, gh_env: dict[str, str] | None,
 ) -> None:
     name, version = args.package, args.version
     if name != "roughr-merman" and name not in renderer_fork_consumer.FORK_REQUIREMENTS:
@@ -1144,6 +1118,7 @@ def _independent_command(
             os.environ["GITHUB_REPOSITORY"], int(args.publication_run_id), args.publication_attempt,
             name=name, version=version, source_sha=args.source_sha, repo_root=repo_root,
             manifest=package.manifest_path.resolve().relative_to(repo_root).as_posix(),
+            gh_env=gh_env,
         )
         _independent_outputs(
             sha256=selected.sha256 if selected else "",
@@ -1155,6 +1130,33 @@ def _independent_command(
     repository = args.publication_repository
     if args.publication_run_id is not None and args.command in {"preflight-independent", "publish-independent"}:
         repository = os.environ["GITHUB_REPOSITORY"]
+    if repository is None and args.candidate_dir is not None and args.command in {
+        "preflight-independent", "publish-independent",
+    }:
+        raise CratesIoPublishError("manual independent candidates require --publication-repository")
+    origin = (release_attempt_history.read_independent_receipt(repository, name, version, gh_env=gh_env)
+              if repository is not None else None)
+
+    def check_digest(digest: str) -> None:
+        if origin is not None and origin.sha256 != digest:
+            raise CratesIoPublishError("independent release receipts belong to a different archive")
+
+    def record_shared(digest: str, state: str) -> None:
+        if repository is None or (origin is not None and origin.state == state):
+            return
+        source = origin.source_sha if origin is not None else args.source_sha
+        if not GIT_OBJECT.fullmatch(source or ""):
+            raise CratesIoPublishError("a shared independent crate receipt requires its original --source-sha")
+        release_attempt_history.record_independent_receipt(
+            repository, name, version, release_attempt_history.IndependentCrateReceipt(digest, source, state),
+            gh_env=gh_env,
+        )
+
+    def confirm(digest: str, candidate: crates_io_archive.FrozenCrate | None) -> None:
+        record_shared(digest, "registry-confirmed")
+        if candidate is not None:
+            crates_io_archive.retain_receipt(candidate, args.candidate_dir / "registry-confirmed.json")
+
     outputs = {}
     if args.command == "preflight-independent":
         publication = None
@@ -1167,6 +1169,7 @@ def _independent_command(
 
         def stage_candidate(prepared: PreparedCrate) -> None:
             nonlocal candidate
+            check_digest(prepared.artifact_sha256)
             payload = crates_io_archive.publish_metadata(repo_root, prepared.artifact_path, name, version)
             assert_release_source(repo_root, args.source_sha, args.source_tree)
             candidate = crates_io_archive.freeze_candidate(
@@ -1179,35 +1182,26 @@ def _independent_command(
         exists, prepared = preflight_independent_crate(
             repo_root, metadata, package_name=name, expected_version=version,
             verify_fork_consumer=args.verify_fork_consumer,
-            stage_candidate=stage_candidate if repository is not None else None, **registry,
+            stage_candidate=stage_candidate if args.candidate_dir is not None else None,
+            require_published=origin is not None, **registry,
         )
         digest = prepared.artifact_sha256
-        if args.candidate_dir is not None and not exists:
-            if candidate is None:
-                stage_candidate(prepared)
-            else:
-                assert_release_source(repo_root, args.source_sha, args.source_tree)
-        if exists and candidate is not None:
-            _record_independent_candidate(args, candidate)
-        if exists and repository is not None:
-            _write_independent_receipt(args, repository, digest, state="registry-confirmed")
+        if exists:
+            confirm(digest, candidate)
+        elif candidate is not None:
+            assert_release_source(repo_root, args.source_sha, args.source_tree)
     elif args.command == "registry-independent":
         candidate = None
         if args.candidate_dir is not None:
             candidate, _ = _load_independent_candidate(args)
         digest = args.sha256
-        origin = (release_attempt_history.read_independent_receipt(repository, name, version)
-                  if repository is not None else None)
-        if origin is not None and origin.sha256 != digest:
-            raise CratesIoPublishError("independent release receipts belong to a different archive")
+        check_digest(digest)
         exists = independent_version_exists(
             name, version, digest, require_published=args.observe_only,
             attempts=args.visibility_attempts, delay_seconds=args.visibility_delay, **registry,
         )
-        if exists and candidate is not None:
-            _record_independent_candidate(args, candidate)
-        if exists and repository is not None:
-            _write_independent_receipt(args, repository, digest, state="registry-confirmed", origin=origin)
+        if exists:
+            confirm(digest, candidate)
         if args.verify_fork_consumer:
             renderer_fork_consumer.verify(
                 None, candidate=name, version=version, repo_root=repo_root,
@@ -1219,20 +1213,14 @@ def _independent_command(
         if publication is not None or os.environ.get("GITHUB_ACTIONS") == "true":
             _require_current_independent_attempt(publication)
             assert_release_source(repo_root, args.source_sha, args.source_tree)
-        intent = args.candidate_dir / "upload-attempted.json"
-        shared = (release_attempt_history.read_independent_receipt(repository, name, version)
-                  if repository is not None else None)
-        if shared is not None and shared.sha256 != digest:
-            raise CratesIoPublishError("independent release receipts belong to a different archive")
+        check_digest(digest)
         previous = (
-            crates_io_archive.has_receipt(candidate, args.candidate_dir / "registry-confirmed.json")
-            or crates_io_archive.has_receipt(candidate, intent)
-            or shared is not None
+            origin is not None
+            or crates_io_archive.has_receipt(candidate, args.candidate_dir / "registry-confirmed.json")
+            or crates_io_archive.has_receipt(candidate, args.candidate_dir / "upload-attempted.json")
         )
         if independent_version_exists(name, version, digest, **registry):
-            _record_independent_candidate(args, candidate)
-            if repository is not None:
-                _write_independent_receipt(args, repository, digest, state="registry-confirmed", origin=shared)
+            confirm(digest, candidate)
             print(f"{name} {version}: published (SHA-256 {digest})")
             return
         if previous:
@@ -1240,10 +1228,7 @@ def _independent_command(
         if not token:
             raise CratesIoPublishError("independent publication requires CARGO_REGISTRY_TOKEN")
         crates_io_archive.upload(
-            candidate, token=token, intent_path=intent,
-            retain_shared_intent=(
-                lambda: _write_independent_receipt(args, repository, digest, state="upload-intent")
-            ) if repository is not None else None,
+            candidate, token=token, retain_intent=lambda: record_shared(digest, "upload-intent"),
         )
         return
     else:
@@ -1326,6 +1311,14 @@ def main() -> int:
     os.environ.pop("CARGO_REGISTRIES_CRATES_IO_TOKEN", None)
     oidc_request_url = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_URL", None)
     oidc_request_token = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_TOKEN", None)
+    gh_env = None
+    if independent:
+        gh_credentials = {
+            name: value for name in ("GH_TOKEN", "GITHUB_TOKEN")
+            if (value := os.environ.pop(name, None)) is not None
+        }
+        if gh_credentials:
+            gh_env = dict(os.environ) | gh_credentials
     metadata = None
     try:
         if args.command in {"publish-receipted", "independent-history"} or (
@@ -1354,7 +1347,7 @@ def main() -> int:
 
     if independent:
         try:
-            _independent_command(args, repo_root, metadata, registry_token)
+            _independent_command(args, repo_root, metadata, registry_token, gh_env=gh_env)
         except (RuntimeError, OSError, ValueError, KeyError, tarfile.TarError) as error:
             print_error(str(error))
             return 1

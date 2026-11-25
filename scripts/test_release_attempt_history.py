@@ -173,7 +173,7 @@ class IndependentCrateHistoryTests(unittest.TestCase):
         }
 
     def select(self, runs=(), *, attempt=1, deployments=(), legacy_version=None):
-        def read(path, *, paginate):
+        def read(path, *, paginate, gh_env):
             self.assertTrue(paginate)
             if "/deployments?" in path:
                 self.assertIn("task=independent-crate%3Amerman-resvg%3A0.50.1", path)
@@ -215,14 +215,19 @@ class IndependentCrateHistoryTests(unittest.TestCase):
         for fields in ({"name": "merman-usvg"}, {"version": "0.50.2"}, {"archive_sha256": "d" * 64}):
             with self.subTest(fields=fields), self.assertRaises(ValueError):
                 self.select(deployments=[self.receipt("upload-intent"), self.receipt("registry-confirmed", **fields)])
+        with self.assertRaisesRegex(ValueError, "archive digest or source"):
+            self.select(deployments=[self.receipt("upload-intent"),
+                                     self.receipt("registry-confirmed") | {"sha": self.sha}])
 
     def test_manifest_of_the_durable_receipt_round_trips_through_the_api(self) -> None:
         response = self.receipt("upload-intent")
         record = history.IndependentCrateReceipt(self.digest, self.old_sha, "upload-intent")
         response["payload"] = json.dumps(response["payload"])
         completed = subprocess.CompletedProcess([], 0, stdout=json.dumps(response))
+        gh_env = {"GH_TOKEN": "receipt-token"}
         with mock.patch.object(history.subprocess, "run", return_value=completed) as api:
-            history.record_independent_receipt(self.repository, self.name, self.version, record)
+            history.record_independent_receipt(self.repository, self.name, self.version, record, gh_env=gh_env)
+        self.assertEqual(api.call_args.kwargs["env"], gh_env)
         self.assertEqual(json.loads(api.call_args.kwargs["input"]), {
             "ref": self.old_sha, "task": response["task"], "environment": response["environment"],
             "auto_merge": False, "required_contexts": [], "production_environment": False,
@@ -242,7 +247,10 @@ class IndependentCrateHistoryTests(unittest.TestCase):
     def test_current_run_identity_is_verified_before_a_first_send(self) -> None:
         with self.assertRaisesRegex(ValueError, "run identity"):
             self.select([self.run_record(attempt=2)])
-        with self.assertRaisesRegex(ValueError, "history is incomplete"):
+
+    def test_only_a_gap_before_receipts_requires_legacy_reconciliation(self) -> None:
+        self.assertIsNone(self.select([self.run_record(run_number=3), self.run_record(41)]))
+        with self.assertRaisesRegex(ValueError, "before receipts is incomplete"):
             self.select([self.run_record()])
 
 
@@ -273,7 +281,7 @@ class NpmRecoverySelectionTests(unittest.TestCase):
     def select(self, responses, *, attempt=3, ancestor=None, owner="node"):
         prefix = f"repos/{self.repository}/actions/runs/"
 
-        def read(path, *, paginate=False):
+        def read(path, *, paginate=False, gh_env=None):
             self.assertTrue(path.startswith(prefix), path)
             self.assertEqual(paginate, path.endswith("?per_page=100"), path)
             return responses[path.removeprefix(prefix)]
