@@ -18,6 +18,7 @@ diagram-info = ["dep:merman-core-preprocess"]
 diagram-ishikawa = []
 diagram-packet = ["merman-model/diagram-packet"]
 diagram-railroad = ["merman-model/diagram-railroad"]
+diagram-timeline = ["merman-model/diagram-timeline"]
 editor-facts = []
 
 [dependencies]
