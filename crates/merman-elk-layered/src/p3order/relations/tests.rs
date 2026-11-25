@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortSide, PortType};
 use crate::options::{LayeredOptions, OrderingStrategy};
 use crate::p3order::{ModelOrderNodeComparator, ModelOrderPortComparator};
-use crate::work::{WorkControl, WorkError};
+use crate::work::{NoopWorkControl, WorkControl, WorkError};
 
 type Facts = HashMap<usize, HashSet<usize>>;
 
@@ -174,12 +174,6 @@ impl LegacyRelations {
     fn candidate(&self) -> ModelOrderRelations {
         ModelOrderRelations::from_test_rows(&self.bigger_than, &self.smaller_than)
     }
-
-    fn update_work(&self, bigger: usize, smaller: usize) -> usize {
-        let a = self.bigger_than.get(&smaller).map_or(0, HashSet::len);
-        let d = self.smaller_than.get(&bigger).map_or(0, HashSet::len);
-        2 + 3 * (a + d) + 2 * a * d
-    }
 }
 
 fn assert_state(candidate: &ModelOrderRelations, legacy: &LegacyRelations) {
@@ -204,19 +198,12 @@ fn assert_observations(candidate: &ModelOrderRelations, legacy: &LegacyRelations
     let mut reference = legacy.clone();
     for &first in keys {
         for &second in keys {
-            let forward = reference.update_work(first, second);
-            let reverse = reference.update_work(second, first);
             let order = reference.cached_ordering(first, second);
-            let charged = if order.is_some() {
-                1
-            } else {
-                1 + forward.max(reverse)
-            };
-            assert_eq!(candidate.update_work(first, second), Ok(forward));
-            assert_eq!(
-                candidate.comparison_work(first, second),
-                Ok((charged, order))
-            );
+            let (priced, priced_order) = candidate
+                .comparison_work(first, second, &mut NoopWorkControl)
+                .unwrap();
+            assert_eq!(priced == 1, order.is_some());
+            assert_eq!(priced_order, order);
             assert_eq!(candidate.cached_ordering(first, second), order);
         }
     }
@@ -297,7 +284,10 @@ fn high_external_ids_and_cache_misses_allocate_only_observed_slots() {
     let mut relations = ModelOrderRelations::default();
     for first in 0..500 {
         assert_eq!(relations.cached_ordering(first, usize::MAX), None);
-        assert_eq!(relations.comparison_work(first, usize::MAX), Ok((3, None)));
+        assert_eq!(
+            relations.comparison_work(first, usize::MAX, &mut NoopWorkControl),
+            Ok((3, None))
+        );
     }
     assert_eq!(
         (relations.slots.capacity(), relations.rows.capacity()),
@@ -526,6 +516,7 @@ struct TraceWork {
     remaining: usize,
     events: Vec<WorkEvent>,
     reject_charge: bool,
+    cancel_on_poll: bool,
 }
 
 impl TraceWork {
@@ -534,6 +525,7 @@ impl TraceWork {
             remaining,
             events: Vec::new(),
             reject_charge: false,
+            cancel_on_poll: false,
         }
     }
 }
@@ -541,7 +533,7 @@ impl TraceWork {
 impl WorkControl for TraceWork {
     fn check(&mut self, units: usize) -> Result<(), WorkError> {
         self.events.push(WorkEvent::Check(units));
-        if units > self.remaining {
+        if units > self.remaining || (self.cancel_on_poll && units == 0) {
             Err(WorkError::Interrupted)
         } else {
             Ok(())
@@ -562,6 +554,162 @@ impl WorkControl for TraceWork {
 }
 
 #[test]
+fn rectangle_pricing_checks_before_scanning_and_polls_without_publishing() {
+    use WorkEvent::{Charge, Check};
+    let graph = LGraph::new("multiword-pricing", LayeredOptions::default());
+    let mut comparator =
+        ModelOrderNodeComparator::new(&graph, &[], OrderingStrategy::NodesAndEdges);
+    for index in (0..64).chain(65..129) {
+        comparator.relations.update(index, index + 1);
+    }
+    let before = comparator.relations.facts();
+    let buffers = comparator.relations.scratch_buffers();
+
+    // Two words in each snapshot and 65 target rows. Each scan selects 65 rows and
+    // visits 130 words. Pricing polls twice and the bridge reflects 65 * 65 new bits.
+    const FLOOR: usize = 4 + 2 * (65 + 130) + 2;
+    const PRICE: usize = FLOOR + 65 * 65;
+    for (budget, cancel, reject_charge, events) in [
+        (FLOOR - 1, false, false, vec![Check(FLOOR)]),
+        (PRICE, true, false, vec![Check(FLOOR), Check(0)]),
+        (
+            PRICE - 1,
+            false,
+            false,
+            vec![Check(FLOOR), Check(0), Check(0), Check(PRICE)],
+        ),
+        (
+            PRICE,
+            false,
+            true,
+            vec![
+                Check(FLOOR),
+                Check(0),
+                Check(0),
+                Check(PRICE),
+                Charge(PRICE),
+            ],
+        ),
+    ] {
+        let mut work = TraceWork::new(budget);
+        work.cancel_on_poll = cancel;
+        work.reject_charge = reject_charge;
+        assert_eq!(
+            comparator.update_bigger_smaller(64, 65, &mut work),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(work.events, events);
+        assert_eq!(work.remaining, budget);
+        assert_eq!(comparator.relations.facts(), before);
+        assert_eq!(comparator.relations.scratch_buffers(), buffers);
+    }
+    let mut work = TraceWork::new(PRICE);
+    comparator.update_bigger_smaller(64, 65, &mut work).unwrap();
+    assert_eq!(work.remaining, 0);
+    assert_eq!(
+        comparator.relations.cached_ordering(0, 129),
+        Some(Ordering::Greater)
+    );
+    assert_eq!(
+        comparator
+            .relations
+            .update_work(64, 65, &mut NoopWorkControl),
+        Ok(FLOOR)
+    );
+}
+
+#[test]
+fn sparse_word_pricing_does_not_assume_sixty_four_members_per_word() {
+    let mut relations = ModelOrderRelations::default();
+    for slot in 0..=256 {
+        // Register empty intermediate slots without changing the bridge shape.
+        relations.slot_for(slot);
+    }
+    for (bigger, smaller) in [(64, 0), (128, 0), (1, 192), (1, 256)] {
+        relations.update(bigger, smaller);
+    }
+    // The 3-by-3 rectangle uses 3 occupied words on each side. Price both scans in full.
+    let floor = 6 + 2 * (3 + 3 * 3);
+    let price = floor + 9;
+    let mut work = TraceWork::new(price);
+    assert_eq!(relations.update_work(0, 1, &mut work), Ok(price));
+    assert_eq!(work.events, [WorkEvent::Check(floor)]);
+    relations.update(0, 1);
+    assert_eq!(relations.update_work(0, 1, &mut NoopWorkControl), Ok(floor));
+}
+
+#[test]
+fn pre_cancelled_relation_cannot_register_its_first_slot() {
+    struct Cancelled;
+    impl WorkControl for Cancelled {
+        fn check(&mut self, _units: usize) -> Result<(), WorkError> {
+            Err(WorkError::Interrupted)
+        }
+        fn charge(&mut self, _units: usize) -> Result<(), WorkError> {
+            panic!("a pre-cancelled relation charged work")
+        }
+    }
+
+    let graph = LGraph::new("pre-cancelled-relation", LayeredOptions::default());
+    let mut comparator =
+        ModelOrderNodeComparator::new(&graph, &[], OrderingStrategy::NodesAndEdges);
+    assert_eq!(
+        comparator.update_bigger_smaller(usize::MAX, 0, &mut Cancelled),
+        Err(WorkError::Interrupted)
+    );
+    assert!(comparator.relations.is_clear());
+    assert_eq!(comparator.relations.rows.capacity(), 0);
+    assert!(comparator.relations.smaller_snapshot.is_empty());
+    let mut fresh = TraceWork::new(2);
+    comparator
+        .update_bigger_smaller(usize::MAX, 0, &mut fresh)
+        .unwrap();
+    assert_eq!(
+        comparator.relations.cached_ordering(usize::MAX, 0),
+        Some(Ordering::Greater)
+    );
+}
+
+#[test]
+fn port_price_pays_for_both_word_scans_before_reserving_one_application() {
+    use WorkEvent::Check;
+    let mut relations = ModelOrderRelations::default();
+    for (bigger, smaller) in [(0, 2), (3, 0), (1, 4), (5, 1)] {
+        relations.update(bigger, smaller);
+    }
+    let mut work = TraceWork::new(19);
+    // Each direction scans 2 rows and 2 words. The application adds 2 snapshot copies
+    // and 4 reflected bits to that scan. The comparison itself costs one more unit.
+    assert_eq!(relations.comparison_work(0, 1, &mut work), Ok((19, None)));
+    assert_eq!(work.events, [Check(11), Check(15)]);
+    assert_eq!(work.remaining, 19);
+}
+
+#[test]
+fn bitmap_relation_work_arithmetic_fails_closed() {
+    assert_eq!(
+        row_union_work(usize::MAX, 2),
+        Err(WorkError::ArithmeticOverflow)
+    );
+    assert_eq!(
+        row_union_work(usize::MAX, 1),
+        Err(WorkError::ArithmeticOverflow)
+    );
+    assert_eq!(
+        pricing_scan_work(usize::MAX, 2),
+        Err(WorkError::ArithmeticOverflow)
+    );
+    assert_eq!(
+        UpdateWork {
+            pricing: usize::MAX,
+            apply: 1
+        }
+        .total(),
+        Err(WorkError::ArithmeticOverflow)
+    );
+}
+
+#[test]
 fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failure() {
     use WorkEvent::{Charge, Check};
     let crossed = LegacyRelations {
@@ -573,8 +721,8 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
         smaller_than: HashMap::from([(50, HashSet::from([40]))]),
     };
     let graph = LGraph::new("snapshot-update-work", LayeredOptions::default());
-    for (name, seed, large, small, required) in [
-        ("empty", LegacyRelations::default(), 40, 50, 2),
+    for (name, seed, large, small, required, scan_floor) in [
+        ("empty", LegacyRelations::default(), 40, 50, 2, None),
         (
             "one-sided",
             LegacyRelations {
@@ -583,12 +731,13 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
             },
             40,
             50,
-            8,
+            10,
+            None,
         ),
-        ("crossed-overlap", crossed.clone(), 40, 50, 22),
-        ("self", crossed, 40, 40, 22),
-        ("reverse", reverse.clone(), 50, 40, 10),
-        ("already-learned", reverse, 40, 50, 2),
+        ("crossed-overlap", crossed.clone(), 40, 50, 14, None),
+        ("self", crossed, 40, 40, 14, None),
+        ("reverse", reverse.clone(), 50, 40, 13, Some(10)),
+        ("already-learned", reverse, 40, 50, 2, None),
     ] {
         let mut smaller_members = seed.bigger_than.get(&small).cloned().unwrap_or_default();
         let mut larger_members = seed.smaller_than.get(&large).cloned().unwrap_or_default();
@@ -611,13 +760,21 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
                 comparator.relations.rows.capacity(),
             );
             assert_eq!(
-                comparator.relations.update_work(large, small),
+                comparator
+                    .relations
+                    .update_work(large, small, &mut NoopWorkControl),
                 Ok(required),
                 "{name}",
             );
             let mut work = TraceWork::new(budget);
             work.reject_charge = reject_charge;
             let result = comparator.update_bigger_smaller(large, small, &mut work);
+            let mut expected_events: Vec<_> = scan_floor.into_iter().map(Check).collect();
+            expected_events.push(Check(required));
+            if budget >= required {
+                expected_events.push(Charge(required));
+            }
+            assert_eq!(work.events, expected_events);
             if budget < required || reject_charge {
                 assert_eq!(result, Err(WorkError::Interrupted), "{name}");
                 assert_eq!(work.remaining, budget);
@@ -632,15 +789,9 @@ fn snapshot_updates_admit_exact_work_and_preserve_state_on_check_or_charge_failu
                     ),
                     capacities,
                 );
-                let mut expected_events = vec![Check(required)];
-                if reject_charge {
-                    expected_events.push(Charge(required));
-                }
-                assert_eq!(work.events, expected_events);
             } else {
                 assert_eq!(result, Ok(()), "{name}");
                 assert_eq!(work.remaining, 0);
-                assert_eq!(work.events, [Check(required), Charge(required)]);
                 let mut expected = seed.clone();
                 expected.update(large, small);
                 assert_state(&comparator.relations, &expected);
@@ -670,7 +821,7 @@ fn port_precharge_failure_preserves_facts_keys_and_scratch_before_graph_access()
         bigger_than: HashMap::from([(50, HashSet::from([10, 20]))]),
         smaller_than: HashMap::from([(40, HashSet::from([60, 70]))]),
     };
-    for (budget, reject_charge) in [(22, false), (23, true)] {
+    for (budget, reject_charge) in [(14, false), (15, true)] {
         let mut comparator = ModelOrderPortComparator::new(
             &graph,
             usize::MAX,
@@ -707,9 +858,9 @@ fn port_precharge_failure_preserves_facts_keys_and_scratch_before_graph_access()
             ),
             capacities,
         );
-        let mut expected_events = vec![Check(23)];
+        let mut expected_events = vec![Check(15)];
         if reject_charge {
-            expected_events.push(Charge(23));
+            expected_events.push(Charge(15));
         }
         assert_eq!(work.events, expected_events);
     }
@@ -763,7 +914,7 @@ fn feedback_admission_preserves_each_snapshot_prefix_and_legacy_query_result() {
     for (source, target) in [(0, 4), (4, 1), (1, 3), (3, 2)] {
         connect(&mut graph, source, target);
     }
-    for budget in [10, 11, 20, 21] {
+    for budget in [10, 11, 20, 23, 24] {
         let mut comparator = ModelOrderNodeComparator::new(
             &graph,
             &graph.layers[0].nodes,
@@ -779,16 +930,19 @@ fn feedback_admission_preserves_each_snapshot_prefix_and_legacy_query_result() {
             legacy.update(4, 3);
             expected_events.extend([Charge(2), Check(10)]);
         }
-        if budget == 21 {
+        if budget >= 21 {
+            expected_events.push(Check(13));
+        }
+        if budget == 24 {
             legacy.update(3, 4);
-            expected_events.push(Charge(10));
+            expected_events.push(Charge(13));
             assert_eq!(result, Ok(Ordering::Greater));
         } else {
             assert_eq!(result, Err(WorkError::Interrupted));
         }
         assert_eq!(work.events, expected_events);
         assert_observations(&comparator.relations, &legacy, &[3, 4]);
-        if budget == 21 {
+        if budget == 24 {
             assert_eq!(legacy.cached_ordering(3, 4), Some(Ordering::Greater));
             assert_eq!(legacy.cached_ordering(4, 3), Some(Ordering::Greater));
             assert!(comparator.relations.bigger_members(3).contains(&3));

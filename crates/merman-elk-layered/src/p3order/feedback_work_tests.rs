@@ -93,15 +93,15 @@ fn before_ports_feedback_stops_before_unadmitted_reverse_update() {
     let mut comparator =
         ModelOrderNodeComparator::new(&graph, previous, OrderingStrategy::NodesAndEdges);
     comparator.before_ports = true;
-    let mut work = FeedbackWorkBudget::new(20);
+    let mut work = FeedbackWorkBudget::new(23);
 
     assert_eq!(
         comparator.compare_with_work(first, second, &mut work),
         Err(WorkError::Interrupted)
     );
     assert_eq!(work.charges, vec![9, 2]);
-    assert_eq!(work.rejected, Some(10));
-    assert_eq!(work.remaining, 9);
+    assert_eq!(work.rejected, Some(13));
+    assert_eq!(work.remaining, 12);
     assert_eq!(
         comparator.relations.bigger_members(second),
         HashSet::from([first])
@@ -119,7 +119,7 @@ fn before_ports_feedback_stops_before_unadmitted_reverse_update() {
 fn before_ports_feedback_sort_admits_snapshot_reverse_work() {
     let (graph, first, second) = feedback_graph();
     let before = graph.clone();
-    let mut work = FeedbackWorkBudget::new(21);
+    let mut work = FeedbackWorkBudget::new(24);
 
     assert_eq!(
         sorted_nodes_by_model_order(
@@ -131,7 +131,7 @@ fn before_ports_feedback_sort_admits_snapshot_reverse_work() {
         ),
         Ok(vec![second, first])
     );
-    assert_eq!(work.charges, vec![9, 2, 10]);
+    assert_eq!(work.charges, vec![9, 2, 13]);
     assert_eq!(work.rejected, None);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
@@ -149,8 +149,9 @@ fn model_order_work_admits_new_crossing_closure() {
             assert!(!relations.smaller_members(small).contains(&large));
         }
     }
-    assert_eq!(relations.update_work(2, 3), Ok(22));
-    assert_eq!(relations.comparison_work(2, 3), Ok((23, None)));
+    let work = &mut crate::work::NoopWorkControl;
+    assert_eq!(relations.update_work(2, 3, work), Ok(23));
+    assert_eq!(relations.comparison_work(2, 3, work), Ok((24, None)));
 
     relations.update(2, 3);
 
@@ -165,7 +166,7 @@ fn model_order_work_admits_new_crossing_closure() {
         );
     }
     assert_eq!(
-        relations.comparison_work(2, 3),
+        relations.comparison_work(2, 3, work),
         Ok((1, Some(Ordering::Greater)))
     );
 }

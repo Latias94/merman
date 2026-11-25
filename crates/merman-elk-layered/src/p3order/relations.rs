@@ -3,8 +3,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use super::model_order_relation_update_work_from_counts;
-use crate::work::{WorkError, checked_add};
+use crate::work::{WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
 #[cfg(test)]
 mod tests;
@@ -66,16 +65,19 @@ struct BitmapRow {
 impl BitmapRow {
     fn contains(&self, slot: usize) -> bool {
         let word = Word::member(slot);
-        let bits = if self.first.index == word.index {
+        self.bits_at(word.index) & word.bits != 0
+    }
+
+    fn bits_at(&self, index: usize) -> u64 {
+        if self.first.index == index {
             self.first.bits
         } else {
             self.additional
                 .as_ref()
-                .and_then(|words| words.get(&word.index))
+                .and_then(|words| words.get(&index))
                 .copied()
                 .unwrap_or(0)
-        };
-        bits & word.bits != 0
+        }
     }
 
     fn words(&self) -> impl Iterator<Item = Word> + '_ {
@@ -109,24 +111,68 @@ impl BitmapRow {
             ..word
         }
     }
+}
 
-    fn snapshot_with(&self, slot: usize, snapshot: &mut Vec<Word>) -> usize {
-        snapshot.clear();
-        let mut endpoint = Word::member(slot);
-        let mut count = self.len + 1;
-        snapshot.extend(self.words().map(|mut word| {
-            if word.index == endpoint.index {
-                count -= usize::from(word.bits & endpoint.bits != 0);
-                word.bits |= endpoint.bits;
-                endpoint.bits = 0;
-            }
-            word
-        }));
-        if endpoint.bits != 0 {
-            snapshot.push(endpoint);
+// A read-only view of an entry snapshot. A proposed slot can be outside the registered rows.
+// Pricing can scan the view without allocating or touching the owner's reusable snapshots.
+#[derive(Clone, Copy)]
+struct EntryRow<'a> {
+    row: &'a BitmapRow,
+    endpoint: Word,
+    members: usize,
+    words: usize,
+    append_endpoint: bool,
+}
+
+impl<'a> EntryRow<'a> {
+    fn new(row: &'a BitmapRow, slot: usize) -> Self {
+        let endpoint = Word::member(slot);
+        let bits = row.bits_at(endpoint.index);
+        let append_endpoint = bits == 0;
+        Self {
+            row,
+            endpoint,
+            members: row.len + usize::from(bits & endpoint.bits == 0),
+            words: usize::from(row.first.bits != 0)
+                + row.additional.as_ref().map_or(0, |words| words.len())
+                + usize::from(append_endpoint),
+            append_endpoint,
         }
-        count
     }
+
+    fn masks(self) -> impl Iterator<Item = Word> + 'a {
+        self.row
+            .words()
+            .map(move |mut word| {
+                if word.index == self.endpoint.index {
+                    word.bits |= self.endpoint.bits;
+                }
+                word
+            })
+            .chain(self.append_endpoint.then_some(self.endpoint))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct UpdateWork {
+    pricing: usize,
+    apply: usize,
+}
+
+impl UpdateWork {
+    fn total(&self) -> Result<usize, WorkError> {
+        checked_add(self.pricing, self.apply)
+    }
+}
+
+fn row_union_work(targets: usize, source_words: usize) -> Result<usize, WorkError> {
+    // One row selection and one visit for every source word, even on a zero delta.
+    checked_add(targets, checked_mul(targets, source_words)?)
+}
+
+fn pricing_scan_work(targets: usize, source_words: usize) -> Result<usize, WorkError> {
+    let visits = checked_mul(targets, source_words)?;
+    checked_sum([targets, visits, visits / Word::WIDTH])
 }
 
 #[derive(Debug, Default)]
@@ -208,30 +254,133 @@ impl ModelOrderRelations {
         &self,
         first: usize,
         second: usize,
+        work: &mut dyn WorkControl,
     ) -> Result<(usize, Option<Ordering>), WorkError> {
-        let (first, second) = (self.lookup(first), self.lookup(second));
-        if let (Some(first), Some(second)) = (first, second)
+        let (first_slot, second_slot) = (self.lookup(first), self.lookup(second));
+        if let (Some(first), Some(second)) = (first_slot, second_slot)
             && let Some(order) = self.ordering_at(first, second)
         {
             return Ok((1, Some(order)));
         }
-        let forward = self.update_work_at(first, second)?;
-        let reverse = self.update_work_at(second, first)?;
-        Ok((checked_add(1, forward.max(reverse))?, None))
+        let same = first == second;
+        let forward = self.price_update(first_slot, second_slot, same, 1, work)?;
+        if same {
+            return Ok((checked_add(1, forward.total()?)?, None));
+        }
+        // The port comparator has not touched the graph yet. Pay for both pricing scans
+        // and retain the larger application reservation until it chooses a direction.
+        let prefix = checked_add(1, forward.pricing)?;
+        let reverse = self.price_update(second_slot, first_slot, false, prefix, work)?;
+        Ok((
+            checked_sum([prefix, reverse.pricing, forward.apply.max(reverse.apply)])?,
+            None,
+        ))
     }
 
-    pub(super) fn update_work(&self, bigger: usize, smaller: usize) -> Result<usize, WorkError> {
-        self.update_work_at(self.lookup(bigger), self.lookup(smaller))
+    pub(super) fn update_work(
+        &self,
+        bigger: usize,
+        smaller: usize,
+        work: &mut dyn WorkControl,
+    ) -> Result<usize, WorkError> {
+        self.price_update(
+            self.lookup(bigger),
+            self.lookup(smaller),
+            bigger == smaller,
+            0,
+            work,
+        )?
+        .total()
     }
 
-    fn update_work_at(
+    fn price_update(
         &self,
         bigger: Option<usize>,
         smaller: Option<usize>,
-    ) -> Result<usize, WorkError> {
-        let smaller_count = smaller.map_or(0, |slot| self.rows[slot][Down as usize].len);
-        let larger_count = bigger.map_or(0, |slot| self.rows[slot][Up as usize].len);
-        model_order_relation_update_work_from_counts(smaller_count, larger_count)
+        same: bool,
+        prefix: usize,
+        work: &mut dyn WorkControl,
+    ) -> Result<UpdateWork, WorkError> {
+        // Project the same first-seen slots that update() will register after admission.
+        let next = self.rows.len();
+        let bigger = bigger.unwrap_or(next);
+        let smaller = if same {
+            bigger
+        } else if let Some(smaller) = smaller {
+            smaller
+        } else {
+            checked_add(next, usize::from(bigger == next))?
+        };
+        let empty = BitmapRow::default();
+        let smaller_row = self.row(smaller, Down).unwrap_or(&empty);
+        let larger_row = self.row(bigger, Up).unwrap_or(&empty);
+        if smaller_row.len == 0 && larger_row.len == 0 {
+            // A constant-size direct update has one primary and at most one reverse write.
+            return Ok(UpdateWork {
+                pricing: 0,
+                apply: 2,
+            });
+        }
+
+        let downs = EntryRow::new(smaller_row, smaller);
+        let ups = EntryRow::new(larger_row, bigger);
+        let copies = checked_add(downs.words, ups.words)?;
+        #[cfg(test)]
+        if self.unpaired_fixture {
+            return Ok(UpdateWork {
+                pricing: 0,
+                apply: checked_sum([
+                    copies,
+                    row_union_work(ups.members, downs.words)?,
+                    row_union_work(downs.members, ups.words)?,
+                ])?,
+            });
+        }
+        let (targets, source, side) = Self::propagation_rows(downs, ups);
+        let apply_scan = row_union_work(targets.members, source.words)?;
+        let pricing = pricing_scan_work(targets.members, source.words)?;
+        // Both scans and snapshot copies must fit before examining the rectangle. The extra
+        // scan intersects words and popcounts; only the admitted application walks delta bits.
+        let apply = checked_add(copies, apply_scan)?;
+        work.check(checked_sum([prefix, pricing, apply])?)?;
+
+        let mut reflected = 0usize;
+        let mut words_until_poll = Word::WIDTH;
+        for target in targets.masks().flat_map(Word::members) {
+            let row = self.row(target, side).unwrap_or(&empty);
+            for word in source.masks() {
+                reflected = checked_add(
+                    reflected,
+                    (word.bits & !row.bits_at(word.index)).count_ones() as usize,
+                )?;
+                words_until_poll -= 1;
+                if words_until_poll == 0 {
+                    // Hash iteration may permute the progress within the rectangle. These zero
+                    // unit polls observe cancellation without making the ceiling order-dependent.
+                    work.check(0)?;
+                    words_until_poll = Word::WIDTH;
+                }
+            }
+        }
+        Ok(UpdateWork {
+            pricing,
+            apply: checked_add(apply, reflected)?,
+        })
+    }
+
+    fn row(&self, slot: usize, side: Side) -> Option<&BitmapRow> {
+        self.rows.get(slot).map(|row| &row[side as usize])
+    }
+
+    fn propagation_rows<'a>(
+        downs: EntryRow<'a>,
+        ups: EntryRow<'a>,
+    ) -> (EntryRow<'a>, EntryRow<'a>, Side) {
+        if ups.members.saturating_mul(downs.words) <= downs.members.saturating_mul(ups.words) {
+            (ups, downs, Down)
+        } else {
+            (downs, ups, Up)
+        }
     }
 
     fn lookup(&self, key: usize) -> Option<usize> {
@@ -268,8 +417,13 @@ impl ModelOrderRelations {
         // One update adds just the rectangle between the two entry snapshots plus the
         // endpoints. Snapshot both sides before touching either plane, even for a self pair
         // or feedback reversal. Reaching a newly added bit never expands this rectangle.
-        let smaller_count = downs.snapshot_with(smaller, &mut self.smaller_snapshot);
-        let larger_count = ups.snapshot_with(bigger, &mut self.larger_snapshot);
+        let downs = EntryRow::new(downs, smaller);
+        let ups = EntryRow::new(ups, bigger);
+        self.smaller_snapshot.clear();
+        self.smaller_snapshot.extend(downs.masks());
+        self.larger_snapshot.clear();
+        self.larger_snapshot.extend(ups.masks());
+        let (_, _, side) = Self::propagation_rows(downs, ups);
 
         #[cfg(test)]
         if self.unpaired_fixture {
@@ -290,9 +444,7 @@ impl ModelOrderRelations {
 
         // With paired facts, a bit already set in the chosen plane is already set in its
         // transpose. Scan the cheaper orientation and mirror only newly set bits.
-        if larger_count.saturating_mul(self.smaller_snapshot.len())
-            <= smaller_count.saturating_mul(self.larger_snapshot.len())
-        {
+        if matches!(side, Down) {
             Self::merge::<true>(
                 &mut self.rows,
                 &self.larger_snapshot,

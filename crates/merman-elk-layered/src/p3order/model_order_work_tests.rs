@@ -183,10 +183,10 @@ fn shared_port_fan_out_graph(reference_width: usize, sink_count: usize) -> LGrap
 fn node_scoring_accounts_each_comparison_and_relation_update() {
     let graph = fan_in_graph(3);
     let before = graph.clone();
-    let mut work = ScoringWork::new(27);
+    let mut work = ScoringWork::new(29);
 
     assert_eq!(count_changes(ScoringOwner::Nodes, &graph, &mut work), Ok(3));
-    assert_eq!(work.charges, vec![6, 2, 6, 2, 6, 5]);
+    assert_eq!(work.charges, vec![6, 2, 6, 2, 6, 7]);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
 }
@@ -195,10 +195,10 @@ fn node_scoring_accounts_each_comparison_and_relation_update() {
 fn port_scoring_accounts_current_relation_sets_in_source_pair_order() {
     let graph = fan_in_graph(3);
     let before = graph.clone();
-    let mut work = ScoringWork::new(19);
+    let mut work = ScoringWork::new(26);
 
     assert_eq!(count_changes(ScoringOwner::Ports, &graph, &mut work), Ok(3));
-    assert_eq!(work.charges, vec![3, 1, 6, 1, 6, 1, 1]);
+    assert_eq!(work.charges, vec![3, 1, 9, 1, 10, 1, 1]);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
 }
@@ -360,29 +360,37 @@ fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache
                 &HashMap::from([(0, HashSet::from([4, 5, 6]))]),
             );
             let before = comparator.relations.facts();
-            assert_eq!(comparator.relations.update_work(0, 1), Ok(29));
-            assert_eq!(comparator.relations.update_work(1, 0), Ok(2));
             assert_eq!(
-                comparator.relations.comparison_work(first, second),
-                Ok((30, None)),
+                comparator.relations.update_work(0, 1, &mut NoopWorkControl),
+                Ok(16)
+            );
+            assert_eq!(
+                comparator.relations.update_work(1, 0, &mut NoopWorkControl),
+                Ok(2)
+            );
+            assert_eq!(
+                comparator
+                    .relations
+                    .comparison_work(first, second, &mut NoopWorkControl),
+                Ok((17, None)),
             );
 
-            let mut limited = ScoringWork::new(29);
+            let mut limited = ScoringWork::new(16);
             assert_eq!(
                 comparator.compare_with_work(first, second, &mut limited),
                 Err(WorkError::Interrupted),
             );
             assert!(limited.charges.is_empty());
-            assert_eq!(limited.remaining, 29);
+            assert_eq!(limited.remaining, 16);
             assert_eq!(comparator.relations.facts(), before);
 
             let expected = port_orders[first].cmp(&port_orders[second]);
-            let mut exact = ScoringWork::new(30);
+            let mut exact = ScoringWork::new(17);
             assert_eq!(
                 comparator.compare_with_work(first, second, &mut exact),
                 Ok(expected),
             );
-            assert_eq!(exact.charges, [30]);
+            assert_eq!(exact.charges, [17]);
             assert_eq!(exact.remaining, 0);
             let after = comparator.relations.facts();
 

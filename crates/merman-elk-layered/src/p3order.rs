@@ -27,8 +27,6 @@ mod model_order_work_tests;
 #[cfg(test)]
 mod permutation_work_tests;
 mod relations;
-#[cfg(test)]
-mod snapshot_work_tests;
 pub mod sweep;
 
 pub(crate) fn initialize_crossing_minimization_port_ids(graph: &mut LGraph) {
@@ -791,24 +789,6 @@ fn sorted_nodes_with_relation_state(
     Ok(order)
 }
 
-// Keep the existing per-update work bound and exact admission boundary. It accounts each
-// entry-snapshot member and potential insertion even when the bitmap can apply many at once.
-fn model_order_relation_update_work_from_counts(
-    smaller_relations: usize,
-    larger_relations: usize,
-) -> Result<usize, WorkError> {
-    let union_attempts = checked_mul(smaller_relations, larger_relations)?;
-    checked_sum([
-        smaller_relations,
-        larger_relations,
-        2,
-        checked_mul(smaller_relations, 2)?,
-        checked_mul(larger_relations, 2)?,
-        union_attempts,
-        union_attempts,
-    ])
-}
-
 pub fn long_edge_target_node_preprocessing(
     graph: &mut LGraph,
     node: usize,
@@ -1327,7 +1307,7 @@ impl<'a> ModelOrderNodeComparator<'a> {
         smaller: usize,
         work: &mut dyn WorkControl,
     ) -> Result<(), WorkError> {
-        let units = self.relations.update_work(bigger, smaller)?;
+        let units = self.relations.update_work(bigger, smaller, work)?;
         work.check(units)?;
         work.charge(units)?;
         self.relations.update(bigger, smaller);
@@ -1379,7 +1359,9 @@ impl<'a> ModelOrderPortComparator<'a> {
         original_p2: usize,
         work: &mut dyn WorkControl,
     ) -> Result<Ordering, WorkError> {
-        let (units, cached) = self.relations.comparison_work(original_p1, original_p2)?;
+        let (units, cached) = self
+            .relations
+            .comparison_work(original_p1, original_p2, work)?;
         work.check(units)?;
         work.charge(units)?;
         let p1 = original_p1;
@@ -2199,21 +2181,22 @@ mod tests {
     #[test]
     fn model_order_relation_work_tracks_current_sets_and_cached_pairs() {
         let mut relations = ModelOrderRelations::default();
-        assert_eq!(relations.comparison_work(0, 1), Ok((3, None)));
+        let work = &mut crate::work::NoopWorkControl;
+        assert_eq!(relations.comparison_work(0, 1, work), Ok((3, None)));
         relations.update(0, 1);
         assert_eq!(
-            relations.comparison_work(0, 1),
+            relations.comparison_work(0, 1, work),
             Ok((1, Some(Ordering::Greater)))
         );
         assert_eq!(
-            relations.comparison_work(1, 0),
+            relations.comparison_work(1, 0, work),
             Ok((1, Some(Ordering::Less)))
         );
         // Unrelated owners cannot inflate the cost of comparing this pair.
         for member in 100..200 {
             relations.update(99, member);
         }
-        assert_eq!(relations.comparison_work(2, 3), Ok((3, None)));
+        assert_eq!(relations.comparison_work(2, 3, work), Ok((3, None)));
     }
 
     #[test]
@@ -2222,7 +2205,9 @@ mod tests {
         for owner in 0..500 {
             relations.update(owner, owner + 1);
         }
-        let units = relations.update_work(501, 0).unwrap();
+        let units = relations
+            .update_work(501, 0, &mut crate::work::NoopWorkControl)
+            .unwrap();
         assert!(
             units < 2_000,
             "one-sided update was charged as dense work: {units}"
