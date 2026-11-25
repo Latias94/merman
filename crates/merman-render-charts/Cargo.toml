@@ -15,6 +15,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
+diagram-sankey = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-sankey"]
 diagram-xychart = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",

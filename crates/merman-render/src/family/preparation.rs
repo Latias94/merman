@@ -188,10 +188,9 @@ fn prepare_sankey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = crate::sankey::layout_sankey_diagram_typed_with_work_meter(
+    let layout = merman_render_charts::sankey::layout_sankey_diagram_typed(
         model,
         meta.effective_config.as_value(),
-        execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
     let native = execution.native_family_theme();

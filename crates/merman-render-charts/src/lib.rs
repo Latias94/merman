@@ -6,6 +6,10 @@
 #[doc(hidden)]
 pub mod pie;
 
+#[cfg(feature = "diagram-sankey")]
+#[doc(hidden)]
+pub mod sankey;
+
 #[cfg(feature = "diagram-xychart")]
 #[doc(hidden)]
 pub mod xychart;

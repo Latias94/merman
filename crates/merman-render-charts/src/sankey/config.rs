@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use merman_render_core::config::{config_bool, config_f64, config_string};
 use serde_json::{Map, Value};
 
 pub(super) const DEFAULT_NODE_WIDTH_PX: f64 = 10.0;
@@ -20,14 +20,14 @@ pub(super) enum NodeAlign {
     Center,
 }
 
-pub(crate) struct SankeyConfigView<'a> {
+pub struct SankeyConfigView<'a> {
     effective_config: &'a Value,
     sankey_config: &'a Value,
     has_sankey_config: bool,
 }
 
 impl<'a> SankeyConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         let sankey_config = effective_config.get("sankey").unwrap_or(&Value::Null);
         Self {
             effective_config,
@@ -38,7 +38,7 @@ impl<'a> SankeyConfigView<'a> {
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> SankeyLayoutSettings {
+    pub(super) fn layout_settings(&self) -> SankeyLayoutSettings {
         let show_values = self.show_values();
         let node_padding_base = self
             .configured_f64("nodePadding")
@@ -54,7 +54,7 @@ impl<'a> SankeyConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> SankeyRenderSettings<'a> {
+    pub fn render_settings(&self) -> SankeyRenderSettings<'a> {
         SankeyRenderSettings {
             use_max_width: self
                 .configured_bool("useMaxWidth")
@@ -62,20 +62,16 @@ impl<'a> SankeyConfigView<'a> {
             show_values: self.show_values(),
             prefix: self.configured_string("prefix").unwrap_or_default(),
             suffix: self.configured_string("suffix").unwrap_or_default(),
-            #[cfg(test)]
-            link_color: self.link_color(),
-            #[cfg(test)]
-            outlined_labels: self.outlined_labels(),
             node_colors: self.configured_object("nodeColors"),
         }
     }
 
-    pub(super) fn link_color(&self) -> String {
+    pub fn link_color(&self) -> String {
         self.configured_string("linkColor")
             .unwrap_or_else(|| DEFAULT_LINK_COLOR.to_string())
     }
 
-    pub(super) fn outlined_labels(&self) -> bool {
+    pub fn outlined_labels(&self) -> bool {
         self.configured_string("labelStyle")
             .unwrap_or_else(|| DEFAULT_LABEL_STYLE.to_string())
             == "outlined"
@@ -125,24 +121,20 @@ impl<'a> SankeyConfigView<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SankeyLayoutSettings {
-    pub(crate) width: f64,
-    pub(crate) height: f64,
+pub(super) struct SankeyLayoutSettings {
+    pub(super) width: f64,
+    pub(super) height: f64,
     pub(super) node_align: NodeAlign,
-    pub(crate) node_width: f64,
-    pub(crate) node_padding: f64,
+    pub(super) node_width: f64,
+    pub(super) node_padding: f64,
 }
 
-pub(crate) struct SankeyRenderSettings<'a> {
-    pub(crate) use_max_width: bool,
-    pub(crate) show_values: bool,
-    pub(crate) prefix: String,
-    pub(crate) suffix: String,
-    #[cfg(test)]
-    pub(crate) link_color: String,
-    #[cfg(test)]
-    pub(crate) outlined_labels: bool,
-    pub(crate) node_colors: Option<&'a Map<String, Value>>,
+pub struct SankeyRenderSettings<'a> {
+    pub use_max_width: bool,
+    pub show_values: bool,
+    pub prefix: String,
+    pub suffix: String,
+    pub node_colors: Option<&'a Map<String, Value>>,
 }
 
 pub(super) fn sankey_node_padding_px_with_base(base: f64, show_values: bool) -> f64 {
@@ -213,14 +205,15 @@ mod tests {
                 }
             }
         });
-        let settings = SankeyConfigView::new(&cfg).render_settings();
+        let config = SankeyConfigView::new(&cfg);
+        let settings = config.render_settings();
 
         assert!(!settings.use_max_width);
         assert!(!settings.show_values);
         assert_eq!(settings.prefix, "$");
         assert_eq!(settings.suffix, " USD");
-        assert_eq!(settings.link_color, "source");
-        assert!(settings.outlined_labels);
+        assert_eq!(config.link_color(), "source");
+        assert!(config.outlined_labels());
         assert_eq!(
             settings
                 .node_colors
@@ -246,8 +239,9 @@ mod tests {
             }
         });
 
-        let layout = SankeyConfigView::new(&cfg).layout_settings();
-        let render = SankeyConfigView::new(&cfg).render_settings();
+        let config = SankeyConfigView::new(&cfg);
+        let layout = config.layout_settings();
+        let render = config.render_settings();
 
         assert_eq!(layout.node_width, DEFAULT_NODE_WIDTH_PX);
         assert_eq!(
@@ -257,8 +251,8 @@ mod tests {
         assert!(render.use_max_width);
         assert!(render.show_values);
         assert_eq!(render.prefix, "");
-        assert_eq!(render.link_color, DEFAULT_LINK_COLOR);
-        assert!(!render.outlined_labels);
+        assert_eq!(config.link_color(), DEFAULT_LINK_COLOR);
+        assert!(!config.outlined_labels());
         assert!(render.node_colors.is_none());
     }
 }
