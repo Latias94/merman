@@ -196,7 +196,9 @@ pub(super) fn items(
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let nodes = &graph.nodes;
-    let custom = wires.iter().any(|wire| !wire.flat() || wire.own);
+    let custom = wires
+        .iter()
+        .any(|wire| !wire.flat() || wire.uses_caption_band());
     work.charge(wires.len())?;
     let mut faces = if custom {
         filled::<Faces>(rects.len(), Default::default())?
@@ -234,7 +236,7 @@ pub(super) fn items(
                     ..child
                 }
             } else if let Some(old) = old
-                && !wire.own
+                && !wire.uses_caption_band()
             {
                 old
             } else {

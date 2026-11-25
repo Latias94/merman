@@ -136,6 +136,29 @@ fn vertex_cap_declines_search_and_leaves_the_router_available() {
 }
 
 #[test]
+fn vertex_cap_preserves_a_quick_route_with_trail_cost() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let cap = 2;
+    let mut router = OrthoRouter::new(&[], 4.0, cap, &mut work).unwrap();
+    let req = OrthoRequest {
+        start_side: Some(Side::Right),
+        end_side: Some(Side::Left),
+        bounds: Some(rect(-5.0, -5.0, 30.0, 10.0)),
+        ..request((0.0, 0.0), (20.0, 0.0))
+    };
+    let direct = vec![req.start, req.end];
+    assert_eq!(draw(&mut router, req).as_ref(), Some(&direct));
+    assert!(router.grid.nodes.is_empty());
+
+    router.record_route(&direct, &mut work).unwrap();
+    let path = draw(&mut router, req);
+    // The left frame edge intersects the top, center, and bottom runs.
+    assert_eq!(router.grid.nodes.len(), cap);
+    assert_eq!(path, Some(direct));
+}
+
+#[test]
 fn out_of_bounds_obstacles_do_not_add_vertices_to_a_guarded_span() {
     let (walls, req) = maze();
     let mut control = NoopWorkControl;

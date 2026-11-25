@@ -172,8 +172,6 @@ impl End {
 struct Wire {
     ends: [End; 2],
     spec: EdgeSpec,
-    own: bool,
-    band: bool,
     route: Option<EdgeGeometry>,
     contacts: [Option<Contact>; 2],
 }
@@ -193,8 +191,12 @@ impl Wire {
         self.ends.iter().all(|end| end.node().is_some())
     }
 
+    fn uses_caption_band(&self) -> bool {
+        self.spec.label.is_some() && self.border().is_some()
+    }
+
     fn manual_end_label(&self, end: usize) -> bool {
-        !self.flat() || self.own || matches!(self.ends[end], End::Border { .. })
+        !self.flat() || self.uses_caption_band() || matches!(self.ends[end], End::Border { .. })
     }
 }
 
@@ -337,14 +339,6 @@ fn measure(
         let path = &ctx.hierarchy.paths[leg.edge];
         let &(first_level, first_leg) = path.first().expect("edge has a source leg");
         let &(last_level, last_leg) = path.last().expect("edge has a target leg");
-        let own = spec.label.is_some()
-            && (matches!(
-                ctx.hierarchy.levels[first_level].legs[first_leg].source,
-                Terminal::Boundary(_)
-            ) || matches!(
-                ctx.hierarchy.levels[last_level].legs[last_leg].target,
-                Terminal::Boundary(_)
-            ));
         if (first_level, first_leg) != (id, slot) {
             spec.start_marker = Default::default();
             spec.start_label = None;
@@ -380,8 +374,6 @@ fn measure(
         let wire = Wire {
             ends,
             spec,
-            own,
-            band: own && leg.main,
             route: None,
             contacts: [None; 2],
         };
@@ -391,7 +383,7 @@ fn measure(
             local.target = target.into();
             local.source_port = ends[0].port();
             local.target_port = ends[1].port();
-            if wire.band {
+            if wire.uses_caption_band() {
                 local.label = None;
             }
             if wire.manual_end_label(0) {

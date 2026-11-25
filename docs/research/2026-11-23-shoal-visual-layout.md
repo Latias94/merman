@@ -69,3 +69,25 @@ The local experiment rendered 14 inputs in nine Shoal configurations. These incl
 - **Paint.** Baseline basis interpolation, linear segments and local rounded corners received the same exterior waypoints. The selected curve operated between the two straight marker shafts. Sideways return was half the excess of total cross-axis variation over the absolute displacement between painted endpoints, using Bézier extrema. Shaft lengths used arc length, and the crossing and box checks flattened curves at 0.15 SVG units. The chain-100 and fan-in-250 served as scale controls and were excluded from the pair-intersection scan.
 
 I would implement obstacle-aware corner rounding first, then the local fork/join rule and sliding ports as independent changes. Keep node positioning and port assignment in Shoal. The Flowchart adapter already supplies measured boxes and marker space. The painter can preserve the shafts and choose a locally safe transition using the route's clearance. General row alignment needs more work on dense ranks. Wide rank assignment, disconnected-component packing and small-edit stability each need their own evaluation. Before choosing a default, rerun the existing release timing and layout-work probes on the corrected drawings and compare reading tasks at the same scale. This study measured static geometry, with no reader trials or performance timing.
+
+## Drawing quality criteria
+
+Shoal's first job is to make a graph readable. A reader should be able to follow a path, tell
+where it branches or rejoins, and see which nodes belong together. Judge layouts in this order.
+
+1. **Preserve the graph and its clearance.** Keep endpoints, directions, labels and groups
+   distinct. Leave room around unrelated shapes and labels. A shared trunk needs explicit
+   routing and legible continuations.
+2. **Make paths easy to follow.** Reduce avoidable crossings, overlaps and reversals. Keep
+   each path continuous through group borders. For a decision, make both departures visible
+   at the split when the corridors permit it. A bypass can then take its own longer route.
+3. **Treat comparable structures consistently.** Align paths doing the same job where
+   practical. Respect authored ordering and direction. When two choices are equally readable,
+   prefer keeping unaffected nodes and routes in place after an edit.
+4. **Fit the available space and work budget.** Compare compactness among layouts that
+   preserve the qualities above. Spend another pass when it yields a visible gain.
+
+Check the painted SVG for outline contacts, arrow approaches, label association and crossings.
+Replay the structure in each direction and with reordered edge declarations and nearby obstacles.
+When two drawings pass these checks, compare them on a reading task, such as identifying which
+step a bypass skips. Record tracing errors and time separately from visual preference.

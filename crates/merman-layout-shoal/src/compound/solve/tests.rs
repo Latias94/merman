@@ -345,6 +345,59 @@ fn own_member_captions_reserve_a_band_and_keep_the_member_face_free_for_other_wi
 }
 
 #[test]
+fn a_caption_on_an_ancestor_boundary_does_not_replace_the_nested_member_route() {
+    let mut incoming = edge(GroupId(0), NodeId(0));
+    let mut outgoing = edge(NodeId(0), GroupId(0));
+    let caption = Some(size(75., 18.));
+    let end_label = Some(size(10., 10.));
+    incoming.label = caption;
+    incoming.end_label = end_label;
+    outgoing.label = caption;
+    outgoing.start_label = end_label;
+    let graph = Graph {
+        groups: vec![
+            group(0, None, Direction::Down),
+            group(1, Some(0), Direction::Down),
+        ],
+        nodes: vec![node(2, 80., 40., Some(1))],
+        edges: vec![incoming, outgoing],
+        ..Graph::default()
+    };
+
+    let options = independent();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let hierarchy = hierarchy::build(&graph, &options, &mut work).unwrap();
+    let sides = sides::assign(&graph, &hierarchy, &options, &mut work).unwrap();
+    let pass = Pass {
+        graph: &graph,
+        hierarchy: &hierarchy,
+        options: &options,
+        sides: &sides,
+        items: &[None; 3],
+        ports: &[None; 4],
+    };
+    let (inner, wires) = measure(1, &pass, &[], &mut work).unwrap();
+    assert_eq!(inner.edges.len(), 2);
+    assert!(wires.iter().all(Wire::flat));
+    assert!(inner.edges.iter().all(|edge| edge.label.is_none()));
+    assert_eq!(inner.edges[0].end_label, end_label);
+    assert_eq!(inner.edges[1].start_label, end_label);
+
+    let drawing = layout(&graph, &options).unwrap();
+    for (index, edge) in drawing.edges.iter().enumerate() {
+        let caption = edge.label_center.unwrap();
+        assert!(inside(caption, drawing.groups[0].rect));
+        assert!(!inside(caption, drawing.groups[1].rect));
+        assert!(
+            drawing.border_stitches.iter().any(|stitch| {
+                stitch.edge == EdgeId(index as u32) && stitch.group == GroupId(1)
+            })
+        );
+    }
+}
+
+#[test]
 fn titles_use_measured_padding_on_all_six_slots_and_shift_away_from_crossing_ports() {
     use TitlePosition::*;
     let mut graph = Graph::default();

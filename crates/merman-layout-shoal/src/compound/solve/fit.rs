@@ -123,7 +123,7 @@ impl Fit {
                     title_clear = title_clear.max(TITLE_CLEAR + markers[end].width / 2.0);
                 }
                 before_title = before_title.max(markers[end].length + spacing.edge);
-                let shaft = if (flat.is_none() || wire.own) && inner.side == side {
+                let shaft = if (flat.is_none() || wire.uses_caption_band()) && inner.side == side {
                     markers[1 - end].length
                 } else {
                     0.0
@@ -131,7 +131,7 @@ impl Fit {
                 after_title = after_title.max(shaft + spacing.edge);
             }
             inset[index] = inset[index].max(markers[end].length + spacing.edge);
-            if (flat.is_none() || wire.own) && markers[1 - end].width > 0.0 {
+            if (flat.is_none() || wire.uses_caption_band()) && markers[1 - end].width > 0.0 {
                 let radius = markers[1 - end].width / 2.0 + spacing.edge;
                 let at = cross(inner.side, inner.at);
                 let (near, far) = if inner.side.axis() == Axis::Vertical {
@@ -195,7 +195,7 @@ impl Fit {
             };
             let face = side as usize;
             for (label, size) in [
-                wire.spec.label.filter(|_| wire.band),
+                wire.spec.label,
                 wire.spec.start_label.filter(|_| wire.manual_end_label(0)),
                 wire.spec.end_label.filter(|_| wire.manual_end_label(1)),
             ]
