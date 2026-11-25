@@ -61,9 +61,10 @@ pub(crate) struct YamlValueCapture {
 /// Ordered JSON text for requested top-level collection fields.
 pub(crate) type YamlCollectionText = BTreeMap<&'static str, String>;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Default)]
 struct Capture<'a> {
     collection_text_keys: &'a [&'static str],
+    root_key_order: Option<&'a mut Vec<String>>,
     #[cfg(feature = "editor-facts")]
     keys: bool,
 }
@@ -84,9 +85,31 @@ pub(crate) fn parse_yaml_with_capture_controlled(
             collection_text_keys,
             #[cfg(feature = "editor-facts")]
             keys: capture_keys,
+            ..Capture::default()
         },
         control,
     )
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) fn parse_yaml_value_with_root_order_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<Result<(Value, Vec<String>), String>> {
+    let mut root_key_order = Vec::new();
+    let captured = parse_yaml_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        default_materialization_budget(input),
+        Capture {
+            root_key_order: Some(&mut root_key_order),
+            ..Capture::default()
+        },
+        control,
+    )?;
+    Ok(captured.value.map(|value| (value, root_key_order)))
 }
 
 pub(crate) fn parse_yaml_value_with_limits_controlled(
@@ -206,20 +229,29 @@ fn parse_yaml_controlled(
     #[cfg(feature = "editor-facts")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
-    let collection_text =
-        if !capture.collection_text_keys.is_empty() && value.as_ref().is_ok_and(Value::is_object) {
-            match builder.capture_collection_text(capture.collection_text_keys, control) {
-                Ok(text) => text,
-                Err(cancelled) => {
-                    if let Ok(value) = value {
-                        crate::json_value::drop_value_nonrecursive(value);
-                    }
-                    return Err(cancelled);
-                }
-            }
-        } else {
+    let captured = (|| {
+        if !value.as_ref().is_ok_and(Value::is_object) {
+            return Ok(YamlCollectionText::new());
+        }
+        let collection_text = if capture.collection_text_keys.is_empty() {
             YamlCollectionText::new()
+        } else {
+            builder.capture_collection_text(capture.collection_text_keys, control)?
         };
+        if let Some(order) = capture.root_key_order {
+            builder.take_root_key_order(order, control)?;
+        }
+        Ok(collection_text)
+    })();
+    let collection_text = match captured {
+        Ok(text) => text,
+        Err(cancelled) => {
+            if let Ok(value) = value {
+                crate::json_value::drop_value_nonrecursive(value);
+            }
+            return Err(cancelled);
+        }
+    };
     Ok(YamlValueCapture {
         value,
         collection_text,
@@ -629,6 +661,24 @@ impl YamlValueBuilder {
             }
         }
         Ok(text)
+    }
+
+    fn take_root_key_order(
+        &mut self,
+        order: &mut Vec<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &mut self.arena[root.0]) else {
+            return Ok(());
+        };
+        order.reserve(entries.len());
+        for (index, (key, _)) in entries.drain(..).enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            order.push(key);
+        }
+        Ok(())
     }
 }
 

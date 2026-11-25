@@ -1,13 +1,13 @@
-use crate::yaml_config::{YamlCollectionText, parse_yaml_with_capture_controlled};
-use serde_json::Value;
-
 #[cfg(any(
     test,
     feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
+    feature = "diagram-kanban",
     feature = "diagram-sequence"
 ))]
+use crate::yaml_config::{YamlCollectionText, parse_yaml_with_capture_controlled};
+use serde_json::Value;
+
+#[cfg(any(test, feature = "diagram-agentflow", feature = "diagram-sequence"))]
 pub(crate) fn parse_mermaid_inline_object_controlled(
     input: &str,
     control: &crate::OperationControl,
@@ -16,18 +16,19 @@ pub(crate) fn parse_mermaid_inline_object_controlled(
     Ok(parsed.map(|(value, _)| value))
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-agentflow",
+    feature = "diagram-kanban",
+    feature = "diagram-sequence"
+))]
 pub(crate) fn parse_mermaid_inline_object_with_text_controlled(
     input: &str,
     collection_text_keys: &[&'static str],
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<(Value, YamlCollectionText), String>> {
-    let yaml_data = if input.contains('\n') {
-        format!("{input}\n")
-    } else {
-        format!("{{\n{input}\n}}")
-    };
     let captured = parse_yaml_with_capture_controlled(
-        &yaml_data,
+        &inline_yaml(input),
         crate::MAX_DIAGRAM_NESTING_DEPTH,
         collection_text_keys,
         #[cfg(feature = "editor-facts")]
@@ -37,6 +38,26 @@ pub(crate) fn parse_mermaid_inline_object_with_text_controlled(
     Ok(captured
         .value
         .map(|value| (value, captured.collection_text)))
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) fn parse_mermaid_inline_object_with_order_controlled(
+    input: &str,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<(Value, Vec<String>), String>> {
+    crate::yaml_config::parse_yaml_value_with_root_order_controlled(
+        &inline_yaml(input),
+        crate::MAX_DIAGRAM_NESTING_DEPTH,
+        control,
+    )
+}
+
+fn inline_yaml(input: &str) -> String {
+    if input.contains('\n') {
+        format!("{input}\n")
+    } else {
+        format!("{{\n{input}\n}}")
+    }
 }
 
 #[cfg(any(

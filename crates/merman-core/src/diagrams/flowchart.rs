@@ -137,7 +137,9 @@ use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use shape_data::{apply_shape_data_value_to_node, value_to_bool, value_to_string};
+use shape_data::{
+    ShapeDataDocument, apply_shape_data_value_to_node, value_to_bool, value_to_string,
+};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use subgraph::SubgraphBuilder;
 
@@ -601,7 +603,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
 fn prepare_flowchart_shape_data(
     ast: &FlowchartAst,
     control: &OperationControl,
-) -> OperationControlResult<HashMap<String, std::result::Result<Value, String>>> {
+) -> OperationControlResult<HashMap<String, std::result::Result<ShapeDataDocument, String>>> {
     let mut documents = HashMap::new();
     for (visited, event) in ast.walk().enumerate() {
         if visited.is_multiple_of(128) {
@@ -648,18 +650,21 @@ fn prepare_flowchart_shape_data(
 fn prepare_flowchart_shape_data_document(
     source: &str,
     control: &OperationControl,
-    documents: &mut HashMap<String, std::result::Result<Value, String>>,
+    documents: &mut HashMap<String, std::result::Result<ShapeDataDocument, String>>,
 ) -> OperationControlResult<()> {
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let mut document =
-        crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
-    if let Ok(Value::Object(map)) = &mut document {
-        for key in ["laneRole", "laneIndex", "drawnExtent"] {
-            map.remove(key);
-        }
-    }
+    let document =
+        crate::inline_config::parse_mermaid_inline_object_with_order_controlled(source, control)?
+            .map(|(mut value, key_order)| {
+                if let Value::Object(map) = &mut value {
+                    for key in ["laneRole", "laneIndex", "drawnExtent"] {
+                        map.remove(key);
+                    }
+                }
+                ShapeDataDocument { value, key_order }
+            });
     documents.insert(source.to_string(), document);
     Ok(())
 }

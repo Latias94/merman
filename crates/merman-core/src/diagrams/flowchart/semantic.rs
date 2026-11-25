@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowNodeSyntax, FlowSubGraph,
-    FlowchartAst, LinkStylePos, Node, StatementEvent, Stmt, TitleKind,
+    FlowchartAst, LinkStylePos, Node, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
@@ -30,7 +30,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) diagram_type: &'a str,
     pub(super) config: &'a MermaidConfig,
     pub(super) shape_data_documents:
-        &'a HashMap<String, std::result::Result<serde_json::Value, String>>,
+        &'a HashMap<String, std::result::Result<ShapeDataDocument, String>>,
     pub(super) control: &'a OperationControl,
 }
 
@@ -408,11 +408,12 @@ impl<'a> FlowchartSemanticContext<'a> {
         active_subgraphs: &HashMap<String, usize>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
-        let value = match Self::shape_data_value(self.shape_data_documents, self.diagram_type, yaml)
-        {
-            Ok(value) => value,
-            Err(error) => return Ok(Err(error)),
-        };
+        let document =
+            match Self::shape_data_document(self.shape_data_documents, self.diagram_type, yaml) {
+                Ok(document) => document,
+                Err(error) => return Ok(Err(error)),
+            };
+        let value = &document.value;
         // FlowDB routes metadata to an already declared subgraph before checking edge IDs.
         if active_subgraphs.get(target).is_some_and(|&subgraph_index| {
             self.apply_shape_data_to_subgraph(subgraph_index, target, value)
@@ -427,8 +428,11 @@ impl<'a> FlowchartSemanticContext<'a> {
 
         self.vertex_calls.push(target.to_string());
         let idx = self.ensure_authored_node(target);
-        Ok(apply_shape_data_value_to_node(&mut self.nodes[idx], value)
-            .map_err(|error| Error::diagram_parse_fallback(self.diagram_type.to_string(), error)))
+        Ok(
+            apply_shape_data_value_to_node(&mut self.nodes[idx], document).map_err(|error| {
+                Error::diagram_parse_fallback(self.diagram_type.to_string(), error)
+            }),
+        )
     }
 
     fn add_class_to_target(
@@ -493,11 +497,11 @@ impl<'a> FlowchartSemanticContext<'a> {
         Ok(Ok(()))
     }
 
-    fn shape_data_value<'b>(
-        documents: &'b HashMap<String, std::result::Result<serde_json::Value, String>>,
+    fn shape_data_document<'b>(
+        documents: &'b HashMap<String, std::result::Result<ShapeDataDocument, String>>,
         diagram_type: &str,
         yaml: &str,
-    ) -> Result<&'b serde_json::Value> {
+    ) -> Result<&'b ShapeDataDocument> {
         match documents
             .get(yaml)
             .expect("flowchart shape data must be prepared before semantic construction")
