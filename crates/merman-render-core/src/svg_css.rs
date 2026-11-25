@@ -6,6 +6,8 @@ use std::fmt::Write;
 use crate::{Result, svg_output::SvgOutput};
 
 mod id;
+#[cfg(feature = "svg-identity")]
+mod id_suffix;
 #[cfg(feature = "css-style")]
 mod prepared;
 
@@ -13,6 +15,8 @@ pub use id::{
     CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, scoped_drop_shadow,
     scoped_svg_id, scoped_svg_url,
 };
+#[cfg(feature = "svg-identity")]
+pub use id_suffix::lower_id_suffix_selectors;
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 

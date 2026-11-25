@@ -6,6 +6,10 @@
 #[doc(hidden)]
 pub mod pie;
 
+#[cfg(feature = "diagram-quadrant-chart")]
+#[doc(hidden)]
+pub mod quadrantchart;
+
 #[cfg(feature = "diagram-radar")]
 #[doc(hidden)]
 pub mod radar;

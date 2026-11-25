@@ -1,22 +1,22 @@
 use serde_json::Value;
 
 #[derive(Debug)]
-pub(crate) struct QuadrantChartCssBinding {
-    pub(crate) quadrant1_fill: String,
-    pub(crate) quadrant2_fill: String,
-    pub(crate) quadrant3_fill: String,
-    pub(crate) quadrant4_fill: String,
-    pub(crate) quadrant1_text_fill: String,
-    pub(crate) quadrant2_text_fill: String,
-    pub(crate) quadrant3_text_fill: String,
-    pub(crate) quadrant4_text_fill: String,
-    pub(crate) quadrant_point_fill: String,
-    pub(crate) quadrant_point_text_fill: String,
-    pub(crate) quadrant_x_axis_text_fill: String,
-    pub(crate) quadrant_y_axis_text_fill: String,
-    pub(crate) quadrant_title_fill: String,
-    pub(crate) quadrant_internal_border_stroke_fill: String,
-    pub(crate) quadrant_external_border_stroke_fill: String,
+pub struct QuadrantChartCssBinding {
+    pub quadrant1_fill: String,
+    pub quadrant2_fill: String,
+    pub quadrant3_fill: String,
+    pub quadrant4_fill: String,
+    pub quadrant1_text_fill: String,
+    pub quadrant2_text_fill: String,
+    pub quadrant3_text_fill: String,
+    pub quadrant4_text_fill: String,
+    pub quadrant_point_fill: String,
+    pub quadrant_point_text_fill: String,
+    pub quadrant_x_axis_text_fill: String,
+    pub quadrant_y_axis_text_fill: String,
+    pub quadrant_title_fill: String,
+    pub quadrant_internal_border_stroke_fill: String,
+    pub quadrant_external_border_stroke_fill: String,
 }
 
 impl QuadrantChartCssBinding {
@@ -44,7 +44,7 @@ impl QuadrantChartCssBinding {
             })
     }
 
-    pub(crate) fn resolve(config: &Value) -> Self {
+    pub fn resolve(config: &Value) -> Self {
         let value = |key: &'static str, fallback: &str| {
             Self::configured_color(config, key)
                 .map_or(fallback, |(color, _)| color)

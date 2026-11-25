@@ -31,6 +31,9 @@ pub mod route_types;
 #[cfg(feature = "route-paint")]
 pub mod route_paint;
 
+#[cfg(feature = "svg-animation")]
+#[doc(hidden)]
+pub mod step_animation;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_css;

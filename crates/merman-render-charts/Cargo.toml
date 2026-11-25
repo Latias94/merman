@@ -15,6 +15,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
+diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
 diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
 diagram-sankey = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-sankey"]
 diagram-treemap = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-treemap"]

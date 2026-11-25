@@ -1,4 +1,5 @@
-use crate::diagrams::langium_common::{LangiumCommonParse, parse_langium_common};
+#[cfg(any(feature = "editor-facts", test))]
+use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::{
     push_langium_common_editor_fact, push_langium_common_recovery,
@@ -10,9 +11,12 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, SourceSpan, family};
+use crate::{Error, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+use merman_core_structured::info::{
+    InfoHeader, InfoStatement, info_body_start_controlled, parse_info_statement,
+};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
@@ -174,11 +178,11 @@ fn construct_info_semantic_source_controlled(
 ) -> crate::OperationControlResult<
     std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure>,
 > {
-    control.checkpoint()?;
+    let header = info_body_start_controlled(code, control)?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("info");
 
-    let body = match info_body_start_controlled(code, control)? {
+    let mut offset = match header {
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
                 model: InfoDiagramModel::default(),
@@ -201,9 +205,8 @@ fn construct_info_semantic_source_controlled(
                     .then(EditorSemanticFacts::new),
             )));
         }
-        InfoHeader::Body(body) => body,
+        InfoHeader::Body { offset } => offset,
     };
-    let mut offset = body.offset;
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
@@ -220,7 +223,9 @@ fn construct_info_semantic_source_controlled(
 
     while offset < code.len() {
         control.checkpoint()?;
-        match parse_info_statement(code, offset, !show_info && !common_seen) {
+        let statement = parse_info_statement(code, offset, !show_info && !common_seen)
+            .expect("the Info parser advances over complete source tokens");
+        match statement {
             InfoStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
                     #[cfg(feature = "editor-facts")]
@@ -249,6 +254,7 @@ fn construct_info_semantic_source_controlled(
                 #[cfg(feature = "editor-facts")]
                 span,
                 consumed,
+                ..
             } => {
                 show_info = true;
                 #[cfg(feature = "editor-facts")]
@@ -268,6 +274,7 @@ fn construct_info_semantic_source_controlled(
                 #[cfg(feature = "editor-facts")]
                 span,
                 next_offset,
+                ..
             } => {
                 #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
@@ -304,61 +311,6 @@ fn construct_info_semantic_source_controlled(
     }))
 }
 
-enum InfoStatement {
-    Common(LangiumCommonParse),
-    ShowInfo {
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan,
-        consumed: usize,
-    },
-    Empty {
-        next_offset: usize,
-    },
-    Unexpected {
-        ch: char,
-        skipped: usize,
-        bad_offset: usize,
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan,
-        next_offset: usize,
-    },
-}
-
-fn parse_info_statement(code: &str, offset: usize, allow_show_info: bool) -> InfoStatement {
-    if let Some(parsed) = parse_langium_common(code, offset) {
-        return InfoStatement::Common(parsed);
-    }
-
-    let (line, next_offset) = physical_line(code, offset);
-    let visible = strip_inline_comment(line);
-    let trimmed = visible.trim();
-    if trimmed.is_empty() {
-        return InfoStatement::Empty { next_offset };
-    }
-
-    let leading = visible.len() - visible.trim_start().len();
-    if allow_show_info && let Some(token_len) = keyword_token_len(visible.trim_start(), "showInfo")
-    {
-        #[cfg(feature = "editor-facts")]
-        let start = offset + leading;
-        return InfoStatement::ShowInfo {
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(start, start + token_len),
-            consumed: leading + token_len,
-        };
-    }
-
-    let bad_offset = offset + visible.find(trimmed).unwrap_or_default();
-    InfoStatement::Unexpected {
-        ch: trimmed.chars().next().unwrap_or('?'),
-        skipped: trimmed.chars().count(),
-        bad_offset,
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(bad_offset, bad_offset + trimmed.len()),
-        next_offset,
-    }
-}
-
 #[cfg(feature = "editor-facts")]
 fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
     facts.push_directive_prefix("showInfo");
@@ -373,75 +325,6 @@ fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan)
         span,
         span,
     ));
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InfoHeader {
-    Empty,
-    ExpectedInfo(SourceSpan),
-    Body(InfoBodyStart),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct InfoBodyStart {
-    offset: usize,
-}
-
-fn info_body_start_controlled(
-    code: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<InfoHeader> {
-    let mut offset = 0usize;
-    while offset < code.len() {
-        control.checkpoint()?;
-        let (line, next_offset) = physical_line(code, offset);
-        let visible = strip_inline_comment(line);
-        let trimmed = visible.trim_start();
-        if trimmed.trim().is_empty() {
-            offset = next_offset;
-            continue;
-        }
-        let leading = visible.len() - trimmed.len();
-        let header_start = offset + leading;
-        let Some(header_len) = keyword_token_len(trimmed, "info") else {
-            let token_len = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
-            return Ok(InfoHeader::ExpectedInfo(SourceSpan::new(
-                header_start,
-                header_start + token_len,
-            )));
-        };
-        return Ok(InfoHeader::Body(InfoBodyStart {
-            offset: header_start + header_len,
-        }));
-    }
-    Ok(InfoHeader::Empty)
-}
-
-fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
-    let rest = input.strip_prefix(keyword)?;
-    (rest.is_empty()
-        || rest.starts_with("%%")
-        || rest.chars().next().is_some_and(char::is_whitespace))
-    .then_some(keyword.len())
-}
-
-fn physical_line(source: &str, offset: usize) -> (&str, usize) {
-    let rest = &source[offset..];
-    if let Some(newline) = rest.find('\n') {
-        let line = rest[..newline]
-            .strip_suffix('\r')
-            .unwrap_or(&rest[..newline]);
-        (line, offset + newline + 1)
-    } else {
-        (rest, source.len())
-    }
-}
-
-fn strip_inline_comment(line: &str) -> &str {
-    match line.find("%%") {
-        Some(idx) => &line[..idx],
-        None => line,
-    }
 }
 
 #[cfg(test)]

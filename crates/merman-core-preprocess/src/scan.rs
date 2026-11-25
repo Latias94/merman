@@ -4,6 +4,8 @@ use merman_model::{OperationControl, OperationControlResult};
 
 #[doc(hidden)]
 pub mod controlled;
+#[doc(hidden)]
+pub mod langium;
 
 #[cfg(feature = "mermaid-unicode")]
 mod jison_unicode;

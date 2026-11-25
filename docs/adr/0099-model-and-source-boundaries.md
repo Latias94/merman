@@ -31,7 +31,8 @@ Introduce `merman-model` for canonical family data and its necessary value, iden
 Use `merman_model::families::<family>` as the canonical family namespace. Core retains source parser/DB construction privately and depends on these types. ASCII and Render select the shared data and their own handlers without selecting core parsers. Export uses shared execution types and retains its real dependency on Render. The facade owns source-to-output orchestration and may expose an intentional `merman::model` namespace.
 
 `merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
-line-ending, HTML attribute, and Mermaid entity rewrites. Core retains frontmatter and directive
+line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
+and declaration terminals. Core retains frontmatter and directive
 interpretation, `PreprocessedSource`, and the projection of parser diagnostics and editor facts
 back to the original source.
 
@@ -72,8 +73,8 @@ intersections. `merman-render` owns traversal, work accounting, asset policy, an
 
 ### Structured diagrams
 
-`merman-core-structured` owns Packet field scanning and bounded row expansion, along with the
-Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares the source and
+`merman-core-structured` owns Info syntax, Packet field scanning and bounded row expansion, and
+the Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares the source and
 maps each parser's model, diagnostics, and optional syntax spans into the public parse result.
 
 `merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad. It
@@ -108,9 +109,9 @@ supplies text metrics and assembles the chart into a scoped SVG document under t
 operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
 bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
 supplies text metrics and emits the SVG for both families.
-The chart crate owns Radar layout and its point and radius codecs, Treemap hierarchy layout,
-and Venn layout and its solver. `merman-render` supplies theme precedence, the operation work
-meter, and SVG emission for these families.
+The chart crate owns Quadrant Chart geometry and paint binding, Radar layout and its point and
+radius codecs, Treemap hierarchy layout, and Venn layout and its solver. `merman-render` supplies
+theme precedence, the operation work meter, and SVG emission for these families.
 
 ### Frozen presentation is distinct from engine initialization
 

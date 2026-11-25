@@ -1,7 +1,9 @@
 use super::preset::SvgPipelinePreset;
 use crate::DiagramFamilyId;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase};
+use crate::resources::{
+    OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase,
+};
 use merman_model::OperationPhase;
 use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
@@ -183,6 +185,10 @@ impl<'a> SvgPostprocessExecution<'a> {
 
     pub(crate) fn checkpoint(self) -> crate::Result<()> {
         self.session.checkpoint(OperationPhase::Postprocess)
+    }
+
+    pub(crate) fn work_meter(self) -> &'a OperationWorkMeter {
+        self.session.work_meter()
     }
 
     pub(crate) const fn resource_policy(self) -> &'a RenderResourcePolicy {

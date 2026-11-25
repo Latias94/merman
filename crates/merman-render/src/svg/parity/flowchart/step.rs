@@ -1,6 +1,7 @@
 use super::*;
 use kurbo::{ParamCurve, ParamCurveArclen};
 use merman_markup::theme_color::{ColorChannel, ThemeColor};
+use merman_render_core::step_animation::animation_id;
 
 const BADGE_RADIUS: f64 = 9.0;
 const BADGE_FRACTIONS: [f64; 9] = [0.25, 0.35, 0.15, 0.65, 0.75, 0.5, 0.85, 0.1, 0.9];
@@ -57,18 +58,6 @@ impl FlowchartSteps {
             r#"<style class="edge-step-style">@media (prefers-reduced-motion: reduce) {{ #{scope} .edge-step-dot, #{scope} .edge-step-highlight {{ display: none; }} }}</style>"#,
         );
     }
-}
-
-fn animation_id(value: &str) -> String {
-    let mut id = String::from("step_");
-    for character in value.chars() {
-        if character.is_ascii_alphanumeric() {
-            id.push(character);
-        } else {
-            let _ = write!(id, "_{:x}_", character as u32);
-        }
-    }
-    id
 }
 
 fn step_color<'a>(

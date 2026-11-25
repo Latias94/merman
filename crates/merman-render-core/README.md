@@ -10,6 +10,8 @@ layout features.
 `svg-output` provides bounded SVG writing, XML text serialization, base styles, and shared render
 errors. `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing.
+`svg-animation` validates and removes Mermaid Step animations for static SVG output.
+`svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and shared text style and
 measurement types. `text-layout` provides font stacks, text tokenization, line breaking, and width
 estimation. `theme-svg` writes resolved canvas paint and categorical patterns to SVG.

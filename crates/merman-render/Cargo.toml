@@ -79,7 +79,7 @@ diagram-kanban = ["merman-model/diagram-kanban", "markdown-labels"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "merman-render-core/resources-mindmap", "markdown-labels"]
 diagram-packet = ["merman-model/diagram-packet", "dep:merman-render-structured", "merman-render-structured/diagram-packet"]
 diagram-pie = ["merman-model/diagram-pie", "dep:merman-render-charts", "merman-render-charts/diagram-pie"]
-diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
+diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "dep:merman-render-charts", "merman-render-charts/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "dep:merman-render-charts", "merman-render-charts/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-render-structured", "merman-render-structured/diagram-railroad"]
 diagram-requirement = ["merman-model/diagram-requirement", "markdown-labels"]
@@ -118,7 +118,7 @@ math = [
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["icon-registry", "svg-parse", "text-layout", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["icon-registry", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }

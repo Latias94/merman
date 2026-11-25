@@ -92,8 +92,8 @@ through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 
 `merman-render-charts` provides Pie layout and SVG content through `diagram-pie`. It provides
-Radar, Sankey, Treemap, and Venn layout through `diagram-radar`, `diagram-sankey`,
-`diagram-treemap`, and `diagram-venn`.
+Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
+`diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
 `diagram-xychart` selects XY Chart layout and plot geometry.
 `merman-render-flow` provides shape geometry through `diagram-flowchart`, `diagram-swimlane`,
 and `diagram-agentflow`.
