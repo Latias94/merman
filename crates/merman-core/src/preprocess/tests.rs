@@ -6,6 +6,46 @@ use super::*;
 use serde_json::{Map, json};
 
 #[test]
+fn frontmatter_collection_text_preserves_source_order() {
+    let mut source = String::from("---\nanchor: &ordered {z: 1, a: \"café\\n\"}\n");
+    source.push_str("commented: # first comment\n");
+    source.push_str(&"# buffered comment\n".repeat(128));
+    source.push_str(
+        "title: [*ordered, {y: false, b: null}]\ndisplayMode: *ordered\n---\nflowchart TD\nA-->B",
+    );
+
+    let assert_fields = |capture: FrontmatterCapture| {
+        let processed = capture.result.expect("frontmatter parses");
+        assert_eq!(
+            processed.title.as_deref(),
+            Some(r#"[{"z":1,"a":"café\n"},{"y":false,"b":null}]"#),
+        );
+        assert_eq!(
+            processed.config.get_str("gantt.displayMode"),
+            Some(r#"{"z":1,"a":"café\n"}"#),
+        );
+    };
+    let control = OperationControl::new();
+    assert_fields(
+        process_frontmatter_controlled(
+            &source,
+            #[cfg(feature = "editor-facts")]
+            SourceConfigCaptureMode::Omit,
+            &control,
+        )
+        .unwrap(),
+    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let captured =
+            process_frontmatter_controlled(&source, SourceConfigCaptureMode::Collect, &control)
+                .unwrap();
+        assert!(captured.keys.is_empty());
+        assert_fields(captured);
+    }
+}
+
+#[test]
 fn directive_json5_decodes_literal_keys_and_keeps_number_and_order_semantics() {
     let directive = parse_directive_like_upstream(
         r#"init: {

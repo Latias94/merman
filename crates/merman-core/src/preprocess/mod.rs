@@ -721,64 +721,38 @@ fn process_frontmatter_controlled(
         capture_mode,
         control,
     )?;
-    let yaml_body = yaml_input.text();
-    #[cfg(feature = "editor-facts")]
-    let mut keys = Vec::new();
-    #[cfg(feature = "editor-facts")]
-    let mut rewrite_safe = true;
-
     control.checkpoint()?;
-    let parsed = {
+    let captured = crate::yaml_config::parse_yaml_frontmatter_controlled(
+        yaml_input.text(),
+        MAX_CONFIG_NESTING_DEPTH,
         #[cfg(feature = "editor-facts")]
-        {
-            if capture_mode.collects() {
-                let captured = crate::yaml_config::parse_yaml_value_capture_controlled(
-                    yaml_body,
-                    MAX_CONFIG_NESTING_DEPTH,
-                    control,
-                )?;
-                rewrite_safe = captured.rewrite_safe;
-                keys.reserve(captured.keys.len());
-                for key in captured.keys {
-                    // Compose exactly once through each coordinate space: parser span in the dedented
-                    // YAML input -> body-relative source -> cleaned preprocess source. The outer source
-                    // edit map is applied later when the operation evidence is appended.
-                    let mapped = key.span.and_then(|span| {
-                        map_frontmatter_yaml_span_to_preprocessed_source(
-                            &yaml_input,
-                            location.body.start,
-                            span,
-                        )
-                    });
-                    let (span, exact) =
-                        mapped.map_or((None, false), |(span, exact)| (Some(span), exact));
-                    let rewrite_safe = key.rewrite_safe && exact;
-                    keys.push(LocalConfigKeyEvidence {
-                        path: key.path,
-                        span,
-                        #[cfg(feature = "editor-facts")]
-                        rewrite_safe,
-                    });
-                }
-                captured.value
-            } else {
-                crate::yaml_config::parse_yaml_value_controlled(
-                    yaml_body,
-                    MAX_CONFIG_NESTING_DEPTH,
-                    control,
-                )?
+        capture_mode.collects(),
+        control,
+    )?;
+    #[cfg(feature = "editor-facts")]
+    let rewrite_safe = captured.rewrite_safe;
+    #[cfg(feature = "editor-facts")]
+    let keys: Vec<_> = captured
+        .keys
+        .into_iter()
+        .map(|key| {
+            // The outer source edit map is applied when the operation evidence is appended.
+            let mapped = key.span.and_then(|span| {
+                map_frontmatter_yaml_span_to_preprocessed_source(
+                    &yaml_input,
+                    location.body.start,
+                    span,
+                )
+            });
+            let (span, exact) = mapped.map_or((None, false), |(span, exact)| (Some(span), exact));
+            LocalConfigKeyEvidence {
+                path: key.path,
+                span,
+                rewrite_safe: key.rewrite_safe && exact,
             }
-        }
-        #[cfg(not(feature = "editor-facts"))]
-        {
-            crate::yaml_config::parse_yaml_value_controlled(
-                yaml_body,
-                MAX_CONFIG_NESTING_DEPTH,
-                control,
-            )?
-        }
-    };
-    let parsed_obj = match frontmatter_fields_from_yaml_value(parsed) {
+        })
+        .collect();
+    let parsed_obj = match frontmatter_fields_from_yaml_value(captured.value) {
         Ok(parsed) => parsed,
         Err(message) => {
             return Ok(FrontmatterCapture {
@@ -804,21 +778,11 @@ fn process_frontmatter_controlled(
         return Err(cancelled);
     }
 
-    let mut title = None;
-    let mut display_mode = None;
-
-    if let Some(t) = parsed_obj
-        .get("title")
-        .filter(|value| frontmatter_truthy(value))
-    {
-        title = Some(frontmatter_to_string(t));
-    }
-    if let Some(dm) = parsed_obj
-        .get("displayMode")
-        .filter(|value| frontmatter_truthy(value))
-    {
-        display_mode = Some(frontmatter_to_string(dm));
-    }
+    let title = frontmatter_text(parsed_obj.get("title"), captured.collection_text.title);
+    let display_mode = frontmatter_text(
+        parsed_obj.get("displayMode"),
+        captured.collection_text.display_mode,
+    );
 
     let mut config = MermaidConfig::empty_object();
     merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
@@ -1223,14 +1187,13 @@ fn frontmatter_truthy(value: &Value) -> bool {
     }
 }
 
-fn frontmatter_to_string(value: &Value) -> String {
-    match value {
-        Value::String(value) => value.clone(),
-        Value::Number(value) => value.to_string(),
-        Value::Bool(true) => "true".to_string(),
-        Value::Bool(false) => "false".to_string(),
-        Value::Null => "null".to_string(),
-        Value::Array(_) | Value::Object(_) => value.to_string(),
+fn frontmatter_text(value: Option<&Value>, collection: Option<String>) -> Option<String> {
+    match value.filter(|value| frontmatter_truthy(value))? {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Null => None,
+        Value::Array(_) | Value::Object(_) => collection,
     }
 }
 
