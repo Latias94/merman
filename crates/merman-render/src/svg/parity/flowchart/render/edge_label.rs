@@ -762,6 +762,7 @@ mod tests {
         FlowchartEdgePathGeom {
             d: d.to_string(),
             pb: None,
+            neo_length: None,
             data_points: points.clone(),
             pre_hop_dash_mask_length: None,
             line_hop_applied: false,

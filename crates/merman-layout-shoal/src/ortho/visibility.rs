@@ -47,6 +47,7 @@ impl Bounds {
 /// A static balanced box index for repeated visibility and channel queries.
 pub(super) struct Obstacles {
     rects: Bvh<Bounds>,
+    margin: f64,
 }
 
 impl Obstacles {
@@ -67,7 +68,35 @@ impl Obstacles {
         }
         Ok(Self {
             rects: Bvh::from_bounds(rects, work)?,
+            margin,
         })
+    }
+
+    pub(super) fn area_is_clear(
+        &self,
+        area: Bounds,
+        terminal: Option<Rect>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        let ignored = terminal
+            .map(Bounds::new)
+            .transpose()?
+            .map(|body| body.pad(self.margin));
+        Ok(self
+            .rects
+            .visit(|entry| -> LayoutResult<_> {
+                work.visit(1)?;
+                Ok(match entry {
+                    BvhEntry::Node(bounds) => Continue(bounds.overlaps_strictly(area)),
+                    BvhEntry::Item(&wall)
+                        if ignored != Some(wall) && wall.overlaps_strictly(area) =>
+                    {
+                        Break(())
+                    }
+                    BvhEntry::Item(_) => Continue(true),
+                })
+            })?
+            .is_continue())
     }
 
     pub(super) fn window(&self, start: Point, end: Point, margin: f64) -> Option<Bounds> {

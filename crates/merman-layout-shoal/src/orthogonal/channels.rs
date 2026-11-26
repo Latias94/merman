@@ -55,7 +55,7 @@ impl Scene<'_> {
                 }
             }
         }
-        charge_sort(legs.len(), work)?;
+        work.charge_sort(legs.len())?;
         legs.sort_unstable_by(|a, b| {
             (a.line.axis == Axis::Vertical)
                 .cmp(&(b.line.axis == Axis::Vertical))
@@ -137,7 +137,7 @@ impl Scene<'_> {
             };
             proposed.push((lane.leg.edge, points));
         }
-        charge_sort(proposed.len(), work)?;
+        work.charge_sort(proposed.len())?;
         proposed.sort_unstable_by_key(|(edge, _)| *edge);
         let (before, after) = self.conflicts(&proposed, changes, work)?;
         if after.0 <= before.0 && after.1 < before.1 {
@@ -172,7 +172,7 @@ impl Scene<'_> {
         let last = (leg.at + 3 == route.len()).then_some(spec.end_marker);
         for (joint, terminal) in [(before, first), (after, last)] {
             let at = across(leg.line.axis, joint);
-            let lead = terminal.map_or(0.0, |marker| marker.length.max(MIN_LEAD));
+            let lead = terminal.map_or(0.0, |marker| marker.length.max(MIN_MARKER_LEAD));
             if at < leg.line.fixed {
                 room[0] = room[0].max((at + lead).max(at.next_up()));
             } else {
@@ -247,16 +247,6 @@ impl Scene<'_> {
         }
         Ok((before, after))
     }
-}
-
-fn charge_sort(len: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-    if len > 1 {
-        work.charge(
-            len.checked_mul(len.ilog2() as usize + 1)
-                .ok_or(crate::WorkError::ArithmeticOverflow)?,
-        )?;
-    }
-    Ok(())
 }
 
 fn across(axis: Axis, point: RoutePoint) -> f64 {

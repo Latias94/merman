@@ -1,6 +1,6 @@
 //! Relieve crowded automatic port rows while the drawing is still in canonical coordinates.
 
-use super::{Component, Drawing, canonical_size, validate};
+use super::{Component, Drawing, canonical_size};
 use crate::geom::{Bounds, Bvh, BvhEntry};
 use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{
@@ -829,7 +829,7 @@ fn spread_faces(
                 };
                 proposed.push((i, edit));
             }
-            validate::charge_sort(proposed.len(), work)?;
+            work.charge_sort(proposed.len())?;
             proposed.sort_unstable_by_key(|(i, _)| *i);
             if !proof.allows(run.end, proposed, drawing, graph, work)? {
                 continue;

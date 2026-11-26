@@ -276,6 +276,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) d: String,
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
+    /// Centerline length rounded to the SVG DOM's float before any path rewrite.
+    pub(in crate::svg::parity::flowchart) neo_length: Option<f64>,
     /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
     pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
     /// Length of the displaced curve for an unanimated Neo dotted or dashed mask.
@@ -293,6 +295,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     /// Actual path emitted by `insertEdge`; hand-drawn edges differ from the logical curve `d`.
     pub(in crate::svg::parity::flowchart) emitted_d_for_label: Option<String>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
+}
+
+impl FlowchartEdgePathGeom {
+    pub(in crate::svg::parity::flowchart) fn centerline_length(&self) -> Option<f64> {
+        self.neo_length.or_else(|| svg_path_length_from_d(&self.d))
+    }
 }
 
 #[derive(Debug, Clone)]

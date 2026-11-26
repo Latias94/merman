@@ -5,7 +5,7 @@ pub(crate) mod route;
 #[cfg(test)]
 mod tests;
 
-use crate::flat;
+use crate::validate;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Direction, Endpoint, Graph, GroupId, LayoutError, LayoutGeometry, LayoutOutput, NodeId,
@@ -32,7 +32,7 @@ pub fn layout_with_control(
 ) -> Result<LayoutGeometry, LayoutError> {
     let mut work = Work::new(control);
     work.check()?;
-    flat::validate_options(options)?;
+    validate::options(options)?;
     if !graph.lane_order.is_empty() {
         return Err(LayoutError::Unsupported(
             "swimlane placement on an Architecture grid",
@@ -84,7 +84,7 @@ pub fn layout_with_control(
         metrics,
         options,
         &mut drawing,
-        route::Gutters::Drawing(&tracks),
+        route::Gutters::Architecture(&tracks),
         &mut work,
     )?;
     work.finish()?;
@@ -184,18 +184,12 @@ impl Hierarchy {
         };
         for node in &graph.nodes {
             work.visit(1)?;
-            flat::validate_node(node)?;
+            validate::node(node)?;
             add(node.parent)?;
         }
         for group in &graph.groups {
             work.visit(1)?;
-            let pad = group.padding;
-            if ![pad.top, pad.right, pad.bottom, pad.left]
-                .into_iter()
-                .all(flat::length)
-                || !flat::measured(group.min_size)
-                || group.title.is_some_and(|size| !flat::measured(size))
-            {
+            if !validate::measured_group(group) {
                 return Err(LayoutError::InvalidInput(
                     "invalid Architecture grid group measurements",
                 ));
@@ -227,7 +221,7 @@ impl Hierarchy {
         seq.extend(graph.groups.iter().map(|group| group.seq));
         for &scope in order.iter().rev() {
             let items = &mut scopes[scope].items;
-            charge_sort(items.len(), work)?;
+            work.charge_sort(items.len())?;
             items.sort_unstable_by_key(|&item| (seq[item], item));
             if scope != root
                 && let Some(&first) = items.first()
@@ -313,11 +307,11 @@ impl Hierarchy {
         work.charge(graph.edges.len())?;
         for edge in &graph.edges {
             work.visit(1)?;
-            flat::validate_edge(edge)?;
+            validate::edge(edge)?;
             let ends = [edge.source, edge.target];
             for (end, hint) in ends.into_iter().zip([edge.source_port, edge.target_port]) {
                 if let Endpoint::Node(id) = end {
-                    flat::validate_port(
+                    validate::port(
                         graph.nodes.get(id.0 as usize).ok_or(BAD_ENDPOINT)?.size,
                         hint,
                     )?;
@@ -368,16 +362,6 @@ impl Hierarchy {
         }
         Ok(())
     }
-}
-
-fn charge_sort(len: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-    if len > 1 {
-        work.charge(
-            len.checked_mul(len.ilog2() as usize + 1)
-                .ok_or(WorkError::ArithmeticOverflow)?,
-        )?;
-    }
-    Ok(())
 }
 
 fn port_side(hint: PortSideHint, fallback: Side) -> Side {

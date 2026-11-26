@@ -1,5 +1,4 @@
 use super::{Expanded, Place, numeric_cmp};
-use crate::flat::validate::charge_sort;
 use crate::work::{LayoutResult, Work, filled, push};
 use crate::{GroupId, LayoutError, WorkError};
 
@@ -199,7 +198,7 @@ impl<'a> Groups<'a> {
             if !total.sum.is_finite() {
                 return Err(WorkError::ArithmeticOverflow.into());
             }
-            charge_sort(children.len(), work)?;
+            work.charge_sort(children.len())?;
             children.sort_unstable_by(|&a, &b| {
                 let (a, b) = (summary(a), summary(b));
                 numeric_cmp(a.sum / a.count as f64, b.sum / b.count as f64)

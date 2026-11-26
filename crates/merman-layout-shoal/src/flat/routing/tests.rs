@@ -8,6 +8,29 @@ const STYLES: [RoutingStyle; 3] = [
     RoutingStyle::Polyline,
 ];
 
+#[test]
+fn a_shared_face_keeps_the_deepest_measured_marker_runway() {
+    let mut spec = EdgeSpec::new(NodeId(0).into(), NodeId(1).into());
+    spec.end_marker = MarkerMetrics {
+        length: 14.0,
+        width: 10.0,
+    };
+    spec.set_marker_runways([0.0, 14.0]);
+    assert_eq!(spec.sweep_runways(), [0.0, 14.0]);
+
+    let mut room = EndRoom::default();
+    for (length, runway) in [(14.0, 14.0), (12.0, 24.0), (0.0, 6.0)] {
+        let marker = MarkerMetrics {
+            length,
+            width: 10.0,
+        };
+        room.include(marker, runway, None, Direction::Down, 0.0)
+            .unwrap();
+    }
+    assert_eq!(room.guard(false), Ok(14.0));
+    assert_eq!(room.guard(true), Ok(24.0));
+}
+
 struct Scene {
     g: Expanded,
     c: Component,
@@ -639,6 +662,185 @@ fn an_isolated_sweep_uses_the_unmarked_face_and_only_the_marked_shaft() {
     let drawing = scene.draw();
     let points = &drawing.edges[0].1.points;
     assert!(points[1].y - points[0].y >= 8. + scene.options.spacing.end_label_along);
+}
+
+#[test]
+fn adjacent_sweeps_in_a_three_rank_dag_keep_their_geometry_and_gain_clearance() {
+    let scene = Scene::new(
+        &[20.; 4],
+        &[&[0], &[1, 2], &[3]],
+        &[&[0, 1], &[0, 2], &[1, 3], &[2, 3]],
+        &[0., -40., 40., 0.],
+    );
+    let mut options = Options {
+        capture_node_ranks: true,
+        ..Options::default()
+    };
+    let drawing = crate::layout(&scene.graph, &options).unwrap();
+    assert_eq!(drawing.node_ranks, [0, 1, 1, 2]);
+    assert!(drawing.edges.iter().any(|edge| {
+        edge.points
+            .windows(2)
+            .any(|p| p[0].x != p[1].x && p[0].y != p[1].y)
+    }));
+    assert!(
+        drawing
+            .edges
+            .iter()
+            .all(|edge| edge.corridor_clearance > 2.)
+    );
+
+    options.reuse_unchanged_components = true;
+    let cached = crate::layout(&scene.graph, &options).unwrap();
+    assert_eq!(drawing.nodes, cached.nodes);
+    for (certified, fallback) in drawing.edges.iter().zip(cached.edges) {
+        assert_eq!(certified.points, fallback.points);
+        assert_eq!(certified.ports, fallback.ports);
+        assert_eq!(fallback.corridor_clearance, 0.);
+    }
+}
+
+#[test]
+fn adjacent_sweep_uses_the_band_face_beyond_its_shorter_source_box() {
+    let mut scene = Scene::new(
+        &[10., 2., 60., 10.],
+        &[&[0], &[1, 2], &[3]],
+        &[&[0, 1], &[0, 2], &[1, 3]],
+        &[0., 0., 20., 310.],
+    );
+    scene.options.spacing.rank = 12.;
+    scene.options.compact_ranks = false;
+    let drawing = scene.draw();
+    let route = &drawing.edges[2].1;
+    let [contact, from, to] = route.points.as_slice() else {
+        panic!("expected one straight lead and one sweep, got {route:?}");
+    };
+    let neighbor = drawing.nodes[2];
+    let bottom = neighbor.y + neighbor.height;
+    assert_eq!(from.y, bottom);
+    assert!(bottom - contact.y > 20.);
+
+    // This exact point on the canonical cubic intersects the neighboring box's 2-unit outset.
+    let along = to.y - from.y;
+    let across = to.x - from.x;
+    let x = from.x + across * sweep_x(0.125);
+    let y = from.y + along * sweep_y(0.125, sweep_handle_fraction(across, along));
+    assert!((neighbor.x..neighbor.x + neighbor.width).contains(&x));
+    assert!(bottom < y && y < bottom + 2.);
+    assert!(route.corridor_clearance > 0. && route.corridor_clearance < 2.);
+}
+
+#[test]
+fn a_foreign_band_limits_clearance_even_with_no_neighbor_on_either_route_face() {
+    let mut scene = Scene::new(
+        &[10.; 3],
+        &[&[0], &[1], &[2]],
+        &[&[0, 1], &[1, 2]],
+        &[0.; 3],
+    );
+    scene.options.spacing.rank = 0.5;
+    scene.options.compact_ranks = false;
+    let drawing = scene.draw();
+    for (_, route) in drawing.edges {
+        assert_eq!(route.points.len(), 2);
+        assert!(route.corridor_clearance > 0. && route.corridor_clearance <= 0.5);
+    }
+}
+
+#[test]
+fn compaction_invalidates_moved_shafts_and_retains_the_promised_foreign_clearance() {
+    let scene = Scene::new(
+        &[10., 10., 80., 10., 10.],
+        &[&[0], &[1, 2], &[3, 4]],
+        &[&[0, 1], &[0, 2], &[1, 3], &[2, 4]],
+        &[0., 0., 100., 0., 160.],
+    );
+    let mut drawing = scene.draw();
+    let before = drawing.nodes[3];
+    for edge in [0, 2, 3] {
+        assert!(drawing.edges[edge].1.corridor_clearance > 0.);
+    }
+    compact_ranks(
+        &mut drawing,
+        &scene.c,
+        &scene.g,
+        &scene.graph,
+        &scene.options,
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert!(drawing.nodes[3].y < before.y);
+    assert_eq!(drawing.edges[2].1.corridor_clearance, 0.);
+    let retained = drawing.edges[3].1.corridor_clearance;
+    assert!(retained > 0. && retained <= scene.options.spacing.edge);
+}
+
+#[test]
+fn a_dummy_band_cannot_certify_routes_through_or_along_its_gap() {
+    let mut scene = Scene::new(
+        &[20.; 5],
+        &[&[0], &[1], &[2], &[5, 3], &[4]],
+        &[&[0, 1], &[1, 2], &[2, 3], &[3, 4], &[2, 5, 4]],
+        &[0., 40., 40., 40., 80., 10.],
+    );
+    scene.g.keep[5] = false;
+    let drawing = scene.draw();
+    assert!(
+        drawing.edges[..2]
+            .iter()
+            .all(|(_, route)| route.corridor_clearance > 2.)
+    );
+    assert!(
+        drawing.edges[2..]
+            .iter()
+            .all(|(_, route)| route.corridor_clearance == 0.)
+    );
+
+    let mut omitted = Scene::new(
+        &[20.; 3],
+        &[&[0], &[3], &[1], &[2]],
+        &[&[0, 3, 1], &[1, 2]],
+        &[0., 45., 85., 10.],
+    );
+    omitted.g.keep[3] = false;
+    let drawing = omitted.draw();
+    assert_eq!(drawing.edges[0].1.corridor_clearance, 0.);
+    assert!(drawing.edges[1].1.corridor_clearance > 2.);
+}
+
+#[test]
+fn labels_placed_after_routing_prevent_clearance_for_other_edges_too() {
+    let mut scene = Scene::new(
+        &[20.; 3],
+        &[&[0], &[1], &[2]],
+        &[&[0, 1], &[1, 2]],
+        &[0., 0., 0.],
+    );
+    let size = Size {
+        width: 16.,
+        height: 8.,
+    };
+    scene.graph.edges[0].label = Some(size);
+    let drawing = crate::layout(&scene.graph, &scene.options).unwrap();
+    assert_eq!(drawing.stats.dummy_nodes, 0, "the label must stay inline");
+    assert!(drawing.edges[0].label_center.is_some());
+    assert!(
+        drawing
+            .edges
+            .iter()
+            .all(|edge| edge.corridor_clearance == 0.)
+    );
+
+    scene.graph.edges[0].label = None;
+    scene.graph.edges[0].end_label = Some(size);
+    let drawing = crate::layout(&scene.graph, &scene.options).unwrap();
+    assert!(drawing.edges[0].end_label_center.is_some());
+    assert!(
+        drawing
+            .edges
+            .iter()
+            .all(|edge| edge.corridor_clearance == 0.)
+    );
 }
 
 #[test]

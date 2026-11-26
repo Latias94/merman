@@ -780,7 +780,8 @@ pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
     // before Mermaid applies marker offsets. Preserve that boundary instead of exposing the
     // platform-dependent low bits of Kurbo's f64 arc-length calculation in SVG styles.
     // https://www.w3.org/TR/SVG/types.html#InterfaceSVGGeometryElement
-    let length = f64::from(path.perimeter(1.0e-6) as f32);
+    let length =
+        f64::from(path.perimeter(merman_render_core::route_types::SVG_LENGTH_ACCURACY) as f32);
     length.is_finite().then_some(length)
 }
 

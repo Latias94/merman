@@ -252,7 +252,7 @@ impl Obstacles {
                 }
             }
         }
-        super::super::validate::charge_sort(intervals.len(), work)?;
+        work.charge_sort(intervals.len())?;
         intervals.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
         let mut at = start;
         for (lo, hi) in intervals {

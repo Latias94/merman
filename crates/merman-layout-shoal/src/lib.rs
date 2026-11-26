@@ -26,6 +26,7 @@ mod options;
 mod ortho;
 mod orthogonal;
 mod scratch;
+mod validate;
 mod work;
 
 pub use model::*;

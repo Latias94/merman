@@ -225,7 +225,7 @@ fn shell_contacts(
             let rect = shells[lane].0;
             let center = cross(side, rect.center());
             let (at, fixed) = if let PortSideHint::FixedOffset { offset, .. } = hint {
-                flat::validate_port(
+                crate::validate::port(
                     Size {
                         width: rect.width,
                         height: rect.height,

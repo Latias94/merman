@@ -1,6 +1,6 @@
 //! Port spreading and four-way Brandes-Kopf coordinate assignment on the ordered ranks.
 
-use super::{Component, Csr, Expanded, Kind, acyclic::Orientation, to_canonical_port, validate};
+use super::{Component, Csr, Expanded, Kind, acyclic::Orientation, to_canonical_port};
 use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled};
 use crate::{
@@ -401,7 +401,7 @@ fn guard_inner(
             pos[g.to[e as usize] as usize],
         )
     };
-    validate::charge_sort(anchors.len(), work)?;
+    work.charge_sort(anchors.len())?;
     anchors.sort_unstable_by_key(|&e| {
         let (a, b) = slots(e);
         (a.abs_diff(b), e)

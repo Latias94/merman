@@ -146,11 +146,24 @@ impl ShapePortProfile {
         port: RoutePoint,
     ) -> Option<RoutePoint> {
         let vertical = matches!(side, Side::Top | Side::Bottom);
-        let across = if vertical {
-            port.x - center.x
+        let (cross, anchor) = if vertical {
+            (port.x, center.x)
         } else {
-            port.y - center.y
+            (port.y, center.y)
         };
+        let mut across = cross - anchor;
+        if matches!(
+            self.outline,
+            Outline::Box {
+                hw: 0.0,
+                hh: 0.0,
+                ..
+            }
+        ) && across.abs() <= cross.abs().max(anchor.abs()).max(1.0) * (4.0 * f64::EPSILON)
+        {
+            // A translated point port can differ from its box center by a few ulps.
+            across = 0.0;
+        }
         let along = self.outline.crossing(side, across)?;
         Some(if vertical {
             RoutePoint {

@@ -1,5 +1,5 @@
 use super::{Link, PortSideHint};
-use crate::flat::{to_canonical_port, validate};
+use crate::flat::to_canonical_port;
 use crate::work::{LayoutResult, Work, push};
 use crate::{Direction, EdgeSpec, Graph, LayoutError, NodeSpec, Side};
 
@@ -64,7 +64,7 @@ impl ProxyPorts<'_> {
             let ports = contacts(spec, self.reversed[i], graph.direction);
             push(&mut lanes, ((arc.from, arc.to), ports))?;
         }
-        validate::charge_sort(lanes.len(), work)?;
+        work.charge_sort(lanes.len())?;
         lanes.sort_unstable_by(|(pair_a, a), (pair_b, b)| {
             let source =
                 |ports: &Option<[Contact; 2]>| ports.map_or(f64::NEG_INFINITY, |p| p[0].offset);

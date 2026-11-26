@@ -4,8 +4,8 @@ mod place;
 #[cfg(test)]
 mod tests;
 
-use crate::flat;
 use crate::grid::{Hierarchy, Metrics, Projection, rect, route};
+use crate::validate;
 use crate::work::{Work, reserved};
 use crate::{
     Graph, LayoutError, LayoutGeometry, LayoutOutput, Options, PortSideHint, Rect, Side,
@@ -22,7 +22,7 @@ pub fn layout_with_control(
 ) -> Result<LayoutGeometry, LayoutError> {
     let mut work = Work::new(control);
     work.check()?;
-    flat::validate_options(options)?;
+    validate::options(options)?;
     if !graph.lane_order.is_empty() {
         return Err(LayoutError::Unsupported("swimlanes on a card grid"));
     }
@@ -51,7 +51,7 @@ pub fn layout_with_control(
         metrics,
         options,
         &mut drawing,
-        route::Gutters::Scopes(&gutters),
+        route::Gutters::CardGrid(&gutters),
         &mut work,
     )?;
     work.finish()?;

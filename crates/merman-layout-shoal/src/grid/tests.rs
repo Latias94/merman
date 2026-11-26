@@ -1,6 +1,6 @@
 use super::*;
 use crate::geom::Bounds;
-use crate::{EdgeSpec, GroupSpec, NodeSpec, NoopWorkControl, Rect, RoutingStyle};
+use crate::{EdgeSpec, GroupSpec, KnotKind, NodeSpec, NoopWorkControl, Rect, RoutingStyle};
 
 fn node(seq: u32, parent: Option<u32>) -> NodeSpec {
     let mut node = NodeSpec::new(
@@ -319,7 +319,189 @@ fn facing_fan_uses_distinct_tracks_within_its_work_budget() {
     }
 }
 
+fn fan(hub: Side, leaf: Side, incoming: bool) -> Graph {
+    Graph {
+        nodes: (0..7).map(|i| node(i, None)).collect(),
+        edges: (1..7)
+            .map(|i| {
+                let mut branch = if incoming {
+                    edge(i, 0, leaf, hub)
+                } else {
+                    edge(0, i, hub, leaf)
+                };
+                let port = PortSideHint::FixedOffset {
+                    side: hub,
+                    offset: 4.0,
+                };
+                if incoming {
+                    branch.target_port = port;
+                } else {
+                    branch.source_port = port;
+                }
+                branch
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+fn face(at: Point, rect: Rect, side: Side) -> bool {
+    match side {
+        Side::Top => at.y == rect.y && (rect.x..=rect.x + rect.width).contains(&at.x),
+        Side::Right => {
+            at.x == rect.x + rect.width && (rect.y..=rect.y + rect.height).contains(&at.y)
+        }
+        Side::Bottom => {
+            at.y == rect.y + rect.height && (rect.x..=rect.x + rect.width).contains(&at.x)
+        }
+        Side::Left => at.x == rect.x && (rect.y..=rect.y + rect.height).contains(&at.y),
+    }
+}
+
+#[test]
+fn clear_fan_shares_one_guarded_crossbar_on_all_four_faces() {
+    for (hub, leaf) in [
+        (Side::Right, Side::Left),
+        (Side::Left, Side::Right),
+        (Side::Bottom, Side::Top),
+        (Side::Top, Side::Bottom),
+    ] {
+        for incoming in [false, true] {
+            let mut graph = fan(hub, leaf, incoming);
+            let marker = crate::MarkerMetrics {
+                length: 12.0,
+                width: 10.0,
+            };
+            if incoming {
+                graph.edges[0].start_marker = marker;
+            } else {
+                graph.edges[0].end_marker = marker;
+            }
+            let result = solve(&graph, &[]);
+            let hub_center = result.nodes[0].center();
+            let axis = usize::from(hub.axis() == Axis::Vertical);
+            let cross = |p: Point| [p.x, p.y][1 - axis];
+            let along = |p: Point| [p.x, p.y][axis];
+            let mut shelf = None;
+            for (index, route) in result.edges.iter().enumerate() {
+                let start = route.points[0];
+                let end = *route.points.last().unwrap();
+                let (hub_contact, leaf_contact) =
+                    if incoming { (end, start) } else { (start, end) };
+                assert!(face(at(hub_contact), result.nodes[0], hub));
+                assert_eq!(cross(at(hub_contact)), cross(hub_center) + 4.0);
+                assert!(face(at(leaf_contact), result.nodes[index + 1], leaf));
+                assert!(route.points.iter().any(|p| p.kind == KnotKind::GapBoundary));
+                for leg in route.points.windows(2) {
+                    let (a, b) = (at(leg[0]), at(leg[1]));
+                    if cross(a) != cross(b) {
+                        assert_eq!(along(a), along(b));
+                        assert_eq!(*shelf.get_or_insert(along(a)), along(a));
+                    }
+                    for &node in &result.nodes {
+                        assert!(!Bounds::between(a, b).overlaps_strictly(Bounds::of(node)));
+                    }
+                }
+            }
+            assert!(shelf.is_some());
+            assert_eq!(result, solve(&graph, &[]));
+        }
+    }
+}
+
+#[test]
+fn grid_comb_falls_back_atomically_when_a_branch_or_budget_rejects_it() {
+    let mut graph = fan(Side::Right, Side::Left, false);
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Default::default()
+    };
+    let mut unbundled = options;
+    unbundled.bus_routing = false;
+    let ordinary = |graph: &Graph, alignments: &[Alignment]| {
+        layout_with_control(graph, alignments, &unbundled, &mut NoopWorkControl).unwrap()
+    };
+    let fallback = layout_with_control(&graph, &[], &options, &mut Limit(50_000)).unwrap();
+    assert_eq!(fallback, ordinary(&graph, &[]));
+
+    let mut baseline = Limit(50_000);
+    layout_with_control(&graph, &[], &unbundled, &mut baseline).unwrap();
+    let required = 50_000 - baseline.0;
+    let mut budget = OptionalBudget {
+        limit: Limit(required),
+        first_trial: None,
+        cancel_on_trial: false,
+    };
+    assert_eq!(
+        layout_with_control(&graph, &[], &options, &mut budget).unwrap(),
+        fallback
+    );
+    assert_eq!(budget.first_trial, Some(0));
+
+    budget = OptionalBudget {
+        limit: Limit(50_000),
+        first_trial: None,
+        cancel_on_trial: true,
+    };
+    assert_eq!(
+        layout_with_control(&graph, &[], &options, &mut budget),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+
+    graph.edges.last_mut().unwrap().source_port = PortSideHint::FixedOffset {
+        side: Side::Right,
+        offset: -4.0,
+    };
+    assert_eq!(solve(&graph, &[]).edges, ordinary(&graph, &[]).edges);
+    graph = fan(Side::Right, Side::Left, false);
+
+    graph.nodes.push(node(7, None));
+    let alignments = [
+        Alignment {
+            first: NodeId(0),
+            next: NodeId(7),
+            axis: Axis::Horizontal,
+        },
+        Alignment {
+            first: NodeId(7),
+            next: NodeId(1),
+            axis: Axis::Horizontal,
+        },
+    ];
+    let fallback =
+        layout_with_control(&graph, &alignments, &options, &mut NoopWorkControl).unwrap();
+    assert_eq!(fallback.edges, ordinary(&graph, &alignments).edges);
+}
+
 struct Limit(usize);
+
+struct OptionalBudget {
+    limit: Limit,
+    first_trial: Option<usize>,
+    cancel_on_trial: bool,
+}
+
+impl WorkControl for OptionalBudget {
+    fn check(&mut self) -> Result<(), WorkError> {
+        Ok(())
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        self.limit.charge(units)
+    }
+
+    fn try_charge_optional(&mut self, units: usize, headroom: usize) -> Result<bool, WorkError> {
+        self.first_trial.get_or_insert(self.limit.0);
+        if self.cancel_on_trial && units != 0 {
+            return Err(WorkError::Interrupted);
+        }
+        if self.limit.0.saturating_sub(headroom) < units || self.limit.0 < headroom {
+            return Ok(false);
+        }
+        self.charge(units)?;
+        Ok(true)
+    }
+}
 
 impl WorkControl for Limit {
     fn check(&mut self) -> Result<(), WorkError> {

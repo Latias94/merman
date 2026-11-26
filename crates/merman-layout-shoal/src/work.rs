@@ -195,20 +195,25 @@ impl<'a> Work<'a> {
         result.map(Some)
     }
 
+    pub(crate) fn charge_sort(&mut self, len: usize) -> LayoutResult<()> {
+        if len > 1 {
+            self.charge(
+                len.checked_mul(len.ilog2() as usize + 1)
+                    .ok_or(WorkError::ArithmeticOverflow)?,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Admit the full comparison budget before entering the standard library sort.
     pub(crate) fn sort(
         &mut self,
-        ids: &mut [usize],
+        values: &mut [usize],
         cmp: impl Fn(&usize, &usize) -> Ordering,
     ) -> LayoutResult<()> {
-        if ids.len() > 1 {
-            let levels = ids.len().ilog2() as usize + 1;
-            self.charge(
-                ids.len()
-                    .checked_mul(levels)
-                    .ok_or(WorkError::ArithmeticOverflow)?,
-            )?;
-            ids.sort_unstable_by(cmp);
+        if values.len() > 1 {
+            self.charge_sort(values.len())?;
+            values.sort_unstable_by(cmp);
             self.check()?;
         }
         Ok(())

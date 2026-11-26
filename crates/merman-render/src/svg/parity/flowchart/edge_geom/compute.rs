@@ -354,6 +354,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     Some(FlowchartEdgePathGeom {
         d: geometry.d,
         pb: geometry.bounds,
+        neo_length: None,
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,

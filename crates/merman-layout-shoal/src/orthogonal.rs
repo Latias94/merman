@@ -5,13 +5,12 @@ mod channels;
 use crate::ortho::{OrthoRequest, OrthoRouter, OrthoSegment};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, EdgeGeometry, EdgeSpec, Endpoint, Graph, LayoutError, LayoutOutput, MarkerMetrics,
-    Options, Point, Rect, RoutePoint, RoutingStyle, Side, Size,
+    Axis, EdgeGeometry, EdgeSpec, Endpoint, Graph, LayoutError, LayoutOutput, MIN_MARKER_LEAD,
+    MarkerMetrics, Options, Point, Rect, RoutePoint, RoutingStyle, Side, Size,
 };
 
 const MAX_ROUTES: usize = 256;
 const MAX_BODIES: usize = 512;
-const MIN_LEAD: f64 = 6.0;
 
 pub(crate) fn refine(
     graph: &Graph,
@@ -320,7 +319,7 @@ fn lead(
     let Some(contact) = knots.next() else {
         return Ok(None);
     };
-    let required = marker.length.max(MIN_LEAD) + margin;
+    let required = marker.length.max(MIN_MARKER_LEAD) + margin;
     let mut last = 0.0;
     for knot in knots {
         work.visit(1)?;

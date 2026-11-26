@@ -182,7 +182,7 @@ fn edge_pairs(
     };
     let horizontal = crowding(true) < crowding(false);
     let fans = assign_fans(&mut segments, work)?;
-    validate::charge_sort(segments.len(), work)?;
+    work.charge_sort(segments.len())?;
     segments.sort_unstable_by(|a, b| {
         a.fan
             .cmp(&b.fan)
@@ -214,7 +214,7 @@ fn edge_pairs(
         work.charge(segments.len())?;
         let mut ordered = crate::work::reserved(segments.len())?;
         ordered.extend(groups);
-        validate::charge_sort(ordered.len(), work)?;
+        work.charge_sort(ordered.len())?;
         ordered.sort_unstable_by(|a, b| {
             a.bounds
                 .start
@@ -244,7 +244,7 @@ fn assign_fans(segments: &mut [Segment], work: &mut Work<'_>) -> LayoutResult<bo
         ends.push((point_key(segment.a), index));
         ends.push((point_key(segment.b), index));
     }
-    validate::charge_sort(ends.len(), work)?;
+    work.charge_sort(ends.len())?;
     ends.sort_unstable();
 
     let mut degrees = crate::work::reserved(ends.len() / MIN_FAN_SIZE)?;

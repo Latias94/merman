@@ -1,4 +1,5 @@
 use super::*;
+use crate::flat::validate;
 use crate::{EdgeSpec, NodeId, NoopWorkControl, Size, WorkControl};
 
 fn expanded(rows: &[&[u32]], kinds: &[Kind], segments: &[(u32, u32)]) -> Expanded {

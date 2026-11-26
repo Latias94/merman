@@ -1,18 +1,21 @@
 //! A two-way orthogonal decision may exit from its side vertices into clear lanes.
 
-use super::super::{Component, Drawing, Expanded, canonical_size, contour_inset};
+use super::super::{Component, Drawing, Expanded, canonical_size, contour_inset, diamond_offset};
 use super::LEAD;
 use crate::geom::{Bounds, Bvh, BvhEntry};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Direction, Graph, MarkerMetrics, Options, Point, PortSideHint, RoutePoint, RoutingStyle,
-    ShapeContourHint, Side, Size,
+    Side, Size,
 };
 use std::ops::ControlFlow::{Break, Continue};
 
 #[derive(Clone, Copy)]
 enum Owner {
-    Node { index: usize, diamond: bool },
+    Node {
+        index: usize,
+        diamond: Option<Bounds>,
+    },
     Edge(usize),
 }
 
@@ -47,10 +50,6 @@ fn contact(
         Side::Right => at.x -= inset,
     }
     at
-}
-
-fn marker(at: Point, side: Side, metrics: MarkerMetrics) -> Option<Bounds> {
-    (metrics.length > 0.0 && metrics.width > 0.0).then(|| Bounds::marker(at, side, metrics))
 }
 
 fn hits_diamond(label: Bounds, diamond: Bounds) -> bool {
@@ -88,6 +87,7 @@ struct Dock {
     target: usize,
     side: Side,
     points: [RoutePoint; 3],
+    start: Point,
     end: Point,
     markers: [MarkerMetrics; 2],
     label: Option<Size>,
@@ -102,8 +102,8 @@ struct Label {
 
 impl Dock {
     fn legs(&self) -> [f64; 2] {
-        let [start, bend, _] = self.points.map(point);
-        [(bend.x - start.x).abs(), self.end.y - bend.y]
+        let bend = point(self.points[1]);
+        [(bend.x - self.start.x).abs(), self.end.y - bend.y]
     }
 
     fn bend_radius(&self) -> f64 {
@@ -115,19 +115,19 @@ impl Dock {
 
     fn marker_boxes(&self) -> impl Iterator<Item = Bounds> {
         [
-            marker(point(self.points[0]), self.side, self.markers[0]),
-            marker(self.end, Side::Top, self.markers[1]),
+            Bounds::marker_footprint(self.start, self.side, self.markers[0]),
+            Bounds::marker_footprint(self.end, Side::Top, self.markers[1]),
         ]
         .into_iter()
         .flatten()
     }
 
     fn ink(&self) -> impl Iterator<Item = Bounds> {
-        let [start, bend, _] = self.points.map(point);
+        let bend = point(self.points[1]);
         [
-            Some(Bounds::between(start, bend)),
+            Some(Bounds::between(self.start, bend)),
             Some(Bounds::between(bend, self.end)),
-            turn(start, bend, self.end, self.bend_radius()),
+            turn(self.start, bend, self.end, self.bend_radius()),
         ]
         .into_iter()
         .flatten()
@@ -145,7 +145,7 @@ impl Dock {
         let mut labels = [None; 8];
         // Inline labels without a center already have a later placement pass for the new route.
         if let Some(size) = self.label {
-            let [start, bend, _] = self.points.map(point);
+            let (start, bend) = (self.start, point(self.points[1]));
             let [horizontal, vertical] = self.legs();
             let first = self.markers[0].length;
             let last = horizontal + vertical - self.markers[1].length;
@@ -218,11 +218,12 @@ pub(in crate::flat) fn dock(
     {
         return Ok(());
     }
+    let direction = graph.direction;
     work.visit(component.nodes.len())?;
     if !component
         .nodes
         .iter()
-        .any(|node| node.contour == ShapeContourHint::Diamond)
+        .any(|node| diamond_offset(node.contour, direction).is_some())
     {
         return Ok(());
     }
@@ -243,11 +244,21 @@ pub(in crate::flat) fn dock(
     let mut index = None;
     'decision: for (node, (mut pair, degree)) in branches.into_iter().enumerate() {
         work.visit(1)?;
-        if degree != 2 || component.nodes[node].contour != ShapeContourHint::Diamond {
+        if degree != 2 {
             continue;
         }
-        let target = |i: usize| component.links[i].to as usize;
+        let Some(offset) = diamond_offset(component.nodes[node].contour, direction) else {
+            continue;
+        };
         let source = drawing.nodes[node];
+        let box_bottom = source.y + source.height;
+        let y = source.center().y + offset.y;
+        // The final box-face snap must preserve the vertex's transverse coordinate.
+        if !(source.y..=box_bottom).contains(&y) {
+            continue;
+        }
+        let bottom = box_bottom + offset.y.max(0.0);
+        let target = |i: usize| component.links[i].to as usize;
         let ports = pair.map(|i| drawing.edges[i].1.points.last().copied());
         let [Some(a), Some(b)] = ports else { continue };
         if a.x > b.x {
@@ -274,15 +285,22 @@ pub(in crate::flat) fn dock(
             } else {
                 (source.x + source.width, 1.0)
             };
-            let y = source.center().y;
+            let first = RoutePoint::new(x, y, Axis::Horizontal);
+            let start = contact(drawing, component, direction, node, side, first);
+            if !start.x.is_finite() {
+                return None;
+            }
             let lead = spec.start_marker.length + LEAD;
-            if outward * (end.x - x) <= lead {
-                let target = drawing.nodes[target];
+            // Leave room beyond the painted vertex and keep the box-face leg outward too.
+            let min_reach = lead.max(outward * (x - start.x));
+            let has_room = |lane| outward * (lane - start.x) > min_reach;
+            let target_rect = drawing.nodes[target];
+            if !has_room(end.x) {
                 let inset = spec.end_marker.width.max(options.spacing.edge) * 0.5;
-                let lane = (lead + options.spacing.edge * 0.5).mul_add(outward, x);
+                let lane = (min_reach + options.spacing.edge * 0.5).mul_add(outward, start.x);
                 if (lane - end.x).abs() > options.spacing.edge
-                    || lane < target.x + inset
-                    || lane > target.x + target.width - inset
+                    || lane < target_rect.x + inset
+                    || lane > target_rect.x + target_rect.width - inset
                 {
                     return None;
                 }
@@ -290,9 +308,17 @@ pub(in crate::flat) fn dock(
                 // nearby contact on the same face, subject to the normal obstacle checks.
                 end.x = lane;
             }
-            if outward * (end.x - x) <= lead
-                || end.y <= source.y + source.height + spec.end_marker.length
-                || end.y - y <= spec.end_marker.length + LEAD
+            if let Some(offset) = diamond_offset(component.nodes[target].contour, direction)
+                && (end.x - target_rect.center().x - offset.x).abs() > target_rect.width * 0.5
+            {
+                return None;
+            }
+            let painted_end = contact(drawing, component, direction, target, Side::Top, end);
+            let arrival_y = end.y.min(painted_end.y);
+            if !has_room(end.x)
+                || !painted_end.y.is_finite()
+                || arrival_y <= bottom + spec.end_marker.length
+                || arrival_y - y <= spec.end_marker.length + LEAD
             {
                 return None;
             }
@@ -300,17 +326,14 @@ pub(in crate::flat) fn dock(
                 edge: i,
                 target,
                 side,
-                points: [
-                    RoutePoint::new(x, y, Axis::Horizontal),
-                    RoutePoint::new(end.x, y, Axis::Horizontal),
-                    end,
-                ],
-                end: contact(drawing, component, graph.direction, target, Side::Top, end),
+                points: [first, RoutePoint::new(end.x, y, Axis::Horizontal), end],
+                start,
+                end: painted_end,
                 markers: [spec.start_marker, spec.end_marker],
                 label: edge
                     .label_center
                     .and(spec.label)
-                    .map(|size| canonical_size(graph.direction, size)),
+                    .map(|size| canonical_size(direction, size)),
             })
         };
         let (Some(left), Some(right)) = (
@@ -388,7 +411,10 @@ fn clear(
                     } else {
                         wall.overlaps_strictly(bounds)
                             && match owner {
-                                Owner::Node { diamond: true, .. } => hits_diamond(bounds, *wall),
+                                Owner::Node {
+                                    diamond: Some(diamond),
+                                    ..
+                                } => hits_diamond(bounds, *diamond),
                                 _ => true,
                             }
                     };
@@ -412,8 +438,16 @@ fn walls(
     work.charge(drawing.nodes.len())?;
     let mut walls = reserved(drawing.nodes.len())?;
     walls.extend(drawing.nodes.iter().enumerate().map(|(index, &node)| {
-        let diamond = component.nodes[index].contour == ShapeContourHint::Diamond;
-        (Bounds::of(node), Owner::Node { index, diamond })
+        let bounds = Bounds::of(node);
+        let diamond =
+            diamond_offset(component.nodes[index].contour, graph.direction).map(|offset| Bounds {
+                x: bounds.x.map(|x| x + offset.x),
+                y: bounds.y.map(|y| y + offset.y),
+            });
+        // Shaft checks use a conservative envelope. Labels can occupy empty diamond corners.
+        let envelope = diamond.map_or(bounds, |diamond| bounds.union(diamond));
+        let diamond = diamond.filter(|diamond| diamond.finite() && diamond.has_area());
+        (envelope, Owner::Node { index, diamond })
     }));
     let mut knots: Vec<Point> = Vec::new();
     for (index, (id, route)) in drawing.edges.iter().enumerate() {
@@ -424,7 +458,7 @@ fn walls(
         } else {
             [component.loops[index - component.links.len()].node as usize; 2]
         };
-        let [first, .., last] = route.points.as_slice() else {
+        let [first, middle @ .., last] = route.points.as_slice() else {
             continue;
         };
         let start = contact(
@@ -446,7 +480,7 @@ fn walls(
         work.visit(route.points.len())?;
         knots.clear();
         for at in std::iter::once(start)
-            .chain(route.points.iter().copied().map(point))
+            .chain(middle.iter().copied().map(point))
             .chain(std::iter::once(end))
         {
             if knots.last() == Some(&at) {
@@ -471,8 +505,8 @@ fn walls(
             }
         }
         for bounds in [
-            marker(start, route.ports.0, spec.start_marker),
-            marker(end, route.ports.1, spec.end_marker),
+            Bounds::marker_footprint(start, route.ports.0, spec.start_marker),
+            Bounds::marker_footprint(end, route.ports.1, spec.end_marker),
         ]
         .into_iter()
         .flatten()

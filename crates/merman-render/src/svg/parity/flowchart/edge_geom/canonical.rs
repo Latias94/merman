@@ -10,6 +10,40 @@ use crate::graph_layout::{
 };
 use std::borrow::Cow;
 
+fn obstacles(layout: &FlowchartLayout) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
+    use route_paint::ObstacleOwner;
+
+    let mut boxes = Vec::with_capacity(layout.nodes.len() + layout.clusters.len());
+    let label_box = |label: &crate::model::LayoutLabel| {
+        kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
+    };
+    boxes.extend(layout.nodes.iter().enumerate().map(|(index, node)| {
+        (
+            kurbo::Rect::from_center_size((node.x, node.y), (node.width, node.height)),
+            ObstacleOwner::Node(index as u32),
+        )
+    }));
+    boxes.extend(layout.clusters.iter().enumerate().map(|(index, group)| {
+        (
+            label_box(&group.title_label),
+            ObstacleOwner::GroupTitle(index as u32),
+        )
+    }));
+    boxes.extend(
+        super::super::types::FlowchartLayoutEdgeRef::in_layout_order(layout).filter_map(
+            |(key, edge)| {
+                edge.label().map(|label| {
+                    (
+                        label_box(label),
+                        ObstacleOwner::EdgeLabel(key.semantic_index()),
+                    )
+                })
+            },
+        ),
+    );
+    boxes
+}
+
 pub(super) fn paint(
     request: FlowchartEdgePathGeomRequest<'_>,
     profiles: &[contour::ShapePortProfile],
@@ -109,26 +143,28 @@ pub(super) fn paint(
             .unwrap_or(ctx.default_edge_interpolate),
         ctx.edge_corner_radius,
     );
-    let stroke_outset = ctx
-        .edge_style_plan
-        .stroke_outset_for(key)
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let stroke_outset = ctx.edge_style_plan.stroke_outset_for(key)?;
     let clearance = if style == route_paint::RouteStyle::Curved
-        && route.corridor_clearance > stroke_outset
+        && stroke_outset.is_some_and(|outset| route.corridor_clearance > outset)
         && (points[0], points[last]) == box_contacts
         && stitches.is_empty()
     {
         None
     } else {
-        Some(clearance.resolve(ctx.work_meter)?.for_edge(
-            key.semantic_index(),
-            route.endpoints,
-            kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
-            stroke_outset,
-        ))
+        Some(
+            clearance
+                .resolve_with(ctx.work_meter, || obstacles(ctx.layout))?
+                .for_edge(
+                    key.semantic_index(),
+                    route.endpoints,
+                    kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
+                    stroke_outset.unwrap_or_default(),
+                ),
+        )
     };
+    if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {
+        scratch.canonical_paint.measure_length();
+    }
     let painted = route_paint::build_svg_path_with_scratch(
         points,
         (source_lead, target_lead),
@@ -166,6 +202,11 @@ pub(super) fn paint(
     }
     Ok(FlowchartEdgePathGeom {
         d: painted.d,
+        neo_length: scratch
+            .canonical_paint
+            .measured_length()
+            .map(|length| f64::from(length as f32))
+            .filter(|length| length.is_finite()),
         pb: Some(path_bounds::SvgPathBounds {
             min_x: painted.bounds.min_x,
             min_y: painted.bounds.min_y,

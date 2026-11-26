@@ -25,9 +25,6 @@ use crate::work::{LayoutResult, Work, filled};
 use crate::{Axis, Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
 
 pub(crate) use extras::route_corridor as corridor;
-pub(crate) use validate::{
-    length, measured, validate_edge, validate_node, validate_options, validate_port,
-};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BoundaryRank {
@@ -209,6 +206,24 @@ fn contour_inset(node: NodeSpec, dir: Direction, side: Side, offset: f64) -> f64
         physical_side(dir, side),
         if flip { -offset } else { offset },
     )
+}
+
+fn diamond_offset(contour: crate::ShapeContourHint, direction: Direction) -> Option<crate::Point> {
+    use crate::ShapeContourHint;
+
+    let (x, y) = match contour {
+        ShapeContourHint::Diamond => return Some(crate::Point::default()),
+        ShapeContourHint::OffsetDiamond { x, y } => (x, y),
+        _ => return None,
+    };
+    // Invert the drawing transform on the physical displacement vector.
+    let (x, y) = match direction {
+        Direction::Down => (x, y),
+        Direction::Up => (x, -y),
+        Direction::Right => (y, x),
+        Direction::Left => (y, -x),
+    };
+    Some(crate::Point { x, y })
 }
 
 #[cfg(test)]

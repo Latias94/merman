@@ -180,6 +180,15 @@ pub struct MarkerMetrics {
     pub width: f64,
 }
 
+/// Minimum straight shaft beyond a marker's reference point, in drawing units.
+pub const MIN_MARKER_LEAD: f64 = 6.0;
+
+impl MarkerMetrics {
+    pub(crate) fn runway_bound(self) -> f64 {
+        self.length + self.length.max(MIN_MARKER_LEAD)
+    }
+}
+
 /// Analytic outline centered in a measured node box.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ShapeContourHint {
@@ -360,7 +369,7 @@ impl NodeSpec {
             || u32::try_from(self.editor_order_hint()?.rank).ok()? != rank
             || !hint.center.x.is_finite()
             || !hint.center.y.is_finite()
-            || !crate::flat::measured(hint.size)
+            || !crate::validate::measured(hint.size)
         {
             return None;
         }
@@ -428,6 +437,7 @@ pub struct EdgeSpec {
     pub end_marker: MarkerMetrics,
     pub source_port: PortSideHint,
     pub target_port: PortSideHint,
+    marker_runways: [f64; 2],
 }
 
 impl EdgeSpec {
@@ -444,7 +454,39 @@ impl EdgeSpec {
             end_marker: MarkerMetrics::default(),
             source_port: PortSideHint::Auto,
             target_port: PortSideHint::Auto,
+            marker_runways: [0.0; 2],
         }
+    }
+
+    /// Records the measured contact-to-turn distances for both marker footprints.
+    /// Set this after assigning the marker metrics. A zero value derives a fallback from the
+    /// footprint for the corresponding endpoint.
+    pub fn set_marker_runways(&mut self, runways: [f64; 2]) {
+        self.marker_runways = runways;
+    }
+
+    pub(crate) fn marker_runways(&self) -> [f64; 2] {
+        self.resolve_marker_runways(MarkerMetrics::runway_bound)
+    }
+
+    pub(crate) fn sweep_runways(&self) -> [f64; 2] {
+        self.resolve_marker_runways(|marker| marker.length + MIN_MARKER_LEAD)
+    }
+
+    fn resolve_marker_runways(&self, fallback: impl Fn(MarkerMetrics) -> f64) -> [f64; 2] {
+        let resolve = |marker: MarkerMetrics, measured: f64| {
+            if marker == MarkerMetrics::default() {
+                0.0
+            } else if measured.is_finite() && measured >= marker.length.max(MIN_MARKER_LEAD) {
+                measured
+            } else {
+                fallback(marker)
+            }
+        };
+        [
+            resolve(self.start_marker, self.marker_runways[0]),
+            resolve(self.end_marker, self.marker_runways[1]),
+        ]
     }
 }
 

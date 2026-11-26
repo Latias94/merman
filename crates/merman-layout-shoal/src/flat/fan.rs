@@ -259,6 +259,7 @@ impl Fan {
             spec.end_marker = MarkerMetrics::default();
             spec.start_marker = marker;
         }
+        spec.set_marker_runways([0.0; 2]);
         Ok(())
     }
 

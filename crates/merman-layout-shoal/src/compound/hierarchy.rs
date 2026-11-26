@@ -1,4 +1,4 @@
-use crate::flat;
+use crate::validate;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Direction, Endpoint, Graph, GroupId, LayoutError, NodeId, Options, PortSideHint, WorkError,
@@ -143,7 +143,7 @@ fn validate_endpoint(graph: &Graph, endpoint: Endpoint, port: PortSideHint) -> L
     match endpoint {
         Endpoint::Node(id) => {
             let node = graph.nodes.get(id.0 as usize).ok_or(missing)?;
-            flat::validate_port(node.size, port)
+            validate::port(node.size, port)
         }
         Endpoint::Group(id) => {
             graph.groups.get(id.0 as usize).ok_or(missing)?;
@@ -162,13 +162,7 @@ fn normalize_parents(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Vec<usi
     let mut parents = reserved(count)?;
     for group in &graph.groups {
         work.visit(1)?;
-        let padding = group.padding;
-        if ![padding.top, padding.right, padding.bottom, padding.left]
-            .into_iter()
-            .all(flat::length)
-            || !flat::measured(group.min_size)
-            || group.title.is_some_and(|size| !flat::measured(size))
-        {
+        if !validate::measured_group(group) {
             return Err(LayoutError::InvalidInput("invalid group measurements"));
         }
         parents.push(parent_id(group.parent, root)?);
@@ -343,7 +337,7 @@ impl Hierarchy {
         levels.resize_with(parent.len(), Level::default);
         for (index, node) in graph.nodes.iter().enumerate() {
             work.visit(1)?;
-            flat::validate_node(node)?;
+            validate::node(node)?;
             let owner = parent_id(node.parent, root)?;
             let level = if let Some(lanes) = &lanes {
                 if owner == root {
@@ -558,7 +552,7 @@ pub(super) fn build(
     work: &mut Work<'_>,
 ) -> LayoutResult<Hierarchy> {
     work.check()?;
-    flat::validate_options(options)?;
+    validate::options(options)?;
     for len in [graph.nodes.len(), graph.groups.len(), graph.edges.len()] {
         u32::try_from(len).map_err(|_| WorkError::ArithmeticOverflow)?;
     }
@@ -585,7 +579,7 @@ pub(super) fn build(
     let mut remaining = options.caps.max_border_ports;
     for (edge, spec) in graph.edges.iter().enumerate() {
         work.visit(1)?;
-        flat::validate_edge(spec)?;
+        validate::edge(spec)?;
         validate_endpoint(graph, spec.source, spec.source_port)?;
         validate_endpoint(graph, spec.target, spec.target_port)?;
         let source = End::new(spec.source, graph, &tree, &hierarchy);

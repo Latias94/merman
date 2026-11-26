@@ -375,7 +375,7 @@ fn tracks(
         work.visit(1)?;
         coordinates.extend([block.at[axis], block.end(axis) - 1]);
     }
-    charge_sort(coordinates.len(), work)?;
+    work.charge_sort(coordinates.len())?;
     coordinates.sort_unstable();
     work.charge(coordinates.len())?;
     coordinates.dedup();
@@ -617,7 +617,7 @@ pub(super) fn place(
     }
     drawing.bounds.width += metrics.margin();
     drawing.bounds.height += metrics.margin() + hierarchy.scopes[hierarchy.root()].caption.height;
-    if !flat::measured(drawing.bounds) {
+    if !validate::measured(drawing.bounds) {
         return Err(PRECISION);
     }
     Ok((drawing, [xs.gutters, ys.gutters]))

@@ -4,13 +4,18 @@ mod clearance;
 pub use clearance::{Clearance, EdgeClearance, ObstacleOwner};
 
 use crate::route_types::{
-    Axis, BorderStitch, KnotKind, Marker, RoutePoint, Side, sweep_handle_fraction,
+    Axis, BorderStitch, KnotKind, Marker, RoutePoint, SVG_LENGTH_ACCURACY, Side,
+    sweep_handle_fraction,
 };
 use crate::{Bounds, LayoutPoint};
-use kurbo::{CubicBez, Point, Shape, Vec2};
+use kurbo::{CubicBez, ParamCurveArclen, Point, Shape, Vec2};
 use std::fmt::Write as _;
 
 /// Straight shaft beyond the marker setback, in layout units (v13 `shared/svg/route.ts`).
+#[cfg(feature = "layout-shoal")]
+pub use merman_layout_shoal::MIN_MARKER_LEAD as LEAD;
+/// Straight shaft beyond the marker setback for standalone route painting.
+#[cfg(not(feature = "layout-shoal"))]
 pub const LEAD: f64 = 6.0;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
@@ -156,7 +161,7 @@ fn step_level(
         RouteStyle::StepAfter => delta.abs() - trims.1 - inset,
         _ => delta.abs() * 0.5,
     };
-    let reserved = |m: Option<Marker>| m.map_or(0.0, |m| m.trim + LEAD.max(m.depth));
+    let reserved = |m: Option<Marker>| m.map_or(0.0, |m| m.trim + m.lead(false));
     let lo = reserved(markers.0);
     let hi = delta.abs() - reserved(markers.1);
     from + sign
@@ -260,11 +265,12 @@ struct Pen {
     finite: bool,
     compact_lines: bool,
     line_start: Option<Point>,
+    length: Option<f64>,
     detour_budget: clearance::DetourBudget,
 }
 
 impl Pen {
-    fn new(p: Point, compact_lines: bool) -> Self {
+    fn new(p: Point, compact_lines: bool, measure_length: bool) -> Self {
         Self {
             d: format!("M{},{}", p.x, p.y),
             bounds: Bounds {
@@ -277,6 +283,7 @@ impl Pen {
             finite: p.is_finite(),
             compact_lines,
             line_start: None,
+            length: measure_length.then_some(0.0),
             detour_budget: clearance::DetourBudget::default(),
         }
     }
@@ -307,8 +314,11 @@ impl Pen {
     }
 
     fn flush_line(&mut self) {
-        if self.line_start.take().is_some() {
+        if let Some(start) = self.line_start.take() {
             let _ = write!(self.d, "L{},{}", self.at.x, self.at.y);
+            if let Some(length) = &mut self.length {
+                *length += (self.at - start).hypot();
+            }
         }
     }
 
@@ -323,7 +333,11 @@ impl Pen {
             "C{},{} {},{} {},{}",
             a.x, a.y, b.x, b.y, end.x, end.y
         );
-        let bounds = CubicBez::new(self.at, a, b, end).bounding_box();
+        let curve = CubicBez::new(self.at, a, b, end);
+        if let Some(length) = &mut self.length {
+            *length += curve.arclen(SVG_LENGTH_ACCURACY);
+        }
+        let bounds = curve.bounding_box();
         self.include(Point::new(bounds.x0, bounds.y0));
         self.include(Point::new(bounds.x1, bounds.y1));
         self.at = end;
@@ -367,6 +381,8 @@ impl Pen {
 
     fn quarter_arc(&mut self, radius: f64, clockwise: bool, end: Point) {
         self.flush_line();
+        // The SVG arc parser measures a cubic approximation of its rounded parameters.
+        self.length = None;
         let _ = write!(
             self.d,
             "A{radius},{radius} 0 0,{} {},{}",
@@ -521,6 +537,24 @@ struct Terminal {
     smooth: bool,
 }
 
+impl Marker {
+    fn lead(self, smooth: bool) -> f64 {
+        if smooth {
+            if self.trim == 0.0 && self.depth == 0.0 && self.width == 0.0 {
+                return 0.0;
+            }
+            LEAD.max(self.depth).max(self.trim)
+        } else {
+            LEAD.max(self.depth)
+        }
+    }
+
+    #[cfg(feature = "shoal-bridge")]
+    pub(crate) fn smooth_runway(self) -> f64 {
+        self.trim + self.lead(true)
+    }
+}
+
 impl Terminal {
     fn shaft_end(&self) -> Point {
         self.tip + self.normal * self.marker.trim
@@ -531,15 +565,7 @@ impl Terminal {
     }
 
     fn lead(&self) -> f64 {
-        match self.marker {
-            Marker {
-                trim: 0.0,
-                depth: 0.0,
-                width: 0.0,
-            } if self.smooth => 0.0,
-            marker if self.smooth => LEAD.max(marker.depth).max(marker.trim),
-            marker => LEAD.max(marker.depth),
-        }
+        self.marker.lead(self.smooth)
     }
 
     fn covers(&self, knot: RoutePoint) -> bool {
@@ -565,6 +591,20 @@ pub fn marker_lead(port: RoutePoint, side: Side, marker: Marker) -> (LayoutPoint
 pub struct RoutePaintScratch {
     knots: Vec<RoutePoint>,
     body: Vec<RoutePoint>,
+    measure_length: bool,
+    measured_length: Option<f64>,
+}
+
+impl RoutePaintScratch {
+    /// Measures the next route through this scratch using the same segments written to SVG.
+    pub fn measure_length(&mut self) {
+        self.measure_length = true;
+    }
+
+    /// Returns the requested centerline length of the last successful paint, when measured.
+    pub fn measured_length(&self) -> Option<f64> {
+        self.measured_length
+    }
 }
 
 /// The endpoints are already on the contours. The two sides are in semantic source/target
@@ -606,6 +646,8 @@ pub fn build_svg_path_with_scratch(
     clearance: Option<EdgeClearance<'_>>,
     scratch: &mut RoutePaintScratch,
 ) -> Result<PaintedRoute, RoutePaintError> {
+    let measure_length = std::mem::take(&mut scratch.measure_length);
+    scratch.measured_length = None;
     if points.len() < 2
         || [markers.0, markers.1]
             .iter()
@@ -628,8 +670,12 @@ pub fn build_svg_path_with_scratch(
         marker: markers.1,
         smooth,
     };
-    let mut pen = Pen::new(start.shaft_end(), smooth);
-    let RoutePaintScratch { knots, body } = scratch;
+    let mut pen = Pen::new(
+        start.shaft_end(),
+        smooth,
+        measure_length && !matches!(style, RouteStyle::Rounded(_)),
+    );
+    let RoutePaintScratch { knots, body, .. } = scratch;
     knots.clear();
     body.clear();
     knots.reserve_exact(points.len());
@@ -660,7 +706,10 @@ pub fn build_svg_path_with_scratch(
         pen.flush_line();
         begin = finish;
     }
-    pen.finish().ok_or(RoutePaintError::InvalidGeometry)
+    let length = pen.length.filter(|length| length.is_finite());
+    let painted = pen.finish().ok_or(RoutePaintError::InvalidGeometry)?;
+    scratch.measured_length = length;
+    Ok(painted)
 }
 
 fn draw_section(
@@ -773,6 +822,47 @@ mod tests {
             depth,
             width: 10.0,
         }
+    }
+
+    #[test]
+    fn measured_centerline_matches_the_serialized_path_with_the_same_tolerance() {
+        let points = [
+            v(1024.1, 3.37),
+            v(1024.1, 39.1),
+            v(-13.41, 102.7),
+            v(-13.41, 160.13),
+        ];
+        let sides = (Side::Bottom, Side::Top);
+        let markers = (Marker::default(), marker(4.0, 10.0));
+        let mut scratch = RoutePaintScratch::default();
+        let mut paint = |style, measure| {
+            if measure {
+                scratch.measure_length();
+            }
+            let path = build_svg_path_with_scratch(
+                &points,
+                sides,
+                style,
+                markers,
+                CurveTerminals::Smooth,
+                &[],
+                None,
+                &mut scratch,
+            )
+            .unwrap();
+            (path, scratch.measured_length())
+        };
+        for style in [RouteStyle::Curved, RouteStyle::Step, RouteStyle::Linear] {
+            let (painted, length) = paint(style, true);
+            let parsed = BezPath::from_svg(&painted.d).unwrap();
+            assert_eq!(
+                length,
+                Some(parsed.perimeter(SVG_LENGTH_ACCURACY)),
+                "{style:?}"
+            );
+            assert_eq!(paint(style, false).1, None);
+        }
+        assert_eq!(paint(RouteStyle::Rounded(6.0), true).1, None);
     }
 
     fn segments(p: &PaintedRoute) -> Vec<PathSeg> {
@@ -1440,7 +1530,7 @@ mod tests {
 
     #[test]
     fn tight_bounds_use_bezier_extrema_not_control_points() {
-        let mut p = Pen::new(Point::new(-1.0, 0.0), false);
+        let mut p = Pen::new(Point::new(-1.0, 0.0), false, false);
         p.cubic(
             Point::new(-1.0, 10.0),
             Point::new(3.0, 10.0),

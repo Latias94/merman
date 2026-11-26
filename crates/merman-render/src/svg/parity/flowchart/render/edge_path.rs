@@ -365,7 +365,7 @@ fn flowchart_neo_edge_path_length(
     if geom.line_hop_applied && flowchart_neo_mask_uses_dash_pairs(edge) {
         geom.pre_hop_dash_mask_length
     } else {
-        svg_path_length_from_d(&geom.d)
+        geom.centerline_length()
     }
 }
 

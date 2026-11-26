@@ -4,7 +4,7 @@
 mod exterior;
 mod groups;
 
-use super::{Component, Csr, Expanded, Kind, validate};
+use super::{Component, Csr, Expanded, Kind};
 use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{GroupId, LayoutError, NodeSpec, Options, OrderHint, WorkError};
@@ -532,7 +532,7 @@ impl Rules<'_> {
                 continue;
             }
             if !self.pins.is_empty() || !self.lanes.is_empty() {
-                validate::charge_sort(row.len(), work)?;
+                work.charge_sort(row.len())?;
                 row.sort_unstable_by_key(|&v| {
                     let v = v as usize;
                     (self.lane(v), self.pin(v), order.place[v].pos)

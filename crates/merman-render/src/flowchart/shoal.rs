@@ -4,8 +4,8 @@ mod groups;
 
 use super::measured::{FlowchartMeasurement, MeasuredNode as LeafSize};
 use super::{
-    FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
+    FlowchartConfigView, FlowchartEdgeOwners, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -13,60 +13,33 @@ use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
     SolvedGraph,
 };
-use crate::graph_layout::route_paint::ObstacleOwner;
 use crate::graph_layout::{
     AxisRoutes, FlowchartSvgEdgeGeometry, RouteContract, RouteTopology, placement,
 };
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{
-    Bounds, FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
-};
+use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
-fn paint_clearance<'a>(
-    nodes: &[LayoutNode],
-    clusters: &[LayoutCluster],
-    owners: &[FlowchartEdgeKey],
-    edge_label: impl Fn(usize) -> Option<&'a LayoutLabel>,
+fn admit_paint_clearance(
+    nodes: usize,
+    clusters: usize,
+    edges: usize,
+    labels: usize,
     work: &mut OperationLayoutWorkControl,
-) -> Result<AxisClearance> {
-    if owners.is_empty() {
-        return Ok(AxisClearance::default());
+) -> Result<()> {
+    if edges == 0 {
+        return Ok(());
     }
-    let shapes = work.checked_add(nodes.len(), clusters.len())?;
-    work.charge_adapter(work.checked_add(shapes, owners.len())?)?;
-    let mut boxes = Vec::with_capacity(shapes);
-    let label_box = |label: &LayoutLabel| {
-        kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
-    };
-    for (index, node) in nodes.iter().enumerate() {
-        boxes.push((
-            kurbo::Rect::from_center_size((node.x, node.y), (node.width, node.height)),
-            ObstacleOwner::Node(index as u32),
-        ));
-    }
-    for (index, group) in clusters.iter().enumerate() {
-        boxes.push((
-            label_box(&group.title_label),
-            ObstacleOwner::GroupTitle(index as u32),
-        ));
-    }
-    for (index, owner) in owners.iter().enumerate() {
-        if let Some(label) = edge_label(index) {
-            boxes.push((
-                label_box(label),
-                ObstacleOwner::EdgeLabel(owner.semantic_index()),
-            ));
-        }
-    }
-    let levels = boxes.len().checked_ilog2().unwrap_or(0) as usize + 1;
-    work.charge_adapter(work.checked_mul(boxes.len(), levels)?)?;
-    Ok(AxisClearance::new(boxes))
+    let shapes = work.checked_add(nodes, clusters)?;
+    work.charge_adapter(work.checked_add(shapes, edges)?)?;
+    let boxes = work.checked_add(shapes, labels)?;
+    let levels = boxes.checked_ilog2().unwrap_or(0) as usize + 1;
+    work.charge_adapter(work.checked_mul(boxes, levels)?)
 }
 
 #[allow(
@@ -414,8 +387,10 @@ impl FlowchartBindings {
         let mut owners = Vec::with_capacity(edge_count);
         let mut svg_edges = prepare_for_svg.then(|| Vec::with_capacity(edge_count));
         let mut edges = Vec::with_capacity(if prepare_for_svg { 0 } else { edge_count });
+        let mut label_count = 0;
         for ((key, projected), route) in model.projected_edges().zip(solved.edges) {
             work.charge_adapter(route.points.len())?;
+            label_count += usize::from(route.label.is_some());
             let (points, knots) = route
                 .points
                 .into_iter()
@@ -456,14 +431,11 @@ impl FlowchartBindings {
                 self.nodes.iter().map(|node| node.id.clone()).collect(),
             );
         }
-        let clearance = paint_clearance(
-            &self.nodes,
-            &clusters,
-            &owners,
-            |index| match &svg_edges {
-                Some(svg_edges) => svg_edges[index].label.as_ref(),
-                None => edges[index].label.as_ref(),
-            },
+        admit_paint_clearance(
+            self.nodes.len(),
+            clusters.len(),
+            owners.len(),
+            label_count,
             work,
         )?;
         Ok(FlowchartLayout {
@@ -481,7 +453,7 @@ impl FlowchartBindings {
                     group_parents,
                     struck_group_titles,
                     border_stitches,
-                    clearance,
+                    clearance: AxisClearance::default(),
                     routes,
                     svg_edges,
                 }

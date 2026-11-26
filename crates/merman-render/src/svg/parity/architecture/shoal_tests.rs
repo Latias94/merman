@@ -1,5 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use kurbo::{Affine, BezPath, ParamCurve, ParamCurveNearest, PathSeg, Point, Rect};
+use kurbo::{Affine, BezPath, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, Rect};
 use merman_core::{MermaidEngine, ParseOptions};
 use roxmltree::{Document, Node};
 use std::str::FromStr;
@@ -69,7 +69,7 @@ fn number(node: Node<'_, '_>, key: &str) -> f64 {
     node.attribute(key).unwrap().parse().unwrap()
 }
 
-fn shaft(node: Node<'_, '_>) -> Vec<kurbo::Line> {
+fn shaft(node: Node<'_, '_>) -> Vec<Line> {
     BezPath::from_svg(node.attribute("d").unwrap())
         .unwrap()
         .segments()
@@ -94,20 +94,72 @@ fn contacts(node: Node<'_, '_>) -> Vec<Point> {
         .collect()
 }
 
+const GEOMETRY_EPSILON: f64 = 1e-7;
+
 fn near(a: Point, b: Point) -> bool {
-    a.distance(b) < 1e-7
+    a.distance(b) < GEOMETRY_EPSILON
+}
+
+fn junction_contact(junction: Node<'_, '_>) -> Point {
+    let body = junction
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    transform(junction) * Point::new(number(body, "width") / 2.0, number(body, "height") / 2.0)
+}
+
+fn check_left_icon_contact(service: Node<'_, '_>, point: Point) {
+    let body = service
+        .descendants()
+        .find(|node| node.has_tag_name("svg"))
+        .unwrap();
+    let top = transform(service) * Point::ZERO;
+    let bottom = transform(service) * Point::new(0.0, number(body, "height"));
+    assert!(
+        (point.x - top.x).abs() < GEOMETRY_EPSILON && (top.y..=bottom.y).contains(&point.y),
+        "expected {point:?} on the left face of {:?}",
+        service.attribute("data-id")
+    );
+}
+
+fn vertical(leg: Line) -> bool {
+    leg.p0.x == leg.p1.x
+}
+
+fn check_comb_corner_guards(legs: &[Line], points: &[Point]) {
+    for (index, bend) in legs.windows(2).enumerate() {
+        let (incoming, outgoing) = (bend[0], bend[1]);
+        if vertical(incoming) == vertical(outgoing) {
+            continue;
+        }
+        // Guard points sit strictly inside the straight legs on both sides of the bend.
+        assert!(
+            index > 0
+                && vertical(legs[index - 1]) == vertical(incoming)
+                && legs
+                    .get(index + 2)
+                    .is_some_and(|&next| vertical(next) == vertical(outgoing)),
+            "expected two corner guards in the SVG at {:?}",
+            incoming.end()
+        );
+        for guard in [incoming.start(), outgoing.end()] {
+            assert!(points.iter().any(|&point| near(point, guard)), "{guard:?}");
+        }
+    }
 }
 
 fn check_both_arrows(path: Node<'_, '_>, first: Point, last: Point) {
     let legs = shaft(path);
-    let arrows = path
+    let arrows: Vec<_> = path
         .parent_element()
         .unwrap()
         .children()
-        .filter(|node| node.has_tag_name("polygon"));
-    let mut count = 0;
-    for (arrow, (tip, base)) in
-        arrows.zip([(first, legs[0].start()), (last, legs.last().unwrap().end())])
+        .filter(|node| node.has_tag_name("polygon"))
+        .collect();
+    assert_eq!(arrows.len(), 2);
+    for (arrow, (tip, base)) in arrows
+        .into_iter()
+        .zip([(first, legs[0].start()), (last, legs.last().unwrap().end())])
     {
         let vertices: Vec<_> = svgtypes::PointsParser::from(arrow.attribute("points").unwrap())
             .map(|(x, y)| transform(arrow) * Point::new(x, y))
@@ -125,9 +177,119 @@ fn check_both_arrows(path: Node<'_, '_>, first: Point, last: Point) {
                 .midpoint(base_points.next().unwrap()),
             base
         ));
-        count += 1;
     }
-    assert_eq!(count, 2);
+}
+
+#[test]
+fn architecture_shoal_paints_a_shared_crossbar_with_a_marked_leaf() {
+    let (_, svg) = render(
+        "architecture-beta\n\
+         junction hub\n\
+         service leaf0(server)\n\
+         service leaf1(server)\n\
+         service leaf2(server)\n\
+         service leaf3(server)\n\
+         service leaf4(server)\n\
+         service leaf5(server)\n\
+         align column leaf0 leaf1 leaf2 leaf3 leaf4 leaf5\n\
+         hub:R --> L:leaf0\n\
+         hub:R -- L:leaf1\n\
+         hub:R -- L:leaf2\n\
+         hub:R -- L:leaf3\n\
+         hub:R -- L:leaf4\n\
+         hub:R -- L:leaf5\n",
+    );
+    let doc = Document::parse(&svg).unwrap();
+    assert_eq!(
+        doc.descendants()
+            .filter(|node| node.attribute("data-et") == Some("edge"))
+            .count(),
+        6
+    );
+    let diagram_id = doc.root_element().attribute("id").unwrap();
+    let hub = junction_contact(element(&doc, "node", "hub"));
+    let mut leaf_rows: Vec<f64> = Vec::new();
+    let mut bars = Vec::new();
+    for index in 0..6 {
+        let leaf_id = format!("leaf{index}");
+        let path = element(&doc, "edge", &format!("edge-{index}"));
+        let id = format!("{diagram_id}-L_hub_{leaf_id}_{index}");
+        assert!(path.has_tag_name("path"));
+        assert_eq!(path.attribute("id"), Some(id.as_str()));
+        assert!(
+            ["marker-start", "marker-end"]
+                .iter()
+                .all(|&name| path.attribute(name).is_none())
+        );
+        let arrows: Vec<_> = path
+            .parent_element()
+            .unwrap()
+            .children()
+            .filter(|node| node.has_tag_name("polygon"))
+            .collect();
+        assert_eq!(arrows.len(), usize::from(index == 0));
+        assert!(!path.parent_element().unwrap().children().any(|node| {
+            node.has_tag_name("polyline") || node.attribute("data-et") == Some("edge-label")
+        }));
+
+        let legs = shaft(path);
+        let first = legs.first().unwrap();
+        let last = legs.last().unwrap();
+        let points = contacts(path);
+        let tip = *points.last().unwrap();
+        assert!(
+            near(first.start(), hub),
+            "{id}: {:?} vs {hub:?}",
+            first.start()
+        );
+        assert!(near(points[0], hub), "{id}: {:?} vs {hub:?}", points[0]);
+        if let [arrow] = arrows.as_slice() {
+            let vertices: Vec<_> = svgtypes::PointsParser::from(arrow.attribute("points").unwrap())
+                .map(|(x, y)| transform(*arrow) * Point::new(x, y))
+                .collect();
+            assert!(vertices.iter().any(|&p| near(p, tip)), "{id}");
+            let mut base = vertices.into_iter().filter(|&p| !near(p, tip));
+            assert!(
+                near(
+                    base.next().unwrap().midpoint(base.next().unwrap()),
+                    last.end()
+                ),
+                "{id}"
+            );
+        } else {
+            assert!(near(last.end(), tip), "{id}");
+        }
+        check_left_icon_contact(element(&doc, "node", &leaf_id), tip);
+        assert!(first.p0.x < first.p1.x && last.p0.x < last.p1.x, "{id}");
+        assert!(
+            legs.windows(2)
+                .all(|leg| near(leg[0].end(), leg[1].start()))
+        );
+        check_comb_corner_guards(&legs, &points);
+
+        assert!(
+            leaf_rows
+                .iter()
+                .all(|&y| (y - tip.y).abs() > GEOMETRY_EPSILON)
+        );
+        leaf_rows.push(tip.y);
+        // Only the vertical bar in the open corridor counts, even if the hub lead overlaps.
+        bars.extend(
+            legs.into_iter()
+                .filter(|&leg| vertical(leg) && hub.x < leg.p0.x && leg.p0.x < tip.x)
+                .map(|leg| (index, Rect::from_points(leg.p0, leg.p1))),
+        );
+    }
+    assert!(
+        bars.iter().enumerate().any(|(index, &(edge, bar))| {
+            bars[..index].iter().any(|&(peer, other)| {
+                edge != peer
+                    && (bar.x0 - other.x0).abs() < GEOMETRY_EPSILON
+                    && bar.y1.min(other.y1) - bar.y0.max(other.y0) > GEOMETRY_EPSILON
+            })
+        }),
+        "expected two edge paths to share a positive length of the crossbar"
+    );
 }
 
 #[test]
@@ -149,6 +311,7 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
     let api = element(&doc, "node", "api");
     let hub = element(&doc, "node", "hub");
     let client = element(&doc, "node", "client");
+    let store = element(&doc, "node", "store");
     let api_outline = api
         .descendants()
         .find(|node| node.has_tag_name("path"))
@@ -169,19 +332,20 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
     let store_lead = api_shaft.last().unwrap();
     assert_eq!(store_lead.start().y, store_lead.end().y);
     assert!(api_points.len() > 3);
-    check_both_arrows(api_route, api_points[0], *api_points.last().unwrap());
+    let store_tip = *api_points.last().unwrap();
+    check_left_icon_contact(store, store_tip);
+    check_both_arrows(api_route, api_points[0], store_tip);
+    let label = element(&doc, "edge-label", "edge-0");
+    assert_eq!(label.parent_element(), api_route.parent_element());
+    assert!(
+        label
+            .descendants()
+            .any(|node| node.is_text() && node.text() == Some("synchronize"))
+    );
 
     let group_route = element(&doc, "edge", "edge-1");
     let group_points = contacts(group_route);
-    let junction_body = hub
-        .descendants()
-        .find(|node| node.has_tag_name("rect"))
-        .unwrap();
-    let junction = transform(hub)
-        * Point::new(
-            number(junction_body, "width") / 2.0,
-            number(junction_body, "height") / 2.0,
-        );
+    let junction = junction_contact(hub);
     let group_rect = Rect::new(
         number(inner, "x"),
         number(inner, "y"),
@@ -198,16 +362,8 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
     let outer_route = element(&doc, "edge", "edge-2");
     let outer_points = contacts(outer_route);
     assert!(near(outer_points[0], junction));
-    let client_body = client
-        .descendants()
-        .find(|node| node.has_tag_name("svg") && node.attribute("viewBox") == Some("0 0 80 80"))
-        .unwrap();
-    let client_left = transform(client) * Point::ZERO;
     let client_tip = *outer_points.last().unwrap();
-    assert!((client_tip.x - client_left.x).abs() < 1e-7);
-    assert!(
-        (client_left.y..=client_left.y + number(client_body, "height")).contains(&client_tip.y)
-    );
+    check_left_icon_contact(client, client_tip);
     check_both_arrows(outer_route, junction, client_tip);
 }
 

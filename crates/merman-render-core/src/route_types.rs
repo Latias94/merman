@@ -1,5 +1,8 @@
 //! Geometry and occurrence indices used to paint routed edges.
 
+/// Per-segment integration tolerance for an SVG centerline measurement.
+pub const SVG_LENGTH_ACCURACY: f64 = 1.0e-6;
+
 #[cfg(feature = "layout-shoal")]
 pub use merman_layout_shoal::{Axis, KnotKind, RoutePoint, Side, sweep_handle_fraction};
 

@@ -1,6 +1,7 @@
 //! Width trials share a work meter and reuse the same component scratch.
 
 use crate::flat::{self, Expanded};
+use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
     Direction, Graph, GroupSpec, LayoutError, LayoutOutput, Options, PackingPolicy, TitlePosition,
@@ -53,7 +54,7 @@ pub(crate) fn run(
     else {
         unreachable!()
     };
-    flat::validate_options(options)?;
+    validate::options(options)?;
     let mut wrapped = *options;
     wrapped.packing = PackingPolicy::FitWidth { max_width };
     let original = WidthTrial {

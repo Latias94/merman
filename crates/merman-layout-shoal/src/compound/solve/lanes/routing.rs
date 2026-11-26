@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::geom::{Bounds, Bvh, BvhEntry};
-use crate::{MarkerMetrics, Spacing};
+use crate::{MIN_MARKER_LEAD, MarkerMetrics, Spacing};
 use std::ops::ControlFlow;
 
 pub(super) struct Lanes<'a> {
@@ -36,9 +36,8 @@ fn items(wire: &Wire, graph: &Graph) -> Option<[usize; 2]> {
     .then_some([a, b])
 }
 
-pub(super) fn runway(marker: MarkerMetrics, spacing: &Spacing) -> LayoutResult<f64> {
-    // The painter may add a lead after the marker's trim. Keep the corner beyond both.
-    finite(marker.length + marker.length.max(6.0) + spacing.edge * 0.5)
+pub(super) fn runway(distance: f64, spacing: &Spacing) -> LayoutResult<f64> {
+    finite(distance.max(MIN_MARKER_LEAD) + spacing.edge * 0.5)
 }
 
 pub(super) fn reserve_feedback(
@@ -73,8 +72,8 @@ pub(super) fn reserve_feedback(
         if lane != owners[b] {
             continue;
         }
-        let stem = runway(wire.spec.start_marker, &options.spacing)?
-            .max(runway(wire.spec.end_marker, &options.spacing)?);
+        let [start, end] = wire.spec.marker_runways();
+        let stem = runway(start.max(end), &options.spacing)?;
         for (i, side) in axes.cross.into_iter().enumerate() {
             if wire
                 .ends
@@ -146,7 +145,7 @@ fn marker(
         let inset = node.contour.inset_at(node.size, side, offset);
         towards(contact.at, routes::opposite(side), inset)
     });
-    Some(Bounds::marker(at, contact.side, metrics))
+    Bounds::marker_footprint(at, contact.side, metrics)
 }
 
 fn occupied(
@@ -320,6 +319,7 @@ impl Scene<'_> {
         raw[1..1 + corners.len()].copy_from_slice(corners);
         let points = &raw[..corners.len() + 2];
         let metrics = [wire.spec.start_marker, wire.spec.end_marker];
+        let runways = wire.spec.marker_runways();
         let mut guards = [0.0; 2];
         let mut ink = [None; 3];
         for (end, next) in [points[1], points[points.len() - 2]]
@@ -328,7 +328,7 @@ impl Scene<'_> {
         {
             let contact = contacts[end];
             let side = contact.side;
-            let required = runway(metrics[end], self.spacing)?;
+            let required = runway(runways[end], self.spacing)?;
             let limit = towards(contact.at, side, required);
             let past = match side {
                 Side::Top => next.y < limit.y,

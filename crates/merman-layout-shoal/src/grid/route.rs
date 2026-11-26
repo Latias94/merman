@@ -1,6 +1,7 @@
 //! Route each scope against its immediate walls, then stitch contacts at group faces.
 
 mod captions;
+mod comb;
 mod gutters;
 
 use gutters::gutter_route;
@@ -37,6 +38,7 @@ struct End {
 
 #[derive(Clone, Copy)]
 struct Part {
+    edge: usize,
     from: End,
     to: End,
     labels: [Option<Size>; 3],
@@ -224,6 +226,7 @@ impl Plan {
                 steps.push(self.leg(
                     owner,
                     Part {
+                        edge,
                         from,
                         to,
                         labels: [None; 3],
@@ -241,6 +244,7 @@ impl Plan {
         steps.push(self.leg(
             scope,
             Part {
+                edge,
                 from,
                 to,
                 labels: [spec.label, spec.start_label, spec.end_label],
@@ -342,7 +346,7 @@ impl Routing<'_> {
         let mut indices = reserved(sites.len())?;
         work.charge(sites.len())?;
         indices.extend(0..sites.len());
-        charge_sort(indices.len(), work)?;
+        work.charge_sort(indices.len())?;
         indices.sort_unstable_by(|&a, &b| {
             let u = &sites[a];
             let v = &sites[b];
@@ -536,7 +540,7 @@ fn fan_channel(
 ) -> LayoutResult<Option<[RoutePoint; 4]>> {
     let hub = usize::from(lanes[1].degree > lanes[0].degree);
     let lane = lanes[hub];
-    if lane.degree < 6 || start.1 != opposite(end.1) {
+    if lane.degree < crate::ortho::comb::MIN_DEGREE || start.1 != opposite(end.1) {
         return Ok(None);
     }
     let [(from, side), (to, _)] = if hub == 0 { [start, end] } else { [end, start] };
@@ -644,15 +648,15 @@ fn add_point(points: &mut Vec<RoutePoint>, mut next: RoutePoint) {
 }
 
 pub(crate) enum Gutters<'a> {
-    Drawing(&'a [Vec<f64>; 2]),
-    Scopes(&'a [[Vec<f64>; 2]]),
+    Architecture(&'a [Vec<f64>; 2]),
+    CardGrid(&'a [[Vec<f64>; 2]]),
 }
 
 impl Gutters<'_> {
     fn tracks(&self, scope: usize) -> [&[f64]; 2] {
         let axes = match *self {
-            Self::Drawing(axes) => axes,
-            Self::Scopes(scopes) => &scopes[scope],
+            Self::Architecture(axes) => axes,
+            Self::CardGrid(scopes) => &scopes[scope],
         };
         axes.each_ref().map(Vec::as_slice)
     }
@@ -767,7 +771,6 @@ pub(crate) fn draw(
         routed.push(routes);
     }
     drawing.edges = reserved(edges.len())?;
-    drawing.truncated_routes = plan.truncated;
     for (index, (steps, &(_, sides))) in plan.paths.iter().zip(edges).enumerate() {
         work.visit(1)?;
         let mut points = Vec::<RoutePoint>::new();
@@ -814,10 +817,33 @@ pub(crate) fn draw(
             reversed_for_ranking: false,
         });
     }
-    normalize(graph, drawing, work)
+    let origin = normalize(graph, drawing, work)?;
+    if matches!(gutters, Gutters::Architecture(_))
+        && options.bus_routing
+        && options.routing == crate::RoutingStyle::Orthogonal
+        && edges.len() >= crate::ortho::comb::MIN_DEGREE
+    {
+        // Finish the required routes before spending surplus work on shared buses.
+        let context = Routing {
+            graph,
+            hierarchy,
+            drawing,
+            metrics,
+            options,
+        };
+        for (edge, points) in comb::plan(&context, &plan, origin, work)? {
+            drawing.edges[edge].points = points;
+        }
+    }
+    drawing.truncated_routes = plan.truncated;
+    Ok(())
 }
 
-fn normalize(graph: &Graph, drawing: &mut LayoutOutput, work: &mut Work<'_>) -> LayoutResult<()> {
+fn normalize(
+    graph: &Graph,
+    drawing: &mut LayoutOutput,
+    work: &mut Work<'_>,
+) -> LayoutResult<Point> {
     let mut extent: Option<Bounds> = None;
     let mut include = |bounds| {
         extent = Some(extent.map_or(bounds, |extent| extent.union(bounds)));
@@ -849,7 +875,7 @@ fn normalize(graph: &Graph, drawing: &mut LayoutOutput, work: &mut Work<'_>) -> 
         }
     }
     let Some(extent) = extent else {
-        return Ok(());
+        return Ok(Point::default());
     };
     let origin = [extent.x[0], extent.y[0]];
     for node in &mut drawing.nodes {
@@ -891,5 +917,5 @@ fn normalize(graph: &Graph, drawing: &mut LayoutOutput, work: &mut Work<'_>) -> 
         width: extent.x[1] - origin[0],
         height: extent.y[1] - origin[1],
     };
-    Ok(())
+    Ok(point(origin))
 }

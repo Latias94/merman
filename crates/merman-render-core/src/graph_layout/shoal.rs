@@ -151,6 +151,7 @@ pub fn project_input(
         spec.end_label = edge.end_label;
         spec.start_marker = marker_metrics(edge.start_marker);
         spec.end_marker = marker_metrics(edge.end_marker);
+        spec.set_marker_runways([edge.start_marker, edge.end_marker].map(Marker::smooth_runway));
         if let Some(&(source, target)) = ports.get(index) {
             spec.source_port = source;
             spec.target_port = target;
@@ -292,6 +293,20 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use std::sync::Arc;
+
+    #[test]
+    fn measured_marker_runway_keeps_the_setback_separate_from_the_footprint() {
+        let marker = |trim, depth, width| Marker { trim, depth, width };
+        for (marker, footprint, runway) in [
+            (marker(0.0, 0.0, 0.0), 0.0, 0.0),
+            (marker(0.0, 0.0, 10.0), 0.0, 6.0),
+            (marker(4.0, 10.0, 10.0), 14.0, 14.0),
+            (marker(12.0, 0.0, 10.0), 12.0, 24.0),
+        ] {
+            assert_eq!(marker_metrics(marker).length, footprint);
+            assert_eq!(marker.smooth_runway(), runway);
+        }
+    }
 
     #[test]
     fn relative_axis_hints_must_refer_to_measured_nodes() {

@@ -131,16 +131,19 @@ fn occupied(
                 mark(span(axes, Bounds::centered(center, size)), true)?;
             }
         }
-        for (tip, side, marker) in [
+        for ((tip, side, marker), runway) in [
             (route.points[0], route.ports.0, spec.start_marker),
             (
                 *route.points.last().expect("layered route"),
                 route.ports.1,
                 spec.end_marker,
             ),
-        ] {
+        ]
+        .into_iter()
+        .zip(spec.marker_runways())
+        {
             let lead = crate::MarkerMetrics {
-                length: routing::runway(marker, spacing)?,
+                length: routing::runway(runway, spacing)?,
                 ..marker
             };
             mark(span(axes, Bounds::marker(point(tip), side, lead)), false)?;

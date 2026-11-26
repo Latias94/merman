@@ -59,6 +59,10 @@ impl Bounds {
         Self { x, y }
     }
 
+    pub(crate) fn marker_footprint(at: Point, side: Side, marker: MarkerMetrics) -> Option<Self> {
+        (marker.length > 0.0 && marker.width > 0.0).then(|| Self::marker(at, side, marker))
+    }
+
     pub(crate) fn finite(self) -> bool {
         self.x.into_iter().chain(self.y).all(f64::is_finite)
     }
