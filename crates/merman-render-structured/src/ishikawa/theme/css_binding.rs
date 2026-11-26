@@ -1,7 +1,6 @@
 use merman_model::presentation::PresentationConfig;
-
-use crate::config::{ConfigLookup, config_string};
-use crate::theme::FamilyTheme;
+use merman_render_core::config::{ConfigLookup, config_diagram_look, config_string};
+use merman_theme_contract::v2::FamilyTheme;
 
 #[derive(Debug)]
 pub(crate) struct IshikawaCssBinding {
@@ -27,9 +26,7 @@ impl IshikawaCssBinding {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         Self {
-            look: crate::config::config_diagram_look(config)
-                .as_str()
-                .to_owned(),
+            look: config_diagram_look(config).as_str().to_owned(),
             hand_drawn_seed: config
                 .get("handDrawnSeed")
                 .and_then(serde_json::Value::as_f64),

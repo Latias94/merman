@@ -149,8 +149,6 @@ mod gantt;
 mod gitgraph;
 #[cfg(all(test, feature = "diagram-info"))]
 mod info;
-#[cfg(feature = "diagram-ishikawa")]
-mod ishikawa;
 #[cfg(feature = "diagram-journey")]
 mod journey;
 #[cfg(feature = "diagram-kanban")]
@@ -249,7 +247,6 @@ mod requirement;
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
-    feature = "diagram-ishikawa",
     feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
@@ -971,7 +968,6 @@ impl<'a> SvgExecution<'a> {
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-ishikawa",
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
@@ -1076,27 +1072,43 @@ pub(crate) fn render_builtin_family_artifact(
     finish_family_svg(rooted_svg, &execution, &metadata.effective_config)
 }
 
-#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
-pub(crate) fn render_native_compact_sequence(
-    prepared: &crate::sequence::SequencePreparedArtifact,
-    semantic: &merman_model::families::sequence::SequenceDiagramModel,
-    config: &merman_model::presentation::PresentationConfig,
+#[cfg(feature = "native-compact")]
+pub(crate) fn render_native_compact_family_artifact(
+    family: &crate::family::BuiltinFamilyArtifact,
+    metadata: &merman_model::presentation::PresentationMetadata,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    use sequence::compact::{SequenceCompactError, render_sequence_compact};
-
+    let _ = metadata;
     let execution = SvgExecution::new(options, debug, family_execution)?;
-    let svg = render_sequence_compact(prepared, semantic, config, &execution);
+    let svg: Result<String> = match family {
+        #[cfg(feature = "diagram-sequence")]
+        crate::family::BuiltinFamilyArtifact::Sequence(pair) => {
+            use sequence::compact::{SequenceCompactError, render_sequence_compact};
+
+            render_sequence_compact(
+                pair.layout(),
+                pair.semantic(),
+                &metadata.effective_config,
+                &execution,
+            )
+            .map_err(|error| match error {
+                SequenceCompactError::Render(error) => error,
+                SequenceCompactError::Unsupported(reason) => Error::UnsupportedSvgOutputProfile {
+                    profile: super::SvgOutputProfile::NativeCompact,
+                    reason,
+                },
+            })
+        }
+        #[cfg(all(feature = "diagram-flowchart", feature = "layout-dagre"))]
+        crate::family::BuiltinFamilyArtifact::Flowchart(artifact) => {
+            flowchart::render_native_compact_flowchart_artifact(artifact, metadata, &execution)
+        }
+        _ => Err(crate::family::compact_family_unavailable()),
+    };
     execution.finish_diagram_id_projection()?;
-    let svg = svg.map_err(|error| match error {
-        SequenceCompactError::Render(error) => error,
-        SequenceCompactError::Unsupported(reason) => Error::UnsupportedSvgOutputProfile {
-            profile: super::SvgOutputProfile::NativeCompact,
-            reason,
-        },
-    })?;
+    let svg = svg?;
     super::pipeline::validate_native_compact_svg(&svg, execution.family.session())?;
     Ok(svg)
 }
@@ -1511,10 +1523,14 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-ishikawa")]
         BuiltinFamilyArtifact::Ishikawa(artifact) => {
-            ishikawa::render_ishikawa_diagram_svg_with_theme(
+            let diagram_id = options.diagram_id_or("ishikawa");
+            merman_render_structured::ishikawa::render_ishikawa_diagram_svg(
                 artifact.pair().layout(),
                 artifact.text_theme(),
-                options,
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::ISHIKAWA, diagram_id),
+                options.work_meter(),
+                options.family.session().operation_context(),
             )
         }
         #[cfg(feature = "diagram-event-modeling")]
@@ -1635,7 +1651,6 @@ mod operation_time_tests {
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-ishikawa",
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",

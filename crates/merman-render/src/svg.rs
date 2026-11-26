@@ -72,8 +72,8 @@ pub use merman_render_core::svg_output::SvgOutputProfile;
     any(feature = "layout-cytoscape", feature = "layout-shoal")
 ))]
 pub(crate) use parity::render_architecture_family_artifact;
-#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
-pub(crate) use parity::render_native_compact_sequence;
+#[cfg(feature = "native-compact")]
+pub(crate) use parity::render_native_compact_family_artifact;
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;
 #[cfg(any(

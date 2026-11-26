@@ -624,7 +624,10 @@ jobs:
             --lib -E 'test(layout_work::) | test(graph_layout::shoal::)' --cargo-quiet
 
       - name: Test standalone SVG producer profiles
-        run: cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,diagram-sequence,native-compact --test native_compact_sequence --cargo-quiet
+        run: |
+          cargo nextest run --locked -p merman --no-default-features \
+            --features diagram-flowchart,diagram-sequence,layout-dagre,native-compact \
+            --test native_compact_sequence --test native_compact_flowchart --cargo-quiet
 
       - name: Test isolated consumers without diagram families
         run: |

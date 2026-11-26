@@ -1109,22 +1109,12 @@ fn prepare_ishikawa_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let mut cfg =
-        crate::ishikawa::IshikawaConfigView::new(&meta.effective_config).layout_settings();
-    let mut typography =
-        crate::ishikawa::IshikawaTypographyPlan::resolve(&meta.effective_config, cfg.font_size);
-    if let Some(theme) = native {
-        typography.apply_native(theme, &meta.effective_config, &mut cfg);
-    }
-    let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
+    let (layout, text_theme) = merman_render_structured::ishikawa::prepare_ishikawa_diagram(
         model,
-        &cfg,
-        &typography,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
-    let text_theme =
-        crate::ishikawa::IshikawaTextThemePlan::resolve(native, &meta.effective_config, typography);
     Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
         IshikawaFamilyArtifact {
             pair: FamilyPair::new(model, layout),

@@ -2,6 +2,7 @@
 
 use super::*;
 use merman_render_core::write_static_css;
+use std::borrow::Cow;
 
 pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
     declarations: &[String],
@@ -78,6 +79,16 @@ where
     }
 }
 
+pub(super) fn flowchart_normal_edge_css_width(
+    theme: &crate::flowchart::FlowchartCompatibilityBinding,
+) -> Cow<'_, str> {
+    theme
+        .connector_stroke_width
+        .map_or(Cow::Borrowed(theme.stroke_width.as_str()), |width| {
+            Cow::Owned(width.to_string())
+        })
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The streaming CSS writer keeps independently typed SVG definition IDs and theme inputs explicit."
@@ -112,8 +123,8 @@ where
     let node_text_color = theme.node_text_color.as_str();
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let connector_width = theme.connector_stroke_width.map(|value| value.to_string());
-    let connector_width = connector_width.as_deref().unwrap_or(stroke_width);
+    let connector_width = flowchart_normal_edge_css_width(theme);
+    let connector_width: &str = connector_width.as_ref();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
     let edge_label_background = theme.edge_label_background.as_str();

@@ -44,18 +44,17 @@ pub fn validate_svg_output_profile(
     if let Some(pipeline) = pipeline {
         pipeline.validate_output_profile(profile)?;
     }
-    if cfg!(all(
-        feature = "native-compact",
-        feature = "diagram-sequence"
-    )) && family == Some(DiagramFamilyId::SEQUENCE)
-    {
+    let sequence = cfg!(feature = "diagram-sequence") && family == Some(DiagramFamilyId::SEQUENCE);
+    let flowchart = cfg!(all(feature = "diagram-flowchart", feature = "layout-dagre"))
+        && family == Some(DiagramFamilyId::FLOWCHART);
+    if cfg!(feature = "native-compact") && (sequence || flowchart) {
         Ok(())
     } else {
         Err(compact_family_unavailable())
     }
 }
 
-fn compact_family_unavailable() -> Error {
+pub(crate) fn compact_family_unavailable() -> Error {
     Error::UnsupportedSvgOutputProfile {
         profile: SvgOutputProfile::NativeCompact,
         reason: "a compact renderer is not enabled for this diagram family",
@@ -2487,18 +2486,16 @@ fn render_family_artifact_svg(
     let execution = artifact.context.execution();
     let metadata = artifact.paint_metadata();
     if output_profile == SvgOutputProfile::NativeCompact {
-        #[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
-        if let BuiltinFamilyArtifact::Sequence(pair) = &artifact.family {
-            return crate::svg::render_native_compact_sequence(
-                pair.layout(),
-                pair.semantic(),
-                &metadata.effective_config,
-                execution,
-                &options,
-                debug,
-            )
-            .map(|svg| (svg, false));
-        }
+        #[cfg(feature = "native-compact")]
+        return crate::svg::render_native_compact_family_artifact(
+            &artifact.family,
+            metadata,
+            execution,
+            &options,
+            debug,
+        )
+        .map(|svg| (svg, false));
+        #[cfg(not(feature = "native-compact"))]
         return Err(compact_family_unavailable());
     }
     #[cfg(all(

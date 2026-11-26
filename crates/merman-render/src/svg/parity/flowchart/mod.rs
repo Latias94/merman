@@ -3,6 +3,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 mod agentflow;
 mod cluster_geometry;
+#[cfg(all(
+    feature = "native-compact",
+    feature = "diagram-flowchart",
+    feature = "layout-dagre"
+))]
+mod compact;
 mod css;
 mod defs;
 mod document;
@@ -27,6 +33,12 @@ mod util;
 mod viewbox;
 mod viewbox_node_bounds;
 
+#[cfg(all(
+    feature = "native-compact",
+    feature = "diagram-flowchart",
+    feature = "layout-dagre"
+))]
+pub(super) use compact::render_native_compact_flowchart_artifact;
 use css::*;
 use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
