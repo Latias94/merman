@@ -103,6 +103,21 @@ cannot express “everything except X”; a large preset table would mix applica
 runtime policy, transport packages, and release recipes. Product packages and artifact profiles
 select their own direct leaf set instead.
 
+### Accepted v0.11 facade additions
+
+[ADR 0105](adr/0105-ergonomic-feature-tiers-and-safe-facade-api.md) accepts two additive
+facade aggregates. They are not available in the current source until their Cargo definitions
+land. Continue to select the corresponding leaves directly in the meantime.
+
+| Planned aggregate | Selection and starting point |
+| --- | --- |
+| `core-diagrams` | Flowchart, Sequence, Class, State, ER, Gantt, Mindmap, Architecture, Block, C4, Pie, and XY Chart. Pair it with a required output and an explicitly selected layout, such as `svg` and `layout-dagre` or `layout-shoal`. |
+| `layout-mermaid-legacy` | Dagre, ELK, and Cytoscape. Pair it with the family selectors for a Mermaid-compatible graphical host. It does not select any families or math. |
+
+Enabling a family and a layout does not make every family–layout pair callable. The
+[SVG profile decision](adr/0104-paint-scene-ir-and-dual-output-profiles.md) likewise keeps
+Mermaid-compatible SVG as the default and plans a separate opt-in compact profile.
+
 ## Pick a workflow
 
 ### Try the experimental Shoal layout
