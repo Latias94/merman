@@ -115,12 +115,13 @@ It owns text and math measurement, label placement, and layout orchestration.
 shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
 supplies text metrics and assembles the chart into a scoped SVG document under the render
 operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
-bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
-supplies text metrics and emits the SVG for both families.
+bar label placement. For Sankey, it owns the typed layout, configuration lookup, and SVG body.
+`merman-render` supplies text metrics and owns root and output policy for both families.
+
 The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
-layout and its point and radius codecs, Treemap hierarchy layout, Venn layout and its solver, and
-Wardley layout and annotation boxes. `merman-render` supplies theme precedence, the operation work
-meter, and the SVG document and output policy.
+layout and its point and radius codecs, Treemap hierarchy layout, viewport projection, value
+formatting and leaf SVG, Venn layout and its solver, and Wardley layout and annotation boxes.
+`merman-render` supplies theme precedence, the operation work meter, and document assembly.
 
 ### Frozen presentation is distinct from engine initialization
 
