@@ -943,7 +943,8 @@ fn enforce_relative_placement<W: WorkControl + ?Sized>(
                 id: dst,
                 gap: r.gap,
             });
-        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+        }
+        if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
             let src = node_to_dummy_for_horizontal_alignment[top].unwrap_or(top);
             let dst = node_to_dummy_for_horizontal_alignment[bottom].unwrap_or(bottom);
             dag_v.entry(dst).or_default();

@@ -217,7 +217,9 @@ pub(super) struct FcoseConstraintWorkShape {
     input_relative_count: usize,
     retained_group_count: usize,
     retained_member_count: usize,
+    retained_relative_count: usize,
     valid_axis_pair_count: usize,
+    may_collapse_zero_gap: bool,
 }
 
 impl FcoseConstraintWorkShape {
@@ -235,7 +237,9 @@ impl FcoseConstraintWorkShape {
             input_relative_count,
             retained_group_count,
             retained_member_count,
+            retained_relative_count: input_relative_count,
             valid_axis_pair_count,
+            may_collapse_zero_gap: false,
         }
     }
 
@@ -293,40 +297,79 @@ impl FcoseConstraintWorkShape {
         }
 
         let mut valid_axis_pair_count = 0usize;
+        let mut may_collapse_zero_gap = false;
         for relative in &opts.relative_placement_constraint {
-            if relative
+            let horizontal = relative
                 .left
                 .zip(relative.right)
-                .is_some_and(|(left, right)| left < node_count && right < node_count)
-            {
-                valid_axis_pair_count = valid_axis_pair_count
-                    .checked_add(1)
-                    .ok_or(WorkFailure::ArithmeticOverflow)?;
-            }
-            if relative
+                .is_some_and(|(left, right)| left < node_count && right < node_count);
+            let vertical = relative
                 .top
                 .zip(relative.bottom)
-                .is_some_and(|(top, bottom)| top < node_count && bottom < node_count)
-            {
-                valid_axis_pair_count = valid_axis_pair_count
-                    .checked_add(1)
-                    .ok_or(WorkFailure::ArithmeticOverflow)?;
-            }
+                .is_some_and(|(top, bottom)| top < node_count && bottom < node_count);
+            valid_axis_pair_count = valid_axis_pair_count
+                .checked_add(usize::from(horizontal) + usize::from(vertical))
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            may_collapse_zero_gap |= (horizontal || vertical) && relative.gap.max(0.0) == 0.0;
         }
 
-        Ok(Self::from_counts(
-            input_group_count,
-            input_member_count,
-            opts.relative_placement_constraint.len(),
-            retained_group_count,
-            retained_member_count,
-            valid_axis_pair_count,
-        ))
+        Ok(Self {
+            may_collapse_zero_gap,
+            ..Self::from_counts(
+                input_group_count,
+                input_member_count,
+                opts.relative_placement_constraint.len(),
+                retained_group_count,
+                retained_member_count,
+                valid_axis_pair_count,
+            )
+        })
     }
 
-    fn input_work_units(self) -> std::result::Result<usize, WorkFailure> {
-        self.input_group_count
-            .checked_add(self.input_member_count)
+    pub(super) const fn may_collapse_zero_gap(self) -> bool {
+        self.may_collapse_zero_gap
+    }
+
+    pub(super) fn with_normalized_constraints(
+        mut self,
+        constraints: &super::Constraints,
+    ) -> std::result::Result<Self, WorkFailure> {
+        self.retained_group_count = constraints
+            .align_horizontal
+            .len()
+            .checked_add(constraints.align_vertical.len())
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        self.retained_member_count = constraints
+            .align_horizontal
+            .iter()
+            .chain(&constraints.align_vertical)
+            .try_fold(0usize, |members, group| members.checked_add(group.len()))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        self.retained_relative_count = constraints.relative.len();
+        self.valid_axis_pair_count = constraints
+            .relative
+            .iter()
+            .try_fold(0usize, |pairs, constraint| {
+                pairs
+                    .checked_add(usize::from(constraint.left.zip(constraint.right).is_some()))
+                    .and_then(|pairs| {
+                        pairs.checked_add(usize::from(
+                            constraint.top.zip(constraint.bottom).is_some(),
+                        ))
+                    })
+            })
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        Ok(self)
+    }
+
+    pub(super) fn setup_work_units(
+        self,
+        schedule: FcoseIterationSchedule,
+    ) -> std::result::Result<usize, WorkFailure> {
+        schedule
+            .setup_work_units()
+            .checked_add(self.input_group_count)
+            .and_then(|units| units.checked_add(self.input_member_count))
             .and_then(|units| units.checked_add(self.input_relative_count))
             .ok_or(WorkFailure::ArithmeticOverflow)
     }
@@ -334,7 +377,7 @@ impl FcoseConstraintWorkShape {
     fn run_work_units(self) -> std::result::Result<usize, WorkFailure> {
         self.retained_group_count
             .checked_add(self.retained_member_count)
-            .and_then(|units| units.checked_add(self.input_relative_count))
+            .and_then(|units| units.checked_add(self.retained_relative_count))
             .ok_or(WorkFailure::ArithmeticOverflow)
     }
 
@@ -369,10 +412,7 @@ impl FcoseWorkPlan {
         random_seed_offset: usize,
         reset_seed_each_run: bool,
     ) -> std::result::Result<Self, WorkFailure> {
-        let setup_work_units = schedule
-            .setup_work_units()
-            .checked_add(shape.input_work_units()?)
-            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let setup_work_units = shape.setup_work_units(schedule)?;
         let constraint_run_work_units = shape.run_work_units()?;
         let run_setup_work_units = if node_count > 0 && constraint_run_work_units > 0 {
             constraint_run_work_units
