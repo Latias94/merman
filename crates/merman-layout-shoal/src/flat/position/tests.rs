@@ -223,9 +223,11 @@ fn reverse_topological_pull_tightens_loose_blocks_and_uses_physical_margins() {
     };
     let g = expanded(&[&[0, 1, 2]], &[Kind::Node, Kind::Node, Kind::Label], &[]);
     let opts = Options::default();
-    assert_eq!(extents(&g, &c, &opts, 0), (30.0, 52.0));
-    assert_eq!(extents(&g, &c, &opts, 1), (42.0, 30.0));
-    assert_eq!(extents(&g, &c, &opts, 2), (7.0, 7.0));
+    let node = 5.0 + opts.spacing.node / 2.0;
+    let label = 5.0 + opts.spacing.edge / 2.0;
+    assert_eq!(extents(&g, &c, &opts, 0), (node, node + 22.0));
+    assert_eq!(extents(&g, &c, &opts, 1), (node + 12.0, node));
+    assert_eq!(extents(&g, &c, &opts, 2), (label, label));
 }
 
 #[test]
@@ -253,7 +255,10 @@ fn four_passes_align_ports_not_centers_in_real_expanded_chains() {
         graph.edges.push(e);
         let mut control = NoopWorkControl;
         let mut work = Work::new(&mut control);
-        let opts = Options::default();
+        let opts = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
         let cs = validate::components(&graph, &opts, &mut work).unwrap();
         let mut g = Expanded::default();
         let (o, _) =

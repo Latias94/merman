@@ -186,6 +186,7 @@ mod tests {
                         width: 40.0,
                         height: 20.0,
                     },
+                    contour: Default::default(),
                     seq,
                     parent: None,
                     port_span: None,

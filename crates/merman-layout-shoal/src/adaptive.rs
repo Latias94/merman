@@ -232,9 +232,10 @@ fn tighten_groups(groups: &mut [GroupSpec], work: &mut Work<'_>) -> LayoutResult
         work.visit(1)?;
         let title_height = group.title.map_or(0.0, |title| title.height);
         let [top, bottom] = match group.title_position {
-            TitlePosition::TopLeft | TitlePosition::TopCenter | TitlePosition::TopRight => {
-                [title_height, 0.0]
-            }
+            TitlePosition::TopAuto
+            | TitlePosition::TopLeft
+            | TitlePosition::TopCenter
+            | TitlePosition::TopRight => [title_height, 0.0],
             _ => [0.0, title_height],
         };
         let tighten = |padding: f64, title: f64| {

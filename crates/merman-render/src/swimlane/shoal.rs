@@ -249,33 +249,40 @@ fn measure(
         let geometry = labels.zip(owner).and_then(|(labels, owner)| {
             labels.measured_node_geometry(FlowchartSvgLabelOwner::SwimlaneNode(owner))
         });
-        let radii = match resolve_flowchart_shape(&node.shape)? {
+        let shape = resolve_flowchart_shape(&node.shape)?;
+        let radii = match shape {
             FlowchartShape::Process => process_radius,
             FlowchartShape::RoundedRectangle => configured_radius,
             _ => None,
         };
-        let profile = ShapePortProfile::flowchart_with_paint_metrics(
-            source,
-            &LayoutNode {
-                id: String::new(),
-                x: 0.0,
-                y: 0.0,
-                width: node.width,
-                height: node.height,
-                is_cluster: false,
-                label_width: Some(node.label_width),
-                label_height: Some(node.label_height),
-            },
-            node.padding,
-            neo,
-            geometry,
-            radii,
-        )?;
+        let profile = if shape == FlowchartShape::Diamond {
+            ShapePortProfile::decision(node.width, node.height)
+        } else {
+            ShapePortProfile::flowchart_with_paint_metrics(
+                source,
+                &LayoutNode {
+                    id: String::new(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: node.width,
+                    height: node.height,
+                    is_cluster: false,
+                    label_width: Some(node.label_width),
+                    label_height: Some(node.label_height),
+                },
+                node.padding,
+                neo,
+                geometry,
+                radii,
+            )?
+        };
+        let size = Size {
+            width: node.width,
+            height: node.height,
+        };
         graph.nodes.push(MeasuredNode {
-            size: Size {
-                width: node.width,
-                height: node.height,
-            },
+            size,
+            contour: profile.shoal_contour(size),
             seq: index(slot, work)?,
             parent,
             port_span: Some(profile.port_span(faces[0])),
@@ -437,6 +444,7 @@ impl Bindings {
                 endpoints: (route.source, route.target),
                 ports: route.ports,
                 knots,
+                corridor_clearance: route.corridor_clearance,
             });
         }
         work.charge_adapter(solved.border_stitches.len())?;
@@ -449,6 +457,7 @@ impl Bindings {
             AxisRoutes {
                 nodes: profiles,
                 group_parents,
+                struck_group_titles: Default::default(),
                 border_stitches: solved.border_stitches,
                 clearance: AxisClearance::new(obstacles),
                 routes,

@@ -94,6 +94,7 @@ pub(crate) struct RouteTopology {
     pub(crate) endpoints: (Endpoint, Endpoint),
     pub(crate) ports: (Side, Side),
     pub(crate) knots: Vec<(Axis, KnotKind)>,
+    pub(crate) corridor_clearance: f64,
 }
 
 #[cfg(all(
@@ -122,6 +123,7 @@ pub(crate) struct FlowchartSvgEdgeGeometry {
 pub(crate) struct AxisRoutes {
     pub(crate) nodes: Vec<contour::ShapePortProfile>,
     pub(crate) group_parents: Vec<Option<u32>>,
+    pub(crate) struck_group_titles: rustc_hash::FxHashSet<String>,
     pub(crate) border_stitches: Vec<BorderStitch>,
     pub(crate) clearance: axis_clearance::AxisClearance,
     pub(crate) routes: Vec<Option<RouteTopology>>,
@@ -187,6 +189,31 @@ pub(crate) enum RouteContract {
     feature = "diagram-usecase"
 ))]
 impl RouteContract {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn is_canonical_axis(&self) -> bool {
+        #[cfg(any(feature = "layout-shoal", test))]
+        return matches!(self, Self::CanonicalAxis(_));
+        #[cfg(not(any(feature = "layout-shoal", test)))]
+        false
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn group_title_is_struck(&self, _id: &str) -> bool {
+        #[cfg(any(feature = "layout-shoal", test))]
+        if let Self::CanonicalAxis(routes) = self {
+            return routes.struck_group_titles.contains(_id);
+        }
+        false
+    }
+
     pub(crate) fn is_elk_parity(&self) -> bool {
         #[cfg(feature = "layout-elk")]
         return matches!(self, Self::ElkParity);

@@ -67,6 +67,22 @@ impl ShapePortProfile {
         Self::new(Outline::diamond(width, height, 0.0), 0.0, 0.0)
     }
 
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-agentflow",
+            feature = "diagram-swimlane"
+        )
+    ))]
+    pub(crate) fn decision(width: f64, height: f64) -> Self {
+        Self::new(
+            Outline::diamond(width, height, 0.0),
+            width * 0.54,
+            height * 0.54,
+        )
+    }
+
     pub(crate) fn port_span(&self, side: Side) -> f64 {
         self.span[usize::from(matches!(side, Side::Right | Side::Left))]
     }
@@ -74,6 +90,52 @@ impl ShapePortProfile {
     /// Offset from the top of the measured box for an icon's left/right port anchor.
     pub(crate) fn anchor_y(&self) -> Option<f64> {
         self.anchor_y
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal_contour(
+        &self,
+        size: super::ir::Size,
+    ) -> merman_layout_shoal::ShapeContourHint {
+        use merman_layout_shoal::ShapeContourHint;
+
+        let (width, height) = (size.width / 2.0, size.height / 2.0);
+        match &self.outline {
+            &Outline::Box {
+                cx: 0.0,
+                cy: 0.0,
+                hw,
+                hh,
+                rx,
+                ry,
+            } if hw == width && hh == height => {
+                if rx == hw && ry == hh {
+                    ShapeContourHint::Ellipse
+                } else if rx == 0.0 || ry == 0.0 {
+                    ShapeContourHint::Rectangle
+                } else if rx == ry && rx == hw.min(hh) {
+                    ShapeContourHint::Stadium
+                } else {
+                    ShapeContourHint::Rounded { rx, ry }
+                }
+            }
+            Outline::Polygon(points) => {
+                if let &[(x, top), (right, y), (bottom_x, bottom), (left, left_y)] =
+                    points.as_slice()
+                    && [top, right, bottom, left, bottom_x, left_y]
+                        == [y - height, x + width, y + height, x - width, x, y]
+                {
+                    if x == 0.0 && y == 0.0 {
+                        ShapeContourHint::Diamond
+                    } else {
+                        ShapeContourHint::OffsetDiamond { x, y }
+                    }
+                } else {
+                    ShapeContourHint::Rectangle
+                }
+            }
+            _ => ShapeContourHint::Rectangle,
+        }
     }
 
     /// A fixed port outside the transverse extent of the entire outline has no normal hit.

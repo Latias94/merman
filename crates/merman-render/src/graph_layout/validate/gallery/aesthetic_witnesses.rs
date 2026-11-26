@@ -7,44 +7,103 @@ use std::fmt::Write as _;
 
 #[test]
 fn painted_decision_branch_metrics() {
-    let source = "flowchart TD\nA[Start] --> B{Condition?}\nB -->|Yes| C[Execute]\nB -->|No| D[End]\nC --> D";
-    let drawing = render(source, "decision-aesthetic").unwrap();
-    let doc = Document::parse(&drawing.svg).unwrap();
-    let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
-    let body_names: Vec<_> = drawing
-        .layout
-        .nodes
-        .iter()
-        .map(|node| node.id.as_str())
-        .collect();
-    let edge_names: Vec<_> = drawing
-        .layout
-        .edges
-        .iter()
-        .map(|edge| edge.id.as_str())
-        .collect();
-    let metrics = emit(
-        "decision-bypass",
-        "TB",
-        &scene,
-        &body_names,
-        &edge_names,
-        &[],
+    let branches = "A[Start] --> B{Condition?}\nB -->|Yes| C[Execute]\nB -->|No| D[End]";
+    for (case, direction, bypass) in [
+        ("decision", "TD", ""),
+        ("decision", "BT", ""),
+        ("decision", "LR", ""),
+        ("decision", "RL", ""),
+        ("decision-bypass", "TD", "\nC --> D"),
+    ] {
+        let source = format!("flowchart {direction}\n{branches}{bypass}");
+        let drawing = render(&source, "decision-aesthetic").unwrap();
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+        let body_names: Vec<_> = drawing
+            .layout
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect();
+        let edge_names: Vec<_> = drawing
+            .layout
+            .edges
+            .iter()
+            .map(|edge| edge.id.as_str())
+            .collect();
+        let metrics = emit(case, direction, &scene, &body_names, &edge_names, &[]);
+        let measured: Vec<_> = metrics
+            .label_optical_balance
+            .iter()
+            .map(|label| label.edge)
+            .collect();
+        let decision = drawing.node("B");
+        let branches: Vec<_> = scene
+            .edges
+            .iter()
+            .zip(edge_names.iter().copied())
+            .filter_map(|(edge, name)| (edge.start.body == decision).then_some(name))
+            .collect();
+        assert_eq!(branches.len(), 2);
+        assert_eq!(measured, branches);
+        if matches!(direction, "TD" | "BT") {
+            assert_balanced_branches(&metrics, "B", case, direction);
+        } else {
+            assert_eq!(metrics.cubic_count, 0, "{case} {direction}");
+            assert_label_balance(&metrics, case, direction);
+        }
+    }
+}
+
+fn assert_label_balance(
+    metrics: &super::super::aesthetic::Metrics<'_>,
+    case: &str,
+    direction: &str,
+) {
+    assert_eq!(metrics.label_optical_balance.len(), 2);
+    for label in &metrics.label_optical_balance {
+        assert!(
+            label.ratio.is_some_and(|value| value <= 1.6),
+            "{case} {direction}: {label:?}"
+        );
+    }
+}
+
+pub(super) fn assert_balanced_branches(
+    metrics: &super::super::aesthetic::Metrics<'_>,
+    decision: &str,
+    case: &str,
+    direction: &str,
+) {
+    const PX_TOLERANCE: f64 = 0.25;
+    assert_label_balance(metrics, case, direction);
+    assert!(
+        metrics
+            .max_s_curve_handle_ratio
+            .is_some_and(|value| value <= 0.48)
     );
-    let measured: Vec<_> = metrics
-        .label_optical_balance
+    assert!(metrics.s_curves.iter().all(|curve| curve.ordered_controls));
+    let face = metrics
+        .face_turn_coherence
         .iter()
-        .map(|label| label.edge)
-        .collect();
-    let decision = drawing.node("B");
-    let branches: Vec<_> = scene
-        .edges
+        .find(|face| face.body == decision)
+        .expect("two turns on one decision face");
+    assert!(
+        face.max_adjacent_delta_px <= PX_TOLERANCE,
+        "{case} {direction}: {face:?}"
+    );
+    let symmetry = metrics
+        .sibling_departure_symmetry
         .iter()
-        .zip(edge_names.iter().copied())
-        .filter_map(|(edge, name)| (edge.start.body == decision).then_some(name))
-        .collect();
-    assert_eq!(branches.len(), 2);
-    assert_eq!(measured, branches);
+        .find(|pair| pair.body == decision && pair.end == "start")
+        .expect("two departures from one decision face");
+    assert!(
+        symmetry.turn_start_delta_px <= PX_TOLERANCE
+            && symmetry.landing_horizon_delta_px <= PX_TOLERANCE
+            && symmetry.turn_span_ratio.is_some_and(|ratio| ratio <= 1.01)
+            && symmetry.mirror_tangent_error_deg <= 1.0,
+        "{case} {direction}: {symmetry:?}",
+    );
 }
 
 #[test]

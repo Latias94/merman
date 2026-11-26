@@ -48,7 +48,7 @@ pub(super) fn prepare_edges(
         let width = stroke_width(plan);
         options.checkpoint_emit()?;
         options.work_meter().charge(edge.points.len())?;
-        let geometry = routes.paint(edge, Vec2::ZERO, width / 2.0, style)?;
+        let geometry = routes.paint(edge, Vec2::ZERO, width / 2.0, style, options.work_meter())?;
         let (path, path_bounds) = if let Some(randomness) = &randomness {
             options.work_meter().charge(geometry.path.d.len())?;
             let path = super::super::canonical_rough::constrained_rough_edge_path(

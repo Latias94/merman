@@ -7,6 +7,7 @@ use merman_theme_contract::v2::MarkerStyle;
 use rustc_hash::FxHashMap;
 
 use super::super::util::{escape_xml, escape_xml_display};
+use super::edge_fill::FlowchartEdgeFillPlan;
 use super::{
     FlowchartHierarchyPlan, FlowchartMarkerBase, FlowchartRenderCtx,
     flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
@@ -375,31 +376,62 @@ struct FlowchartMarkerVariantKey {
     base: FlowchartMarkerBase,
     margin: bool,
     color_id: String,
+    adaptive_ink: bool,
 }
 
 impl FlowchartMarkerVariantKey {
     fn paint(&self) -> FlowchartMarkerPaint {
+        if self.adaptive_ink
+            && matches!(
+                self.base,
+                FlowchartMarkerBase::PointStart
+                    | FlowchartMarkerBase::PointEnd
+                    | FlowchartMarkerBase::CircleStart
+                    | FlowchartMarkerBase::CircleEnd
+            )
+        {
+            return FlowchartMarkerPaint::StrokeAndFill;
+        }
         flowchart_marker_shape_spec(self.base, self.margin).paint
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FlowchartMarkerColor<'a> {
+    Source(&'a str),
+    Adaptive(&'static str),
 }
 
 #[derive(Debug)]
 struct PreparedFlowchartMarkerColor<'a> {
     raw: &'a str,
     id: String,
+    adaptive_ink: bool,
 }
 
 impl<'a> PreparedFlowchartMarkerColor<'a> {
     fn prepare(
-        raw: &'a str,
+        color: FlowchartMarkerColor<'a>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
+        let (raw, adaptive_ink) = match color {
+            FlowchartMarkerColor::Source(raw) => (raw, false),
+            FlowchartMarkerColor::Adaptive(raw) => (raw, true),
+        };
         let normalization_work = 1usize
             .checked_add(raw.len().div_ceil(64))
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         work_meter.charge(normalization_work)?;
-        let id = marker_color_id(raw);
-        Ok(Self { raw, id })
+        let mut id = marker_color_id(raw);
+        if adaptive_ink {
+            // Mermaid source colors normalize to alphanumerics and underscores only.
+            id.insert_str(0, "shoal-");
+        }
+        Ok(Self {
+            raw,
+            id,
+            adaptive_ink,
+        })
     }
 }
 
@@ -436,6 +468,7 @@ impl FlowchartMarkerEmissionPlan {
     pub(in crate::svg::parity::flowchart) fn prepare(
         ctx: &FlowchartRenderCtx<'_>,
         hierarchy_plan: &FlowchartHierarchyPlan<'_>,
+        fill_plan: &FlowchartEdgeFillPlan,
     ) -> crate::Result<Self> {
         let look = ctx.compatibility.look;
         let hand_drawn = look.is_hand_drawn();
@@ -445,15 +478,12 @@ impl FlowchartMarkerEmissionPlan {
             plan.marker_style = native.form.marker_style;
         }
         for &edge in hierarchy_plan.ordered_edges() {
-            ctx.edge_style_plan.bind_path_sources_for(
-                edge.key,
-                ctx.compatibility.html_labels,
-                ctx.uses_elk_adapter_dom || ctx.swimlane_direction.is_some(),
-                hierarchy_plan.edge_root(edge.key)?.is_some(),
-                ctx.work_meter,
-            )?;
+            Self::bind_path_sources_for(ctx, hierarchy_plan, edge.key)?;
             let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;
-            let marker_color = edge_styles.edge_marker_color(hand_drawn);
+            let marker_color = edge_styles
+                .edge_marker_color(hand_drawn)
+                .map(FlowchartMarkerColor::Source)
+                .or_else(|| fill_plan.ink(edge.key).map(FlowchartMarkerColor::Adaptive));
             let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
             plan.register_edge_with_identity(
                 edge.key,
@@ -474,6 +504,20 @@ impl FlowchartMarkerEmissionPlan {
         Ok(plan)
     }
 
+    pub(super) fn bind_path_sources_for(
+        ctx: &FlowchartRenderCtx<'_>,
+        hierarchy: &FlowchartHierarchyPlan<'_>,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<()> {
+        ctx.edge_style_plan.bind_path_sources_for(
+            key,
+            ctx.compatibility.html_labels,
+            ctx.uses_elk_adapter_dom || ctx.swimlane_direction.is_some(),
+            hierarchy.edge_root(key)?.is_some(),
+            ctx.work_meter,
+        )
+    }
+
     fn variant(&self, index: usize) -> (&FlowchartMarkerVariantKey, &str) {
         let (key, raw_color) = self
             .variants
@@ -490,7 +534,7 @@ impl FlowchartMarkerEmissionPlan {
         &mut self,
         key: crate::flowchart::FlowchartEdgeKey,
         edge: &crate::flowchart::FlowEdge,
-        marker_color: Option<&str>,
+        marker_color: Option<FlowchartMarkerColor<'_>>,
         margin: bool,
         diagram_id: &str,
         diagram_type: &str,
@@ -572,7 +616,7 @@ impl FlowchartMarkerEmissionPlan {
         self.register_edge_with_identity(
             key,
             edge,
-            marker_color,
+            marker_color.map(FlowchartMarkerColor::Source),
             false,
             "diagram",
             "flowchart-v2",
@@ -609,6 +653,7 @@ impl FlowchartMarkerEmissionPlan {
             base,
             margin,
             color_id: marker_color.id.clone(),
+            adaptive_ink: marker_color.adaptive_ink,
         };
         let variant_index = if let Some(index) = self.variants.get_index_of(&key) {
             index
@@ -1079,7 +1124,9 @@ mod tests {
     #[test]
     fn bpmn_markers_keep_their_source_viewports_no_fill_and_no_neo_margin_variant() {
         let work = meter();
-        let color = PreparedFlowchartMarkerColor::prepare("#2468ac", &work).unwrap();
+        let color =
+            PreparedFlowchartMarkerColor::prepare(FlowchartMarkerColor::Source("#2468ac"), &work)
+                .unwrap();
         let mut plan = FlowchartMarkerEmissionPlan::new();
         for spec in BPMN_MARKER_SHAPE_SPECS {
             let reference = plan
@@ -1363,6 +1410,7 @@ mod tests {
                 base,
                 margin,
                 color_id: "_2468ac".to_string(),
+                adaptive_ink: false,
             };
             let mut actual = String::new();
             push_extra_marker(

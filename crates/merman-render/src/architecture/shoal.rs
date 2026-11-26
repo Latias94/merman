@@ -1,4 +1,3 @@
-mod align;
 mod measure;
 
 use super::ArchitectureGroupThemePlan;
@@ -8,8 +7,8 @@ use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Point, Rect,
-    RoutingStyle, Side, Size, SolvedGroup, TitlePosition,
+    Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Point,
+    Rect, RoutingStyle, Side, Size, SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::placement;
 use crate::layout_frame::GraphPlacement;
@@ -20,11 +19,14 @@ use crate::model::{
 use crate::resources::PreparedTextRetainedReservation;
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
-use merman_layout_shoal::PortSideHint;
+use merman_layout_shoal::{NodeId, PortSideHint, grid};
 use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureLayoutDirection, ArchitectureNodeKind,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::graph_layout::shoal::{
+    Constraints, Placement, project_input, project_output,
+};
 use merman_theme_contract::v2::MarkerStyle;
 use rustc_hash::FxHashMap;
 
@@ -142,44 +144,6 @@ fn side(direction: char) -> Result<Side> {
     }
 }
 
-fn facing(sides: (Side, Side)) -> Option<usize> {
-    match sides {
-        (Side::Right, Side::Left) => Some(0),
-        (Side::Bottom, Side::Top) => Some(1),
-        (Side::Left, Side::Right) => Some(2),
-        (Side::Top, Side::Bottom) => Some(3),
-        _ => None,
-    }
-}
-
-const DIRECTIONS: [Direction; 4] = [
-    Direction::Right,
-    Direction::Down,
-    Direction::Left,
-    Direction::Up,
-];
-
-#[derive(Default)]
-struct DirectionVotes {
-    ports: [usize; 4],
-    declared: [usize; 2],
-}
-
-impl DirectionVotes {
-    fn choose(&self) -> Option<Direction> {
-        (0..DIRECTIONS.len())
-            .max_by_key(|&i| {
-                (
-                    self.declared.get(i).copied().unwrap_or_default(),
-                    self.ports[i],
-                    std::cmp::Reverse(i),
-                )
-            })
-            .filter(|&i| self.ports[i] > 0 || self.declared.get(i).copied().unwrap_or_default() > 0)
-            .map(|i| DIRECTIONS[i])
-    }
-}
-
 fn group_id(groups: &FxHashMap<&str, u32>, parent: Option<&str>) -> Result<Option<u32>> {
     parent
         .map(|id| {
@@ -196,17 +160,6 @@ fn endpoint(parents: &[Option<u32>], node: u32, is_group: Option<bool>) -> Endpo
         (Some(true), Some(group)) => Endpoint::Group(group),
         // The parser also accepts a group annotation on an ungrouped service.
         _ => Endpoint::Node(node),
-    }
-}
-
-fn containing_group(
-    endpoint: Endpoint,
-    nodes: &[Option<u32>],
-    groups: &[MeasuredGroup],
-) -> Option<u32> {
-    match endpoint {
-        Endpoint::Node(index) => nodes[index as usize],
-        Endpoint::Group(index) => groups[index as usize].parent,
     }
 }
 
@@ -360,19 +313,20 @@ pub(crate) fn layout_architecture_shoal(
         headers.push(header);
     }
 
-    let mut votes: Vec<DirectionVotes> = (0..=g).map(|_| DirectionVotes::default()).collect();
+    let mut alignments = Vec::new();
     for hint in &model.layout_hints {
-        let axis = usize::from(hint.direction == ArchitectureLayoutDirection::Column);
+        let axis = match hint.direction {
+            ArchitectureLayoutDirection::Row => Axis::Horizontal,
+            ArchitectureLayoutDirection::Column => Axis::Vertical,
+        };
         let mut previous = None;
         for member in &hint.members {
             work.charge_adapter(work.checked_add(member.len(), 1)?)?;
-            let node = node_index(&node_indices, member)?;
-            if let Some(before) = previous {
-                let parent = parents[node as usize]
-                    .filter(|parent| parents[before as usize] == Some(*parent));
-                votes[parent.map_or(g, |id| id as usize)].declared[axis] += 1;
+            let next = NodeId(node_index(&node_indices, member)?);
+            if let Some(first) = previous {
+                alignments.push(grid::Alignment { first, next, axis });
             }
-            previous = Some(node);
+            previous = Some(next);
         }
     }
 
@@ -400,13 +354,6 @@ pub(crate) fn layout_architecture_shoal(
                 bottom_degree[id as usize] += 1;
             }
         }
-        if let Some(vote) = facing(pair)
-            && source != target
-        {
-            let parent = containing_group(source, &parents, &groups)
-                .filter(|&parent| Some(parent) == containing_group(target, &parents, &groups));
-            votes[parent.map_or(g, |id| id as usize)].ports[vote] += 1;
-        }
         sides.push(pair);
         let text = ArchitectureShoalText::centered(
             edge.title.as_deref(),
@@ -415,7 +362,7 @@ pub(crate) fn layout_architecture_shoal(
             &style,
             &mut work,
         )?;
-        let label = text.as_ref().map(|text| text.edge_space(label_clearance));
+        let label = text.as_ref().map(ArchitectureShoalText::size);
         edge_labels.push(text);
         edges.push(MeasuredEdge {
             source,
@@ -485,12 +432,15 @@ pub(crate) fn layout_architecture_shoal(
             ArchitectureShoalTitle { anchor, text }
         });
         titles.push(title);
+        let size = Size {
+            width: 2.0 * w,
+            height: 2.0 * h,
+        };
+        let contour = profile.shoal_contour(size);
         profiles.push(profile);
         nodes.push(MeasuredNode {
-            size: Size {
-                width: 2.0 * w,
-                height: 2.0 * h,
-            },
+            size,
+            contour,
             seq: sequence(index, &work)?,
             parent: parents[index],
             port_span: Some(span),
@@ -519,11 +469,8 @@ pub(crate) fn layout_architecture_shoal(
         };
         ports.push((port(edge.source, lhs), port(edge.target, rhs)));
     }
-    for (group, hints) in groups.iter_mut().zip(&votes) {
-        group.direction = hints.choose();
-    }
     let graph = MeasuredGraph {
-        direction: votes[g].choose().unwrap_or(Direction::Right),
+        direction: Direction::Right,
         routing: RoutingStyle::Orthogonal,
         node_spacing,
         rank_spacing,
@@ -533,30 +480,44 @@ pub(crate) fn layout_architecture_shoal(
         groups,
         edges,
     };
-    let (mut solved, mut placement) = placement::solve(
-        &graph,
-        model.nodes.iter().map(|node| node.id.as_str()),
-        model.groups.iter().map(|group| group.id.as_str()),
-        Some(execution),
-        placement::Constraints {
+    let input = Placement {
+        width: if execution.adaptation == crate::LayoutAdaptation::FitWidth {
+            merman_layout_shoal::WidthPolicy::FitWidth {
+                max_width: execution.container_width,
+                allow_turn: false,
+                turn_breakpoint: 0.0,
+                fold_wide_ranks: false,
+            }
+        } else {
+            merman_layout_shoal::WidthPolicy::Natural
+        },
+        capture_ranks: execution.capture_shoal_frame,
+        constraints: Constraints {
             edge_ports: &ports,
             ..Default::default()
         },
+        ..Default::default()
+    };
+    let mut options = input.options_for(&graph);
+    options.spacing.edge = options.spacing.edge.max(2.0 * edge_stroke_outset);
+    options.spacing.end_label_across = label_clearance;
+    let measured = project_input(&graph, &input, &mut work)?;
+    let geometry = crate::layout_work::measure_layout_solve!(grid::layout_with_control(
+        &measured,
+        &alignments,
+        &options,
         &mut work,
-    )?;
-    align::apply(
-        model,
-        &node_indices,
+    ))
+    .map_err(|error| work.map_shoal_error(error))?;
+    let solved = project_output(&graph, geometry, &mut work)?;
+    let placement = placement::placement_for_solved(
         &graph,
-        &mut solved,
-        &mut placement,
+        &solved,
+        model.nodes.iter().map(|node| node.id.as_str()),
+        model.groups.iter().map(|group| group.id.as_str()),
+        execution,
         &mut work,
     )?;
-    for (edge, label) in solved.edges.iter_mut().zip(&edge_labels) {
-        if let Some(label) = label {
-            label.place_edge(edge, label_clearance, &mut work)?;
-        }
-    }
 
     let mut layout = ArchitectureDiagramLayout {
         nodes: Vec::with_capacity(n + g),

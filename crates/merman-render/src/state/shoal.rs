@@ -230,6 +230,7 @@ fn measure<'a>(
         let profile = port_profile(node, size, style_plan);
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),

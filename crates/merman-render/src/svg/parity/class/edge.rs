@@ -157,6 +157,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                         Some("step") => RouteStyle::Step,
                         _ => RouteStyle::Curved,
                     },
+                    ctx.work_meter,
                 )
             })
             .transpose()?;

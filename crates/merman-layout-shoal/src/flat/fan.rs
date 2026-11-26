@@ -342,6 +342,8 @@ impl Fan {
                     label_center: None,
                     start_label_center: None,
                     end_label_center: None,
+                    shared_bus: false,
+                    corridor_clearance: 0.0,
                     reversed_for_ranking: false,
                 },
             ));
@@ -407,7 +409,7 @@ fn plans(
 ) -> LayoutResult<Vec<Fan>> {
     let leaves = leaves(g, c, graph, work)?;
     let gap = options.spacing.node;
-    let lane = options.spacing.edge.max(1.0);
+    let lane = (options.spacing.edge * 0.5).max(1.0);
     let mut block = Vec::new();
     let mut eligible = Vec::new();
     for rank in &g.layers {

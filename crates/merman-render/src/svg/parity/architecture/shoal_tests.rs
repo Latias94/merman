@@ -164,7 +164,7 @@ fn architecture_shoal_paints_full_routes_and_true_double_arrow_contacts() {
                 || segment.nearest(api_points[0], 1e-6).distance_sq < 1e-10)
     );
     let api_shaft = shaft(api_route);
-    assert!(api_shaft.len() >= 3);
+    assert!(api_shaft.len() >= 2);
     assert_eq!(api_shaft[0].start().x, api_shaft[0].end().x);
     let store_lead = api_shaft.last().unwrap();
     assert_eq!(store_lead.start().y, store_lead.end().y);

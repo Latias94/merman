@@ -16,9 +16,11 @@ use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, C4DiagramLayout, LayoutEdge, LayoutPoint};
-use crate::{Error, LayoutAdaptationObservation, LayoutExecution, Result};
+use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
+use merman_layout_shoal::{WidthPolicy, card_grid};
 use merman_model::families::c4::C4DiagramModel;
+use merman_render_core::graph_layout::shoal::{Placement, project_input, project_output};
 use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -175,7 +177,7 @@ pub(crate) fn layout_c4_shoal(
         Some(EdgeStyle::Orthogonal | EdgeStyle::Sketch) | None => RouteStyle::Step,
     };
     let mut graph = MeasuredGraph {
-        direction: Direction::Right,
+        direction: Direction::Down,
         routing: RoutingStyle::Orthogonal,
         node_spacing: spacing,
         rank_spacing: spacing,
@@ -210,10 +212,11 @@ pub(crate) fn layout_c4_shoal(
         );
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq: index(ordinal, &work)?,
             parent: parent(&shape.parent_boundary)?,
-            port_span: Some(profile.port_span(Side::Left)),
-            perpendicular_port_span: Some(profile.port_span(Side::Top)),
+            port_span: Some(profile.port_span(Side::Top)),
+            perpendicular_port_span: Some(profile.port_span(Side::Left)),
             anchor_y: profile.anchor_y(),
         });
         shapes.push(layout);
@@ -280,16 +283,33 @@ pub(crate) fn layout_c4_shoal(
         labels.push(label);
         ids.push(format!("c4-rel-{ordinal}"));
     }
-    let (solved, mut placement) = placement::solve(
+    let input = Placement {
+        width: if execution.adaptation == LayoutAdaptation::FitWidth {
+            WidthPolicy::FitWidth {
+                max_width: execution.container_width,
+                allow_turn: false,
+                turn_breakpoint: 0.0,
+                fold_wide_ranks: true,
+            }
+        } else {
+            WidthPolicy::Natural
+        },
+        capture_ranks: execution.capture_shoal_frame,
+        ..Default::default()
+    };
+    let options = input.options_for(&graph);
+    let measured = project_input(&graph, &input, &mut work)?;
+    let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_control(
+        &measured, &options, &mut work,
+    ))
+    .map_err(|error| work.map_shoal_error(error))?;
+    let solved = project_output(&graph, geometry, &mut work)?;
+    let mut placement = placement::placement_for_solved(
         &graph,
+        &solved,
         model.shapes.iter().map(|shape| shape.alias.as_str()),
         group_ids.iter().copied(),
-        Some(execution),
-        placement::Constraints {
-            inline_labels: true,
-            compact_ranks: true,
-            ..Default::default()
-        },
+        execution,
         &mut work,
     )?;
     let routes = CanonicalRoutes::from_solved(
@@ -381,7 +401,13 @@ pub(crate) fn layout_c4_shoal(
             end_marker: None,
             stroke_dasharray: None,
         };
-        let painted = routes.paint(&edge, Vec2::ZERO, stroke_outset, route_style)?;
+        let painted = routes.paint(
+            &edge,
+            Vec2::ZERO,
+            stroke_outset,
+            route_style,
+            execution.work_meter_ref(),
+        )?;
         let [start, .., end] = painted.data_points.as_slice() else {
             return Err(invalid("c4: missing canonical relation contacts"));
         };

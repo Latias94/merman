@@ -302,6 +302,8 @@ fn loop_geometry(
         label_center,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     })
 }
@@ -415,6 +417,7 @@ fn redraw(
     }
     points.push(route_point(b.at, b.side.axis()));
     edge.points = points;
+    edge.corridor_clearance = 0.0;
     edge.ports = (a.side, b.side);
     Ok(())
 }

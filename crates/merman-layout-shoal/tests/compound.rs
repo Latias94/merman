@@ -149,6 +149,9 @@ fn nested_and_empty_group_titles_are_contained_and_clear_of_siblings() {
                     TopLeft | BottomLeft => left,
                     TopRight | BottomRight => right,
                     TopCenter | BottomCenter => outer.rect.center().x.clamp(left, right),
+                    TitlePosition::TopAuto => {
+                        unreachable!("the test supplies explicit title positions")
+                    }
                 };
                 assert!(
                     (title.center().x - expected).abs() <= EPS,

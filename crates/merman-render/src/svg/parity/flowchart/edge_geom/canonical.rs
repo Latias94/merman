@@ -16,7 +16,7 @@ pub(super) fn paint(
     route: &RouteTopology,
     stitches: &[BorderStitch],
     clearance: &AxisClearance,
-    points: &mut Vec<RoutePoint>,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Result<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -32,6 +32,7 @@ pub(super) fn paint(
     if route.knots.len() != solved_points.len() || solved_points.len() < 2 {
         return Err(invalid());
     }
+    let points = &mut scratch.canonical_points;
     points.clear();
     points.reserve_exact(solved_points.len());
     points.extend(
@@ -45,7 +46,6 @@ pub(super) fn paint(
                 kind,
             }),
     );
-    let box_contacts = (points[0], points[points.len() - 1]);
     let center = |x, y| crate::model::LayoutPoint {
         x: x + ctx.tx - origin_x,
         y: y + ctx.ty - origin_y,
@@ -83,6 +83,7 @@ pub(super) fn paint(
         })
     };
     let last = points.len() - 1;
+    let box_contacts = (points[0], points[last]);
     let (source_profile, source_center, source_lead) =
         terminal(route.endpoints.0, route.ports.0, points[0], points[1]).ok_or_else(invalid)?;
     let (target_profile, target_center, target_lead) = terminal(
@@ -108,48 +109,35 @@ pub(super) fn paint(
             .unwrap_or(ctx.default_edge_interpolate),
         ctx.edge_corner_radius,
     );
-    let curve_terminals = if ctx.compatibility.look.is_hand_drawn() {
-        route_paint::CurveTerminals::Fixed
+    let stroke_outset = ctx
+        .edge_style_plan
+        .stroke_outset_for(key)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let clearance = if style == route_paint::RouteStyle::Curved
+        && route.corridor_clearance > stroke_outset
+        && (points[0], points[last]) == box_contacts
+        && stitches.is_empty()
+    {
+        None
     } else {
-        let inset = |side, original: RoutePoint, contact: RoutePoint| match side {
-            crate::graph_layout::ir::Side::Top => contact.y - original.y,
-            crate::graph_layout::ir::Side::Right => original.x - contact.x,
-            crate::graph_layout::ir::Side::Bottom => original.y - contact.y,
-            crate::graph_layout::ir::Side::Left => contact.x - original.x,
-        };
-        route_paint::CurveTerminals::Smooth {
-            inset: (
-                inset(source_lead, box_contacts.0, points[0]),
-                inset(target_lead, box_contacts.1, points[last]),
-            ),
-            departure_across: match route.endpoints.0 {
-                Endpoint::Node(_) => {
-                    source_profile.departure_across(&source_center, source_lead, points[0])
-                }
-                Endpoint::Group(_) => None,
-            },
-        }
+        Some(clearance.resolve(ctx.work_meter)?.for_edge(
+            key.semantic_index(),
+            route.endpoints,
+            kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
+            stroke_outset,
+        ))
     };
-    let clearance = clearance.resolve(ctx.work_meter)?;
-    let painted = route_paint::build_svg_path(
+    let painted = route_paint::build_svg_path_with_scratch(
         points,
         (source_lead, target_lead),
         style,
         super::super::flowchart_marker_metrics(edge),
-        curve_terminals,
+        route_paint::CurveTerminals::Smooth,
         stitches,
-        Some(
-            clearance.for_edge(
-                key.semantic_index(),
-                route.endpoints,
-                kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
-                ctx.edge_style_plan
-                    .stroke_outset_for(key)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-            ),
-        ),
+        clearance,
+        &mut scratch.canonical_paint,
     )
     .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points

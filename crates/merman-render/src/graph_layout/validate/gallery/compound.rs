@@ -135,6 +135,7 @@ struct Capture<'a> {
     edge_knots: Vec<Vec<Point>>,
     painted_knots: Vec<Vec<Point>>,
     to_layout: Affine,
+    haloed_titles: BTreeSet<usize>,
     rough_contacts: BTreeMap<usize, [Point; 2]>,
     rough_group_frames: BTreeMap<usize, BezPath>,
     ink: ink::Deviation,
@@ -192,6 +193,51 @@ impl Capture<'_> {
             | Violation::MarkerAngle { edge: i, .. } => edge(i).clone(),
         };
         format!("{owners}: {violation:?}")
+    }
+
+    fn crosses_haloed_title(
+        &self,
+        ancestry: &[Vec<usize>],
+        edge: usize,
+        shaft: &Shaft,
+        label: usize,
+    ) -> bool {
+        let Some(group) = self.scene.labels[label].group_owner(&self.scene.bodies) else {
+            return false;
+        };
+        if !self.haloed_titles.contains(&group) {
+            return false;
+        }
+        let route = &self.scene.edges[edge];
+        let (from, to) = (route.start.body, route.end.body);
+        let from_inside = ancestry[from].contains(&group);
+        let to_inside = ancestry[to].contains(&group);
+        if from_inside == to_inside {
+            return false;
+        }
+        let on_top = |point: Point| {
+            let point = self.to_layout * point;
+            let rect = self.model_boxes[group];
+            (point.y - rect.y0).abs() <= FLATNESS
+                && (rect.x0 - FLATNESS..=rect.x1 + FLATNESS).contains(&point.x)
+        };
+        if from == group || to == group {
+            // For an own-member edge, the marker may trim the shaft away from the border.
+            let knots = &self.edge_knots[edge];
+            return on_top(if from == group {
+                knots[0]
+            } else {
+                knots[knots.len() - 1]
+            });
+        }
+        let outline = self
+            .rough_group_frames
+            .get(&group)
+            .or(self.scene.bodies[group].contour.as_ref())
+            .unwrap();
+        matches!(stitches::transitions(shaft, outline).as_slice(),
+            [(_, contact, entering)] if *entering == to_inside && on_top(*contact)
+        )
     }
 
     fn audit(&mut self) {
@@ -263,6 +309,11 @@ impl Capture<'_> {
                 self.counts.markers += report.markers_checked;
                 self.counts.stroke_passes += 1;
                 for violation in report.hard {
+                    if let Violation::ForeignLabelHit { label, .. } = violation
+                        && self.crosses_haloed_title(&ancestry, index, shaft, label)
+                    {
+                        continue;
+                    }
                     let mut description = self.describe(&violation);
                     if let Violation::ForeignLabelHit { label, .. } = violation {
                         let bounds = self.scene.labels[label].bounds;
@@ -638,6 +689,19 @@ pub(super) fn aesthetic_witnesses() {
             );
         }
         if name.ends_with("_001") {
+            let group = body("A2");
+            let title = capture
+                .scene
+                .labels
+                .iter()
+                .find(|label| label.owner == LabelOwner::Body(group))
+                .expect("A2 has a painted title");
+            assert!(capture.haloed_titles.contains(&group));
+            assert!(seams.iter().any(|seam| {
+                Shaft::read(&capture.scene.edges[seam.edge])
+                    .unwrap()
+                    .hits(title.bounds)
+            }));
             assert_eq!(metrics.seams.len(), 2);
             for seam in metrics.seams {
                 let [outside, inside] = seam.legs.as_slice() else {
@@ -645,7 +709,10 @@ pub(super) fn aesthetic_witnesses() {
                 };
                 assert_eq!((outside.from, outside.to), ("A1.bottom", "A2.top"));
                 assert_eq!(outside.cubic_count, 1, "single sweep between groups");
-                assert_eq!(inside.cubic_count, 1, "title clearance before the marker");
+                assert_eq!(
+                    inside.cubic_count, 0,
+                    "the unpinned title yields to a straight shaft"
+                );
             }
         }
     }
@@ -841,6 +908,7 @@ impl Drawing {
         let mut bodies = BTreeMap::new();
         let mut paths = Vec::new();
         let mut labels = Vec::new();
+        let mut title_overlays = HashMap::new();
         let mut markers = HashMap::new();
         for n in doc.descendants().filter(Node::is_element) {
             match (n.tag_name().name(), n.attribute("data-et")) {
@@ -855,6 +923,14 @@ impl Drawing {
                     assert!(markers.insert(attr(n, "id"), n).is_none());
                 }
                 ("path", Some("edge")) => paths.push(n),
+                ("g", _) if n.has_attribute("data-merman-cluster-title-for") => {
+                    let owner = attr(n, "data-merman-cluster-title-for");
+                    assert!(has_class(n, "cluster-label"), "{owner}: invalid title slot");
+                    assert!(
+                        title_overlays.insert(owner, n).is_none(),
+                        "{owner}: duplicate title overlay"
+                    );
+                }
                 ("g", _)
                     if has_class(n, "label")
                         && n.parent_element()
@@ -905,6 +981,7 @@ impl Drawing {
             edge_knots: Vec::new(),
             painted_knots: Vec::new(),
             to_layout: graph_frame.inverse(),
+            haloed_titles: BTreeSet::new(),
             rough_contacts: BTreeMap::new(),
             rough_group_frames: BTreeMap::new(),
             ink: ink::Deviation::default(),
@@ -947,10 +1024,43 @@ impl Drawing {
                 } else {
                     compare_bounds(bounds, expected, name, &mut capture.failures);
                 }
-                let title = owner
-                    .descendants()
-                    .find(|n| has_class(*n, "cluster-label"))
+                let inline_title = owner.descendants().find(|n| has_class(*n, "cluster-label"));
+                let overlay_title = title_overlays.remove(attr(owner, "id"));
+                assert!(
+                    inline_title.is_none() || overlay_title.is_none(),
+                    "{name}: duplicate title slot"
+                );
+                let title = inline_title
+                    .or(overlay_title)
                     .unwrap_or_else(|| panic!("group {name}: missing title slot"));
+                if overlay_title.is_some() {
+                    assert!(
+                        title.attribute("data-merman-title-struck") == Some("true")
+                            && title.attribute("paint-order") == Some("stroke")
+                            && title
+                                .attribute("stroke")
+                                .is_some_and(|stroke| stroke != "none")
+                            && title.attribute("stroke-width").is_some_and(|width| {
+                                width
+                                    .parse::<f64>()
+                                    .is_ok_and(|width| width.is_finite() && width > 0.)
+                            }),
+                        "{name}: title overlay is missing its halo"
+                    );
+                    let root = title
+                        .ancestors()
+                        .find(|n| has_class(*n, "root"))
+                        .expect("title overlay root");
+                    let paths = root
+                        .children()
+                        .find(|n| has_class(*n, "edgePaths"))
+                        .expect("edge layer");
+                    assert!(
+                        paths.range().end <= title.range().start,
+                        "{name}: title overlay is below the edge layer"
+                    );
+                    capture.haloed_titles.insert(id);
+                }
                 let anchor = &cluster.title_label;
                 label_bounds = explicit_label_bounds(title, frame).or_else(|| {
                     text_element(title).map(|text| {
@@ -1097,6 +1207,10 @@ impl Drawing {
             capture.counts.groups,
             layout_groups.len(),
             "layout group count"
+        );
+        assert!(
+            title_overlays.is_empty(),
+            "title overlays without a painted group"
         );
         let mut painted = HashMap::<_, Vec<_>>::new();
         assert_eq!(

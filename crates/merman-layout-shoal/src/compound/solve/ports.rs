@@ -329,7 +329,31 @@ pub(super) fn items(
                             push(&mut blocked, (other.at - separation, other.at + separation))?;
                         }
                     }
-                    if let Some(clear) = closest_clear_port(entry.at, bounds, &blocked, work)? {
+                    let mut clear = closest_clear_port(entry.at, bounds, &blocked, work)?;
+                    if clear.is_none() && options.spacing.edge > 0.0 {
+                        // The requested ink separation is optional when the actual marker
+                        // footprint can still pass safely through a constrained face.
+                        marker_blockers(
+                            Contact {
+                                at: face(rect, side, entry.at),
+                                side,
+                            },
+                            marker,
+                            0.0,
+                            walls.as_deref().unwrap(),
+                            &mut blocked,
+                            work,
+                        )?;
+                        for (other_index, other) in slots.iter().enumerate() {
+                            work.visit(1)?;
+                            let separation = (other.at - entry.at).abs().min(pitch);
+                            if other_index != index && separation > 0.0 {
+                                push(&mut blocked, (other.at - separation, other.at + separation))?;
+                            }
+                        }
+                        clear = closest_clear_port(entry.at, bounds, &blocked, work)?;
+                    }
+                    if let Some(clear) = clear {
                         slots[index].at = clear;
                     }
                 }
@@ -450,8 +474,7 @@ pub(super) fn beside_title(
         let fixed = matches!(hint, PortSideHint::FixedOffset { .. });
         let at = ports[slot].x;
         if !fixed {
-            let marker = [wire.spec.start_marker, wire.spec.end_marker][end];
-            let half = TITLE_CLEAR + marker.width / 2.0;
+            let half = wire.title_clearance(end);
             clearance = clearance.max(half);
             obstructed |= at > title.x - half && at < title.x + title.width + half;
         }

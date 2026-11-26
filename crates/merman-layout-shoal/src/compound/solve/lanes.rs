@@ -1,5 +1,10 @@
 //! Give root lane shells a common depth and route their authored endpoints after fitting.
 
+mod compact;
+mod routing;
+#[cfg(test)]
+mod tests;
+
 use super::*;
 use crate::compound::hierarchy::LaneMembership;
 use crate::flat::{BoundaryRoutes, lanes::Column};
@@ -32,6 +37,10 @@ impl Axes {
             Axis::Vertical => Point { x: cross, y: along },
             Axis::Horizontal => Point { x: along, y: cross },
         }
+    }
+
+    fn along(self, point: Point) -> f64 {
+        cross(self.cross[0], point)
     }
 }
 
@@ -556,11 +565,12 @@ fn finish(
     ctx: &Pass<'_>,
     graph: &Graph,
     drawing: LayoutOutput,
-    shells: Vec<(Rect, Option<Point>)>,
+    lane_geometry: routing::Lanes<'_>,
     mut wires: Vec<Wire>,
     work: &mut Work<'_>,
 ) -> LayoutResult<Frame> {
     let options = ctx.options;
+    let shells = &lane_geometry.rects;
     let local = drawing.edges.into_iter();
     let custom = wires.iter().any(|wire| !wire.flat());
     for (wire, edge) in wires.iter_mut().filter(|wire| wire.flat()).zip(local) {
@@ -570,7 +580,7 @@ fn finish(
     ports::items(&mut wires, graph, &drawing.nodes, options, work)?;
     let mut router = BoundaryRoutes::new();
     let mut extent = Extent::new(drawing.bounds);
-    for (&id, &(rect, title)) in ctx.graph.lane_order.iter().zip(&shells) {
+    for (&id, &(rect, title)) in ctx.graph.lane_order.iter().zip(shells) {
         work.visit(1)?;
         extent.include(rect)?;
         if let (Some(center), Some(size)) = (title, ctx.graph.groups[id.0 as usize].title) {
@@ -582,7 +592,7 @@ fn finish(
         }
     }
     if custom {
-        shell_contacts(&mut wires, &shells, options, work)?;
+        shell_contacts(&mut wires, shells, options, work)?;
         for &rect in &drawing.nodes {
             router.obstacle(rect, work)?;
         }
@@ -603,39 +613,46 @@ fn finish(
         reserve_shell_leads(
             &mut wires,
             &drawing.nodes,
-            &shells,
+            shells,
             graph,
             options,
             &mut router,
             work,
         )?;
     }
-    let mut legs = reserved(wires.len())?;
-    for (id, mut wire) in wires.into_iter().enumerate() {
+    for (id, wire) in wires.iter_mut().enumerate() {
         work.visit(1)?;
-        let edge = if let Some(edge) = wire.route.take() {
-            edge
-        } else {
-            let contacts = [travel(&wire, 0), travel(&wire, 1)].map(|p| (p.at, p.side));
+        if wire.route.is_none() {
+            let contacts = [travel(wire, 0), travel(wire, 1)].map(|p| (p.at, p.side));
             let mut edge = router.draw(id as u32, &wire.spec, contacts, options, work)?;
             let [source, target] = wire
                 .contacts
                 .map(|c| c.expect("resolved root contact").side);
             edge.ports = (source, target);
-            edge
-        };
+            wire.route = Some(edge);
+        }
+    }
+    routing::improve(ctx, graph, &drawing.nodes, &lane_geometry, &mut wires, work)?;
+    let mut legs = reserved(wires.len())?;
+    for mut wire in wires {
+        work.visit(1)?;
+        let edge = wire.route.take().expect("resolved lane route");
         extent.route(&edge, &wire, work)?;
         legs.push(edge);
     }
     let mut frame = Frame {
         bounds: drawing.bounds,
         items: drawing.nodes,
-        item_ranks: drawing.node_ranks,
+        item_ranks: if options.capture_node_ranks {
+            drawing.node_ranks
+        } else {
+            Vec::new()
+        },
         title: None,
         legs,
         ports: Vec::new(),
         stats: drawing.stats,
-        lane_shells: shells,
+        lane_shells: lane_geometry.rects,
     };
     extent.normalize(&mut frame, work)?;
     Ok(frame)
@@ -663,8 +680,46 @@ pub(super) fn root(
     choose_sides(&mut wires, &mut shells, &owners, axes, ctx.options, work)?;
     let mut columns = reserved(shells.len())?;
     columns.extend(shells.iter().map(|shell| shell.column(axes)));
-    let (drawing, columns) =
-        flat::lanes::run(graph, ctx.options, expanded, &owners, &columns, work)?;
-    let rects = shell_rects(&shells, &columns, drawing.bounds, axes, work)?;
-    finish(ctx, graph, drawing, rects, wires, work)
+    let mut rank_options = *ctx.options;
+    rank_options.capture_node_ranks |= rank_options.compact_ranks;
+    // Lane compaction moves complete rank bands. The flat compactor moves individual nodes.
+    rank_options.compact_ranks = false;
+    let (mut drawing, mut placed) =
+        flat::lanes::run(graph, &rank_options, expanded, &owners, &columns, work)?;
+    let (feedback, widened) = routing::reserve_feedback(
+        &drawing,
+        graph,
+        &wires,
+        &owners,
+        &mut shells,
+        axes,
+        ctx.options,
+        work,
+    )?;
+    if widened {
+        for (column, shell) in columns.iter_mut().zip(&shells) {
+            work.visit(1)?;
+            *column = shell.column(axes);
+        }
+        (drawing, placed) =
+            flat::lanes::run(graph, &rank_options, expanded, &owners, &columns, work)?;
+    }
+    if ctx.options.compact_ranks {
+        compact::close(
+            &mut drawing,
+            graph,
+            expanded,
+            axes,
+            &ctx.options.spacing,
+            work,
+        )?;
+    }
+    let rects = shell_rects(&shells, &placed, drawing.bounds, axes, work)?;
+    let lane_geometry = routing::Lanes {
+        axes,
+        owners: &owners,
+        rects,
+        feedback: &feedback,
+    };
+    finish(ctx, graph, drawing, lane_geometry, wires, work)
 }

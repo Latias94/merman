@@ -9,6 +9,7 @@ use crate::svg::parity::flowchart::{
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
+const TITLE_HALO_WIDTH: u8 = 3;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
@@ -258,6 +259,42 @@ fn write_flowchart_cluster_shape(
     );
 }
 
+fn title_halo_color(ctx: &FlowchartRenderCtx<'_>, id: &str) -> crate::Result<crate::theme::Color> {
+    use crate::theme::{Color, edge_label_bg::literal_fill};
+
+    let canvas = ctx.native.map(|native| native.canvas).or_else(|| {
+        ctx.config
+            .get_str("themeVariables.background")
+            .and_then(literal_fill)
+    });
+    let mut surface = Color::TRANSPARENT;
+    let mut current = Some(id);
+    while let Some(id) = current {
+        ctx.work_meter.charge(1)?;
+        let terminal = ctx.prepared_nodes.cluster(id)?;
+        let fill = terminal
+            .compiled
+            .fill
+            .as_deref()
+            .and_then(literal_fill)
+            .or_else(|| {
+                ctx.native.is_none().then_some(())?;
+                let slot = super::super::agentflow::container_color_slot(ctx, id)?;
+                ctx.palette.background_color(slot).and_then(literal_fill)
+            })
+            .or_else(|| literal_fill(&terminal.fill))
+            .unwrap_or(Color::TRANSPARENT);
+        let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
+        surface = surface.composite(layer, 1.0);
+        if surface.channels()[3] == u8::MAX {
+            return Ok(surface);
+        }
+        current = ctx.parent.get(id).copied();
+    }
+    let white = Color::rgb(255, 255, 255);
+    Ok(surface.composite(canvas.unwrap_or(white).composite(white, 1.0), 1.0))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::svg::parity::flowchart) enum FlowchartClusterPass {
     Complete,
@@ -414,40 +451,122 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .map(|slot| format!(r#" data-color-id="color-{slot}""#))
         .unwrap_or_default();
     let data_look = ctx.compatibility.look.as_str();
+    let struck = ctx.layout.route_contract.group_title_is_struck(&cluster.id);
 
     if pass == FlowchartClusterPass::Background {
         let _ = write!(
             out,
-            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}>"#,
+            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}"#,
             escape_attr(&class_attr),
             escape_attr(data_look),
         );
+        if struck {
+            let _ = write!(
+                out,
+                r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
+                escape_xml_display(&cluster.id),
+            );
+        }
+        out.push('>');
         write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
         out.push_str("</g>");
         return out.checkpoint();
     }
 
-    // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
-    if !ctx.edge_html_labels {
+    let halo = struck
+        .then(|| title_halo_color(ctx, &cluster.id))
+        .transpose()?;
+    let overlay = struck && pass == FlowchartClusterPass::Label;
+    let _ = write!(out, r#"<g class="{}""#, escape_xml_display(&class_attr));
+    if !overlay {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
-            escape_xml_display(&class_attr),
-            cluster_dom_id,
+            r#" id="{cluster_dom_id}" data-id="{}" data-et="cluster""#,
             escape_xml_display(&cluster.id),
-            escape_xml_display(data_look),
         );
-        if pass == FlowchartClusterPass::Complete {
-            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-        }
+    }
+    let _ = write!(
+        out,
+        r#" data-look="{}"{color_attr}>"#,
+        escape_xml_display(data_look),
+    );
+    if pass == FlowchartClusterPass::Complete {
+        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+    }
+    let _ = write!(
+        out,
+        r#"<g class="cluster-label" transform="translate({},{})""#,
+        fmt_display(label_left),
+        fmt_display(label_top),
+    );
+    if overlay {
+        let _ = write!(out, r#" data-merman-cluster-title-for="{cluster_dom_id}""#);
+    }
+    if let Some(color) = halo {
         let _ = write!(
             out,
-            r#"<g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
-            fmt_display(label_left),
-            fmt_display(label_top)
+            r#" data-merman-title-struck="true" stroke="{color}" stroke-width="{TITLE_HALO_WIDTH}" stroke-linejoin="round" paint-order="stroke""#,
         );
+    }
+    out.push('>');
+    // A native text branch keeps the title and its outline when raster export strips HTML.
+    let mut svg_fallback = false;
+    if ctx.edge_html_labels {
+        let prepared_label = ctx
+            .svg_label_sidecar
+            .zip(title_owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_label_for_terminal(owner, render_title)
+            });
+        let title_html = flowchart_label_html_with_prepared_label(
+            render_title,
+            label_type,
+            ctx.config,
+            ctx.math_renderer,
+            prepared_label,
+        );
+        svg_fallback = halo.is_some()
+            && !matches!(
+                prepared_label,
+                crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
+            );
+        if svg_fallback {
+            out.push_str("<switch>");
+        }
+        let halo_style = halo.map(|color| {
+            format!("{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
+        });
+        let span_style_attr = OptionalStyleXmlAttr(halo_style.as_deref().unwrap_or(label_style));
+        // Min-content expansion does not undo the wrap selected by the first measurement.
+        let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
+        let div_style = if label_type != "markdown" {
+            "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
+        } else if markdown_uses_wrapped_box {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+                mw = fmt_display(markdown_wrap_width)
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
+                mw = fmt_display(markdown_wrap_width)
+            )
+        };
+        let _ = write!(
+            out,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject>"#,
+            fmt_display(label_w),
+            fmt_display(label_h),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+            escape_xml_display(&div_style),
+            span_style_attr,
+            title_html
+        );
+    }
+    if !ctx.edge_html_labels || svg_fallback {
+        out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
         if label_type == "markdown" {
-            if ctx.uses_elk_adapter_dom {
+            if ctx.uses_elk_adapter_dom || svg_fallback {
                 write_flowchart_svg_text_markdown_wrapped(
                     out,
                     render_title,
@@ -484,63 +603,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
                 write_flowchart_svg_label_plan(out, &prepared, true);
             }
         }
-        out.push_str("</g></g></g>");
-        return Ok(());
+        out.push_str("</g>");
+        if svg_fallback {
+            out.push_str("</switch>");
+        }
     }
-
-    let prepared_label = ctx
-        .svg_label_sidecar
-        .zip(title_owner)
-        .map_or(Default::default(), |(sidecar, owner)| {
-            sidecar.prepared_label_for_terminal(owner, render_title)
-        });
-    let title_html = flowchart_label_html_with_prepared_label(
-        render_title,
-        label_type,
-        ctx.config,
-        ctx.math_renderer,
-        prepared_label,
-    );
-    let span_style_attr = OptionalStyleXmlAttr(label_style);
-    // The first constrained measurement selected wrapping. A later min-content
-    // expansion must not restore nowrap merely because its width exceeds the cap.
-    let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
-    let div_style = if label_type != "markdown" {
-        "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-    } else if markdown_uses_wrapped_box {
-        format!(
-            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(markdown_wrap_width)
-        )
-    } else {
-        format!(
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-            mw = fmt_display(markdown_wrap_width)
-        )
-    };
-
-    let _ = write!(
-        out,
-        r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
-        escape_xml_display(&class_attr),
-        cluster_dom_id,
-        escape_xml_display(&cluster.id),
-        escape_xml_display(data_look),
-    );
-    if pass == FlowchartClusterPass::Complete {
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-    }
-    let _ = write!(
-        out,
-        r#"<g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-        fmt_display(label_left),
-        fmt_display(label_top),
-        fmt_display(label_w),
-        fmt_display(label_h),
-        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-        escape_xml_display(&div_style),
-        span_style_attr,
-        title_html
-    );
+    out.push_str("</g></g>");
     Ok(())
 }

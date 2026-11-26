@@ -604,7 +604,7 @@ fn write_state_edge_path(
         .map(|routes| {
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx);
-            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved)?;
+            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved, work_meter)?;
             let rough_d = if state_effective_look(ctx) == "handDrawn" {
                 work_meter.charge(geometry.path.d.len().max(1))?;
                 Some(super::super::canonical_rough::constrained_rough_edge_path(

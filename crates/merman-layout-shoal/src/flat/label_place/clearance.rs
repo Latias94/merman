@@ -162,17 +162,8 @@ impl Scene {
             let (a, b) = (self.knots[i - 1], self.knots[i]);
             let bounds = Bounds::between(a, b);
             if bends && !aligned(a, b) {
-                // Sweeps and steps are coordinate-monotone. Terminal smoothing may absorb
-                // the preceding/following collinear shaft, extending the same envelope.
-                let last = self.knots.len() - 1;
-                let mut sweep = bounds;
-                if i == 2 && aligned(self.knots[0], a) {
-                    sweep = sweep.union(Bounds::between(self.knots[0], b));
-                }
-                if i + 1 == last && aligned(b, self.knots[last]) {
-                    sweep = sweep.union(Bounds::between(a, self.knots[last]));
-                }
-                if !self.add(sweep, Some(edge), Shape::Area, work)? {
+                // The solver supplies both ends of the monotone sweep.
+                if !self.add(bounds, Some(edge), Shape::Area, work)? {
                     return Ok(false);
                 }
             } else if !self.add(bounds, Some(edge), Shape::Segment(a, b), work)? {

@@ -31,10 +31,7 @@ pub enum RouteStyle {
 pub enum CurveTerminals {
     #[default]
     Fixed,
-    Smooth {
-        inset: (f64, f64),
-        departure_across: Option<f64>,
-    },
+    Smooth,
 }
 
 impl RouteStyle {
@@ -234,37 +231,26 @@ fn steps(
     out
 }
 
-fn sweep_curve(
-    from: Point,
-    end: RoutePoint,
-    departure_across: Option<f64>,
-    scale: f64,
-) -> CubicBez {
+fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64) -> CubicBez {
     let to = position(end);
     let delta = to - from;
     let (run, across) = match end.axis {
         Axis::Vertical => (delta.y, delta.x),
         Axis::Horizontal => (delta.x, delta.y),
     };
-    let along = run * sweep_handle_fraction(across, run);
-    let departure = if departure_across
-        .is_some_and(|sign| across.abs() > 0.5 * run.abs() && across * sign >= 0.0)
-    {
-        (0.35 * along.abs())
+    let length = run * sweep_handle_fraction(across, run) * scale;
+    let across_handle = if contour_departure {
+        (0.35 * length.abs())
             .min(0.25 * across.abs())
             .copysign(across)
     } else {
         0.0
     };
-    let (first, second) = match end.axis {
-        Axis::Vertical => (Vec2::new(departure, along), Vec2::new(0.0, along)),
-        Axis::Horizontal => (Vec2::new(along, departure), Vec2::new(along, 0.0)),
+    let (departure, arrival) = match end.axis {
+        Axis::Vertical => (Vec2::new(across_handle, length), Vec2::new(0.0, length)),
+        Axis::Horizontal => (Vec2::new(length, across_handle), Vec2::new(length, 0.0)),
     };
-    CubicBez::new(from, from + first * scale, to - second * scale, to)
-}
-
-fn cubic_bits(curve: CubicBez) -> [[u64; 2]; 4] {
-    [curve.p0, curve.p1, curve.p2, curve.p3].map(|p| [p.x.to_bits(), p.y.to_bits()])
+    CubicBez::new(from, from + departure, to - arrival, to)
 }
 
 struct Pen {
@@ -346,16 +332,13 @@ impl Pen {
     fn sweep(
         &mut self,
         end: RoutePoint,
-        departure_across: Option<f64>,
+        contour_departure: bool,
         clearance: Option<EdgeClearance<'_>>,
-        clear_sweep: Option<&CubicBez>,
     ) -> Result<(), RoutePaintError> {
         let target = position(end);
-        let curve = |scale| sweep_curve(self.at, end, departure_across, scale);
+        let curve = |scale| sweep_curve(self.at, end, contour_departure, scale);
         let full = curve(1.0);
-        // Earlier turns can move the pen. Reuse a terminal check only for the exact cubic.
         let sweep = if let Some(guard) = clearance
-            && !clear_sweep.is_some_and(|&checked| cubic_bits(checked) == cubic_bits(full))
             && guard.blocks_cubic(full)
         {
             let Some(scale) = shrink_smoothing_scale(|scale| {
@@ -441,9 +424,7 @@ fn draw_body(
     body: &[RoutePoint],
     style: RouteStyle,
     terminals: (Option<&Terminal>, Option<&Terminal>),
-    departure_across: Option<f64>,
     clearance: Option<EdgeClearance<'_>>,
-    clear_sweep: Option<&CubicBez>,
 ) -> Result<(), RoutePaintError> {
     for i in 1..body.len() {
         let p = position(body[i]);
@@ -523,9 +504,8 @@ fn draw_body(
         } else if style == RouteStyle::Curved && !aligned(position(body[i - 1]), p) {
             pen.sweep(
                 body[i],
-                if i == 1 { departure_across } else { None },
+                body[i - 1].kind == KnotKind::ContourDeparture,
                 clearance,
-                clear_sweep.filter(|_| i == 1 || i + 1 == body.len()),
             )?;
         } else {
             pen.line(p);
@@ -539,8 +519,6 @@ struct Terminal {
     normal: Vec2,
     marker: Marker,
     smooth: bool,
-    inset: f64,
-    departure_across: Option<f64>,
 }
 
 impl Terminal {
@@ -553,10 +531,14 @@ impl Terminal {
     }
 
     fn lead(&self) -> f64 {
-        if self.smooth && self.marker.width == 0.0 {
-            0.0
-        } else {
-            LEAD.max(self.marker.depth)
+        match self.marker {
+            Marker {
+                trim: 0.0,
+                depth: 0.0,
+                width: 0.0,
+            } if self.smooth => 0.0,
+            marker if self.smooth => LEAD.max(marker.depth).max(marker.trim),
+            marker => LEAD.max(marker.depth),
         }
     }
 
@@ -564,19 +546,6 @@ impl Terminal {
         let delta = position(knot) - self.tip;
         delta.cross(self.normal) == 0.0
             && (0.0..=self.marker.trim + self.lead()).contains(&delta.dot(self.normal))
-    }
-
-    fn can_start_sweep(&self, toward: RoutePoint) -> bool {
-        self.marker.trim + self.lead() >= self.inset
-            || self.departure_across.is_some_and(|sign| {
-                let delta = position(toward) - self.tip;
-                let across = if self.normal.x == 0.0 {
-                    delta.x
-                } else {
-                    delta.y
-                };
-                across * sign >= 0.0
-            })
     }
 }
 
@@ -586,11 +555,16 @@ pub fn marker_lead(port: RoutePoint, side: Side, marker: Marker) -> (LayoutPoint
         normal: outward(side),
         marker,
         smooth: false,
-        inset: 0.0,
-        departure_across: None,
     };
     let point = |p: Point| LayoutPoint { x: p.x, y: p.y };
     (point(terminal.shaft_end()), point(terminal.lead_end()))
+}
+
+/// Temporary route points reusable across the edges of one SVG operation.
+#[derive(Default)]
+pub struct RoutePaintScratch {
+    knots: Vec<RoutePoint>,
+    body: Vec<RoutePoint>,
 }
 
 /// The endpoints are already on the contours. The two sides are in semantic source/target
@@ -605,6 +579,33 @@ pub fn build_svg_path(
     stitches: &[BorderStitch],
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<PaintedRoute, RoutePaintError> {
+    build_svg_path_with_scratch(
+        points,
+        sides,
+        style,
+        markers,
+        curve_terminals,
+        stitches,
+        clearance,
+        &mut RoutePaintScratch::default(),
+    )
+}
+
+/// Paints a route as in [`build_svg_path`], reusing scratch after success or failure.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The reusable entry point takes the same route inputs as the standalone entry point."
+)]
+pub fn build_svg_path_with_scratch(
+    points: &[RoutePoint],
+    sides: (Side, Side),
+    style: RouteStyle,
+    markers: (Marker, Marker),
+    curve_terminals: CurveTerminals,
+    stitches: &[BorderStitch],
+    clearance: Option<EdgeClearance<'_>>,
+    scratch: &mut RoutePaintScratch,
+) -> Result<PaintedRoute, RoutePaintError> {
     if points.len() < 2
         || [markers.0, markers.1]
             .iter()
@@ -614,34 +615,25 @@ pub fn build_svg_path(
         return Err(RoutePaintError::InvalidGeometry);
     }
     let last = points.len() - 1;
-    let smooth =
-        style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth { .. });
-    let (inset, departure_across) = match curve_terminals {
-        CurveTerminals::Smooth {
-            inset,
-            departure_across,
-        } if smooth => (inset, departure_across.filter(|_| markers.0.width == 0.0)),
-        _ => ((0.0, 0.0), None),
-    };
+    let smooth = style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth);
     let start = Terminal {
         tip: position(points[0]),
         normal: outward(sides.0),
         marker: markers.0,
         smooth,
-        inset: inset.0,
-        departure_across,
     };
     let end = Terminal {
         tip: position(points[last]),
         normal: outward(sides.1),
         marker: markers.1,
         smooth,
-        inset: inset.1,
-        departure_across: None,
     };
     let mut pen = Pen::new(start.shaft_end(), smooth);
-    let mut knots = Vec::with_capacity(points.len());
-    let mut body = Vec::with_capacity(points.len());
+    let RoutePaintScratch { knots, body } = scratch;
+    knots.clear();
+    body.clear();
+    knots.reserve_exact(points.len());
+    body.reserve_exact(points.len());
     let mut begin = 0;
     for finish in stitches
         .iter()
@@ -661,8 +653,8 @@ pub fn build_svg_path(
                 (finish == last).then_some(&end),
             ),
             style,
-            &mut knots,
-            &mut body,
+            knots,
+            body,
             clearance,
         )?;
         pen.flush_line();
@@ -731,9 +723,10 @@ fn draw_section(
     body.clear();
     push_knot(
         body,
-        terminals
-            .0
-            .map_or(route[0], |start| at(start.lead_end(), route[0].axis)),
+        terminals.0.map_or(route[0], |start| RoutePoint {
+            kind: route[0].kind,
+            ..at(start.lead_end(), route[0].axis)
+        }),
     );
     for (i, &p) in route[1..last].iter().enumerate() {
         if (i == 0 && terminals.0.is_some_and(|start| start.covers(p)))
@@ -755,92 +748,11 @@ fn draw_section(
     if style.stepped() && has_offset_leg(body) {
         *body = steps(style, body, (None, None));
     }
-    let (departure, clear_sweep) = if style == RouteStyle::Curved {
-        expand_terminal_sweeps(body, terminals, clearance)
-    } else {
-        (None, None)
-    };
-    draw_body(
-        pen,
-        body,
-        style,
-        terminals,
-        departure,
-        clearance,
-        clear_sweep.as_ref(),
-    )?;
+    draw_body(pen, body, style, terminals, clearance)?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
     }
     Ok(())
-}
-
-fn free_terminal_guard(
-    terminal: &Terminal,
-    first: RoutePoint,
-    guard: RoutePoint,
-    next: RoutePoint,
-) -> bool {
-    let outward = position(guard) - position(first);
-    let depth = outward.dot(terminal.normal);
-    let inside_box = (terminal.inset - terminal.marker.trim - terminal.lead()).max(0.0);
-    guard.kind == KnotKind::Free
-        && terminal.can_start_sweep(next)
-        && (first.axis == Axis::Vertical) == (terminal.normal.x == 0.0)
-        && outward.cross(terminal.normal) == 0.0
-        && depth > 0.0
-        && depth <= inside_box + 2.0 * LEAD + 1e-9
-        && (position(next) - position(guard)).dot(terminal.normal) > 0.0
-        && !aligned(position(guard), position(next))
-}
-
-fn expand_terminal_sweeps(
-    body: &mut Vec<RoutePoint>,
-    terminals: (Option<&Terminal>, Option<&Terminal>),
-    clearance: Option<EdgeClearance<'_>>,
-) -> (Option<f64>, Option<CubicBez>) {
-    let mut clear_sweep = None;
-    let mut clear = |first, next, departure| {
-        let Some(guard) = clearance else { return true };
-        let curve = sweep_curve(first, next, departure, 1.0);
-        if guard.blocks_cubic(curve) {
-            return false;
-        }
-        // Only the adjacent drawing pass sees this answer, with the same edge clearance.
-        clear_sweep = Some(curve);
-        true
-    };
-    let start = terminals.0.filter(|terminal| terminal.smooth);
-    let end = terminals.1.filter(|terminal| terminal.smooth);
-    if let Some(terminal) = start
-        && let &[first, guard, next, ..] = body.as_slice()
-        && free_terminal_guard(terminal, first, guard, next)
-        && first.axis == next.axis
-        && clear(position(first), next, None)
-    {
-        body.remove(1);
-    }
-    if let Some(terminal) = end
-        && let &[.., previous, guard, last] = body.as_slice()
-        && free_terminal_guard(terminal, last, guard, previous)
-        && guard.axis == last.axis
-        && clear(position(previous), last, None)
-    {
-        body.remove(body.len() - 2);
-    }
-    if let Some(terminal) = start
-        && let Some(across) = terminal.departure_across
-        && let &[first, next, ..] = body.as_slice()
-        && position(first) == terminal.tip
-        && first.kind == KnotKind::Free
-        && next.kind == KnotKind::Free
-        && first.axis == next.axis
-        && !aligned(position(first), position(next))
-        && clear(position(first), next, Some(across))
-    {
-        return (Some(across), clear_sweep);
-    }
-    (None, clear_sweep)
 }
 
 #[cfg(test)]
@@ -915,10 +827,7 @@ mod tests {
             (Side::Bottom, Side::Top),
             RouteStyle::Curved,
             (Marker::default(), marker(4., 10.)),
-            CurveTerminals::Smooth {
-                inset: (0., 0.),
-                departure_across: None,
-            },
+            CurveTerminals::Smooth,
             &[],
             None,
         )
@@ -939,34 +848,30 @@ mod tests {
     }
 
     #[test]
-    fn smooth_departure_frees_the_guard_and_keeps_the_marked_shaft() {
-        let route = [v(0., 0.), v(0., 12.), v(90., 30.), v(90., 50.)];
-        for (side, expected_sign) in [(None, 0.), (Some(1.), 1.), (Some(-1.), 0.)] {
-            let path = build_svg_path(
-                &route,
-                (Side::Bottom, Side::Top),
-                RouteStyle::Curved,
-                (Marker::default(), marker(4., 10.)),
-                CurveTerminals::Smooth {
-                    inset: (0., 0.),
-                    departure_across: side,
-                },
-                &[],
-                None,
-            )
-            .unwrap();
-            let [PathSeg::Cubic(curve), PathSeg::Line(shaft)] = segments(&path)[..] else {
-                panic!("{}", path.d);
-            };
-            assert_eq!(curve.p0, Point::ZERO);
-            assert_eq!(curve.p3, Point::new(90., 36.));
-            if expected_sign == 0. {
-                assert_eq!(curve.p1.x, 0.);
-            } else {
-                assert!(curve.p1.x > 0. && curve.p1.x < curve.p1.y * 0.36);
-            }
-            assert_eq!((shaft.p0, shaft.p1), (curve.p3, Point::new(90., 46.)));
-        }
+    fn smooth_departure_preserves_the_solved_turn_start_and_marked_shaft() {
+        let path = build_svg_path(
+            &[v(0., 0.), v(0., 12.), v(90., 30.), v(90., 50.)],
+            (Side::Bottom, Side::Top),
+            RouteStyle::Curved,
+            (Marker::default(), marker(4., 10.)),
+            CurveTerminals::Smooth,
+            &[],
+            None,
+        )
+        .unwrap();
+        let [
+            PathSeg::Line(start),
+            PathSeg::Cubic(curve),
+            PathSeg::Line(end),
+        ] = segments(&path)[..]
+        else {
+            panic!("{}", path.d);
+        };
+        assert_eq!((start.p0, start.p1), (Point::ZERO, Point::new(0., 12.)));
+        assert_eq!(curve.p0, start.p1);
+        assert_eq!(curve.p1.x, curve.p0.x);
+        assert_eq!(curve.p3, Point::new(90., 30.));
+        assert_eq!((end.p0, end.p1), (curve.p3, Point::new(90., 46.)));
     }
 
     #[test]
@@ -976,15 +881,17 @@ mod tests {
             (Side::Bottom, Side::Top),
             RouteStyle::Curved,
             (Marker::default(), marker(4., 10.)),
-            CurveTerminals::Smooth {
-                inset: (0., 0.),
-                departure_across: None,
-            },
+            CurveTerminals::Smooth,
             &[],
             None,
         )
         .unwrap();
-        let [PathSeg::Cubic(curve), PathSeg::Line(shaft)] = segments(&path)[..] else {
+        let [
+            PathSeg::Line(_),
+            PathSeg::Cubic(curve),
+            PathSeg::Line(shaft),
+        ] = segments(&path)[..]
+        else {
             panic!("{}", path.d);
         };
         assert_eq!(curve.p3, Point::new(0., 54.));
@@ -1106,31 +1013,6 @@ mod tests {
             assert_eq!(segments(&result).first(), segments(&original).first());
             assert_eq!(segments(&result).last(), segments(&original).last());
         }
-    }
-
-    #[test]
-    fn a_clear_terminal_sweep_does_not_admit_different_control_points() {
-        let from = Point::ORIGIN;
-        let end = v(100., 100.);
-        let clear = sweep_curve(from, end, None, 1.0);
-        let bent = sweep_curve(from, end, Some(1.0), 1.0);
-        assert_eq!((clear.p0, clear.p3), (bent.p0, bent.p3));
-        let obstacle = kurbo::Rect::from_center_size(bent.eval(0.375), (0.5, 0.5));
-        let tree = Clearance::new(vec![(obstacle, ObstacleOwner::GroupTitle(0))]);
-        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 0.);
-        assert!(!guard.blocks_cubic(clear));
-        assert!(guard.blocks_cubic(bent));
-
-        let paint = |clear_sweep| {
-            let mut pen = Pen::new(from, false);
-            pen.sweep(end, Some(1.0), Some(guard), clear_sweep).unwrap();
-            pen.finish().unwrap()
-        };
-        let checked = paint(Some(&clear));
-        let reference = paint(None);
-        assert_eq!(checked.d, reference.d);
-        assert_eq!(checked.bounds, reference.bounds);
-        assert!(!samples_inside(&checked, obstacle));
     }
 
     #[test]
@@ -1480,6 +1362,34 @@ mod tests {
         assert!(paint(&[h(0.0, 0.0), h(5.0, 0.0)]).is_err());
         assert!(paint(&[h(0.0, 0.0), h(19.0, 0.0)]).is_err());
         assert!(paint(&[h(-f64::MAX, 2.0), h(f64::MAX, 1.0)]).is_err());
+    }
+
+    #[test]
+    fn route_paint_scratch_reuses_both_buffers_after_an_invalid_route() {
+        let paint = |points: &[RoutePoint], scratch: &mut RoutePaintScratch| {
+            build_svg_path_with_scratch(
+                points,
+                (Side::Bottom, Side::Top),
+                RouteStyle::Curved,
+                (marker(3.0, 12.0), marker(3.0, 12.0)),
+                CurveTerminals::Smooth,
+                &[],
+                None,
+                scratch,
+            )
+        };
+        let mut scratch = RoutePaintScratch::default();
+        let points = [v(0.0, 0.0), v(24.0, 70.0)];
+        let expected = paint(&points, &mut scratch).unwrap();
+        let buffers = (scratch.knots.as_ptr(), scratch.body.as_ptr());
+        assert!(matches!(
+            paint(&[points[0], v(f64::NAN, 70.0)], &mut scratch),
+            Err(RoutePaintError::InvalidGeometry)
+        ));
+        let actual = paint(&points, &mut scratch).unwrap();
+        assert_eq!(actual.d, expected.d);
+        assert_eq!(actual.bounds, expected.bounds);
+        assert_eq!(buffers, (scratch.knots.as_ptr(), scratch.body.as_ptr()));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use super::super::{BoundaryRank, Csr, Link};
 use super::*;
 use crate::{
-    EdgeSpec, LayoutError, NodeId, NodeSpec, NoopWorkControl, OrderHint, Point, PositionHint, Size,
-    WorkControl,
+    EdgeSpec, LayoutError, LayoutScratch, NodeId, NodeSpec, NoopWorkControl, OrderHint, Point,
+    PositionHint, Size, WorkControl, layout_with_control,
 };
 
 struct Case {
@@ -99,14 +99,19 @@ impl Case {
             options,
         }
     }
-    fn geom(&self, x: &[f64], work: &mut Work<'_>) -> Geometry<'_> {
+    fn geom<'a>(
+        &'a self,
+        x: &[f64],
+        scratch: &'a mut GeometryScratch,
+        work: &mut Work<'_>,
+    ) -> Geometry<'a> {
         Geometry::new(
             &self.g,
-            &self.c,
-            &self.orientation,
+            (&self.c, &self.orientation),
             &self.graph,
             &self.options,
             x,
+            (scratch, &mut Vec::new()),
             work,
         )
         .unwrap()
@@ -206,13 +211,23 @@ fn projection_respects_boundary_pins_group_proxies_and_protected_forks() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     work.charge(100).unwrap(); // Account for the required passes this fixture skips.
-    let mut s = case.geom(&initial, &mut work);
-    s.protected[1] = true;
-    mental_map::stabilize(&mut s, &case.c, Direction::Down, &case.options, &mut work).unwrap();
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = case.geom(&initial, &mut geometry_scratch, &mut work);
+    s.data.protected[1] = true;
+    mental_map::stabilize(
+        &mut s,
+        &case.c,
+        Direction::Down,
+        &case.options,
+        &mut PassScratch::default(),
+        &mut mental_map::ProjectionScratch::default(),
+        &mut work,
+    )
+    .unwrap();
     for v in [0, 1, 3, 4] {
-        assert_eq!(s.x[v], initial[v]);
+        assert_eq!(s.data.x[v], initial[v]);
     }
-    assert!(s.x[2] < 80. && s.x[2] >= 40.);
+    assert!(s.data.x[2] < 80. && s.data.x[2] >= 40.);
     assert!(work.editor_choice);
 }
 
@@ -329,9 +344,17 @@ fn binary_fan_preserves_a_shared_straight_spine_and_its_branch_ports() {
     );
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut geometry = spine.geom(&[30., 130., 10., 90., 30., 160., 80., 30.], &mut work);
-    center_forks(&mut geometry, 8, &mut work).unwrap();
-    assert_eq!([geometry.x[7], geometry.x[4], geometry.x[0]], [30.; 3]);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut geometry = spine.geom(
+        &[30., 130., 10., 90., 30., 160., 80., 30.],
+        &mut geometry_scratch,
+        &mut work,
+    );
+    center_forks(&mut geometry, 8, &mut PassScratch::default(), &mut work).unwrap();
+    assert_eq!(
+        [geometry.data.x[7], geometry.data.x[4], geometry.data.x[0]],
+        [30.; 3]
+    );
 
     let mut case = Case::new(4, &[&[0, 1], &[2, 3]], &[&[0, 2], &[0, 3], &[1, 3]]);
     case.g.target_offset.copy_from_slice(&[0., -2., 2.]);
@@ -358,10 +381,11 @@ fn diamond_polish_clamps_to_loop_clearance_and_does_not_touch_interleaved_branch
     let mut x = [12., 56., 20., 80., 60.];
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut s = c.geom(&x, &mut work);
-    center_forks(&mut s, 5, &mut work).unwrap();
-    assert_eq!(s.x[0], 14.);
-    assert_eq!(s.x[1] - s.x[0], 42.);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = c.geom(&x, &mut geometry_scratch, &mut work);
+    center_forks(&mut s, 5, &mut PassScratch::default(), &mut work).unwrap();
+    assert_eq!(s.data.x[0], 14.);
+    assert_eq!(s.data.x[1] - s.data.x[0], 42.);
     c.g.layers[1].insert(1, 5);
     c.g.kind.push(Kind::Node);
     c.g.width.push(20.);
@@ -381,9 +405,10 @@ fn diamond_polish_clamps_to_loop_clearance_and_does_not_touch_interleaved_branch
     x[0] = 12.;
     let mut xx = x.to_vec();
     xx.push(50.);
-    let mut s = c.geom(&xx, &mut work);
-    center_forks(&mut s, 6, &mut work).unwrap();
-    assert_eq!(s.x[0], 12.);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = c.geom(&xx, &mut geometry_scratch, &mut work);
+    center_forks(&mut s, 6, &mut PassScratch::default(), &mut work).unwrap();
+    assert_eq!(s.data.x[0], 12.);
 }
 
 #[test]
@@ -444,9 +469,17 @@ fn crowded_fixed_ports_use_the_pitch_that_fits_their_own_interval() {
         (true, [-6., -3., 0., 3., 6.]),
     ] {
         case.orientation.reversed[2] = reversed;
-        let mut s = case.geom(&x, &mut work);
-        settle(&mut s, 6, &case.options, &mut work).unwrap();
-        assert_eq!(s.dx[BOTTOM], expected);
+        let mut geometry_scratch = GeometryScratch::default();
+        let mut s = case.geom(&x, &mut geometry_scratch, &mut work);
+        settle(
+            &mut s,
+            6,
+            &case.options,
+            &mut PassScratch::default(),
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(s.data.dx[BOTTOM], expected);
     }
 }
 
@@ -472,14 +505,22 @@ fn held_ports_partition_pava_including_reversed_semantic_ends_and_horizontal_anc
     let x = [100., 0., 48., 100., 152., 204.];
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut s = c.geom(&x, &mut work);
-    settle(&mut s, 6, &c.options, &mut work).unwrap();
-    assert_eq!(s.dx[BOTTOM][2], 0.);
-    assert_eq!(s.dx[BOTTOM][4], 20.);
-    assert_eq!(s.dx[TOP][0], -6.);
-    assert!(s.dx[BOTTOM][1] <= -8.);
-    assert!(s.dx[BOTTOM][3] >= 8.);
-    assert!(s.dx[BOTTOM].windows(2).all(|p| p[1] - p[0] >= 8.));
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = c.geom(&x, &mut geometry_scratch, &mut work);
+    settle(
+        &mut s,
+        6,
+        &c.options,
+        &mut PassScratch::default(),
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(s.data.dx[BOTTOM][2], 0.);
+    assert_eq!(s.data.dx[BOTTOM][4], 20.);
+    assert_eq!(s.data.dx[TOP][0], -6.);
+    assert!(s.data.dx[BOTTOM][1] <= -8.);
+    assert!(s.data.dx[BOTTOM][3] >= 8.);
+    assert!(s.data.dx[BOTTOM].windows(2).all(|p| p[1] - p[0] >= 8.));
 }
 
 #[test]
@@ -489,14 +530,20 @@ fn labels_share_a_legal_chain_column_and_rigid_blocks_respect_snap_limits() {
     c.g.width[5] = 20.;
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut s = c.geom(&[10., 60., 20., 90., 50., 50.], &mut work);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = c.geom(
+        &[10., 60., 20., 90., 50., 50.],
+        &mut geometry_scratch,
+        &mut work,
+    );
     align_labels(&mut s, &mut work).unwrap();
-    assert_eq!([s.x[4], s.x[5]], [60., 60.]);
+    assert_eq!([s.data.x[4], s.data.x[5]], [60., 60.]);
     let c = Case::new(3, &[&[0], &[1], &[2]], &[&[0, 1], &[1, 2]]);
     for (end, want) in [(15., 10.), (25., 25.)] {
-        let mut s = c.geom(&[10., 10., end], &mut work);
-        snap(&mut s, &mut work).unwrap();
-        assert_eq!(s.x, [10., 10., want]);
+        let mut geometry_scratch = GeometryScratch::default();
+        let mut s = c.geom(&[10., 10., end], &mut geometry_scratch, &mut work);
+        snap(&mut s, &mut PassScratch::default(), &mut work).unwrap();
+        assert_eq!(s.data.x, [10., 10., want]);
     }
 }
 
@@ -509,10 +556,15 @@ fn straightening_keeps_symmetric_lenses_and_omits_only_clear_label_corridors() {
     );
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut s = c.geom(&[50., 50., 40., 62., 42., 60.], &mut work);
-    straighten(&mut s, &c.options, &mut work).unwrap();
-    assert_eq!(s.x, [50., 50., 48., 52., 48., 52.]);
-    assert!(s.keep.iter().all(|&v| v));
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = c.geom(
+        &[50., 50., 40., 62., 42., 60.],
+        &mut geometry_scratch,
+        &mut work,
+    );
+    straighten(&mut s, &c.options, &mut PassScratch::default(), &mut work).unwrap();
+    assert_eq!(s.data.x, [50., 50., 48., 52., 48., 52.]);
+    assert!(s.data.keep.iter().all(|&v| v));
     let mut c = Case::new(
         4,
         &[&[0, 2], &[4, 8], &[5, 6], &[7, 9], &[1, 3]],
@@ -522,14 +574,16 @@ fn straightening_keeps_symmetric_lenses_and_omits_only_clear_label_corridors() {
     c.g.width[6] = 12.;
     c.options.routing = RoutingStyle::Polyline;
     for (label, want) in [(70., false), (18., true)] {
+        let mut geometry_scratch = GeometryScratch::default();
         let mut s = c.geom(
             &[10., 10., 70., 70., 8., 0., label, 8., 70., 70.],
+            &mut geometry_scratch,
             &mut work,
         );
-        straighten(&mut s, &c.options, &mut work).unwrap();
-        assert_eq!(s.keep[5], want);
-        assert!(s.keep[6]);
-        assert!(s.x[5] + 2. <= s.x[6] - 8.);
+        straighten(&mut s, &c.options, &mut PassScratch::default(), &mut work).unwrap();
+        assert_eq!(s.data.keep[5], want);
+        assert!(s.data.keep[6]);
+        assert!(s.data.x[5] + 2. <= s.data.x[6] - 8.);
     }
 }
 
@@ -543,10 +597,21 @@ fn independent_lenses_keep_their_own_axes_when_edge_spacing_is_zero() {
     case.options.spacing.edge = 0.;
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let mut s = case.geom(&[0., 100., 0., 100., 1., 4., 96., 99.], &mut work);
-    straighten(&mut s, &case.options, &mut work).unwrap();
-    assert_eq!(&s.x[4..], &[0., 0., 100., 100.]);
-    assert!(s.keep.iter().all(|&keep| keep));
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut s = case.geom(
+        &[0., 100., 0., 100., 1., 4., 96., 99.],
+        &mut geometry_scratch,
+        &mut work,
+    );
+    straighten(
+        &mut s,
+        &case.options,
+        &mut PassScratch::default(),
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(&s.data.x[4..], &[0., 0., 100., 100.]);
+    assert!(s.data.keep.iter().all(|&keep| keep));
 }
 
 #[test]
@@ -555,32 +620,36 @@ fn near_vertical_dummies_snap_to_the_attachment_with_clearance_and_keep_held_geo
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let x = [10., 50.6, 120., 120., 50.42, 50.23];
-    let mut geometry = case.geom(&x, &mut work);
-    let offsets = geometry.dx.clone();
-    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
-    assert_eq!(&geometry.x[..4], &x[..4]);
-    assert_eq!(&geometry.x[4..], &[50.6, 50.6]);
-    assert_eq!(geometry.dx, offsets);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
+    let offsets = geometry.data.dx.clone();
+    de_jitter(&mut geometry, &case.options, &mut Vec::new(), &mut work).unwrap();
+    assert_eq!(&geometry.data.x[..4], &x[..4]);
+    assert_eq!(&geometry.data.x[4..], &[50.6, 50.6]);
+    assert_eq!(geometry.data.dx, offsets);
 
-    let mut geometry = case.geom(&x, &mut work);
-    geometry.protected[4] = true;
-    geometry.twin[5] = 0;
-    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
-    assert_eq!(geometry.x, x);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
+    geometry.data.protected[4] = true;
+    geometry.data.twin[5] = 0;
+    de_jitter(&mut geometry, &case.options, &mut Vec::new(), &mut work).unwrap();
+    assert_eq!(geometry.data.x, x);
 
     let x = [10., 50.6, 120., 67.4, 50.42, 50.23];
-    let mut geometry = case.geom(&x, &mut work);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     assert!(geometry.movable(5).hi < x[1]);
-    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
-    assert_eq!(&geometry.x[4..], &[x[1], x[1]]);
+    de_jitter(&mut geometry, &case.options, &mut Vec::new(), &mut work).unwrap();
+    assert_eq!(&geometry.data.x[4..], &[x[1], x[1]]);
 
     case.options.spacing.node = case.options.spacing.edge;
     let x = [10., 50.6, 120., 64.4, 50.42, 50.23];
-    let mut geometry = case.geom(&x, &mut work);
+    let mut geometry_scratch = GeometryScratch::default();
+    let mut geometry = case.geom(&x, &mut geometry_scratch, &mut work);
     let before = geometry.movable(5);
-    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
+    de_jitter(&mut geometry, &case.options, &mut Vec::new(), &mut work).unwrap();
     assert!(before.hi < x[1]);
-    assert_eq!(&geometry.x[4..], &[before.hi, before.hi]);
+    assert_eq!(&geometry.data.x[4..], &[before.hi, before.hi]);
 }
 
 #[test]
@@ -604,11 +673,14 @@ fn late_cancellation_does_not_publish_coordinates_offsets_or_waypoint_flags() {
     }
     let case = || Case::new(3, &[&[0], &[1, 2]], &[&[0, 1], &[0, 2]]);
     let mut meter = Meter { checks: 0, stop: 0 };
-    let mut x = [10., 0., 60.];
-    case().run(&mut x, &mut Work::new(&mut meter)).unwrap();
+    let mut fresh = case();
+    let initial = [10., 0., 60.];
+    let mut expected = initial;
+    fresh
+        .run(&mut expected, &mut Work::new(&mut meter))
+        .unwrap();
     let mut c = case();
-    let mut x = [10., 0., 60.];
-    let old = x;
+    let mut x = initial;
     let mut stop = Meter {
         checks: 0,
         stop: meter.checks,
@@ -622,6 +694,84 @@ fn late_cancellation_does_not_publish_coordinates_offsets_or_waypoint_flags() {
         c.run(&mut x, &mut Work::new(&mut stop)),
         Err(LayoutError::Work(WorkError::Interrupted))
     );
-    assert_eq!(x, old);
-    assert_eq!((c.g.source_offset, c.g.target_offset, c.g.keep), before);
+    assert_eq!(x, initial);
+    assert_eq!(
+        (&c.g.source_offset, &c.g.target_offset, &c.g.keep),
+        (&before.0, &before.1, &before.2)
+    );
+    let scratch = &c.g.refine_scratch;
+    assert!(scratch.retained_bytes() > 0);
+    let coordinates = scratch.geometry.x.as_ptr();
+    let ports = scratch.passes.ports.edges.as_ptr();
+    let mut retry = Meter { checks: 0, stop: 0 };
+    c.run(&mut x, &mut Work::new(&mut retry)).unwrap();
+    assert_eq!(x, expected);
+    assert_eq!(c.g.source_offset, fresh.g.source_offset);
+    assert_eq!(c.g.target_offset, fresh.g.target_offset);
+    assert_eq!(c.g.keep, fresh.g.keep);
+    assert_eq!(retry.checks, meter.checks);
+    assert_eq!(c.g.refine_scratch.geometry.x.as_ptr(), coordinates);
+    assert_eq!(c.g.refine_scratch.passes.ports.edges.as_ptr(), ports);
+}
+
+#[test]
+fn refine_capacity_obeys_frame_retention_and_optional_paths() {
+    let case = Case::new(3, &[&[0], &[1, 2]], &[&[0, 1], &[0, 2]]);
+    let curved = Options {
+        routing: RoutingStyle::Curved,
+        ..case.options
+    };
+    let polyline = Options {
+        routing: RoutingStyle::Polyline,
+        ..case.options
+    };
+    let mut scratch = LayoutScratch::default();
+    let solve = |scratch: &mut LayoutScratch, options| {
+        layout_with_control(&case.graph, options, scratch, &mut NoopWorkControl).unwrap()
+    };
+    let expected = solve(&mut scratch, &curved);
+    let bytes = scratch.retained_bytes();
+    {
+        let frame = scratch.frame();
+        let refine = &frame.expanded.refine_scratch;
+        assert!((1..=bytes).contains(&refine.retained_bytes()));
+        assert_eq!(refine.mental_map.retained_bytes(), 0);
+        assert_eq!(refine.passes.clearance.capacity(), 0);
+    }
+    assert_eq!(solve(&mut scratch, &curved), expected);
+    assert_eq!(scratch.retained_bytes(), bytes);
+
+    solve(&mut scratch, &polyline);
+    assert!(
+        scratch
+            .frame()
+            .expanded
+            .refine_scratch
+            .passes
+            .clearance
+            .capacity()
+            > 0
+    );
+    assert_eq!(solve(&mut scratch, &curved), expected);
+    assert!(
+        scratch
+            .frame()
+            .expanded
+            .refine_scratch
+            .passes
+            .clearance
+            .is_empty()
+    );
+
+    let mut rows = LayoutScratch::with_max_retained_row_bytes(bytes);
+    assert_eq!(solve(&mut rows, &polyline), solve(&mut scratch, &polyline));
+    assert!((1..bytes).contains(&rows.retained_bytes()));
+    assert_eq!(rows.frame().expanded.refine_scratch.retained_bytes(), 0);
+    for mut zero in [
+        LayoutScratch::with_max_retained_bytes(0),
+        LayoutScratch::with_max_retained_row_bytes(0),
+    ] {
+        assert_eq!(solve(&mut zero, &curved), expected);
+        assert_eq!(zero.retained_bytes(), 0);
+    }
 }

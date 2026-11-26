@@ -76,7 +76,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
             route,
             &tail[..count],
             &axis.clearance,
-            &mut scratch.canonical_points,
+            scratch,
         )
         .map(Some);
     }

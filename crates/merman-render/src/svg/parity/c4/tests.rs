@@ -3,7 +3,7 @@ use crate::model::{C4DiagramLayout, LayoutPoint};
 use crate::theme::{NativeTheme, ThemeCompiler};
 use crate::{LayoutAdaptation, LayoutOptions, family};
 use base64::Engine as _;
-use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Point};
+use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Point, Rect, Shape, Vec2};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::OperationControl;
 use merman_model::families::c4::C4Text;
@@ -60,6 +60,25 @@ fn path(edge: Node<'_, '_>) -> BezPath {
 
 fn number(node: Node<'_, '_>, attr: &str) -> f64 {
     node.attribute(attr).unwrap().parse().unwrap()
+}
+
+fn rect_outline(rect: Rect, radius: f64) -> BezPath {
+    rect.to_rounded_rect(radius).to_path(1e-8)
+}
+
+fn svg_rect_outline(node: Node<'_, '_>) -> BezPath {
+    let x = number(node, "x");
+    let y = number(node, "y");
+    rect_outline(
+        Rect::new(x, y, x + number(node, "width"), y + number(node, "height")),
+        number(node, "rx"),
+    )
+}
+
+fn touches_outline(outline: &BezPath, point: Point) -> bool {
+    outline
+        .segments()
+        .any(|segment| segment.nearest(point, 1e-8).distance_sq < 1e-14)
 }
 
 fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool) {
@@ -150,23 +169,16 @@ UpdateRelStyle(user, db, $textColor="navy", $lineColor="blue", $offsetX="12", $o
                 .children()
                 .find(|child| child.has_tag_name("rect"))
                 .unwrap();
-            let left = number(frame, "x");
-            let top = number(frame, "y");
-            let height = number(frame, "height");
-            let (index, port) = knots
+            let outline = svg_rect_outline(frame);
+            let mut contacts = knots
                 .iter()
                 .enumerate()
-                .skip(previous + 1)
-                .find(|(_, port)| {
-                    (port.x - left).abs() < 1e-8 && port.y > top && port.y < top + height
-                })
-                .unwrap();
+                .filter(|(_, port)| touches_outline(&outline, **port));
+            let (index, &port) = contacts.next().expect("one boundary stitch");
+            assert!(contacts.next().is_none(), "duplicate stitch for {alias}");
+            assert!(index > previous && index + 1 < knots.len());
             previous = index;
-            assert!(
-                forward_path
-                    .segments()
-                    .any(|segment| segment.nearest(*port, 1e-6).distance_sq < 1e-12)
-            );
+            assert!(touches_outline(&forward_path, port));
         }
         assert!(
             !doc.descendants()
@@ -207,26 +219,41 @@ fn c4_shoal_uses_the_invisible_root_only_for_a_relation_that_names_it() {
         let doc = Document::parse(svg.svg()).unwrap();
         let edge = element(&doc, "edge", "c4-rel-0");
         let start = points(edge)[0];
+        assert!(
+            !doc.descendants()
+                .any(|node| node.attribute("data-et") == Some("cluster")
+                    && node.attribute("data-id") == Some("global"))
+        );
         if suffix.is_empty() {
+            assert!(
+                !doc.descendants()
+                    .any(|node| node.attribute("data-et") == Some("node")
+                        && node.attribute("data-id") == Some("global"))
+            );
             let root = layout
                 .boundaries
                 .iter()
                 .find(|boundary| boundary.alias == "global")
                 .unwrap();
-            assert_eq!(start.x, root.x);
-            assert!(start.y > root.y && start.y < root.y + root.height);
+            let rect = Rect::new(root.x, root.y, root.x + root.width, root.y + root.height);
+            assert!(touches_outline(&rect_outline(rect, 0.0), start));
         } else {
-            assert_eq!(
-                element(&doc, "node", "global").attribute("data-id"),
-                Some("global")
-            );
+            let outline = element(&doc, "node", "global")
+                .descendants()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
             let node = layout
                 .shapes
                 .iter()
                 .find(|shape| shape.alias == "global")
                 .unwrap();
-            assert!((start.x - node.x - node.width).abs() < 1e-8);
+            let translation = Vec2::new(node.x + node.width / 2.0, node.y + node.height / 2.0);
+            assert!(touches_outline(
+                &svg_rect_outline(outline),
+                start - translation
+            ));
         }
+        check_terminal(edge, start, true, false);
     }
 }
 

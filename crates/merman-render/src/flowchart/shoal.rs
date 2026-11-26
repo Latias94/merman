@@ -243,12 +243,15 @@ fn measure(
         let dir = parent.map_or(direction, |group| groups.directions[group as usize]);
         let shape =
             super::resolve_flowchart_shape(node.layout_shape.as_deref().unwrap_or("squareRect"))?;
-        let size = measurement.node(
+        let mut size = measurement.node(
             node,
             FlowchartSvgLabelOwner::Node(ordinal),
             direction_name(dir),
             |units| work.charge_adapter(units),
         )?;
+        if native.is_some() && shape == super::FlowchartShape::Diamond {
+            size.widen_decision(measurement.settings.node_padding);
+        }
         let geometry = size.geometry;
         let layout_node = layout_node(&node.id, size);
         let rectangle_radii = match shape {
@@ -256,14 +259,18 @@ fn measure(
             super::FlowchartShape::RoundedRectangle => theme_radius,
             _ => None,
         };
-        let profile = ShapePortProfile::flowchart_with_paint_metrics(
-            node,
-            &layout_node,
-            measurement.settings.node_padding,
-            look_is_neo,
-            geometry,
-            rectangle_radii,
-        )?;
+        let profile = if shape == super::FlowchartShape::Diamond {
+            ShapePortProfile::decision(layout_node.width, layout_node.height)
+        } else {
+            ShapePortProfile::flowchart_with_paint_metrics(
+                node,
+                &layout_node,
+                measurement.settings.node_padding,
+                look_is_neo,
+                geometry,
+                rectangle_radii,
+            )?
+        };
         if fit_width && shape == super::FlowchartShape::ForkJoin {
             let axis = match dir {
                 Direction::Down | Direction::Up => Axis::Vertical,
@@ -357,11 +364,13 @@ impl FlowchartBindings {
             Direction::Down | Direction::Up => (Side::Top, Side::Left),
             Direction::Left | Direction::Right => (Side::Left, Side::Top),
         };
+        let size = Size {
+            width: node.width,
+            height: node.height,
+        };
         graph.nodes.push(MeasuredNode {
-            size: Size {
-                width: node.width,
-                height: node.height,
-            },
+            size,
+            contour: profile.shoal_contour(size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),
@@ -396,7 +405,8 @@ impl FlowchartBindings {
         }
         work.charge_adapter(self.groups.len())?;
         let group_parents = solved.groups.iter().map(|group| group.parent).collect();
-        let clusters = groups::project(&self.groups, solved.groups, model, &measurement.settings);
+        let (clusters, struck_group_titles) =
+            groups::project(&self.groups, solved.groups, model, &measurement.settings);
         work.charge_adapter(model.edges.len())?;
         let mut routes = vec![None; model.edges.len()];
         let edge_count = solved.edges.len();
@@ -416,6 +426,7 @@ impl FlowchartBindings {
                 endpoints: (route.source, route.target),
                 ports: route.ports,
                 knots,
+                corridor_clearance: route.corridor_clearance,
             });
             if let Some(svg_edges) = &mut svg_edges {
                 svg_edges.push(FlowchartSvgEdgeGeometry {
@@ -468,6 +479,7 @@ impl FlowchartBindings {
                 AxisRoutes {
                     nodes: self.profiles,
                     group_parents,
+                    struck_group_titles,
                     border_stitches,
                     clearance,
                     routes,

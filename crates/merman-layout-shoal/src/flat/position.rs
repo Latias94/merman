@@ -48,7 +48,7 @@ pub(super) fn straighten_exterior_lanes(
 
     // The order pass reserves outer lanes first. Place the innermost lane first so each
     // outer lane can read its neighbor's final position wherever their ranks overlap.
-    let pitch = options.spacing.edge.max(12.0);
+    let pitch = options.spacing.edge;
     // A label needs the full pitch past its box. Extents already include each half-gap.
     let label_clearance = |inner: u32, outer: u32| {
         let kind = g.kind[inner as usize];

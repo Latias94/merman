@@ -606,6 +606,96 @@ fn render(source: &str, variant: &str) -> (merman_render::model::FlowchartLayout
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
+fn shoal_docks_both_labeled_decision_branches_on_their_side_vertices() {
+    let (layout, svg) = render(
+        "---\nconfig:\n  layout: shoal\n  look: neo\n  htmlLabels: false\n  flowchart:\n    curve: rounded\n---\nflowchart TB\nA[Start] --> B{Condition?}\nB yes@-->|Yes| C[Approve]\nB no@-->|No| D[Reject]",
+        "FlowchartV2",
+    );
+    assert_docked_decision_branches(&layout, &svg);
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_docks_labeled_branches_on_the_native_wide_diamond() {
+    use merman_render::model::FlowchartLayout;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let parsed = parse(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    curve: rounded\n---\nflowchart TB\nA[Start] --> B{Condition?}\nB yes@-->|Yes| C[Execute]\nB no@-->|No| D[End]",
+    );
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"paper"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let snapshot = artifact.layout_json().unwrap();
+    let layout: FlowchartLayout =
+        serde_json::from_value(snapshot["layout"]["FlowchartV2"].clone()).unwrap();
+    let diamond = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+    assert!((diamond.width / diamond.height - 1.6).abs() < 1e-6);
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    assert_docked_decision_branches(&layout, svg.svg());
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+fn assert_docked_decision_branches(layout: &merman_render::model::FlowchartLayout, svg: &str) {
+    use kurbo::{BezPath, PathSeg, Rect};
+
+    let decision = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    for (id, side) in [("yes", -1.0), ("no", 1.0)] {
+        let edge = layout.edges.iter().find(|edge| edge.id == id).unwrap();
+        let [start, bend, end] = edge.points.as_slice() else {
+            panic!("{id} does not have a single elbow: {:?}", edge.points);
+        };
+        assert!(near(start.x, decision.x + side * decision.width / 2.0));
+        assert!(near(start.y, decision.y) && near(bend.y, start.y));
+        assert!(side * (bend.x - start.x) > 0.0);
+        assert!(near(bend.x, end.x) && end.y > bend.y);
+
+        let element = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("edge") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        assert!(element.attribute("marker-end").is_some());
+        let path = BezPath::from_svg(element.attribute("d").unwrap()).unwrap();
+        let label = edge.label.as_ref().unwrap();
+        assert!(
+            path.segments().any(|segment| {
+                let PathSeg::Line(line) = segment else {
+                    return false;
+                };
+                (near(line.p0.x, label.x)
+                    && near(line.p1.x, label.x)
+                    && (line.p0.y.min(line.p1.y)..=line.p0.y.max(line.p1.y)).contains(&label.y))
+                    || (near(line.p0.y, label.y)
+                        && near(line.p1.y, label.y)
+                        && (line.p0.x.min(line.p1.x)..=line.p0.x.max(line.p1.x)).contains(&label.x))
+            }),
+            "{id} label must lie on its painted shaft"
+        );
+        let label = Rect::from_center_size((label.x, label.y), (label.width, label.height));
+        assert!(layout.nodes.iter().all(|node| {
+            if node.id == decision.id {
+                let dx = node.x - node.x.clamp(label.x0, label.x1);
+                let dy = node.y - node.y.clamp(label.y0, label.y1);
+                return dx.abs() / (node.width * 0.5) + dy.abs() / (node.height * 0.5) >= 1.0;
+            }
+            let node = Rect::from_center_size((node.x, node.y), (node.width, node.height));
+            label.intersect(node).area() == 0.0
+        }));
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
 fn compound_flowcharts_keep_named_groups_members_and_original_edges() {
     use kurbo::Rect;
     for (source, counts) in [
@@ -751,6 +841,101 @@ fn positioned_titles_and_local_directions_reach_painted_group_frames() {
         let x = |id: &str| layout.nodes.iter().find(|n| n.id == id).unwrap().x;
         assert!(x("start") < x("endNode") && x("first") > x("second"));
     }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
+    use merman_render::svg::SvgPipeline;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: {html_labels}\n---\n\
+             {keyword} TB\n\
+             {group_keyword} Parent[Parent]\n\
+             {group_keyword} G[A long title with no room beside the entering route]\n\
+             A[Short]\nend\nend\n\
+             Outside trunk@--> A\n\
+             style Parent fill:#FF0000\nstyle G fill:#0000FF80\n"
+        );
+        let parsed = parse(&source);
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"paper","form":{"elevation":"flat"}}"#,
+                None,
+            )
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let check = |svg: &str, contains_html: bool| {
+            let doc = roxmltree::Document::parse(svg).unwrap();
+            let edge = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some("trunk")
+                })
+                .unwrap();
+            let titles: Vec<_> = doc
+                .descendants()
+                .filter(|node| node.attribute("data-merman-title-struck") == Some("true"))
+                .collect();
+            assert_eq!(titles.len(), 1);
+            let title = titles[0];
+            let mut groups = doc.descendants().filter(|node| {
+                node.attribute("data-et") == Some("cluster")
+                    && node.attribute("data-id") == Some("G")
+            });
+            let group = groups.next().unwrap();
+            assert!(groups.next().is_none());
+            let group_id = group.attribute("id").unwrap();
+            assert_eq!(
+                title.attribute("data-merman-cluster-title-for"),
+                Some(group_id)
+            );
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.attribute("id") == Some(group_id))
+                    .count(),
+                1
+            );
+            let outline = group
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert!(outline.range().start < edge.range().start);
+            assert!(edge.range().start < title.range().start);
+            assert_eq!(title.attribute("paint-order"), Some("stroke"));
+            assert_eq!(title.attribute("stroke"), Some("#7F0080"));
+            assert_eq!(
+                title
+                    .descendants()
+                    .any(|node| node.has_tag_name("foreignObject")),
+                contains_html,
+            );
+            assert!(title.descendants().any(|node| node.has_tag_name("text")));
+        };
+        check(rendered.svg(), html_labels);
+        let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+        check(finalized.svg().as_str(), false);
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
+    assert_struck_title_halo("flowchart", "subgraph");
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
+    assert_struck_title_halo("agentflow-beta", "flow");
 }
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]

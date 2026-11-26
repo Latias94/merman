@@ -1,6 +1,7 @@
 //! Flowchart root renderer.
 
 use super::super::defs::FlowchartMarkerEmissionPlan;
+use super::super::edge_fill::FlowchartEdgeFillPlan;
 use super::super::*;
 use super::cluster::{FlowchartClusterPass, render_flowchart_cluster_pass};
 use super::edge_label::render_swimlane_edge_label_node;
@@ -25,6 +26,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
         &'cache mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
     pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
+    pub(in crate::svg::parity::flowchart) edge_fills: &'marker FlowchartEdgeFillPlan,
     pub(in crate::svg::parity::flowchart) edge_labels:
         &'cache mut super::super::paint::FlowchartEdgeLabels,
     pub(in crate::svg::parity::flowchart) step_badges: &'marker super::super::step::StepBadges,
@@ -415,6 +417,7 @@ fn render_flowchart_elk_edge_paths(
             out,
             ctx,
             session.marker_plan,
+            session.edge_fills.ink(e.key),
             e,
             0.0,
             0.0,
@@ -499,28 +502,33 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
 
     let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
     let clusters_to_draw = root_emission.clusters();
+    let mut struck_titles = Vec::new();
     if clusters_to_draw.is_empty() {
         out.push_str(r#"<g class="clusters"/>"#);
     } else {
         out.push_str(r#"<g class="clusters">"#);
         for &cluster in clusters_to_draw {
             ctx.checkpoint_emit()?;
-            if pass == FlowchartRootPass::Complete {
-                render_flowchart_cluster(out, ctx, cluster, origin_x, frame.content_origin_y)?;
-            } else {
-                render_flowchart_cluster_pass(
-                    out,
-                    ctx,
-                    cluster,
-                    origin_x,
-                    frame.content_origin_y,
-                    if pass == FlowchartRootPass::Depth {
-                        FlowchartClusterPass::Background
-                    } else {
-                        FlowchartClusterPass::Label
-                    },
-                )?;
-            }
+            let cluster_pass = match pass {
+                FlowchartRootPass::Depth => FlowchartClusterPass::Background,
+                _ if ctx.layout.route_contract.group_title_is_struck(&cluster.id) => {
+                    struck_titles.push(cluster);
+                    if pass == FlowchartRootPass::Foreground {
+                        continue;
+                    }
+                    FlowchartClusterPass::Background
+                }
+                FlowchartRootPass::Complete => FlowchartClusterPass::Complete,
+                FlowchartRootPass::Foreground => FlowchartClusterPass::Label,
+            };
+            render_flowchart_cluster_pass(
+                out,
+                ctx,
+                cluster,
+                origin_x,
+                frame.content_origin_y,
+                cluster_pass,
+            )?;
             out.checkpoint()?;
         }
         out.push_str("</g>");
@@ -545,6 +553,9 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             .update(ctx, session.hierarchy_plan, session.edge_cache, edges)?;
     }
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
+    session
+        .edge_fills
+        .write_casings(out, ctx, edges, session.edge_cache)?;
     let edge_group_class = if ctx.swimlane_direction.is_some() {
         "edges edgePaths"
     } else {
@@ -561,6 +572,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
                 out,
                 ctx,
                 session.marker_plan,
+                session.edge_fills.ink(e.key),
                 e,
                 origin_x,
                 frame.content_origin_y,
@@ -573,6 +585,23 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
         out.push_str("</g>");
     }
     drop(_g_edge_paths);
+
+    if !struck_titles.is_empty() {
+        let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
+        out.push_str(r#"<g class="merman-struck-cluster-titles">"#);
+        for cluster in struck_titles {
+            render_flowchart_cluster_pass(
+                out,
+                ctx,
+                cluster,
+                origin_x,
+                frame.content_origin_y,
+                FlowchartClusterPass::Label,
+            )?;
+            out.checkpoint()?;
+        }
+        out.push_str("</g>");
+    }
 
     let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
     if ctx.swimlane_direction.is_some() || edges.is_empty() {

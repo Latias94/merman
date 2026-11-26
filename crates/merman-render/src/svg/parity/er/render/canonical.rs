@@ -40,7 +40,7 @@ pub(super) fn paint_edge(
         Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
         _ => RouteStyle::Curved,
     };
-    let geometry = routes.paint(edge, translation, stroke_outset, style)?;
+    let geometry = routes.paint(edge, translation, stroke_outset, style, work_meter)?;
     let path = geometry.path;
     let (d, path_bounds) = if look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;

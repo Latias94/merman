@@ -978,12 +978,14 @@ mod tests {
                     ObstacleOwner::GroupTitle(0),
                 )]),
                 group_parents: Vec::new(),
+                struck_group_titles: Default::default(),
                 border_stitches: Vec::new(),
                 nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
                 routes: vec![Some(RouteTopology {
                     endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Right, Side::Left),
                     knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                    corridor_clearance: 0.0,
                 })],
                 #[cfg(feature = "layout-shoal")]
                 svg_edges: None,
@@ -1040,6 +1042,7 @@ mod tests {
             AxisRoutes {
                 clearance: Default::default(),
                 group_parents: Vec::new(),
+                struck_group_titles: Default::default(),
                 border_stitches: Vec::new(),
                 nodes: vec![
                     ShapePortProfile::diamond(48.0, 36.0),
@@ -1050,6 +1053,7 @@ mod tests {
                         endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                         ports: (Side::Right, Side::Left),
                         knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                        corridor_clearance: 0.0,
                     }),
                     Some(RouteTopology {
                         endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
@@ -1062,6 +1066,7 @@ mod tests {
                         ]
                         .map(|axis| (axis, KnotKind::Free))
                         .to_vec(),
+                        corridor_clearance: 0.0,
                     }),
                 ],
                 #[cfg(feature = "layout-shoal")]

@@ -22,7 +22,7 @@ mod validate;
 
 use crate::scratch::capacity_bytes;
 use crate::work::{LayoutResult, Work, filled};
-use crate::{Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
+use crate::{Axis, Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
 
 pub(crate) use extras::route_corridor as corridor;
 pub(crate) use validate::{
@@ -165,6 +165,9 @@ pub(crate) struct Expanded {
     succ: Csr,
     order_scratch: order::OrderScratch,
     position_scratch: position::PositionScratch,
+    refine_scratch: refine::RefineScratch,
+    routing_scratch: routing::RoutingScratch,
+    hub_scratch: hub::HubScratch,
     pub(crate) component_cache: component_cache::ComponentCache,
 }
 
@@ -199,11 +202,37 @@ fn canonical_size(dir: Direction, size: Size) -> Size {
     }
 }
 
+fn contour_inset(node: NodeSpec, dir: Direction, side: Side, offset: f64) -> f64 {
+    let flip = side.axis() == Axis::Horizontal && matches!(dir, Direction::Up | Direction::Left);
+    node.contour.inset_at(
+        node.size,
+        physical_side(dir, side),
+        if flip { -offset } else { offset },
+    )
+}
+
 #[cfg(test)]
 mod tests;
 
 /// Footprint of owned allocations, including the individual paths and ranks.
 impl Expanded {
+    pub(crate) fn empty_rank_slots(
+        &self,
+        a: u32,
+        b: u32,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<u64> {
+        let (lo, hi) = (a.min(b), a.max(b));
+        let logical_distance = self.logical_rank[hi as usize] - self.logical_rank[lo as usize];
+        if logical_distance <= 1 || self.inserted_ranks.is_empty() {
+            return Ok(logical_distance.saturating_sub(1));
+        }
+        work.visit(2 * (self.inserted_ranks.len().ilog2() as usize + 1))?;
+        let first = self.inserted_ranks.partition_point(|&rank| rank <= lo);
+        let last = self.inserted_ranks.partition_point(|&rank| rank < hi);
+        Ok(logical_distance - 1 - (last - first) as u64)
+    }
+
     fn separate_ports(&self, ends: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
         if self.separated_proxies.is_empty() {
             return Ok(false);
@@ -244,6 +273,16 @@ impl Expanded {
         };
     }
 
+    pub(super) fn discard_stage_scratch(&mut self) -> usize {
+        let bytes = self.refine_scratch.retained_bytes()
+            + self.routing_scratch.retained_bytes()
+            + self.hub_scratch.retained_bytes();
+        self.refine_scratch = refine::RefineScratch::default();
+        self.routing_scratch = routing::RoutingScratch::default();
+        self.hub_scratch = hub::HubScratch::default();
+        bytes
+    }
+
     pub(super) fn retained_bytes(&self) -> usize {
         fn bytes<T>(v: &Vec<T>) -> usize {
             v.capacity() * size_of::<T>()
@@ -274,6 +313,9 @@ impl Expanded {
             + csr(&self.succ)
             + self.order_scratch.retained_bytes()
             + self.position_scratch.retained_bytes()
+            + self.refine_scratch.retained_bytes()
+            + self.routing_scratch.retained_bytes()
+            + self.hub_scratch.retained_bytes()
     }
 }
 
@@ -523,6 +565,7 @@ fn draw_with_label_gaps(
     let (mut drawing, label_gaps) =
         routing::route_with_label_gaps(g, c, orientation, graph, options, &x, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;
+    routing::decision::dock(&mut drawing, c, g, graph, options, work)?;
     Ok((drawing, label_gaps))
 }
 
@@ -649,7 +692,7 @@ fn solve_component(
             }
         };
         if !folded_component {
-            hub::spread(&mut drawing, c, graph, options, work)?;
+            hub::spread_with_scratch(&mut drawing, c, graph, options, &mut g.hub_scratch, work)?;
         }
         let compress_shared =
             folded_component || bus::bundle(&mut drawing, c, graph, options, work)?;
@@ -659,6 +702,7 @@ fn solve_component(
                 &g.inline_labels,
                 &label_gaps,
                 graph,
+                c,
                 options,
                 work,
             )?;

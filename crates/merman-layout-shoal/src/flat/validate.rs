@@ -66,6 +66,8 @@ pub(crate) fn validate_options(options: &Options) -> LayoutResult<()> {
 
 pub(crate) fn validate_node(node: &NodeSpec) -> LayoutResult<()> {
     if !measured(node.size)
+        || matches!(node.contour, crate::ShapeContourHint::Rounded { rx, ry } if !length(rx) || !length(ry))
+        || matches!(node.contour, crate::ShapeContourHint::OffsetDiamond { x, y } if !x.is_finite() || !y.is_finite())
         || node.port_span.is_some_and(|v| !length(v))
         || node.perpendicular_port_span.is_some_and(|v| !length(v))
         || node

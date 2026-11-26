@@ -44,8 +44,14 @@ fn connected_components_wrap_before_spacing_changes() {
     options.width_policy = fit(100.0, false, false);
     let fitted = layout(&graph, &options).unwrap();
     assert_eq!(fitted.bounds.width, 70.0);
-    assert_eq!(fitted.nodes[0].y - fitted.nodes[1].y, 90.0);
-    assert_eq!(fitted.nodes[2].y - fitted.nodes[3].y, 90.0);
+    assert_eq!(
+        fitted.nodes[0].y - fitted.nodes[1].y,
+        40.0 + options.spacing.rank
+    );
+    assert_eq!(
+        fitted.nodes[2].y - fitted.nodes[3].y,
+        40.0 + options.spacing.rank
+    );
     assert!(fitted.node_ranks.is_empty());
 
     options.capture_node_ranks = true;
@@ -62,8 +68,17 @@ fn compaction_scales_spacing_and_only_the_plain_part_of_group_padding() {
     let mut options = Options::default();
     options.width_policy = fit(230.0, false, false);
     let compact = layout(&fork, &options).unwrap();
-    assert_eq!(compact.bounds, size(225.0, 117.5));
-    assert_eq!(compact.nodes[1].y - compact.nodes[0].y, 40.0 + 50.0 * 0.75);
+    assert_eq!(
+        compact.bounds,
+        size(
+            200.0 + options.spacing.node * 0.5,
+            80.0 + options.spacing.rank * 0.75
+        )
+    );
+    assert_eq!(
+        compact.nodes[1].y - compact.nodes[0].y,
+        40.0 + options.spacing.rank * 0.75
+    );
 
     let mut grouped = graph(1, size(100.0, 40.0));
     let mut group = GroupSpec::new(0);
@@ -419,7 +434,10 @@ fn native_fan_rows_fit_with_every_leaf_and_marker_clear() {
         .collect();
     let mut options = Options::default();
     let natural = layout(&graph, &options).unwrap();
-    assert_eq!(natural.bounds.width, 50_248.0);
+    assert_eq!(
+        natural.bounds.width,
+        249.0 * 152.0 + 248.0 * options.spacing.node
+    );
     options.width_policy = fit(1_200.0, false, true);
     options.capture_node_ranks = true;
     let drawing = layout(&graph, &options).unwrap();

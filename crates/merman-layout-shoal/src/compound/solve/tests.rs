@@ -398,7 +398,7 @@ fn a_caption_on_an_ancestor_boundary_does_not_replace_the_nested_member_route() 
 }
 
 #[test]
-fn titles_use_measured_padding_on_all_six_slots_and_shift_away_from_crossing_ports() {
+fn explicit_titles_use_measured_padding_on_all_six_slots() {
     use TitlePosition::*;
     let mut graph = Graph::default();
     graph.groups.push(group(0, None, Direction::Down));
@@ -435,18 +435,96 @@ fn titles_use_measured_padding_on_all_six_slots_and_shift_away_from_crossing_por
             }
         );
     }
-    graph.groups[0].title_position = TopCenter;
+}
+
+#[test]
+fn automatic_top_titles_prefer_left_right_then_center() {
+    let mut spec = group(0, None, Direction::Down);
+    spec.title = Some(size(80., 18.));
+    spec.min_size = size(320., 180.);
+    spec.title_position = TitlePosition::TopAuto;
+    let mut graph = Graph {
+        nodes: vec![node(0, 40., 24., Some(0))],
+        groups: vec![spec],
+        ..Graph::default()
+    };
+    let left = 15.375 + 40.;
+    let right = 320. - 17.25 - 40.;
+    let center = 160.;
+    for (crossings, expected) in [
+        (&[][..], left),
+        (&[left][..], right),
+        (&[left, right][..], center),
+        (&[left, right, center + 25.][..], center),
+    ] {
+        graph.edges = crossings
+            .iter()
+            .map(|&x| {
+                let mut edge = edge(GroupId(0), NodeId(0));
+                edge.source_port = PortSideHint::FixedOffset {
+                    side: Side::Top,
+                    offset: x - center,
+                };
+                edge
+            })
+            .collect();
+        let drawing = layout(&graph, &independent()).unwrap();
+        let frame = &drawing.groups[0];
+        assert_eq!(frame.rect.width, 320.);
+        assert_eq!(frame.title_center.unwrap().x - frame.rect.x, expected);
+        for (edge, &x) in drawing.edges.iter().zip(crossings) {
+            assert_eq!(tip(edge, 0).x - frame.rect.x, x);
+        }
+    }
+}
+
+#[test]
+fn automatic_top_title_preserves_a_straight_trunk_and_reports_an_unavoidable_crossing() {
+    let mut graph = Graph::default();
+    let mut spec = group(0, None, Direction::Down);
+    spec.title = Some(size(80., 18.));
+    spec.min_size = size(320., 180.);
+    spec.title_position = TitlePosition::TopAuto;
+    graph.groups.push(spec);
+    graph.nodes.push(node(0, 40., 24., Some(0)));
     graph.nodes.push(node(1, 37., 17., None));
     graph.edges.push(edge(NodeId(1), NodeId(0)));
     let adapted = layout(&graph, &independent()).unwrap();
     let frame = &adapted.groups[0];
     assert_eq!(frame.title_center.unwrap().x - frame.rect.x, 15.375 + 40.);
+    assert!(!frame.title_struck);
+    let seam = &adapted.border_stitches[0];
+    assert_eq!(seam.side, Side::Top);
+    let crossing_x = adapted.edges[0].points[seam.point].x;
+    assert!((crossing_x - adapted.nodes[0].center().x).abs() < 1e-8);
+
     let mut options = independent();
     options.group_policy.adaptive_title_clearance = false;
     let fixed = layout(&graph, &options).unwrap();
     assert_eq!(
         fixed.groups[0].title_center.unwrap().x,
         fixed.groups[0].rect.center().x
+    );
+    graph.groups[0].title_position = TitlePosition::TopCenter;
+    assert_eq!(layout(&graph, &independent()).unwrap(), fixed);
+
+    graph.groups[0].title_position = TitlePosition::TopAuto;
+    graph.groups[0].title = Some(size(300., 18.));
+    let drawing = layout(&graph, &independent()).unwrap();
+    let frame = &drawing.groups[0];
+    assert_eq!(
+        frame.rect.width,
+        300. + spec.padding.left + spec.padding.right
+    );
+    assert!(frame.title_struck);
+    let seam = drawing.border_stitches[0];
+    let points = &drawing.edges[0].points[seam.point..];
+    assert!(points.iter().all(|p| p.x == points[0].x), "{points:?}");
+    let title = centered(frame.title_center.unwrap(), graph.groups[0].title.unwrap());
+    assert!(
+        points
+            .windows(2)
+            .any(|pair| enters(title, point(pair[0]), point(pair[1])))
     );
 }
 

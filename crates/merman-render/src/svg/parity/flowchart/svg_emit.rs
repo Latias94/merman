@@ -1,6 +1,7 @@
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::document_ids::FlowchartDocumentIds;
+use super::edge_fill::FlowchartEdgeFillPlan;
 use super::render_config::FlowchartRenderConfig;
 use super::viewbox::{
     FlowchartRenderedBoundsRequest, FlowchartViewboxBounds, FlowchartViewboxBoundsRequest,
@@ -93,7 +94,24 @@ pub(super) fn render_flowchart_svg_model(
             let diagram_padding = render_config.diagram_padding;
             let use_max_width = render_config.use_max_width;
             let title_top_margin = render_config.title_top_margin;
-            let marker_plan = FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan)?;
+            let mut edge_fills = FlowchartEdgeFillPlan::default();
+            let marker_plan = if FlowchartEdgeFillPlan::applies(ctx) {
+                // Route painting consumes stroke widths before fill-aware marker colors are known.
+                for edge in hierarchy_plan.ordered_edges() {
+                    FlowchartMarkerEmissionPlan::bind_path_sources_for(
+                        ctx,
+                        hierarchy_plan,
+                        edge.key,
+                    )?;
+                }
+                None
+            } else {
+                Some(FlowchartMarkerEmissionPlan::prepare(
+                    ctx,
+                    hierarchy_plan,
+                    &edge_fills,
+                )?)
+            };
 
             let subgraph_title_y_shift =
                 crate::flowchart::FlowchartConfigView::new(effective_config)
@@ -134,6 +152,25 @@ pub(super) fn render_flowchart_svg_model(
                 },
                 hierarchy_plan,
             )?;
+
+            let marker_plan = match marker_plan {
+                Some(plan) => plan,
+                None => {
+                    edge_fills = FlowchartEdgeFillPlan::prepare(
+                        ctx,
+                        hierarchy_plan,
+                        &edge_path_cache,
+                        options,
+                    )?;
+                    if let Some(bounds) = edge_fills.casing_bounds() {
+                        bbox_min_x = bbox_min_x.min(bounds.x0);
+                        bbox_min_y = bbox_min_y.min(bounds.y0);
+                        bbox_max_x = bbox_max_x.max(bounds.x1);
+                        bbox_max_y = bbox_max_y.max(bounds.y1);
+                    }
+                    FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan, &edge_fills)?
+                }
+            };
 
             if !ctx.hand_drawn_seed.seed().may_use_math_random() {
                 super::paint::prepare_rough_edge_paths(
@@ -237,6 +274,7 @@ pub(super) fn render_flowchart_svg_model(
                 edge_cache: &mut edge_path_cache,
                 hierarchy_plan,
                 marker_plan: &marker_plan,
+                edge_fills: &edge_fills,
                 edge_labels: &mut edge_labels,
                 step_badges: &step_badges,
             };

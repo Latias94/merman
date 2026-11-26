@@ -64,6 +64,7 @@ pub(super) fn layout(
         let profile = ShapePortProfile::rectangle(size.width, size.height);
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq: index as u32,
             parent: None,
             port_span: Some(profile.port_span(face)),

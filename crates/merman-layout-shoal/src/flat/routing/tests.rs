@@ -362,6 +362,8 @@ fn gap(spans: &[(f64, f64)]) -> Gap {
                     span,
                     occupied: span,
                     leads: [0.0; 2],
+                    horizon: None,
+                    keep_landing_runway: false,
                     lower: 0,
                     track: None,
                 }
@@ -575,12 +577,12 @@ fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_
                 .filter(|p| p[0].x != p[1].x && p[0].y != p[1].y)
                 .collect();
             for p in &diagonals {
-                assert!(p[0].y > top && p[1].y < bottom);
+                assert!(p[0].y >= top && p[1].y <= bottom);
                 assert_eq!(p[1].axis, Axis::Vertical);
             }
             if tall {
                 assert_eq!(diagonals.len(), 1);
-                assert_eq!(bottom - top, 150.);
+                assert_eq!(bottom - top, 3.0 * scene.options.spacing.rank);
                 assert!(edge.points.iter().all(|p| p.axis == Axis::Vertical));
                 assert!(edge.points.iter().all(|p| p.kind == KnotKind::Free));
             } else {
@@ -589,12 +591,10 @@ fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_
                 assert_eq!(
                     edge.points.iter().map(|p| p.kind).collect::<Vec<_>>(),
                     [
-                        KnotKind::Free,
                         KnotKind::GapBoundary,
                         KnotKind::Free,
                         KnotKind::Free,
                         KnotKind::GapBoundary,
-                        KnotKind::Free,
                     ]
                 );
             }
@@ -617,7 +617,6 @@ fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_
 #[test]
 fn an_isolated_sweep_uses_the_unmarked_face_and_only_the_marked_shaft() {
     let mut scene = Scene::new(&[10.; 2], &[&[0], &[1]], &[&[0, 1]], &[0., 80.]);
-    scene.graph.edges[0].start_marker.length = 6.;
     scene.graph.edges[0].end_marker = MarkerMetrics {
         length: 10.,
         width: 12.,
@@ -629,8 +628,8 @@ fn an_isolated_sweep_uses_the_unmarked_face_and_only_the_marked_shaft() {
     };
     assert_eq!(start.y, drawing.nodes[0].y + drawing.nodes[0].height);
     assert_eq!(shaft.x, target.x);
-    assert_eq!(target.y - shaft.y, 10.);
-    assert!(shaft.y - start.y >= 0.75 * (target.y - start.y));
+    assert_eq!(target.y - shaft.y, 16.);
+    assert!(shaft.y - start.y > target.y - shaft.y);
     assert!(points.iter().all(|point| point.kind == KnotKind::Free));
 
     scene.graph.edges[0].start_label = Some(Size {
@@ -639,7 +638,7 @@ fn an_isolated_sweep_uses_the_unmarked_face_and_only_the_marked_shaft() {
     });
     let drawing = scene.draw();
     let points = &drawing.edges[0].1.points;
-    assert!(points[1].y - points[0].y >= 6. + 8. + scene.options.spacing.end_label_along);
+    assert!(points[1].y - points[0].y >= 8. + scene.options.spacing.end_label_along);
 }
 
 #[test]
@@ -651,6 +650,7 @@ fn occupied_band_clearance_uses_the_local_sweep_and_falls_back_at_an_obstacle() 
         &[0., 160., 0., 163., 55., 105.],
     );
     scene.options.spacing.node = 12.;
+    scene.options.spacing.edge = 4.;
     scene.g.keep[4..].fill(false);
     let offsets = |drawing: &Drawing| {
         drawing.edges[0]
@@ -686,9 +686,8 @@ fn occupied_band_clearance_uses_the_local_sweep_and_falls_back_at_an_obstacle() 
 }
 
 #[test]
-fn a_merged_sweep_releases_its_departure_only_inside_an_independent_corridor() {
-    let mut gaps = [gap(&[(0., 40.), (-60., -60.)]), gap(&[(40., 100.)])];
-    gaps[0].allow_local_sweeps = true;
+fn a_merged_sweep_reserves_the_path_it_uses_in_each_gap() {
+    let gaps = &mut [gap(&[(0., 40.), (-60., -60.)]), gap(&[(40., 100.)])];
     gaps[0].upper_guard = 12.;
     let bands = [
         Band {
@@ -711,25 +710,18 @@ fn a_merged_sweep_releases_its_departure_only_inside_an_independent_corridor() {
             &bands,
             &[Some(room)],
             4.,
-            true,
             &mut Work::new(&mut NoopWorkControl),
         )
         .unwrap()
         .expect("the original sweep fits")
     };
 
-    let open = prove(&gaps, (0., 100.));
-    assert!(open.free_departure);
-    assert!(
-        open.occupied[..open.steps]
-            .iter()
-            .all(|span| span.lo() == 0. && span.hi() == 100.)
-    );
-
-    assert!(!prove(&gaps, (1., 99.)).free_departure);
-
-    gaps[0].pieces[1].occupied = Span { from: 99., to: 99. };
-    assert!(!prove(&gaps, (0., 100.)).free_departure);
+    let open = prove(gaps, (1., 99.));
+    assert_eq!(open.sweep.start, 22.);
+    assert_eq!(open.steps, 2);
+    assert_eq!(open.occupied[0].lo(), 0.);
+    assert!(open.occupied[0].hi() < open.occupied[1].lo());
+    assert_eq!(open.occupied[1].hi(), 100.);
 }
 
 #[test]
@@ -816,10 +808,12 @@ fn sparse_sweep_and_dense_fallback_take_subquadratic_work_and_large_fans_share_t
             work.finish().unwrap();
             assert_eq!(
                 gap.tracks,
-                if dense {
+                if style == RoutingStyle::Curved {
+                    0
+                } else if dense {
                     count
                 } else {
-                    usize::from(style == RoutingStyle::Orthogonal)
+                    1
                 }
             );
         }

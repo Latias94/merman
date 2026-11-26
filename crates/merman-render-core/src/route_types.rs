@@ -59,6 +59,7 @@ mod fallback {
         #[default]
         Free,
         GapBoundary,
+        ContourDeparture,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]

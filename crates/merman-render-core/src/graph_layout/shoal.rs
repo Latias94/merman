@@ -6,7 +6,6 @@ use super::{
 };
 use crate::LayoutLabel;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::route_paint::LEAD;
 use crate::{Error, Result};
 use merman_layout_shoal as shoal;
 pub use shoal::{OrderHint, WidthPolicy};
@@ -25,13 +24,12 @@ pub struct Constraints<'a> {
     pub lane_order: &'a [u32],
     pub capture_ranks: bool,
     pub allow_turn: bool,
-    pub inline_labels: bool,
-    pub compact_ranks: bool,
 }
 
 #[derive(Default)]
 pub struct Placement<'a> {
     pub width: WidthPolicy,
+    pub spacing: Option<(f64, f64, f64)>,
     pub capture_ranks: bool,
     pub reuse_components: bool,
     pub hints: &'a [Option<NodeHint>],
@@ -41,8 +39,7 @@ pub struct Placement<'a> {
 
 fn marker_metrics(marker: Marker) -> shoal::MarkerMetrics {
     shoal::MarkerMetrics {
-        // The painter keeps a straight normal lead even at an unmarked end (zero width).
-        length: marker.trim + marker.depth.max(LEAD),
+        length: marker.trim + marker.depth,
         width: marker.width,
     }
 }
@@ -92,6 +89,7 @@ pub fn project_input(
     graph.nodes = project_rows(measured.nodes.iter().enumerate(), work, |(index, node)| {
         let mut spec = shoal::NodeSpec::new(node.size, node.seq);
         spec.parent = node.parent.map(shoal::GroupId);
+        spec.contour = node.contour;
         spec.port_span = node.port_span;
         spec.perpendicular_port_span = node.perpendicular_port_span;
         spec.anchor_y = node.anchor_y;
@@ -167,11 +165,15 @@ impl Placement<'_> {
         let mut options = shoal::Options::default();
         options.routing = measured.routing;
         options.global_orthogonal = measured.routing == shoal::RoutingStyle::Orthogonal;
-        options.inline_labels = self.constraints.inline_labels;
-        options.compact_ranks = self.constraints.compact_ranks;
-        options.spacing.node = measured.node_spacing;
-        options.spacing.rank = measured.rank_spacing;
-        options.spacing.component = measured.component_spacing;
+        (
+            options.spacing.node,
+            options.spacing.rank,
+            options.spacing.component,
+        ) = self.spacing.unwrap_or((
+            measured.node_spacing,
+            measured.rank_spacing,
+            measured.component_spacing,
+        ));
         options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
         options.width_policy = self.width;
         options.capture_node_ranks = self.capture_ranks || self.constraints.capture_ranks;
@@ -229,6 +231,7 @@ pub fn project_output(
                 parent: geometry.parent.map(|id| id.0),
                 rect: geometry.rect,
                 title: placed_label(group.title, geometry.title_center, "group title", index)?,
+                title_struck: geometry.title_struck,
                 direction: geometry.effective_direction,
             })
         },
@@ -261,6 +264,7 @@ pub fn project_output(
                     "edge end label",
                     index,
                 )?,
+                corridor_clearance: route.corridor_clearance,
                 reversed_for_ranking: route.reversed_for_ranking,
             })
         },

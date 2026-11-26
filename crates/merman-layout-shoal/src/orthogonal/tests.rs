@@ -15,6 +15,8 @@ fn edge(points: &[(f64, f64)], ports: (Side, Side)) -> EdgeGeometry {
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     }
 }
@@ -128,11 +130,12 @@ fn a_clearer_route_keeps_the_box_faces_and_rejects_an_obstacle_through_its_short
         (50., 72.),
         (50., 80.),
     ];
-    let options = Options {
+    let mut options = Options {
         global_orthogonal: true,
         routing: RoutingStyle::Orthogonal,
         ..Default::default()
     };
+    options.spacing.edge = 4.;
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     work.charge(10_000).unwrap();

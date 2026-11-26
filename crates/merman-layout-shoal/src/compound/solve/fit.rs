@@ -7,6 +7,7 @@ pub(super) struct Fit {
     pub offset: Point,
     pub seats: Vec<[Option<Rect>; 3]>,
     pub corridor: [f64; 4],
+    pub adaptive_top_title: bool,
     marker_insets: [f64; 4],
     title_drop: f64,
     vertical_slack: f64,
@@ -14,7 +15,10 @@ pub(super) struct Fit {
 
 pub(super) fn title_side(position: TitlePosition) -> Side {
     match position {
-        TitlePosition::TopLeft | TitlePosition::TopCenter | TitlePosition::TopRight => Side::Top,
+        TitlePosition::TopAuto
+        | TitlePosition::TopLeft
+        | TitlePosition::TopCenter
+        | TitlePosition::TopRight => Side::Top,
         TitlePosition::BottomLeft | TitlePosition::BottomCenter | TitlePosition::BottomRight => {
             Side::Bottom
         }
@@ -44,6 +48,8 @@ impl Fit {
         let mut inset = [padding.top, padding.right, padding.bottom, padding.left];
         let title = group.title.unwrap_or_default();
         let title_side = title_side(group.title_position) as usize;
+        let adaptive_top_title = group.title_position == TitlePosition::TopAuto
+            && options.group_policy.adaptive_title_clearance;
         inset[title_side] = inset[title_side].max(title.height);
         let mut before_title = (inset[title_side] - title.height) / 2.0;
         let mut after_title = before_title;
@@ -118,17 +124,21 @@ impl Fit {
                 }
             }
             if index == title_side && title.width > 0.0 && title.height > 0.0 {
-                if !matches!(hint, PortSideHint::FixedOffset { .. }) {
+                if !adaptive_top_title && !matches!(hint, PortSideHint::FixedOffset { .. }) {
                     movable_at_title += 1;
-                    title_clear = title_clear.max(TITLE_CLEAR + markers[end].width / 2.0);
+                    title_clear = title_clear.max(wire.title_clearance(end));
                 }
-                before_title = before_title.max(markers[end].length + spacing.edge);
+                if !adaptive_top_title || markers[end].length > 0.0 {
+                    before_title = before_title.max(markers[end].length + spacing.edge);
+                }
                 let shaft = if (flat.is_none() || wire.uses_caption_band()) && inner.side == side {
                     markers[1 - end].length
                 } else {
                     0.0
                 };
-                after_title = after_title.max(shaft + spacing.edge);
+                if !adaptive_top_title || shaft > 0.0 {
+                    after_title = after_title.max(shaft + spacing.edge);
+                }
             }
             inset[index] = inset[index].max(markers[end].length + spacing.edge);
             if (flat.is_none() || wire.uses_caption_band()) && markers[1 - end].width > 0.0 {
@@ -338,6 +348,7 @@ impl Fit {
             offset,
             seats,
             corridor,
+            adaptive_top_title,
             marker_insets,
             title_drop: before_title + title.height / 2.0,
             vertical_slack: (size.height - needed_height) / 2.0,
@@ -374,7 +385,6 @@ impl Fit {
         group: Option<&GroupSpec>,
         wires: &[Wire],
         ports: &[Point],
-        options: &Options,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Rect>> {
         let Some((group, title)) = group.and_then(|group| Some((group, group.title?))) else {
@@ -393,30 +403,30 @@ impl Fit {
         let x = match group.title_position {
             TitlePosition::TopLeft | TitlePosition::BottomLeft => left,
             TitlePosition::TopRight | TitlePosition::BottomRight => right,
-            _ if options.group_policy.adaptive_title_clearance => {
-                let mut chosen = center;
-                for candidate in [center, left, right] {
-                    let mut clear = true;
-                    for wire in wires {
-                        work.visit(1)?;
-                        if let Some((end, slot, port_side)) = wire.border()
-                            && port_side == side
-                        {
-                            let marker = [wire.spec.start_marker, wire.spec.end_marker][end];
-                            if (ports[slot].x - candidate).abs()
-                                < title.width / 2.0 + marker.width / 2.0 + TITLE_CLEAR
-                            {
-                                clear = false;
-                                break;
-                            }
+            TitlePosition::TopAuto if self.adaptive_top_title => {
+                let candidates = [left, right, center];
+                let mut scores = [(0usize, 0.0_f64); 3];
+                for wire in wires {
+                    work.visit(1)?;
+                    let Some((end, slot, Side::Top)) = wire.border() else {
+                        continue;
+                    };
+                    let clearance = title.width / 2.0 + wire.title_clearance(end);
+                    for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
+                        let shortfall = clearance - (ports[slot].x - candidate).abs();
+                        if shortfall > 0.0 {
+                            *hits += 1;
+                            *shift = finite(*shift + shortfall)?;
                         }
                     }
-                    if clear {
-                        chosen = candidate;
-                        break;
-                    }
                 }
-                chosen
+                // Keep anchor order for clear candidates and equal fallback scores.
+                candidates
+                    .into_iter()
+                    .zip(scores)
+                    .min_by(|(_, a), (_, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+                    .expect("three title anchors")
+                    .0
             }
             _ => center,
         };

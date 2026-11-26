@@ -267,6 +267,9 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     #[cfg(any(feature = "layout-shoal", test))]
     pub(in crate::svg::parity::flowchart) canonical_points:
         Vec<crate::graph_layout::ir::RoutePoint>,
+    #[cfg(any(feature = "layout-shoal", test))]
+    pub(in crate::svg::parity::flowchart) canonical_paint:
+        crate::graph_layout::route_paint::RoutePaintScratch,
 }
 
 #[derive(Debug, Clone)]

@@ -12,6 +12,8 @@ fn geometry(points: Vec<RoutePoint>) -> EdgeGeometry {
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     }
 }
@@ -145,6 +147,7 @@ fn a_curved_route_keeps_the_painted_group_border_stitch() {
             height: 100.,
         },
         title_center: None,
+        title_struck: false,
         effective_direction: Direction::Down,
     });
     assert_eq!(count(&graph, &out, RoutingStyle::Curved), 0);
@@ -202,6 +205,7 @@ fn fan_uses_the_drawn_node_or_group_box_and_allows_distant_incident_crossings() 
         parent: None,
         rect,
         title_center: None,
+        title_struck: false,
         effective_direction: Direction::Down,
     };
     for gap in [23.75, 24., 25.] {
@@ -439,7 +443,8 @@ fn suggested(
                 rect,
                 parent: None,
                 effective_direction: direction,
-                title_center: None
+                title_center: None,
+                title_struck: false,
             };
             2
         ],

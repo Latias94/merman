@@ -2,7 +2,7 @@
 
 use super::{Component, Drawing, canonical_size, validate};
 use crate::geom::{Bounds, Bvh, BvhEntry};
-use crate::work::{LayoutResult, Work, filled, push, reserved};
+use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{
     Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, MarkerMetrics, Options, Point, PortSideHint,
     Rect, RoutePoint, RoutingStyle, Side, WorkError,
@@ -70,7 +70,7 @@ impl End {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Face {
     count: usize,
     marked: usize,
@@ -216,6 +216,7 @@ fn marker(p: Point, side: Side, mark: MarkerMetrics) -> Option<Bounds> {
     ))
 }
 
+#[derive(Debug)]
 struct Tail {
     /// Points from the contact through the beginning of the old fan-in turn, inclusive.
     cut: usize,
@@ -290,6 +291,7 @@ impl Tail {
     }
 }
 
+#[derive(Debug)]
 struct Edit {
     points: Vec<RoutePoint>,
     side: Side,
@@ -613,18 +615,66 @@ fn seats(
     })
 }
 
-pub(super) fn spread(
+#[derive(Debug, Default)]
+pub(super) struct HubScratch {
+    faces: Vec<[Face; 2]>,
+    tails: Vec<Tail>,
+    proposed: Vec<(usize, Edit)>,
+}
+
+impl HubScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        use crate::scratch::capacity_bytes;
+        capacity_bytes(&self.faces) + capacity_bytes(&self.tails) + capacity_bytes(&self.proposed)
+    }
+}
+
+#[cfg(test)]
+fn spread(
     drawing: &mut Drawing,
     c: &Component,
     graph: &Graph,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    spread_with_scratch(drawing, c, graph, options, &mut HubScratch::default(), work)
+}
+
+pub(super) fn spread_with_scratch(
+    drawing: &mut Drawing,
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    scratch: &mut HubScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let HubScratch {
+        faces,
+        tails,
+        proposed,
+    } = scratch;
+    let result = spread_faces(drawing, c, graph, options, faces, tails, proposed, work);
+    proposed.clear();
+    result
+}
+
+fn spread_faces(
+    drawing: &mut Drawing,
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    faces: &mut Vec<[Face; 2]>,
+    tails: &mut Vec<Tail>,
+    proposed: &mut Vec<(usize, Edit)>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    use crate::scratch::clear_reserve;
     if c.links.len() < 2 || c.boundaries || c.pinned || c.group_proxies {
         return Ok(());
     }
     work.charge(c.nodes.len())?;
-    let mut faces = filled(c.nodes.len(), [Face::default(); 2])?;
+    clear_reserve(faces, c.nodes.len())?;
+    faces.resize(c.nodes.len(), [Face::default(); 2]);
     for (link, (id, edge)) in c.links.iter().zip(&drawing.edges) {
         work.visit(1)?;
         let spec = &graph.edges[*id as usize];
@@ -694,7 +744,7 @@ pub(super) fn spread(
         {
             continue;
         }
-        let mut tails = reserved(run.edges.len())?;
+        clear_reserve(tails, run.edges.len())?;
         for &i in &run.edges {
             let (id, edge) = &drawing.edges[i];
             if run.end.side(edge) != run.end.face()
@@ -742,7 +792,7 @@ pub(super) fn spread(
         // An obstructed side can give its overflow to the other side when there is room.
         let splits =
             std::iter::once(preferred).chain((least..=most).filter(|&left| left != preferred));
-        let mut proposed = reserved(run.edges.len())?;
+        clear_reserve(proposed, run.edges.len())?;
         'split: for left in splits {
             if !visit_clearance(&mut proof.remaining, run.edges.len(), work)? {
                 break;
@@ -760,8 +810,8 @@ pub(super) fn spread(
             for ((&i, tail), seat) in run
                 .edges
                 .iter()
-                .zip(&tails)
-                .zip(seats(&run, &tails, rect, left, options))
+                .zip(tails.iter())
+                .zip(seats(&run, tails, rect, left, options))
             {
                 let (id, edge) = &drawing.edges[i];
                 if seat == (run.end.side(edge), point(run.end.point(&edge.points, 0))) {
@@ -783,7 +833,7 @@ pub(super) fn spread(
             }
             validate::charge_sort(proposed.len(), work)?;
             proposed.sort_unstable_by_key(|(i, _)| *i);
-            if !proof.allows(run.end, &proposed, drawing, graph, work)? {
+            if !proof.allows(run.end, proposed, drawing, graph, work)? {
                 continue;
             }
             work.charge(proposed.len())?;
@@ -791,6 +841,7 @@ pub(super) fn spread(
                 proof.strokes[i] = edit.envelope;
                 let edge = &mut drawing.edges[i].1;
                 edge.points = edit.points;
+                edge.corridor_clearance = 0.0;
                 match run.end {
                     End::Source => edge.ports.0 = edit.side,
                     End::Target => edge.ports.1 = edit.side,

@@ -8,7 +8,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutCluster, LayoutLabel};
 use kurbo::Insets;
 use merman_model::presentation::PresentationConfig;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashSet;
 
 pub(super) struct GroupBindings<'a> {
@@ -44,10 +44,13 @@ pub(super) fn measure<'a>(
     let mut collapsed = Vec::new();
     let mut parents = FxHashMap::default();
     let settings = &measurement.settings;
+    let title_path = "flowchart.subGraphTitlePosition";
+    let title_position_is_explicit = config.explicit_config_owns_path(title_path);
     let default_position = config
-        .get_str("flowchart.subGraphTitlePosition")
+        .get_str(title_path)
         .and_then(title_position)
-        .unwrap_or_default();
+        .filter(|&position| title_position_is_explicit || at_bottom(position))
+        .unwrap_or(TitlePosition::TopAuto);
     for (ordinal, group) in view.semantic.subgraphs.iter().enumerate() {
         work.charge_adapter(group.id.len())?;
         if view.collapsed_replacement(&group.id).is_some() || !seen.insert(group.id.as_str()) {
@@ -84,11 +87,7 @@ pub(super) fn measure<'a>(
                     + settings.title_margin_bottom.max(0.0)
                     + padding
             });
-        let at_bottom = matches!(
-            position,
-            TitlePosition::BottomLeft | TitlePosition::BottomCenter | TitlePosition::BottomRight
-        );
-        let (top, bottom) = if at_bottom {
+        let (top, bottom) = if at_bottom(position) {
             (padding, title_band)
         } else {
             (title_band, padding)
@@ -122,6 +121,13 @@ pub(super) fn measure<'a>(
         parents,
         directions,
     })
+}
+
+fn at_bottom(position: TitlePosition) -> bool {
+    matches!(
+        position,
+        TitlePosition::BottomLeft | TitlePosition::BottomCenter | TitlePosition::BottomRight
+    )
 }
 
 fn shape_directions(
@@ -164,13 +170,17 @@ pub(super) fn project(
     solved: Vec<SolvedGroup>,
     model: FlowchartRenderModelRef<'_>,
     settings: &FlowchartLayoutSettings,
-) -> Vec<LayoutCluster> {
-    declarations
+) -> (Vec<LayoutCluster>, FxHashSet<String>) {
+    let mut struck_group_titles = FxHashSet::default();
+    let clusters = declarations
         .iter()
         .zip(solved)
         .map(|(&ordinal, geometry)| {
             let group = &model.subgraphs[ordinal];
             let center = geometry.rect.center();
+            if geometry.title_struck {
+                struck_group_titles.insert(group.id.clone());
+            }
             LayoutCluster {
                 id: group.id.clone(),
                 x: center.x,
@@ -193,5 +203,6 @@ pub(super) fn project(
                 title_margin_bottom: settings.title_margin_bottom,
             }
         })
-        .collect()
+        .collect();
+    (clusters, struck_group_titles)
 }

@@ -208,13 +208,10 @@ impl RouteWalls {
         &mut self,
         index: usize,
         pair: [Contact; 2],
+        title: Option<Rect>,
         work: &mut Work<'_>,
     ) -> LayoutResult<&[Rect]> {
-        let Walls {
-            boxes,
-            markers,
-            title,
-        } = &mut self.walls;
+        let Walls { boxes, markers, .. } = &mut self.walls;
         boxes.truncate(self.fixed_count);
         let extra = markers
             .len()
@@ -250,7 +247,7 @@ impl RouteWalls {
                 boxes.push(rect);
             }
         }
-        if let Some(title) = *title {
+        if let Some(title) = title {
             let on_title = |port: &Contact| {
                 let point = port.at;
                 point.x >= title.x
@@ -707,6 +704,12 @@ fn boundary_leg(
     let member = 1 - border;
     let outer = travel(wire, border);
     let inner = travel(wire, member);
+    let title = walls.walls.title.filter(|title| {
+        side != Side::Top
+            || !fit.adaptive_top_title
+            || (outer.at.x - title.center().x).abs()
+                >= title.width / 2.0 + wire.title_clearance(border)
+    });
     let markers = [wire.spec.start_marker.length, wire.spec.end_marker.length];
     let ports = (
         wire.contacts[0].unwrap().side,
@@ -727,9 +730,9 @@ fn boundary_leg(
         let at = point(edge.points[index_in_route]);
         if at != outer.at {
             let dummy = Contact { at, side };
-            let title = walls.walls.title;
-            let blockers = walls.for_leg(index, [dummy, outer], work)?;
-            if options.routing == crate::RoutingStyle::Curved
+            let blockers = walls.for_leg(index, [dummy, outer], title, work)?;
+            if !fit.adaptive_top_title
+                && options.routing == crate::RoutingStyle::Curved
                 && let Some(title) = title
                 && let Some(sweep) = title_sweep(
                     &edge,
@@ -746,11 +749,18 @@ fn boundary_leg(
                 edge.ports = ports;
                 return Ok(edge);
             }
-            let connection = Connection {
+            let mut connection = Connection {
                 fit,
                 walls: blockers,
                 gap: options.spacing.edge,
             };
+            // Both contacts lie on parallel planes. A short seam needs just enough
+            // runway to turn between the planes without doubling back through either.
+            let depth = match side.axis() {
+                Axis::Horizontal => (at.x - outer.at.x).abs(),
+                Axis::Vertical => (at.y - outer.at.y).abs(),
+            };
+            connection.gap = connection.gap.min((depth - markers[border]).max(0.0) * 0.5);
             let path = connection.path(dummy, outer, [0.0, markers[border]], None, work)?;
             let mut extension = knots(path, border == 0, side.axis(), work)?;
             if border == 0 {
@@ -773,7 +783,7 @@ fn boundary_leg(
     let End::Item { slot, .. } = wire.ends[member] else {
         unreachable!()
     };
-    let blockers = walls.for_leg(index, [inner, outer], work)?;
+    let blockers = walls.for_leg(index, [inner, outer], title, work)?;
     let connection = Connection {
         fit,
         walls: blockers,
@@ -792,11 +802,45 @@ fn boundary_leg(
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: wire
             .route
             .as_ref()
             .is_some_and(|edge| edge.reversed_for_ranking),
     })
+}
+
+pub(super) fn title_struck(
+    title: Rect,
+    wires: &[Wire],
+    legs: &[EdgeGeometry],
+    work: &mut Work<'_>,
+) -> LayoutResult<bool> {
+    if title.width == 0.0 || title.height == 0.0 {
+        return Ok(false);
+    }
+    for (wire, leg) in wires.iter().zip(legs) {
+        work.visit(1)?;
+        if !matches!(wire.border(), Some((_, _, Side::Top))) {
+            continue;
+        }
+        for (index, pair) in leg.points.windows(2).enumerate() {
+            work.visit(1)?;
+            let [from, to] = [point(pair[0]), point(pair[1])];
+            // A rounded corner can enter the rectangle between two clear straight segments.
+            if blocks(title, from, to)
+                || leg.points.get(index + 2).is_some_and(|&next| {
+                    let next = point(next);
+                    ((from.x == to.x && to.y == next.y) || (from.y == to.y && to.x == next.x))
+                        && blocks(title, from, next)
+                })
+            {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 pub(super) fn finish(

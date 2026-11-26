@@ -24,6 +24,7 @@ impl<'a> Shaft<'a> {
         layout: &'a ArchitectureDiagramLayout,
         ordinal: usize,
         edge_style: Option<EdgeStyle>,
+        work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<Self> {
         let edge = layout
             .edges
@@ -37,9 +38,13 @@ impl<'a> Shaft<'a> {
             Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
         };
         let stroke_outset = edge_style.map_or(0.0, |_| geometry.edge_stroke_outset);
-        let painted = geometry
-            .routes
-            .paint(edge, kurbo::Vec2::ZERO, stroke_outset, route_style)?;
+        let painted = geometry.routes.paint(
+            edge,
+            kurbo::Vec2::ZERO,
+            stroke_outset,
+            route_style,
+            work_meter,
+        )?;
         Ok(Self { edge, painted })
     }
 

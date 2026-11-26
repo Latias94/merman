@@ -20,11 +20,17 @@ pub(super) struct Frame {
     pub(super) bounds: Size,
     pub(super) items: Vec<Rect>,
     pub(super) item_ranks: Vec<u32>,
-    pub(super) title: Option<Point>,
+    pub(super) title: Option<PlacedTitle>,
     pub(super) legs: Vec<EdgeGeometry>,
     pub(super) ports: Vec<Point>,
     pub(super) stats: LayoutStats,
     pub(super) lane_shells: Vec<(Rect, Option<Point>)>,
+}
+
+#[derive(Debug)]
+pub(super) struct PlacedTitle {
+    pub(super) center: Point,
+    pub(super) struck: bool,
 }
 
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
@@ -189,6 +195,11 @@ impl Wire {
 
     fn flat(&self) -> bool {
         self.ends.iter().all(|end| end.node().is_some())
+    }
+
+    fn title_clearance(&self, end: usize) -> f64 {
+        let marker = [self.spec.start_marker, self.spec.end_marker][end];
+        TITLE_CLEAR + marker.width / 2.0
     }
 
     fn uses_caption_band(&self) -> bool {
@@ -446,8 +457,10 @@ pub(super) fn level(
     let mut fit = fit::Fit::new(group, drawing.bounds, &nodes, &wires, ctx.options, work)?;
     let border = |fit: &fit::Fit, work: &mut Work<'_>| -> LayoutResult<_> {
         let mut ports = ports::border(&wires, &nodes, fit, level.ports.len(), ctx.options, work)?;
-        let title = fit.title(group, &wires, &ports, ctx.options, work)?;
-        if let (Some(title), Some(group)) = (title, group) {
+        let title = fit.title(group, &wires, &ports, work)?;
+        if !fit.adaptive_top_title
+            && let (Some(title), Some(group)) = (title, group)
+        {
             ports::beside_title(
                 &wires,
                 &mut ports,
@@ -461,7 +474,9 @@ pub(super) fn level(
         Ok((ports, title))
     };
     let (mut ports, mut title) = border(&fit, work)?;
-    if let (Some(rect), Some(group)) = (title, group) {
+    if !fit.adaptive_top_title
+        && let (Some(rect), Some(group)) = (title, group)
+    {
         let side = fit::title_side(group.title_position);
         let extra = routes::title_room(&wires, &ports, side, &fit, rect, ctx.options, work)?;
         if extra > 0.0 {
@@ -476,11 +491,20 @@ pub(super) fn level(
         rect.y += fit.offset.y;
     }
     let legs = routes::finish(&fit, title, &nodes, &mut wires, &ports, ctx.options, work)?;
+    let title = if let (Some(rect), Some(group)) = (title, group) {
+        Some(PlacedTitle {
+            center: rect.center(),
+            struck: fit::title_side(group.title_position) == Side::Top
+                && routes::title_struck(rect, &wires, &legs, work)?,
+        })
+    } else {
+        None
+    };
     Ok(Frame {
         bounds: fit.size,
         items: nodes,
         item_ranks,
-        title: title.map(Rect::center),
+        title,
         legs,
         ports,
         stats: drawing.stats,

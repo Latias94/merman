@@ -1156,7 +1156,8 @@ pub(super) fn prepare_class_render<'parsed>(
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = prepare_class_family(model, meta, &execution)?;
     FamilyRenderArtifact::new(parsed, family, context)
 }
@@ -1176,7 +1177,8 @@ pub(super) fn prepare_architecture_render<'parsed>(
     let RenderSemanticModel::Architecture(model) = model else {
         unreachable!("Architecture render dispatch requires an Architecture semantic model")
     };
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = prepare_architecture_family(model, meta, &execution)?;
     FamilyRenderArtifact::new(parsed, family, context)
 }
@@ -1205,7 +1207,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
         });
     let diagram_type = meta.diagram_type.as_str();
     let title = meta.title.as_deref();
-    let execution = LayoutExecution::new(options, context.execution());
+    let execution =
+        LayoutExecution::new(options, context.execution(), Some(&meta.effective_config));
     let family = match model {
         RenderSemanticModel::Error(model) => prepare_error_family(model, meta, &execution)?,
         #[cfg(feature = "diagram-mindmap")]

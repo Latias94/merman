@@ -173,6 +173,7 @@ fn measure<'a>(
         let seq = index(work.checked_add(group_count, graph.nodes.len())?, work)?;
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq,
             parent: None,
             port_span: Some(profile.port_span(face)),

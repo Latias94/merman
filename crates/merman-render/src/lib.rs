@@ -561,6 +561,8 @@ impl LayoutOptions {
 pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
     family: crate::family::FamilyExecutionView<'a>,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) presentation_config: Option<&'a merman_model::presentation::PresentationConfig>,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
@@ -575,10 +577,13 @@ impl<'a> LayoutExecution<'a> {
     pub(crate) fn new(
         request: &'a LayoutOptions,
         family: crate::family::FamilyExecutionView<'a>,
+        _config: Option<&'a merman_model::presentation::PresentationConfig>,
     ) -> Self {
         Self {
             request,
             family,
+            #[cfg(feature = "layout-shoal")]
+            presentation_config: _config,
             text_measurer: family
                 .session()
                 .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout),
@@ -595,6 +600,7 @@ impl<'a> LayoutExecution<'a> {
         Self::new(
             request,
             crate::family::FamilyExecutionView::for_test(session, family_id, backend),
+            None,
         )
     }
 

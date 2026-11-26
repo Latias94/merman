@@ -1,12 +1,26 @@
 //! Standalone layout of measured directed graphs. Coordinates use the caller's drawing units.
+//!
+//! Layout stages resolve aesthetic conflicts in priority order.
+//!
+//! | Priority | Owner | Rule |
+//! | --- | --- | --- |
+//! | P0 | Placement, routing, and clearance | Keep shapes, labels, and marker footprints clear. |
+//! | P1 | Orientation and ordering | Minimize crossings, keep spines straight, and route feedback outside. |
+//! | P2 | Routing and paint | Prefer straight shafts, then a single monotone sweep. |
+//! | P3 | Ports and label placement | Align sibling turns and balance labels on the visible shaft. |
+//! | P4 | Spacing and group fitting | Maintain spatial rhythm and let titles yield to routes. |
+//! | P5 | Ordering and anchoring | Preserve authored order and stable positions when crossing-neutral. |
+//! | P6 | Compaction and packing | Use available space without reducing clearance. |
 
 #![forbid(unsafe_code)]
 
 mod adaptive;
+pub mod card_grid;
 mod compound;
 mod flat;
 #[doc(hidden)]
 pub mod geom;
+pub mod grid;
 mod model;
 mod options;
 mod ortho;

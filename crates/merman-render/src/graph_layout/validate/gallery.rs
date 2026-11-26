@@ -1325,6 +1325,7 @@ fn replay_aesthetic_witnesses() {
                 assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
             }
             if name.starts_with("release") {
+                aesthetic_witnesses::assert_balanced_branches(&metrics, "checks", name, direction);
                 assert!(
                     metrics
                         .marker_faces
@@ -1427,7 +1428,7 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 assert!(gap < 110.0, "{direction}: labeled gap takes {gap:.2}px");
             } else {
                 assert!(
-                    (gap - 50.0).abs() < FLATNESS,
+                    (gap - merman_layout_shoal::Spacing::default().rank).abs() < FLATNESS,
                     "{direction}: unlabeled gap takes {gap:.2}px"
                 );
             }

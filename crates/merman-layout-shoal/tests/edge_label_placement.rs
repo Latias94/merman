@@ -40,6 +40,7 @@ fn a_short_measured_label_stays_centered_on_its_shaft_in_the_original_gap() {
         ] {
             let mut options = Options::default();
             options.routing = routing;
+            options.inline_labels = false;
             let mut graph = graph(direction, &[size(60.0, 40.0); 2], &[(0, 1)]);
             let unlabelled = layout(&graph, &options).unwrap();
             let measured = size(23.0, 16.0);
@@ -160,7 +161,7 @@ fn a_gap_without_marker_room_splits_and_the_next_gap_can_still_place_inline() {
 }
 
 #[test]
-fn a_through_edge_reserves_tiers_at_its_shared_rank_faces() {
+fn a_through_edge_allows_inline_labels_when_their_corridors_clear() {
     let mut graph = graph(
         Direction::Down,
         &[size(60.0, 40.0); 4],
@@ -170,7 +171,7 @@ fn a_through_edge_reserves_tiers_at_its_shared_rank_faces() {
         edge.label = Some(size(36.0, 20.0));
     }
     let drawing = layout(&graph, &opt_in()).unwrap();
-    assert_eq!(drawing.node_ranks, [0, 2, 4, 5]);
+    assert_eq!(drawing.node_ranks, [0, 1, 2, 3]);
     let last_edge = &drawing.edges[2];
     assert!(
         last_edge
@@ -228,7 +229,7 @@ fn horizontal_gap_budgets_both_visible_markers_before_trying_inline_placement() 
         length: 7.0,
         width: 10.0,
     };
-    let measured = size(34.0, 18.0);
+    let measured = size(30.0, 18.0);
     for direction in [Direction::Right, Direction::Left] {
         let mut graph = graph(direction, &[size(60.0, 40.0); 2], &[(0, 1)]);
         graph.edges[0].label = Some(measured);
@@ -254,8 +255,7 @@ fn horizontal_gap_budgets_both_visible_markers_before_trying_inline_placement() 
         assert_eq!(same_budget.used, meter.used);
         assert_eq!(split.stats.dummy_nodes, 1);
 
-        // A width-zero straight lead should leave room for a label on the shaft.
-        graph.edges[0].start_marker.width = 0.0;
+        graph.edges[0].start_marker = MarkerMetrics::default();
         let inline = layout(&graph, &options).unwrap();
         assert_eq!(inline.stats.dummy_nodes, 0);
         let edge = &inline.edges[0];
@@ -265,7 +265,7 @@ fn horizontal_gap_budgets_both_visible_markers_before_trying_inline_placement() 
         let label = edge.label_center.unwrap();
         assert_eq!(label.y, start.y);
         assert_eq!(label.y, end.y);
-        let padding = options.spacing.edge;
+        let padding = options.spacing.edge * 0.35;
         assert!((label.x - start.x).abs() > measured.width * 0.5 + padding);
         assert!((label.x - end.x).abs() > measured.width * 0.5 + padding + marker.length);
     }

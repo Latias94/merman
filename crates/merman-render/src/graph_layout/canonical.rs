@@ -2,12 +2,14 @@ use super::contour::ShapePortProfile;
 use super::ir::{
     Axis, BorderStitch, Endpoint, KnotKind, MeasuredGraph, Rect, RoutePoint, Side, SolvedGraph,
 };
-use super::route_paint::{self, Clearance, ObstacleOwner, PaintedRoute, RouteStyle};
+use super::route_paint::{self, ObstacleOwner, PaintedRoute, RouteStyle};
 use super::{Marker, edge_paint_error};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
+use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use kurbo::Vec2;
+use merman_render_core::graph_layout::axis_clearance::AxisClearance;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
@@ -20,6 +22,7 @@ struct AxisPath {
     markers: (Marker, Marker),
     knots: Vec<(Axis, KnotKind)>,
     stitches: Range<usize>,
+    corridor_clearance: f64,
 }
 
 #[derive(Debug)]
@@ -28,7 +31,7 @@ pub(crate) struct CanonicalRoutes {
     paths: FxHashMap<String, AxisPath>,
     stitches: Vec<BorderStitch>,
     stitch_contacts: Vec<RoutePoint>,
-    clearance: Clearance,
+    clearance: AxisClearance,
 }
 
 pub(crate) struct CanonicalPaintedEdge {
@@ -153,6 +156,11 @@ impl CanonicalRoutes {
                 markers: (measured.start_marker, measured.end_marker),
                 knots: edge.points.iter().map(|p| (p.axis, p.kind)).collect(),
                 stitches: start_stitch..next_stitch,
+                corridor_clearance: if (from, to) == (*first, *last) {
+                    edge.corridor_clearance
+                } else {
+                    0.0
+                },
             };
             if paths.insert(id.to_owned(), path).is_some() {
                 return Err(invalid("Duplicate canonical route identifier"));
@@ -173,6 +181,7 @@ impl CanonicalRoutes {
         translation: Vec2,
         stroke_outset: f64,
         style: RouteStyle,
+        work: &OperationWorkMeter,
     ) -> Result<CanonicalPaintedEdge> {
         let missing = || Error::InvalidModel {
             message: format!("Edge `{}` has no canonical paint geometry", edge.id),
@@ -216,19 +225,27 @@ impl CanonicalRoutes {
             route_paint::marker_lead(contacts.0, route.sides.0, route.markers.0);
         let (end_ref, end_lead) =
             route_paint::marker_lead(contacts.1, route.sides.1, route.markers.1);
+        let clearance = if style == RouteStyle::Curved
+            && route.corridor_clearance > stroke_outset
+            && stitches.is_empty()
+        {
+            None
+        } else {
+            Some(self.clearance.resolve(work)?.for_edge(
+                route.occurrence,
+                route.endpoints,
+                -translation,
+                stroke_outset,
+            ))
+        };
         let path = route_paint::build_svg_path(
             &points,
             route.sides,
             style,
             route.markers,
-            route_paint::CurveTerminals::Fixed,
+            route_paint::CurveTerminals::Smooth,
             stitches,
-            Some(self.clearance.for_edge(
-                route.occurrence,
-                route.endpoints,
-                -translation,
-                stroke_outset,
-            )),
+            clearance,
         )
         .map_err(|error| edge_paint_error(&edge.id, error))?;
         Ok(CanonicalPaintedEdge {
@@ -251,7 +268,10 @@ fn label_bounds(label: &LayoutLabel) -> kurbo::Rect {
     kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
 }
 
-fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Result<Clearance> {
+fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Result<AxisClearance> {
+    if solved.edges.is_empty() {
+        return Ok(AxisClearance::default());
+    }
     let shapes = work.checked_add(solved.nodes.len(), solved.groups.len())?;
     work.charge_adapter(work.checked_add(shapes, solved.edges.len())?)?;
     let mut entries = Vec::new();
@@ -276,5 +296,5 @@ fn obstacles(solved: &SolvedGraph, work: &mut OperationLayoutWorkControl) -> Res
         .checked_ilog2()
         .map_or(0, |levels| levels as usize + 1);
     work.charge_adapter(work.checked_mul(entries.len(), levels)?)?;
-    Ok(Clearance::new(entries))
+    Ok(AxisClearance::new(entries))
 }

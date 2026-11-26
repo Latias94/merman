@@ -4,7 +4,8 @@
 use super::{
     Component, Expanded, Kind, acyclic::Orientation, position::extents, to_canonical_port,
 };
-use crate::work::{LayoutResult, Work, filled, reserved};
+use crate::scratch::{capacity_bytes, clear_reserve};
+use crate::work::{LayoutResult, Work};
 use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
 mod mental_map;
@@ -19,13 +20,19 @@ const MIN_BOUNDARY_PITCH: f64 = 1.;
 const TOP: usize = 0;
 const BOTTOM: usize = 1;
 
-fn copy<T: Copy>(values: &[T]) -> LayoutResult<Vec<T>> {
-    let mut out = reserved(values.len())?;
+fn copy_into<T: Copy>(out: &mut Vec<T>, values: &[T]) -> LayoutResult<()> {
+    clear_reserve(out, values.len())?;
     out.extend_from_slice(values);
-    Ok(out)
+    Ok(())
 }
 
-#[derive(Clone, Copy)]
+fn fill<T: Copy>(out: &mut Vec<T>, len: usize, value: T) -> LayoutResult<()> {
+    clear_reserve(out, len)?;
+    out.resize(len, value);
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Interval {
     lo: f64,
     hi: f64,
@@ -50,7 +57,7 @@ impl Interval {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Role {
     Leaves,
     Arrives,
@@ -73,14 +80,12 @@ fn vertex(g: &Expanded, e: usize, side: usize) -> usize {
     }
 }
 
-struct Geometry<'a> {
-    g: &'a Expanded,
-    columns: Option<super::lanes::Columns<'a>>,
+#[derive(Debug, Default)]
+struct GeometryScratch {
     x: Vec<f64>,
     dx: [Vec<f64>; 2],
     pos: Vec<usize>,
     extent: Vec<(f64, f64)>,
-    envelope: Interval,
     bare: Vec<bool>,
     labels_only: Vec<bool>,
     span: Vec<f64>,
@@ -94,80 +99,113 @@ struct Geometry<'a> {
     twin: Vec<usize>,
     protected: Vec<bool>,
     keep: Vec<bool>,
+}
+
+impl GeometryScratch {
+    fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.x)
+            + self.dx.iter().map(capacity_bytes).sum::<usize>()
+            + capacity_bytes(&self.pos)
+            + capacity_bytes(&self.extent)
+            + capacity_bytes(&self.bare)
+            + capacity_bytes(&self.labels_only)
+            + capacity_bytes(&self.span)
+            + capacity_bytes(&self.free)
+            + self.role.iter().map(capacity_bytes).sum::<usize>()
+            + self.terminal.iter().map(capacity_bytes).sum::<usize>()
+            + self.follow.iter().map(capacity_bytes).sum::<usize>()
+            + capacity_bytes(&self.direct_end)
+            + capacity_bytes(&self.twin)
+            + capacity_bytes(&self.protected)
+            + capacity_bytes(&self.keep)
+    }
+}
+
+struct Geometry<'a> {
+    g: &'a Expanded,
+    columns: Option<super::lanes::Columns<'a>>,
+    data: &'a mut GeometryScratch,
+    envelope: Interval,
     has_position_hints: bool,
 }
 
 impl<'a> Geometry<'a> {
     fn new(
         g: &'a Expanded,
-        c: &Component,
-        orientation: &Orientation,
+        (c, orientation): (&Component, &Orientation),
         graph: &Graph,
         options: &Options,
         x: &[f64],
+        (geometry, chain_ids): (&'a mut GeometryScratch, &mut Vec<usize>),
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
         let n = x.len();
         let m = g.from.len();
         work.charge(n.checked_mul(12).ok_or(WorkError::ArithmeticOverflow)?)?;
         work.charge(m.checked_mul(8).ok_or(WorkError::ArithmeticOverflow)?)?;
+        copy_into(&mut geometry.x, x)?;
+        copy_into(&mut geometry.dx[TOP], &g.target_offset)?;
+        copy_into(&mut geometry.dx[BOTTOM], &g.source_offset)?;
+        fill(&mut geometry.pos, n, 0)?;
+        clear_reserve(&mut geometry.extent, n)?;
+        clear_reserve(&mut geometry.bare, g.layers.len())?;
+        clear_reserve(&mut geometry.labels_only, g.layers.len())?;
+        fill(&mut geometry.span, n, 0.)?;
+        fill(&mut geometry.free, n, [0; 2])?;
+        fill(&mut geometry.role[TOP], m, Role::Arrives)?;
+        fill(&mut geometry.role[BOTTOM], m, Role::Leaves)?;
+        for side in [TOP, BOTTOM] {
+            fill(&mut geometry.terminal[side], m, 0)?;
+            fill(&mut geometry.follow[side], m, 0)?;
+        }
+        fill(&mut geometry.direct_end, n, [false; 2])?;
+        fill(&mut geometry.twin, n, END)?;
+        fill(&mut geometry.protected, n, false)?;
+        fill(&mut geometry.keep, n, true)?;
         let mut s = Self {
             g,
             columns: None,
-            x: copy(x)?,
-            dx: [copy(&g.target_offset)?, copy(&g.source_offset)?],
-            pos: filled(n, 0)?,
-            extent: reserved(n)?,
+            data: geometry,
             envelope: Interval {
                 lo: f64::INFINITY,
                 hi: f64::NEG_INFINITY,
             },
-            bare: reserved(g.layers.len())?,
-            labels_only: reserved(g.layers.len())?,
-            span: filled(n, 0.)?,
-            free: filled(n, [0; 2])?,
-            role: [filled(m, Role::Arrives)?, filled(m, Role::Leaves)?],
-            terminal: [filled(m, 0)?, filled(m, 0)?],
-            follow: [filled(m, 0)?, filled(m, 0)?],
-            direct_end: filled(n, [false; 2])?,
-            twin: filled(n, END)?,
-            protected: filled(n, false)?,
-            keep: filled(n, true)?,
             has_position_hints: false,
         };
         for (v, &center) in x.iter().enumerate() {
             let (left, right) = extents(g, c, options, v as u32);
-            s.extent.push((left, right));
+            s.data.extent.push((left, right));
             s.envelope.lo = s.envelope.lo.min(center - left);
             s.envelope.hi = s.envelope.hi.max(center + right);
             if let Some(node) = c.nodes.get(v) {
                 s.has_position_hints |= c.nodes.len() > 1
                     && !s.has_position_hints
                     && node.position_hint_in(graph.direction, g.rank[v]).is_some();
-                s.span[v] = node
+                s.data.span[v] = node
                     .port_span
                     .unwrap_or((g.width[v] - 2. * options.spacing.corner_clearance).max(0.))
                     .min(g.width[v]);
             }
         }
         for row in &g.layers {
-            s.bare
+            s.data
+                .bare
                 .push(row.iter().all(|&v| g.kind[v as usize] == Kind::Dummy));
-            s.labels_only.push(
+            s.data.labels_only.push(
                 row.iter().all(|&v| g.kind[v as usize].interior())
                     && row.iter().any(|&v| g.kind[v as usize] == Kind::Label),
             );
             for (i, &v) in row.iter().enumerate() {
-                s.pos[v as usize] = i;
+                s.data.pos[v as usize] = i;
             }
         }
         let mut start = 0;
-        let mut chain_ids = reserved(g.chains.len())?;
+        clear_reserve(chain_ids, g.chains.len())?;
         for (i, chain) in g.chains.iter().enumerate() {
             work.visit(chain.len())?;
             if g.direct[i] {
-                s.direct_end[chain[0] as usize][BOTTOM] = true;
-                s.direct_end[*chain.last().unwrap() as usize][TOP] = true;
+                s.data.direct_end[chain[0] as usize][BOTTOM] = true;
+                s.data.direct_end[*chain.last().unwrap() as usize][TOP] = true;
                 continue;
             }
             let last = start + chain.len() - 2;
@@ -179,24 +217,26 @@ impl<'a> Geometry<'a> {
                 (spec.source_port, spec.target_port)
             };
             for e in start..=last {
-                s.terminal[TOP][e] = start;
-                s.terminal[BOTTOM][e] = last;
-                s.follow[TOP][e] = if e > start && s.bare[g.rank[g.from[e] as usize] as usize] {
-                    s.follow[TOP][e - 1]
-                } else {
-                    e
-                };
+                s.data.terminal[TOP][e] = start;
+                s.data.terminal[BOTTOM][e] = last;
+                s.data.follow[TOP][e] =
+                    if e > start && s.data.bare[g.rank[g.from[e] as usize] as usize] {
+                        s.data.follow[TOP][e - 1]
+                    } else {
+                        e
+                    };
                 if reversed {
-                    s.role[TOP][e] = Role::Leaves;
-                    s.role[BOTTOM][e] = Role::Arrives;
+                    s.data.role[TOP][e] = Role::Leaves;
+                    s.data.role[BOTTOM][e] = Role::Arrives;
                 }
             }
             for e in (start..=last).rev() {
-                s.follow[BOTTOM][e] = if e < last && s.bare[g.rank[g.to[e] as usize] as usize] {
-                    s.follow[BOTTOM][e + 1]
-                } else {
-                    e
-                };
+                s.data.follow[BOTTOM][e] =
+                    if e < last && s.data.bare[g.rank[g.to[e] as usize] as usize] {
+                        s.data.follow[BOTTOM][e + 1]
+                    } else {
+                        e
+                    };
             }
             for (side, e, hint) in [(BOTTOM, start, src), (TOP, last, dst)] {
                 let v = vertex(g, e, side);
@@ -214,13 +254,15 @@ impl<'a> Geometry<'a> {
                     } => Some(offset),
                     // The transverse coordinate of a side stub is the face itself. Its offset
                     // along the flow remains the router's (possibly signed) side parameter.
-                    PortSideHint::FixedOffset { .. } | PortSideHint::Side(_) => Some(s.dx[side][e]),
+                    PortSideHint::FixedOffset { .. } | PortSideHint::Side(_) => {
+                        Some(s.data.dx[side][e])
+                    }
                 };
                 if let Some(offset) = fixed {
-                    s.role[side][e] = Role::Held;
-                    s.dx[side][e] = offset;
+                    s.data.role[side][e] = Role::Held;
+                    s.data.dx[side][e] = offset;
                 } else {
-                    s.free[v][side] += 1;
+                    s.data.free[v][side] += 1;
                 }
             }
             if chain.len() > 2 {
@@ -232,7 +274,7 @@ impl<'a> Geometry<'a> {
             let chain = &g.chains[i];
             (chain[0], chain[chain.len() - 1])
         };
-        work.sort(&mut chain_ids, |&a, &b| ends(a).cmp(&ends(b)))?;
+        work.sort(chain_ids, |&a, &b| ends(a).cmp(&ends(b)))?;
         for twins in chain_ids
             .chunk_by(|&a, &b| ends(a) == ends(b))
             .filter(|ids| ids.len() > 1)
@@ -243,7 +285,7 @@ impl<'a> Geometry<'a> {
             for &i in twins {
                 let chain = &g.chains[i];
                 for &v in &chain[1..chain.len() - 1] {
-                    s.twin[v as usize] = twins[0];
+                    s.data.twin[v as usize] = twins[0];
                 }
             }
         }
@@ -251,7 +293,7 @@ impl<'a> Geometry<'a> {
     }
 
     fn at(&self, e: usize, side: usize) -> f64 {
-        self.x[vertex(self.g, e, side)] + self.dx[side][e]
+        self.data.x[vertex(self.g, e, side)] + self.data.dx[side][e]
     }
 
     fn same_lane(&self, a: usize, b: usize) -> bool {
@@ -265,8 +307,8 @@ impl<'a> Geometry<'a> {
 
     fn room_with_slack(&self, v: usize, same: impl Fn(usize) -> bool, node_slack: f64) -> Interval {
         let row = &self.g.layers[self.g.rank[v] as usize];
-        let i = self.pos[v];
-        let (l, r) = self.extent[v];
+        let i = self.data.pos[v];
+        let (l, r) = self.data.extent[v];
         let slack = |neighbor| {
             if self.g.kind[neighbor] == Kind::Node {
                 node_slack
@@ -284,23 +326,23 @@ impl<'a> Geometry<'a> {
         if i > 0 {
             let p = row[i - 1] as usize;
             if !same(p) {
-                lo = lo.max(self.x[p] + (self.extent[p].1 - slack(p)) + l);
+                lo = lo.max(self.data.x[p] + (self.data.extent[p].1 - slack(p)) + l);
             }
         }
         if i + 1 < row.len() {
             let q = row[i + 1] as usize;
             if !same(q) {
-                hi = hi.min(self.x[q] - (self.extent[q].0 - slack(q)) - r);
+                hi = hi.min(self.data.x[q] - (self.data.extent[q].0 - slack(q)) - r);
             }
         }
         Interval { lo, hi }
     }
 
     fn movable(&self, v: usize) -> Interval {
-        if self.protected[v] {
+        if self.data.protected[v] {
             Interval {
-                lo: self.x[v],
-                hi: self.x[v],
+                lo: self.data.x[v],
+                hi: self.data.x[v],
             }
         } else {
             self.room(v, |_| false)
@@ -308,12 +350,13 @@ impl<'a> Geometry<'a> {
     }
 
     fn free_bend(&self, v: usize) -> bool {
-        self.g.kind[v] == Kind::Dummy && !self.protected[v] && self.twin[v] == END
+        self.g.kind[v] == Kind::Dummy && !self.data.protected[v] && self.data.twin[v] == END
     }
 }
 
 // Weighted union by size with explicit member lists. Checking a candidate translation visits
 // only that block and its immediate rank neighbors, including on ranks with multiple members.
+#[derive(Debug, Default)]
 struct Blocks {
     root: Vec<usize>,
     next: Vec<usize>,
@@ -324,21 +367,25 @@ struct Blocks {
 const END: usize = usize::MAX;
 
 impl Blocks {
-    fn new(g: &Expanded) -> LayoutResult<Self> {
+    fn rebuild(&mut self, g: &Expanded) -> LayoutResult<()> {
         let n = g.rank.len();
-        let mut root = reserved(n)?;
-        root.extend(0..n);
-        let tail = copy(&root)?;
-        let mut solid = reserved(n)?;
-        solid.extend(g.kind.iter().map(|k| *k != Kind::Dummy));
-        Ok(Self {
-            root,
-            next: filled(n, END)?,
-            tail,
-            size: filled(n, 1)?,
-            solid,
-        })
+        clear_reserve(&mut self.root, n)?;
+        self.root.extend(0..n);
+        copy_into(&mut self.tail, &self.root)?;
+        clear_reserve(&mut self.solid, n)?;
+        self.solid.extend(g.kind.iter().map(|k| *k != Kind::Dummy));
+        fill(&mut self.next, n, END)?;
+        fill(&mut self.size, n, 1)
     }
+
+    fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.root)
+            + capacity_bytes(&self.next)
+            + capacity_bytes(&self.tail)
+            + capacity_bytes(&self.size)
+            + capacity_bytes(&self.solid)
+    }
+
     fn members(&self, b: usize) -> impl Iterator<Item = usize> + '_ {
         std::iter::successors(Some(b), |&v| (self.next[v] != END).then_some(self.next[v]))
     }
@@ -366,20 +413,20 @@ impl Blocks {
         let mut interval = Interval::ALL;
         work.visit(self.size[b])?;
         for v in self.members(b) {
-            if s.protected[v] {
+            if s.data.protected[v] {
                 return Ok(Interval { lo: 0., hi: 0. });
             }
             let room = s.room(v, |u| self.root[u] == b);
             interval = interval.intersect(Interval {
-                lo: room.lo - s.x[v],
-                hi: room.hi - s.x[v],
+                lo: room.lo - s.data.x[v],
+                hi: room.hi - s.data.x[v],
             });
         }
         Ok(interval)
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Fan {
     left: usize,
     right: usize,
@@ -399,7 +446,7 @@ fn fan(
     let other = 1 - side;
     let edges = incident(g, v, side);
     work.visit(edges.len())?;
-    if edges.len() < 2 || s.direct_end[v][side] {
+    if edges.len() < 2 || s.data.direct_end[v][side] {
         return Ok(None);
     }
     let mut first = usize::MAX;
@@ -410,14 +457,14 @@ fn fan(
         private: true,
     };
     for &e in edges {
-        let e = s.terminal[side][e as usize];
+        let e = s.data.terminal[side][e as usize];
         let u = vertex(g, e, other);
-        let i = s.pos[u];
+        let i = s.data.pos[u];
         if Some(g.rank[u] as usize) != next_real[g.rank[v] as usize][side] || seen[u] == stamp {
             return Ok(None);
         }
         seen[u] = stamp;
-        fan.private &= incident(g, u, other).len() == 1 && !s.direct_end[u][other];
+        fan.private &= incident(g, u, other).len() == 1 && !s.data.direct_end[u][other];
         if i < first {
             first = i;
             fan.left = e;
@@ -438,7 +485,7 @@ fn center(
     fan: Fan,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    if s.protected[v] {
+    if s.data.protected[v] {
         return Ok(());
     }
     let other = 1 - side;
@@ -449,7 +496,7 @@ fn center(
     if blocks.root[a] == block || blocks.root[b] == block {
         return Ok(());
     }
-    let desired = target - s.x[v];
+    let desired = target - s.data.x[v];
     let Some(shift) = blocks.allowed(s, block, work)?.closest(desired) else {
         return Ok(());
     };
@@ -470,22 +517,37 @@ fn center(
         }
     }
     for member in blocks.members(block) {
-        s.x[member] += shift;
-        s.protected[member] = true;
+        s.data.x[member] += shift;
+        s.data.protected[member] = true;
     }
     for (branch, segment) in [(a, fan.left), (b, fan.right)] {
-        s.protected[branch] = true;
-        if shift == desired && s.free[branch][other] > 1 && s.role[other][segment] != Role::Held {
-            s.role[other][segment] = Role::Held;
-            s.free[branch][other] -= 1;
+        s.data.protected[branch] = true;
+        if shift == desired
+            && s.data.free[branch][other] > 1
+            && s.data.role[other][segment] != Role::Held
+        {
+            s.data.role[other][segment] = Role::Held;
+            s.data.free[branch][other] -= 1;
         }
     }
     Ok(())
 }
 
-fn center_forks(s: &mut Geometry<'_>, real: usize, work: &mut Work<'_>) -> LayoutResult<()> {
+fn center_forks(
+    s: &mut Geometry<'_>,
+    real: usize,
+    scratch: &mut PassScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     let g = s.g;
-    let mut nearest = filled(g.layers.len(), [None; 2])?;
+    let PassScratch {
+        nearest,
+        blocks,
+        fans,
+        indices: seen,
+        ..
+    } = scratch;
+    fill(nearest, g.layers.len(), [None; 2])?;
     for side in [TOP, BOTTOM] {
         let mut prev = None;
         for i in 0..g.layers.len() {
@@ -500,7 +562,7 @@ fn center_forks(s: &mut Geometry<'_>, real: usize, work: &mut Work<'_>) -> Layou
             }
         }
     }
-    let mut blocks = Blocks::new(g)?;
+    blocks.rebuild(g)?;
     for &source in g.layers.iter().flatten() {
         work.visit(1)?;
         let [segment] = g.succ.at(source) else {
@@ -509,18 +571,18 @@ fn center_forks(s: &mut Geometry<'_>, real: usize, work: &mut Work<'_>) -> Layou
         let segment = *segment as usize;
         let target = g.to[segment];
         if g.pred.at(target).len() == 1
-            && !s.direct_end[source as usize][BOTTOM]
-            && !s.direct_end[target as usize][TOP]
+            && !s.data.direct_end[source as usize][BOTTOM]
+            && !s.data.direct_end[target as usize][TOP]
             && (s.at(segment, TOP) - s.at(segment, BOTTOM)).abs() < INLINE
         {
             blocks.join(source as usize, target as usize, work)?;
         }
     }
-    let mut fans = filled(real, [None; 2])?;
-    let mut seen = filled(real, END)?;
+    fill(fans, real, [None; 2])?;
+    fill(seen, real, END)?;
     for (v, f) in fans.iter_mut().enumerate() {
         for side in [TOP, BOTTOM] {
-            f[side] = fan(s, v, side, &nearest, &mut seen, v * 2 + side, work)?;
+            f[side] = fan(s, v, side, nearest, seen, v * 2 + side, work)?;
         }
     }
     // Resolve a complete private diamond before any overlapping one-sided fork can move or
@@ -533,13 +595,13 @@ fn center_forks(s: &mut Geometry<'_>, real: usize, work: &mut Work<'_>) -> Layou
         let mut paired = true;
         for &e in g.succ.at(v as u32) {
             work.visit(1)?;
-            let u = vertex(g, s.terminal[BOTTOM][e as usize], TOP);
+            let u = vertex(g, s.data.terminal[BOTTOM][e as usize], TOP);
             let [out] = g.succ.at(u as u32) else {
                 paired = false;
                 break;
             };
-            let to = vertex(g, s.terminal[BOTTOM][*out as usize], TOP);
-            if s.direct_end[u][BOTTOM] || join.is_some_and(|j| j != to) {
+            let to = vertex(g, s.data.terminal[BOTTOM][*out as usize], TOP);
+            if s.data.direct_end[u][BOTTOM] || join.is_some_and(|j| j != to) {
                 paired = false;
                 break;
             }
@@ -550,18 +612,18 @@ fn center_forks(s: &mut Geometry<'_>, real: usize, work: &mut Work<'_>) -> Layou
             && let Some(back) = fans[j][TOP].filter(|f| f.private)
             && incident(g, j, TOP).len() == incident(g, v, BOTTOM).len()
         {
-            center(s, &blocks, v, BOTTOM, fork, work)?;
-            center(s, &blocks, j, TOP, back, work)?;
+            center(s, blocks, v, BOTTOM, fork, work)?;
+            center(s, blocks, j, TOP, back, work)?;
         }
     }
     for (v, f) in fans.iter().enumerate() {
         // A vertex with competing fans keeps its existing spine. A paired diamond has already
         // had first choice; ordinary private forks/joins and binary decision branches follow.
         if let [Some(fan), None] = *f {
-            center(s, &blocks, v, TOP, fan, work)?;
+            center(s, blocks, v, TOP, fan, work)?;
         }
         if let [None, Some(fan)] = *f {
-            center(s, &blocks, v, BOTTOM, fan, work)?;
+            center(s, blocks, v, BOTTOM, fan, work)?;
         }
     }
     Ok(())
@@ -585,14 +647,15 @@ fn choose(current: f64, a: (f64, usize), b: (f64, usize), room: Interval) -> Opt
 
 fn align_labels(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
     let g = s.g;
-    let endpoint =
-        |s: &Geometry<'_>, e: usize, side: usize| (s.at(e, side), s.free[vertex(g, e, side)][side]);
+    let endpoint = |s: &Geometry<'_>, e: usize, side: usize| {
+        (s.at(e, side), s.data.free[vertex(g, e, side)][side])
+    };
     for (i, chain) in g.chains.iter().enumerate() {
         if g.direct[i] || chain.len() < 3 {
             continue;
         }
         let inner = &chain[1..chain.len() - 1];
-        let placed = |v: u32| !s.bare[g.rank[v as usize] as usize];
+        let placed = |v: u32| !s.data.bare[g.rank[v as usize] as usize];
         let Some(&first) = inner.iter().find(|&&v| placed(v)) else {
             continue;
         };
@@ -606,30 +669,31 @@ fn align_labels(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
             .fold(Interval::ALL, |room, v| {
                 room.intersect(s.movable(v as usize))
             });
-        let common = choose(s.x[first as usize], a, b, shared);
+        let common = choose(s.data.x[first as usize], a, b, shared);
         for &v in inner {
             if !placed(v) {
                 continue;
             }
             let id = v as usize;
             let target = common.or_else(|| {
-                let up = s.follow[TOP][g.pred.at(v)[0] as usize];
-                let down = s.follow[BOTTOM][g.succ.at(v)[0] as usize];
+                let up = s.data.follow[TOP][g.pred.at(v)[0] as usize];
+                let down = s.data.follow[BOTTOM][g.succ.at(v)[0] as usize];
                 choose(
-                    s.x[id],
+                    s.data.x[id],
                     endpoint(s, up, BOTTOM),
                     endpoint(s, down, TOP),
                     s.movable(id),
                 )
             });
             if let Some(target) = target {
-                s.x[id] = target;
+                s.data.x[id] = target;
             }
         }
     }
     Ok(())
 }
 
+#[derive(Debug)]
 struct Pool {
     mean: f64,
     count: usize,
@@ -707,53 +771,83 @@ fn weighted_pava(
     true
 }
 
+#[derive(Debug)]
 struct PortRun {
     v: usize,
     side: usize,
-    edges: Vec<usize>,
-    gap: Vec<f64>,
+    edges: std::ops::Range<usize>,
     bounds: Interval,
+}
+
+#[derive(Debug, Default)]
+struct PortRuns {
+    runs: Vec<PortRun>,
+    edges: Vec<usize>,
+    gaps: Vec<f64>,
+}
+
+impl PortRuns {
+    fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.runs) + capacity_bytes(&self.edges) + capacity_bytes(&self.gaps)
+    }
 }
 
 fn port_runs(
     s: &Geometry<'_>,
     real: usize,
     options: &Options,
+    PortRuns {
+        runs,
+        edges: run_edges,
+        gaps,
+    }: &mut PortRuns,
+    edges: &mut Vec<usize>,
     work: &mut Work<'_>,
-) -> LayoutResult<Vec<PortRun>> {
-    let mut runs = reserved(real)?;
+) -> LayoutResult<()> {
+    runs.clear();
+    run_edges.clear();
+    gaps.clear();
     let spacing = options.spacing;
     for v in 0..real {
         for side in [TOP, BOTTOM] {
             let ids = incident(s.g, v, side);
-            let free = s.free[v][side];
-            if ids.len() < 2 || free == 0 || s.span[v] <= 0. {
+            let free = s.data.free[v][side];
+            if ids.len() < 2 || free == 0 || s.data.span[v] <= 0. {
                 continue;
             }
             work.visit(ids.len())?;
-            let mut edges = reserved(ids.len())?;
+            clear_reserve(edges, ids.len())?;
             edges.extend(ids.iter().map(|&e| e as usize));
-            work.sort(&mut edges, |&a, &b| {
-                let key = |e| s.pos[vertex(s.g, e, 1 - side)];
-                s.dx[side][a]
-                    .total_cmp(&s.dx[side][b])
+            work.sort(edges, |&a, &b| {
+                let key = |e| s.data.pos[vertex(s.g, e, 1 - side)];
+                s.data.dx[side][a]
+                    .total_cmp(&s.data.dx[side][b])
                     .then(key(a).cmp(&key(b)))
                     .then(a.cmp(&b))
             })?;
-            let half = s.span[v] * 0.5;
+            let half = s.data.span[v] * 0.5;
             let mut start = 0;
             for end in 0..=edges.len() {
-                if end < edges.len() && s.role[side][edges[end]] != Role::Held {
+                if end < edges.len() && s.data.role[side][edges[end]] != Role::Held {
                     continue;
                 }
                 if start < end {
                     let free = &edges[start..end];
-                    let left = start.checked_sub(1).map(|i| s.dx[side][edges[i]]);
-                    let right = edges.get(end).map(|&e| s.dx[side][e]);
-                    let mut gap = filled(free.len(), 0.)?;
+                    let left = start.checked_sub(1).map(|i| s.data.dx[side][edges[i]]);
+                    let right = edges.get(end).map(|&e| s.data.dx[side][e]);
+                    let offset = run_edges.len();
+                    run_edges
+                        .try_reserve(free.len())
+                        .map_err(|_| LayoutError::AllocationLimit)?;
+                    gaps.try_reserve(free.len())
+                        .map_err(|_| LayoutError::AllocationLimit)?;
+                    run_edges.extend_from_slice(free);
+                    let end_offset = run_edges.len();
+                    gaps.resize(end_offset, 0.);
+                    let gap = &mut gaps[offset..end_offset];
                     let mixed = free
                         .windows(2)
-                        .any(|pair| s.role[side][pair[0]] != s.role[side][pair[1]]);
+                        .any(|pair| s.data.role[side][pair[0]] != s.data.role[side][pair[1]]);
                     let requested = if mixed || left.is_some() || right.is_some() {
                         spacing.port_pitch.max(spacing.min_port_pitch)
                     } else {
@@ -763,7 +857,7 @@ fn port_runs(
                     for tier in 0..=2 {
                         let mut units = 0.;
                         for (pair, step) in free.windows(2).zip(&mut gap[1..]) {
-                            let (a, b) = (s.role[side][pair[0]], s.role[side][pair[1]]);
+                            let (a, b) = (s.data.role[side][pair[0]], s.data.role[side][pair[1]]);
                             *step = if tier == 2 && a == b {
                                 0.
                             } else if tier == 1 && a == Role::Leaves && a == b {
@@ -774,7 +868,7 @@ fn port_runs(
                             units += *step;
                         }
                         let mut limit = if units > 0. {
-                            s.span[v] / units
+                            s.data.span[v] / units
                         } else {
                             f64::INFINITY
                         };
@@ -792,7 +886,7 @@ fn port_runs(
                             break;
                         }
                     }
-                    for step in &mut gap {
+                    for step in gap {
                         *step *= pitch;
                     }
                     let bounds = Interval {
@@ -800,12 +894,11 @@ fn port_runs(
                         hi: right.map_or(half, |x| (x - pitch).min(half)),
                     };
                     crate::work::push(
-                        &mut runs,
+                        runs,
                         PortRun {
                             v,
                             side,
-                            edges: copy(free)?,
-                            gap,
+                            edges: offset..end_offset,
                             bounds,
                         },
                     )?;
@@ -814,30 +907,30 @@ fn port_runs(
             }
         }
     }
-    Ok(runs)
+    Ok(())
 }
 
 fn wanted(s: &Geometry<'_>, f: &PortRun, e: usize, again: bool) -> f64 {
     let v = f.v;
     let side = f.side;
     let other = 1 - side;
-    let e = s.follow[side][e];
+    let e = s.data.follow[side][e];
     let u = vertex(s.g, e, other);
-    let span = s.span[v];
-    let center = s.x[v];
+    let span = s.data.span[v];
+    let center = s.data.x[v];
     let point = s.at(e, other);
-    if s.free[v][side] < 2 {
+    if s.data.free[v][side] < 2 {
         return 0.;
     }
     if again && (point - center).abs() <= span * 0.5 + INLINE {
         return (point - center).clamp(-span * 0.5, span * 0.5);
     }
-    let width = if s.role[other][e] != Role::Held && s.free[u][other] >= 2 {
-        s.span[u]
+    let width = if s.data.role[other][e] != Role::Held && s.data.free[u][other] >= 2 {
+        s.data.span[u]
     } else {
         0.
     };
-    let middle = if width > 0. { s.x[u] } else { point };
+    let middle = if width > 0. { s.data.x[u] } else { point };
     let lo = (center - span * 0.5).max(middle - width * 0.5);
     let hi = (center + span * 0.5).min(middle + width * 0.5);
     if lo > hi {
@@ -852,21 +945,30 @@ fn settle(
     s: &mut Geometry<'_>,
     real: usize,
     options: &Options,
+    scratch: &mut PassScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let runs = port_runs(s, real, options, work)?;
-    let widest = runs.iter().map(|f| f.edges.len()).max().unwrap_or(0);
-    let mut values = reserved(widest)?;
-    let mut pools = reserved(widest)?;
+    let PassScratch {
+        ports,
+        indices,
+        row: RowScratch { values, pools, .. },
+        ..
+    } = scratch;
+    port_runs(s, real, options, ports, indices, work)?;
+    let widest = ports.runs.iter().map(|f| f.edges.len()).max().unwrap_or(0);
+    clear_reserve(values, widest)?;
+    clear_reserve(pools, widest)?;
     for pass in 0..6 {
         let mut moved = false;
-        for f in &runs {
-            work.visit(f.edges.len())?;
+        for f in &ports.runs {
+            let edges = &ports.edges[f.edges.clone()];
+            let gaps = &ports.gaps[f.edges.clone()];
+            work.visit(edges.len())?;
             values.clear();
-            values.extend(f.edges.iter().map(|&e| wanted(s, f, e, pass > 0)));
-            if pava(&mut values, &f.gap, f.bounds, ZeroGap::Equal, &mut pools) {
-                for (&e, &new) in f.edges.iter().zip(&values) {
-                    let dx = &mut s.dx[f.side][e];
+            values.extend(edges.iter().map(|&e| wanted(s, f, e, pass > 0)));
+            if pava(values, gaps, f.bounds, ZeroGap::Equal, pools) {
+                for (&e, &new) in edges.iter().zip(values.iter()) {
+                    let dx = &mut s.data.dx[f.side][e];
                     moved |= (*dx - new).abs() > COLLINEAR;
                     *dx = new;
                 }
@@ -879,18 +981,23 @@ fn settle(
     Ok(())
 }
 
-fn snap(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
+fn snap(s: &mut Geometry<'_>, scratch: &mut PassScratch, work: &mut Work<'_>) -> LayoutResult<()> {
     let g = s.g;
-    let mut blocks = Blocks::new(g)?;
-    let mut near = reserved(g.from.len())?;
-    let delta = |s: &Geometry<'_>, e: usize| s.at(s.follow[BOTTOM][e], TOP) - s.at(e, BOTTOM);
+    let PassScratch {
+        blocks,
+        indices: near,
+        ..
+    } = scratch;
+    blocks.rebuild(g)?;
+    clear_reserve(near, g.from.len())?;
+    let delta = |s: &Geometry<'_>, e: usize| s.at(s.data.follow[BOTTOM][e], TOP) - s.at(e, BOTTOM);
     for e in 0..g.from.len() {
         work.visit(1)?;
         let a = vertex(g, e, BOTTOM);
-        if g.kind[a] == Kind::Dummy && s.bare[g.rank[a] as usize] {
+        if g.kind[a] == Kind::Dummy && s.data.bare[g.rank[a] as usize] {
             continue;
         }
-        let b = vertex(g, s.follow[BOTTOM][e], TOP);
+        let b = vertex(g, s.data.follow[BOTTOM][e], TOP);
         let d = delta(s, e).abs();
         if d < COLLINEAR {
             blocks.join(a, b, work)?;
@@ -898,15 +1005,18 @@ fn snap(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
             near.push(e);
         }
     }
-    work.sort(&mut near, |&a, &b| {
+    work.sort(near, |&a, &b| {
         delta(s, a)
             .abs()
             .total_cmp(&delta(s, b).abs())
             .then(a.cmp(&b))
     })?;
-    for e in near {
+    for &e in near.iter() {
         work.visit(1)?;
-        let (a, b) = (vertex(g, e, BOTTOM), vertex(g, s.follow[BOTTOM][e], TOP));
+        let (a, b) = (
+            vertex(g, e, BOTTOM),
+            vertex(g, s.data.follow[BOTTOM][e], TOP),
+        );
         let (upper, lower) = (blocks.root[a], blocks.root[b]);
         let shift = delta(s, e);
         if upper == lower || shift.abs() > BEND_SNAP {
@@ -928,7 +1038,7 @@ fn snap(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
                 continue;
             }
             for v in blocks.members(block) {
-                s.x[v] += delta;
+                s.data.x[v] += delta;
             }
             blocks.join(a, b, work)?;
             break;
@@ -950,7 +1060,11 @@ fn lerp(s: &Geometry<'_>, a: u32, b: u32, v: u32, from: f64, to: f64) -> f64 {
     from + (to - from) * t
 }
 
-fn align_ports(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
+fn align_ports(
+    s: &mut Geometry<'_>,
+    targets: &mut Vec<f64>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     let g = s.g;
     for (row, kind, side) in [
         (g.layers.first(), Kind::StartPort, BOTTOM),
@@ -964,15 +1078,15 @@ fn align_ports(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
             let [edge] = incident(g, v, side) else {
                 return None;
             };
-            if g.kind[v] != kind || s.direct_end[v][side] {
+            if g.kind[v] != kind || s.data.direct_end[v][side] {
                 return None;
             }
             let edge = *edge as usize;
-            let attached = s.follow[side][edge];
-            Some(s.at(attached, 1 - side) - s.dx[side][edge])
+            let attached = s.data.follow[side][edge];
+            Some(s.at(attached, 1 - side) - s.data.dx[side][edge])
         };
         work.charge(row.len())?;
-        let mut targets = reserved(row.len())?;
+        clear_reserve(targets, row.len())?;
         let mut last_right = f64::NEG_INFINITY;
         for &v in row {
             work.visit(1)?;
@@ -986,18 +1100,22 @@ fn align_ports(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
             last_right = at + half;
         }
         if targets.len() == row.len() {
-            for (&v, at) in row.iter().zip(targets) {
-                s.x[v as usize] = at;
+            for (&v, &at) in row.iter().zip(targets.iter()) {
+                s.data.x[v as usize] = at;
             }
         }
     }
     Ok(())
 }
 
-fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
+fn de_jitter(
+    s: &mut Geometry<'_>,
+    options: &Options,
+    coordinates: &mut Vec<f64>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     let g = s.g;
     let node_slack = ((options.spacing.node - options.spacing.edge) * 0.5).clamp(0., MICRO_DRIFT);
-    let mut coordinates = Vec::new();
     for chain in &g.chains {
         let mut first = 1;
         while first + 1 < chain.len() {
@@ -1007,14 +1125,14 @@ fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> La
                 first += 1;
                 continue;
             }
-            let mut low = s.x[vertex];
+            let mut low = s.data.x[vertex];
             let mut high = low;
             let mut room = s.room_with_slack(vertex, |_| false, node_slack);
             let mut end = first + 1;
             while end + 1 < chain.len() && s.free_bend(chain[end] as usize) {
                 work.visit(1)?;
                 let next = chain[end] as usize;
-                let (lo, hi) = (low.min(s.x[next]), high.max(s.x[next]));
+                let (lo, hi) = (low.min(s.data.x[next]), high.max(s.data.x[next]));
                 let common = room.intersect(s.room_with_slack(next, |_| false, node_slack));
                 if hi - lo > MICRO_DRIFT
                     || common.lo > hi
@@ -1046,7 +1164,7 @@ fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> La
                 coordinates
                     .try_reserve(run.len())
                     .map_err(|_| LayoutError::AllocationLimit)?;
-                coordinates.extend(run.iter().map(|&v| s.x[v as usize]));
+                coordinates.extend(run.iter().map(|&v| s.data.x[v as usize]));
                 let (_, middle, _) =
                     coordinates.select_nth_unstable_by(run.len() / 2, f64::total_cmp);
                 room.closest(*middle)
@@ -1056,7 +1174,7 @@ fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> La
             if let Some(x) = target {
                 work.visit(run.len())?;
                 for &v in run {
-                    s.x[v as usize] = x;
+                    s.data.x[v as usize] = x;
                 }
             }
             first = end;
@@ -1065,20 +1183,37 @@ fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> La
     Ok(())
 }
 
-fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
+fn straighten(
+    s: &mut Geometry<'_>,
+    options: &Options,
+    scratch: &mut PassScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     let g = s.g;
     let sep = options.spacing.edge;
     let curved = options.routing == RoutingStyle::Curved;
-    let mut want = copy(&s.x)?;
+    let PassScratch {
+        want,
+        indices: twins,
+        row: RowScratch {
+            values,
+            gaps,
+            pools,
+        },
+        clearance,
+        ranges,
+        ..
+    } = scratch;
+    copy_into(want, &s.data.x)?;
     for chain in &g.chains {
         let mut i = 1;
         while i + 1 < chain.len() {
-            if !s.bare[g.rank[chain[i] as usize] as usize] {
+            if !s.data.bare[g.rank[chain[i] as usize] as usize] {
                 i += 1;
                 continue;
             }
             let lo = i - 1;
-            while i + 1 < chain.len() && s.bare[g.rank[chain[i] as usize] as usize] {
+            while i + 1 < chain.len() && s.data.bare[g.rank[chain[i] as usize] as usize] {
                 i += 1;
             }
             let (a, b) = chord(s, chain, lo, i);
@@ -1088,13 +1223,19 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
             }
         }
     }
-    let widest = g.layers.iter().map(Vec::len).max().unwrap_or(0);
-    let mut twins = reserved(widest)?;
-    let mut values = reserved(widest)?;
-    let mut gaps = reserved(widest)?;
-    let mut pools = reserved(widest)?;
+    let widest = g
+        .layers
+        .iter()
+        .zip(&s.data.bare)
+        .filter_map(|(row, &bare)| bare.then_some(row.len()))
+        .max()
+        .unwrap_or(0);
+    clear_reserve(twins, widest)?;
+    clear_reserve(values, widest)?;
+    clear_reserve(gaps, widest)?;
+    clear_reserve(pools, widest)?;
     for (r, row) in g.layers.iter().enumerate() {
-        if !s.bare[r] {
+        if !s.data.bare[r] {
             continue;
         }
         work.visit(row.len())?;
@@ -1102,12 +1243,12 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
         twins.extend(
             row.iter()
                 .map(|&v| v as usize)
-                .filter(|&v| s.twin[v] != END),
+                .filter(|&v| s.data.twin[v] != END),
         );
-        work.sort(&mut twins, |&a, &b| {
-            (s.twin[a], s.pos[a]).cmp(&(s.twin[b], s.pos[b]))
+        work.sort(twins, |&a, &b| {
+            (s.data.twin[a], s.data.pos[a]).cmp(&(s.data.twin[b], s.data.pos[b]))
         })?;
-        for group in twins.chunk_by(|&a, &b| s.twin[a] == s.twin[b]) {
+        for group in twins.chunk_by(|&a, &b| s.data.twin[a] == s.data.twin[b]) {
             let center = want[group[0]].midpoint(want[*group.last().unwrap()]);
             for (k, &v) in group.iter().enumerate() {
                 want[v] = center + (k as f64 - (group.len() - 1) as f64 * 0.5) * sep;
@@ -1115,13 +1256,13 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
         }
         let mut first = 0;
         while first < row.len() {
-            if s.protected[row[first] as usize] {
+            if s.data.protected[row[first] as usize] {
                 first += 1;
                 continue;
             }
             let mut end = first + 1;
             while end < row.len()
-                && !s.protected[row[end] as usize]
+                && !s.data.protected[row[end] as usize]
                 && s.same_lane(row[first] as usize, row[end] as usize)
             {
                 end += 1;
@@ -1134,64 +1275,69 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
             gaps.clear();
             gaps.push(0.);
             gaps.extend(
-                ids.windows(2)
-                    .map(|pair| s.extent[pair[0] as usize].1 + s.extent[pair[1] as usize].0),
+                ids.windows(2).map(|pair| {
+                    s.data.extent[pair[0] as usize].1 + s.data.extent[pair[1] as usize].0
+                }),
             );
             let room = Interval {
                 lo: s.room(a, |_| false).lo,
                 hi: s.room(b, |_| false).hi,
             };
-            if pava(&mut values, &gaps, room, ZeroGap::Ordered, &mut pools) {
-                for (&v, &new) in ids.iter().zip(&values) {
-                    s.x[v as usize] = new;
+            if pava(values, gaps, room, ZeroGap::Ordered, pools) {
+                for (&v, &new) in ids.iter().zip(values.iter()) {
+                    s.data.x[v as usize] = new;
                 }
             }
             first = end;
         }
     }
 
-    let mut clear = Vec::new();
+    clearance.clear();
     if curved {
-        de_jitter(s, options, work)?;
+        de_jitter(s, options, values, work)?;
     } else {
-        clear = filled(s.x.len(), Interval::ALL)?;
+        fill(clearance, s.data.x.len(), Interval::ALL)?;
         for (r, row) in g.layers.iter().enumerate() {
-            if !s.labels_only[r] {
+            if !s.data.labels_only[r] {
                 continue;
             }
             let mut left = f64::NEG_INFINITY;
             let mut right = f64::INFINITY;
             for (&a, &b) in row.iter().zip(row.iter().rev()) {
                 let (a, b) = (a as usize, b as usize);
-                clear[a].lo = left;
-                clear[b].hi = right;
+                clearance[a].lo = left;
+                clearance[b].hi = right;
                 if g.kind[a] == Kind::Label {
-                    left = s.x[a] + g.width[a] * 0.5 + sep;
+                    left = s.data.x[a] + g.width[a] * 0.5 + sep;
                 }
                 if g.kind[b] == Kind::Label {
-                    right = s.x[b] - g.width[b] * 0.5 - sep;
+                    right = s.data.x[b] - g.width[b] * 0.5 - sep;
                 }
             }
         }
     }
     // A retained bend also anchors its neighboring runs. Recompute their chords before
     // omitting anything, since interpolation through the old endpoints is no longer valid.
-    let mut ranges = Vec::new();
+    ranges.clear();
     for chain in &g.chains {
         let can_skip = |v: u32| {
             let v = v as usize;
             let r = g.rank[v] as usize;
             g.kind[v] == Kind::Dummy
-                && (s.bare[r] || !curved && s.labels_only[r])
-                && !s.protected[v]
-                && s.twin[v] == END
+                && (s.data.bare[r] || !curved && s.data.labels_only[r])
+                && !s.data.protected[v]
+                && s.data.twin[v] == END
         };
         let mut i = 1;
         while i + 1 < chain.len() {
             if !can_skip(chain[i]) {
                 let v = chain[i] as usize;
-                if curved && s.columns.is_none() && s.free_bend(v) && !s.bare[g.rank[v] as usize] {
-                    s.keep[v] = false;
+                if curved
+                    && s.columns.is_none()
+                    && s.free_bend(v)
+                    && !s.data.bare[g.rank[v] as usize]
+                {
+                    s.data.keep[v] = false;
                 }
                 i += 1;
                 continue;
@@ -1200,7 +1346,7 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
             while i + 1 < chain.len() && can_skip(chain[i]) {
                 i += 1;
             }
-            crate::work::push(&mut ranges, (start, i))?;
+            crate::work::push(ranges, (start, i))?;
             while let Some((lo, hi)) = ranges.pop() {
                 if hi <= lo + 1 {
                     continue;
@@ -1212,7 +1358,7 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
                 for k in lo + 1..hi {
                     let v = chain[k] as usize;
                     let desired = lerp(s, chain[lo], chain[hi], chain[k], a, b);
-                    if (clear
+                    if (clearance
                         .get(v)
                         .is_some_and(|room| !room.contains(a.min(b)) || !room.contains(a.max(b)))
                         || !s.movable(v).contains(desired))
@@ -1222,18 +1368,79 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
                     }
                 }
                 if let Some(k) = blocker {
-                    crate::work::push(&mut ranges, (lo, k))?;
-                    crate::work::push(&mut ranges, (k, hi))?;
+                    crate::work::push(ranges, (lo, k))?;
+                    crate::work::push(ranges, (k, hi))?;
                 } else {
                     for &v in &chain[lo + 1..hi] {
-                        s.x[v as usize] = lerp(s, chain[lo], chain[hi], v, a, b);
-                        s.keep[v as usize] = false;
+                        s.data.x[v as usize] = lerp(s, chain[lo], chain[hi], v, a, b);
+                        s.data.keep[v as usize] = false;
                     }
                 }
             }
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Default)]
+struct RowScratch {
+    values: Vec<f64>,
+    gaps: Vec<f64>,
+    pools: Vec<Pool>,
+}
+
+impl RowScratch {
+    fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.values) + capacity_bytes(&self.gaps) + capacity_bytes(&self.pools)
+    }
+}
+
+#[derive(Debug, Default)]
+struct PassScratch {
+    // Chain IDs, visit stamps and sorted indices live in separate passes.
+    indices: Vec<usize>,
+    blocks: Blocks,
+    nearest: Vec<[Option<usize>; 2]>,
+    fans: Vec<[Option<Fan>; 2]>,
+    ports: PortRuns,
+    row: RowScratch,
+    want: Vec<f64>,
+    clearance: Vec<Interval>,
+    ranges: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct RefineScratch {
+    geometry: GeometryScratch,
+    passes: PassScratch,
+    mental_map: mental_map::ProjectionScratch,
+}
+
+impl RefineScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        let PassScratch {
+            indices,
+            blocks,
+            nearest,
+            fans,
+            ports,
+            row,
+            want,
+            clearance,
+            ranges,
+        } = &self.passes;
+        self.geometry.retained_bytes()
+            + capacity_bytes(indices)
+            + blocks.retained_bytes()
+            + capacity_bytes(nearest)
+            + capacity_bytes(fans)
+            + ports.retained_bytes()
+            + row.retained_bytes()
+            + capacity_bytes(want)
+            + capacity_bytes(clearance)
+            + capacity_bytes(ranges)
+            + self.mental_map.retained_bytes()
+    }
 }
 
 pub(super) fn refine(
@@ -1260,40 +1467,94 @@ pub(super) fn refine_in_columns(
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     work.charge(1)?;
-    let mut s = Geometry::new(g, c, orientation, graph, options, x, work)?;
+    let mut scratch = std::mem::take(&mut g.refine_scratch);
+    let result = refine_with_scratch(
+        g,
+        (c, orientation),
+        graph,
+        options,
+        x,
+        columns,
+        &mut scratch,
+        work,
+    );
+    let result = result.and_then(|()| {
+        let GeometryScratch {
+            x: coordinates,
+            dx: [target, source],
+            keep,
+            ..
+        } = &mut scratch.geometry;
+        // The keep flags have no other producer to size the spare on the first solve.
+        g.keep
+            .try_reserve_exact(keep.len().saturating_sub(g.keep.len()))
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        x.copy_from_slice(coordinates);
+        std::mem::swap(&mut g.target_offset, target);
+        std::mem::swap(&mut g.source_offset, source);
+        std::mem::swap(&mut g.keep, keep);
+        Ok(())
+    });
+    g.refine_scratch = scratch;
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn refine_with_scratch(
+    g: &Expanded,
+    (c, orientation): (&Component, &Orientation),
+    graph: &Graph,
+    options: &Options,
+    x: &[f64],
+    columns: Option<super::lanes::Columns<'_>>,
+    scratch: &mut RefineScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let RefineScratch {
+        geometry,
+        passes,
+        mental_map: projection,
+    } = scratch;
+    let mut s = Geometry::new(
+        g,
+        (c, orientation),
+        graph,
+        options,
+        x,
+        (geometry, &mut passes.indices),
+        work,
+    )?;
     s.columns = columns;
-    center_forks(&mut s, c.nodes.len(), work)?;
+    center_forks(&mut s, c.nodes.len(), passes, work)?;
     align_labels(&mut s, work)?;
-    settle(&mut s, c.nodes.len(), options, work)?;
-    snap(&mut s, work)?;
+    settle(&mut s, c.nodes.len(), options, passes, work)?;
+    snap(&mut s, passes, work)?;
     if s.has_position_hints {
-        mental_map::stabilize(&mut s, c, graph.direction, options, work)?;
+        mental_map::stabilize(
+            &mut s,
+            c,
+            graph.direction,
+            options,
+            passes,
+            projection,
+            work,
+        )?;
     }
     if c.boundaries {
-        align_ports(&mut s, work)?;
+        align_ports(&mut s, &mut passes.row.values, work)?;
     }
-    straighten(&mut s, options, work)?;
-    if s.x
+    straighten(&mut s, options, passes, work)?;
+    if s.data
+        .x
         .iter()
-        .chain(&s.dx[TOP])
-        .chain(&s.dx[BOTTOM])
+        .chain(&s.data.dx[TOP])
+        .chain(&s.data.dx[BOTTOM])
         .any(|v| !v.is_finite())
     {
         return Err(WorkError::ArithmeticOverflow.into());
     }
     work.charge(x.len())?;
-    work.finish()?;
-    let Geometry {
-        x: coordinates,
-        dx: [target, source],
-        keep,
-        ..
-    } = s;
-    x.copy_from_slice(&coordinates);
-    g.target_offset = target;
-    g.source_offset = source;
-    g.keep = keep;
-    Ok(())
+    work.finish()
 }
 
 #[cfg(test)]

@@ -119,7 +119,7 @@ pub(super) fn attach_exterior_ports(
                 || side_span.min(g.height[i]) < marker.width
                 || g.height[i] == 0.0
                 || sign * want - g.width[i] * 0.5
-                    <= marker.length.max(LEAD) + options.spacing.edge.max(LEAD)
+                    <= marker.length.max(LEAD) + half_separation.max(LEAD)
             {
                 continue;
             }

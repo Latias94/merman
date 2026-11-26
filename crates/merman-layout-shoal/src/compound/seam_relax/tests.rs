@@ -19,6 +19,7 @@ fn group(rect: Rect, parent: Option<GroupId>) -> GroupGeometry {
         rect,
         parent,
         title_center: None,
+        title_struck: false,
         effective_direction: Default::default(),
     }
 }
@@ -33,6 +34,8 @@ fn edge(axis: Axis, ports: (Side, Side), points: &[(f64, f64)]) -> EdgeGeometry 
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     }
 }

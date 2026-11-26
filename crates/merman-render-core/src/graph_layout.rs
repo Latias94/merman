@@ -8,6 +8,8 @@ pub mod axis_clearance;
 pub mod shoal;
 
 // Share plain geometry so a solver can transfer entire rectangle and route buffers to the IR.
+#[cfg(feature = "shoal-bridge")]
+use merman_layout_shoal::ShapeContourHint;
 #[cfg(feature = "layout-shoal")]
 pub use merman_layout_shoal::{Direction, Point, Rect, RoutingStyle, Size, TitlePosition};
 
@@ -66,6 +68,7 @@ mod geometry {
 
     #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     pub enum TitlePosition {
+        TopAuto,
         TopLeft,
         #[default]
         TopCenter,
@@ -107,6 +110,8 @@ pub struct MeasuredGraph {
 #[cfg_attr(any(test, feature = "test-support"), derive(Clone))]
 pub struct MeasuredNode {
     pub size: Size,
+    #[cfg(feature = "shoal-bridge")]
+    pub contour: ShapeContourHint,
     pub seq: u32,
     pub parent: Option<u32>,
     /// Usable length along the root flow's facing side. Zero pins the port to its anchor.
@@ -159,6 +164,7 @@ pub struct SolvedGroup {
     pub parent: Option<u32>,
     pub rect: Rect,
     pub title: Option<LayoutLabel>,
+    pub title_struck: bool,
     pub direction: Direction,
 }
 
@@ -172,5 +178,6 @@ pub struct SolvedEdge {
     pub label: Option<LayoutLabel>,
     pub start_label: Option<LayoutLabel>,
     pub end_label: Option<LayoutLabel>,
+    pub corridor_clearance: f64,
     pub reversed_for_ranking: bool,
 }

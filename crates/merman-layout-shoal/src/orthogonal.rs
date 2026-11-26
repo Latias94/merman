@@ -21,7 +21,6 @@ pub(crate) fn refine(
 ) -> LayoutResult<()> {
     if options.routing != RoutingStyle::Orthogonal
         || !options.global_orthogonal
-        || options.bus_routing
         || options.caps.max_ortho_grid_nodes == 0
         || graph.edges.len() > MAX_ROUTES
         || graph.nodes.len().saturating_add(graph.groups.len()) > MAX_BODIES
@@ -41,6 +40,7 @@ pub(crate) fn refine(
     for (geometry, change) in drawing.edges.iter_mut().zip(changes) {
         if let Some(points) = change {
             geometry.points = points;
+            geometry.corridor_clearance = 0.0;
         }
     }
     drawing.stats.routed_crossings = crossings;
@@ -105,7 +105,12 @@ fn route(
         };
         let source_scope = graph.nodes[source.0 as usize].parent;
         let target_scope = graph.nodes[target.0 as usize].parent;
-        if !fixed[edge] && source != target && source_scope == target_scope && unlabelled(spec) {
+        if !fixed[edge]
+            && !drawing.edges[edge].shared_bus
+            && source != target
+            && source_scope == target_scope
+            && unlabelled(spec)
+        {
             push(
                 &mut scopes[source_scope.map_or(root, |group| group.0 as usize)],
                 edge,

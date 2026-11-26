@@ -772,7 +772,13 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             };
             #[cfg(feature = "layout-shoal")]
             let (shaft, lhs_arrow, rhs_arrow, label_plan) = if let Some(geometry) = ctx.shoal {
-                let shaft = shoal::Shaft::new(geometry, layout, edge_idx, edge_style)?;
+                let shaft = shoal::Shaft::new(
+                    geometry,
+                    layout,
+                    edge_idx,
+                    edge_style,
+                    checkpoints.work_meter,
+                )?;
                 let (lhs, rhs) = shaft.arrows(&arrow_points);
                 let label = shaft.label(geometry.edge_labels[edge_idx].as_ref());
                 (ArchitectureShaft::Shoal(shaft), lhs, rhs, label)
