@@ -341,6 +341,24 @@ where
                 crate::svg::escape_css_identifier(class),
                 style
             );
+        } else if theme.look.is_hand_drawn() {
+            // Hand-drawn nodes render as `.rough-node` and bake classDef fill/stroke directly onto
+            // their RoughJS paths. Restricting SVG classDef shape selectors to `.node` and
+            // `.cluster` preserves classic/cluster styling in both browsers and `usvg` without
+            // overwriting rough hachure fill strokes or open cylinder rims.
+            for css_element in shape_elements {
+                let _ = write!(
+                    &mut *out,
+                    r#"#{} .node.{} {},#{} .cluster.{} {}{{{}}}"#,
+                    id,
+                    crate::svg::escape_css_identifier(class),
+                    css_element,
+                    id,
+                    crate::svg::escape_css_identifier(class),
+                    css_element,
+                    style
+                );
+            }
         } else {
             for css_element in shape_elements {
                 let _ = write!(

@@ -8,7 +8,9 @@ use crate::{
     Axis, Endpoint, Graph, KnotKind, LayoutError, LayoutOutput, Point, Rect, RoutePoint,
     RoutingStyle, WorkError, sweep_handle_fraction,
 };
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
+
+mod sweep;
 
 const FAN: f64 = 24.0;
 const TURN_HANDLE: f64 = 0.62;
@@ -428,36 +430,45 @@ fn overlaps(
     entries: &[BandEntry],
     bounds: Bounds,
     edge: usize,
+    all_edges: bool,
     work: &mut Work<'_>,
-    emit: &mut impl FnMut(&BandEntry, &mut Work<'_>) -> LayoutResult<()>,
-) -> LayoutResult<()> {
+    emit: &mut impl FnMut(&BandEntry, &mut Work<'_>) -> LayoutResult<ControlFlow<()>>,
+) -> LayoutResult<ControlFlow<()>> {
     let (lower, upper) = entries.split_at(entries.len() / 2);
     let Some((entry, upper)) = upper.split_first() else {
-        return Ok(());
+        return Ok(ControlFlow::Continue(()));
     };
     work.visit(1)?;
-    if entry.first_edge >= edge
+    if (!all_edges && entry.first_edge >= edge)
         || entry.subtree_right < bounds.x[0]
         || entries[0].bounds.x[0] > bounds.x[1]
         || entry.subtree_y[1] < bounds.y[0]
         || bounds.y[1] < entry.subtree_y[0]
     {
-        return Ok(());
+        return Ok(ControlFlow::Continue(()));
     }
     if entry.bounds.x[0] > bounds.x[1] {
-        return overlaps(lower, bounds, edge, work, emit);
+        return overlaps(lower, bounds, edge, all_edges, work, emit);
     }
     // A pair confined to the same axis-aligned line has no transverse crossing.
     let parallel = |[a, b]: [f64; 2], [c, d]: [f64; 2]| a == b && c == d;
-    if entry.edge < edge
+    let eligible = if all_edges {
+        entry.edge != edge
+    } else {
+        entry.edge < edge
+    };
+    if eligible
         && entry.bounds.overlaps(bounds)
         && !parallel(entry.bounds.x, bounds.x)
         && !parallel(entry.bounds.y, bounds.y)
+        && emit(entry, work)?.is_break()
     {
-        emit(entry, work)?;
+        return Ok(ControlFlow::Break(()));
     }
-    overlaps(lower, bounds, edge, work, emit)?;
-    overlaps(upper, bounds, edge, work, emit)
+    if overlaps(lower, bounds, edge, all_edges, work, emit)?.is_break() {
+        return Ok(ControlFlow::Break(()));
+    }
+    overlaps(upper, bounds, edge, all_edges, work, emit)
 }
 
 struct Bands {
@@ -766,7 +777,30 @@ impl Centerlines {
         }
         Ok(far)
     }
+}
 
+#[inline]
+fn strictly_same_side([from, to]: [Point; 2], p0: Point, p1: Point) -> bool {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let side = |p: Point| {
+        let a = dx * (p.y - from.y);
+        let b = dy * (p.x - from.x);
+        let det = a - b;
+        let bound = (16.0 * f64::EPSILON) * (a.abs() + b.abs());
+        if det > bound {
+            1i8
+        } else if det < -bound {
+            -1i8
+        } else {
+            0i8
+        }
+    };
+    let s0 = side(p0);
+    s0 != 0 && s0 == side(p1)
+}
+
+impl Centerlines {
     fn crossing(
         &self,
         a: Chord,
@@ -778,6 +812,12 @@ impl Centerlines {
         let [b_from, b_to] = b.ends;
         if (a_from.x == a_to.x && b_from.x == b_to.x) || (a_from.y == a_to.y && b_from.y == b_to.y)
         {
+            return Ok(false);
+        }
+        // Division-free Shewchuk orientation filter rejects clearly separated chord pairs
+        // without paying `signed_offset`'s division, falling back to exact `signed_offset`
+        // whenever either endpoint is near-collinear or straddling.
+        if strictly_same_side(b.ends, a_from, a_to) || strictly_same_side(a.ends, b_from, b_to) {
             return Ok(false);
         }
         let misses = |from: f64, to: f64| {
@@ -853,7 +893,25 @@ impl Centerlines {
         }
         self.expand(first, work)?;
         self.expand(second, work)?;
+        self.crosses_expanded(first, second, in_shared_fan, work)
+    }
+
+    pub(super) fn crosses_expanded(
+        &self,
+        first: usize,
+        second: usize,
+        in_shared_fan: impl Fn(Point) -> bool,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
         let (a, b) = (&self.primitives[first], &self.primitives[second]);
+        if a.cubic.is_none() && b.cubic.is_none() {
+            return self.crossing(
+                self.chord(first, 0),
+                self.chord(second, 0),
+                &in_shared_fan,
+                work,
+            );
+        }
         let a_points = self.points(first);
         let b_points = self.points(second);
         let a_range = a.chord_range(a_points, b.bounds, work)?;
@@ -1018,7 +1076,38 @@ fn in_fan(at: Point, rect: Rect) -> bool {
         && at.y - (rect.y + rect.height) < FAN
 }
 
-fn shared_fan(at: Point, first: [Endpoint; 2], second: [Endpoint; 2], out: &LayoutOutput) -> bool {
+pub(super) fn bounds_in_shared_fan(
+    a: Bounds,
+    b: Bounds,
+    first: [Endpoint; 2],
+    second: [Endpoint; 2],
+    out: &LayoutOutput,
+) -> bool {
+    let inter = Bounds {
+        x: [a.x[0].max(b.x[0]), a.x[1].min(b.x[1])],
+        y: [a.y[0].max(b.y[0]), a.y[1].min(b.y[1])],
+    };
+    first.into_iter().any(|end| {
+        if !second.contains(&end) {
+            return false;
+        }
+        let rect = match end {
+            Endpoint::Node(id) => out.nodes[id.0 as usize],
+            Endpoint::Group(id) => out.groups[id.0 as usize].rect,
+        };
+        rect.x - inter.x[0] < FAN
+            && inter.x[1] - (rect.x + rect.width) < FAN
+            && rect.y - inter.y[0] < FAN
+            && inter.y[1] - (rect.y + rect.height) < FAN
+    })
+}
+
+pub(super) fn shared_fan(
+    at: Point,
+    first: [Endpoint; 2],
+    second: [Endpoint; 2],
+    out: &LayoutOutput,
+) -> bool {
     first.into_iter().any(|end| {
         if !second.contains(&end) {
             return false;
@@ -1047,6 +1136,17 @@ pub(super) fn count_crossings(
     limit: u64,
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
+    count_crossings_impl(graph, out, style, limit, true, work)
+}
+
+fn count_crossings_impl(
+    graph: &Graph,
+    out: &LayoutOutput,
+    style: RoutingStyle,
+    limit: u64,
+    allow_sweep: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
     work.check()?;
     if out.edges.len() != graph.edges.len()
         || out.nodes.len() != graph.nodes.len()
@@ -1058,9 +1158,6 @@ pub(super) fn count_crossings(
         return Ok(0);
     }
     let mut centerlines = trace(out, style, work)?;
-    let Some(bands) = Bands::build(&centerlines.primitives, work)? else {
-        return Ok(0);
-    };
     work.charge(graph.edges.len())?;
     let mut ends = reserved(graph.edges.len())?;
     ends.extend(graph.edges.iter().map(|edge| [edge.source, edge.target]));
@@ -1068,6 +1165,86 @@ pub(super) fn count_crossings(
         work.visit(1)?;
         ends[route.edge.0 as usize] = [route.source, route.target];
     }
+
+    if allow_sweep && centerlines.primitives.len() >= sweep::MIN_SWEEP_PRIMITIVES {
+        let (x_overlaps, overlapping_count) = sweep::x_overlap_mask(&centerlines.primitives, work)?;
+        if overlapping_count == 0 {
+            return Ok(0);
+        }
+        if let Some(mut partition) =
+            sweep::MonotonePartition::build(&mut centerlines, &x_overlaps, work)?
+            && let Some(mut crossed) =
+                sweep::run_monotone_sweep(&centerlines, &mut partition, &ends, out, limit, work)?
+        {
+            let mut count = crossed.len() as u64;
+            if count >= limit || partition.other.is_empty() {
+                return Ok(count);
+            }
+            let Some(bands) = Bands::build(&centerlines.primitives, work)? else {
+                return Ok(count);
+            };
+            for &index in &partition.other {
+                let query = &centerlines.primitives[index];
+                let (edge, bounds) = (query.edge, query.bounds);
+                let (first, last) = bands.spans[index];
+                for band in first..=last {
+                    let flow = overlaps(
+                        &bands.bins[band],
+                        bounds,
+                        edge,
+                        true,
+                        work,
+                        &mut |candidate, work| {
+                            let other = candidate.edge;
+                            let other_monotone = partition.is_monotone[candidate.primitive];
+                            if !other_monotone && other >= edge {
+                                return Ok(ControlFlow::Continue(()));
+                            }
+                            if band != first.max(bands.spans[candidate.primitive].0) {
+                                return Ok(ControlFlow::Continue(()));
+                            }
+                            let pair = if edge < other {
+                                (edge as u32, other as u32)
+                            } else {
+                                (other as u32, edge as u32)
+                            };
+                            if !crossed.contains(&pair)
+                                && !bounds_in_shared_fan(
+                                    bounds,
+                                    candidate.bounds,
+                                    ends[edge],
+                                    ends[other],
+                                    out,
+                                )
+                                && centerlines.crosses(
+                                    index,
+                                    candidate.primitive,
+                                    |at| shared_fan(at, ends[edge], ends[other], out),
+                                    work,
+                                )?
+                            {
+                                crossed.insert(pair);
+                                count =
+                                    count.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
+                                if count >= limit {
+                                    return Ok(ControlFlow::Break(()));
+                                }
+                            }
+                            Ok(ControlFlow::Continue(()))
+                        },
+                    )?;
+                    if flow.is_break() || count >= limit {
+                        return Ok(count);
+                    }
+                }
+            }
+            return Ok(count);
+        }
+    }
+
+    let Some(bands) = Bands::build(&centerlines.primitives, work)? else {
+        return Ok(0);
+    };
     let mut seen = filled(graph.edges.len(), usize::MAX)?;
     let mut count = 0_u64;
     for index in 0..centerlines.primitives.len() {
@@ -1075,16 +1252,23 @@ pub(super) fn count_crossings(
         let (edge, bounds) = (query.edge, query.bounds);
         let (first, last) = bands.spans[index];
         for band in first..=last {
-            overlaps(
+            let flow = overlaps(
                 &bands.bins[band],
                 bounds,
                 edge,
+                false,
                 work,
                 &mut |candidate, work| {
                     let other = candidate.edge;
-                    if count < limit
-                        && seen[other] != edge
+                    if seen[other] != edge
                         && band == first.max(bands.spans[candidate.primitive].0)
+                        && !bounds_in_shared_fan(
+                            bounds,
+                            candidate.bounds,
+                            ends[edge],
+                            ends[other],
+                            out,
+                        )
                         && centerlines.crosses(
                             index,
                             candidate.primitive,
@@ -1094,12 +1278,15 @@ pub(super) fn count_crossings(
                     {
                         seen[other] = edge;
                         count = count.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
+                        if count >= limit {
+                            return Ok(ControlFlow::Break(()));
+                        }
                     }
-                    Ok(())
+                    Ok(ControlFlow::Continue(()))
                 },
             )?;
             // A trial needs its precise score only if it improves on the current drawing.
-            if count >= limit {
+            if flow.is_break() || count >= limit {
                 return Ok(count);
             }
         }

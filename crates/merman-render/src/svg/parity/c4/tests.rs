@@ -416,7 +416,8 @@ Rel(api, obs, "Streams structured telemetry", "OTLP")
     let (native, svg) = render(source, &options);
     assert_eq!(native.rels[0].label.line_count, 1);
     assert!(native.rels[0].label.width > 190.0);
-    assert!(!svg.svg().contains("c4-label-cutout"));
+    assert!(!svg.svg().contains("-label-cutout"));
+    assert!(!svg.svg().contains("clip-path="));
 }
 
 #[test]
@@ -586,4 +587,79 @@ BiRel(a, b, "Requests", "TLS")
         .unwrap();
     assert_eq!(marker_path.attribute("d"), Some("M 0 0 L 10 5 L 0 10"));
     assert_eq!(marker_path.attribute("fill"), Some("none"));
+}
+
+#[test]
+fn c4_shoal_hand_drawn_cylinders_dark_boundaries_and_multiline_wrap() {
+    let source = r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  theme: dark
+---
+C4Context
+System_Boundary(b0, "Core Platform") {
+  SystemDb(db, "Primary Ledger", "Stores immutable journal")
+  SystemQueue(q, "Event Bus", "Streams async updates")
+}
+Rel(db, q, "Publishes<br/>replicated change capture events across regional zones", "Kafka/TLS")
+"#;
+    let options = LayoutOptions::headless_svg_defaults();
+    let (layout, svg) = render(source, &options);
+    let doc = Document::parse(svg.svg()).unwrap();
+
+    // B3: handDrawn C4 cylinders emit a split body + separate open rough-stroke rim path.
+    for alias in ["db", "q"] {
+        let node = element(&doc, "node", alias);
+        let rim = node.descendants().find(|el| {
+            el.has_tag_name("path")
+                && el.attribute("class") == Some("rough-stroke")
+                && el
+                    .attribute("style")
+                    .is_some_and(|s| s.contains("fill:none !important"))
+        });
+        assert!(
+            rim.is_some(),
+            "C4 handDrawn {alias} must emit a separate stroke-only rim path"
+        );
+    }
+
+    // M1: dark Mermaid theme under Shoal must not fall back to invisible #444444 boundary stroke.
+    let boundary_rect = doc
+        .descendants()
+        .find(|el| {
+            el.has_tag_name("rect")
+                && el.attribute("stroke-dasharray").is_some()
+                && el.attribute("stroke").is_some()
+        })
+        .expect("C4 boundary rect");
+    assert_ne!(
+        boundary_rect.attribute("stroke"),
+        Some("#444444"),
+        "dark Shoal C4 boundary must use light theme lineColor instead of #444444"
+    );
+
+    // M3: `<br/>`-separated long second line wraps independently (> 2 lines total) and stays in bounds.
+    assert!(
+        layout.rels[0].label.line_count > 2,
+        "expected wrapped <br/> relation caption to have > 2 lines, got {}",
+        layout.rels[0].label.line_count
+    );
+    let vb = doc.root_element().attribute("viewBox").unwrap();
+    let parts: Vec<f64> = vb
+        .split_whitespace()
+        .map(|s| s.parse::<f64>().unwrap())
+        .collect();
+    let label = relation_label(&doc, "c4-rel-0");
+    let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+    assert!(
+        at.e >= parts[0]
+            && at.e <= parts[0] + parts[2]
+            && at.f >= parts[1]
+            && at.f <= parts[1] + parts[3],
+        "relation label ({}, {}) must lie inside viewBox {:?}",
+        at.e,
+        at.f,
+        parts
+    );
 }

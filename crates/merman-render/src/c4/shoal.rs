@@ -405,16 +405,23 @@ pub(crate) fn layout_c4_shoal(
         rel.start_point = start.clone();
         rel.end_point = end.clone();
         include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
-        let label = label
+        let placed_label = label
             .as_ref()
             .zip(edge.label.as_ref())
-            .map(|(label, placed)| label.place(placed, &painted, stroke_outset, &mut work))
+            .map(|(prep, placed)| prep.place(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
+        if let Some((prep, placed)) = label.as_ref().zip(placed_label.as_ref()) {
+            let label_ink = prep.ink_at(&placed.origin);
+            bounds.min_x = bounds.min_x.min(label_ink.x0);
+            bounds.min_y = bounds.min_y.min(label_ink.y0);
+            bounds.max_x = bounds.max_x.max(label_ink.x1);
+            bounds.max_y = bounds.max_y.max(label_ink.y1);
+        }
         geometry.push(C4ShoalRelation {
             id,
             path: painted.path.d,
             points: painted.data_points,
-            label,
+            label: placed_label,
         });
     }
     let ink_width = bounds.max_x - bounds.min_x;

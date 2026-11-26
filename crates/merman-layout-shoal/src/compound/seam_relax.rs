@@ -154,13 +154,13 @@ impl Obstacles {
         Ok(Self { boxes, edges })
     }
 
-    fn clear<'a>(
+    fn clear(
         &self,
         bounds: Bounds,
         edge: usize,
         groups: [GroupId; 2],
         drawing: &LayoutOutput,
-        accepted: impl Iterator<Item = &'a Edit>,
+        accepted: impl Iterator<Item = (usize, Bounds)>,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         for &obstacle in &self.boxes {
@@ -175,9 +175,9 @@ impl Obstacles {
                 return Ok(false);
             }
         }
-        for edit in accepted {
+        for (accepted_edge, footprint) in accepted {
             work.visit(1)?;
-            if edit.edge != edge && bounds.overlaps(edit.footprint) {
+            if accepted_edge != edge && bounds.overlaps(footprint) {
                 return Ok(false);
             }
         }
@@ -722,7 +722,7 @@ fn fixed_edits(
             edge,
             [first.group, last.group],
             output,
-            edits.iter(),
+            edits.iter().map(|edit: &Edit| (edit.edge, edit.footprint)),
             work,
         )? {
             continue;
@@ -818,7 +818,11 @@ fn slide_edits(
                 edge,
                 groups,
                 output,
-                fixed.iter().chain(&edits).chain(&planned),
+                fixed
+                    .iter()
+                    .chain(&edits)
+                    .chain(&planned)
+                    .map(|edit| (edit.edge, edit.footprint)),
                 work,
             )? {
                 continue 'corridors;

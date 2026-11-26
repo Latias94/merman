@@ -1885,10 +1885,14 @@ impl RenderSession {
     #[cfg(feature = "layout-shoal")]
     pub(crate) fn use_shoal_text_widths(&mut self) {
         for route in &mut self.text_measurement.routes {
-            if let TextMeasurementRouteConfig::Profile(profile) = route
-                && profile.builtin == Some(DeterministicMode::Compatibility)
-            {
-                *profile = calibrated_profile().clone();
+            match route {
+                TextMeasurementRouteConfig::Profile(profile)
+                | TextMeasurementRouteConfig::Host {
+                    fallback: profile, ..
+                } if profile.builtin == Some(DeterministicMode::Compatibility) => {
+                    *profile = calibrated_profile().clone();
+                }
+                _ => {}
             }
         }
     }

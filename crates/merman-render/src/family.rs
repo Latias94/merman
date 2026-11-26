@@ -2683,7 +2683,11 @@ fn prepare_for<'parsed>(
     if plan.backend() == GraphLayoutBackend::Shoal
         && matches!(
             expected_family,
-            DiagramFamilyId::CLASS | DiagramFamilyId::ER | DiagramFamilyId::STATE
+            DiagramFamilyId::CLASS
+                | DiagramFamilyId::ER
+                | DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::STATE
+                | DiagramFamilyId::SWIMLANE
         )
     {
         context.session.use_shoal_text_widths();

@@ -1353,3 +1353,107 @@ architecture-beta\n\
         "hub:B -- T:db should drop straight across group borders without an S-jog: {d}"
     );
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_flowchart_calibrated_widths_and_hand_drawn_cylinders_and_class_alignment() {
+    let render_any = |source: &str| -> (merman_render::model::FlowchartLayout, String) {
+        let parsed = parse(source);
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+        )
+        .unwrap();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        (layout, svg.svg().to_owned())
+    };
+
+    // B1: Shoal Flowchart uses calibrated deterministic widths (wider on identifiers above
+    // Flowchart's 152px minimum box width than Compatibility Dagre).
+    let label_source = "flowchart LR\nA[customer_account_service] --> B[Observability]";
+    let (shoal_layout, _) = render(
+        &format!("---\nconfig:\n  layout: shoal\n---\n{label_source}"),
+        "FlowchartV2",
+    );
+    let (dagre_layout, _) = render_any(&format!(
+        "---\nconfig:\n  layout: dagre\n---\n{label_source}"
+    ));
+    let shoal_w = shoal_layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .unwrap()
+        .width;
+    let dagre_w = dagre_layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .unwrap()
+        .width;
+    assert!(
+        shoal_w > dagre_w,
+        "Shoal calibrated Flowchart width ({shoal_w}) must exceed Compatibility Dagre width ({dagre_w})"
+    );
+
+    // B2: Shoal handDrawn cylinder with classDef + htmlLabels:false preserves fill & stroke !important
+    // and scopes SVG classDef path rules to `.node`/`.cluster` so `.rough-node` hatches stay clean.
+    let (_, shoal_cyl_svg) = render(
+        "---\nconfig:\n  layout: shoal\n  look: handDrawn\n  htmlLabels: false\n---\n\
+flowchart TB\n\
+  db[(Primary DB)]:::accent\n\
+  classDef accent fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px",
+        "FlowchartV2",
+    );
+    assert!(
+        shoal_cyl_svg.contains("fill:none !important;stroke:#1d4ed8 !important"),
+        "handDrawn Shoal cylinder interior rim must guard against classDef fill override"
+    );
+    assert!(
+        shoal_cyl_svg.contains(".node.accent path,")
+            && shoal_cyl_svg.contains(".cluster.accent path{"),
+        "handDrawn SVG classDef rules must scope shape selectors away from .rough-node"
+    );
+
+    // M2: Non-Shoal (Dagre) handDrawn cylinder emits explicit fill/stroke attributes on body path.
+    let (_, dagre_cyl_svg) = render_any(
+        "---\nconfig:\n  layout: dagre\n  look: handDrawn\n---\n\
+flowchart TB\n\
+  db[(Primary DB)]",
+    );
+    let doc = roxmltree::Document::parse(&dagre_cyl_svg).unwrap();
+    let db_node = doc
+        .descendants()
+        .find(|n| n.attribute("data-id") == Some("db"))
+        .expect("db node");
+    let has_styled_body = db_node.descendants().any(|n| {
+        n.has_tag_name("path") && n.attribute("fill").is_some() && n.attribute("stroke").is_some()
+    });
+    assert!(
+        has_styled_body,
+        "non-Shoal handDrawn cylinder must emit explicit fill and stroke attributes"
+    );
+
+    // M5: Shoal Class member rows include `text-align: left;` inside foreignObject.
+    #[cfg(feature = "diagram-class")]
+    {
+        let class_svg = render_studio_shoal(
+            "---\nconfig:\n  layout: shoal\n---\n\
+classDiagram\n\
+  class Ledger {\n\
+    +id: String\n\
+    +commit() bool\n\
+  }",
+        );
+        assert!(
+            class_svg.contains("text-align: left;"),
+            "Shoal Class member foreignObject divs must include explicit left alignment"
+        );
+    }
+}

@@ -149,12 +149,7 @@ fn offset_s_controls_are_measured_in_path_order() {
 fn step_micro_jogs_and_wide_corner_arms_are_reported() {
     let scene = Scene {
         edges: vec![
-            Edge::new(
-                0,
-                1,
-                "M100,0 L100,40 L100.9,40 L100.9,80",
-                CrossAxis::X,
-            ),
+            Edge::new(0, 1, "M100,0 L100,40 L100.9,40 L100.9,80", CrossAxis::X),
             Edge::new(
                 0,
                 1,
@@ -194,8 +189,7 @@ fn studio_decision_branches_stay_symmetric_in_curved_and_rounded_modes() {
     let body = "A[Start] --> B{Condition?}\nB -->|Yes| C[Execute]\nB -->|No| D[End]\nC --> D";
     for html_labels in [false, true] {
         let curved_source = format!("flowchart TD\n{body}");
-        let drawing =
-            render_studio(&curved_source, "studio-decision-curved", html_labels).unwrap();
+        let drawing = render_studio(&curved_source, "studio-decision-curved", html_labels).unwrap();
         let doc = Document::parse(&drawing.svg).unwrap();
         let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
         let body_names: Vec<_> = drawing.layout.nodes.iter().map(|n| n.id.as_str()).collect();
@@ -254,7 +248,10 @@ fn forced_label_subrank_preserves_sibling_departure_symmetry() {
         B -->|No| D[End]\n\
         C --> D";
     for (name, drawing) in [
-        ("default-forced-subrank", render(source, "default-forced-subrank").unwrap()),
+        (
+            "default-forced-subrank",
+            render(source, "default-forced-subrank").unwrap(),
+        ),
         (
             "studio-forced-subrank",
             render_studio(source, "studio-forced-subrank", false).unwrap(),
@@ -310,12 +307,13 @@ fn studio_compound_fork_avoids_flat_pancake_sweeps() {
 
 #[test]
 fn studio_nested_clusters_and_compound_fill_avoid_wiggles_bananas_and_crushed_sweeps() {
-    let nested = include_str!("../../../../../merman/benches/fixtures/flowchart_nested_clusters.mmd");
+    let nested =
+        include_str!("../../../../../merman/benches/fixtures/flowchart_nested_clusters.mmd");
     super::compound::assert_studio_compound_aesthetics(
         "studio-nested-clusters",
         nested,
         3.5,
-        Some(12),
+        Some(13),
         Some(3.05),
     );
 

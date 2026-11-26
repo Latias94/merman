@@ -138,27 +138,55 @@ fn write_hand_drawn_cylinder(
         let _ = write!(out, r#" label-offset-y="{}""#, fmt(offset));
     }
     out.push('>');
+    let sw = fmt_display(common.stroke_width as f64);
     if let Some((fill, stroke)) = helpers::hand_drawn_path_pair(common, details, body) {
-        helpers::write_hand_drawn_path_pair(out, common, &fill, &stroke);
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:4px !important"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
+            escape_attr(&fill),
+            escape_attr(common.fill_color),
+            escape_attr(common.fill_color),
+            escape_attr(&stroke),
+            escape_attr(common.stroke_color),
+            sw,
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.stroke_color),
+            sw,
+        );
     } else {
         let _ = write!(
             out,
-            r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" stroke-dasharray="{}"/>"#,
+            r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" stroke-dasharray="{}" style="fill:{} !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
             escape_attr(body),
             escape_attr(common.fill_color),
             escape_attr(common.stroke_color),
-            fmt_display(common.stroke_width as f64),
+            sw,
             escape_attr(common.stroke_dasharray),
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            sw,
         );
     }
     // The interior rims are open curves. Feeding them to the hatch generator would fill each cap.
+    // Route them through the rough stroke generator so rims match the hand-drawn body outline.
+    let rough_rims = helpers::timed_node_roughjs(common.timing, details, || {
+        crate::svg::parity::roughjs_common::paths::roughjs_hand_drawn_stroke_path_for_svg_path(
+            rims,
+            0.5,
+            common.work_meter,
+            common.hand_drawn_seed,
+        )
+    });
+    let rim_d = rough_rims.as_deref().unwrap_or(rims);
     let _ = write!(
         out,
-        r#"<path d="{}" fill="none" stroke="{}" stroke-width="{}" stroke-dasharray="{}"/></g>"#,
-        escape_attr(rims),
+        r#"<path d="{}" fill="none" stroke="{}" stroke-width="{}" stroke-dasharray="{}" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/></g>"#,
+        escape_attr(rim_d),
         escape_attr(common.stroke_color),
-        fmt_display(common.stroke_width as f64),
+        sw,
         escape_attr(common.stroke_dasharray),
+        escape_attr(common.stroke_color),
+        sw,
     );
 }
 
@@ -194,6 +222,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
         escape_attr(&path_data),
         escape_attr(common.style),
     );
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#" fill="{}" stroke="{}" stroke-width="{}""#,
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+        );
+    }
     if ctx.security_level_loose {
         let _ = write!(out, r#" label-offset-y="{}""#, fmt(ry));
     }
@@ -262,9 +299,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
 
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({},{})"/>"#,
+        r#"<path d="{}" class="basic label-container outer-path" style="{}""#,
         escape_attr(&path_data),
         escape_attr(common.style),
+    );
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#" fill="{}" stroke="{}" stroke-width="{}""#,
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+        );
+    }
+    let _ = write!(
+        out,
+        r#" transform="translate({},{})"/>"#,
         fmt(translation.0),
         fmt(translation.1),
     );

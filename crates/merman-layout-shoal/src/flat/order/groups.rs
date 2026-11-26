@@ -204,6 +204,7 @@ impl<'a> Groups<'a> {
                 numeric_cmp(a.sum / a.count as f64, b.sum / b.count as f64)
                     .then(a.first.cmp(&b.first))
             });
+            work.check()?;
             self.means[block] = total;
         }
         push(&mut self.stack, Item::Group(0))?;

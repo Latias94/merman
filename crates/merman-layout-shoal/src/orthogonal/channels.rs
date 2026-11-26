@@ -72,6 +72,7 @@ impl Scene<'_> {
                 .then_with(|| a.edge.cmp(&b.edge))
                 .then_with(|| a.at.cmp(&b.at))
         });
+        work.check()?;
         let mut removed = 0;
         for track in
             legs.chunk_by(|a, b| a.line.axis == b.line.axis && a.line.fixed == b.line.fixed)
@@ -141,6 +142,7 @@ impl Scene<'_> {
         }
         work.charge_sort(proposed.len())?;
         proposed.sort_unstable_by_key(|(edge, _)| *edge);
+        work.check()?;
         let (before, after) = self.conflicts(&proposed, routes, work)?;
         if after.0 <= before.0 && after.1 < before.1 {
             for (edge, candidate) in proposed {

@@ -45,6 +45,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_cylinder(
         escape_attr(&path_data),
         escape_attr(common.style),
     );
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#" fill="{}" stroke="{}" stroke-width="{}""#,
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            crate::svg::parity::fmt_display(common.stroke_width as f64),
+        );
+    }
     if ctx.security_level_loose {
         let _ = write!(out, r#" label-offset-y="{}""#, fmt(ry));
     }

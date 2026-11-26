@@ -757,3 +757,82 @@ fn tied_ports_tied_turns_straight_exits_and_ordered_faces_do_not_trigger_a_retry
         );
     }
 }
+
+#[test]
+fn monotone_sweep_matches_bands_across_star_fans_tricky_crossings_and_limits() {
+    let assert_equivalent = |graph: &Graph, out: &LayoutOutput, style: RoutingStyle, limit: u64| {
+        let sweep = count_crossings_impl(
+            graph,
+            out,
+            style,
+            limit,
+            true,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap();
+        let bands = count_crossings_impl(
+            graph,
+            out,
+            style,
+            limit,
+            false,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap();
+        assert_eq!(
+            sweep, bands,
+            "sweep ({sweep}) != bands ({bands}) for {style:?} limit={limit}"
+        );
+        sweep
+    };
+
+    // 1. 64-edge curved star fan with alternating directions and mixed crossings.
+    let mut routes = Vec::new();
+    for i in 0..64 {
+        let x0 = if i < 40 {
+            500.0
+        } else {
+            200.0 + (i as f64) * 12.0
+        };
+        let x1 = ((i * 29) % 64) as f64 * 18.0;
+        let mut r = route(&[(x0, 0.0), (x1, 400.0)], Axis::Vertical);
+        if i % 3 == 0 {
+            r.points.reverse();
+        }
+        routes.push(r);
+    }
+    // Add horizontal non-monotone edges (`partition.other`) cutting across the fan.
+    for h in 0..6 {
+        let y = 60.0 + h as f64 * 55.0;
+        routes.push(route(&[(0.0, y), (1150.0, y)], Axis::Horizontal));
+    }
+    let (graph, out) = drawing(routes);
+    let total = assert_equivalent(&graph, &out, RoutingStyle::Curved, u64::MAX);
+    assert!(total > 20, "expected substantial crossings, got {total}");
+    assert_equivalent(&graph, &out, RoutingStyle::Curved, 3);
+    assert_equivalent(&graph, &out, RoutingStyle::Curved, 15);
+    assert_equivalent(&graph, &out, RoutingStyle::Polyline, u64::MAX);
+
+    // 2. Triple intersections, coincident vertices, and double-crossing lens (>= 32 primitives).
+    let mut tricky = Vec::new();
+    // Three edges meeting at (200, 200) outside any shared endpoint fan.
+    tricky.push(route(&[(100.0, 0.0), (300.0, 400.0)], Axis::Vertical));
+    tricky.push(route(&[(200.0, 0.0), (200.0, 400.0)], Axis::Vertical));
+    tricky.push(route(&[(300.0, 0.0), (100.0, 400.0)], Axis::Vertical));
+    // Double-crossing lens: short early-bend cubic vs long late-bend cubic.
+    tricky.push(route(
+        &[(350.0, 0.0), (430.0, 120.0), (350.0, 400.0)],
+        Axis::Vertical,
+    ));
+    tricky.push(route(&[(390.0, 0.0), (390.0, 400.0)], Axis::Vertical));
+    // Pad past MIN_SWEEP_PRIMITIVES with overlapping curves so the sweep path activates.
+    for i in 0..34 {
+        let x0 = 50.0 + (i as f64) * 11.0;
+        let x1 = 420.0 - ((i * 7) % 34) as f64 * 10.0;
+        tricky.push(route(&[(x0, 10.0), (x1, 390.0)], Axis::Vertical));
+    }
+    let (graph2, out2) = drawing(tricky);
+    let tricky_total = assert_equivalent(&graph2, &out2, RoutingStyle::Curved, u64::MAX);
+    assert!(tricky_total > 10);
+    assert_equivalent(&graph2, &out2, RoutingStyle::Polyline, u64::MAX);
+}

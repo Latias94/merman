@@ -29,6 +29,10 @@ pub(super) struct RelationLabel {
 }
 
 impl RelationLabel {
+    pub(super) fn ink_at(&self, origin: &LayoutPoint) -> Rect {
+        self.ink + Vec2::new(origin.x, origin.y)
+    }
+
     pub(super) fn prepare(rel: &mut C4RelLayout, ctx: &C4Measurement<'_>) -> Result<Option<Self>> {
         let font = ctx.typography.message_font();
         let mut ink = relation_ink(&mut rel.label, font, false, ctx)?;
@@ -173,35 +177,37 @@ fn relation_ink(
         (&block.text, &font.measurement_style)
     };
     let mut ink = text_ink(text, 0.0, size, style, ctx)?;
-    if ctx.conf.wrap
-        && block.line_count == 1
-        && ink.is_some_and(|ink| ink.width() > RELATION_WRAP_WIDTH)
-    {
-        let wrapped = try_measure_wrapped_text(
-            text,
-            style,
-            Some(RELATION_WRAP_WIDTH),
-            WrapMode::SvgLikeSingleRun,
-            size,
-            |row, style| {
-                ctx.work.charge(row.len().saturating_add(1))?;
-                Ok::<_, crate::Error>(
-                    ctx.measurer
-                        .measure_svg_tspan_text_bbox_width_px(row, style),
-                )
-            },
-        )?;
-        for row in &wrapped.lines {
-            ctx.work.charge(row.len().saturating_add("<br/>".len()))?;
+    if ctx.conf.wrap && ink.is_some_and(|ink| ink.width() > RELATION_WRAP_WIDTH) {
+        let mut all_lines = Vec::new();
+        for segment in split_mermaid_common_br_lines(text) {
+            ctx.work.charge(segment.len().saturating_add(1))?;
+            let wrapped = try_measure_wrapped_text(
+                segment,
+                style,
+                Some(RELATION_WRAP_WIDTH),
+                WrapMode::SvgLikeSingleRun,
+                size,
+                |row, style| {
+                    ctx.work.charge(row.len().saturating_add(1))?;
+                    Ok::<_, crate::Error>(
+                        ctx.measurer
+                            .measure_svg_tspan_text_bbox_width_px(row, style),
+                    )
+                },
+            )?;
+            for row in wrapped.lines {
+                ctx.work.charge(row.len().saturating_add("<br/>".len()))?;
+                all_lines.push(row);
+            }
         }
-        block.line_count = wrapped.lines.len();
-        let wrapped = wrapped.lines.join("<br/>");
+        block.line_count = all_lines.len().max(1);
+        let wrapped = all_lines.join("<br/>");
         ink = text_ink(&wrapped, 0.0, size, style, ctx)?;
         block.text = if technology {
             wrapped
                 .strip_prefix('[')
                 .and_then(|inner| inner.strip_suffix(']'))
-                .expect("wrapping preserves C4 technology brackets")
+                .unwrap_or(wrapped.as_str())
                 .to_owned()
         } else {
             wrapped

@@ -436,20 +436,14 @@ struct RouteBounds {
     changed: bool,
 }
 
-struct IndexedStroke {
+struct IndexedRoute {
     edge: usize,
-    bounds: Bounds,
-}
-
-struct IndexedMarker {
-    edge: usize,
-    end: End,
-    bounds: Bounds,
+    stroke: Bounds,
+    markers: [Option<Bounds>; 2],
 }
 
 struct RouteIndex {
-    strokes: Bvh<IndexedStroke>,
-    markers: Bvh<IndexedMarker>,
+    routes: Bvh<IndexedRoute>,
 }
 
 impl RouteIndex {
@@ -458,22 +452,26 @@ impl RouteIndex {
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
         work.charge(routes.len())?;
-        let mut strokes = reserved(routes.len())?;
-        let mut markers = reserved(routes.len())?;
+        let mut items = reserved(routes.len())?;
         for (edge, route) in routes.enumerate() {
-            strokes.push(IndexedStroke {
+            items.push(IndexedRoute {
                 edge,
-                bounds: route.stroke,
+                stroke: route.stroke,
+                markers: route.markers,
             });
-            for end in End::BOTH {
-                if let Some(bounds) = route.markers[end as usize] {
-                    push(&mut markers, IndexedMarker { edge, end, bounds })?;
-                }
-            }
         }
         Ok(Self {
-            strokes: Bvh::build_with_work(strokes, |stroke| stroke.bounds, work)?,
-            markers: Bvh::build_with_work(markers, |marker| marker.bounds, work)?,
+            routes: Bvh::build_with_work(
+                items,
+                |route| {
+                    let mut bounds = route.stroke;
+                    for marker in route.markers.into_iter().flatten() {
+                        bounds = bounds.union(marker);
+                    }
+                    bounds
+                },
+                work,
+            )?,
         })
     }
 
@@ -485,24 +483,23 @@ impl RouteIndex {
         check_marker: impl Fn(usize, End) -> bool,
         blocks_stroke: impl Fn(usize, Bounds) -> bool,
     ) -> LayoutResult<bool> {
-        if !clear_index(
-            &self.markers,
-            remaining,
-            work,
-            |bounds| edit.blocked_by(bounds),
-            |item| edit.blocked_by(item.bounds) && check_marker(item.edge, item.end),
-        )? {
-            return Ok(false);
-        }
-        let Some(marker) = edit.mark else {
-            return Ok(true);
-        };
         clear_index(
-            &self.strokes,
+            &self.routes,
             remaining,
             work,
-            |bounds| marker.overlaps_strictly(bounds),
-            |item| marker.overlaps_strictly(item.bounds) && blocks_stroke(item.edge, marker),
+            |bounds| {
+                edit.blocked_by(bounds)
+                    || edit.mark.is_some_and(|mark| mark.overlaps_strictly(bounds))
+            },
+            |item| {
+                item.markers[End::Source as usize].is_some_and(|bounds| {
+                    edit.blocked_by(bounds) && check_marker(item.edge, End::Source)
+                }) || item.markers[End::Target as usize].is_some_and(|bounds| {
+                    edit.blocked_by(bounds) && check_marker(item.edge, End::Target)
+                }) || edit.mark.is_some_and(|mark| {
+                    mark.overlaps_strictly(item.stroke) && blocks_stroke(item.edge, mark)
+                })
+            },
         )
     }
 }
@@ -962,6 +959,7 @@ fn spread_faces(
         work.sort(&mut run.edges, |&a, &b| {
             across(a).total_cmp(&across(b)).then(a.cmp(&b))
         })?;
+        work.visit(run.edges.len())?;
         if !run
             .edges
             .windows(2)
@@ -986,6 +984,7 @@ fn spread_faces(
             continue;
         }
         let rect = drawing.nodes[run.hub];
+        work.visit(run.edges.len())?;
         let left = tails
             .iter()
             .take(run.side_capacity)
@@ -1058,6 +1057,7 @@ fn spread_faces(
             }
             work.charge_sort(proposed.len())?;
             proposed.sort_unstable_by_key(|(i, _)| *i);
+            work.check()?;
             if !proof.allows(run.end, proposed, work)? {
                 continue;
             }

@@ -30,6 +30,7 @@ fn contiguous(
         }
         work.charge_sort(contacts.len())?;
         contacts.sort_unstable_by(f64::total_cmp);
+        work.check()?;
         cache
             .try_reserve(1)
             .map_err(|_| LayoutError::AllocationLimit)?;
@@ -140,6 +141,7 @@ pub(super) fn balance(
             .then(cmp(a.order[0], b.order[0]))
             .then(a.edge.cmp(&b.edge))
     });
+    work.check()?;
 
     let mut direct = Vec::new();
     let mut face_contacts = [HashMap::new(), HashMap::new()];

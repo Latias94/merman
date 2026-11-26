@@ -559,6 +559,7 @@ impl Routing<'_> {
             // Nudge the farther edge toward the open scope interior so it takes the side port
             // matching its detour gutter instead of crossing the direct neighbor's straight line.
             if first.owner < self.hierarchy.node_count && count >= 2 {
+                work.visit(next - cursor)?;
                 let min_dist = indices[cursor..next]
                     .iter()
                     .filter_map(|&i| {
@@ -571,6 +572,7 @@ impl Routing<'_> {
                     .fold(f64::INFINITY, f64::min);
                 if min_dist.is_finite() {
                     let mut nudged = false;
+                    work.visit(next - cursor)?;
                     for &i in &indices[cursor..next] {
                         let site = &mut sites[i];
                         if site.offset.is_none()
@@ -584,12 +586,17 @@ impl Routing<'_> {
                         }
                     }
                     if nudged {
+                        work.charge_sort(next - cursor)?;
                         indices[cursor..next].sort_unstable_by(|&a, &b| {
                             sites[a]
                                 .preferred
                                 .total_cmp(&sites[b].preferred)
+                                .then_with(|| {
+                                    sites[a].tie_preferred.total_cmp(&sites[b].tie_preferred)
+                                })
                                 .then(a.cmp(&b))
                         });
+                        work.check()?;
                     }
                 }
             }
@@ -607,6 +614,7 @@ impl Routing<'_> {
             // anchor it at `center` so straight direct connections avoid an unnecessary jog.
             let mut anchored_start = None;
             if first.owner < self.hierarchy.node_count && count >= 2 {
+                work.visit(next - cursor)?;
                 let mut aligned_slot = None;
                 let mut aligned_count = 0usize;
                 let mut unpinned_rank = 0usize;

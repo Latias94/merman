@@ -606,22 +606,24 @@ fn c4_write_unified_shape(
                 let rx = width / 2.0;
                 let ry = c4_cap_radius(width);
                 let body_height = (height - 2.0 * ry).max(1.0);
-                let path = format!(
-                    "M0,{}a{},{} 0,0,0 {},0a{},{} 0,0,0 {},0l0,{}a{},{} 0,0,0 {},0l0,{}",
-                    fmt(ry),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(width),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(-width),
-                    fmt(body_height),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(width),
-                    fmt(-body_height)
+                // Split the closed cylinder silhouette from the open interior rim arc so RoughJS
+                // hatching does not self-intersect across the top cap.
+                let body_path = format!(
+                    "M0,{ry} a{rx},{ry} 0,0,1 {w},0 v{h} a{rx},{ry} 0,0,1 {mw},0 Z",
+                    ry = fmt(ry),
+                    rx = fmt(rx),
+                    w = fmt(width),
+                    h = fmt(body_height),
+                    mw = fmt(-width),
                 );
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
+                let rim_path = format!(
+                    "M0,{ry} a{rx},{ry} 0,0,0 {w},0",
+                    ry = fmt(ry),
+                    rx = fmt(rx),
+                    w = fmt(width),
+                );
+                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(
                     out,
@@ -631,6 +633,15 @@ fn c4_write_unified_shape(
                 );
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                let _ = write!(
+                    out,
+                    r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
+                    escape_attr(&rim),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                );
                 out.push_str("</g>");
                 return out.checkpoint();
             }
@@ -638,27 +649,37 @@ fn c4_write_unified_shape(
                 let h = height.max(1.0);
                 let ry = h / 2.0;
                 let rx = c4_cap_radius(h);
-                let path = format!(
-                    "M0,0 a{},{} 0,0,1 0,-{} l{},0 a{},{} 0,0,1 0,{} M{},-{} a{},{} 0,0,0 0,{} l-{},0",
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
-                    fmt(h),
-                    fmt(rx),
-                    fmt(ry),
-                    fmt(h),
-                    fmt(width),
+                let body_path = format!(
+                    "M0,0 a{rx},{ry} 0,0,1 0,{mh} h{w} a{rx},{ry} 0,0,1 0,{h} Z",
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    mh = fmt(-h),
+                    w = fmt(width),
+                    h = fmt(h),
                 );
-                let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
+                let rim_path = format!(
+                    "M{w},{mh} a{rx},{ry} 0,0,0 0,{h}",
+                    w = fmt(width),
+                    mh = fmt(-h),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(h),
+                );
+                let pair = c4_hand_drawn_paths(&body_path, stroke_width, work_meter, randomness)?;
+                let rim = c4_hand_drawn_stroke(&rim_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, stroke_width)?;
+                let _ = write!(
+                    out,
+                    r#"<path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="fill:none !important;stroke:{} !important;stroke-width:{}px !important"/>"#,
+                    escape_attr(&rim),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke),
+                    fmt(stroke_width as f64),
+                );
                 out.push_str("</g>");
                 return out.checkpoint();
             }

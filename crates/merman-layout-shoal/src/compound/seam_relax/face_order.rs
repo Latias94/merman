@@ -189,6 +189,7 @@ fn edits(
     let obstacles = Obstacles::new(ctx.graph, output, work)?;
     let mut edited = filled(output.edges.len(), false)?;
     let mut edits = Vec::new();
+    let mut footprints = Vec::new();
     let spacing = ctx.options.spacing;
     let stitches = &output.border_stitches;
     for face in ports.chunk_by(|a, b| a.face() == b.face()) {
@@ -216,6 +217,17 @@ fn edits(
                 seam.edge.0 as usize == port.edge && range.contains(&seam.point)
             }) {
                 continue;
+            }
+            // Do not move a prefix when a mid-edge label was placed on it, since `face_order`
+            // keeps `label_center` fixed and would otherwise leave the label detached at `from`.
+            if let (Some(center), Some(size)) = (
+                output.edges[port.edge].label_center,
+                ctx.graph.edges[port.edge].label,
+            ) {
+                let prefix = Bounds::route(&points[range.clone()], work)?;
+                if prefix.overlaps(Bounds::centered(center, size)) {
+                    continue;
+                }
             }
             let tails = if port.point == 0 {
                 &points[anchor + 1..]
@@ -272,7 +284,7 @@ fn edits(
                 port.edge,
                 [port.group; 2],
                 output,
-                std::iter::empty(),
+                footprints.iter().copied(),
                 work,
             )? {
                 continue;
@@ -285,6 +297,7 @@ fn edits(
                 *point = travel.on_lane(*point, lane);
             }
             edited[port.edge] = true;
+            push(&mut footprints, (port.edge, footprint))?;
             push(&mut edits, (port.edge, route))?;
         }
     }

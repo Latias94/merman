@@ -528,8 +528,12 @@ fn prepare_c4_family<'parsed>(
     let native = execution.native_family_theme();
     let mut typography_theme =
         crate::c4::C4TypographyThemePlan::resolve(native, &meta.effective_config, model);
-    let cluster_theme =
-        crate::c4::C4ClusterThemePlan::resolve(native, &model.boundaries, &meta.effective_config);
+    let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
+        native,
+        &model.boundaries,
+        &meta.effective_config,
+        execution.layout_backend() == GraphLayoutBackend::Shoal,
+    );
     let config = meta.effective_config.as_value();
     let grid = || {
         crate::c4::layout_c4_diagram_typed(

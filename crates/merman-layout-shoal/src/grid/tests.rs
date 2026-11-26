@@ -733,3 +733,28 @@ fn interrupted_grid_solve_leaves_input_reusable() {
     );
     assert!(layout_with_control(&graph, &[], &options, &mut NoopWorkControl).is_ok());
 }
+
+#[test]
+fn collinear_face_nudges_are_deterministic_and_respect_work_budget() {
+    // Hub node 0 has 12 outgoing edges sharing the Right face to targets stacked vertically,
+    // exercising collinear port nudging and metered re-sorting.
+    let mut nodes = vec![node(0, None)];
+    let mut edges = Vec::new();
+    for i in 1..=12 {
+        nodes.push(node(i, None));
+        edges.push(edge(0, i, Side::Right, Side::Left));
+    }
+    let graph = Graph {
+        nodes,
+        edges,
+        ..Default::default()
+    };
+    let options = Options::default();
+    let first = layout_with_control(&graph, &[], &options, &mut NoopWorkControl).unwrap();
+    let second = layout_with_control(&graph, &[], &options, &mut NoopWorkControl).unwrap();
+    assert_eq!(first.edges, second.edges);
+    assert_eq!(
+        layout_with_control(&graph, &[], &options, &mut Limit(40)),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+}

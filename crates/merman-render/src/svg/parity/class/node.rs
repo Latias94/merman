@@ -12,8 +12,9 @@ use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_int
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
 use super::label::{
-    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
-    class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
+    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics,
+    class_html_member_div_style, class_html_title_metrics, class_svg_label_rect,
+    render_class_html_label, wrap_class_svg_text_like_mermaid,
     write_class_svg_text_markdown_with_style,
 };
 use super::rough::{
@@ -1255,7 +1256,11 @@ fn render_class_html_node_rows_group(
         fmt(group_y)
     );
     for row in &rows_rendered.rows {
-        let div_style = class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
+        let div_style = class_html_member_div_style(
+            row.metrics.width.max(1.0),
+            row.max_width_px,
+            ctx.uses_canonical_routes,
+        );
         render_class_html_node_label_group(
             out,
             &ClassHtmlNodeLabelGroupSpec {
