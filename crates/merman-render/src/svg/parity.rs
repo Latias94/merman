@@ -147,7 +147,7 @@ pub(crate) use flowchart::{
 mod gantt;
 #[cfg(feature = "diagram-git-graph")]
 mod gitgraph;
-#[cfg(feature = "diagram-info")]
+#[cfg(all(test, feature = "diagram-info"))]
 mod info;
 #[cfg(feature = "diagram-ishikawa")]
 mod ishikawa;
@@ -1365,14 +1365,16 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-info")]
-        BuiltinFamilyArtifact::Info(artifact) => match artifact.typography_theme() {
-            crate::info::InfoAppearance::Mermaid(style) => {
-                info::render_info_diagram_svg(artifact.pair().layout(), style, options)
-            }
-            crate::info::InfoAppearance::Native(style) => {
-                info::render_native_info_svg(artifact.pair().layout(), style, options)
-            }
-        },
+        BuiltinFamilyArtifact::Info(artifact) => {
+            let diagram_id = options.diagram_id_or("merman");
+            crate::info::render_info_svg(
+                artifact.pair().layout(),
+                artifact.typography_theme(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::INFO, diagram_id),
+                options.work_meter(),
+            )
+        }
         #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => {
             treemap::render_treemap_diagram_svg(artifact.pair().layout(), artifact.style(), options)

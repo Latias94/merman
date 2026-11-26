@@ -1,9 +1,7 @@
 use crate::{model::InfoDiagramLayout, text::TextMeasurer, theme::FamilyTheme};
 use merman_model::presentation::PresentationConfig;
 
-pub(crate) use merman_render_structured::info::{
-    INFO_BASELINE_HEIGHT_PX, InfoAppearance, InfoClassicStyle, InfoNativeStyle,
-};
+pub(crate) use merman_render_structured::info::{InfoAppearance, render_info_svg};
 
 pub(crate) fn prepare_info_diagram(
     config: &PresentationConfig,

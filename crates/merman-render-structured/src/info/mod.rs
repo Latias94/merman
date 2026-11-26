@@ -13,9 +13,10 @@ use merman_theme_contract::v2::{Color, FamilyTheme};
 use serde::{Deserialize, Serialize};
 
 mod svg;
+pub use svg::render_info_svg;
 
 const INFO_BASELINE_WIDTH_PX: f64 = 400.0;
-pub const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
+const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
 const INFO_VERSION_FONT_SIZE_PX: f64 = 32.0;
 const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
 const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
