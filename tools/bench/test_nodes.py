@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -134,7 +135,8 @@ class NodeMatrixTests(unittest.TestCase):
             args.plan.write_bytes(plan_bytes)
             order = []
 
-            def collect(cmd, *, cwd, stdout):
+            def collect(cmd, *, cwd, stdout, env):
+                self.assertEqual(env["MERMAN_BENCH_PYTHON"], sys.executable)
                 name = cmd[cmd.index("--engine") + 1]
                 order.append(name)
                 if name == "pele":
@@ -204,7 +206,8 @@ class NodeMatrixTests(unittest.TestCase):
             plan = root / "input.json"
             plan.write_text(json.dumps(dict(schema_version=1, scenarios=rows)))
             dest = root / "bundle"
-            args = SimpleNamespace(plan=plan, out_dir=dest, peer=None, samples=1, timeout_seconds=4,
+            args = SimpleNamespace(plan=plan, out_dir=dest, peer=None, samples=1,
+                                   timeout_seconds=12 if sys.platform == "win32" else 4,
                                    merman_module=None, check_drawings=True, chrome=None)
             def audit(plan, reports, *, chrome):
                 # Only substitute the browser verdicts. The audit reads the actual retained SVGs.
@@ -264,7 +267,8 @@ class ProcessRoundTests(unittest.TestCase):
                                              for key in keys]) for name, keys in documents.items()]
         self.args.plan.write_bytes(json.dumps(dict(schema_version=1, scenarios=scenarios)).encode())
 
-    def collect(self, cmd, *, cwd, stdout):
+    def collect(self, cmd, *, cwd, stdout, env):
+        self.assertEqual(env["MERMAN_BENCH_PYTHON"], sys.executable)
         engine = cmd[cmd.index("--engine") + 1]
         label = cmd[cmd.index("--variant-label") + 1] if "--variant-label" in cmd else engine
         round_no = int(Path(stdout.name).parent.name)
