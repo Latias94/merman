@@ -18,4 +18,4 @@ flate2 = "1.1.0"
 krilla = { workspace = true, features = ["raster-images", "simple-text"] }
 resvg = { workspace = true, features = ["raster-images"] }
 tiny-skia = "0.12.0"
-usvg = { workspace = true, features = ["svgz", "text", "system-fonts", "memmap-fonts"] }
+usvg = { workspace = true, features = ["svgz", "text"] }
