@@ -1,3 +1,7 @@
+use merman_render_core::{
+    mermaid_style::ParsedStyleDeclaration, text::trim_start_ecmascript_whitespace,
+};
+
 /// The inline CSSOM value read by D3, separate from the used size measured by the host.
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) enum TreemapInlineFontSize {
@@ -11,7 +15,7 @@ pub(super) enum TreemapInlineFontSize {
 }
 
 impl TreemapInlineFontSize {
-    pub(super) fn authored(declaration: &crate::mermaid_style::ParsedStyleDeclaration<'_>) -> Self {
+    pub(super) fn authored(declaration: &ParsedStyleDeclaration<'_>) -> Self {
         // Callers have already admitted a measurable scalar or a CSS-wide keyword. CSSOM
         // normalizes a numeric token (e.g. `.5px` to `0.5px`) but preserves its unit.
         match parse_float_prefix(declaration.value()) {
@@ -81,7 +85,7 @@ fn cssom_numeric_prefixes(number: f64) -> Option<(f64, f64)> {
 }
 
 fn parse_int_prefix(text: &str) -> Option<f64> {
-    let text = crate::text::trim_start_ecmascript_whitespace(text);
+    let text = trim_start_ecmascript_whitespace(text);
     let sign = usize::from(matches!(text.as_bytes().first(), Some(b'+' | b'-')));
     let digits = text[sign..].bytes().take_while(u8::is_ascii_digit).count();
     (digits != 0)
@@ -91,7 +95,7 @@ fn parse_int_prefix(text: &str) -> Option<f64> {
 }
 
 fn parse_float_prefix(text: &str) -> Option<f64> {
-    let text = crate::text::trim_start_ecmascript_whitespace(text);
+    let text = trim_start_ecmascript_whitespace(text);
     let bytes = text.as_bytes();
     let mut end = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
     let integer_start = end;
@@ -133,6 +137,7 @@ fn parse_float_prefix(text: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_render_core::mermaid_style::parse_style_declaration;
 
     #[test]
     fn fitting_numbers_follow_decimal_prefixes_instead_of_css_unit_conversion() {
@@ -152,7 +157,7 @@ mod tests {
             assert_eq!(parse_int_prefix(text), integer, "{text}");
             assert_eq!(parse_float_prefix(text), number, "{text}");
         }
-        let declaration = crate::mermaid_style::parse_style_declaration("font-size:.5px").unwrap();
+        let declaration = parse_style_declaration("font-size:.5px").unwrap();
         let inline = TreemapInlineFontSize::authored(&declaration);
         assert_eq!(inline.integer(38.0), Some(0.0));
         assert_eq!(inline.number(38.0), Some(0.5));
@@ -176,7 +181,7 @@ mod tests {
         ] {
             // Keep the declaration's borrowed source alive through the scalar preparation.
             let raw = format!("font-size:{source}");
-            let declaration = crate::mermaid_style::parse_style_declaration(&raw).unwrap();
+            let declaration = parse_style_declaration(&raw).unwrap();
             let inline = TreemapInlineFontSize::authored(&declaration);
             assert_eq!(inline.integer(38.0), Some(integer), "{source}");
             assert_eq!(inline.number(38.0), Some(number), "{source}");

@@ -1,19 +1,33 @@
-use super::super::*;
-use crate::treemap::{
-    TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PADDING_PX, TREEMAP_TITLE_CLASS,
+use merman_model::OperationPhase;
+use merman_render_core::{
+    Error, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{
+        DiagramBounds, RootChrome, RootDomProfile, RootViewportContext, RootViewportSpec,
+        RootedSvg, SvgRootStyleViewBoxOrder,
+    },
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::{TextMeasurer, TextStyle},
+    theme_svg::data_pattern,
+    xml::{escape_attr, escape_xml},
 };
-use merman_render_charts::treemap::{
-    TreemapLeafRectPaint, format_treemap_value, treemap_view_box, write_treemap_leaf_group_open,
-    write_treemap_leaf_rect_and_clip,
-};
+use std::fmt::Write as _;
 
-// Treemap diagram SVG renderer implementation (split from parity.rs).
+use super::super::{
+    TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PADDING_PX, TREEMAP_TITLE_CLASS,
+    TreemapDiagramLayout, TreemapStyle, css::treemap_css, format_treemap_value, treemap_view_box,
+};
+use super::{
+    TreemapLeafRectPaint, write_treemap_leaf_group_open, write_treemap_leaf_rect_and_clip,
+};
 
 fn measure_treemap_computed_length(
-    measurer: &dyn crate::text::TextMeasurer,
+    measurer: &dyn TextMeasurer,
     text: &str,
-    style: &crate::text::TextStyle,
-    work_meter: &crate::resources::OperationWorkMeter,
+    style: &TextStyle,
+    work_meter: &OperationWorkMeter,
 ) -> Result<f64> {
     work_meter.charge(1usize.saturating_add(text.len().div_ceil(64)))?;
     Ok(measurer.measure_svg_text_computed_length_px(text, style))
@@ -26,7 +40,7 @@ fn fit_treemap_label_height(
     base_value_size: f64,
     min_value_size: f64,
     spacing: f64,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
 ) -> Result<f64> {
     let combined_height = |size: f64| {
         size + spacing
@@ -71,14 +85,14 @@ fn fit_treemap_label_width(
     available_width: f64,
     min_label_size: f64,
     text: &str,
-    style: &mut crate::text::TextStyle,
-    measurer: &dyn crate::text::TextMeasurer,
-    work_meter: &crate::resources::OperationWorkMeter,
+    style: &mut TextStyle,
+    measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
 ) -> Result<f64> {
     const MAX_WIDTH_SEARCH_STEPS: usize = 2_048;
 
     if !font_size.is_finite() || !min_label_size.is_finite() {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "Treemap label font size must be finite during width fitting".to_owned(),
         });
     }
@@ -111,28 +125,28 @@ fn fit_treemap_label_width(
     Ok(fitting)
 }
 
-pub(crate) fn render_treemap_diagram_svg(
-    layout: &crate::model::TreemapDiagramLayout,
-    style: &crate::treemap::TreemapStyle,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("treemap");
-
+/// Emits the complete Treemap SVG before host canvas and terminal admission.
+pub fn render_treemap_diagram_svg(
+    layout: &TreemapDiagramLayout,
+    style: &TreemapStyle,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+    bbox_measurer: &dyn TextMeasurer,
+    computed_length_measurer: &dyn TextMeasurer,
+) -> Result<RootedSvg> {
     let has_acc_title = layout.acc_title.as_deref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = layout.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
-    let measurer = options.text_measurer();
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
     let title_bbox = if let Some(title) = title {
         let title_text_style = style.title_text_style();
         let measurement_work = 1usize.saturating_add(title.len().div_ceil(64));
-        options
-            .work_meter()
-            .charge(measurement_work.saturating_mul(2))?;
-        let w = measurer
+        work_meter.charge(measurement_work.saturating_mul(2))?;
+        let w = bbox_measurer
             .measure_svg_raw_text_bbox_width_px(title, &title_text_style)
             .max(0.0);
-        let h = measurer
+        let h = bbox_measurer
             .measure_svg_raw_text_bbox_height_px(title, &title_text_style)
             .max(0.0);
         Some((w, h))
@@ -142,29 +156,27 @@ pub(crate) fn render_treemap_diagram_svg(
 
     let (vb_x, vb_y, vb_w, vb_h) = treemap_view_box(layout, title_bbox);
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(work_meter);
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let extra_attrs: [(&str, &str); 1] = [("class", "flowchart")];
-    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treemap");
+    let mut root_chrome = RootChrome::new(diagram_id, "treemap");
     root_chrome.extra_attrs = &extra_attrs;
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
-    root_chrome.dom = root_svg::RootDomProfile {
-        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+    root_chrome.dom = RootDomProfile {
+        style_viewbox_order: SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
         trailing_newline: false,
-        ..root_svg::RootDomProfile::default()
+        ..RootDomProfile::default()
     };
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::TREEMAP, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-                layout.use_max_width,
-            ),
-            root_chrome,
-        )?;
+    let root_document = root_viewport.write_open(
+        &mut out,
+        RootViewportSpec::mermaid(
+            DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+            layout.use_max_width,
+        ),
+        root_chrome,
+    )?;
     out.checkpoint()?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
@@ -184,9 +196,9 @@ pub(crate) fn render_treemap_diagram_svg(
         out.checkpoint()?;
     }
 
-    let css = super::css::treemap_css(diagram_id, style)?;
+    let css = treemap_css(diagram_id, style)?;
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    XmlTextOutput::new(&mut out).push_str(&css);
     out.push_str("</style>");
     drop(css);
     if let Some(palette) = &style.native_patterns {
@@ -194,13 +206,7 @@ pub(crate) fn render_treemap_diagram_svg(
         for slot in 1..palette.fill.len() {
             if slot % 6 != 0 {
                 let id = format!("{diagram_id}-treemap-pattern-{slot}");
-                let _ = crate::theme::pattern_svg::data_pattern(
-                    &mut out,
-                    &id,
-                    slot,
-                    palette.fill(slot),
-                    palette.ink(slot),
-                );
+                let _ = data_pattern(&mut out, &id, slot, palette.fill(slot), palette.ink(slot));
                 out.checkpoint()?;
             }
         }
@@ -228,7 +234,6 @@ pub(crate) fn render_treemap_diagram_svg(
     );
     out.checkpoint()?;
 
-    let computed_length_measurer = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
     let section_header_height = TREEMAP_SECTION_HEADER_HEIGHT_PX;
     let section_header_center_y = section_header_height / 2.0;
     let section_label_inset_x: f64 = 6.0;
@@ -240,8 +245,8 @@ pub(crate) fn render_treemap_diagram_svg(
 
     for (i, section) in layout.sections.iter().enumerate() {
         let section_clip_id = format!("clip-section-{diagram_id}-{i}");
-        options.checkpoint_emit()?;
-        options.work_meter().charge(1)?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
+        work_meter.charge(1)?;
         let w = section.x1 - section.x0;
         let h = section.y1 - section.y0;
         let _ = write!(
@@ -298,9 +303,7 @@ pub(crate) fn render_treemap_diagram_svg(
         let mut label_text = if section.depth == 0 {
             String::new()
         } else {
-            options
-                .work_meter()
-                .charge(1usize.saturating_add(section.name.len().div_ceil(64)))?;
+            work_meter.charge(1usize.saturating_add(section.name.len().div_ceil(64)))?;
             section.name.clone()
         };
 
@@ -337,30 +340,28 @@ pub(crate) fn render_treemap_diagram_svg(
 
             let style = section_label_text_style.style();
             if measure_treemap_computed_length(
-                &computed_length_measurer,
+                computed_length_measurer,
                 &label_text,
                 style,
-                options.work_meter(),
+                work_meter,
             )? > actual_available_width
             {
                 let ellipsis = "...";
-                options
-                    .work_meter()
-                    .charge(1usize.saturating_add(label_text.len().div_ceil(64)))?;
+                work_meter.charge(1usize.saturating_add(label_text.len().div_ceil(64)))?;
                 let candidate_capacity = label_text
                     .len()
                     .checked_add(ellipsis.len())
-                    .ok_or_else(|| options.work_meter().arithmetic_overflow())?;
+                    .ok_or_else(|| work_meter.arithmetic_overflow())?;
                 let mut candidate = String::with_capacity(candidate_capacity);
                 candidate.push_str(&label_text);
                 while !candidate.is_empty() {
                     candidate.pop();
                     if candidate.is_empty() {
                         if measure_treemap_computed_length(
-                            &computed_length_measurer,
+                            computed_length_measurer,
                             ellipsis,
                             style,
-                            options.work_meter(),
+                            work_meter,
                         )? > actual_available_width
                         {
                             label_text.clear();
@@ -371,10 +372,10 @@ pub(crate) fn render_treemap_diagram_svg(
                     }
                     candidate.push_str(ellipsis);
                     if measure_treemap_computed_length(
-                        &computed_length_measurer,
+                        computed_length_measurer,
                         &candidate,
                         style,
-                        options.work_meter(),
+                        work_meter,
                     )? <= actual_available_width
                     {
                         label_text = candidate;
@@ -461,8 +462,8 @@ pub(crate) fn render_treemap_diagram_svg(
 
     for (i, leaf) in layout.leaves.iter().enumerate() {
         let leaf_clip_id = format!("clip-{diagram_id}-{i}");
-        options.checkpoint_emit()?;
-        options.work_meter().charge(1)?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
+        work_meter.charge(1)?;
         let w = leaf.x1 - leaf.x0;
         let h = leaf.y1 - leaf.y0;
 
@@ -531,8 +532,8 @@ pub(crate) fn render_treemap_diagram_svg(
                     min_label_font_size,
                     &leaf.name,
                     &mut style,
-                    &computed_length_measurer,
-                    options.work_meter(),
+                    computed_length_measurer,
+                    work_meter,
                 )?;
                 let size = fit_treemap_label_height(
                     size,
@@ -541,7 +542,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     base_value_font_size,
                     min_value_font_size,
                     spacing_between_label_and_value,
-                    options.work_meter(),
+                    work_meter,
                 )?;
                 label_font_size = Some(size);
                 style.font_size = size;
@@ -552,10 +553,10 @@ pub(crate) fn render_treemap_diagram_svg(
                 // D3 reads the inline CSSOM keyword, so parseInt produces NaN. The width
                 // condition still measures the used style, but neither decrement loop runs.
                 measure_treemap_computed_length(
-                    &computed_length_measurer,
+                    computed_length_measurer,
                     &leaf.name,
                     &style,
-                    options.work_meter(),
+                    work_meter,
                 )?;
             }
 
@@ -567,10 +568,10 @@ pub(crate) fn render_treemap_diagram_svg(
                 }
             } else {
                 if measure_treemap_computed_length(
-                    &computed_length_measurer,
+                    computed_length_measurer,
                     &leaf.name,
                     &style,
-                    options.work_meter(),
+                    work_meter,
                 )? > available_w
                     || label_font_size
                         .is_some_and(|size| size < min_label_font_size || available_h < size)
@@ -661,10 +662,10 @@ pub(crate) fn render_treemap_diagram_svg(
                 let available_w_for_value = w - 2.0 * label_padding;
 
                 let value_w_px = measure_treemap_computed_length(
-                    &computed_length_measurer,
+                    computed_length_measurer,
                     &value_text,
                     final_value_text_style.style(),
-                    options.work_meter(),
+                    work_meter,
                 )?;
                 value_hidden = value_w_px > available_w_for_value
                     || actual_value_font_size.is_some_and(|size| {
@@ -736,14 +737,23 @@ pub(crate) fn render_treemap_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
-    use std::fmt;
-    use std::ops::Range;
+    use crate::treemap::{
+        TreemapLeafLayout, TreemapSectionLayout,
+        test_support::{FALLBACK_C_SCALE, presentation_config},
+    };
+    use merman_model::family::DiagramFamilyId;
+    use merman_render_core::{
+        resources::{RenderResourcePolicy, ResourceLimitId},
+        svg_css::SvgDiagramIdProjection,
+        text::{
+            TextMetrics,
+            measurement::{TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementSession},
+        },
+    };
+    use std::{fmt, ops::Range, sync::Arc};
 
     #[test]
     fn treemap_height_search_matches_decrement_and_bounds_extreme_work() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         for (minimum, base_value, min_value, spacing) in
             [(8.0, 28.0, 6.0, 2.0), (4.0, 14.0, 4.0, 1.0)]
@@ -797,12 +807,12 @@ mod tests {
         );
         assert!(matches!(
             fit_treemap_label_height(1e20, 100.0, 8.0, 28.0, 6.0, 2.0, &meter),
-            Err(crate::Error::ResourceLimitExceeded(_))
+            Err(Error::ResourceLimitExceeded(_))
         ));
         let control = merman_model::OperationControl::new();
         control.cancel();
         let meter = OperationWorkMeter::new_with_control(policy, control);
-        let Err(crate::Error::Cancelled(error)) =
+        let Err(Error::Cancelled(error)) =
             fit_treemap_label_height(1e20, 100.0, 8.0, 28.0, 6.0, 2.0, &meter)
         else {
             panic!("height fitting must observe cancellation before searching");
@@ -813,28 +823,18 @@ mod tests {
 
     #[test]
     fn treemap_width_search_strictly_progresses_for_extreme_overwide_labels() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-
         struct FontSizeWidthMeasurer;
 
-        impl crate::text::TextMeasurer for FontSizeWidthMeasurer {
-            fn measure(
-                &self,
-                _text: &str,
-                style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
-                crate::text::TextMetrics {
+        impl TextMeasurer for FontSizeWidthMeasurer {
+            fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+                TextMetrics {
                     width: style.font_size,
                     height: style.font_size,
                     line_count: 1,
                 }
             }
 
-            fn measure_svg_text_computed_length_px(
-                &self,
-                _text: &str,
-                style: &crate::text::TextStyle,
-            ) -> f64 {
+            fn measure_svg_text_computed_length_px(&self, _text: &str, style: &TextStyle) -> f64 {
                 style.font_size
             }
         }
@@ -854,13 +854,14 @@ mod tests {
             sections: Vec::new(),
             leaves: vec![leaf("over-wide", 1.0, 0.0, 100.0, 100.0)],
         };
-        let config = crate::test_support::presentation_config(serde_json::json!({}));
-        let typography_theme = crate::treemap::TreemapStyle::resolve(
+        let config = presentation_config(serde_json::json!({}));
+        let typography_theme = TreemapStyle::resolve(
             &config,
             &layout,
             None,
             None,
-            &std::sync::Arc::new(OperationWorkMeter::new(
+            &FALLBACK_C_SCALE,
+            &Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             )),
         )
@@ -933,14 +934,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -956,7 +957,7 @@ mod tests {
         let error = write_treemap_leaf_group_open(&mut out, "treemapNode leaf0x", 12.0, 24.0)
             .expect_err("the rejecting sink must stop Treemap leaf-group emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "Treemap leaf-group emission must stop at the first failed sink checkpoint"
@@ -1041,24 +1042,35 @@ mod tests {
             leaves,
         };
 
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let execution =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
-                .expect("SVG execution");
-        let config = crate::test_support::presentation_config(serde_json::json!({}));
-        let style = crate::treemap::TreemapStyle::resolve(
-            &config,
+        let work = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::interactive()));
+        let measurement = TextMeasurementSession::new(TextMeasurementPolicy::deterministic());
+        let bbox = measurement.routed(
+            &work,
+            TextMeasurementPhase::SvgBBox,
+            Some(OperationPhase::Emit),
+        );
+        let computed_length = measurement.routed(
+            &work,
+            TextMeasurementPhase::ComputedLength,
+            Some(OperationPhase::Emit),
+        );
+        let projection = SvgDiagramIdProjection::new(&work);
+        let diagram_id = SvgId::new("treemap").unwrap().with_projection(&projection);
+        let root = RootViewportContext::new(DiagramFamilyId::TREEMAP, diagram_id);
+        let config = presentation_config(serde_json::json!({}));
+        let style =
+            TreemapStyle::resolve(&config, &layout, None, None, &FALLBACK_C_SCALE, &work).unwrap();
+        let svg = render_treemap_diagram_svg(
             &layout,
-            None,
-            None,
-            session.work_meter(),
+            &style,
+            diagram_id,
+            &root,
+            &work,
+            &bbox,
+            &computed_length,
         )
         .unwrap();
-        let svg = render_treemap_diagram_svg(&layout, &style, &execution).unwrap();
+        projection.finish().unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(

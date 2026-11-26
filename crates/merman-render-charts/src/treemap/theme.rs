@@ -2,14 +2,15 @@ use std::sync::Arc;
 
 use merman_model::OperationPhase;
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::DataPalette;
+use merman_render_core::{
+    Error, Result, config, mermaid_style,
+    resources::{OperationWorkMeter, PreparedTextRetainedReservation},
+    svg_css::PreparedCommonCss,
+    text::TextStyle,
+};
+use merman_theme_contract::v2::{Color, DataPalette, FamilyTheme};
 
-use crate::model::TreemapDiagramLayout;
-use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::svg::PreparedCommonCss;
-use crate::theme::{Color, FamilyTheme};
-
-use super::css_binding::TreemapCssBinding;
+use super::{TreemapDiagramLayout, css_binding::TreemapCssBinding};
 
 mod font_size;
 mod node_visual;
@@ -71,7 +72,7 @@ impl TreemapSourceTextStyle {
         };
 
         TreemapResolvedTextStyle {
-            style: crate::text::TextStyle {
+            style: TextStyle {
                 font_family: Some(family.to_owned()),
                 font_size,
                 font_weight,
@@ -100,12 +101,12 @@ impl TreemapSourceTextStyle {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TreemapResolvedTextStyle {
-    style: crate::text::TextStyle,
+    style: TextStyle,
     inline_font_size: TreemapInlineFontSize,
 }
 
 impl TreemapResolvedTextStyle {
-    pub(crate) const fn style(&self) -> &crate::text::TextStyle {
+    pub(crate) const fn style(&self) -> &TextStyle {
         &self.style
     }
 
@@ -130,7 +131,7 @@ impl TreemapResolvedTextStyle {
 }
 
 #[derive(Debug)]
-pub(crate) struct TreemapStyle {
+pub struct TreemapStyle {
     css: TreemapCssBinding,
     title_font_size_px: f64,
     pub(crate) native_radius: Option<f64>,
@@ -143,15 +144,16 @@ pub(crate) struct TreemapStyle {
 }
 
 impl TreemapStyle {
-    pub(crate) fn resolve(
+    pub(super) fn resolve(
         config: &PresentationConfig,
         layout: &TreemapDiagramLayout,
         native: Option<&FamilyTheme>,
         background: Option<Color>,
+        fallback_c_scale: &[&'static str; 12],
         work: &Arc<OperationWorkMeter>,
-    ) -> crate::Result<Self> {
-        let font = crate::config::config_font_family_css(config);
-        let mut css = TreemapCssBinding::new(config.as_value(), &font)?;
+    ) -> Result<Self> {
+        let font = config::config_font_family_css(config);
+        let mut css = TreemapCssBinding::new(config.as_value(), &font, fallback_c_scale)?;
         let root_font_size_px = css.root_font_size_px();
         let mut title_font_size_px = 14.0;
         if layout
@@ -161,7 +163,7 @@ impl TreemapStyle {
         {
             work.charge(1usize.saturating_add(css.title_font_size.len().div_ceil(64)))?;
             let declaration = format!("font-size:{}", css.title_font_size);
-            title_font_size_px = crate::mermaid_style::parse_style_declaration(&declaration)
+            title_font_size_px = mermaid_style::parse_style_declaration(&declaration)
                 .and_then(|declaration| {
                     if declaration.font_size_is_literal_zero() {
                         return Some(0.0);
@@ -169,9 +171,9 @@ impl TreemapStyle {
                     if declaration.analysis().depends_on_root_font_size() {
                         return None;
                     }
-                    declaration.resolve_font_size_px(
-                        crate::mermaid_style::CssFontSizeContext::uniform(root_font_size_px),
-                    )
+                    declaration.resolve_font_size_px(mermaid_style::CssFontSizeContext::uniform(
+                        root_font_size_px,
+                    ))
                 })
                 .unwrap_or(14.0);
         }
@@ -179,7 +181,7 @@ impl TreemapStyle {
         if let Some(theme) = native {
             let typography = &theme.typography;
             let size = typography.base_size_px;
-            let font = crate::theme::font_family_css(typography.stack(typography.body_family));
+            let font = mermaid_style::font_family_css(typography.stack(typography.body_family));
             css.common = PreparedCommonCss::with_resolved_typography(
                 config.as_value(),
                 font,
@@ -219,7 +221,7 @@ impl TreemapStyle {
             .try_fold(font_bytes, |retained, style| {
                 retained.checked_add(style.retained_bytes()?)
             })
-            .ok_or_else(|| crate::Error::from(work.arithmetic_overflow()))?;
+            .ok_or_else(|| Error::from(work.arithmetic_overflow()))?;
         retained_reservation.reconcile_downward(retained_bytes);
         Self {
             css,
@@ -257,11 +259,11 @@ impl TreemapStyle {
             .map(|source| &source.visual)
     }
 
-    pub(crate) fn title_text_style(&self) -> crate::text::TextStyle {
-        crate::text::TextStyle {
+    pub(crate) fn title_text_style(&self) -> TextStyle {
+        TextStyle {
             font_family: Some(self.font_family_css().to_owned()),
             font_size: self.title_font_size_px,
-            ..crate::text::TextStyle::default()
+            ..TextStyle::default()
         }
     }
 
@@ -284,7 +286,7 @@ impl TreemapStyle {
                 )
             })
             .unwrap_or_else(|| TreemapResolvedTextStyle {
-                style: crate::text::TextStyle {
+                style: TextStyle {
                     font_family: Some(self.font_family_css().to_string()),
                     font_size: generated_font_size_px,
                     font_weight: generated_font_weight.map(str::to_owned),
@@ -311,7 +313,7 @@ impl TreemapStyle {
                 )
             })
             .unwrap_or_else(|| TreemapResolvedTextStyle {
-                style: crate::text::TextStyle {
+                style: TextStyle {
                     font_family: Some(self.font_family_css().to_string()),
                     font_size: generated_font_size_px,
                     font_weight: None,
@@ -326,16 +328,16 @@ fn treemap_source_style_retained_upper_bound(
     layout: &TreemapDiagramLayout,
     root_font_family_bytes: usize,
     work_meter: &OperationWorkMeter,
-) -> crate::Result<usize> {
+) -> Result<usize> {
     let item_count = layout
         .sections
         .len()
         .checked_add(layout.leaves.len())
-        .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
+        .ok_or_else(|| Error::from(work_meter.arithmetic_overflow()))?;
     let mut retained_bytes = item_count
         .checked_mul(std::mem::size_of::<TreemapSourceTextStyle>())
         .and_then(|bytes| bytes.checked_add(root_font_family_bytes))
-        .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
+        .ok_or_else(|| Error::from(work_meter.arithmetic_overflow()))?;
 
     for declaration_lists in layout
         .sections
@@ -353,7 +355,7 @@ fn treemap_source_style_retained_upper_bound(
             work_meter.charge(1)?;
             retained_bytes = retained_bytes
                 .checked_add(declaration_list.len())
-                .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
+                .ok_or_else(|| Error::from(work_meter.arithmetic_overflow()))?;
         }
     }
 
@@ -364,21 +366,21 @@ fn resolve_treemap_source_text_style(
     declaration_lists: &[String],
     root_font_size_px: f64,
     work_meter: &OperationWorkMeter,
-) -> crate::Result<TreemapSourceTextStyle> {
+) -> Result<TreemapSourceTextStyle> {
     let mut style = TreemapSourceTextStyle::default();
     let font_size_context =
-        crate::mermaid_style::CssFontSizeContext::new(root_font_size_px, root_font_size_px);
+        mermaid_style::CssFontSizeContext::new(root_font_size_px, root_font_size_px);
 
     for declaration_list in declaration_lists {
         work_meter.charge(1usize.saturating_add(declaration_list.len().div_ceil(64)))?;
         let mut checkpoint = || work_meter.checkpoint(OperationPhase::Layout);
-        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
             declaration_list,
             &mut checkpoint,
             |boundary| {
                 work_meter.charge(1)?;
                 let raw = boundary.raw();
-                let Some(declaration) = crate::mermaid_style::parse_style_declaration(raw) else {
+                let Some(declaration) = mermaid_style::parse_style_declaration(raw) else {
                     let property = raw
                         .split_once(':')
                         .map(|(property, _)| property.trim())
@@ -407,9 +409,8 @@ fn resolve_treemap_source_text_style(
                             TreemapSourceTextOverride::Unverified
                         } else if declaration.inherits_property_value() {
                             TreemapSourceTextOverride::Inherited
-                        } else if crate::mermaid_style::is_static_css_font_family_list(
-                            declaration.value(),
-                        ) {
+                        } else if mermaid_style::is_static_css_font_family_list(declaration.value())
+                        {
                             TreemapSourceTextOverride::Value(declaration.value().into())
                         } else {
                             TreemapSourceTextOverride::Unverified
@@ -419,7 +420,7 @@ fn resolve_treemap_source_text_style(
                         if !declaration
                             .svg_number_or_px()
                             .is_some_and(|size| size.is_finite() && size >= 0.0)
-                            && crate::mermaid_style::css_font_size_value_override(
+                            && mermaid_style::css_font_size_value_override(
                                 declaration.source_value(),
                             )
                             .is_none()
@@ -434,7 +435,7 @@ fn resolve_treemap_source_text_style(
                             TreemapSourceTextOverride::Unverified
                         } else if declaration.inherits_property_value() {
                             TreemapSourceTextOverride::Inherited
-                        } else if crate::mermaid_style::css_font_size_is_zero(declaration.value()) {
+                        } else if mermaid_style::css_font_size_is_zero(declaration.value()) {
                             // The shared positive-size resolver intentionally excludes zero.
                             // Treemap's fitting pass must retain it so the label stays hidden.
                             TreemapSourceTextOverride::Value(0.0)
@@ -462,14 +463,14 @@ fn resolve_treemap_source_text_style(
                         let (target, supported) = if property == "font-weight" {
                             (
                                 &mut style.font_weight,
-                                crate::mermaid_style::is_supported_css_font_weight_value(
+                                mermaid_style::is_supported_css_font_weight_value(
                                     declaration.value(),
                                 ),
                             )
                         } else {
                             (
                                 &mut style.font_style,
-                                crate::mermaid_style::is_supported_css_font_style_value(
+                                mermaid_style::is_supported_css_font_style_value(
                                     declaration.value(),
                                 ),
                             )
@@ -483,11 +484,9 @@ fn resolve_treemap_source_text_style(
                         } else {
                             // Shared longhand semantics resolve initial weight/style resets.
                             // Keep the authored value in the separate emitted style suffix.
-                            let inherited = crate::text::TextStyle::default();
-                            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
-                                &inherited,
-                                font_size_context,
-                            );
+                            let inherited = TextStyle::default();
+                            let mut cascade =
+                                mermaid_style::TextStyleCascade::new(&inherited, font_size_context);
                             cascade.observe_declaration(&declaration);
                             let resolved = cascade.finish();
                             let reset = if property == "font-weight" {

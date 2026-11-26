@@ -290,8 +290,6 @@ mod timeline;
 mod timing;
 #[cfg(feature = "diagram-tree-view")]
 mod tree_view;
-#[cfg(feature = "diagram-treemap")]
-mod treemap;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 #[cfg_attr(
@@ -1384,7 +1382,17 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => {
-            treemap::render_treemap_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+            let diagram_id = options.diagram_id_or("treemap");
+            let computed_length = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
+            crate::treemap::render_treemap_diagram_svg(
+                artifact.pair().layout(),
+                artifact.style(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::TREEMAP, diagram_id),
+                options.work_meter(),
+                options.text_measurer(),
+                &computed_length,
+            )
         }
         #[cfg(feature = "diagram-venn")]
         BuiltinFamilyArtifact::Venn(artifact) => venn::render_venn_diagram_svg_model(

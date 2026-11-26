@@ -125,9 +125,13 @@ bar label placement. For Sankey, it owns the typed layout, configuration lookup,
 `merman-render` supplies text metrics and owns root and output policy for both families.
 
 The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
-layout and its point and radius codecs, Treemap hierarchy layout, viewport projection, value
-formatting and leaf SVG, Venn layout and its solver, and Wardley layout and annotation boxes.
-`merman-render` supplies theme precedence, the operation work meter, and document assembly.
+layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and
+annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and
+document assembly for those families.
+
+For Treemap, the chart crate owns hierarchy layout, style binding, label fitting, and complete
+SVG emission. The facade supplies theme precedence, the operation's measurement routes and
+viewport context, and applies terminal SVG policy.
 
 ### Frozen presentation is distinct from engine initialization
 

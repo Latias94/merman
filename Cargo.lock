@@ -2738,6 +2738,7 @@ dependencies = [
  "cssparser",
  "indexmap",
  "libm",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",

@@ -1,7 +1,12 @@
-use crate::config::{config_css_number_or_string, config_string};
-use crate::svg::PreparedCommonCss;
-use crate::svg::render_theme::default_c_scale;
 use merman_markup::theme_color::{ColorChannel, ThemeColor, invert};
+use merman_render_core::{
+    Result,
+    config::{
+        config_css_number_or_string, config_string,
+        config_theme_font_size_css_or_root_number_px_opt, selected_config_string,
+    },
+    svg_css::PreparedCommonCss,
+};
 
 #[derive(Debug)]
 pub(crate) struct TreemapCssBinding {
@@ -26,9 +31,13 @@ pub(crate) struct TreemapCssBinding {
 }
 
 impl TreemapCssBinding {
-    pub(super) fn new(config: &serde_json::Value, font_family: &str) -> crate::Result<Self> {
+    pub(super) fn new(
+        config: &serde_json::Value,
+        font_family: &str,
+        fallback_c_scale: &[&'static str; 12],
+    ) -> Result<Self> {
         let root_font_size_px =
-            crate::config::config_theme_font_size_css_or_root_number_px_opt(config).unwrap_or(16.0);
+            config_theme_font_size_css_or_root_number_px_opt(config).unwrap_or(16.0);
         let optional_color = |key: &str| config_string(config, &["themeVariables", key]);
         let color =
             |key: &str, fallback: &str| optional_color(key).unwrap_or_else(|| fallback.to_owned());
@@ -39,7 +48,7 @@ impl TreemapCssBinding {
         };
 
         let text_color = color("textColor", "#333");
-        let title_color = crate::config::selected_config_string(
+        let title_color = selected_config_string(
             config,
             &[
                 "themeVariables.treemap.titleColor",
@@ -54,7 +63,7 @@ impl TreemapCssBinding {
             config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
         let theme_name = raw_theme_name.trim().to_ascii_lowercase();
         let selected_color = |paths: &[&'static str], fallback: &str| {
-            crate::config::selected_config_string(config, paths)
+            selected_config_string(config, paths)
                 .map_or_else(|| fallback.to_owned(), |(_, value)| value.to_owned())
         };
         let label_text_color = color("labelTextColor", "black");
@@ -66,16 +75,16 @@ impl TreemapCssBinding {
             ],
             "black",
         );
-        let neutral_special_label_color = color("cScale1", default_c_scale(1));
+        let neutral_special_label_color = color("cScale1", fallback_c_scale[1]);
 
         let color_scale = (0..12)
-            .map(|i| color(&format!("cScale{i}"), default_c_scale(i)))
+            .map(|i| color(&format!("cScale{i}"), fallback_c_scale[i]))
             .collect();
         let color_scale_peer = (0..12)
             .map(|i| color(&format!("cScalePeer{i}"), default_c_scale_peer(i)))
             .collect();
         let color_scale_label = (0..12)
-            .map(|i| -> crate::Result<String> {
+            .map(|i| -> Result<String> {
                 if let Some(color) = optional_color(&format!("cScaleLabel{i}")) {
                     return Ok(color);
                 }
@@ -99,7 +108,7 @@ impl TreemapCssBinding {
                     }
                 })
             })
-            .collect::<crate::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
             common: PreparedCommonCss::with_resolved_typography(
@@ -197,6 +206,7 @@ fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::treemap::test_support::FALLBACK_C_SCALE;
     use serde_json::json;
 
     #[test]
@@ -219,6 +229,7 @@ mod tests {
                 }
             }),
             "Inter",
+            &FALLBACK_C_SCALE,
         )
         .expect("prepared Treemap roles");
         assert_eq!(binding.title_color, "#888888");
@@ -242,8 +253,9 @@ mod tests {
     fn prepared_default_scales_keep_configured_colors_and_transparent_readability() {
         let binding = TreemapCssBinding::new(&json!({
             "themeVariables": {"labelTextColor": "rgb(10, 20, 30)", "cScale0": "#123456", "cScalePeer0": "#654321"}
-        }), "Inter").expect("prepared default scales");
+        }), "Inter", &FALLBACK_C_SCALE).expect("prepared default scales");
         assert_eq!(binding.color_scale[0], "#123456");
+        assert_eq!(binding.color_scale[1], FALLBACK_C_SCALE[1]);
         assert_eq!(binding.color_scale_peer[0], "#654321");
         assert_eq!(binding.color_scale_label[0], "#f5ebe1");
         assert_eq!(binding.color_scale_label[1], "rgb(10, 20, 30)");
@@ -274,7 +286,7 @@ mod tests {
     fn calculated_labels_and_theme_specific_fallbacks_do_not_parse_sentinel() {
         let calculated = TreemapCssBinding::new(&json!({
             "theme": "base", "themeVariables": {"labelTextColor": "calculated", "scaleLabelColor": "var(--label)"}
-        }), "Inter").expect("calculated label sentinel");
+        }), "Inter", &FALLBACK_C_SCALE).expect("calculated label sentinel");
         assert!(
             calculated
                 .color_scale_label
@@ -283,13 +295,14 @@ mod tests {
         );
         let neutral = TreemapCssBinding::new(&json!({
             "theme": "neutral", "themeVariables": {"cScale1": "#112233", "scaleLabelColor": "#445566"}
-        }), "Inter").expect("neutral label roles");
+        }), "Inter", &FALLBACK_C_SCALE).expect("neutral label roles");
         assert_eq!(neutral.color_scale_label[0], "#112233");
         assert_eq!(neutral.color_scale_label[2], "#112233");
         assert_eq!(neutral.color_scale_label[1], "#445566");
         let fallback = TreemapCssBinding::new(
             &json!({"themeVariables": {"textColor": "#101010", "titleColor": "#202020"}}),
             "Inter",
+            &FALLBACK_C_SCALE,
         )
         .unwrap();
         assert_eq!(fallback.title_color, "#202020");
@@ -298,9 +311,10 @@ mod tests {
         assert!(matches!(
             TreemapCssBinding::new(
                 &json!({"themeVariables":{"labelTextColor":"not-a-color"}}),
-                "Inter"
+                "Inter",
+                &FALLBACK_C_SCALE,
             ),
-            Err(crate::Error::Color(_))
+            Err(merman_render_core::Error::Color(_))
         ));
     }
 }

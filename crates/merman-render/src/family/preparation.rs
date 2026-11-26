@@ -717,19 +717,15 @@ fn prepare_treemap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
+    let fallback_c_scale = std::array::from_fn(crate::svg::render_theme::default_c_scale);
+    let (layout, style) = crate::treemap::prepare_treemap_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        execution.work_meter_ref(),
-    )?;
-    let native = execution.native_family_theme();
-    let style = crate::treemap::TreemapStyle::resolve(
         &meta.effective_config,
-        &layout,
-        native,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
-        &execution.work_meter(),
+        &fallback_c_scale,
+        execution.family.session().work_meter(),
     )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {

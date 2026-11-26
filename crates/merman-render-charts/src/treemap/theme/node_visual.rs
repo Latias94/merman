@@ -1,5 +1,5 @@
 use super::*;
-use crate::Result;
+use merman_render_core::theme_svg::cssom_color_value;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TreemapNodeVisual {
@@ -123,7 +123,7 @@ struct TreemapCompiledStyles {
 
 fn treemap_styles2_string(
     css_compiled_styles: &[String],
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
 ) -> Result<TreemapCompiledStyles> {
     // Ported from Mermaid `handDrawnShapeStyles.compileStyles()` / `styles2String()`:
     // - preserve insertion order of the first occurrence of a key
@@ -134,7 +134,7 @@ fn treemap_styles2_string(
     for entry in css_compiled_styles {
         work_meter.charge(1usize.saturating_add(entry.len().div_ceil(64)))?;
         let mut checkpoint = || work_meter.checkpoint(OperationPhase::Layout);
-        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
             entry,
             &mut checkpoint,
             |boundary| {
@@ -148,14 +148,14 @@ fn treemap_styles2_string(
                 if s.is_empty() {
                     return Ok(true);
                 }
-                let (k, v) =
-                    if let Some(declaration) = crate::mermaid_style::parse_style_declaration(raw) {
-                        (declaration.property_source(), declaration.source_value())
-                    } else if let Some((k, v)) = s.split_once(':') {
-                        (k.trim(), v.trim())
-                    } else {
-                        (s.trim(), "")
-                    };
+                let (k, v) = if let Some(declaration) = mermaid_style::parse_style_declaration(raw)
+                {
+                    (declaration.property_source(), declaration.source_value())
+                } else if let Some((k, v)) = s.split_once(':') {
+                    (k.trim(), v.trim())
+                } else {
+                    (s.trim(), "")
+                };
                 m.set(k, v);
                 Ok(true)
             },
@@ -300,7 +300,7 @@ impl TreemapStyle {
                     &visual.rect_style,
                     labels.get(&leaf.name),
                 );
-                visual.fitted_label_fill = crate::svg::cssom_color_value(&label_fill);
+                visual.fitted_label_fill = cssom_color_value(&label_fill);
                 visual
                     .fitted_value_fill
                     .clone_from(&visual.fitted_label_fill);
@@ -317,7 +317,7 @@ impl TreemapStyle {
             .try_fold(0usize, |bytes, style| {
                 bytes.checked_add(style.visual.retained_bytes()?)
             })
-            .ok_or_else(|| crate::Error::from(work.arithmetic_overflow()))?;
+            .ok_or_else(|| Error::from(work.arithmetic_overflow()))?;
         work.charge(retained)?;
         self._visual_retained_reservation =
             Some(work.reserve_prepared_text_retained_bytes(retained)?);
@@ -328,6 +328,8 @@ impl TreemapStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::treemap::test_support::{FALLBACK_C_SCALE, presentation_config};
+    use merman_render_core::resources::{RenderResourcePolicy, ResourceLimitId};
 
     fn layout() -> TreemapDiagramLayout {
         serde_json::from_value(serde_json::json!({
@@ -347,7 +349,6 @@ mod tests {
 
     #[test]
     fn visual_reservation_accepts_exact_retained_bytes_and_rejects_one_less() {
-        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let mut layout = layout();
         layout.sections.clear();
         layout.leaves.truncate(1);
@@ -356,7 +357,8 @@ mod tests {
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let baseline = TreemapStyle::resolve(&config, &layout, None, None, &meter).unwrap();
+        let baseline =
+            TreemapStyle::resolve(&config, &layout, None, None, &FALLBACK_C_SCALE, &meter).unwrap();
         let exact_bytes = meter.prepared_text_retained_bytes();
         drop(baseline);
         for (budget, succeeds) in [(exact_bytes, true), (exact_bytes - 1, false)] {
@@ -365,16 +367,14 @@ mod tests {
                     .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, budget)
                     .unwrap(),
             ));
-            let result = TreemapStyle::resolve(&config, &layout, None, None, &meter);
+            let result =
+                TreemapStyle::resolve(&config, &layout, None, None, &FALLBACK_C_SCALE, &meter);
             if succeeds {
                 let plan = result.expect("exact final retained-byte budget fits");
                 assert_eq!(meter.prepared_text_retained_bytes(), exact_bytes);
                 drop(plan);
             } else {
-                assert!(matches!(
-                    result,
-                    Err(crate::Error::ResourceLimitExceeded(_))
-                ));
+                assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
             }
             assert_eq!(meter.prepared_text_retained_bytes(), 0);
         }
@@ -382,13 +382,12 @@ mod tests {
 
     #[test]
     fn visual_reservation_counts_folded_fields_and_ignores_unused_palette_slots() {
-        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let mut layout = layout();
         layout.sections.clear();
         layout.leaves.truncate(1);
         layout.leaves[0].parent_name = None;
         layout.leaves[0].css_compiled_styles = Some(vec!["fill:red;".repeat(1000)]);
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "theme": "custom", "themeVariables": {"cScale11": "x".repeat(70_000)}
         }));
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
@@ -396,17 +395,14 @@ mod tests {
                 .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 65_536)
                 .unwrap(),
         ));
-        let plan = TreemapStyle::resolve(&config, &layout, None, None, &meter)
+        let plan = TreemapStyle::resolve(&config, &layout, None, None, &FALLBACK_C_SCALE, &meter)
             .expect("actual visual fits retained budget");
         let visual = plan.leaf_visual(0).unwrap();
         assert_eq!(visual.rect_style, "fill:red !important");
-        assert_eq!(
-            plan._visual_retained_reservation
-                .as_ref()
-                .unwrap()
-                .retained_bytes(),
-            visual.retained_bytes().unwrap()
-        );
+        let expected = plan.font_family_css().len()
+            + plan.leaf_source_styles[0].retained_bytes().unwrap()
+            + visual.retained_bytes().unwrap();
+        assert_eq!(meter.prepared_text_retained_bytes(), expected);
         assert!(meter.prepared_text_retained_bytes_peak() < 65_536);
         drop(plan);
         assert_eq!(
@@ -418,7 +414,7 @@ mod tests {
 
     #[test]
     fn prepared_visuals_keep_independent_ordinal_domains_and_fitted_source_variants() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "theme": "custom",
             "themeVariables": {"cScale0":"#111111", "cScale1":"#222222", "cScaleLabel0":"#333333", "cScaleLabel1":"#444444", "cScaleLabel2":"#555555"}
         }));
@@ -428,8 +424,9 @@ mod tests {
             &layout,
             None,
             None,
+            &FALLBACK_C_SCALE,
             &Arc::new(OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
             )),
         )
         .unwrap();
@@ -458,7 +455,7 @@ mod tests {
 
     #[test]
     fn prepared_default_theme_keeps_explicit_fill_and_label_scales() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "themeVariables": {"cScale0":"#111111", "cScaleLabel0":"#333333"}
         }));
         let layout = layout();
@@ -467,8 +464,9 @@ mod tests {
             &layout,
             None,
             None,
+            &FALLBACK_C_SCALE,
             &Arc::new(OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
             )),
         )
         .unwrap();
@@ -485,7 +483,7 @@ mod tests {
         layout.leaves.truncate(1);
         layout.leaves[0].parent_name = None;
         layout.leaves[0].css_compiled_styles = None;
-        let config = crate::test_support::presentation_config(
+        let config = presentation_config(
             serde_json::json!({"themeVariables":{"cScaleLabel0":"#ffffff", "textColor":"#123456"}}),
         );
         let plan = TreemapStyle::resolve(
@@ -493,8 +491,9 @@ mod tests {
             &layout,
             None,
             None,
+            &FALLBACK_C_SCALE,
             &Arc::new(OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
             )),
         )
         .unwrap();

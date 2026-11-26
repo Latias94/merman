@@ -1,5 +1,10 @@
-use super::super::*;
-use crate::treemap::TreemapStyle;
+use merman_render_core::{
+    Result,
+    svg_css::{CssSelectorDiagramId, SvgDiagramIdValue},
+};
+use std::fmt::Write as _;
+
+use super::{TREEMAP_TITLE_CLASS, TreemapStyle};
 
 pub(super) fn treemap_css(
     diagram_id: impl SvgDiagramIdValue,
@@ -7,7 +12,7 @@ pub(super) fn treemap_css(
 ) -> Result<String> {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let theme = style.css_binding();
     let label_color = &theme.label_color;
     let value_color = &theme.value_color;
@@ -32,7 +37,7 @@ pub(super) fn treemap_css(
         value_color,
         theme.value_font_size
     );
-    let title_class = crate::treemap::TREEMAP_TITLE_CLASS;
+    let title_class = TREEMAP_TITLE_CLASS;
     let title_fill = theme.title_color.as_str();
     let _ = write!(
         &mut out,
@@ -46,6 +51,12 @@ pub(super) fn treemap_css(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::treemap::{
+        layout_treemap_diagram_typed_with_work_meter,
+        test_support::{FALLBACK_C_SCALE, presentation_config},
+    };
+    use merman_render_core::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use std::sync::Arc;
 
     #[test]
     fn treemap_css_honors_mermaid_11_15_style_options() {
@@ -71,18 +82,19 @@ mod tests {
             }
         });
 
-        let config = crate::test_support::presentation_config(cfg);
-        let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let config = presentation_config(cfg);
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
+        let layout = layout_treemap_diagram_typed_with_work_meter(
             &merman_model::families::treemap::TreemapDiagramRenderModel::default(),
             None,
             config.as_value(),
             &work,
         )
         .unwrap();
-        let style = TreemapStyle::resolve(&config, &layout, None, None, &work).unwrap();
+        let style =
+            TreemapStyle::resolve(&config, &layout, None, None, &FALLBACK_C_SCALE, &work).unwrap();
         let css = treemap_css("tm", &style).unwrap();
 
         assert!(
