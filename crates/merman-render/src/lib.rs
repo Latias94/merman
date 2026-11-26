@@ -218,7 +218,7 @@ pub mod model;
 #[cfg(feature = "diagram-packet")]
 pub mod packet {
     pub(crate) use merman_render_structured::packet::{
-        PacketStyle, layout_packet_diagram_typed, write_svg_contents,
+        PacketStyle, layout_packet_diagram_typed, render_packet_svg,
     };
 }
 #[cfg(feature = "diagram-pie")]

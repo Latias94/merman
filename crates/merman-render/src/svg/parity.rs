@@ -223,8 +223,6 @@ pub(crate) use markers::BaseEdgeMarkerKind;
 mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
-#[cfg(feature = "diagram-packet")]
-mod packet;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1311,7 +1309,16 @@ fn render_builtin_family_artifact_raw(
         },
         #[cfg(feature = "diagram-packet")]
         BuiltinFamilyArtifact::Packet(artifact) => {
-            packet::render_packet_family_artifact(artifact, title, options)
+            let diagram_id = options.diagram_id_or("merman");
+            crate::packet::render_packet_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                title,
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::PACKET, diagram_id),
+                options.work_meter(),
+            )
         }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(

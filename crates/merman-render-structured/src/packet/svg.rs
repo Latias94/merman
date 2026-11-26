@@ -1,15 +1,65 @@
 use merman_model::families::packet::PacketDiagramModel;
 use merman_render_core::{
-    Result,
+    Bounds, Result,
     number_format::canonical_number as fmt,
-    svg_css::{
-        MermaidBaseCss, SvgDiagramIdValue, escape_css_identifier, write_mermaid_base_css_prefix,
+    resources::OperationWorkMeter,
+    root_svg::{
+        DiagramBounds, RootChrome, RootViewportContext, RootViewportSpec, RootedSvg,
+        SvgRootStyleViewBoxOrder,
     },
-    svg_output::{SvgOutput, XmlTextOutput},
+    svg_css::{
+        MermaidBaseCss, SvgDiagramIdValue, SvgId, escape_css_identifier,
+        write_mermaid_base_css_prefix,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     xml::escape_xml,
 };
 
 use super::{PacketDiagramLayout, PacketStyle, config::PacketBitOrder, terminal_title};
+
+/// Emits the complete Packet SVG, before host canvas and terminal SVG admission.
+pub fn render_packet_svg(
+    layout: &PacketDiagramLayout,
+    model: &PacketDiagramModel,
+    style: &PacketStyle,
+    diagram_title: Option<&str>,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+) -> Result<RootedSvg> {
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: layout.width.max(1.0),
+        max_y: layout.height.max(1.0),
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let aria_labelledby = model
+        .acc_title
+        .as_deref()
+        .map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = model
+        .acc_descr
+        .as_deref()
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let root_spec = RootViewportSpec::mermaid(root_bounds, style.use_max_width());
+    let mut root_chrome = RootChrome::new(diagram_id, "packet");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    let root_document = root_viewport.write_open(&mut out, root_spec, root_chrome)?;
+
+    write_svg_contents(&mut out, layout, model, style, diagram_title, diagram_id)?;
+    out.push_str("</svg>\n");
+    root_document.complete(out.finish()?)
+}
 
 fn write_packet_css(
     out: &mut impl SvgOutput,
@@ -83,10 +133,7 @@ fn write_packet_css(
     Ok(())
 }
 
-/// Writes Packet accessibility text, styles, and rows into an open SVG document.
-///
-/// The renderer supplies an admitted diagram ID for attributes and CSS selectors.
-pub fn write_svg_contents(
+fn write_svg_contents(
     out: &mut impl SvgOutput,
     layout: &PacketDiagramLayout,
     model: &PacketDiagramModel,
