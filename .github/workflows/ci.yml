@@ -460,7 +460,7 @@ jobs:
       - name: Verify generated architecture contracts
         if: matrix.parity
         run: |
-          cargo run --locked -p xtask -- verify-generated
+          cargo run --locked -p xtask --features render-parity -- verify-generated
 
       - name: Install native export test fonts (Linux)
         if: runner.os == 'Linux'
@@ -472,11 +472,13 @@ jobs:
 
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --features merman/compat-json,merman/editor-facts --no-fail-fast --cargo-quiet
+        run: cargo nextest run --locked --features merman/compat-json,merman/editor-facts,xtask/render-parity --no-fail-fast --cargo-quiet
 
       - name: Compile workspace on ordinary host runners
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        run: cargo check --workspace --all-targets --locked
+        run: |
+          cargo check --locked -p xtask
+          cargo check --workspace --all-targets --locked --features xtask/render-parity
 
       - name: Reclaim completed macOS workspace build artifacts
         if: runner.os == 'macOS' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -875,7 +877,7 @@ jobs:
           PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
         run: cargo run --locked --release -p xtask -- parser-differential --cases 256
       - name: SVG DOM comparison suite
-        run: cargo run --locked --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
+        run: cargo run --locked --release -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
       - name: Install root viewport oracle dependencies
         run: npm ci --prefix playground/tests
       - name: Install Chromium for root viewport oracle

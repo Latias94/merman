@@ -10,13 +10,13 @@ issues (overlaps, broken routes, incorrect label placement).
 
 Single fixture:
 
-`cargo run -p xtask -- gen-debug-svgs --diagram sequence --filter basic`
+`cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram sequence --filter basic`
 
 Outputs to: `target/debug-svgs/sequence/basic.svg`
 
 ## Bulk export (all fixtures)
 
-`cargo run -p xtask -- gen-debug-svgs --diagram sequence`
+`cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram sequence`
 
 Outputs to: `target/debug-svgs/sequence/*.svg`
 

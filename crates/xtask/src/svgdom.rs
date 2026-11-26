@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 use std::cell::Cell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,9 +22,11 @@ pub(crate) enum DomMode {
     ParityRoot,
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DomComparisonProfile {
     descendants: DomMode,
+    #[cfg(feature = "render-parity")]
     root_contract: bool,
     normalize_browser_text_wrapping: bool,
     normalize_browser_text_word_boundaries: bool,
@@ -45,12 +47,14 @@ pub(crate) struct ParsedSvgDom<'input> {
     signatures: BTreeMap<DomSignatureKey, SvgDomNode>,
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CanonicalLocalSvgSignature {
     decimals: u32,
     canonical: String,
 }
 
+#[cfg(feature = "render-parity")]
 impl CanonicalLocalSvgSignature {
     pub(crate) const fn decimals(&self) -> u32 {
         self.decimals
@@ -61,14 +65,14 @@ impl CanonicalLocalSvgSignature {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct DomComparatorWorkCounts {
     pub(crate) parses: usize,
     pub(crate) signature_builds: usize,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 std::thread_local! {
     static DOM_COMPARATOR_WORK_COUNTS: Cell<DomComparatorWorkCounts> = const {
         Cell::new(DomComparatorWorkCounts {
@@ -78,11 +82,13 @@ std::thread_local! {
     };
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 impl DomComparisonProfile {
     pub(crate) const fn from_mode(mode: DomMode) -> Self {
         match mode {
             DomMode::ParityRoot => Self {
                 descendants: DomMode::Parity,
+                #[cfg(feature = "render-parity")]
                 root_contract: true,
                 normalize_browser_text_wrapping: false,
                 normalize_browser_text_word_boundaries: false,
@@ -90,6 +96,7 @@ impl DomComparisonProfile {
             },
             descendants => Self {
                 descendants,
+                #[cfg(feature = "render-parity")]
                 root_contract: false,
                 normalize_browser_text_wrapping: false,
                 normalize_browser_text_word_boundaries: false,
@@ -98,6 +105,7 @@ impl DomComparisonProfile {
         }
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) const fn with_root_contract(descendants: DomMode) -> Self {
         debug_assert!(!matches!(descendants, DomMode::ParityRoot));
         Self {
@@ -116,6 +124,7 @@ impl DomComparisonProfile {
         self
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) const fn with_browser_text_word_boundaries_normalized(mut self) -> Self {
         if !matches!(self.descendants, DomMode::Strict) {
             self.normalize_browser_text_wrapping = true;
@@ -131,10 +140,12 @@ impl DomComparisonProfile {
         self
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) const fn descendants(self) -> DomMode {
         self.descendants
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) const fn validates_root_contract(self) -> bool {
         self.root_contract
     }
@@ -164,7 +175,7 @@ impl<'input> ParsedSvgDom<'input> {
     /// Keeping normalization ownership at the call site lets this document borrow either the
     /// original SVG or the normalized allocation without a self-referential container.
     pub(crate) fn parse_normalized(svg: &'input str) -> Result<Self, String> {
-        #[cfg(test)]
+        #[cfg(all(test, feature = "render-parity"))]
         DOM_COMPARATOR_WORK_COUNTS.with(|counts| {
             let mut next = counts.get();
             next.parses += 1;
@@ -181,10 +192,12 @@ impl<'input> ParsedSvgDom<'input> {
         })
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) fn root_element(&self) -> roxmltree::Node<'_, '_> {
         self.document.root_element()
     }
 
+    #[cfg(feature = "render-parity")]
     pub(crate) fn svg_root(&self) -> roxmltree::Node<'_, '_> {
         self.document
             .descendants()
@@ -192,6 +205,7 @@ impl<'input> ParsedSvgDom<'input> {
             .expect("parsed SVG document invariant")
     }
 
+    #[cfg(any(test, feature = "render-parity"))]
     pub(crate) fn signature_for_comparison(
         &mut self,
         profile: DomComparisonProfile,
@@ -215,7 +229,7 @@ impl<'input> ParsedSvgDom<'input> {
         match self.signatures.entry(key) {
             std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::btree_map::Entry::Vacant(entry) => {
-                #[cfg(test)]
+                #[cfg(all(test, feature = "render-parity"))]
                 DOM_COMPARATOR_WORK_COUNTS.with(|counts| {
                     let mut next = counts.get();
                     next.signature_builds += 1;
@@ -250,12 +264,12 @@ impl<'input> ParsedSvgDom<'input> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 pub(crate) fn reset_dom_comparator_work_counts() {
     DOM_COMPARATOR_WORK_COUNTS.with(|counts| counts.set(DomComparatorWorkCounts::default()));
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 pub(crate) fn dom_comparator_work_counts() -> DomComparatorWorkCounts {
     DOM_COMPARATOR_WORK_COUNTS.with(Cell::get)
 }
@@ -2933,6 +2947,7 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn normalize_xml_for_local_signature(svg: &str) -> Cow<'_, str> {
     if !(svg.contains("&nbsp;") || svg.contains("<img")) {
         return Cow::Borrowed(svg);
@@ -3012,6 +3027,7 @@ pub(crate) fn dom_signature_for_comparison(
     Ok(document.signature_for_comparison(profile, decimals).clone())
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn escape_xml_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -3025,6 +3041,7 @@ fn escape_xml_text(s: &str) -> String {
     out
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn escape_xml_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -3039,12 +3056,14 @@ fn escape_xml_attr(s: &str) -> String {
     out
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn write_indent(out: &mut String, depth: usize) {
     for _ in 0..depth {
         out.push_str("  ");
     }
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn write_canonical_node(out: &mut String, n: &SvgDomNode, depth: usize) {
     if n.name == "#text" {
         let Some(t) = n.text.as_deref().filter(|t| !t.is_empty()) else {
@@ -3095,6 +3114,7 @@ fn write_canonical_node(out: &mut String, n: &SvgDomNode, depth: usize) {
     out.push_str(">\n");
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn expanded_xml_name(namespace: Option<&str>, local_name: &str) -> String {
     match namespace {
         Some(namespace) => format!("{{{namespace}}}{local_name}"),
@@ -3102,6 +3122,7 @@ fn expanded_xml_name(namespace: Option<&str>, local_name: &str) -> String {
     }
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn is_local_signature_quantized_attr(
     node: roxmltree::Node<'_, '_>,
     attribute: roxmltree::Attribute<'_, '_>,
@@ -3118,6 +3139,7 @@ fn is_local_signature_quantized_attr(
         && attribute.namespace().is_none()
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn write_canonical_local_svg_node(out: &mut String, node: roxmltree::Node<'_, '_>, decimals: u32) {
     debug_assert!(node.is_element());
     let name = expanded_xml_name(node.tag_name().namespace(), node.tag_name().name());
@@ -3168,6 +3190,7 @@ fn write_canonical_local_svg_node(out: &mut String, node: roxmltree::Node<'_, '_
     out.push('>');
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn canonical_local_svg_signature(
     svg: &str,
     decimals: u32,
@@ -3206,6 +3229,7 @@ pub(crate) fn canonical_local_svg_signature(
     })
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn canonical_xml(svg: &str, mode: DomMode, decimals: u32) -> Result<String, String> {
     let dom = dom_signature(svg, mode, decimals)?;
     let mut out = String::new();
@@ -3213,6 +3237,7 @@ pub(crate) fn canonical_xml(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     Ok(out)
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         return s.to_string();
@@ -3225,6 +3250,7 @@ fn truncate(s: &str, max_len: usize) -> String {
     out
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn collect_dom_diffs_path(
     upstream: &SvgDomNode,
     local: &SvgDomNode,
@@ -3294,6 +3320,7 @@ fn collect_dom_diffs_path(
 /// A node with a different element name cannot be aligned with its counterpart, so that branch
 /// contributes one name mismatch and is not recursively expanded. All other differences on a
 /// node and its aligned descendants are retained instead of stopping at the first mismatch.
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn dom_diffs(upstream: &SvgDomNode, local: &SvgDomNode) -> Vec<String> {
     let mut path = vec![upstream.name.clone()];
     let mut differences = Vec::new();
@@ -3306,8 +3333,10 @@ pub(crate) fn dom_diffs(upstream: &SvgDomNode, local: &SvgDomNode) -> Vec<String
 /// Existing single-detail reports retain their exact spelling. The marker makes the complete
 /// difference set explicit and gives residual policies a stable way to reject a known first
 /// mismatch when a second mismatch was introduced for the same fixture.
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) const ADDITIONAL_DOM_DIFFS_MARKER: &str = "additional DOM differences";
 
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
     let first = differences.first()?;
     if differences.len() == 1 {

@@ -9,6 +9,7 @@ pub(crate) fn current_utc_rfc3339_seconds() -> String {
     ))
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn current_local_report_timestamp_milliseconds() -> String {
     let operation = current_operation_context();
     let datetime = operation
@@ -45,6 +46,7 @@ fn format_utc_rfc3339_seconds(timestamp: OffsetDateTime) -> String {
     )
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 fn format_local_report_timestamp_milliseconds(timestamp: OffsetDateTime) -> String {
     let civil = timestamp.local_datetime();
     let offset_seconds = timestamp.offset().seconds();

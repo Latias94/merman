@@ -69,7 +69,7 @@ combined command for comparator/root changes. Focused `--diagram` or `--filter` 
 changes during iteration:
 
 ```text
-cargo run --locked --release -p xtask -- compare-all-svgs \
+cargo run --locked --release -p xtask --features render-parity -- compare-all-svgs \
   --check-dom --dom-mode structure --dom-decimals 3 \
   --diagnostic-browser-text-layout
 ```
@@ -78,8 +78,8 @@ For comparator or root viewport changes, use focused root-contract tests during 
 final acceptance without strict, run the combined comparison in place of the structure-only command:
 
 ```text
-cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
-cargo run --locked --release -p xtask -- compare-all-svgs \
+cargo nextest run --locked -p xtask --features render-parity -E 'test(root_contract)' --cargo-quiet
+cargo run --locked --release -p xtask --features render-parity -- compare-all-svgs \
   --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 \
   --diagnostic-browser-text-layout \
   --report-root
@@ -138,7 +138,7 @@ For FFI or native SDK changes, also run:
 
 ```text
 cargo run --locked -p xtask -- verify-native-abi
-cargo run --locked -p xtask -- verify-binding-contract
+cargo run --locked -p xtask --features render-parity -- verify-binding-contract
 python3 scripts/verify-platform-bindings.py
 ```
 

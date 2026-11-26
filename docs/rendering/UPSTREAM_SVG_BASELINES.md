@@ -159,13 +159,13 @@ To keep fixture expansion repeatable and traceable, `xtask` can import Mermaid c
 the upstream syntax docs under `repo-ref/mermaid/docs/syntax/*.md`.
 
 - Import `sequenceDiagram` doc fences as `fixtures/sequence/upstream_docs_*.mmd` (deduped by content):
-  - `cargo run -p xtask -- import-upstream-docs --diagram sequence`
+  - `cargo run -p xtask --features render-parity -- import-upstream-docs --diagram sequence`
 - Import a small batch while iterating:
-  - `cargo run -p xtask -- import-upstream-docs --diagram flowchart --limit 10`
+  - `cargo run -p xtask --features render-parity -- import-upstream-docs --diagram flowchart --limit 10`
 - Prefer more complex examples (largest/feature-dense blocks first):
-  - `cargo run -p xtask -- import-upstream-docs --diagram flowchart --complex --min-lines 10 --limit 10`
+  - `cargo run -p xtask --features render-parity -- import-upstream-docs --diagram flowchart --complex --min-lines 10 --limit 10`
 - Optional: also generate upstream SVG baselines + refresh semantic/layout goldens:
-  - `cargo run -p xtask -- import-upstream-docs --diagram sequence --with-baselines`
+  - `cargo run -p xtask --features render-parity -- import-upstream-docs --diagram sequence --with-baselines`
 
 Notes:
 
@@ -343,7 +343,7 @@ Rule of thumb for an upstream-invalid input that still carries useful parser evi
 
 Generate local Stage-B C4 SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-debug-svgs --diagram c4 --out target/svgs`
+- `cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram c4 --out target/svgs`
 
 Outputs to:
 
@@ -353,7 +353,7 @@ Outputs to:
 
 Generate a report comparing upstream C4 SVGs and the current Rust Stage-B C4 output:
 
-- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Notes:
 
@@ -405,28 +405,28 @@ Determinism note:
 
 Generate a small report comparing upstream SVGs and the current Rust Stage-B ER SVG output:
 
-- `cargo run -p xtask -- compare-er-svgs`
+- `cargo run -p xtask --features render-parity -- compare-er-svgs`
 - Fail the command if marker definitions diverge:
-  - `cargo run -p xtask -- compare-er-svgs --check-markers`
+  - `cargo run -p xtask --features render-parity -- compare-er-svgs --check-markers`
 - Fail the command if the **SVG DOM** diverges (ignores attribute order/whitespace and rounds
   numeric tokens for comparison):
-  - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3` (default `--dom-mode parity`)
+  - `cargo run -p xtask --features render-parity -- compare-er-svgs --check-dom --dom-decimals 3` (default `--dom-mode parity`)
   - Use a looser, structure-only mode while iterating on DOM shape (replaces numeric tokens with
     `<n>`, ignores `data-points`, and ignores `<style>` text):
-    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode structure --dom-decimals 3`
+    - `cargo run -p xtask --features render-parity -- compare-er-svgs --check-dom --dom-mode structure --dom-decimals 3`
   - Use a parity-focused mode to ignore geometry noise (replaces numeric tokens in geometry attrs
     with `<n>`, ignores `data-points` and `<style>` text, and ignores `max-width` heuristics inside
     HTML label `<div>` style attributes):
-    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
+    - `cargo run -p xtask --features render-parity -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
   - For size/viewBox parity work, use `parity-root` which is identical to `parity` but also compares
     the root `<svg>` `viewBox` and `style` attributes:
-    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+    - `cargo run -p xtask --features render-parity -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 ## Generate (Flowchart Stage B)
 
 Generate local Stage-B flowchart SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-debug-svgs --diagram flowchart --out target/svgs`
+- `cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram flowchart --out target/svgs`
 
 Outputs to:
 
@@ -436,24 +436,24 @@ Outputs to:
 
 Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B flowchart output:
 
-- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - Use the looser, structure-only mode while iterating on large layout/routing refactors:
-  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+  - `cargo run -p xtask --features render-parity -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 - For root `<svg>` viewport parity (`viewBox` / `style="max-width: ..."`), use `parity-root` and the root-delta report:
-  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
+  - `cargo run -p xtask --features render-parity -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
   - See the [root viewport transition](../alignment/PARITY_POLICY.md#root-viewport-transition) for the current verification contract.
 
 ## Compare (Block)
 
 Generate a report comparing upstream block SVGs and the current Rust Stage-B block output:
 
-- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Radar)
 
 Generate a report comparing upstream radar SVGs and the current Rust Stage-B radar output:
 
-- `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Notes:
 
@@ -464,7 +464,7 @@ Notes:
 
 Generate local Stage-B stateDiagram SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-debug-svgs --diagram state --out target/svgs`
+- `cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram state --out target/svgs`
 
 Outputs to:
 
@@ -474,7 +474,7 @@ Outputs to:
 
 Generate local Stage-B classDiagram SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-debug-svgs --diagram class --out target/svgs`
+- `cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram class --out target/svgs`
 
 Outputs to:
 
@@ -491,16 +491,16 @@ Notes:
 Generate a report comparing upstream stateDiagram SVGs and the current Rust Stage-B stateDiagram
 output (DOM signature comparison; upstream is not byte-stable):
 
-- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-state-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
 ## Compare (ClassDiagram)
 
 Generate a report comparing upstream classDiagram SVGs and the current Rust Stage-B classDiagram
 output (DOM signature comparison):
 
-- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - Use the looser, structure-only mode while iterating on DOM shape:
-  - `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
+  - `cargo run -p xtask --features render-parity -- compare-class-svgs --dom-mode structure --dom-decimals 3`
 
 Notes:
 
@@ -520,43 +520,43 @@ Notes:
 
 Generate a report comparing upstream info SVGs and the current Rust Stage-B info output:
 
-- `cargo run -p xtask -- compare-info-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-info-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Pie)
 
 Generate a report comparing upstream pie SVGs and the current Rust Stage-B pie output:
 
-- `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Packet)
 
 Generate a report comparing upstream packet SVGs and the current Rust Stage-B packet output:
 
-- `cargo run -p xtask -- compare-packet-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-packet-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Timeline)
 
 Generate a report comparing upstream timeline SVGs and the current Rust Stage-B timeline output:
 
-- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Journey)
 
 Generate a report comparing upstream journey SVGs and the current Rust Stage-B journey output:
 
-- `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (Kanban)
 
 Generate a report comparing upstream kanban SVGs and the current Rust Stage-B kanban output:
 
-- `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Compare (GitGraph)
 
 Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B gitGraph output:
 
-- `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask --features render-parity -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 

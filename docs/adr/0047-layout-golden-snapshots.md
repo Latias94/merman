@@ -46,8 +46,8 @@ localized earlier than SVG output, without needing to diff full SVG files.
   - compares the computed snapshot JSON `Value` to `*.layout.golden.json` if present
   - fails with a message instructing how to regenerate layout snapshots
 - Add an `xtask` command to regenerate layout snapshots:
-  - `cargo run -p xtask -- update-layout-snapshots [--diagram <name>] [--filter <substr>]`
-  - Alias: `cargo run -p xtask -- gen-layout-goldens ...`
+  - `cargo run -p xtask --features render-parity -- update-layout-snapshots [--diagram <name>] [--filter <substr>]`
+  - Alias: `cargo run -p xtask --features render-parity -- gen-layout-goldens ...`
 
 ## Consequences
 

@@ -400,7 +400,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             let first_mismatch = first_json_mismatch(&expected, &actual, "")
                 .unwrap_or_else(|| "unable to locate unequal values".to_owned());
             failures.push(format!(
-                "layout snapshot mismatch for {}\n  expected: {}\n  first mismatch: {}\n  hint: regenerate via `cargo run -p xtask -- update-layout-snapshots --filter {}`",
+                "layout snapshot mismatch for {}\n  expected: {}\n  first mismatch: {}\n  hint: regenerate via `cargo run -p xtask --features render-parity -- update-layout-snapshots --filter {}`",
                 mmd_path.display(),
                 golden_path.display(),
                 first_mismatch,

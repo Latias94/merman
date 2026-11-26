@@ -143,6 +143,7 @@ pub struct ThemeSelection {
 enum ThemeInput {
     Preset(BuiltinPreset, Option<Appearance>),
     Compiled {
+        #[cfg(feature = "svg")]
         preset: Option<BuiltinPreset>,
         theme: Arc<ResolvedThemeV2>,
     },
@@ -166,6 +167,7 @@ impl ThemeSelection {
         let theme = ThemeCompiler::new().compile_preset(preset, appearance)?;
         Ok(Self {
             input: ThemeInput::Compiled {
+                #[cfg(feature = "svg")]
                 preset: Some(preset),
                 theme,
             },
@@ -178,6 +180,7 @@ impl ThemeSelection {
     pub fn compiled(theme: Arc<ResolvedThemeV2>) -> Self {
         Self {
             input: ThemeInput::Compiled {
+                #[cfg(feature = "svg")]
                 preset: None,
                 theme,
             },

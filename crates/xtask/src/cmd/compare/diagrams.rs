@@ -1,25 +1,141 @@
-//! Per-diagram SVG compare commands.
+//! Per-diagram verification authority and optional SVG compare commands.
+#[cfg(feature = "render-parity")]
 use crate::XtaskError;
+#[cfg(feature = "render-parity")]
 use crate::cmd::compare::{
-    CompareRequest, CompareRunFailure, CompareRunResult, DiagnosticsPolicy, DiagramIdPolicy,
-    DiagramVerificationFact, FixtureComparePolicy, FixtureReportPolicy, FixtureSkipPolicy,
-    ParsePolicy, RenderProfile, SpecialistHook, run_canonical_svg_compare,
+    CompareRequest, CompareRunFailure, CompareRunResult, run_canonical_svg_compare,
 };
 
+#[cfg(feature = "render-parity")]
 mod er;
 mod flowchart;
+#[cfg(feature = "render-parity")]
 mod gantt;
 
+#[cfg(feature = "render-parity")]
 use er::{compare_er_args, compare_er_request};
+#[cfg(feature = "render-parity")]
+pub(crate) use flowchart::check_flowchart_elk_parity;
+#[cfg(feature = "render-parity")]
 use flowchart::{compare_flowchart_args, compare_flowchart_request};
+#[cfg(feature = "render-parity")]
 use gantt::{compare_gantt_args, compare_gantt_request};
+#[cfg(feature = "render-parity")]
 pub(crate) use gantt::{gantt_baseline_local_offset_minutes, gantt_baseline_runtime_policy};
 
 pub(crate) use flowchart::{
-    audit_flowchart_elk_parity_coverage, check_flowchart_elk_parity,
-    flowchart_elk_fixture_identity, flowchart_elk_requested, flowchart_elk_source_identities,
-    flowchart_elk_source_slug,
+    audit_flowchart_elk_parity_coverage, flowchart_elk_fixture_identity, flowchart_elk_requested,
+    flowchart_elk_source_identities, flowchart_elk_source_slug,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ParsePolicy {
+    Default,
+    SuppressErrors,
+    Lenient,
+}
+
+#[cfg(feature = "render-parity")]
+impl ParsePolicy {
+    pub(crate) fn options(self) -> merman::ParseOptions {
+        match self {
+            Self::Default => merman::ParseOptions::default(),
+            Self::SuppressErrors => merman::ParseOptions {
+                suppress_errors: true,
+            },
+            Self::Lenient => merman::ParseOptions::lenient(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RenderProfile {
+    Standard,
+    HandDrawnSeed,
+    GitGraphSeed,
+    Specialist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiagramIdPolicy {
+    SanitizedStem,
+    RawStem,
+    Specialist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FixtureSkipPolicy {
+    None,
+    UpstreamBaseline,
+    UpstreamCompare,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FixtureComparePolicy {
+    Dom,
+    DomAndRawSvgFallback,
+    Specialist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FixtureReportPolicy {
+    Summary,
+    StatusLines,
+    Specialist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiagnosticsPolicy {
+    None,
+    RootDelta,
+    Specialist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpecialistHook {
+    None,
+    SequenceMath,
+    FlowchartAdapter,
+    ErAdapter,
+    GanttAdapter,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(
+    not(feature = "render-parity"),
+    allow(
+        dead_code,
+        reason = "The contract profile uses only the registry identities."
+    )
+)]
+pub(crate) struct DiagramVerificationFact {
+    pub(crate) diagram: &'static str,
+    pub(crate) command: &'static str,
+    pub(crate) report_title: &'static str,
+    pub(crate) default_dom_mode: &'static str,
+    #[cfg(all(test, feature = "render-parity"))]
+    pub(crate) representative_source: &'static str,
+    pub(crate) parse_policy: ParsePolicy,
+    pub(crate) render_profile: RenderProfile,
+    pub(crate) diagram_id_policy: DiagramIdPolicy,
+    pub(crate) skip_policy: FixtureSkipPolicy,
+    pub(crate) compare_policy: FixtureComparePolicy,
+    pub(crate) report_policy: FixtureReportPolicy,
+    pub(crate) diagnostics: DiagnosticsPolicy,
+    pub(crate) specialist: SpecialistHook,
+}
+
+#[cfg(feature = "render-parity")]
+impl DiagramVerificationFact {
+    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
+        merman::OperationExecutionPath::Renderer
+    }
+
+    pub(crate) const fn supports_root_report(self) -> bool {
+        matches!(self.diagnostics, DiagnosticsPolicy::RootDelta)
+    }
+}
+
 macro_rules! verification_fact {
     (
         $diagram:literal, $command:literal, $title:literal, $mode:literal, $source:literal,
@@ -31,7 +147,7 @@ macro_rules! verification_fact {
             command: $command,
             report_title: $title,
             default_dom_mode: $mode,
-            #[cfg(test)]
+            #[cfg(all(test, feature = "render-parity"))]
             representative_source: $source,
             parse_policy: ParsePolicy::$parse,
             render_profile: RenderProfile::$profile,
@@ -603,6 +719,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
     ),
 ];
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn compare_diagram_command(
     fact: DiagramVerificationFact,
     args: Vec<String>,
@@ -620,6 +737,7 @@ pub(crate) fn compare_diagram_command(
     }
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn compare_diagram_request(diagram: &str, request: CompareRequest) -> CompareRunResult {
     let Some(fact) = diagram_verification_fact(diagram) else {
         return Err(CompareRunFailure::without_evidence(
@@ -637,6 +755,7 @@ pub(crate) fn compare_diagram_request(diagram: &str, request: CompareRequest) ->
     }
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn diagram_verification_fact(diagram: &str) -> Option<&'static DiagramVerificationFact> {
     DIAGRAM_VERIFICATION_FACTS
         .iter()
@@ -651,11 +770,12 @@ pub(crate) fn diagram_verification_fact_for_command(
         .find(|fact| fact.command == command)
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn diagram_supports_root_delta_report(diagram: &str) -> bool {
     diagram_verification_fact(diagram).is_some_and(|fact| fact.supports_root_report())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 mod tests {
     use super::*;
 

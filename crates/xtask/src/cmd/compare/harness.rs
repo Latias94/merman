@@ -1,5 +1,11 @@
 //! Shared execution harness for per-diagram SVG compare commands.
 
+#[cfg(test)]
+use super::ParsePolicy;
+use super::{
+    DiagnosticsPolicy, DiagramIdPolicy, DiagramVerificationFact, FixtureComparePolicy,
+    FixtureReportPolicy, FixtureSkipPolicy, RenderProfile, SpecialistHook,
+};
 use crate::XtaskError;
 use crate::svgdom;
 use std::collections::BTreeSet;
@@ -44,105 +50,6 @@ impl AcceptedResidualPolicy {
                 "source-backed family- and fixture-scoped DOM evidence catalog"
             }
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParsePolicy {
-    Default,
-    SuppressErrors,
-    Lenient,
-}
-
-impl ParsePolicy {
-    pub(crate) fn options(self) -> merman::ParseOptions {
-        match self {
-            Self::Default => merman::ParseOptions::default(),
-            Self::SuppressErrors => merman::ParseOptions {
-                suppress_errors: true,
-            },
-            Self::Lenient => merman::ParseOptions::lenient(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RenderProfile {
-    Standard,
-    HandDrawnSeed,
-    GitGraphSeed,
-    Specialist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiagramIdPolicy {
-    SanitizedStem,
-    RawStem,
-    Specialist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FixtureSkipPolicy {
-    None,
-    UpstreamBaseline,
-    UpstreamCompare,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FixtureComparePolicy {
-    Dom,
-    DomAndRawSvgFallback,
-    Specialist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FixtureReportPolicy {
-    Summary,
-    StatusLines,
-    Specialist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiagnosticsPolicy {
-    None,
-    RootDelta,
-    Specialist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialistHook {
-    None,
-    SequenceMath,
-    FlowchartAdapter,
-    ErAdapter,
-    GanttAdapter,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct DiagramVerificationFact {
-    pub(crate) diagram: &'static str,
-    pub(crate) command: &'static str,
-    pub(crate) report_title: &'static str,
-    pub(crate) default_dom_mode: &'static str,
-    #[cfg(test)]
-    pub(crate) representative_source: &'static str,
-    pub(crate) parse_policy: ParsePolicy,
-    pub(crate) render_profile: RenderProfile,
-    pub(crate) diagram_id_policy: DiagramIdPolicy,
-    pub(crate) skip_policy: FixtureSkipPolicy,
-    pub(crate) compare_policy: FixtureComparePolicy,
-    pub(crate) report_policy: FixtureReportPolicy,
-    pub(crate) diagnostics: DiagnosticsPolicy,
-    pub(crate) specialist: SpecialistHook,
-}
-
-impl DiagramVerificationFact {
-    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
-        merman::OperationExecutionPath::Renderer
-    }
-
-    pub(crate) const fn supports_root_report(self) -> bool {
-        matches!(self.diagnostics, DiagnosticsPolicy::RootDelta)
     }
 }
 

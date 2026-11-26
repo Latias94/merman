@@ -14,7 +14,7 @@ PowerShell:
 
 ## Bulk export (all fixtures)
 
-`cargo run -p xtask -- gen-debug-svgs --diagram er`
+`cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram er`
 
 Outputs to: `target/debug-svgs/er/*.svg`
 

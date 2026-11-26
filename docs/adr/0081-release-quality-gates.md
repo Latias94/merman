@@ -32,10 +32,10 @@ For a release, we require:
 - Unit/integration test suite:
   - `cargo nextest run`
 - DOM parity checks (stable regression gates):
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout`
 - Root viewport invariants and descendant parity:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 Notes:
 

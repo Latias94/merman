@@ -552,8 +552,8 @@ Playground catalog from the selected package version, then verify their source g
 ```sh
 python3 scripts/generate_cli_assets.py --write
 python3 scripts/generate_cli_assets.py --check
-cargo run -p xtask -- gen-playground-example-catalog
-cargo run -p xtask -- verify-playground-example-catalog
+cargo run -p xtask --features render-parity -- gen-playground-example-catalog
+cargo run -p xtask --features render-parity -- verify-playground-example-catalog
 ```
 
 Refresh the committed Rustdoc fragments with the candidate CLI, then check their receipt. Its generator version follows the workspace version even when the rendered diagrams are unchanged:

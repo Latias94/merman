@@ -1,7 +1,10 @@
 use crate::XtaskError;
-use crate::cmd::{UpstreamSvgFamilyLock, UpstreamSvgToolchainLock};
+#[cfg(feature = "render-parity")]
+use crate::cmd::UpstreamSvgFamilyLock;
+use crate::cmd::UpstreamSvgToolchainLock;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn acquire_upstream_svg_family_lock_for_compare(
     target: &Path,
     acquire: bool,

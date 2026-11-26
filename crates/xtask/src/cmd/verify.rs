@@ -76,7 +76,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("Default gates:");
         println!("  cargo fmt --check");
         println!(
-            "  cargo nextest run --workspace --features merman/compat-json,merman/editor-facts"
+            "  cargo nextest run --workspace --features merman/compat-json,merman/editor-facts,xtask/render-parity"
         );
         println!(
             "  cargo test -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc"
@@ -145,6 +145,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         }
         if options.all_features {
             clippy_cmd.args(["--all-features", "--exclude", NODE_TRANSPORT_PACKAGE]);
+        } else {
+            clippy_cmd.args(["--features", "xtask/render-parity"]);
         }
         clippy_cmd.args(["--", "-D", "warnings"]);
         println!("\n== {clippy_cmd:?} ==");
@@ -223,9 +225,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     println!("\n== cargo nextest ==");
     let test_features = if options.strict {
-        "merman/compat-json,merman/editor-facts,xtask/wasm-host"
+        "merman/compat-json,merman/editor-facts,xtask/render-parity,xtask/wasm-host"
     } else {
-        "merman/compat-json,merman/editor-facts"
+        "merman/compat-json,merman/editor-facts,xtask/render-parity"
     };
     let mut nextest_cmd = Command::new("cargo");
     nextest_cmd

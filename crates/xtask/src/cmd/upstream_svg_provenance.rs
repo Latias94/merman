@@ -732,6 +732,7 @@ impl UpstreamSvgProvenanceValidator {
         validate_hash(svg_path, &entry.svg_sha256, "SVG", &self.diagram, stem)
     }
 
+    #[cfg(any(test, feature = "render-parity"))]
     pub(crate) fn fixture_site_config(
         &self,
         fixture_path: &Path,

@@ -34,7 +34,7 @@ defaults should be stable across environments and CI.
   `defaultConfig.ts` in Rust and do not provide a general-purpose set/remove override mechanism.
 - Verify committed artifacts with:
   - `cargo run -p xtask -- verify-default-config`
-  - `cargo run -p xtask -- verify-generated`
+  - `cargo run -p xtask --features render-parity -- verify-generated`
 - Commit both artifacts and load them with `include_str!()` in `merman-core`.
 
 ## Consequences
