@@ -60,7 +60,6 @@ pub(crate) use class::class_canonical_marker;
     )
 )]
 mod css;
-pub(crate) use css::PreparedCommonCss;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -314,8 +313,6 @@ mod wardley;
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg(feature = "diagram-pie")]
-use css::write_pie_css;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -323,7 +320,9 @@ use css::write_pie_css;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use css::{MermaidBaseCss, write_prepared_info_css};
+use css::MermaidBaseCss;
+#[cfg(feature = "diagram-pie")]
+use css::write_pie_css;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]
@@ -366,6 +365,11 @@ use style::is_text_style_key;
     )
 )]
 pub(crate) use util::escape_attr;
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
+use util::escape_attr_into;
 pub(crate) use util::escape_xml;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -375,10 +379,10 @@ pub(crate) use util::escape_xml;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
-    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
-    fmt_string, json_stringify_points, json_stringify_points_into, normalize_css_font_family,
-    scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
+    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_xml_display,
+    escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into, fmt_string,
+    json_stringify_points, json_stringify_points_into, scoped_drop_shadow, scoped_svg_id,
+    scoped_svg_url,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every

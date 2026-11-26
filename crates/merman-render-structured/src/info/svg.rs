@@ -1,7 +1,6 @@
 use merman_render_core::{
     Result,
     number_format::canonical_number as fmt,
-    svg_css::{CssSelectorDiagramId, FragmentDiagramId},
     svg_output::{SvgOutput, XmlTextOutput},
     theme_svg::write_color,
     xml::{escape_attr, escape_xml},
@@ -20,14 +19,7 @@ impl InfoClassicStyle {
         diagram_id: &str,
     ) -> Result<()> {
         out.push_str("<style>");
-        let selector = CssSelectorDiagramId(diagram_id);
-        let fragment = FragmentDiagramId(diagram_id);
-        {
-            let mut css = XmlTextOutput::new(out);
-            self.css.write_prefix(&mut css, selector)?;
-            self.css
-                .write_root(&mut css, selector, fragment, self.css.font_family())?;
-        }
+        self.css.write(&mut XmlTextOutput::new(out), diagram_id)?;
         out.push_str("</style>");
         out.checkpoint()?;
         out.push_str("<g/>");

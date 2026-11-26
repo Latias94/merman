@@ -560,10 +560,9 @@ pub(crate) fn render_xychart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    write_prepared_info_css(
+    typography_theme.common_css().write(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
-        typography_theme.common_css(),
     )?;
     out.checkpoint()?;
     out.push_str("</style>");

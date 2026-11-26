@@ -19,8 +19,8 @@ pub(crate) use fallback::measure_styled_html_label;
 )]
 mod icon_registry;
 mod parity;
+pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
 pub(crate) use parity::BaseEdgeMarkerKind;
-pub(crate) use parity::PreparedCommonCss;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
