@@ -103,13 +103,13 @@ cannot express “everything except X”; a large preset table would mix applica
 runtime policy, transport packages, and release recipes. Product packages and artifact profiles
 select their own direct leaf set instead.
 
-### Accepted v0.11 facade additions
+### v0.11 facade feature groups
 
-[ADR 0105](adr/0105-ergonomic-feature-tiers-and-safe-facade-api.md) accepts two additive
-facade aggregates. They are not available in the current source until their Cargo definitions
-land. Continue to select the corresponding leaves directly in the meantime.
+[ADR 0105](adr/0105-ergonomic-feature-tiers-and-safe-facade-api.md) adds two Cargo feature
+groups on the Rust facade. They expand to existing features and do not add runtime capability
+IDs or change the default configuration.
 
-| Planned aggregate | Selection and starting point |
+| Feature group | Selection and starting point |
 | --- | --- |
 | `core-diagrams` | Flowchart, Sequence, Class, State, ER, Gantt, Mindmap, Architecture, Block, C4, Pie, and XY Chart. Pair it with a required output and an explicitly selected layout, such as `svg` and `layout-dagre` or `layout-shoal`. |
 | `layout-mermaid-legacy` | Dagre, ELK, and Cytoscape. Pair it with the family selectors for a Mermaid-compatible graphical host. It does not select any families or math. |
@@ -361,10 +361,12 @@ operation or batch and never accumulate user fonts in a process-global cache.
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + svg + layout-cytoscape + layout-dagre + layout-elk`), or `default-features = false, features = ["diagram-sequence", "diagram-pie", "svg"]` for SVG without graph solvers |
+| Lean graph SVG in Rust | `merman` | Disable defaults and select `core-diagrams,svg,layout-dagre` or `core-diagrams,svg,layout-shoal`. Set the chosen layout in [`RendererBuilder`](rendering/RUST_EMBEDDING.md#set-an-application-layout-default) or in source configuration. |
 | SVG, Dagre, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre", "math"]` |
-| SVG, Dagre, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,svg,layout-cytoscape,layout-dagre,layout-elk,math` with defaults disabled |
+| SVG, Dagre, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,layout-mermaid-legacy,math` with defaults disabled |
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
-| Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
+| Editor library | `merman-editor-core` or `merman` | Disable defaults on `merman` and select `core-diagrams,editor` for a curated set, or `all-diagrams,editor` for all parsers. |
+| Terminal output in Rust | `merman` | Disable defaults and select `diagram-flowchart,ascii` for Flowchart or the required family selectors. |
 | Standalone LSP server with code actions | `merman-lsp` | `--no-default-features --features all-diagrams,fixes,stdio` |
 | Complete diagram CLI | `merman-cli` | Source defaults: all families, Dagre, ELK, Cytoscape, exports, analysis, Markdown and `rustdoc`; `cli-release` additionally selects math explicitly |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |

@@ -56,6 +56,11 @@ pub struct TerminalRuntimePolicyError {
 }
 
 impl TerminalDiagnostic {
+    #[cfg(any(feature = "ascii", feature = "svg"))]
+    pub(crate) const fn is_missing_diagram(&self) -> bool {
+        matches!(&self.error, merman_core::Error::DetectType(_))
+    }
+
     #[must_use]
     pub const fn class(&self) -> TerminalDiagnosticClass {
         match &self.error {

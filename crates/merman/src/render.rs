@@ -28,6 +28,7 @@ use merman_export::ExportError;
 mod document;
 #[cfg(feature = "svg")]
 mod environment;
+mod ergonomic;
 #[cfg(feature = "svg")]
 mod evidence;
 #[cfg(feature = "svg")]
@@ -47,6 +48,7 @@ pub use document::{PdfOutput, PreparedPdfExport};
 pub use document::{RenderedDocument, SvgOutput};
 #[cfg(feature = "svg")]
 pub use environment::SvgEnvironment;
+pub use ergonomic::{LayoutBackend, RendererBuilder, RendererBuilderError};
 #[cfg(feature = "native-fonts")]
 pub use evidence::NativeFontDiagnostics;
 #[cfg(feature = "svg")]
@@ -930,6 +932,8 @@ pub struct Renderer {
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
     resources_explicit: bool,
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    ergonomic_defaults: Option<std::sync::Arc<ergonomic::ErgonomicDefaults>>,
 }
 
 #[cfg(feature = "presentation")]
@@ -948,6 +952,8 @@ impl Default for Renderer {
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
             resources_explicit: false,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            ergonomic_defaults: None,
         }
     }
 }

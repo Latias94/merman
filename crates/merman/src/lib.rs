@@ -11,9 +11,11 @@
 //! [`Renderer::render`]; SVG, ASCII, and binary output remain target-local adapters behind the
 //! same operation boundary.
 //!
-//! The facade deliberately does not expose source-to-SVG or source-to-ASCII convenience
-//! functions. Keeping the target and its policy in a typed request makes cancellation,
-//! deadlines, resource budgets, and output ownership explicit at every call site.
+//! The one-argument typed methods on [`Renderer`] use bounded defaults and return the requested
+//! output directly, or [`RenderError::NoDiagram`] when no diagram is detected.
+//! Use [`Renderer::builder`] to configure a reusable renderer, the matching
+//! `*_with` methods to supply a target request and cancellation or deadline, and
+//! [`Renderer::render`] for the full expert request and optional-output contract.
 //!
 //! # Choosing an API
 //!
@@ -24,11 +26,11 @@
 //! | Analyze diagnostics or Markdown fences | `analysis` | `analysis::Analyzer` |
 //! | Generate requested diagnostic fixes | `fixes` | `analysis::AnalysisOptions::with_fix_generation` |
 //! | Build parser-backed editor snapshots | `editor` | `editor::analyze_document_snapshot_with_shared_text` |
-//! | Render Mermaid-like SVG | `svg` | [`Renderer`] and `RenderRequest::svg` |
-//! | Render terminal-friendly text | `ascii` | [`Renderer`] and `RenderRequest::ascii` |
-//! | Render PNG from Rust | `png` | [`Renderer`] and `RenderRequest::png` |
-//! | Render JPEG from Rust | `jpeg` | [`Renderer`] and `RenderRequest::jpeg` |
-//! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and `RenderRequest::pdf` |
+//! | Render Mermaid-like SVG | `svg` | `Renderer::render_svg` |
+//! | Render terminal-friendly text | `ascii` | `Renderer::render_ascii` |
+//! | Render PNG from Rust | `png` | `Renderer::render_png` |
+//! | Render JPEG from Rust | `jpeg` | `Renderer::render_jpeg` |
+//! | Render a vector PDF from Rust | `pdf` | `Renderer::render_pdf` |
 //!
 //! If you already know the diagram type, use the `*_with_type_sync` methods on
 //! [`SemanticParser`] to skip detection. If you need lower-level layout or SVG pipeline
@@ -38,7 +40,9 @@
 //! # Features
 //!
 //! - `diagram-*`: compile the selected logical families and their typed models.
-//!   `all-diagrams` selects every built-in family; these selectors do not enable outputs or engines.
+//!   `all-diagrams` selects every family and `core-diagrams` selects twelve commonly used
+//!   families. These selectors do not enable outputs or engines.
+//! - `layout-mermaid-legacy`: select Dagre, ELK, and Cytoscape. It does not select diagram families.
 //!
 //! - `analysis`: render-free diagnostics, source mapping, and Markdown analysis through
 //!   `merman::analysis`.
@@ -70,29 +74,24 @@
 //! # Quick start
 //!
 //! ```no_run
-//! # #[cfg(feature = "svg")]
+//! # #[cfg(all(feature = "svg", feature = "diagram-flowchart", feature = "layout-dagre"))]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+//! use merman::{LayoutBackend, Renderer};
 //!
-//! let output = Renderer::new().render(RenderRequest::svg(
-//!     "flowchart TD\nA[Start] --> B[Done]",
-//!     OperationControl::new(),
-//!     SvgRequest::default(),
-//! ))?;
-//! let RenderOutput::Svg(Some(svg)) = output else {
-//!     return Err("source did not contain a Mermaid diagram".into());
-//! };
+//! let renderer = Renderer::builder()
+//!     .with_default_layout(LayoutBackend::Dagre)
+//!     .build()?;
+//! let svg = renderer.render_svg("flowchart TD\nA[Start] --> B[Done]")?;
 //! println!("{}", svg.svg());
 //! # Ok(())
 //! # }
-//! # #[cfg(not(feature = "svg"))]
+//! # #[cfg(not(all(feature = "svg", feature = "diagram-flowchart", feature = "layout-dagre")))]
 //! # fn main() {}
 //! ```
 //!
 //! For semantic inspection, use [`Renderer::parse_semantic`] or a
-//! [`RenderTarget::Semantic`] request. For terminal output, use `RenderTarget::Ascii`. The
-//! target adapters never create a replacement operation or silently replace the caller's
-//! cancellation handle.
+//! [`RenderTarget::Semantic`] request. When the caller supplies an operation control, the
+//! target adapters never replace it.
 
 #![doc = include_str!(
     "../docs/generated/merman-rustdoc/crate-overview.md"
@@ -159,16 +158,17 @@ pub use render::{
 };
 #[cfg(feature = "jpeg")]
 pub use render::{JpegRequest, PreparedJpegExport};
+pub use render::{
+    LayoutBackend, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer,
+    RendererBuilder, RendererBuilderError, ResourceLimitCause, ResourceLimitExceeded,
+    SemanticArtifact,
+};
 #[cfg(feature = "pdf")]
 pub use render::{PdfOutput, PdfRequest, PreparedPdfExport};
 #[cfg(feature = "png")]
 pub use render::{PngRequest, PreparedPngExport};
 #[cfg(feature = "presentation")]
 pub use render::{PrepareSourceRequest, PreparedSource, PresentationArtifact};
-pub use render::{
-    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
-    ResourceLimitExceeded, SemanticArtifact,
-};
 
 /// Diagnostics and source-mapping APIs for lint and analysis workflows.
 #[cfg(feature = "analysis")]
