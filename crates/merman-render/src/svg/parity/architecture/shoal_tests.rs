@@ -521,3 +521,54 @@ fn architecture_shoal_studio_keeps_bounded_rounded_corners() {
         "studio architecture corners must stay bounded, got max arm {max_arm:.2}px"
     );
 }
+
+#[test]
+fn architecture_shoal_studio_keeps_aligned_trunks_straight_without_overshoot() {
+    let source = "architecture-beta\n\
+        group edge(cloud)[Edge Layer]\n\
+        group core(server)[Core Services]\n\
+        service cdn(internet)[CDN] in edge\n\
+        service gw(server)[API Gateway] in edge\n\
+        service auth(server)[Auth] in core\n\
+        service orders(server)[Orders] in core\n\
+        service cache(disk)[Redis Cache] in core\n\
+        service db(database)[Postgres] in core\n\
+        cdn:R --> L:gw\n\
+        gw:B --> T:auth\n\
+        gw:R --> L:orders\n\
+        auth:R --> L:cache\n\
+        orders:B --> T:db\n\
+        cache:B --> T:db\n";
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let (_, svg) = render_with_theme(source, Some(NativeTheme::new(theme)));
+    let doc = Document::parse(&svg).unwrap();
+
+    // Aligned vertical edges stay straight without title U-detours or 8 px port jogs.
+    for edge_id in ["edge-1", "edge-5"] {
+        let d = element(&doc, "edge", edge_id).attribute("d").unwrap();
+        assert!(
+            !d.contains('A') && !d.contains('C'),
+            "{edge_id} should stay dead straight, got {d}"
+        );
+        let path = kurbo::BezPath::from_svg(d).unwrap();
+        let start_x = path.segments().next().unwrap().start().x;
+        for seg in path.segments() {
+            assert!(
+                (seg.start().x - start_x).abs() < 1e-6 && (seg.end().x - start_x).abs() < 1e-6,
+                "{edge_id} drifted off x={start_x}: {d}"
+            );
+        }
+    }
+
+    // gw:R --> L:orders enters core on orders's left corridor without overshooting past orders:L.
+    let orders_d = element(&doc, "edge", "edge-2").attribute("d").unwrap();
+    let orders_path = kurbo::BezPath::from_svg(orders_d).unwrap();
+    for seg in orders_path.segments() {
+        assert!(
+            seg.end().x >= seg.start().x - 1e-6,
+            "gw:R --> L:orders must not backtrack horizontally: {orders_d}"
+        );
+    }
+}

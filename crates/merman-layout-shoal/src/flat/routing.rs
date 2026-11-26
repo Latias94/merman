@@ -56,6 +56,7 @@ struct Band {
     top: f64,
     bottom: f64,
     has_node: bool,
+    has_compound_seam: bool,
     leaves: bool,
     arrives: bool,
     label_directions: u8,
@@ -197,6 +198,7 @@ impl RoutingScratch {
 
 fn bands(
     g: &Expanded,
+    c: &Component,
     bands: &mut Vec<Band>,
     index: &mut Vec<usize>,
     work: &mut Work<'_>,
@@ -219,6 +221,9 @@ fn bands(
             band.height = band.height.max(g.height[vertex]);
             let kind = g.kind[vertex];
             band.has_node |= kind == Kind::Node;
+            band.has_compound_seam |= matches!(kind, Kind::StartPort | Kind::EndPort)
+                || (kind == Kind::Node
+                    && c.nodes.get(vertex).is_some_and(|node| node.group_proxy));
             retained |= kind != Kind::Dummy || g.keep[vertex];
             band.inserted_label_tier |= inserted_between_nodes && kind == Kind::Label;
         }
@@ -272,11 +277,9 @@ fn collect_pieces(
     let mut gaps = reserved(gap_count)?;
     let mut crossing = 0i64;
     // Flat gap intervals see neither the approach knots of a compound border stitch nor
-    // routes that bypass the expansion. Those paths still use the shared runway.
-    let allow_local_sweeps = options.routing == RoutingStyle::Curved
-        && !ranked.component.boundaries
-        && !ranked.component.group_proxies
-        && !g.direct.contains(&true);
+    // routes that bypass the expansion. Apply the shared runway only to gaps adjacent to
+    // compound boundaries or group proxies so interior cluster gaps keep clean local sweeps.
+    let can_local_sweep = options.routing == RoutingStyle::Curved && !g.direct.contains(&true);
     for (pair, &change) in bands.windows(2).zip(delta.iter()) {
         crossing += change;
         let count = usize::try_from(crossing).map_err(|_| WorkError::ArithmeticOverflow)?;
@@ -293,7 +296,9 @@ fn collect_pieces(
         gaps.push(Gap {
             pieces: reserved(count)?,
             height: finite(ranks * options.spacing.rank)?,
-            allow_local_sweeps,
+            allow_local_sweeps: can_local_sweep
+                && !pair[0].has_compound_seam
+                && !pair[1].has_compound_seam,
             ..Gap::default()
         });
     }
@@ -927,10 +932,19 @@ impl Gap {
                 .iter()
                 .map(|&i| self.pieces[i].span.width())
                 .fold(0.0, f64::max);
-            // Prevent wide curved sweeps from flattening into shallow inserted-label slits
-            // without inflating ordinary full-rank gaps beyond one rank separation.
-            let sweep_room = (widest * 0.35).min(options.spacing.rank * 0.75);
-            let target = finite(guard + sweep_room)?.min(options.spacing.rank);
+            // Guarantee enough net vertical room for wide curved sweeps when guards or
+            // inserted-label slits squeeze a gap below healthy curvature, without inflating
+            // ordinary flat rank gaps or extreme synthetic spans.
+            let min_room = (widest * 0.35).min(options.spacing.rank * 0.75);
+            let mut target = finite(guard + min_room)?.min(options.spacing.rank);
+            let nominal_room = (self.height - guard).max(0.0);
+            if !self.allow_local_sweeps
+                && widest > nominal_room * 4.0
+                && widest <= options.spacing.rank * 8.0
+            {
+                let wide_room = (widest / 3.2).min(options.spacing.rank * 1.15);
+                target = target.max(finite(guard + wide_room)?);
+            }
             self.minimum = self.minimum.max(target);
         }
         self.height = self.height.max(self.minimum);
@@ -1481,7 +1495,13 @@ fn route_ranked(
     if g.keep.len() != g.rank.len() || x.len() != g.rank.len() {
         return Err(LayoutError::InvalidInput("incomplete refined vertices"));
     }
-    bands(g, &mut scratch.bands, &mut scratch.index, work)?;
+    bands(
+        g,
+        ranked.component,
+        &mut scratch.bands,
+        &mut scratch.index,
+        work,
+    )?;
     let mut gaps = collect_pieces(&ranked, graph, options, x, scratch, work)?;
     let bands = &mut scratch.bands;
     let index = &scratch.index;

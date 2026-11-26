@@ -263,3 +263,47 @@ fn work_control_can_stop_card_grid_placement() {
         Err(LayoutError::Work(WorkError::Interrupted)),
     );
 }
+
+#[test]
+fn same_row_person_cards_keep_direct_neighbor_straight_and_avoid_crossing() {
+    let mut graph = Graph::default();
+    for (seq, height, anchor_y) in [
+        (0, 78.0, Some(43.0)),
+        (1, 78.0, Some(43.0)),
+        (2, 70.0, None),
+        (3, 70.0, None),
+        (4, 300.0, None),
+    ] {
+        let mut node = NodeSpec::new(
+            Size {
+                width: 216.0,
+                height,
+            },
+            seq,
+        );
+        node.anchor_y = anchor_y;
+        graph.nodes.push(node);
+    }
+    graph.edges.extend([edge(0, 2), edge(1, 2)]);
+    let mut options = Options::default();
+    options.packing = crate::PackingPolicy::AspectTargeted { target_ratio: 3.0 };
+    let output = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    // Confirm cards 0, 1, 2 sit on the same top row with aligned horizontal anchors.
+    assert!(output.nodes[0].x < output.nodes[1].x && output.nodes[1].x < output.nodes[2].x);
+    let direct = &output.edges[1].points;
+    let direct_y = direct[0].y;
+    assert!(
+        direct.iter().all(|p| (p.y - direct_y).abs() < 1e-6),
+        "adjacent Person -> System should stay dead straight horizontally, got {direct:?}"
+    );
+    let detour = &output.edges[0].points;
+    let detour_end_y = detour.last().unwrap().y;
+    assert!(
+        detour_end_y > direct_y,
+        "bottom-detouring edge should enter below the straight neighbor ({detour_end_y} vs {direct_y})"
+    );
+    assert!(
+        detour.iter().all(|p| p.y >= direct_y - 1e-6),
+        "detouring edge must not cross above the direct neighbor: {detour:?}"
+    );
+}

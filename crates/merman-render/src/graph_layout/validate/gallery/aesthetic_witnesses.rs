@@ -158,7 +158,19 @@ fn step_micro_jogs_and_wide_corner_arms_are_reported() {
             Edge::new(
                 0,
                 1,
+                "M195,212 L195,235 C195,241 197,242 197,247 L197,350",
+                CrossAxis::X,
+            ),
+            Edge::new(
+                0,
+                1,
                 "M0,0 L40,0 C120,0 180,40 180,90 L180,140",
+                CrossAxis::X,
+            ),
+            Edge::new(
+                0,
+                1,
+                "M373.5,1213 C373.5,982 372.74,841 371.5,841",
                 CrossAxis::X,
             ),
         ],
@@ -169,11 +181,12 @@ fn step_micro_jogs_and_wide_corner_arms_are_reported() {
         "TB",
         &scene,
         &[] as &[&str],
-        &["step-jog", "floppy-corner"],
+        &["step-jog", "two-px-wiggle", "floppy-corner", "banana-arc"],
         &[],
     );
-    assert_eq!(metrics.micro_kink_count, 1);
-    close(metrics.max_corner_arm_px.unwrap(), 140.0);
+    assert_eq!(metrics.micro_kink_count, 2);
+    close(metrics.max_corner_arm_px.unwrap(), 372.0);
+    close(metrics.max_corner_arm_ratio.unwrap(), 186.0);
 }
 
 #[test]
@@ -293,6 +306,39 @@ fn studio_compound_fork_avoids_flat_pancake_sweeps() {
         lint --> rollout\n\
         style prod fill:#1e3a5f,stroke:#60a5fa,color:#ffffff";
     super::compound::assert_studio_compound_fork(source);
+}
+
+#[test]
+fn studio_nested_clusters_and_compound_fill_avoid_wiggles_bananas_and_crushed_sweeps() {
+    let nested = include_str!("../../../../../merman/benches/fixtures/flowchart_nested_clusters.mmd");
+    super::compound::assert_studio_compound_aesthetics(
+        "studio-nested-clusters",
+        nested,
+        3.5,
+        Some(12),
+        Some(3.05),
+    );
+
+    let compound_fill = "flowchart TD\n\
+        pr[Open PR] --> gate{CI Gate}\n\
+        subgraph verify[\"Verification Pipeline\"]\n\
+            gate -->|Pass| unit[Unit Tests]\n\
+            gate -->|Skip| lint[Static Lint]\n\
+            subgraph prod[\"Production Zone\"]\n\
+                unit --> canary[Canary]\n\
+                lint --> canary\n\
+                canary --> rollout[Full Rollout]\n\
+            end\n\
+        end\n\
+        rollout --> done([Released])\n\
+        style prod fill:#1e3a5f,stroke:#60a5fa,color:#f8fafc";
+    super::compound::assert_studio_compound_aesthetics(
+        "studio-compound-fill",
+        compound_fill,
+        3.0,
+        Some(6),
+        Some(3.05),
+    );
 }
 
 #[test]

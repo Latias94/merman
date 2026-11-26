@@ -606,6 +606,16 @@ fn sibling_crossings_stay_in_their_separate_aligned_lanes_between_faces() {
 }
 
 pub(super) fn assert_studio_compound_fork(source: &str) {
+    assert_studio_compound_aesthetics("studio-compound-fork", source, 3.5, None, Some(3.05));
+}
+
+pub(super) fn assert_studio_compound_aesthetics(
+    case: &str,
+    source: &str,
+    max_flatness: f64,
+    max_cubics: Option<usize>,
+    max_corner_ratio: Option<f64>,
+) {
     use super::super::aesthetic::emit;
     use merman_core::presentation::SourcePresentationConfig;
     use serde_json::json;
@@ -625,29 +635,51 @@ pub(super) fn assert_studio_compound_fork(source: &str) {
     let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
     let capture = drawing.capture(&doc);
     let metrics = emit(
-        "studio-compound-fork",
+        case,
         "TD",
         &capture.scene,
         &capture.body_names,
         &capture.edge_names,
         &[],
     );
-    assert_eq!(metrics.micro_kink_count, 0);
+    assert_eq!(
+        metrics.micro_kink_count, 0,
+        "{case}: must not emit <=2px wiggles"
+    );
     assert!(
         metrics
             .max_s_curve_handle_ratio
-            .is_some_and(|value| value <= 0.48),
-        "{:?}",
+            .is_none_or(|value| value <= 0.48),
+        "{case}: {:?}",
         metrics.max_s_curve_handle_ratio
     );
-    assert!(metrics.s_curves.iter().all(|curve| curve.ordered_controls));
+    assert!(
+        metrics.s_curves.iter().all(|curve| curve.ordered_controls),
+        "{case}: inverted S-curve controls"
+    );
     assert!(
         metrics
             .max_s_curve_flatness
-            .is_some_and(|flatness| flatness <= 3.5),
-        "compound fork sweeps must not pancake into narrow label slits: {:?}",
+            .is_none_or(|flatness| flatness <= max_flatness),
+        "{case}: compound sweeps exceeded flatness {max_flatness}: {:?}",
         metrics.max_s_curve_flatness
     );
+    if let Some(limit) = max_cubics {
+        assert!(
+            metrics.cubic_count <= limit,
+            "{case}: expected <= {limit} cubics, got {}",
+            metrics.cubic_count
+        );
+    }
+    if let Some(limit) = max_corner_ratio {
+        assert!(
+            metrics
+                .max_corner_arm_ratio
+                .is_none_or(|ratio| ratio <= limit),
+            "{case}: right-angle corner ratio exceeded {limit}: {:?}",
+            metrics.max_corner_arm_ratio
+        );
+    }
 }
 
 pub(super) fn aesthetic_witnesses() {

@@ -103,7 +103,13 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
         &[(0., 0.), (0., 30.), (0., 30.), (0., 100.), (100., 100.)],
         Axis::Vertical,
     );
-    let quarter = probe_at_cubic_quarter([(0., 0.), (0., 62.), (38., 100.), (100., 100.)]);
+    let arm = MAX_CORNER_ARM;
+    let quarter = probe_at_cubic_quarter([
+        (0., 100. - arm),
+        (0., 100. - arm + TURN_HANDLE * arm),
+        (arm - TURN_HANDLE * arm, 100.),
+        (arm, 100.),
+    ]);
     let (graph, out) = drawing(vec![corner, route(&quarter, Axis::Horizontal)]);
     assert_eq!(count(&graph, &out, RoutingStyle::Curved), 1);
     assert_eq!(count(&graph, &out, RoutingStyle::Orthogonal), 0);
@@ -111,6 +117,23 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
     let mut miss = out;
     miss.edges[1] = route(&[(18., 55.), (22., 55.)], Axis::Horizontal);
     assert_eq!(count(&graph, &miss, RoutingStyle::Curved), 0);
+    // A long straight corridor meeting a short jog keeps its straight trunk bounded.
+    let (_, banana) = drawing(vec![route(
+        &[(0., 0.), (0., 360.), (4., 360.), (4., 374.)],
+        Axis::Vertical,
+    )]);
+    let banana_pieces = flatten(
+        &banana,
+        RoutingStyle::Curved,
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert!(
+        banana_pieces
+            .iter()
+            .any(|p| p.from.x == 0. && p.to.x == 0. && p.to.y - p.from.y >= 350.),
+        "long straight leg must not bow into a banana arc"
+    );
 
     let (_, out) = drawing(vec![route(
         &[(0., 0.), (0., 100.), (100., 100.), (100., 200.)],
@@ -122,12 +145,12 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
         &mut Work::new(&mut NoopWorkControl),
     )
     .unwrap();
-    assert!(pieces.len() <= 2 * MAX_CURVE_CHORDS);
+    assert!(pieces.len() <= 2 * MAX_CURVE_CHORDS + 3);
     assert!(pieces.windows(2).all(|pair| pair[0].to == pair[1].from));
     assert!(
         pieces
             .iter()
-            .any(|piece| piece.to == Point { x: 50., y: 100. })
+            .any(|piece| piece.from.y == 100. && piece.to.y == 100. && piece.from.x < piece.to.x)
     );
 }
 
@@ -135,7 +158,7 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
 fn a_curved_route_keeps_the_painted_group_border_stitch() {
     let (mut graph, mut out) = drawing(vec![
         route(&[(0., 0.), (0., 100.), (100., 100.)], Axis::Vertical),
-        route(&[(-1., 80.), (1., 80.)], Axis::Horizontal),
+        route(&[(-1., 92.), (1., 92.)], Axis::Horizontal),
     ]);
     graph.groups.push(GroupSpec::new(0));
     out.groups.push(GroupGeometry {
@@ -158,7 +181,13 @@ fn a_curved_route_keeps_the_painted_group_border_stitch() {
         side: Side::Bottom,
     });
     assert_eq!(count(&graph, &out, RoutingStyle::Curved), 1);
-    let quarter = probe_at_cubic_quarter([(0., 0.), (0., 62.), (38., 100.), (100., 100.)]);
+    let arm = MAX_CORNER_ARM;
+    let quarter = probe_at_cubic_quarter([
+        (0., 100. - arm),
+        (0., 100. - arm + TURN_HANDLE * arm),
+        (arm - TURN_HANDLE * arm, 100.),
+        (arm, 100.),
+    ]);
     out.edges[1] = route(&quarter, Axis::Horizontal);
     assert_eq!(count(&graph, &out, RoutingStyle::Curved), 0);
 }

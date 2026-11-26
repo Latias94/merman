@@ -141,6 +141,20 @@ impl Fit {
                 }
             }
             inset[index] = inset[index].max(markers[end].length + spacing.edge);
+            if !matches!(hint, PortSideHint::FixedOffset { .. }) {
+                // Keep outer corridors inside the perpendicular corner clearance so border
+                // stitching does not force a 4 px Z-bend when group padding < corner_clearance.
+                let at = cross(side, preferred);
+                let (near, far) = if side.axis() == Axis::Vertical {
+                    (Side::Left, Side::Right)
+                } else {
+                    (Side::Top, Side::Bottom)
+                };
+                let corner = spacing.corner_clearance;
+                inset[near as usize] = inset[near as usize].max(corner - at);
+                let opposite = across(side, content) - at;
+                inset[far as usize] = inset[far as usize].max(corner - opposite);
+            }
             if (flat.is_none() || wire.uses_caption_band()) && markers[1 - end].width > 0.0 {
                 let radius = markers[1 - end].width / 2.0 + spacing.edge;
                 let at = cross(inner.side, inner.at);

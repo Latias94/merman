@@ -493,7 +493,10 @@ fn tracks(
 pub(super) fn is_top(title: TitlePosition) -> bool {
     matches!(
         title,
-        TitlePosition::TopLeft | TitlePosition::TopCenter | TitlePosition::TopRight
+        TitlePosition::TopAuto
+            | TitlePosition::TopLeft
+            | TitlePosition::TopCenter
+            | TitlePosition::TopRight
     )
 }
 
@@ -596,9 +599,9 @@ pub(super) fn place(
             title_center: group.title.map(|title| {
                 let margin = metrics.margin();
                 let x = match group.title_position {
-                    TitlePosition::TopLeft | TitlePosition::BottomLeft => {
-                        x + margin + title.width / 2.0
-                    }
+                    TitlePosition::TopAuto
+                    | TitlePosition::TopLeft
+                    | TitlePosition::BottomLeft => x + margin + title.width / 2.0,
                     TitlePosition::TopRight | TitlePosition::BottomRight => {
                         right - margin - title.width / 2.0
                     }

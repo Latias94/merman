@@ -10,6 +10,8 @@ use crate::{
 
 const FAN: f64 = 24.0;
 const TURN_HANDLE: f64 = 0.62;
+const MAX_CORNER_ARM: f64 = 24.0;
+const MAX_CORNER_ASPECT: f64 = 3.0;
 const IN_LINE: f64 = 0.5;
 const CURVE_TOLERANCE: f64 = 0.25;
 const MAX_CURVE_CHORDS: usize = 64;
@@ -223,15 +225,38 @@ fn flatten_section(
         if style == RoutingStyle::Curved && turn(knots, index) {
             let before = point(knots[index - 1]);
             let after = point(knots[index + 1]);
-            let start = if turn(knots, index - 1) {
-                lerp(before, to, 0.5)
+            let incoming = (to.x - before.x).hypot(to.y - before.y);
+            let outgoing = (after.x - to.x).hypot(after.y - to.y);
+            let before_arm = if turn(knots, index - 1) {
+                incoming * 0.5
             } else {
-                before
+                incoming
             };
-            let end = if turn(knots, index + 1) {
-                lerp(after, to, 0.5)
+            let after_arm = if turn(knots, index + 1) {
+                outgoing * 0.5
             } else {
-                after
+                outgoing
+            };
+            let track_shelf = knots[index - 1].kind == KnotKind::GapBoundary
+                || knots[index + 1].kind == KnotKind::GapBoundary;
+            let cap = before_arm.min(after_arm) * MAX_CORNER_ASPECT;
+            let (before_arm, after_arm) = if track_shelf {
+                (before_arm.min(cap), after_arm.min(cap))
+            } else {
+                (
+                    before_arm.min(cap).min(MAX_CORNER_ARM),
+                    after_arm.min(cap).min(MAX_CORNER_ARM),
+                )
+            };
+            let start = if incoming > 0.0 {
+                lerp(to, before, before_arm / incoming)
+            } else {
+                to
+            };
+            let end = if outgoing > 0.0 {
+                lerp(to, after, after_arm / outgoing)
+            } else {
+                to
             };
             pen.line(start)?;
             pen.cubic(

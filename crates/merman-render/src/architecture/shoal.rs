@@ -308,7 +308,7 @@ pub(crate) fn layout_architecture_shoal(
                 height: icon,
             },
             title: header.size,
-            title_position: TitlePosition::TopLeft,
+            title_position: TitlePosition::TopAuto,
         });
         headers.push(header);
     }

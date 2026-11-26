@@ -1108,9 +1108,44 @@ fn align_ports(
     Ok(())
 }
 
+fn port_accepts(
+    s: &Geometry<'_>,
+    ports: &PortRuns,
+    v: usize,
+    side: usize,
+    edge: usize,
+    x: f64,
+) -> bool {
+    let want = x - s.data.x[v];
+    let Ok(run_idx) = ports
+        .runs
+        .binary_search_by_key(&(v, side), |r| (r.v, r.side))
+    else {
+        return s.data.free[v][side] >= 2 && want.abs() <= s.data.span[v] * 0.5;
+    };
+    let f = &ports.runs[run_idx];
+    let edges = &ports.edges[f.edges.clone()];
+    let gaps = &ports.gaps[f.edges.clone()];
+    let Some(i) = edges.iter().position(|&e| e == edge) else {
+        return false;
+    };
+    let lo = if i == 0 {
+        f.bounds.lo
+    } else {
+        s.data.dx[side][edges[i - 1]] + gaps[i]
+    };
+    let hi = if i + 1 == edges.len() {
+        f.bounds.hi
+    } else {
+        s.data.dx[side][edges[i + 1]] - gaps[i + 1]
+    };
+    lo <= want && want <= hi
+}
+
 fn de_jitter(
     s: &mut Geometry<'_>,
     options: &Options,
+    ports: &PortRuns,
     coordinates: &mut Vec<f64>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
@@ -1147,28 +1182,31 @@ fn de_jitter(
 
             let run = &chain[first..end];
             let (before, after) = chord(s, chain, first - 1, end);
-            let fits_port = |vertex: u32, side: usize, x: f64| {
-                let v = vertex as usize;
-                s.data.free[v][side] >= 2 && (x - s.data.x[v]).abs() <= s.data.span[v] * 0.5
+            let before_edge = g.pred.at(chain[first])[0] as usize;
+            let after_edge = g.succ.at(chain[end - 1])[0] as usize;
+            let fits_other = |other: u32, side: usize, edge: usize, x: f64| {
+                let v = other as usize;
+                matches!(g.kind[v], Kind::StartPort | Kind::EndPort)
+                    || port_accepts(s, ports, v, side, edge, x)
             };
             let candidates = [
-                (chain[first - 1], before, chain[end], TOP),
-                (chain[end], after, chain[first - 1], BOTTOM),
+                (chain[first - 1], before, chain[end], TOP, after_edge),
+                (chain[end], after, chain[first - 1], BOTTOM, before_edge),
             ];
-            let eligible = |(v, x, _, _): (u32, f64, u32, usize)| {
+            let eligible = |(v, x, _, _, _): (u32, f64, u32, usize, usize)| {
                 !s.free_bend(v as usize)
                     && room.contains(x)
                     && high - x <= MICRO_DRIFT
                     && x - low <= MICRO_DRIFT
             };
-            // Prefer an anchor that the opposite terminal's port span can also reach so
-            // subsequent port settlement removes the micro-jog on both sides of the run.
+            // Prefer an anchor that the opposite terminal's port (or movable boundary port)
+            // can genuinely reach without violating neighbor port pitch.
             let anchor = candidates
                 .into_iter()
                 .filter(|&c| eligible(c))
-                .find(|&(_, x, other, side)| fits_port(other, side, x))
+                .find(|&(_, x, other, side, edge)| fits_other(other, side, edge, x))
                 .or_else(|| candidates.into_iter().find(|&c| eligible(c)))
-                .map(|(_, x, _, _)| x);
+                .map(|(_, x, _, _, _)| x);
             let target = if let Some(anchor) = anchor {
                 Some(anchor)
             } else if run.len() > 1 {
@@ -1346,7 +1384,7 @@ fn straighten(
     }
 
     clearance.clear();
-    de_jitter(s, options, values, work)?;
+    de_jitter(s, options, ports, values, work)?;
     snap_micro_ports(s, ports, work)?;
     if !curved {
         fill(clearance, s.data.x.len(), Interval::ALL)?;
@@ -1597,6 +1635,9 @@ fn refine_with_scratch(
         align_ports(&mut s, &mut passes.row.values, work)?;
     }
     straighten(&mut s, options, passes, work)?;
+    if c.boundaries {
+        align_ports(&mut s, &mut passes.row.values, work)?;
+    }
     if s.data
         .x
         .iter()

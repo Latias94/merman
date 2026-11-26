@@ -1,7 +1,7 @@
 //! Descriptive metrics for the painted gallery paths at intrinsic SVG size.
 //!
 //! Command counts include the initial move. Micro kinks count same-direction, non-collinear
-//! shaft steps with an endpoint offset strictly between 0.01 and 2 px across the flow axis.
+//! shaft steps with an endpoint offset between 0.01 and 2.05 px across the flow axis.
 //! A seam bump measures transverse travel that reverses between named landmarks. Marker pitch
 //! uses adjacent references on one body face and the sum of their effective half-widths.
 //! Turn metrics follow the painted shaft away from the shared face, including at joins.
@@ -40,6 +40,7 @@ pub(super) struct Metrics<'a> {
     pub(super) max_s_curve_handle_ratio: Option<f64>,
     pub(super) max_s_curve_flatness: Option<f64>,
     pub(super) max_corner_arm_px: Option<f64>,
+    pub(super) max_corner_arm_ratio: Option<f64>,
     pub(super) s_curves: Vec<SCurve<'a>>,
     pub(super) face_turn_coherence: Vec<FaceCoherence<'a>>,
     pub(super) sibling_departure_symmetry: Vec<SiblingSymmetry<'a>>,
@@ -159,6 +160,7 @@ pub(super) fn emit<'a>(
     let mut label_optical_balance = Vec::new();
     let mut s_curves = Vec::new();
     let mut max_corner_arm_px: Option<f64> = None;
+    let mut max_corner_arm_ratio: Option<f64> = None;
     let mut edge_labels = BTreeMap::new();
     for label in &scene.labels {
         if let LabelOwner::Edge(index) = label.owner {
@@ -186,8 +188,10 @@ pub(super) fn emit<'a>(
                         flatness,
                         ordered_controls,
                     });
-                } else if let Some(arm) = right_angle_corner_arm(curve) {
+                } else if let Some((arm, ratio)) = right_angle_corner_arm(curve) {
                     max_corner_arm_px = Some(max_corner_arm_px.map_or(arm, |old| old.max(arm)));
+                    max_corner_arm_ratio =
+                        Some(max_corner_arm_ratio.map_or(ratio, |old| old.max(ratio)));
                 }
             }
         }
@@ -303,6 +307,7 @@ pub(super) fn emit<'a>(
         "max_s_curve_handle_ratio": max_s_curve_handle_ratio,
         "max_s_curve_flatness": max_s_curve_flatness,
         "max_corner_arm_px": max_corner_arm_px,
+        "max_corner_arm_ratio": max_corner_arm_ratio,
         "s_curve_count": s_curves.len(),
         "worst_s_curve": worst_s_curve,
         "unordered_s_curves": unordered_s_curves,
@@ -323,6 +328,7 @@ pub(super) fn emit<'a>(
         max_s_curve_handle_ratio,
         max_s_curve_flatness,
         max_corner_arm_px,
+        max_corner_arm_ratio,
         s_curves,
         face_turn_coherence,
         sibling_departure_symmetry,
@@ -427,9 +433,10 @@ fn s_curve_handles(curve: CubicBez, axis: CrossAxis) -> Option<(f64, f64, bool)>
     ))
 }
 
-fn right_angle_corner_arm(curve: CubicBez) -> Option<f64> {
+fn right_angle_corner_arm(curve: CubicBez) -> Option<(f64, f64)> {
     let chord = curve.p3 - curve.p0;
-    if chord.x.abs() <= JOIN_EPSILON || chord.y.abs() <= JOIN_EPSILON {
+    let (ax, ay) = (chord.x.abs(), chord.y.abs());
+    if ax <= JOIN_EPSILON || ay <= JOIN_EPSILON {
         return None;
     }
     let side = |p: Point| chord.cross(p - curve.p0) / chord.hypot();
@@ -442,7 +449,7 @@ fn right_angle_corner_arm(curve: CubicBez) -> Option<f64> {
     let ortho = t0.hypot() > JOIN_EPSILON
         && t1.hypot() > JOIN_EPSILON
         && t0.dot(t1).abs() <= 1e-3 * t0.hypot() * t1.hypot();
-    ortho.then(|| chord.x.abs().max(chord.y.abs()))
+    ortho.then(|| (ax.max(ay), ax.max(ay) / ax.min(ay)))
 }
 
 fn first_turn(shaft: &Shaft, end: End, contact: Point, normal: Vec2) -> Option<Turn> {
@@ -552,7 +559,7 @@ fn sibling_symmetry<'a>(
 
 fn micro_kinks(shaft: &Shaft, axis: CrossAxis) -> usize {
     let mut kinks = vec![false; shaft.segments.len()];
-    let micro_offset = |delta: f64| 0.01 < delta.abs() && delta.abs() < 2.0;
+    let micro_offset = |delta: f64| 0.01 < delta.abs() && delta.abs() <= 2.05;
     let components = |v: Vec2| match axis {
         CrossAxis::X => (v.x, v.y),
         CrossAxis::Y => (v.y, v.x),

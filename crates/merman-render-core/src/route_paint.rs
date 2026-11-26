@@ -20,6 +20,8 @@ pub const LEAD: f64 = 6.0;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
 const TERMINAL_TURN_RADIUS: f64 = 24.0;
+const MAX_CORNER_ARM: f64 = TERMINAL_TURN_RADIUS;
+const MAX_CORNER_ASPECT: f64 = 3.0;
 const QUARTER_CIRCLE_HANDLE: f64 = 0.552_284_749_830_793_6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -467,7 +469,7 @@ fn draw_body(
                     })
                     .unwrap_or(0.)
                 });
-                if r > 0.0 {
+                if r > 1e-6 {
                     pen.line(p - u * r);
                     pen.quarter_arc(r, u.cross(v) > 0.0, p + v * r);
                 } else {
@@ -488,11 +490,22 @@ fn draw_body(
                         || (i + 2 == body.len()
                             && body[i - 1].kind == KnotKind::GapBoundary
                             && terminals.1.is_some_and(on_normal)));
+                let track_shelf = body[i - 1].kind == KnotKind::GapBoundary
+                    || body[i + 1].kind == KnotKind::GapBoundary;
                 let (before, after, handle) = if terminal_turn {
                     let arm = before.min(after).min(TERMINAL_TURN_RADIUS);
                     (arm, arm, QUARTER_CIRCLE_HANDLE)
                 } else {
-                    (before, after, TURN_HANDLE)
+                    // Bound right-angle corner asymmetry so a long straight corridor
+                    // meeting a short jog stays straight instead of bowing into a banana arc.
+                    // Free corners outside explicit GapBoundary shelves also cap arm length.
+                    let cap = before.min(after) * MAX_CORNER_ASPECT;
+                    let (b, a) = (before.min(cap), after.min(cap));
+                    if track_shelf {
+                        (b, a, TURN_HANDLE)
+                    } else {
+                        (b.min(MAX_CORNER_ARM), a.min(MAX_CORNER_ARM), TURN_HANDLE)
+                    }
                 };
                 let curve = |scale| {
                     let incoming = before * scale;

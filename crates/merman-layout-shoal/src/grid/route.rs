@@ -9,7 +9,10 @@ use gutters::gutter_route;
 use super::*;
 use crate::geom::Bounds;
 use crate::ortho::{OrthoRequest, OrthoRouter, OrthoSegment};
-use crate::{BorderStitch, EdgeGeometry, EdgeId, MarkerMetrics, Rect, RoutePoint, TruncatedRoute};
+use crate::{
+    BorderStitch, EdgeGeometry, EdgeId, MarkerMetrics, Rect, RoutePoint, TitlePosition,
+    TruncatedRoute,
+};
 
 #[derive(Clone, Copy)]
 struct Site {
@@ -22,6 +25,8 @@ struct Site {
     reach: f64,
     at: Point,
     lane: FaceLane,
+    aligned_dist: Option<f64>,
+    scope: usize,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -94,6 +99,19 @@ fn cross(side: Side, p: Point) -> f64 {
         p.x
     } else {
         p.y
+    }
+}
+
+fn anchor(graph: &Graph, drawing: &LayoutOutput, item: usize) -> Point {
+    let body = rect(drawing, item);
+    let y = graph
+        .nodes
+        .get(item)
+        .and_then(|node| node.anchor_y)
+        .map_or(body.center().y, |offset| body.y + offset);
+    Point {
+        x: body.center().x,
+        y,
     }
 }
 
@@ -173,8 +191,9 @@ impl Plan {
         let mut incoming = 0;
         for (end, (&item, &side)) in ends.iter().zip(&sides).enumerate() {
             work.visit(1)?;
-            let other = rect(context.drawing, ends[1 - end]).center();
-            let from = rect(context.drawing, item).center();
+            let other = anchor(context.graph, context.drawing, ends[1 - end]);
+            let from_rect = rect(context.drawing, item);
+            let from = anchor(context.graph, context.drawing, item);
             let inner = item == scope_item;
             let offset = match hints[end] {
                 PortSideHint::FixedOffset { offset, .. } if item == projection.ends[end] => {
@@ -182,6 +201,16 @@ impl Plan {
                 }
                 _ => None,
             };
+            let aligned_dist = if !inner && item < h.node_count && sides[1 - end] == opposite(side)
+            {
+                let (axis, sign) = normal(side);
+                let delta = [other.x - from.x, other.y - from.y][axis] * sign as f64;
+                ((cross(side, other) - cross(side, from)).abs() <= 1.0 && delta > 0.0)
+                    .then_some(delta)
+            } else {
+                None
+            };
+            let terminal_side = side;
             let mut terminal = self.site(
                 Site {
                     owner: item,
@@ -193,6 +222,8 @@ impl Plan {
                     reach: 0.0,
                     at: Point::default(),
                     lane: FaceLane::default(),
+                    aligned_dist,
+                    scope: if inner { scope } else { h.parent[item] },
                 },
                 inner,
             )?;
@@ -204,17 +235,30 @@ impl Plan {
                 work.visit(1)?;
                 let group = h.node_count + owner;
                 let side = side_toward(rect(context.drawing, group), other, side);
+                // When the terminal face is perpendicular to the group border it exits through
+                // (e.g., entering `orders:L` via `core:Top`), align the border crossing with the
+                // terminal's outward lead corridor instead of overshooting to its center.
+                let preferred = if terminal_side.axis() != side.axis() {
+                    let (t_axis, t_sign) = normal(terminal_side);
+                    let b = Bounds::of(from_rect);
+                    let edge_coord = [b.x, b.y][t_axis][usize::from(t_sign > 0)];
+                    edge_coord + t_sign as f64 * (markers[end].length + context.metrics.separation)
+                } else {
+                    cross(side, from)
+                };
                 let outer = self.site(
                     Site {
                         owner: group,
                         side,
-                        preferred: cross(side, from),
+                        preferred,
                         offset: None,
                         inner: true,
                         marker: MarkerMetrics::default(),
                         reach: 0.0,
                         at: Point::default(),
                         lane: FaceLane::default(),
+                        aligned_dist: None,
+                        scope: h.parent[group],
                     },
                     true,
                 )?;
@@ -375,6 +419,45 @@ impl Routing<'_> {
             }
             let body = rect(self.drawing, first.owner);
             let [lo, center, hi] = self.seat(first.owner, first.side, inner);
+            // When multiple collinear edges share a node face (e.g., Admin and User both
+            // targeting Inventory:L), the farther edge must detour around the closer one.
+            // Nudge the farther edge toward the open scope interior so it takes the side port
+            // matching its detour gutter instead of crossing the direct neighbor's straight line.
+            if first.owner < self.hierarchy.node_count && count >= 2 {
+                let min_dist = indices[cursor..next]
+                    .iter()
+                    .filter_map(|&i| {
+                        sites[i]
+                            .offset
+                            .is_none()
+                            .then_some(sites[i].aligned_dist)
+                            .flatten()
+                    })
+                    .fold(f64::INFINITY, f64::min);
+                if min_dist.is_finite() {
+                    let mut nudged = false;
+                    for &i in &indices[cursor..next] {
+                        let site = &mut sites[i];
+                        if site.offset.is_none()
+                            && let Some(dist) = site.aligned_dist
+                            && dist > min_dist + 1.0
+                        {
+                            let scope_center = cross(first.side, self.bounds(site.scope).center());
+                            let dir = if center <= scope_center { 1.0 } else { -1.0 };
+                            site.preferred = center + dir * 2.0;
+                            nudged = true;
+                        }
+                    }
+                    if nudged {
+                        indices[cursor..next].sort_unstable_by(|&a, &b| {
+                            sites[a]
+                                .preferred
+                                .total_cmp(&sites[b].preferred)
+                                .then(a.cmp(&b))
+                        });
+                    }
+                }
+            }
             let (axis, sign) = normal(first.side);
             let bounds = Bounds::of(body);
             let [face_lo, face_hi] = [bounds.x, bounds.y][1 - axis];
@@ -385,7 +468,35 @@ impl Routing<'_> {
                 .spacing
                 .port_pitch
                 .min((hi - lo) / span.max(1.0));
-            let start = (center - span * pitch / 2.0).clamp(lo, (hi - span * pitch).max(lo));
+            // If a single unpinned site on a node face is aligned with the face center,
+            // anchor it at `center` so straight direct connections avoid an unnecessary jog.
+            let mut anchored_start = None;
+            if first.owner < self.hierarchy.node_count && count >= 2 {
+                let mut aligned_slot = None;
+                let mut aligned_count = 0usize;
+                let mut unpinned_rank = 0usize;
+                for &i in &indices[cursor..next] {
+                    if sites[i].offset.is_some() {
+                        continue;
+                    }
+                    if (sites[i].preferred - center).abs() <= 1.0 {
+                        aligned_slot = Some(unpinned_rank);
+                        aligned_count += 1;
+                    }
+                    unpinned_rank += 1;
+                }
+                if aligned_count == 1
+                    && let Some(slot) = aligned_slot
+                {
+                    let candidate = center - slot as f64 * pitch;
+                    if candidate >= lo && candidate + span * pitch <= hi {
+                        anchored_start = Some(candidate);
+                    }
+                }
+            }
+            let start = anchored_start.unwrap_or_else(|| {
+                (center - span * pitch / 2.0).clamp(lo, (hi - span * pitch).max(lo))
+            });
             let mut rank = 0.0;
             let mut last = lo - pitch;
             for (ordinal, &i) in indices[cursor..next].iter().enumerate() {
@@ -662,6 +773,60 @@ impl Gutters<'_> {
     }
 }
 
+fn adapt_auto_titles(
+    graph: &Graph,
+    hierarchy: &Hierarchy,
+    sites: &[Site],
+    metrics: Metrics,
+    options: &Options,
+    drawing: &mut LayoutOutput,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    if !options.group_policy.adaptive_title_clearance {
+        return Ok(());
+    }
+    let margin = metrics.margin();
+    let clear = metrics.separation;
+    for (group_id, (spec, geom)) in graph.groups.iter().zip(&mut drawing.groups).enumerate() {
+        work.visit(1)?;
+        if spec.title_position != TitlePosition::TopAuto {
+            continue;
+        }
+        let Some(title) = spec.title else { continue };
+        let Some(current) = geom.title_center else {
+            continue;
+        };
+        let left = geom.rect.x + margin + title.width / 2.0;
+        let right = (geom.rect.x + geom.rect.width - margin - title.width / 2.0).max(left);
+        let center = geom.rect.center().x.clamp(left, right);
+        let candidates = [left, right, center];
+        let mut scores = [(0usize, 0.0_f64); 3];
+        let owner = hierarchy.node_count + group_id;
+        for site in sites {
+            work.visit(1)?;
+            if site.owner != owner || site.side != Side::Top {
+                continue;
+            }
+            let half = title.width / 2.0 + clear;
+            for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
+                let shortfall = half - (site.preferred - candidate).abs();
+                if shortfall > 0.0 {
+                    *hits += 1;
+                    *shift += shortfall;
+                }
+            }
+        }
+        let best = candidates
+            .into_iter()
+            .zip(scores)
+            .min_by(|(_, a), (_, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+            .expect("three title anchors")
+            .0;
+        geom.title_center = Some(Point { x: best, ..current });
+    }
+    Ok(())
+}
+
 /// Route against a scope's walls and use its placement gutters when visibility is exhausted.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw(
@@ -674,6 +839,22 @@ pub(crate) fn draw(
     gutters: Gutters<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    let mut plan = {
+        let context = Routing {
+            graph,
+            hierarchy,
+            drawing,
+            metrics,
+            options,
+        };
+        let mut plan = Plan::new(&context, work)?;
+        for (index, &(projection, sides)) in edges.iter().enumerate() {
+            work.visit(1)?;
+            plan.edge(&context, projection, sides, index, work)?;
+        }
+        plan
+    };
+    adapt_auto_titles(graph, hierarchy, &plan.sites, metrics, options, drawing, work)?;
     let context = Routing {
         graph,
         hierarchy,
@@ -681,11 +862,6 @@ pub(crate) fn draw(
         metrics,
         options,
     };
-    let mut plan = Plan::new(&context, work)?;
-    for (index, &(projection, sides)) in edges.iter().enumerate() {
-        work.visit(1)?;
-        plan.edge(&context, projection, sides, index, work)?;
-    }
     context.ports(&mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
     let mut bounds = drawing.bounds;
