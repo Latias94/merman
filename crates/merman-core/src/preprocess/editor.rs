@@ -1,5 +1,15 @@
 use super::PreprocessedSource;
+use crate::source_span::line_content_end;
 use crate::{EditorSemanticFacts, OperationControl, OperationControlResult};
+
+pub(super) fn editor_evidence_line_end(source: &str, end: usize) -> usize {
+    let end = end.min(source.len());
+    let newline_start = end
+        .checked_sub(1)
+        .filter(|index| source.as_bytes().get(*index) == Some(&b'\n'))
+        .unwrap_or(end);
+    line_content_end(source, newline_start)
+}
 
 impl PreprocessedSource {
     pub(crate) fn remap_editor_facts_controlled(

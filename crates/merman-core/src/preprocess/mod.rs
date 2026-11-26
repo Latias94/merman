@@ -1,3 +1,4 @@
+mod comments;
 mod config_scan;
 mod directives;
 mod frontmatter;
@@ -19,7 +20,6 @@ mod rewrite_order;
 #[cfg(feature = "editor-facts")]
 mod source_config;
 mod source_edit_map;
-mod text;
 
 pub(crate) use directives::directive_removal_ranges_controlled;
 pub use frontmatter::{
@@ -41,9 +41,12 @@ pub use source_config::{
 };
 pub use source_edit_map::PreprocessedSource;
 
+use comments::remove_mermaid_comments_controlled;
 #[cfg(feature = "editor-facts")]
 use directives::append_directive_evidence;
 use directives::{DiagramTypeDetector, process_directives_controlled};
+#[cfg(feature = "editor-facts")]
+use editor::editor_evidence_line_end;
 #[cfg(feature = "editor-facts")]
 use frontmatter::append_frontmatter_evidence;
 use frontmatter::process_frontmatter_controlled;
@@ -63,18 +66,15 @@ pub use merman_core_preprocess::frontmatter::{
     locate_frontmatter_block_controlled, split_frontmatter_block,
     split_frontmatter_block_controlled,
 };
-use merman_core_preprocess::text::PreprocessMarkers;
+use merman_core_preprocess::text::{
+    PreprocessMarkers, cleanup_text_controlled, encode_mermaid_entities_like_upstream_controlled,
+    trim_source_start_controlled,
+};
 use serde_json::Value;
 #[cfg(feature = "editor-facts")]
 use source_config::SourceAppearanceOwner;
 #[cfg(test)]
 use std::cell::Cell;
-#[cfg(feature = "editor-facts")]
-use text::editor_evidence_line_end;
-use text::{
-    cleanup_text_controlled, encode_mermaid_entities_like_upstream_controlled,
-    remove_mermaid_comments_controlled, trim_source_start_controlled,
-};
 
 #[cfg(test)]
 thread_local! {
@@ -175,7 +175,7 @@ pub(crate) fn select_family_parser_source_controlled(
             .and_then(Value::as_u64)
             .unwrap_or(50_000);
         if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
-            encode_mermaid_entities_like_upstream_controlled(&mut with_comments, control)?;
+            encode_mermaid_entities_like_upstream_controlled(with_comments.mapped_mut(), control)?;
             return Ok(with_comments);
         }
     }
@@ -269,7 +269,9 @@ fn preprocess_source_capture_controlled(
     let markers = PreprocessMarkers::scan(input, control)?;
     #[cfg(feature = "editor-facts")]
     let capture_editor_evidence = capture_mode.collects_editor();
-    cleanup_text_controlled(&mut source, markers, control)?;
+    if cleanup_text_controlled(source.mapped_mut(), markers, control)? {
+        source.set_first_line_column_offset(1);
+    }
     #[cfg(feature = "editor-facts")]
     let mut source_config = SourceConfigEvidence::empty();
     #[cfg(feature = "editor-facts")]
@@ -461,14 +463,15 @@ fn preprocess_source_capture_controlled(
             control,
         )?;
     }
-    trim_source_start_controlled(&mut source, control)?;
+    source.set_first_line_column_offset(0);
+    trim_source_start_controlled(source.mapped_mut(), control)?;
     #[cfg(feature = "editor-facts")]
     if let Some(with_comments) = &mut with_comments {
         with_comments.copy_global_editor_evidence_from(&source);
     }
     control.checkpoint()?;
     if markers.contains(PreprocessMarkers::ENTITY) {
-        encode_mermaid_entities_like_upstream_controlled(&mut source, control)?;
+        encode_mermaid_entities_like_upstream_controlled(source.mapped_mut(), control)?;
     }
     control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
