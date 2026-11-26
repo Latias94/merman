@@ -114,7 +114,7 @@ test("scoped Rust report validation fails closed on input and closure drift", ()
   const expectedProfile = report.artifact_profile;
 
   const staleInput = structuredClone(report);
-  staleInput.generator.cargo_lock_sha256 = "0".repeat(64);
+  staleInput.generator.third_party_cargo_lock_sha256 = "0".repeat(64);
   assert.throws(
     () => validateScopedRustReport(staleInput, expectedProfile, "web-analysis"),
     /generator inputs have drifted/,

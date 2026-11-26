@@ -256,7 +256,10 @@ class WebRustReportValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        (self.root / "Cargo.lock").write_text("lock", encoding="utf-8")
+        (self.root / "Cargo.lock").write_text(
+            'version = 4\n[[package]]\nname = "workspace-member"\nversion = "0.1.0"\n',
+            encoding="utf-8",
+        )
         (self.root / "about.toml").write_text("accepted = []", encoding="utf-8")
         profile_path = self.root / verify.ARTIFACT_PROFILES_PATH
         profile_path.parent.mkdir(parents=True)
@@ -316,7 +319,7 @@ class WebRustReportValidationTests(unittest.TestCase):
             )
 
         stale = json.loads(json.dumps(self.report))
-        stale["generator"]["cargo_lock_sha256"] = "0" * 64
+        stale["generator"]["third_party_cargo_lock_sha256"] = "0" * 64
         with self.assertRaisesRegex(verify.ContractError, "generator inputs have drifted"):
             verify.validate_web_rust_report(
                 self.root, stale, self.profile, "web-analysis"
@@ -350,7 +353,7 @@ def web_rust_report_fixture(root: Path, profile: dict[str, object]) -> dict[str,
             "version": verify.CARGO_ABOUT_VERSION,
             "command_profile": "artifact-profile-runtime",
             "offline": True,
-            "cargo_lock_sha256": verify.sha256(root / "Cargo.lock"),
+            "third_party_cargo_lock_sha256": verify.third_party_cargo_lock_sha256(root / "Cargo.lock"),
             "configuration_sha256": verify.sha256(root / "about.toml"),
             "artifact_profile_sha256": verify.sha256_json(profile),
         },
