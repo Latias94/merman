@@ -7,6 +7,17 @@ use merman_render_core::svg_css::CssSelectorDiagramId;
 
 use super::SvgOutput;
 
+/// Let measured HTML labels paint glyph overhangs in browsers and static exports.
+pub(super) const HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR: &str = r#" style="overflow: visible;""#;
+
+pub(super) fn html_label_overflow_attr(uses_shoal: bool, width: f64, height: f64) -> &'static str {
+    if uses_shoal && width > 0.0 && height > 0.0 {
+        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
+    } else {
+        ""
+    }
+}
+
 #[cfg(feature = "diagram-state")]
 pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;

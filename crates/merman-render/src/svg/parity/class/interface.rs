@@ -1,4 +1,5 @@
 use super::super::SvgDiagramId;
+use super::super::util::html_label_overflow_attr;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
@@ -14,6 +15,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub use_html_labels: bool,
+    pub uses_canonical_routes: bool,
     pub wrapping_width: f64,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
@@ -107,9 +109,10 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     if ctx.use_html_labels {
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">"#,
             fmt(fo_w),
             fmt(fo_h),
+            html_label_overflow_attr(ctx.uses_canonical_routes, fo_w, fo_h),
             class_html_div_style(fo_w, ctx.wrapping_width as i64),
         );
         if let Some(math_html) = math_html.as_deref() {

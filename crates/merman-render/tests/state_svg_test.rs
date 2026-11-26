@@ -17,6 +17,48 @@ use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge() {
+    let svg = render_state_svg_from_text(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\
+         state Active {\n  [*] --> Waiting\n  Waiting --> Done: timeout_exceeded\n}\n\
+         Idle --> Active: start_session()\nnote right of Active: database_connection\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let labels: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .collect();
+    let dimension =
+        |node: roxmltree::Node<'_, '_>, name| node.attribute(name).unwrap().parse::<f64>().unwrap();
+    assert!(labels.iter().any(|node| {
+        node.descendants()
+            .any(|child| child.text() == Some("timeout_exceeded"))
+    }));
+    for label in labels {
+        let style = label.attribute("style").unwrap_or_default();
+        assert_eq!(
+            style.contains("overflow: visible;"),
+            dimension(label, "width") > 0.0 && dimension(label, "height") > 0.0,
+            "{label:?}"
+        );
+    }
+
+    let cluster = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("Active"))
+        .unwrap();
+    let bottom = |class| {
+        let rect = cluster
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+            .unwrap();
+        dimension(rect, "y") + dimension(rect, "height")
+    };
+    assert!((bottom("outer") - bottom("inner")).abs() < 1e-6);
+}
+
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
 fn classic_engine() -> MermaidEngine {
     MermaidEngine::new().with_site_config(

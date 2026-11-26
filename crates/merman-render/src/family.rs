@@ -2679,6 +2679,15 @@ fn prepare_for<'parsed>(
     let _stage =
         merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutPrepare);
     let mut context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
+    #[cfg(feature = "layout-shoal")]
+    if plan.backend() == GraphLayoutBackend::Shoal
+        && matches!(
+            expected_family,
+            DiagramFamilyId::CLASS | DiagramFamilyId::ER | DiagramFamilyId::STATE
+        )
+    {
+        context.session.use_shoal_text_widths();
+    }
     if let Some(theme) = context.session().native_theme() {
         let metadata = parsed.metadata();
         let control = context.session().work_meter().control();

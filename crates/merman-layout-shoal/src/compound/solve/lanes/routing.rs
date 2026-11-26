@@ -153,13 +153,38 @@ fn occupied(
     graph: &Graph,
     nodes: &[Rect],
     lanes: &Lanes<'_>,
+    frames: &[Option<Frame>],
     wires: &[Wire],
     work: &mut Work<'_>,
 ) -> LayoutResult<Bvh<Occupied>> {
     let mut occupied = reserved(nodes.len())?;
-    for (slot, &rect) in nodes.iter().enumerate() {
+    let root = &ctx.hierarchy.levels[ctx.graph.groups.len()];
+    for (slot, (&rect, item)) in nodes.iter().zip(&root.items).enumerate() {
         work.visit(1)?;
-        let bounds = Bounds::of(rect);
+        let mut bounds = Bounds::of(rect);
+        if let Endpoint::Group(id) = item {
+            let child = frames[id.0 as usize].as_ref().expect("solved lane group");
+            if let (Some(title), Some(size)) = (&child.title, ctx.graph.groups[id.0 as usize].title)
+            {
+                let origin = Point {
+                    x: rect.x,
+                    y: rect.y,
+                };
+                add(
+                    &mut occupied,
+                    Owner::Header,
+                    Bounds::centered(translated(title.center, origin), size),
+                )?;
+            }
+            // A handoff or feedback candidate only terminates at ordinary nodes.
+            if bounds.has_area() {
+                let gap = ctx.options.spacing.edge;
+                bounds = Bounds {
+                    x: [bounds.x[0] - gap, bounds.x[1] + gap],
+                    y: [bounds.y[0] - gap, bounds.y[1] + gap],
+                };
+            }
+        }
         if bounds.has_area() {
             add(&mut occupied, Owner::Body(slot), bounds)?;
         }
@@ -512,6 +537,7 @@ pub(super) fn improve(
     graph: &Graph,
     nodes: &[Rect],
     lanes: &Lanes<'_>,
+    frames: &[Option<Frame>],
     wires: &mut [Wire],
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
@@ -533,7 +559,7 @@ pub(super) fn improve(
         graph,
         nodes,
         spacing: &ctx.options.spacing,
-        occupied: occupied(ctx, graph, nodes, lanes, wires, work)?,
+        occupied: occupied(ctx, graph, nodes, lanes, frames, wires, work)?,
     };
     let mut proposals = reserved(candidates.len())?;
     let mut bounds = Vec::new();

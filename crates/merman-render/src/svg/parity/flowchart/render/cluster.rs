@@ -9,7 +9,7 @@ use crate::svg::parity::flowchart::{
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
-const TITLE_HALO_WIDTH: u8 = 3;
+const TITLE_HALO_WIDTH: u8 = 5;
 
 pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
@@ -134,20 +134,38 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
         .unwrap_or(fallback)
 }
 
+fn cluster_base_fill<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
+    id: &str,
+) -> &'a str {
+    if ctx.diagram_type == "agentflow"
+        && let Some(slot) = super::super::agentflow::container_color_slot(ctx, id)
+        && let Some(background) = ctx.palette.background_color(slot)
+    {
+        return background;
+    }
+    &terminal.fill
+}
+
 fn write_flowchart_cluster_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     terminal: &super::super::node_inventory::FlowchartPreparedCluster,
-    left: f64,
-    top: f64,
-    rect_w: f64,
-    rect_h: f64,
+    id: &str,
+    frame: super::super::cluster_geometry::PaintedClusterFrame,
 ) {
+    let kurbo::Point { x: left, y: top } = frame.origin;
+    let kurbo::Size {
+        width: rect_w,
+        height: rect_h,
+    } = frame.size;
     let compiled_styles = &terminal.compiled;
     let rect_style = terminal.rect_style.as_str();
-    let fill = terminal.fill.as_str();
+    let fill = cluster_base_fill(ctx, terminal, id);
     let stroke = terminal.stroke.as_str();
     let agentflow = ctx.diagram_type == "agentflow";
+    let canonical = ctx.layout.route_contract.is_canonical_axis();
     if let Some(native) = ctx.native {
         let radius = native
             .form
@@ -199,13 +217,23 @@ fn write_flowchart_cluster_shape(
         }
         let _ = write!(
             out,
-            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px"/>"#,
+            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px""#,
             fmt_display(left),
             fmt_display(top),
             fmt_display(rect_w),
             fmt_display(rect_h),
             escape_xml_display(stroke),
         );
+        if canonical {
+            let fill = compiled_styles.fill.as_deref().unwrap_or(fill);
+            let _ = write!(
+                out,
+                r#" style="fill:{};fill-opacity:{}""#,
+                escape_attr(fill),
+                fmt_display(compiled_styles.fill_opacity),
+            );
+        }
+        out.push_str("/>");
         return;
     }
 
@@ -248,9 +276,15 @@ fn write_flowchart_cluster_shape(
         }
     }
 
+    out.push_str(r#"<rect style=""#);
+    if canonical && ctx.palette.color_count() > 0 {
+        // The compatibility surface must agree in browsers and raster exports. The browser's
+        // palette selector can otherwise override the clusterBkg fill used during export.
+        let _ = write!(out, "fill:{};", escape_attr(fill));
+    }
     let _ = write!(
         out,
-        r#"<rect style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"{}" x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml_display(rect_style),
         fmt_display(left),
         fmt_display(top),
@@ -277,12 +311,7 @@ fn title_halo_color(ctx: &FlowchartRenderCtx<'_>, id: &str) -> crate::Result<cra
             .fill
             .as_deref()
             .and_then(literal_fill)
-            .or_else(|| {
-                ctx.native.is_none().then_some(())?;
-                let slot = super::super::agentflow::container_color_slot(ctx, id)?;
-                ctx.palette.background_color(slot).and_then(literal_fill)
-            })
-            .or_else(|| literal_fill(&terminal.fill))
+            .or_else(|| literal_fill(cluster_base_fill(ctx, terminal, id)))
             .unwrap_or(Color::TRANSPARENT);
         let layer = fill.composite(Color::TRANSPARENT, terminal.compiled.fill_opacity);
         surface = surface.composite(layer, 1.0);
@@ -367,11 +396,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
-    let frame = painted_cluster_frame(ctx, cluster);
-    let rect_w = frame.size.width;
-    let rect_h = frame.size.height;
-    let left = frame.origin.x + ctx.tx - origin_x;
-    let top = frame.origin.y + ctx.ty - origin_y;
+    let mut frame = painted_cluster_frame(ctx, cluster);
+    frame.origin.x = frame.origin.x + ctx.tx - origin_x;
+    frame.origin.y = frame.origin.y + ctx.ty - origin_y;
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -425,7 +452,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     } else {
         (
             cluster.x + ctx.tx - origin_x - label_w / 2.0,
-            top + cluster.title_margin_top.max(0.0),
+            frame.origin.y + cluster.title_margin_top.max(0.0),
         )
     };
 
@@ -468,7 +495,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             );
         }
         out.push('>');
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
         out.push_str("</g>");
         return out.checkpoint();
     }
@@ -491,7 +518,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         escape_xml_display(data_look),
     );
     if pass == FlowchartClusterPass::Complete {
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+        write_flowchart_cluster_shape(out, ctx, terminal, &cluster.id, frame);
     }
     let _ = write!(
         out,

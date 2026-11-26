@@ -822,6 +822,7 @@ pub(super) fn render_state_edge_label(
         w: f64,
         h: f64,
         html_labels: bool,
+        canonical: bool,
         uses_native_background: bool,
         label_style: &str,
         label_div_prefix: &str,
@@ -849,13 +850,14 @@ pub(super) fn render_state_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g>"#,
+                r#"<g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g>"#,
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
                 fallback_background_metadata_attr,
                 fmt_display(w),
                 fmt_display(h),
+                super::super::util::html_label_overflow_attr(canonical, w, h),
                 escape_attr(&edge_label_div_style(
                     w,
                     label_div_prefix,
@@ -1013,6 +1015,7 @@ pub(super) fn render_state_edge_label(
         w,
         h,
         ctx.html_labels,
+        ctx.uses_canonical_routes(),
         native_background.is_some(),
         &adaptive_label_style,
         "",

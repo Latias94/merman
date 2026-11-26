@@ -57,7 +57,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
-    pub(super) use_layout_title_anchor: bool,
+    pub(super) uses_canonical_routes: bool,
     pub(super) timing: RenderTiming,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -158,7 +158,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
-                            use_layout_title_anchor: ctx.use_layout_title_anchor,
+                            uses_canonical_routes: ctx.uses_canonical_routes,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
@@ -192,7 +192,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
-                            use_layout_title_anchor: ctx.use_layout_title_anchor,
+                            uses_canonical_routes: ctx.uses_canonical_routes,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
@@ -332,7 +332,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             content_ty: ctx.content_ty,
             bounds_dx: 0.0,
             bounds_dy: 0.0,
-            use_layout_title_anchor: ctx.use_layout_title_anchor,
+            uses_canonical_routes: ctx.uses_canonical_routes,
             use_html_labels: ctx.settings.edge_use_html_labels,
             look: ctx.settings.look.as_str(),
             mermaid_config: Some(ctx.mermaid_config),
@@ -684,6 +684,7 @@ fn render_class_node_id<O: SvgOutput>(
                 text_style: settings.text_style(),
                 line_height: settings.line_height,
                 use_html_labels,
+                uses_canonical_routes: ctx.uses_canonical_routes,
                 mermaid_config: ctx.mermaid_config,
                 relation_theme: ctx.relation_theme,
                 math_renderer: ctx.math_renderer,
@@ -714,6 +715,7 @@ fn render_class_node_id<O: SvgOutput>(
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
                 use_html_labels: settings.diagram_use_html_labels,
+                uses_canonical_routes: ctx.uses_canonical_routes,
                 wrapping_width: settings.interface_wrapping_width,
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
@@ -745,6 +747,9 @@ fn render_class_node_id<O: SvgOutput>(
     let guide_stroke = native.map_or(node_stroke, |style| binding.guide_stroke(&style.guide));
     let paint_heading =
         native.is_some() && !binding.has_fill_override() && settings.look != "handDrawn";
+    // Neo's bounding-box gradient cannot paint a horizontal divider with zero height.
+    let use_neo_line_class = settings.look == "neo"
+        && (ctx.uses_canonical_routes || !defaults.look_defs.uses_gradient());
     let node_stroke_dasharray = binding.stroke_dasharray();
 
     let node_link_open = render_class_node_shell_open(
@@ -812,8 +817,9 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
+                use_neo_line_class,
+                uses_canonical_routes: ctx.uses_canonical_routes,
                 mermaid_config: Some(ctx.mermaid_config),
-                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
                 native,
@@ -854,7 +860,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
+                use_neo_line_class,
                 timing: ctx.timing,
                 native,
                 paint_heading,

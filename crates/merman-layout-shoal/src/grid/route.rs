@@ -50,12 +50,6 @@ struct Part {
     labels: [Option<Size>; 3],
 }
 
-#[derive(Default)]
-struct Routed {
-    points: Vec<RoutePoint>,
-    labels: [Option<Point>; 3],
-}
-
 #[derive(Clone, Copy)]
 struct Slot {
     scope: usize,
@@ -379,9 +373,7 @@ impl Routing<'_> {
     }
 
     fn border_title_gap(&self, owner: usize, side: Side, inner: bool) -> Option<(f64, f64)> {
-        if !inner
-            || owner < self.hierarchy.node_count
-            || !matches!(side, Side::Top | Side::Bottom)
+        if !inner || owner < self.hierarchy.node_count || !matches!(side, Side::Top | Side::Bottom)
         {
             return None;
         }
@@ -507,9 +499,8 @@ impl Routing<'_> {
             let start = anchored_start.unwrap_or_else(|| {
                 (center - span * pitch / 2.0).clamp(lo, (hi - span * pitch).max(lo))
             });
-            let border_split = self
-                .border_title_gap(first.owner, first.side, inner)
-                .map(|(gap_left, gap_right)| {
+            let border_split = self.border_title_gap(first.owner, first.side, inner).map(
+                |(gap_left, gap_right)| {
                     let left_hi = gap_left.min(hi);
                     let right_lo = gap_right.max(lo);
                     let port_pitch = self.options.spacing.port_pitch;
@@ -544,7 +535,8 @@ impl Routing<'_> {
                         left_want.max(count.saturating_sub(right_cap)).min(left_cap)
                     };
                     (split, left_hi, right_lo)
-                });
+                },
+            );
             let mut rank = 0usize;
             let mut batch_rank = 0.0;
             let mut last = lo - pitch;
@@ -928,7 +920,8 @@ fn adapt_auto_titles(
         // a corner that squeezes the spread port into a border S-jog.
         if !top_prefs.is_empty() {
             work.charge_sort(top_prefs.len())?;
-            top_prefs.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
+            top_prefs
+                .sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
             let border = options.spacing.corner_clearance.max(clear);
             let lo = geom.rect.x + border.min(geom.rect.width / 2.0);
             let hi = geom.rect.x + geom.rect.width - border.min(geom.rect.width / 2.0);
@@ -991,7 +984,15 @@ pub(crate) fn draw(
         }
         plan
     };
-    adapt_auto_titles(graph, hierarchy, &plan.sites, metrics, options, drawing, work)?;
+    adapt_auto_titles(
+        graph,
+        hierarchy,
+        &plan.sites,
+        metrics,
+        options,
+        drawing,
+        work,
+    )?;
     let context = Routing {
         graph,
         hierarchy,
@@ -1002,7 +1003,7 @@ pub(crate) fn draw(
     context.ports(&mut plan.sites, work)?;
     snap_collinear_sites(&mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
-    let mut bounds = drawing.bounds;
+    let mut has_captions = false;
     for (scope, parts) in plan.scopes.iter().enumerate() {
         work.visit(1)?;
         let mut routes = reserved(parts.len())?;
@@ -1022,7 +1023,9 @@ pub(crate) fn draw(
                 let to = plan.sites[part.to.site];
                 let start = context.lead(from, part.from.inner);
                 let end = context.lead(to, part.to.inner);
-                let fan = if part.labels.iter().all(Option::is_none) {
+                let labelled = part.labels.iter().any(Option::is_some);
+                has_captions |= labelled;
+                let fan = if !labelled {
                     fan_channel(
                         &router,
                         [start, end],
@@ -1059,51 +1062,43 @@ pub(crate) fn draw(
                         "no clear orthogonal channel in grid scope",
                     ))?
                 };
-                work.charge(middle.len() + 2)?;
-                let mut points = reserved(middle.len() + 2)?;
+                let point_count = middle
+                    .len()
+                    .checked_add(2)
+                    .ok_or(WorkError::ArithmeticOverflow)?;
+                work.charge(point_count)?;
+                let mut points = reserved(point_count)?;
                 add_point(&mut points, knot(from.at, start.1.axis()));
                 for p in middle {
                     add_point(&mut points, p);
                 }
                 add_point(&mut points, knot(to.at, end.1.axis()));
                 router.record_route(&points, work)?;
-                routes.push(Routed {
-                    points,
-                    ..Default::default()
-                });
+                routes.push(points);
             }
-            captions::place(
-                &context,
-                &plan,
-                scope,
-                &walls,
-                &mut routes,
-                &mut bounds,
-                work,
-            )?;
         }
         routed.push(routes);
     }
-    drawing.edges = reserved(edges.len())?;
+    let mut routes = reserved(edges.len())?;
+    let mut stitches = Vec::new();
     for (index, (steps, &(_, sides))) in plan.paths.iter().zip(edges).enumerate() {
         work.visit(1)?;
         let mut points = Vec::<RoutePoint>::new();
-        let mut labels = [None; 3];
         for step in steps {
-            let part = plan.scopes[step.scope][step.index];
             let route = &routed[step.scope][step.index];
             let mut first = 0;
-            work.charge(route.points.len())?;
+            work.charge(route.len())?;
             points
-                .try_reserve(route.points.len())
+                .try_reserve(route.len())
                 .map_err(|_| LayoutError::AllocationLimit)?;
             if let Some(previous) = points.last() {
-                if Some(position(*previous)) != route.points.first().copied().map(position) {
+                if Some(position(*previous)) != route.first().copied().map(position) {
                     return Err(LayoutError::InvalidInput("discontinuous grid group route"));
                 }
+                let part = plan.scopes[step.scope][step.index];
                 let site = plan.sites[part.from.site];
                 push(
-                    &mut drawing.border_stitches,
+                    &mut stitches,
                     BorderStitch {
                         edge: EdgeId(index as u32),
                         point: points.len() - 1,
@@ -1113,24 +1108,25 @@ pub(crate) fn draw(
                 )?;
                 first = 1;
             }
-            points.extend_from_slice(&route.points[first..]);
-            for (label, center) in labels.iter_mut().zip(route.labels) {
-                if center.is_some() {
-                    *label = center;
-                }
-            }
+            points.extend_from_slice(&route[first..]);
         }
-        drawing.edges.push(EdgeGeometry {
+        routes.push(EdgeGeometry {
             points,
             ports: (sides[0], sides[1]),
-            label_center: labels[0],
-            start_label_center: labels[1],
-            end_label_center: labels[2],
+            label_center: None,
+            start_label_center: None,
+            end_label_center: None,
             shared_bus: false,
             corridor_clearance: 0.0,
             reversed_for_ranking: false,
         });
     }
+    drop(routed);
+    if has_captions {
+        captions::place(&context, &plan, &mut routes, work)?;
+    }
+    drawing.edges = routes;
+    drawing.border_stitches = stitches;
     let origin = normalize(graph, drawing, work)?;
     if matches!(gutters, Gutters::Architecture(_))
         && options.bus_routing

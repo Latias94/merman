@@ -35,6 +35,7 @@ pub(super) struct PlacedTitle {
 
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
 pub(super) const TITLE_CLEAR: f64 = 6.0;
+const NESTED_LANE_TITLE_CLEAR: f64 = 8.0;
 
 fn finite(value: f64) -> LayoutResult<f64> {
     if value.is_finite() {
@@ -197,9 +198,9 @@ impl Wire {
         self.ends.iter().all(|end| end.node().is_some())
     }
 
-    fn title_clearance(&self, end: usize) -> f64 {
+    fn title_clearance(&self, end: usize, margin: f64) -> f64 {
         let marker = [self.spec.start_marker, self.spec.end_marker][end];
-        TITLE_CLEAR + marker.width / 2.0
+        margin + marker.width / 2.0
     }
 
     fn uses_caption_band(&self) -> bool {
@@ -432,7 +433,7 @@ pub(super) fn level(
     if id == ctx.graph.groups.len()
         && let Some(membership) = &ctx.hierarchy.lanes
     {
-        return lanes::root(ctx, membership, &graph, wires, expanded, work);
+        return lanes::root(ctx, membership, &graph, frames, wires, expanded, work);
     }
     let drawing = flat::run(&graph, ctx.options, expanded, work)?;
     let mut edges = drawing.edges.into_iter();
@@ -454,11 +455,24 @@ pub(super) fn level(
         work,
     )?;
     let group = ctx.graph.groups.get(id);
-    let mut fit = fit::Fit::new(group, drawing.bounds, &nodes, &wires, ctx.options, work)?;
+    let protected_title_margin = if ctx.hierarchy.lanes.is_some() {
+        NESTED_LANE_TITLE_CLEAR
+    } else {
+        0.0
+    };
+    let mut fit = fit::Fit::new(
+        group,
+        drawing.bounds,
+        &nodes,
+        &wires,
+        protected_title_margin,
+        ctx.options,
+        work,
+    )?;
     let border = |fit: &fit::Fit, work: &mut Work<'_>| -> LayoutResult<_> {
         let mut ports = ports::border(&wires, &nodes, fit, level.ports.len(), ctx.options, work)?;
         let title = fit.title(group, &wires, &ports, work)?;
-        if !fit.adaptive_top_title
+        if (!fit.adaptive_top_title || fit.protected_title_margin > 0.0)
             && let (Some(title), Some(group)) = (title, group)
         {
             ports::beside_title(

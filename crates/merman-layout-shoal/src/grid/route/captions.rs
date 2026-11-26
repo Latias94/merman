@@ -17,35 +17,60 @@ struct Obstacle {
 
 #[derive(Clone, Copy)]
 enum ClearanceTier {
-    /// Strict: clears all nodes, group frames, titles, markers, and every route (including own).
     OffAll,
-    /// On-route: clears all nodes, group frames, titles, markers, and foreign routes (sits on own route).
     OnOwnRoute,
-    /// Relaxed on-route: clears all leaf nodes, group titles, markers, and labels; permits crossing
-    /// hollow boundary borders or foreign edges rather than detaching the label to the canvas bottom.
-    OnOwnRouteClearSolids,
+    /// The hollow group border can cross the caption in a crowded gutter.
+    AcrossFrame,
 }
 
 struct Scene {
     obstacles: Bvh<Obstacle>,
-    labels: Vec<Bounds>,
+    labels: Vec<Caption>,
     clearance: f64,
-    is_root: bool,
+}
+
+struct Caption {
+    ink: Bounds,
+    prefix_bottom: f64,
 }
 
 impl Scene {
+    fn add_caption(&mut self, ink: Bounds, work: &mut Work<'_>) -> LayoutResult<()> {
+        work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
+        let at = self
+            .labels
+            .partition_point(|label| label.ink.y[0] <= ink.y[0]);
+        let prefix_bottom = if at == 0 {
+            ink.y[1]
+        } else {
+            self.labels[at - 1].prefix_bottom.max(ink.y[1])
+        };
+        work.charge(self.labels.len() - at + 1)?;
+        self.labels
+            .try_reserve(1)
+            .map_err(|_| LayoutError::AllocationLimit)?;
+        self.labels.insert(at, Caption { ink, prefix_bottom });
+        for label in &mut self.labels[at + 1..] {
+            if label.prefix_bottom >= prefix_bottom {
+                break;
+            }
+            label.prefix_bottom = prefix_bottom;
+        }
+        Ok(())
+    }
+
     fn fits(
         &self,
         at: Point,
         size: Size,
-        bounds: Bounds,
+        scope: Option<Bounds>,
         own_route: usize,
         tier: ClearanceTier,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let pad = match tier {
             ClearanceTier::OffAll => self.clearance,
-            ClearanceTier::OnOwnRoute | ClearanceTier::OnOwnRouteClearSolids => {
+            ClearanceTier::OnOwnRoute | ClearanceTier::AcrossFrame => {
                 (self.clearance * 0.5).min(4.0)
             }
         };
@@ -53,7 +78,7 @@ impl Scene {
         if !ink.finite() {
             return Ok(false);
         }
-        if !self.is_root
+        if let Some(bounds) = scope
             && (ink.x[0] < bounds.x[0]
                 || ink.x[1] > bounds.x[1]
                 || ink.y[0] < bounds.y[0]
@@ -61,17 +86,35 @@ impl Scene {
         {
             return Ok(false);
         }
+        if let Some(last) = self.labels.last()
+            && last.prefix_bottom > ink.y[0]
+            && self.labels[0].ink.y[0] < ink.y[1]
+        {
+            work.visit(self.labels.len().ilog2() as usize + 1)?;
+            let first = self
+                .labels
+                .partition_point(|label| label.prefix_bottom <= ink.y[0]);
+            for label in &self.labels[first..] {
+                work.visit(1)?;
+                if label.ink.y[0] >= ink.y[1] {
+                    break;
+                }
+                if ink.overlaps_strictly(label.ink) {
+                    return Ok(false);
+                }
+            }
+        }
         let hit = self.obstacles.visit(|entry| -> LayoutResult<_> {
             work.visit(1)?;
             Ok(match entry {
-                BvhEntry::Node(node) => Continue(ink.overlaps(node)),
+                BvhEntry::Node(node) => Continue(ink.overlaps_strictly(node)),
                 BvhEntry::Item(obs) => {
-                    let blocks = match (tier, obs.kind) {
-                        (ClearanceTier::OffAll, _) => true,
-                        (ClearanceTier::OnOwnRoute, ObstacleKind::Route(idx)) => idx != own_route,
-                        (ClearanceTier::OnOwnRoute, _) => true,
-                        (ClearanceTier::OnOwnRouteClearSolids, ObstacleKind::Solid) => true,
-                        (ClearanceTier::OnOwnRouteClearSolids, _) => false,
+                    let blocks = match obs.kind {
+                        ObstacleKind::Solid => true,
+                        ObstacleKind::GroupFrame => !matches!(tier, ClearanceTier::AcrossFrame),
+                        ObstacleKind::Route(edge) => {
+                            edge != own_route || matches!(tier, ClearanceTier::OffAll)
+                        }
                     };
                     if blocks && ink.overlaps_strictly(obs.bounds) {
                         Break(())
@@ -81,16 +124,7 @@ impl Scene {
                 }
             })
         })?;
-        if hit.is_break() {
-            return Ok(false);
-        }
-        for &label in &self.labels {
-            work.visit(1)?;
-            if ink.overlaps_strictly(label) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        Ok(hit.is_continue())
     }
 
     fn sample_route(
@@ -119,19 +153,6 @@ impl Scene {
         Ok(None)
     }
 
-    fn clamp_to_room(&self, mut candidate: [f64; 2], room: [[f64; 2]; 2]) -> Point {
-        for (coord, [lo, hi]) in candidate.iter_mut().zip(room) {
-            if !self.is_root {
-                if lo <= hi {
-                    *coord = coord.clamp(lo, hi);
-                }
-            } else if *coord < lo {
-                *coord = lo;
-            }
-        }
-        point(candidate)
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn near_route(
         &self,
@@ -140,7 +161,7 @@ impl Scene {
         fraction: f64,
         markers: [f64; 2],
         size: Size,
-        bounds: Bounds,
+        scope: Option<Bounds>,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Point>> {
         let mut lengths = reserved(points.len().saturating_sub(1))?;
@@ -151,17 +172,39 @@ impl Scene {
             lengths.push(length);
             total += length;
         }
+        if !total.is_finite() {
+            return Err(PRECISION);
+        }
+        let radius = total.mul_add(0.75, 60.0).min(120.0);
         let margin = [
             size.width / 2.0 + self.clearance,
             size.height / 2.0 + self.clearance,
         ];
-        let room = [
-            [bounds.x[0] + margin[0], bounds.x[1] - margin[0]],
-            [bounds.y[0] + margin[1], bounds.y[1] - margin[1]],
-        ];
-        if !self.is_root && room.iter().any(|[lo, hi]| lo > hi) {
-            return Ok(None);
-        }
+        let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
+        let seat = |mut candidate: [f64; 2], sample: [f64; 2], tier, work: &mut Work<'_>| {
+            work.visit(1)?;
+            let pad = match tier {
+                ClearanceTier::OffAll => self.clearance,
+                _ => (self.clearance * 0.5).min(4.0),
+            };
+            for ((coord, [lo, hi]), half) in candidate
+                .iter_mut()
+                .zip(room)
+                .zip([size.width / 2.0 + pad, size.height / 2.0 + pad])
+            {
+                if lo + half > hi - half {
+                    return Ok(None);
+                }
+                *coord = coord.clamp(lo + half, hi - half);
+            }
+            let [x, y] = candidate;
+            let at = Point { x, y };
+            let distance = (x - sample[0]).hypot(y - sample[1]);
+            if distance > radius || !self.fits(at, size, scope, route_index, tier, work)? {
+                return Ok(None);
+            }
+            Ok::<_, LayoutError>(Some((distance, at)))
+        };
         let probes = [
             fraction,
             (fraction + 0.25) / 2.0,
@@ -171,13 +214,11 @@ impl Scene {
         ];
         let mut samples = [None; 5];
         for (probe, t) in probes.into_iter().enumerate() {
-            let Some((at, cross)) =
-                Self::sample_route(points, &lengths, total, markers, t, work)?
+            let Some((at, cross)) = Self::sample_route(points, &lengths, total, markers, t, work)?
             else {
                 continue;
             };
             samples[probe] = Some((at, cross));
-            // Tier 1: Beside the route, clearing all walls, borders, and routes.
             for sign in [-1.0, 1.0] {
                 let mut candidate = at;
                 let edge = at[cross] + sign * margin[cross];
@@ -186,60 +227,39 @@ impl Scene {
                 } else {
                     edge.next_up()
                 };
-                let candidate = self.clamp_to_room(candidate, room);
-                if self.fits(
-                    candidate,
-                    size,
-                    bounds,
-                    route_index,
-                    ClearanceTier::OffAll,
-                    work,
-                )? {
+                if let Some((_, candidate)) = seat(candidate, at, ClearanceTier::OffAll, work)? {
                     return Ok(Some(candidate));
                 }
             }
         }
-        // Tier 2: Centered directly on own route, clearing all nodes, group frames, and foreign edges.
-        // Tier 3: Centered on own route, clearing all leaf nodes, titles, markers, and labels
-        // (allowing wide labels like C4 captions to straddle dashed boundary borders instead of
-        // detaching to the canvas bottom).
-        for tier in [
-            ClearanceTier::OnOwnRoute,
-            ClearanceTier::OnOwnRouteClearSolids,
-        ] {
+        for tier in [ClearanceTier::OnOwnRoute, ClearanceTier::AcrossFrame] {
             for (at, cross) in samples.into_iter().flatten() {
-                let centered = self.clamp_to_room(at, room);
-                if self.fits(centered, size, bounds, route_index, tier, work)? {
-                    return Ok(Some(centered));
-                }
-                for sign in [-1.0, 1.0] {
+                for sign in [0.0, -1.0, 1.0] {
                     let mut shifted = at;
                     shifted[cross] += sign * (size.height.min(size.width) * 0.5 + 4.0);
-                    let shifted = self.clamp_to_room(shifted, room);
-                    if self.fits(shifted, size, bounds, route_index, tier, work)? {
+                    if let Some((_, shifted)) = seat(shifted, at, tier, work)? {
                         return Ok(Some(shifted));
                     }
                 }
             }
         }
-        for tier in [
-            ClearanceTier::OffAll,
-            ClearanceTier::OnOwnRouteClearSolids,
-        ] {
-            for mult in [2.0_f64, 3.0, 4.0, 5.0] {
+        for tier in [ClearanceTier::OffAll, ClearanceTier::AcrossFrame] {
+            for (mult, radius_fraction) in [(2.0, 0.0), (3.0, 0.0), (0.0, 0.5), (0.0, 0.875)] {
                 let mut closest = None::<(f64, Point)>;
                 for (at, cross) in samples.into_iter().flatten() {
+                    let across = (mult * margin[cross])
+                        .max(radius * radius_fraction)
+                        .next_up();
+                    let along = margin[1 - cross].min(radius / 2.0);
                     for sign in [-1.0, 1.0] {
                         for side in [0.0, -1.0, 1.0] {
                             let mut candidate = at;
-                            candidate[cross] += sign * (mult * margin[cross]).next_up();
-                            candidate[1 - cross] += side * margin[1 - cross];
-                            let clamped = self.clamp_to_room(candidate, room);
-                            let distance = (clamped.x - at[0]).hypot(clamped.y - at[1]);
-                            if closest.is_none_or(|(best, _)| distance < best)
-                                && self.fits(clamped, size, bounds, route_index, tier, work)?
+                            candidate[cross] += sign * across;
+                            candidate[1 - cross] += side * along;
+                            if let Some((distance, at)) = seat(candidate, at, tier, work)?
+                                && closest.is_none_or(|(best, _)| distance < best)
                             {
-                                closest = Some((distance, clamped));
+                                closest = Some((distance, at));
                             }
                         }
                     }
@@ -256,30 +276,12 @@ impl Scene {
 pub(super) fn place(
     context: &Routing<'_>,
     plan: &Plan,
-    scope: usize,
-    _walls: &[Rect],
-    routes: &mut [Routed],
-    drawing_bounds: &mut Size,
+    routes: &mut [EdgeGeometry],
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let parts = &plan.scopes[scope];
-    let sites = &plan.sites;
-    let mut labelled = false;
-    for part in parts {
-        work.visit(1)?;
-        labelled |= part.labels.iter().any(Option::is_some);
-    }
-    if !labelled {
-        return Ok(());
-    }
-    let scope_items = &context.hierarchy.scopes[scope].items;
-    let is_root = scope == context.hierarchy.root();
-    let total_nodes = context.drawing.nodes.len();
-    let total_groups = context.drawing.groups.len();
-    work.charge(scope_items.len() + total_nodes + total_groups)?;
-    let mut obstacles = reserved(scope_items.len() + total_nodes + total_groups)?;
-    // Always protect every leaf node and every group title as solid obstacles so relaxed on-route
-    // placement can safely straddle a hollow boundary frame without ever covering a card or title.
+    let root = context.hierarchy.root();
+    work.charge(context.drawing.nodes.len())?;
+    let mut obstacles = reserved(context.drawing.nodes.len())?;
     for &node_rect in &context.drawing.nodes {
         work.visit(1)?;
         obstacles.push(Obstacle {
@@ -287,123 +289,142 @@ pub(super) fn place(
             kind: ObstacleKind::Solid,
         });
     }
-    for group in 0..total_groups {
+    for (group, geometry) in context.drawing.groups.iter().enumerate() {
         work.visit(1)?;
         if let Some(title) = context.title(group) {
-            obstacles.push(Obstacle {
-                bounds: Bounds::of(title),
-                kind: ObstacleKind::Solid,
-            });
-        }
-    }
-    for &item in scope_items {
-        work.visit(1)?;
-        if item >= context.hierarchy.node_count {
-            obstacles.push(Obstacle {
-                bounds: Bounds::of(rect(context.drawing, item)),
-                kind: ObstacleKind::GroupFrame,
-            });
-        }
-    }
-    for (route_index, (route, part)) in routes.iter().zip(parts).enumerate() {
-        for leg in route.points.windows(2) {
-            work.visit(1)?;
             push(
                 &mut obstacles,
                 Obstacle {
-                    bounds: Bounds::between(position(leg[0]), position(leg[1])),
-                    kind: ObstacleKind::Route(route_index),
+                    bounds: Bounds::of(title),
+                    kind: ObstacleKind::Solid,
                 },
             )?;
         }
-        for end in [part.from, part.to] {
+        let Bounds { x, y } = Bounds::of(geometry.rect);
+        // A caption can occupy the empty interior of a boundary. Only the border carries ink.
+        for bounds in [
+            Bounds { x, y: [y[0]; 2] },
+            Bounds { x, y: [y[1]; 2] },
+            Bounds { x: [x[0]; 2], y },
+            Bounds { x: [x[1]; 2], y },
+        ] {
+            push(
+                &mut obstacles,
+                Obstacle {
+                    bounds,
+                    kind: ObstacleKind::GroupFrame,
+                },
+            )?;
+        }
+    }
+    for (edge, route) in routes.iter().enumerate() {
+        work.visit(1)?;
+        let mut previous: Option<Bounds> = None;
+        for leg in route.points.windows(2) {
             work.visit(1)?;
-            let site = sites[end.site];
-            if site.marker.length > 0.0 && site.marker.width > 0.0 {
-                let side = if end.inner {
-                    opposite(site.side)
-                } else {
-                    site.side
-                };
+            let bounds = Bounds::between(position(leg[0]), position(leg[1]));
+            if let Some(run) = &mut previous
+                && ((run.x == bounds.x && run.x[0] == run.x[1])
+                    || (run.y == bounds.y && run.y[0] == run.y[1]))
+            {
+                *run = run.union(bounds);
+            } else if let Some(bounds) = previous.replace(bounds) {
                 push(
                     &mut obstacles,
                     Obstacle {
-                        bounds: Bounds::marker(site.at, side, site.marker),
-                        kind: ObstacleKind::Solid,
+                        bounds,
+                        kind: ObstacleKind::Route(edge),
                     },
                 )?;
             }
         }
+        if let Some(bounds) = previous {
+            push(
+                &mut obstacles,
+                Obstacle {
+                    bounds,
+                    kind: ObstacleKind::Route(edge),
+                },
+            )?;
+        }
     }
-    let metrics = context.metrics;
-    let scope_bounds = context.bounds(scope);
+    for site in &plan.sites {
+        work.visit(1)?;
+        let side = if site.inner {
+            opposite(site.side)
+        } else {
+            site.side
+        };
+        if let Some(bounds) = Bounds::marker_footprint(site.at, side, site.marker) {
+            push(
+                &mut obstacles,
+                Obstacle {
+                    bounds,
+                    kind: ObstacleKind::Solid,
+                },
+            )?;
+        }
+    }
     let mut scene = Scene {
         obstacles: Bvh::build_with_work(obstacles, |obs| obs.bounds, work)?,
         labels: Vec::new(),
-        clearance: metrics.label_clearance,
-        is_root,
+        clearance: context.metrics.label_clearance,
     };
-    let bounds = Bounds::of(scope_bounds);
-    for (route_index, (route, part)) in routes.iter_mut().zip(parts).enumerate() {
+    let mut bottom = context.drawing.bounds.height;
+    if let Some(ink) = scene.obstacles.root_bounds() {
+        bottom = bottom.max(ink.y[1]);
+    }
+    // Reserve the most constrained captions first. Within a scope, preserve authored order.
+    for &scope in context.hierarchy.order.iter().rev() {
         work.visit(1)?;
-        let markers = [
-            sites[part.from.site].marker.length,
-            sites[part.to.site].marker.length,
-        ];
-        for (slot, (size, fraction)) in part.labels.into_iter().zip([0.5, 0.15, 0.85]).enumerate() {
-            let Some(size) = size else {
-                continue;
-            };
-            let at = if let Some(at) = scene.near_route(
-                &route.points,
-                route_index,
-                fraction,
-                markers,
-                size,
-                bounds,
-                work,
-            )? {
-                if is_root {
-                    drawing_bounds.width = drawing_bounds
-                        .width
-                        .max(at.x + size.width / 2.0 + scene.clearance);
-                    drawing_bounds.height = drawing_bounds
-                        .height
-                        .max(at.y + size.height / 2.0 + scene.clearance);
-                }
-                at
-            } else {
-                let y = scope_bounds.y + scope_bounds.height - metrics.margin() - size.height / 2.0;
+        let bounds = Bounds::of(context.bounds(scope));
+        let constraint = (scope != root).then_some(bounds);
+        for part in &plan.scopes[scope] {
+            work.visit(1)?;
+            let edge = part.edge;
+            let spec = &context.graph.edges[edge];
+            let route = &mut routes[edge];
+            let markers = [spec.start_marker.length, spec.end_marker.length];
+            for ((size, fraction), center) in part.labels.into_iter().zip([0.5, 0.15, 0.85]).zip([
+                &mut route.label_center,
+                &mut route.start_label_center,
+                &mut route.end_label_center,
+            ]) {
+                let Some(size) = size else { continue };
+                let mut seat = scene.near_route(
+                    &route.points,
+                    edge,
+                    fraction,
+                    markers,
+                    size,
+                    constraint,
+                    work,
+                )?;
+                // Placement reserves a caption row in each scope for congested routes.
+                let y = bounds.y[1] - context.metrics.margin() - size.height / 2.0;
                 let [lo, hi] = bounds.x;
                 let inset = size.width / 2.0 + scene.clearance;
-                let candidates = [lo.midpoint(hi), lo + inset, hi - inset];
-                let mut seat = None;
-                for x in candidates {
-                    let at = Point { x, y };
-                    if scene.fits(at, size, bounds, route_index, ClearanceTier::OffAll, work)? {
-                        seat = Some(at);
-                        break;
+                if seat.is_none() {
+                    for x in [lo.midpoint(hi), lo + inset, hi - inset] {
+                        let at = Point { x, y };
+                        if scene.fits(at, size, constraint, edge, ClearanceTier::OffAll, work)? {
+                            seat = Some(at);
+                            break;
+                        }
                     }
                 }
-                seat.unwrap_or_else(|| {
-                    // Keep a label readable when every nearby channel is occupied.
-                    let x = scene.clearance + size.width / 2.0;
-                    let y = drawing_bounds.height + scene.clearance + size.height / 2.0;
-                    drawing_bounds.height = y + size.height / 2.0 + scene.clearance;
-                    drawing_bounds.width = drawing_bounds
-                        .width
-                        .max(x + size.width / 2.0 + scene.clearance);
-                    Point { x, y }
-                })
-            };
-            if ![at.x, at.y, drawing_bounds.width, drawing_bounds.height]
-                .into_iter()
-                .all(f64::is_finite)
-            {
-                return Err(PRECISION);
+                let at = seat.unwrap_or(Point {
+                    x: inset,
+                    y: bottom + scene.clearance + size.height / 2.0,
+                });
+                let ink = Bounds::centered(at, size);
+                if !ink.finite() {
+                    return Err(PRECISION);
+                }
+                bottom = bottom.max(ink.y[1]);
+                *center = Some(at);
+                scene.add_caption(ink, work)?;
             }
-            route.labels[slot] = Some(at);
-            push(&mut scene.labels, Bounds::centered(at, size))?;
         }
     }
     Ok(())

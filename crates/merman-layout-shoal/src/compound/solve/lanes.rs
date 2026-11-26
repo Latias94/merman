@@ -589,6 +589,7 @@ fn finish(
     graph: &Graph,
     drawing: LayoutOutput,
     lane_geometry: routing::Lanes<'_>,
+    frames: &[Option<Frame>],
     mut wires: Vec<Wire>,
     work: &mut Work<'_>,
 ) -> LayoutResult<Frame> {
@@ -655,7 +656,15 @@ fn finish(
             wire.route = Some(edge);
         }
     }
-    routing::improve(ctx, graph, &drawing.nodes, &lane_geometry, &mut wires, work)?;
+    routing::improve(
+        ctx,
+        graph,
+        &drawing.nodes,
+        &lane_geometry,
+        frames,
+        &mut wires,
+        work,
+    )?;
     let mut legs = reserved(wires.len())?;
     for mut wire in wires {
         work.visit(1)?;
@@ -685,6 +694,7 @@ pub(super) fn root(
     ctx: &Pass<'_>,
     membership: &LaneMembership,
     graph: &Graph,
+    frames: &[Option<Frame>],
     mut wires: Vec<Wire>,
     expanded: &mut Expanded,
     work: &mut Work<'_>,
@@ -742,5 +752,5 @@ pub(super) fn root(
         rects,
         feedback: &feedback,
     };
-    finish(ctx, graph, drawing, lane_geometry, wires, work)
+    finish(ctx, graph, drawing, lane_geometry, frames, wires, work)
 }

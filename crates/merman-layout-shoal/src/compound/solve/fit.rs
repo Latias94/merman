@@ -8,6 +8,7 @@ pub(super) struct Fit {
     pub seats: Vec<[Option<Rect>; 3]>,
     pub corridor: [f64; 4],
     pub adaptive_top_title: bool,
+    pub protected_title_margin: f64,
     marker_insets: [f64; 4],
     title_drop: f64,
     vertical_slack: f64,
@@ -40,6 +41,7 @@ impl Fit {
         content: Size,
         nodes: &[Rect],
         wires: &[Wire],
+        protected_title_margin: f64,
         options: &Options,
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
@@ -84,7 +86,8 @@ impl Fit {
         let mut rightmost = [0.0_f64; 4];
         let mut counts = [0usize; 4];
         let mut movable_at_title = 0usize;
-        let mut title_clear = TITLE_CLEAR;
+        let title_margin = TITLE_CLEAR.max(protected_title_margin);
+        let mut title_clear = title_margin;
         let fit_width = matches!(options.width_policy, WidthPolicy::FitWidth { .. });
         let mut marker_insets = [0.0_f64; 4];
         let mut fixed_offsets = [0.0_f64; 4];
@@ -124,20 +127,27 @@ impl Fit {
                 }
             }
             if index == title_side && title.width > 0.0 && title.height > 0.0 {
-                if !adaptive_top_title && !matches!(hint, PortSideHint::FixedOffset { .. }) {
+                let movable = !matches!(hint, PortSideHint::FixedOffset { .. });
+                let protect = movable && protected_title_margin > 0.0;
+                if movable && (!adaptive_top_title || protect) {
                     movable_at_title += 1;
-                    title_clear = title_clear.max(wire.title_clearance(end));
+                    title_clear = title_clear.max(wire.title_clearance(end, title_margin));
                 }
-                if !adaptive_top_title || markers[end].length > 0.0 {
-                    before_title = before_title.max(markers[end].length + spacing.edge);
+                let gap = if protect {
+                    spacing.edge.max(protected_title_margin)
+                } else {
+                    spacing.edge
+                };
+                if !adaptive_top_title || protect || markers[end].length > 0.0 {
+                    before_title = before_title.max(markers[end].length + gap);
                 }
                 let shaft = if (flat.is_none() || wire.uses_caption_band()) && inner.side == side {
                     markers[1 - end].length
                 } else {
                     0.0
                 };
-                if !adaptive_top_title || shaft > 0.0 {
-                    after_title = after_title.max(shaft + spacing.edge);
+                if !adaptive_top_title || protect || shaft > 0.0 {
+                    after_title = after_title.max(shaft + gap);
                 }
             }
             inset[index] = inset[index].max(markers[end].length + spacing.edge);
@@ -363,10 +373,15 @@ impl Fit {
             seats,
             corridor,
             adaptive_top_title,
+            protected_title_margin,
             marker_insets,
             title_drop: before_title + title.height / 2.0,
             vertical_slack: (size.height - needed_height) / 2.0,
         })
+    }
+
+    pub(super) fn title_margin(&self) -> f64 {
+        self.protected_title_margin.max(TITLE_CLEAR)
     }
 
     pub(super) fn border_inset(&self, side: Side, corner: f64) -> f64 {
@@ -425,7 +440,8 @@ impl Fit {
                     let Some((end, slot, Side::Top)) = wire.border() else {
                         continue;
                     };
-                    let clearance = title.width / 2.0 + wire.title_clearance(end);
+                    let clearance =
+                        title.width / 2.0 + wire.title_clearance(end, self.title_margin());
                     for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
                         let shortfall = clearance - (ports[slot].x - candidate).abs();
                         if shortfall > 0.0 {

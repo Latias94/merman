@@ -429,10 +429,52 @@ struct Connection<'a> {
     fit: &'a fit::Fit,
     walls: &'a [Rect],
     gap: f64,
+    protected_title: Option<Rect>,
 }
 
 impl Connection<'_> {
     fn path(
+        &self,
+        inner: Contact,
+        outer: Contact,
+        markers: [f64; 2],
+        item: Option<Rect>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Vec<Point>> {
+        let base = self.connect(inner, outer, markers, item, work)?;
+        let Some(title) = self.protected_title else {
+            return Ok(base);
+        };
+        if clear(&base, &[title], work)?
+            || blocks(title, inner.at, inner.at)
+            || blocks(title, outer.at, outer.at)
+        {
+            return Ok(base);
+        }
+
+        let count = self
+            .walls
+            .len()
+            .checked_add(1)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        work.charge(count)?;
+        let mut walls = reserved(count)?;
+        walls.extend_from_slice(self.walls);
+        walls.push(title);
+        let candidate = Connection {
+            walls: &walls,
+            ..*self
+        }
+        .connect(inner, outer, markers, item, work);
+        // Clamping an exterior detour to the group may reintroduce a collision.
+        match candidate {
+            Ok(path) if clear(&path, &walls, work)? => Ok(path),
+            Ok(_) | Err(LayoutError::InvalidInput(_)) => Ok(base),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn connect(
         &self,
         inner: Contact,
         outer: Contact,
@@ -560,9 +602,9 @@ fn title_sweep(
     outer: Contact,
     title: Rect,
     shaft: f64,
+    clearance: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<TitleSweep>> {
-    let clearance = TITLE_CLEAR;
     if outer.side.axis() != Axis::Vertical
         || (outer.at.x > title.x - clearance && outer.at.x < title.x + title.width + clearance)
     {
@@ -655,6 +697,7 @@ pub(super) fn title_room(
             outer,
             title,
             marker.length + options.spacing.edge,
+            fit.title_margin(),
             work,
         )? {
             let across = (sweep.points[1].x - sweep.points[2].x).abs();
@@ -704,12 +747,28 @@ fn boundary_leg(
     let member = 1 - border;
     let outer = travel(wire, border);
     let inner = travel(wire, member);
-    let title = walls.walls.title.filter(|title| {
+    let measured_title = walls.walls.title;
+    let title = measured_title.filter(|title| {
         side != Side::Top
             || !fit.adaptive_top_title
             || (outer.at.x - title.center().x).abs()
-                >= title.width / 2.0 + wire.title_clearance(border)
+                >= title.width / 2.0 + wire.title_clearance(border, fit.title_margin())
     });
+    let margin = fit.protected_title_margin;
+    let protected_title = if let Some(title) = measured_title
+        && margin > 0.0
+        && title.width > 0.0
+        && title.height > 0.0
+    {
+        Some(Rect {
+            x: finite(title.x - margin)?,
+            y: finite(title.y - margin)?,
+            width: finite(title.width + 2.0 * margin)?,
+            height: finite(title.height + 2.0 * margin)?,
+        })
+    } else {
+        None
+    };
     let markers = [wire.spec.start_marker.length, wire.spec.end_marker.length];
     let ports = (
         wire.contacts[0].unwrap().side,
@@ -740,6 +799,7 @@ fn boundary_leg(
                     outer,
                     title,
                     markers[member] + options.spacing.edge,
+                    fit.title_margin(),
                     work,
                 )?
                 && sweep.depth > 0.0
@@ -753,6 +813,7 @@ fn boundary_leg(
                 fit,
                 walls: blockers,
                 gap: options.spacing.edge,
+                protected_title,
             };
             // Both contacts lie on parallel planes. A short seam needs just enough
             // runway to turn between the planes without doubling back through either.
@@ -788,6 +849,7 @@ fn boundary_leg(
         fit,
         walls: blockers,
         gap: options.spacing.edge,
+        protected_title,
     };
     let path = connection.path(
         inner,

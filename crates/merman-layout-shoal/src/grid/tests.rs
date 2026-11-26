@@ -187,6 +187,129 @@ fn nested_and_empty_groups_pack_disjointly_and_keep_border_stitches() {
 }
 
 #[test]
+fn card_captions_clear_other_scopes_and_stay_near_their_relationships() {
+    let mut graph = Graph {
+        direction: Direction::Right,
+        nodes: vec![
+            node(0, None),
+            node(1, Some(1)),
+            node(2, Some(1)),
+            node(3, Some(0)),
+        ],
+        groups: vec![group(0, None), group(1, Some(0))],
+        ..Default::default()
+    };
+    for (index, node) in graph.nodes.iter_mut().enumerate() {
+        node.size = Size {
+            width: 216.0,
+            height: if index == 0 { 170.0 } else { 80.0 },
+        };
+    }
+    for group in &mut graph.groups {
+        group.title = Some(Size {
+            width: 100.0,
+            height: 26.0,
+        });
+    }
+    let marker = crate::MarkerMetrics {
+        length: 11.0,
+        width: 11.0,
+    };
+    for (source, target, width, height) in
+        [(0, 1, 310.0, 22.0), (1, 2, 80.0, 22.0), (1, 3, 110.0, 33.0)]
+    {
+        let mut relation = EdgeSpec::new(NodeId(source).into(), NodeId(target).into());
+        relation.label = Some(Size { width, height });
+        relation.end_marker = marker;
+        if source == 0 {
+            relation.start_marker = marker;
+        }
+        graph.edges.push(relation);
+    }
+    let mut options = Options::default();
+    options.spacing.edge = 6.0;
+    options.spacing.node = 50.0;
+    options.spacing.rank = 50.0;
+    let solve =
+        || crate::card_grid::layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
+    let drawing = solve();
+    let captions: Vec<_> = drawing
+        .edges
+        .iter()
+        .zip(&graph.edges)
+        .map(|(route, spec)| Bounds::centered(route.label_center.unwrap(), spec.label.unwrap()))
+        .collect();
+    for (i, caption) in captions.iter().enumerate() {
+        for other in &captions[..i] {
+            assert!(
+                !caption.overlaps_strictly(*other),
+                "captions from separate scopes overlap: {caption:?}, {other:?}"
+            );
+        }
+    }
+    for (i, caption) in captions.iter().enumerate() {
+        for &card in &drawing.nodes {
+            assert!(!caption.overlaps_strictly(Bounds::of(card)));
+        }
+        let center = drawing.edges[i].label_center.unwrap();
+        let distance = drawing.edges[i]
+            .points
+            .windows(2)
+            .map(|leg| {
+                let segment = Bounds::between(at(leg[0]), at(leg[1]));
+                (center.x - center.x.clamp(segment.x[0], segment.x[1]))
+                    .hypot(center.y - center.y.clamp(segment.y[0], segment.y[1]))
+            })
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            distance <= 120.0,
+            "caption {i} is {distance}px from its relationship"
+        );
+    }
+    assert_eq!(drawing, solve());
+}
+
+#[test]
+fn tall_card_caption_fits_between_rows_at_the_same_width() {
+    let mut graph = Graph {
+        nodes: vec![node(0, Some(0)), node(1, Some(0))],
+        groups: vec![group(0, None)],
+        edges: vec![edge(0, 1, Side::Bottom, Side::Top)],
+        ..Default::default()
+    };
+    for node in &mut graph.nodes {
+        node.size = Size {
+            width: 216.0,
+            height: 80.0,
+        };
+    }
+    let wire = &mut graph.edges[0];
+    wire.end_marker = crate::MarkerMetrics {
+        length: 11.0,
+        width: 11.0,
+    };
+    let options = Options::default();
+    let solve = |graph: &Graph| {
+        crate::card_grid::layout_with_control(graph, &options, &mut NoopWorkControl).unwrap()
+    };
+    let unlabelled = solve(&graph);
+    let size = Size {
+        width: 184.0,
+        height: 78.0,
+    };
+    graph.edges[0].label = Some(size);
+    let drawing = solve(&graph);
+    assert_eq!(drawing.bounds.width, unlabelled.bounds.width);
+    let label = Bounds::centered(drawing.edges[0].label_center.unwrap(), size);
+    let [upper, lower] = drawing.nodes.as_slice() else {
+        panic!("expected two cards")
+    };
+    assert_eq!(upper.x, lower.x);
+    assert!(label.y[0] > upper.y + upper.height && label.y[1] < lower.y);
+    assert!(label.y[1] <= lower.y - graph.edges[0].end_marker.length);
+}
+
+#[test]
 fn blocked_facing_ports_find_an_orthogonal_channel_around_the_middle_node() {
     let graph = Graph {
         direction: Direction::Right,

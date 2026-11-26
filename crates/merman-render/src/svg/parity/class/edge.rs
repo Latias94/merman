@@ -1,4 +1,5 @@
 use super::super::timing::RenderTiming;
+use super::super::util::html_label_overflow_attr;
 use super::ClassSvgRelation;
 use super::bounds::{
     include_class_marker_paint_bounds, include_path_bounds_with_outset, include_path_d_with_outset,
@@ -13,7 +14,10 @@ use super::label::{
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
 #[cfg(feature = "layout-shoal")]
-use crate::graph_layout::{canonical::CanonicalRoutes, route_paint::RouteStyle};
+use crate::graph_layout::{
+    canonical::{CanonicalPaintScratch, CanonicalRoutes},
+    route_paint::RouteStyle,
+};
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::svg::parity::edge_label_geometry::position_edge_label;
@@ -97,6 +101,8 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
     let mut edge_style_buf = String::new();
+    #[cfg(feature = "layout-shoal")]
+    let mut paint_scratch = CanonicalPaintScratch::default();
     let uses_canonical_routes = ctx.uses_canonical_routes();
 
     let edge_paths_start = ctx.timing.start();
@@ -150,7 +156,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let canonical = ctx
             .canonical_routes
             .map(|routes| {
-                routes.paint(
+                if ctx.look == "neo" {
+                    paint_scratch.route.measure_length();
+                }
+                routes.paint_with_scratch(
                     e,
                     kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
                     stroke_outset,
@@ -160,6 +169,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                         _ => RouteStyle::Curved,
                     },
                     ctx.work_meter,
+                    &mut paint_scratch,
                 )
             })
             .transpose()?;
@@ -399,7 +409,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
-            escape_attr_display(&edge_points_b64_buf),
+            edge_points_b64_buf,
         );
         let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
         if let Some(name) = start_marker_name {
@@ -427,19 +437,29 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             );
         }
         edge_style_buf.clear();
-        if ctx.look == "neo"
-            && let Some(length) = super::super::svg_path_length_from_d(paint_d)
-        {
-            super::super::edge_path::write_neo_edge_mask(
-                &mut edge_style_buf,
-                length,
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
-                edge_class_buf
-                    .split_whitespace()
-                    .any(|class| class == "edge-pattern-dashed"),
-                false,
-            );
+        if ctx.look == "neo" {
+            #[cfg(feature = "layout-shoal")]
+            let length = canonical.as_ref().and_then(|_| {
+                paint_scratch
+                    .route
+                    .measured_length()
+                    .map(|length| f64::from(length as f32))
+                    .filter(|length| length.is_finite())
+            });
+            #[cfg(not(feature = "layout-shoal"))]
+            let length: Option<f64> = None;
+            if let Some(length) = length.or_else(|| super::super::svg_path_length_from_d(paint_d)) {
+                super::super::edge_path::write_neo_edge_mask(
+                    &mut edge_style_buf,
+                    length,
+                    relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                    relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
+                    edge_class_buf
+                        .split_whitespace()
+                        .any(|class| class == "edge-pattern-dashed"),
+                    false,
+                );
+            }
         }
         edge_style_buf.push_str(class_edge_path_style(
             e.id.as_str(),
@@ -643,10 +663,10 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         } else if let Some(lbl) = label {
-            let mut div_style = class_html_div_style(
-                lbl.width.max(0.0),
-                MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64,
-            );
+            let width = lbl.width.max(0.0);
+            let height = lbl.height.max(0.0);
+            let mut div_style =
+                class_html_div_style(width, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
             let background_style =
                 background_css.map(|css| format!("background-color:{css} !important;"));
             if let Some(style) = &background_style {
@@ -654,14 +674,15 @@ fn render_class_edge_label_group(
             }
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}">"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}">"#,
                 fmt(center_x),
                 fmt(center_y),
                 escape_attr_display(dom_id),
                 fmt(-lbl.width / 2.0),
                 fmt(-lbl.height / 2.0),
-                fmt(lbl.width.max(0.0)),
-                fmt(lbl.height.max(0.0)),
+                fmt(width),
+                fmt(height),
+                html_label_overflow_attr(ctx.uses_canonical_routes(), width, height),
                 escape_attr_display(div_style.as_str()),
             );
             render_class_html_label(
@@ -821,9 +842,14 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
     let x = label.x + ctx.content_tx;
     let y = label.y + ctx.content_ty;
     if ctx.edge_use_html_labels {
+        let overflow = if ctx.uses_canonical_routes() {
+            " overflow: visible;"
+        } else {
+            ""
+        };
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;{overflow}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
             fmt(x),
             fmt(y),
             fmt(-label.width / 2.0),

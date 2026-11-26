@@ -81,6 +81,10 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
 
 ## Implementation notes
 
+- Shoal's built-in deterministic text route for Class, State, and ER uses calibrated proportional
+  widths and a bold adjustment. The operation records the selected profile and honors explicit
+  host and custom measurement routes. These families let positive-size Shoal HTML viewports paint
+  glyph overhangs. The static SVG fallback carries the overflow policy into the lowered label.
 - Compound groups reserve perpendicular wall inset at least equal to `corner_clearance` whenever an unpinned outer corridor hugs a group boundary, eliminating forced border-stitch Z-bends when `cluster_padding < corner_clearance`.
 - Grid Core and Card-Grid align perpendicular group-border crossings to the inner terminal's outward lead corridor (avoiding hook overshoots), respect `node.anchor_y` when preserving straight aligned direct connections against off-axis or occluded peers, and adapt `TitlePosition::TopAuto` across `[TopLeft, TopRight, TopCenter]` before routing.
 
@@ -93,8 +97,11 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   faces can adopt a shared crossbar using surplus work. The grid router requires an unmarked hub,
   compatible hub offsets, distinct leaf tracks, and clearance for every span, corner, and leaf
   marker. It replaces the whole fan together.
-- For Neo masking, the canonical Flowchart painter measures lines and cubics in memory as it emits
-  them, with the same integration tolerance and float conversion as SVG path parsing.
+- Grid captions share a drawing-wide obstacle scene. C4 wraps long relationship captions, seats
+  technology rows using measured text extents, and clips the relationship shaft behind its caption
+  when they overlap.
+- For Neo masking, the canonical Flowchart and Class painters measure lines and cubics in memory as
+  they emit them, with the same integration tolerance and float conversion as SVG path parsing.
   Rounded paths and rewritten paths retain the SVG-based length calculation where needed.
 - The native SVG painter applies fill-aware ink and casings to Flowchart and Agentflow edges when
   it can resolve solid fills and the applicable stroke style. Swimlane compacts complete bands and

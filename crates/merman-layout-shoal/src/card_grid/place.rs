@@ -1,4 +1,4 @@
-use crate::grid::{Hierarchy, Metrics, rect};
+use crate::grid::{Hierarchy, Metrics, Scope, rect};
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{
     Graph, GroupGeometry, Insets, LayoutError, LayoutOutput, Options, PackingPolicy, Point, Rect,
@@ -72,13 +72,14 @@ fn padding(graph: &Graph, scope: usize, margin: f64) -> Insets {
 
 fn cells(
     graph: &Graph,
-    items: &[usize],
+    scope: &Scope,
     drawing: &mut LayoutOutput,
     gap: Size,
     available: f64,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Size, Gutters)> {
+    let items = &scope.items;
     if items.is_empty() {
         return Ok((Size::default(), Gutters::default()));
     }
@@ -111,6 +112,13 @@ fn cells(
     }
     let count_columns = columns.len();
     let count_rows = count.div_ceil(count_columns);
+    // Keep the card grid's row count while making a gutter tall enough for a multiline
+    // caption and a marker approach. Taller authored labels can use the caption row below.
+    let row_gap = if scope.caption.height > gap.height {
+        (scope.caption.height + gap.height / 2.0).min(gap.height * 2.0)
+    } else {
+        gap.height
+    };
     let gutter_count = |tracks: usize| tracks.checked_add(1).ok_or(WorkError::ArithmeticOverflow);
     let x_gutters = gutter_count(count_columns)?;
     let y_gutters = gutter_count(count_rows)?;
@@ -139,8 +147,8 @@ fn cells(
             below = below.max(height - anchor);
         }
         if row > 0 {
-            gutters[1].push(y + gap.height / 2.0);
-            y += gap.height;
+            gutters[1].push(y + row_gap / 2.0);
+            y += row_gap;
         }
         let mut x = 0.0;
         for (&item, &column) in items.iter().zip(&columns) {
@@ -272,7 +280,7 @@ pub(super) fn place(
         let padding = padding(graph, id, margin);
         let (content, tracks) = cells(
             graph,
-            &scope.items,
+            scope,
             &mut drawing,
             gap,
             available[id],

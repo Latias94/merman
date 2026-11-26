@@ -58,6 +58,14 @@ fn path(edge: Node<'_, '_>) -> BezPath {
     BezPath::from_svg(edge.attribute("d").unwrap()).unwrap()
 }
 
+fn relation_label<'a, 'input>(doc: &'a Document<'input>, id: &str) -> Node<'a, 'input> {
+    doc.descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label") && node.attribute("data-id") == Some(id)
+        })
+        .unwrap()
+}
+
 fn number(node: Node<'_, '_>, attr: &str) -> f64 {
     node.attribute(attr).unwrap().parse().unwrap()
 }
@@ -284,6 +292,142 @@ fn c4_shoal_keeps_large_legacy_label_offsets_near_the_relationship() {
             .segments()
             .any(|segment| segment.nearest(offset, 1e-6).distance_sq < 80.0_f64.powi(2))
     );
+}
+
+#[test]
+fn c4_shoal_wraps_and_seats_the_nested_audit_captions() {
+    let source = r#"C4Context
+Person(u, "Operations Engineer", "Monitors fleet health")
+Enterprise_Boundary(ent, "Global Cloud Corp") {
+  System_Boundary(reg, "US-East Region") {
+    System(api, "Control Plane API", "Coordinates cluster rollouts")
+    SystemDb(db, "State Store", "Consistent Raft metadata")
+  }
+  System(obs, "Observability Hub", "Metrics, traces, and alerts")
+}
+BiRel(u, api, "Submits deployment plans and inspects live rollout progress", "HTTPS / gRPC")
+Rel(api, db, "Reads and writes strongly consistent cluster state snapshots", "Raft<br/>TLS")
+Rel(api, obs, "Streams structured telemetry", "OTLP")
+"#;
+    let options = LayoutOptions::headless_svg_defaults();
+    let authored = format!("---\nconfig:\n  layout: shoal\n---\n{source}");
+    let (layout, svg) = render(&authored, &options);
+    let (_, again) = render(&authored, &options);
+    assert_eq!(svg.svg(), again.svg());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let mut ink = Vec::new();
+    for (i, rel) in layout.rels.iter().enumerate() {
+        if i < 2 {
+            assert!(rel.label.line_count > 1);
+            assert!(rel.label.width <= 190.0);
+        }
+        let id = format!("c4-rel-{i}");
+        let label = relation_label(&doc, &id);
+        let transform: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        let rows: Vec<_> = label
+            .children()
+            .filter(|node| node.has_tag_name("text"))
+            .collect();
+        let technology = rel.techn.as_ref().unwrap();
+        let (message_rows, technology_rows) = rows.split_at(rel.label.line_count);
+        assert_eq!(technology_rows.len(), technology.line_count);
+        let y = |text: Node<'_, '_>| {
+            number(text, "y") + number(text.first_element_child().unwrap(), "dy")
+        };
+        let last_message = y(*message_rows.last().unwrap());
+        let first_technology = y(technology_rows[0]);
+        assert!(first_technology - last_message > 12.0);
+        assert!(
+            technology_rows
+                .iter()
+                .all(|text| text.attribute("font-style") == Some("italic"))
+        );
+        let half_width = rel.label.width.max(technology.width) / 2.0;
+        let label_ink = Rect::new(
+            transform.e - half_width,
+            transform.f + y(rows[0]) - 6.0,
+            transform.e + half_width,
+            transform.f + y(*rows.last().unwrap()) + 6.0,
+        );
+        for &other in &ink {
+            assert_eq!(label_ink.intersect(other).area(), 0.0);
+        }
+        ink.push(label_ink);
+        let shaft = path(element(&doc, "edge", &id));
+        assert!(shaft.segments().any(
+            |segment| segment.nearest(label_ink.center(), 1e-6).distance_sq <= 120.0_f64.powi(2)
+        ));
+    }
+
+    let (native, svg) = render(source, &options);
+    assert_eq!(native.rels[0].label.line_count, 1);
+    assert!(native.rels[0].label.width > 190.0);
+    assert!(!svg.svg().contains("c4-label-cutout"));
+}
+
+#[test]
+fn c4_shoal_cuts_out_only_the_shaft_behind_an_on_route_caption() {
+    let source = r#"---
+config:
+  layout: shoal
+  c4:
+    c4ShapeMargin: 90
+---
+C4Context
+System_Boundary(app, "Application") {
+  System(a, "API")
+  System(b, "Database")
+}
+BiRel(a, b, "Reads widely distributed state", "TLS")
+"#;
+    let options = LayoutOptions::headless_svg_defaults()
+        .with_container_size(310.0, 600.0)
+        .with_adaptation(LayoutAdaptation::FitWidth);
+    let (_, svg) = render(source, &options);
+    let verify = |svg: &str| {
+        let doc = Document::parse(svg).unwrap();
+        let shaft = element(&doc, "edge", "c4-rel-0");
+        let reference = shaft
+            .attribute("clip-path")
+            .expect("the caption crosses the shaft");
+        let id = reference
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let clip = doc
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert!(clip.has_tag_name("clipPath"));
+        let cutout = clip.first_element_child().unwrap();
+        assert_eq!(cutout.attribute("clip-rule"), Some("evenodd"));
+        let cutout = BezPath::from_svg(cutout.attribute("d").unwrap()).unwrap();
+        let data = points(shaft);
+        check_terminal(shaft, data[0], true, true);
+        check_terminal(shaft, *data.last().unwrap(), false, true);
+        let axis = path(shaft).segments().next().unwrap();
+        assert!(cutout.contains(axis.start()));
+        assert!(cutout.contains(path(shaft).segments().last().unwrap().end()));
+        let label = relation_label(&doc, "c4-rel-0");
+        let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        assert!(!cutout.contains(Point::new(at.e, at.f)));
+        assert!(path(shaft).segments().any(|segment| {
+            let p = segment.eval(segment.nearest(Point::new(at.e, at.f), 1e-6).t);
+            !cutout.contains(p)
+        }));
+        assert_eq!(
+            doc.descendants()
+                .filter(|node| node.attribute("clip-path") == Some(reference))
+                .count(),
+            1
+        );
+    };
+    verify(svg.svg());
+    let finalized = svg
+        .finalize_resvg(&crate::svg::SvgPipeline::resvg_safe())
+        .unwrap();
+    verify(finalized.svg().as_str());
 }
 
 #[test]

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
+use super::super::util::html_label_overflow_attr;
 use super::super::{SvgOutput, escape_attr_display, fmt};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
@@ -23,6 +24,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
+    pub uses_canonical_routes: bool,
     pub mermaid_config: &'a merman_model::presentation::PresentationConfig,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
@@ -196,7 +198,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml">"##,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"{}><div style="{}" xmlns="http://www.w3.org/1999/xhtml">"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -207,6 +209,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_y),
             fmt(label_w),
             fmt(label_h),
+            html_label_overflow_attr(ctx.uses_canonical_routes, label_w, label_h),
             escape_attr_display(&note_div_style),
         );
         super::label::open_class_note_label(out, note_label_style);

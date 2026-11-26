@@ -94,6 +94,123 @@ fn handoffs_keep_the_ranked_route_when_both_corners_enter_nodes() {
     clear_nodes(route, &drawing);
 }
 
+fn claims_swimlane() -> (Graph, Options) {
+    // Measured boxes from the TB claims diagram with native font measurement.
+    let mut graph = swimlane(
+        &[0, 0, 0, 1, 2, 2, 1, 3],
+        &[
+            (0, 1),
+            (4, 5),
+            (1, 4),
+            (5, 3),
+            (3, 6),
+            (3, 1),
+            (6, 7),
+            (7, 2),
+        ],
+    );
+    for (node, (width, height)) in graph.nodes.iter_mut().zip([
+        (171.25, 45.0),
+        (152.0, 45.0),
+        (171.25, 45.0),
+        (171.0, 171.0),
+        (152.0, 45.0),
+        (152.0, 66.0),
+        (152.0, 66.0),
+        (152.0, 66.0),
+    ]) {
+        node.size = Size { width, height };
+    }
+    graph.nodes[3].contour = crate::ShapeContourHint::Diamond;
+    graph.nodes[3].port_span = Some(20.0);
+    graph.lane_order.remove(2);
+    graph.groups[2].parent = Some(GroupId(1));
+    for (group, width) in graph.groups.iter_mut().zip([101.14, 97.25, 118.28, 122.42]) {
+        group.title = Some(Size {
+            width,
+            height: 21.0,
+        });
+        group.padding = crate::Insets {
+            top: if group.parent.is_some() { 29.0 } else { 8.0 },
+            right: 8.0,
+            bottom: 8.0,
+            left: 8.0,
+        };
+    }
+    for edge in &mut graph.edges {
+        edge.end_marker = MarkerMetrics {
+            length: 16.62,
+            width: 14.0,
+        };
+        edge.set_marker_runways([0.0, edge.end_marker.length]);
+    }
+    graph.edges[4].label = Some(Size {
+        width: 45.7,
+        height: 21.0,
+    });
+    graph.edges[5].label = Some(Size {
+        width: 77.69,
+        height: 21.0,
+    });
+    let mut options = orthogonal();
+    options.spacing.node = 50.0;
+    options.spacing.rank = 50.0;
+    options.compact_ranks = true;
+    options.global_orthogonal = true;
+    options.group_policy.inherit_crossed_direction = false;
+    (graph, options)
+}
+
+fn rect_clearance(route: &EdgeGeometry, rect: Rect) -> f64 {
+    route
+        .points
+        .windows(2)
+        .map(|leg| {
+            let [a, b] = [leg[0], leg[1]];
+            assert!(a.x == b.x || a.y == b.y, "{leg:?}");
+            let dx = (rect.x - a.x.max(b.x)).max(a.x.min(b.x) - rect.x - rect.width);
+            let dy = (rect.y - a.y.max(b.y)).max(a.y.min(b.y) - rect.y - rect.height);
+            dx.max(dy).max(0.0)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+#[test]
+fn nested_top_entry_clears_the_measured_title_in_both_axes() {
+    let (graph, options) = claims_swimlane();
+    let drawing = layout(&graph, &options).unwrap();
+    let group = &drawing.groups[2];
+    let title = centered(group.title_center.unwrap(), graph.groups[2].title.unwrap());
+    for route in &drawing.edges {
+        let clearance = rect_clearance(route, title);
+        assert!(
+            clearance >= 8.0 - 1e-9,
+            "title clearance {clearance}: {route:?}"
+        );
+    }
+    let stitch = drawing
+        .border_stitches
+        .iter()
+        .find(|stitch| stitch.edge.0 == 2 && stitch.group == GroupId(2))
+        .unwrap();
+    assert_eq!(stitch.side, Side::Top);
+    assert_eq!(drawing.edges[2].points[stitch.point].y, group.rect.y);
+}
+
+#[test]
+fn cross_lane_return_keeps_edge_spacing_from_an_unrelated_nested_wall() {
+    let (graph, options) = claims_swimlane();
+    let drawing = layout(&graph, &options).unwrap();
+    let route = &drawing.edges[5];
+    assert!(route.reversed_for_ranking && route.label_center.is_some());
+    let clearance = rect_clearance(route, drawing.groups[2].rect);
+    assert!(
+        clearance >= options.spacing.edge - 1e-9,
+        "wall clearance {clearance}: {route:?}"
+    );
+    assert_eq!(layout(&graph, &options).unwrap(), drawing);
+}
+
 #[test]
 fn same_lane_feedback_uses_a_reserved_margin_in_all_directions() {
     let mut graph = swimlane(&[0, 0, 0], &[(0, 1), (1, 2), (2, 0)]);

@@ -458,6 +458,73 @@ fn hand_drawn_shoal_preserves_both_shafts_and_their_interior_strokes() {
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
+fn hand_drawn_shoal_paints_every_audit_shape_and_cylinder_variant() {
+    let (_, svg) = render(
+        r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: 7
+---
+flowchart LR
+  A([Stadium]) --> B{Diamond}
+  B --> C[(Cylinder)]
+  B --> D{{Hexagon}}
+  C --> E[/Parallelogram/]
+  D --> F[[Subroutine]]
+  E --> G(((Double Circle)))
+  F --> G
+  G --> H@{ shape: h-cyl, label: "Horizontal cylinder" }
+  G --> I@{ shape: lin-cyl, label: "Lined cylinder" }
+  style I fill:#ABCDEF,stroke:#123456,stroke-width:2px,stroke-dasharray:5 3
+"#,
+        "FlowchartV2",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for id in ["A", "B", "C", "D", "E", "F", "G", "H", "I"] {
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("node") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        assert!(
+            node.attribute("class")
+                .unwrap()
+                .split_whitespace()
+                .any(|class| class == "rough-node")
+        );
+        let paths: Vec<_> = node
+            .descendants()
+            .filter(|child| child.has_tag_name("path"))
+            .collect();
+        assert!(!paths.is_empty(), "missing shape geometry for {id}");
+        for path in &paths {
+            for property in ["fill", "stroke"] {
+                assert!(
+                    path.attribute(property)
+                        .is_some_and(|value| !value.is_empty()),
+                    "shape {id} lacks explicit {property} on a hand-drawn path"
+                );
+            }
+        }
+        if id == "I" {
+            assert!(
+                paths
+                    .iter()
+                    .any(|path| path.attribute("stroke") == Some("#ABCDEF"))
+            );
+            assert!(paths.iter().any(|path| {
+                path.attribute("stroke") == Some("#123456")
+                    && path.attribute("stroke-width") == Some("2")
+                    && path.attribute("stroke-dasharray") == Some("5 3")
+            }));
+        }
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
 fn shoal_paints_labeled_self_loops_and_the_semantic_return_edge() {
     use kurbo::{BezPath, ParamCurve, Rect, Shape};
     use merman_render::model::FlowchartLayout;
@@ -912,6 +979,7 @@ fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
             assert!(edge.range().start < title.range().start);
             assert_eq!(title.attribute("paint-order"), Some("stroke"));
             assert_eq!(title.attribute("stroke"), Some("#7F0080"));
+            assert_eq!(title.attribute("stroke-width"), Some("5"));
             assert_eq!(
                 title
                     .descendants()
@@ -927,7 +995,7 @@ fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
                     .expect("struck HTML title span");
                 let style = span.attribute("style").unwrap_or_default();
                 assert!(
-                    style.contains("-webkit-text-stroke:3px #7F0080"),
+                    style.contains("-webkit-text-stroke:5px #7F0080"),
                     "struck HTML title halo must keep raw hex color instead of entity-decoding `#`: {style}"
                 );
                 assert!(!style.contains("&7F0080"));
@@ -938,6 +1006,60 @@ fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
         let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
         check(finalized.svg().as_str(), false);
     }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn assert_compatibility_struck_title_fill(
+    keyword: &str,
+    group_keyword: &str,
+    variant: &str,
+    expected_fill: &str,
+) {
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n  theme: redux-color\n  look: neo\n  htmlLabels: false\n---\n\
+         {keyword} TB\n\
+         {group_keyword} Parent[Parent]\n\
+         {group_keyword} G[A long title with no room beside the entering route]\n\
+         A[Short]\nend\nend\n\
+         Outside trunk@--> A\n",
+    );
+    let (_, svg) = render(&source, variant);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
+        .unwrap();
+    assert_eq!(title.attribute("stroke"), Some(expected_fill));
+    assert_eq!(title.attribute("stroke-width"), Some("5"));
+
+    let group_id = title.attribute("data-merman-cluster-title-for").unwrap();
+    let group = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(group_id))
+        .unwrap();
+    let rect = group
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert!(
+        rect.attribute("style")
+            .unwrap()
+            .split(';')
+            .filter_map(|decl| decl.split_once(':'))
+            .any(|(property, value)| property == "fill" && value == expected_fill)
+    );
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_struck_title_matches_the_compatibility_cluster_fill() {
+    assert_compatibility_struck_title_fill("flowchart", "subgraph", "FlowchartV2", "#F9F9FB");
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_struck_title_matches_the_palette_cluster_fill() {
+    assert_compatibility_struck_title_fill("agentflow-beta", "flow", "AgentflowDiagram", "#EEF2FF");
 }
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
@@ -1222,9 +1344,7 @@ architecture-beta\n\
     let hub_db = doc
         .descendants()
         .find(|n| {
-            n.has_tag_name("path")
-                && n.attribute("id")
-                    .is_some_and(|id| id.contains("L_hub_db"))
+            n.has_tag_name("path") && n.attribute("id").is_some_and(|id| id.contains("L_hub_db"))
         })
         .expect("hub -> db edge path");
     let d = hub_db.attribute("d").unwrap();

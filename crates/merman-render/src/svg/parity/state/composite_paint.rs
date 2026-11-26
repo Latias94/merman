@@ -38,7 +38,7 @@ pub(super) fn composite_body_geometry(
     if canonical {
         let title_y = cluster.title_label.y - title_height / 2.0 - origin_y;
         let inner_y = title_y + title_height + 1.0;
-        (inner_y, (outer_y + cluster.height - 4.0 - inner_y).max(1.0))
+        (inner_y, (outer_y + cluster.height - inner_y).max(1.0))
     } else {
         (
             outer_y + title_height + 2.0,

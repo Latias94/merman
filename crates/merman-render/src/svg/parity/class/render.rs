@@ -233,7 +233,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         relation_theme,
         content_tx,
         content_ty,
-        use_layout_title_anchor: uses_canonical_routes,
+        uses_canonical_routes,
         timing,
         emit,
     };

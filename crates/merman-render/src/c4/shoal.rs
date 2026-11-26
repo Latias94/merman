@@ -47,7 +47,7 @@ pub(crate) struct C4ShoalRelation {
     pub(crate) id: String,
     pub(crate) path: String,
     pub(crate) points: Vec<LayoutPoint>,
-    pub(crate) label_origin: Option<LayoutPoint>,
+    pub(crate) label: Option<labels::PlacedRelationLabel>,
 }
 
 impl C4ShoalGeometry {
@@ -266,8 +266,8 @@ pub(crate) fn layout_c4_shoal(
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
     for (ordinal, rel) in model.rels.iter().enumerate() {
-        let layout = measure_c4_relation(rel, ordinal, &model.c4_type, &measure)?;
-        let label = labels::RelationLabel::measure(&layout, &measure)?;
+        let mut layout = measure_c4_relation(rel, ordinal, &model.c4_type, &measure)?;
+        let label = labels::RelationLabel::prepare(&mut layout, &measure)?;
         let (start, end) = super::c4_relation_markers(&rel.rel_type);
         graph.edges.push(MeasuredEdge {
             source: endpoint(&rel.from_alias, "from")?,
@@ -415,16 +415,16 @@ pub(crate) fn layout_c4_shoal(
         rel.start_point = start.clone();
         rel.end_point = end.clone();
         include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
-        let label_origin = label
+        let label = label
             .as_ref()
             .zip(edge.label.as_ref())
-            .map(|(label, placed)| label.origin(placed, &painted, stroke_outset, &mut work))
+            .map(|(label, placed)| label.place(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
         geometry.push(C4ShoalRelation {
             id: edge.id,
             path: painted.path.d,
             points: painted.data_points,
-            label_origin,
+            label,
         });
     }
     let ink_width = bounds.max_x - bounds.min_x;

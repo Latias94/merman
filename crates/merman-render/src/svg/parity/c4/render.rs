@@ -220,12 +220,6 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         shoal,
     } = text;
     let x = x + width / 2.0;
-    let mut style = String::new();
-    let _ = write!(
-        &mut style,
-        "text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};",
-        font_size, font_weight, font_family
-    );
 
     out.checkpoint()?;
     let lines = crate::text::split_mermaid_common_br_lines(content);
@@ -252,15 +246,17 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         );
         out.checkpoint()?;
         for (k, v) in attrs {
-            let _ = write!(out, r#" {k}="{}""#, escape_attr(v));
+            let _ = write!(out, r#" {k}="{}""#, escape_attr_display(v));
             out.checkpoint()?;
         }
         let _ = write!(
             out,
-            r#" style="{}"><tspan dy="{}"{alignment}>{}</tspan></text>"#,
-            escape_attr(&style),
+            r#" style="text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};"><tspan dy="{}"{alignment}>{}</tspan></text>"#,
+            font_size,
+            escape_attr_display(font_weight),
+            escape_attr_display(font_family),
             dy_s,
-            escape_xml(line)
+            escape_xml_display(line)
         );
         out.checkpoint()?;
     }
@@ -1239,6 +1235,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("<g>");
     out.checkpoint()?;
+    #[cfg(feature = "layout-shoal")]
+    let mut relation_points = Vec::new();
     for (idx, rel) in layout.rels.iter().enumerate() {
         let paint = text_paint
             .relation_paint(idx)
@@ -1327,7 +1325,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
             .transpose()?;
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            super::shoal::open_shaft(&mut out, route, stroke_color, connector_width)?;
+            super::shoal::open_shaft(
+                &mut out,
+                route,
+                stroke_color,
+                connector_width,
+                diagram_id,
+                root_bounds,
+                &mut relation_points,
+            )?;
         }
         if straight {
             let _ = write!(
@@ -1402,15 +1408,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            let Some(origin) = &route.label_origin else {
+            let Some(label) = &route.label else {
                 continue;
             };
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
                 escape_attr(&route.id),
-                fmt(origin.x),
-                fmt(origin.y)
+                fmt(label.origin.x),
+                fmt(label.origin.y)
             );
             out.checkpoint()?;
         }
@@ -1422,7 +1428,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 + offset_x
         };
         let midy = if is_shoal {
-            0.0
+            rel.label.y
         } else {
             rel.start_point.y.min(rel.end_point.y)
                 + (rel.end_point.y - rel.start_point.y).abs() / 2.0
@@ -1460,7 +1466,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     content: &techn_text,
                     line_count: techn.line_count,
                     x: if is_shoal { -width / 2.0 } else { midx },
-                    y: midy + message_size + C4_TECHNOLOGY_GAP,
+                    y: if is_shoal {
+                        techn.y
+                    } else {
+                        midy + message_size + C4_TECHNOLOGY_GAP
+                    },
                     width,
                     font_family: message_family,
                     font_size: message_size,

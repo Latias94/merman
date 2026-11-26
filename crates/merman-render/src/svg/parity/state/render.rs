@@ -1352,12 +1352,17 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
+            r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
             escape_attr(title_style),
             fmt(title_x),
             fmt(title_y),
             fmt(title_width),
             fmt(title_height),
+            super::super::util::html_label_overflow_attr(
+                uses_canonical_routes,
+                title_width,
+                title_height,
+            ),
             escape_attr(&label_div_style),
             state_node_label_plain_html(&title),
         );

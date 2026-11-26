@@ -41,6 +41,12 @@ pub(crate) struct CanonicalPaintedEdge {
     pub(crate) markers: (Marker, Marker),
 }
 
+#[derive(Default)]
+pub(crate) struct CanonicalPaintScratch {
+    points: Vec<RoutePoint>,
+    pub(crate) route: route_paint::RoutePaintScratch,
+}
+
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-er",
@@ -183,6 +189,25 @@ impl CanonicalRoutes {
         style: RouteStyle,
         work: &OperationWorkMeter,
     ) -> Result<CanonicalPaintedEdge> {
+        self.paint_with_scratch(
+            edge,
+            translation,
+            stroke_outset,
+            style,
+            work,
+            &mut CanonicalPaintScratch::default(),
+        )
+    }
+
+    pub(crate) fn paint_with_scratch(
+        &self,
+        edge: &LayoutEdge,
+        translation: Vec2,
+        stroke_outset: f64,
+        style: RouteStyle,
+        work: &OperationWorkMeter,
+        scratch: &mut CanonicalPaintScratch,
+    ) -> Result<CanonicalPaintedEdge> {
         let missing = || Error::InvalidModel {
             message: format!("Edge `{}` has no canonical paint geometry", edge.id),
         };
@@ -196,19 +221,21 @@ impl CanonicalRoutes {
             y: p.y + translation.y,
             ..p
         };
-        let mut points: Vec<_> = edge
-            .points
-            .iter()
-            .zip(&route.knots)
-            .map(|(p, &(axis, kind))| {
-                translated(RoutePoint {
-                    x: p.x,
-                    y: p.y,
-                    axis,
-                    kind,
-                })
-            })
-            .collect();
+        let points = &mut scratch.points;
+        points.clear();
+        points.extend(
+            edge.points
+                .iter()
+                .zip(&route.knots)
+                .map(|(p, &(axis, kind))| {
+                    translated(RoutePoint {
+                        x: p.x,
+                        y: p.y,
+                        axis,
+                        kind,
+                    })
+                }),
+        );
         let [start, .., end] = points.as_mut_slice() else {
             return Err(missing());
         };
@@ -238,14 +265,15 @@ impl CanonicalRoutes {
                 stroke_outset,
             ))
         };
-        let path = route_paint::build_svg_path(
-            &points,
+        let path = route_paint::build_svg_path_with_scratch(
+            points,
             route.sides,
             style,
             route.markers,
             route_paint::CurveTerminals::Smooth,
             stitches,
             clearance,
+            &mut scratch.route,
         )
         .map_err(|error| edge_paint_error(&edge.id, error))?;
         Ok(CanonicalPaintedEdge {

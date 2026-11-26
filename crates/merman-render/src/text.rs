@@ -13,6 +13,9 @@ mod types;
 mod wrap;
 mod xhtml_label;
 
+#[cfg(feature = "layout-shoal")]
+pub(crate) use deterministic::CalibratedTextMeasurer;
+pub(crate) use deterministic::DeterministicMode;
 pub use deterministic::{
     DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
@@ -66,9 +69,8 @@ pub(crate) use metrics::{
 };
 
 pub(crate) use merman_render_core::text::{
-    ParsedCssFontStack, append_monospace_text_width_em, append_text_width_em,
-    estimate_monospace_text_width_em, estimate_text_width_em, is_monospace_font_family,
-    non_markdown_svg_words, parse_css_font_stack, xhtml_font_default,
+    ParsedCssFontStack, is_monospace_font_family, non_markdown_svg_words, parse_css_font_stack,
+    xhtml_font_default,
 };
 
 #[cfg(feature = "diagram-c4")]
