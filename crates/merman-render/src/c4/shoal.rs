@@ -172,7 +172,8 @@ pub(crate) fn layout_c4_shoal(
     let node_radius = native.map_or(C4_ROUNDED_RADIUS, |theme| theme.radius);
     let stroke_outset = native.map_or(0.5, |theme| theme.connector_width / 2.0);
     let route_style = match native.map(|theme| theme.edge_style) {
-        Some(EdgeStyle::Curved) => RouteStyle::Curved,
+        // A short rounded elbow stays within the measured card-grid channels.
+        Some(EdgeStyle::Curved) => RouteStyle::Rounded(5.0),
         Some(EdgeStyle::Straight) => RouteStyle::Linear,
         Some(EdgeStyle::Orthogonal | EdgeStyle::Sketch) | None => RouteStyle::Step,
     };

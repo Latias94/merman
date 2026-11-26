@@ -258,6 +258,35 @@ fn c4_shoal_uses_the_invisible_root_only_for_a_relation_that_names_it() {
 }
 
 #[test]
+fn c4_shoal_keeps_large_legacy_label_offsets_near_the_relationship() {
+    let source = "---\nconfig:\n  layout: shoal\n---\nC4Context\nSystem(a, \"Service\")\nSystem(b, \"Store\")\nRel(a, b, \"Reads\", \"TLS\")\n";
+    let options = LayoutOptions::headless_svg_defaults();
+    let (natural, _) = render(source, &options);
+    let (layout, svg) = render(
+        &format!("{source}UpdateRelStyle(a, b, $offsetX=\"900\", $offsetY=\"-600\")\n"),
+        &options,
+    );
+    assert!(layout.width < natural.width + 30.0);
+    assert!(layout.height < natural.height + 30.0);
+    let doc = Document::parse(svg.svg()).unwrap();
+    let shaft = path(element(&doc, "edge", "c4-rel-0"));
+    let label = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label")
+                && node.attribute("data-id") == Some("c4-rel-0")
+        })
+        .unwrap();
+    let transform: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+    let offset = Point::new(transform.e, transform.f);
+    assert!(
+        shaft
+            .segments()
+            .any(|segment| segment.nearest(offset, 1e-6).distance_sq < 80.0_f64.powi(2))
+    );
+}
+
+#[test]
 fn c4_shoal_keeps_typed_parallel_occurrences_and_dynamic_numbering() {
     let source = "---\nconfig:\n  layout: shoal\n---\nC4Dynamic\nSystem(a, \"A\")\nSystem(b, \"B\")\nRel(a, b, \"Request\")\n";
     let (metadata, mut model, context) = MermaidEngine::new()

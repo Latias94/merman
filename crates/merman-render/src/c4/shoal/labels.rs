@@ -11,8 +11,8 @@ use kurbo::{BezPath, Point, Rect, Shape, Vec2};
 
 const SHAFT_CLEARANCE: f64 = 2.0;
 
-/// Bounds relative to the common SVG text origin. Mirroring the authored offset in the
-/// reservation lets both the router and the label placer test the shifted ink.
+/// Bounds relative to the common SVG text origin. Authored offsets are limited to the
+/// local caption allowance so a relationship can still use the compact grid's gutters.
 pub(super) struct RelationLabel {
     ink: Rect,
     offset: Vec2,
@@ -40,14 +40,18 @@ impl RelationLabel {
     }
 
     pub(super) fn size(&self) -> Size {
+        let [side_room, vertical_room] = self.room();
         Size {
-            width: self.ink.width() + 2.0 * self.offset.x.abs(),
-            height: self.ink.height() + 2.0 * (self.offset.y.abs() + self.side_shift()),
+            width: self.ink.width() + 2.0 * side_room,
+            height: self.ink.height() + 2.0 * vertical_room,
         }
     }
 
-    fn side_shift(&self) -> f64 {
-        self.ink.height() / 2.0 + SHAFT_CLEARANCE
+    fn room(&self) -> [f64; 2] {
+        [
+            self.offset.x.abs().min(SHAFT_CLEARANCE),
+            2.0 * SHAFT_CLEARANCE,
+        ]
     }
 
     pub(super) fn origin(
@@ -80,12 +84,18 @@ impl RelationLabel {
                 route.markers.1.width,
             ),
         ];
-        let preferred = Point::new(label.x, label.y) + self.offset - self.ink.center().to_vec2();
-        let shift = self.side_shift();
+        let anchor = Point::new(label.x, label.y) - self.ink.center().to_vec2();
+        let [side_room, vertical_room] = self.room();
+        let preferred = anchor
+            + Vec2::new(
+                self.offset.x.clamp(-side_room, side_room),
+                self.offset.y.clamp(-vertical_room, vertical_room),
+            );
         let origin = [
             preferred,
-            preferred - Vec2::new(0.0, shift),
-            preferred + Vec2::new(0.0, shift),
+            anchor,
+            anchor - Vec2::new(0.0, vertical_room),
+            anchor + Vec2::new(0.0, vertical_room),
         ]
         .into_iter()
         .find(|origin| {
@@ -96,7 +106,7 @@ impl RelationLabel {
                     !overlaps(segment.bounding_box().inflate(stroke_outset, stroke_outset))
                 })
         })
-        .unwrap_or(preferred);
+        .unwrap_or(anchor);
         Ok(LayoutPoint {
             x: origin.x,
             y: origin.y,

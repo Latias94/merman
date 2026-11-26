@@ -77,13 +77,17 @@ impl Scene {
         if room.iter().any(|[lo, hi]| lo > hi) {
             return Ok(None);
         }
-        for t in [
+        let mut next_to_leg = [None; 5];
+        for (probe, t) in [
             fraction,
             (fraction + 0.25) / 2.0,
             (fraction + 0.75) / 2.0,
             0.2,
             0.8,
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let mut left = (total - markers[0] - markers[1])
                 .max(0.0)
                 .mul_add(t, markers[0]);
@@ -97,9 +101,15 @@ impl Scene {
                 let [a, b] = [leg[0], leg[1]];
                 let at = [a.x + (b.x - a.x) * ratio, a.y + (b.y - a.y) * ratio];
                 let cross = usize::from(a.y == b.y);
+                next_to_leg[probe] = Some((at, cross));
                 for sign in [-1.0, 1.0] {
                     let mut candidate = at;
-                    candidate[cross] += sign * margin[cross].next_up();
+                    let edge = at[cross] + sign * margin[cross];
+                    candidate[cross] = if sign < 0.0 {
+                        edge.next_down()
+                    } else {
+                        edge.next_up()
+                    };
                     for (coord, [lo, hi]) in candidate.iter_mut().zip(room) {
                         *coord = coord.clamp(lo, hi);
                     }
@@ -111,7 +121,26 @@ impl Scene {
                 break;
             }
         }
-        Ok(None)
+        let mut closest = None::<(f64, Point)>;
+        for (at, cross) in next_to_leg.into_iter().flatten() {
+            for sign in [-1.0, 1.0] {
+                for side in [0.0, -1.0, 1.0] {
+                    let mut candidate = at;
+                    candidate[cross] += sign * (2.0 * margin[cross]).next_up();
+                    candidate[1 - cross] += side * margin[1 - cross];
+                    for (coord, [lo, hi]) in candidate.iter_mut().zip(room) {
+                        *coord = coord.clamp(lo, hi);
+                    }
+                    let distance = (candidate[0] - at[0]).hypot(candidate[1] - at[1]);
+                    if closest.is_none_or(|(best, _)| distance < best)
+                        && self.fits(point(candidate), size, bounds, work)?
+                    {
+                        closest = Some((distance, point(candidate)));
+                    }
+                }
+            }
+        }
+        Ok(closest.map(|(_, at)| at))
     }
 }
 
