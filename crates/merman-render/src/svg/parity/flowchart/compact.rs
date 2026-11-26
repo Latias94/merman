@@ -462,7 +462,7 @@ fn render_scene(
     let text_style = SceneTextStyle {
         families: &families,
         size: config.font_size,
-        weight: Some(400),
+        weight: Some(ctx.compatibility.root_font_weight.unwrap_or(400)),
         style: FontStyle::Normal,
         fill: resolved_color(&ctx.compatibility.node_text_color, meter)?,
     };

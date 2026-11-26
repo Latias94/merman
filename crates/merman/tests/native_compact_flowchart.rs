@@ -6,6 +6,7 @@
 ))]
 
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgOutputProfile};
+use merman::theme::{BuiltinPreset, ThemeSelection};
 use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const FLOWCHART_CONFIG: &str = r#"---
@@ -83,6 +84,32 @@ fn compact_flowchart_keeps_the_prepared_dagre_shafts() {
     for shaft in parity_shafts {
         assert!(compact_shafts.contains(&shaft), "missing shaft {shaft:?}");
     }
+}
+
+#[test]
+fn compact_flowchart_keeps_the_native_label_weight() {
+    let source = "flowchart LR\nA[Plan]";
+    let theme = ThemeSelection::preset(BuiltinPreset::Monograph, None);
+    let parity = render(
+        source,
+        SvgRequest::default().with_native_theme(theme.clone()),
+    )
+    .unwrap();
+    let compact = render(source, compact_request().with_native_theme(theme)).unwrap();
+    let parity = roxmltree::Document::parse(&parity).unwrap();
+    let compact = roxmltree::Document::parse(&compact).unwrap();
+
+    assert!(parity.descendants().any(|node| {
+        node.has_tag_name("style")
+            && node
+                .text()
+                .is_some_and(|css| css.contains("#compact-flow{font-weight:600;}"))
+    }));
+    let label = compact
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Plan"))
+        .expect("expected the compact label");
+    assert_eq!(label.attribute("font-weight"), Some("600"));
 }
 
 #[test]
