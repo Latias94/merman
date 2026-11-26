@@ -265,8 +265,6 @@ mod requirement;
     )
 )]
 mod roughjs_common;
-#[cfg(feature = "diagram-sankey")]
-mod sankey;
 #[cfg(feature = "diagram-sequence")]
 mod sequence;
 #[cfg(feature = "diagram-state")]
@@ -1402,7 +1400,16 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-sankey")]
         BuiltinFamilyArtifact::Sankey(artifact) => {
-            sankey::render_sankey_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+            let diagram_id = options.diagram_id_or("sankey");
+            merman_render_charts::sankey::render_sankey_diagram_svg(
+                artifact.pair().layout(),
+                artifact.style(),
+                diagram_id,
+                options.has_explicit_diagram_id(),
+                &options.root_viewport(crate::DiagramFamilyId::SANKEY, diagram_id),
+                options.work_meter(),
+                options.text_measurer(),
+            )
         }
         #[cfg(feature = "diagram-radar")]
         BuiltinFamilyArtifact::Radar(artifact) => {

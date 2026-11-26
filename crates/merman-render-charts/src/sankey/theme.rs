@@ -2,15 +2,21 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use merman_model::OperationPhase;
-use merman_model::presentation::PresentationConfig;
-use merman_render_charts::sankey::{SankeyConfigView, SankeyRenderSettings};
+use merman_model::{OperationPhase, presentation::PresentationConfig};
+use merman_render_core::{
+    Error, Result, config,
+    entities::decode_mermaid_entities_for_render_text,
+    mermaid_style::font_family_css,
+    resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation},
+    svg_css::PreparedCommonCss,
+    xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints,
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
-use crate::Result;
-use crate::model::SankeyDiagramLayout;
-use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::svg::PreparedCommonCss;
-use crate::theme::{Color, FamilyTheme};
+use super::{
+    SankeyDiagramLayout,
+    config::{SankeyConfigView, SankeyRenderSettings},
+};
 
 const TABLEAU10: [&str; 10] = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
@@ -28,11 +34,11 @@ impl SankeyPreparedLabel {
         text: Cow<'_, str>,
         work_meter: &OperationWorkMeter,
     ) -> std::result::Result<Self, OperationWorkError> {
-        let decoded = match crate::entities::decode_mermaid_entities_for_render_text(&text) {
+        let decoded = match decode_mermaid_entities_for_render_text(&text) {
             Cow::Borrowed(_) => text,
             Cow::Owned(decoded) => Cow::Owned(decoded),
         };
-        let text = crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(decoded, || {
+        let text = strip_forbidden_xml_1_0_chars_cow_with_checkpoints(decoded, || {
             work_meter.checkpoint(OperationPhase::Layout)
         })?;
         Ok(Self {
@@ -46,7 +52,7 @@ impl SankeyPreparedLabel {
 }
 
 #[derive(Debug)]
-pub(crate) struct SankeyStyle {
+pub struct SankeyStyle {
     pub(crate) common_css: PreparedCommonCss,
     pub(crate) label_background: String,
     pub(crate) outlined_labels: bool,
@@ -58,7 +64,7 @@ pub(crate) struct SankeyStyle {
 }
 
 impl SankeyStyle {
-    pub(crate) fn resolve(
+    pub(super) fn resolve(
         config: &PresentationConfig,
         layout: &SankeyDiagramLayout,
         native: Option<&FamilyTheme>,
@@ -71,7 +77,7 @@ impl SankeyStyle {
         let link_color = config_view.link_color();
         let (common_css, label_background, label_size, label_weight) = if let Some(theme) = native {
             let typography = &theme.typography;
-            let font = crate::theme::font_family_css(typography.stack(typography.body_family));
+            let font = font_family_css(typography.stack(typography.body_family));
             (
                 PreparedCommonCss::new(config.as_value(), Some(&font))
                     .with_text_color(&theme.roles.text_primary.to_string()),
@@ -82,13 +88,10 @@ impl SankeyStyle {
                 Some(typography.label_weight),
             )
         } else {
-            let font_family = crate::config::config_font_family_css(config);
-            let label_background =
-                crate::config::config_string(config, &["themeVariables", "mainBkg"])
-                    .or_else(|| {
-                        crate::config::config_string(config, &["themeVariables", "background"])
-                    })
-                    .unwrap_or_else(|| "#fff".to_owned());
+            let font_family = config::config_font_family_css(config);
+            let label_background = config::config_string(config, &["themeVariables", "mainBkg"])
+                .or_else(|| config::config_string(config, &["themeVariables", "background"]))
+                .unwrap_or_else(|| "#fff".to_owned());
             (
                 PreparedCommonCss::new(config.as_value(), Some(&font_family)),
                 label_background,
@@ -343,7 +346,7 @@ impl SankeyNodePalette {
         layout: &SankeyDiagramLayout,
         link_color: &str,
         work_meter: &OperationWorkMeter,
-    ) -> crate::Result<()> {
+    ) -> Result<()> {
         assert!(
             self.links.is_none(),
             "Sankey links prepared once before emission"
@@ -370,7 +373,7 @@ impl SankeyNodePalette {
             let source =
                 self.node_indices
                     .get(&link.source)
-                    .ok_or_else(|| crate::Error::InvalidModel {
+                    .ok_or_else(|| Error::InvalidModel {
                         message: format!("missing source node {}", link.source),
                     })?;
             #[cfg(test)]
@@ -380,7 +383,7 @@ impl SankeyNodePalette {
             let target =
                 self.node_indices
                     .get(&link.target)
-                    .ok_or_else(|| crate::Error::InvalidModel {
+                    .ok_or_else(|| Error::InvalidModel {
                         message: format!("missing target node {}", link.target),
                     })?;
             let paint = match mode {
@@ -442,13 +445,13 @@ impl SankeyNodePalette {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::SankeyNodeLayout;
-    use crate::resources::RenderResourcePolicy;
+    use crate::sankey::{SankeyNodeLayout, test_support::presentation_config};
+    use merman_render_core::resources::RenderResourcePolicy;
     use serde_json::json;
 
     #[test]
     fn unthemed_binding_keeps_label_background_and_link_paint_semantics() {
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "sankey": {"linkColor": "var(--link)", "labelStyle": "outlined"},
             "themeVariables": {"background": "fallback", "mainBkg": "",
                 "textColor": "currentColor"}
@@ -462,7 +465,7 @@ mod tests {
         assert!(plan.outlined_labels);
         assert_eq!(plan.common_css.text_color(), "currentColor");
 
-        let ignored = crate::test_support::presentation_config(json!({"sankey": {
+        let ignored = presentation_config(json!({"sankey": {
             "$ref": "schema", "linkColor": "source", "labelStyle": "outlined"
         }}));
         let fallback = SankeyStyle::resolve(&ignored, &layout(&["A"]), None, None, &meter).unwrap();
@@ -500,10 +503,9 @@ mod tests {
 
     #[test]
     fn prepared_labels_account_for_storage_and_release_the_shared_meter() {
-        use crate::resources::ResourceLimitId;
+        use merman_render_core::resources::ResourceLimitId;
 
-        let config =
-            crate::test_support::presentation_config(json!({"sankey":{"showValues":false}}));
+        let config = presentation_config(json!({"sankey":{"showValues":false}}));
         let plain = layout(&["AB", "CD"]);
         let probe = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),

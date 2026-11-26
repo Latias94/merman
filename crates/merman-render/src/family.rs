@@ -573,7 +573,7 @@ pub(crate) struct RadarFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-sankey")]
 pub(crate) struct SankeyFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramModel, SankeyDiagramLayout>,
-    style: crate::sankey::SankeyStyle,
+    style: merman_render_charts::sankey::SankeyStyle,
 }
 
 #[derive(Debug)]
@@ -816,7 +816,7 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn style(&self) -> &crate::sankey::SankeyStyle {
+    pub(crate) const fn style(&self) -> &merman_render_charts::sankey::SankeyStyle {
         &self.style
     }
 }

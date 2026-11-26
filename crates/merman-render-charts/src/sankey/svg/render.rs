@@ -1,8 +1,22 @@
-use super::super::*;
-use crate::sankey::{SankeyLinkPaint, SankeyNodePalette};
-use merman_render_charts::sankey::{
-    SankeySvgBody, SankeySvgBodyStyle, SankeySvgLink, SankeySvgLinkPaint,
+use merman_model::OperationPhase;
+use merman_render_core::{
+    Error, Result,
+    resources::OperationWorkMeter,
+    root_svg::{
+        DiagramBounds, RootChrome, RootDomProfile, RootMaxWidth, RootStylePlacement,
+        RootViewportContext, RootViewportSpec, RootedSvg, SvgRootFixedHeightPlacement,
+    },
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::{TextMeasurer, TextStyle, svg_text_vertical_extents_px},
 };
+
+use super::super::{
+    SankeyDiagramLayout, SankeyStyle,
+    css::write_sankey_css,
+    theme::{SankeyLinkPaint, SankeyNodePalette},
+};
+use super::{SankeySvgBody, SankeySvgBodyStyle, SankeySvgLink, SankeySvgLinkPaint};
 
 fn prepared_svg_link<'a>(
     layout: &'a SankeyDiagramLayout,
@@ -22,11 +36,16 @@ fn prepared_svg_link<'a>(
     })
 }
 
-pub(crate) fn render_sankey_diagram_svg(
+/// Emits the complete Sankey SVG before shared canvas and terminal admission.
+pub fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
-    style: &crate::sankey::SankeyStyle,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
+    style: &SankeyStyle,
+    diagram_id: SvgId<'_>,
+    scope_generated_ids: bool,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+    measurer: &dyn TextMeasurer,
+) -> Result<RootedSvg> {
     let node_palette = &style.palette;
     let label_texts = node_palette.labels();
     if label_texts.len() != layout.nodes.len() {
@@ -36,14 +55,10 @@ pub(crate) fn render_sankey_diagram_svg(
     }
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
-    let diagram_id = options.diagram_id_or("sankey");
-    let scope_generated_ids = options.has_explicit_diagram_id();
-
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
     let label_font_size = style.label_size;
-    let measurer = options.text_measurer();
-    let label_style = crate::text::TextStyle {
+    let label_style = TextStyle {
         font_family: Some(style.common_css.font_family().to_string()),
         font_size: label_font_size,
         font_weight: style.label_weight.map(|weight| weight.to_string()),
@@ -52,7 +67,7 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_value = 0.0;
     let mut central_node_layer = 0usize;
     for node in &layout.nodes {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         if node.value > max_value {
             max_value = node.value;
             central_node_layer = node.layer;
@@ -75,7 +90,7 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_y = layout_height;
 
     for (n, label) in layout.nodes.iter().zip(label_texts) {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         min_x = min_x.min(n.x0);
         min_y = min_y.min(n.y0);
         max_x = max_x.max(n.x1);
@@ -95,7 +110,7 @@ pub(crate) fn render_sankey_diagram_svg(
 
         let dy_em = body_style.label_dy_em();
         let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * label_font_size;
-        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+        let (ascent, descent) = svg_text_vertical_extents_px(
             measurer,
             label.text(),
             &label_style,
@@ -120,35 +135,29 @@ pub(crate) fn render_sankey_diagram_svg(
     let vb_w = (max_x - min_x).max(1.0);
     let vb_h = (max_y - min_y).max(1.0);
 
-    let root_spec = root_svg::RootViewportSpec::mermaid(
-        root_svg::DiagramBounds::from_view_box(min_x, min_y, vb_w, vb_h),
+    let root_spec = RootViewportSpec::mermaid(
+        DiagramBounds::from_view_box(min_x, min_y, vb_w, vb_h),
         style.use_max_width,
     )
-    .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
+    .with_max_width(RootMaxWidth::SvgNumber(vb_w));
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::SANKEY, diagram_id)
-        .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                dom: root_svg::RootDomProfile {
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
-                },
-                ..root_svg::RootChrome::new(diagram_id, "sankey")
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let root_document = root_viewport.write_open(
+        &mut out,
+        root_spec,
+        RootChrome {
+            dom: RootDomProfile {
+                fixed_height_placement: SvgRootFixedHeightPlacement::AfterXmlns,
+                fixed_style_placement: RootStylePlacement::Tail,
+                trailing_newline: false,
+                ..Default::default()
             },
-        )?;
+            ..RootChrome::new(diagram_id, "sankey")
+        },
+    )?;
     out.push_str("<style>");
     out.checkpoint()?;
-    super::css::write_sankey_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id,
-        style,
-    )?;
+    write_sankey_css(&mut XmlTextOutput::new(&mut out), diagram_id, style)?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -159,7 +168,7 @@ pub(crate) fn render_sankey_diagram_svg(
         label_texts.iter().map(|label| label.text()),
         |index, id| node_palette.fill_for(index, id),
         |link_index| prepared_svg_link(layout, node_palette, link_index),
-        options.work_meter(),
+        work_meter,
     )?;
     out.push_str("</svg>");
     root_document.complete(out.finish()?)
@@ -168,7 +177,9 @@ pub(crate) fn render_sankey_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::SankeyNodeLayout;
+    use crate::sankey::{SankeyLinkLayout, SankeyNodeLayout, test_support::presentation_config};
+    use merman_render_core::{resources::RenderResourcePolicy, svg_css::SvgDiagramIdProjection};
+    use std::sync::Arc;
 
     fn sankey_node(id: impl Into<String>, index: usize, x0: f64, x1: f64) -> SankeyNodeLayout {
         SankeyNodeLayout {
@@ -192,8 +203,8 @@ mod tests {
         width: f64,
         y0: f64,
         y1: f64,
-    ) -> crate::model::SankeyLinkLayout {
-        crate::model::SankeyLinkLayout {
+    ) -> SankeyLinkLayout {
+        SankeyLinkLayout {
             index,
             source: source.into(),
             target: target.into(),
@@ -206,7 +217,7 @@ mod tests {
 
     fn sankey_layout(
         nodes: Vec<SankeyNodeLayout>,
-        links: Vec<crate::model::SankeyLinkLayout>,
+        links: Vec<SankeyLinkLayout>,
     ) -> SankeyDiagramLayout {
         SankeyDiagramLayout {
             bounds: None,
@@ -219,11 +230,9 @@ mod tests {
         }
     }
 
-    fn baseline_node_palette(layout: &SankeyDiagramLayout) -> crate::sankey::SankeyNodePalette {
-        let work_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        ));
-        crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
+    fn baseline_node_palette(layout: &SankeyDiagramLayout) -> SankeyNodePalette {
+        let work_meter = Arc::new(test_link_work_meter());
+        SankeyNodePalette::prepare_labels_and_nodes(
             merman_model::presentation::PresentationConfig::default().as_value(),
             layout,
             &work_meter,
@@ -301,10 +310,7 @@ mod tests {
             .terminal_link(0)
             .expect("prepared duplicate link");
         assert_eq!(prepared.source_layout_index, 0);
-        assert!(matches!(
-            prepared.paint,
-            crate::sankey::SankeyLinkPaint::Solid("#4e79a7")
-        ));
+        assert!(matches!(prepared.paint, SankeyLinkPaint::Solid("#4e79a7")));
         let mut body = SankeySvgBody::new(&layout, None);
         let mut out = String::new();
         body.write_nodes(&mut out, |index, id| node_palette.fill_for(index, id))
@@ -324,10 +330,8 @@ mod tests {
         assert_eq!(node_palette.link_lookup_stats(), (3, 2));
     }
 
-    fn test_link_work_meter() -> crate::resources::OperationWorkMeter {
-        crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
+    fn test_link_work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
     }
 
     #[test]
@@ -380,30 +384,27 @@ mod tests {
             ("var(--link)", "var(--link)"),
             ("gradient", "url(#example-linearGradient-3)"),
         ] {
-            let config = crate::test_support::presentation_config(serde_json::json!({
+            let config = presentation_config(serde_json::json!({
                 "sankey": {"nodeColors": {"A": "var(--node)", "B": "currentColor"}}
             }));
-            let mut palette = crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
+            let mut palette = SankeyNodePalette::prepare_labels_and_nodes(
                 config.as_value(),
                 &layout,
-                &std::sync::Arc::new(test_link_work_meter()),
+                &Arc::new(test_link_work_meter()),
             )
             .expect("prepare explicit palette");
             palette
                 .prepare_links(&layout, mode, &test_link_work_meter())
                 .expect("prepare link mode");
             for _ in 0..2 {
-                let request = SvgRenderOptions {
-                    diagram_id: Some("example".into()),
-                    ..SvgRenderOptions::default()
-                };
+                let meter = test_link_work_meter();
+                let projection = SvgDiagramIdProjection::new(&meter);
+                let diagram_id = SvgId::new("example").unwrap().with_projection(&projection);
+                let mut body = SankeySvgBody::new(&layout, Some(diagram_id));
                 let mut out = String::new();
-                with_test_svg_execution(crate::DiagramFamilyId::SANKEY, &request, |execution| {
-                    let mut body =
-                        SankeySvgBody::new(&layout, Some(execution.diagram_id_or("sankey")));
-                    write_sankey_links(&mut out, &mut body, &layout, &palette)
-                })
-                .expect("emit prepared links");
+                write_sankey_links(&mut out, &mut body, &layout, &palette)
+                    .expect("emit prepared links");
+                projection.finish().expect("admit scoped Sankey IDs");
                 assert!(out.contains(&format!("stroke=\"{expected_stroke}\"")));
                 assert!(out.contains("stroke-width=\"1\""));
                 if mode == "gradient" {

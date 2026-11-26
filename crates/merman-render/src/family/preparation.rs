@@ -188,18 +188,12 @@ fn prepare_sankey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = merman_render_charts::sankey::layout_sankey_diagram_typed(
+    let (layout, style) = merman_render_charts::sankey::prepare_sankey_diagram(
         model,
-        meta.effective_config.as_value(),
-        execution.work_meter_ref(),
-    )?;
-    let native = execution.native_family_theme();
-    let style = crate::sankey::SankeyStyle::resolve(
         &meta.effective_config,
-        &layout,
-        native,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
-        &execution.work_meter(),
+        execution.family.session().work_meter(),
     )?;
     Ok(BuiltinFamilyArtifact::Sankey(Box::new(
         SankeyFamilyArtifact {

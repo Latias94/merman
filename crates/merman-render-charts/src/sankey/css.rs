@@ -1,9 +1,15 @@
-use super::super::*;
+use merman_render_core::{
+    Result,
+    svg_css::{CssSelectorDiagramId, PreparedCommonCss, SvgDiagramIdValue},
+    svg_output::SvgOutput,
+};
+
+use super::SankeyStyle;
 
 pub(super) fn write_sankey_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    style: &crate::sankey::SankeyStyle,
+    style: &SankeyStyle,
 ) -> Result<()>
 where
     I: SvgDiagramIdValue,
@@ -21,7 +27,7 @@ where
 fn write_sankey_css_values<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    values: &crate::svg::PreparedCommonCss,
+    values: &PreparedCommonCss,
     label_background: &str,
     link_blend_mode_css: &str,
     link_stroke_opacity: &str,
@@ -29,7 +35,7 @@ fn write_sankey_css_values<I>(
 where
     I: SvgDiagramIdValue,
 {
-    let id = util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     values.write_prefix(out, diagram_id)?;
     let label_font_family_css = values.font_family();
     let _ = write!(
@@ -54,6 +60,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_render_core::config::config_string;
+
     #[test]
     fn sankey_css_honors_mermaid_11_15_theme_options() {
         let cfg = serde_json::json!({
@@ -65,9 +73,8 @@ mod tests {
             }
         });
 
-        let values = crate::svg::PreparedCommonCss::new(&cfg, None);
-        let label_background =
-            crate::config::config_string(&cfg, &["themeVariables", "mainBkg"]).unwrap();
+        let values = PreparedCommonCss::new(&cfg, None);
+        let label_background = config_string(&cfg, &["themeVariables", "mainBkg"]).unwrap();
         let mut css = String::new();
         write_sankey_css_values(
             &mut css,

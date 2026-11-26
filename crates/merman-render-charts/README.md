@@ -10,8 +10,9 @@ accessibility, and stylesheet.
 The `diagram-radar` feature provides typed layout and the point and radius codecs for Radar.
 `merman-render` resolves the theme and writes the SVG.
 
-The `diagram-sankey` feature provides typed layout and configuration lookup. `merman-render`
-binds the theme, measures labels, and writes the SVG.
+The `diagram-sankey` feature provides typed layout, theme binding, label measurement, and complete
+SVG emission. `merman-render` supplies the operation's measurement and viewport context and
+applies the terminal SVG policies.
 
 The `diagram-treemap` feature provides layout, theme binding, label fitting, and complete SVG
 emission. `merman-render` supplies the operation's text measurement and viewport context and

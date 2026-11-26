@@ -17,7 +17,11 @@ default = []
 diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
 diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
 diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
-diagram-sankey = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-sankey"]
+diagram-sankey = [
+    "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-sankey", "merman-render-core/root-svg",
+    "merman-render-core/text-layout",
+]
 diagram-treemap = [
     "dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-treemap",
