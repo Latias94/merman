@@ -190,7 +190,7 @@ pub(super) fn place(
     let metrics = context.metrics;
     let scope_bounds = context.bounds(scope);
     let mut scene = Scene {
-        walls: Bvh::build_with_work(geometry, |bounds| *bounds, work)?,
+        walls: Bvh::from_bounds(geometry, work)?,
         labels: Vec::new(),
         clearance: metrics.label_clearance,
     };

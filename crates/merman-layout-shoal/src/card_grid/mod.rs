@@ -44,17 +44,14 @@ pub fn layout_with_control(
         }
         edges.push((projection, sides));
     }
-    route::route_with_fallback(
+    route::draw(
         graph,
         &hierarchy,
         &edges,
         metrics,
         options,
         &mut drawing,
-        |router, scope, leads, bounds, work| {
-            let tracks = gutters[scope].each_ref().map(Vec::as_slice);
-            route::gutter_route(router, leads, bounds, tracks, work)
-        },
+        route::Gutters::Scopes(&gutters),
         &mut work,
     )?;
     work.finish()?;

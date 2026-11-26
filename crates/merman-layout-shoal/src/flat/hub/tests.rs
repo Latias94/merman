@@ -318,7 +318,7 @@ fn wall_queries_distinguish_strict_overlap_from_contact_at_the_boundary() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let mut clearance = Clearance {
-        walls: Bvh::build_with_work(walls.clone(), |wall| *wall, &mut work).unwrap(),
+        walls: Bvh::from_bounds(walls.clone(), &mut work).unwrap(),
         strokes: Vec::new(),
         remaining: walls.len() * CLEARANCE_PASSES,
     };

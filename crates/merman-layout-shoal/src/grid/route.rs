@@ -3,7 +3,7 @@
 mod captions;
 mod gutters;
 
-pub(crate) use gutters::gutter_route;
+use gutters::gutter_route;
 
 use super::*;
 use crate::geom::Bounds;
@@ -643,23 +643,31 @@ fn add_point(points: &mut Vec<RoutePoint>, mut next: RoutePoint) {
     points.push(next);
 }
 
-/// The fallback supplies a fixed-lead candidate from the caller's placement channels when
-/// the visibility cap prevents finding a route. It should validate candidates with `clear`.
+pub(crate) enum Gutters<'a> {
+    Drawing(&'a [Vec<f64>; 2]),
+    Scopes(&'a [[Vec<f64>; 2]]),
+}
+
+impl Gutters<'_> {
+    fn tracks(&self, scope: usize) -> [&[f64]; 2] {
+        let axes = match *self {
+            Self::Drawing(axes) => axes,
+            Self::Scopes(scopes) => &scopes[scope],
+        };
+        axes.each_ref().map(Vec::as_slice)
+    }
+}
+
+/// Route against a scope's walls and use its placement gutters when visibility is exhausted.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn route_with_fallback(
+pub(crate) fn draw(
     graph: &Graph,
     hierarchy: &Hierarchy,
     edges: &[(Projection, [Side; 2])],
     metrics: Metrics,
     options: &Options,
     drawing: &mut LayoutOutput,
-    mut fallback: impl FnMut(
-        &OrthoRouter,
-        usize,
-        [(RoutePoint, Side); 2],
-        Rect,
-        &mut Work<'_>,
-    ) -> LayoutResult<Option<Vec<RoutePoint>>>,
+    gutters: Gutters<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let context = Routing {
@@ -722,9 +730,16 @@ pub(crate) fn route_with_fallback(
                 let middle = if let Some(points) = ordinary {
                     points
                 } else {
-                    fallback(&router, scope, [start, end], scope_bounds, work)?.ok_or(
-                        LayoutError::InvalidInput("no clear orthogonal channel in grid scope"),
+                    gutter_route(
+                        &router,
+                        [start, end],
+                        scope_bounds,
+                        gutters.tracks(scope),
+                        work,
                     )?
+                    .ok_or(LayoutError::InvalidInput(
+                        "no clear orthogonal channel in grid scope",
+                    ))?
                 };
                 work.charge(middle.len() + 2)?;
                 let mut points = reserved(middle.len() + 2)?;

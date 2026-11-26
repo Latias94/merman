@@ -34,6 +34,12 @@ impl<'a, T> IntoIterator for &'a Bvh<T> {
     }
 }
 
+impl Bvh<Bounds> {
+    pub(crate) fn from_bounds(bounds: Vec<Bounds>, work: &mut Work<'_>) -> LayoutResult<Self> {
+        Self::build_with_work(bounds, |entry| *entry, work)
+    }
+}
+
 impl<T> Bvh<T> {
     /// Partitions items in place, using the midpoint of their bounds on the longest axis.
     pub fn build(items: Vec<T>, bounds: impl Fn(&T) -> Bounds) -> Result<Self, LayoutError> {

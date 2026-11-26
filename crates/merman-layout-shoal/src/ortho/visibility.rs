@@ -66,7 +66,7 @@ impl Obstacles {
             }
         }
         Ok(Self {
-            rects: Bvh::build_with_work(rects, |rect| *rect, work)?,
+            rects: Bvh::from_bounds(rects, work)?,
         })
     }
 

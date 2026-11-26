@@ -681,9 +681,8 @@ pub(super) fn root(
     let mut columns = reserved(shells.len())?;
     columns.extend(shells.iter().map(|shell| shell.column(axes)));
     let mut rank_options = *ctx.options;
+    // Lane compaction moves complete rank bands and needs their membership.
     rank_options.capture_node_ranks |= rank_options.compact_ranks;
-    // Lane compaction moves complete rank bands. The flat compactor moves individual nodes.
-    rank_options.compact_ranks = false;
     let (mut drawing, mut placed) =
         flat::lanes::run(graph, &rank_options, expanded, &owners, &columns, work)?;
     let (feedback, widened) = routing::reserve_feedback(

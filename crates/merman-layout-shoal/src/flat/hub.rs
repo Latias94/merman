@@ -466,7 +466,7 @@ impl Clearance {
             .saturating_add(walls.len())
             .saturating_mul(CLEARANCE_PASSES);
         Ok(Self {
-            walls: Bvh::build_with_work(walls, |wall| *wall, work)?,
+            walls: Bvh::from_bounds(walls, work)?,
             strokes,
             remaining,
         })

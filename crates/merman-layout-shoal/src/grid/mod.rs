@@ -77,16 +77,14 @@ pub fn layout_with_control(
         }
     }
     let (mut drawing, tracks) = place::place(graph, &hierarchy, metrics, options, &mut work)?;
-    route::route_with_fallback(
+    route::draw(
         graph,
         &hierarchy,
         &edges,
         metrics,
         options,
         &mut drawing,
-        |router, _, ends, bounds, work| {
-            route::gutter_route(router, ends, bounds, [&tracks[0], &tracks[1]], work)
-        },
+        route::Gutters::Drawing(&tracks),
         &mut work,
     )?;
     work.finish()?;
