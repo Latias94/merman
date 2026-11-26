@@ -4,6 +4,8 @@ use super::config_scan::{
 };
 use super::directives::{parse_directive_like_upstream, sanitize_directive};
 use super::frontmatter::FrontmatterCapture;
+#[cfg(feature = "editor-facts")]
+use super::rewrite_order::MAX_REWRITE_DEPTH;
 use super::text::{
     encode_mermaid_entities_like_upstream, normalize_crlf,
     normalize_html_tag_attributes_like_upstream,
@@ -14,6 +16,61 @@ use merman_core_preprocess::scan::controlled::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
 };
 use serde_json::{Map, Value, json};
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn init_rewrite_uses_first_detector_namespace_without_scanning_the_diagram_tail() {
+    let source = concat!(
+        "%%{ init: {config: {mirrorActors: false, actorMargin: 17}, ",
+        "sequence: {actorMargin: 17, mirrorActors: false}} }%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let detected = std::cell::Cell::new(0);
+    let detector = |_: &str, _: &OperationControl| {
+        detected.set(detected.get() + 1);
+        Ok(Ok("sequence"))
+    };
+    let capture = preprocess_source_capture_controlled(
+        source,
+        &detector,
+        Some("flowchart"),
+        DirectiveRecoveryMode::Strict,
+        SourceConfigCaptureMode::Collect,
+        &OperationControl::new(),
+    )
+    .expect("first parse was not cancelled");
+    let namespace = capture.source_config.legacy_init_namespace();
+    let spans = [capture.source_config.directives()[0].full_span()];
+    assert_eq!(namespace, Some("sequence"));
+    assert_eq!(detected.get(), 1);
+    let config = capture.into_result().expect("parsed override").config;
+
+    let long_source = format!("{source}{}", "%% unrelated tail\n".repeat(64 * 1024));
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(128);
+    let ordered = source_config_rewrite_order_controlled(
+        &long_source,
+        FrontmatterRewrite::Insert(None),
+        &spans,
+        namespace,
+        1024,
+        MAX_REWRITE_DEPTH,
+        &control,
+    )
+    .expect("order capture must not scan the tail")
+    .expect("order evidence");
+    let (authored, admitted) = &ordered.directives[0];
+    assert_eq!(admitted, config.as_value());
+    let keys: Vec<_> = authored
+        .view()
+        .get("sequence")
+        .expect("first detector's namespace")
+        .entries()
+        .map(|(key, _)| key)
+        .collect();
+    assert_eq!(keys, ["mirrorActors", "actorMargin"]);
+    assert_eq!(detected.get(), 1);
+}
 
 #[test]
 fn frontmatter_collection_text_preserves_source_order() {

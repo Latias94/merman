@@ -90,6 +90,8 @@ pub(super) fn detect_init(
         &registry_detector(registry),
         #[cfg(feature = "editor-facts")]
         &mut super::source_config::SourceAppearanceCapture::default(),
+        #[cfg(feature = "editor-facts")]
+        &mut None,
         &control,
     )
     .expect("a private parse control cannot be cancelled")

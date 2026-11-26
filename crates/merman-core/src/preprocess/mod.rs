@@ -28,7 +28,10 @@ pub use frontmatter::{
 };
 #[cfg(feature = "editor-facts")]
 #[doc(hidden)]
-pub use rewrite_order::{SourceConfigRewriteOrder, source_config_rewrite_order_controlled};
+pub use rewrite_order::{
+    FrontmatterInsertOrder, FrontmatterRewrite, SourceConfigRewriteOrder,
+    source_config_rewrite_order_controlled,
+};
 #[cfg(feature = "editor-facts")]
 pub(crate) use source_config::SourceConfigPath;
 #[cfg(feature = "editor-facts")]

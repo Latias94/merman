@@ -10,7 +10,7 @@ use crate::{
 };
 #[cfg(test)]
 use merman_core::preprocess::SourceConfigEvidence;
-use merman_core::preprocess::source_config_rewrite_order_controlled;
+use merman_core::preprocess::{FrontmatterRewrite, source_config_rewrite_order_controlled};
 #[cfg(test)]
 use merman_core::preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block};
 use merman_model::json::ordered::OrderedJsonRef;
@@ -219,13 +219,18 @@ fn frontmatter_config_edit_cancellable(
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<FrontmatterEdit>, AnalysisCancelled> {
     let config = config.into_value();
+    let frontmatter = match evidence.frontmatter.as_ref() {
+        Some(frontmatter) if frontmatter.has_config => {
+            FrontmatterRewrite::Replace(frontmatter.full_span)
+        }
+        Some(frontmatter) => FrontmatterRewrite::Insert(frontmatter.insert_order.as_ref()),
+        None => FrontmatterRewrite::Insert(None),
+    };
     let Some(order) = source_config_rewrite_order_controlled(
         source,
-        evidence
-            .frontmatter
-            .as_ref()
-            .map(|frontmatter| frontmatter.full_span),
+        frontmatter,
         &evidence.directive_spans,
+        evidence.legacy_init_namespace,
         MAX_FRONTMATTER_MIGRATION_INPUT_BYTES.min(MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES),
         MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
         cancellation.operation_control(),
@@ -1096,6 +1101,32 @@ mod tests {
             format!("%%{{ init: {{ /* {brackets} */ theme: 'dark' }} }}%%\nflowchart TD\nA-->B\n",);
         let source_map = SourceMap::new(source.as_str());
         assert!(migration_fix(&source, &source_map).is_some());
+    }
+
+    #[test]
+    fn init_directive_migration_inserts_config_beside_deep_metadata_with_alias_order() {
+        let depth = MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH + 1;
+        let existing = format!(
+            "---\nnotes: {}0{}\nlayoutDefaults: &opts {{nodeSpacing: 9, curve: basis}}\nflowchart-v2: *opts",
+            "[".repeat(depth),
+            "]".repeat(depth),
+        );
+        let source =
+            format!("{existing}\n---\n%%{{ init: {{theme: 'dark'}} }}%%\nflowchart TD\nA-->B\n");
+        let source_map = SourceMap::new(source.as_str());
+        let original =
+            crate::test_support::capture_source_metadata(&source).expect("source config");
+        let fix = migration_fix(&source, &source_map).expect("insert-only configuration migration");
+        let edited = apply_fix(&source, &fix);
+        let migrated = crate::test_support::capture_source_metadata(&edited).expect("new config");
+
+        assert_eq!(migrated.config.as_value(), original.config.as_value());
+        assert!(
+            edited.starts_with(&format!("{existing}\nconfig:\n")),
+            "{edited}"
+        );
+        assert!(edited.contains("  flowchart:\n    nodeSpacing: 9\n    curve: basis\n"));
+        assert!(!edited.contains("%%{"));
     }
 
     #[test]

@@ -68,7 +68,17 @@ struct Capture<'a> {
     #[cfg(feature = "editor-facts")]
     ordered_document: Option<&'a mut String>,
     #[cfg(feature = "editor-facts")]
+    insert_order: Option<InsertOrderCapture<'a>>,
+    #[cfg(feature = "editor-facts")]
     keys: bool,
+}
+
+#[cfg(feature = "editor-facts")]
+struct InsertOrderCapture<'a> {
+    routes: &'a [(&'static str, &'static str)],
+    max_bytes: usize,
+    max_depth: usize,
+    output: &'a mut Option<String>,
 }
 
 pub(crate) fn parse_yaml_with_capture_controlled(
@@ -91,6 +101,47 @@ pub(crate) fn parse_yaml_with_capture_controlled(
         },
         control,
     )
+}
+
+#[cfg(feature = "editor-facts")]
+pub(crate) fn parse_yaml_frontmatter_capture_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    insert_routes: Option<&[(&'static str, &'static str)]>,
+    max_order_bytes: usize,
+    max_order_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<(YamlValueCapture, Option<String>)> {
+    let Some(routes) = insert_routes else {
+        let captured = parse_yaml_with_capture_controlled(
+            input,
+            max_nesting_depth,
+            &["title", "displayMode"],
+            false,
+            control,
+        )?;
+        return Ok((captured, None));
+    };
+    let mut insert_order = None;
+    let captured = parse_yaml_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        default_materialization_budget(input),
+        Capture {
+            collection_text_keys: &["title", "displayMode"],
+            keys: true,
+            insert_order: Some(InsertOrderCapture {
+                routes,
+                max_bytes: max_order_bytes,
+                max_depth: max_order_depth,
+                output: &mut insert_order,
+            }),
+            ..Capture::default()
+        },
+        control,
+    )?;
+    Ok((captured, insert_order))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -268,6 +319,22 @@ fn parse_yaml_controlled(
         } else {
             builder.capture_collection_text(capture.collection_text_keys, control)?
         };
+        #[cfg(feature = "editor-facts")]
+        if let Some(insert_order) = capture.insert_order
+            && let Ok(Value::Object(fields)) = &value
+            && !fields.contains_key("config")
+            && insert_order
+                .routes
+                .iter()
+                .any(|(key, _)| fields.contains_key(*key))
+        {
+            *insert_order.output = builder.frontmatter_insert_order(
+                insert_order.routes,
+                insert_order.max_bytes,
+                insert_order.max_depth,
+                control,
+            )?;
+        }
         if let Some(order) = capture.root_key_order {
             builder.take_root_key_order(order, control)?;
         }
@@ -693,6 +760,52 @@ impl YamlValueBuilder {
         Ok(text)
     }
 
+    #[cfg(feature = "editor-facts")]
+    fn frontmatter_insert_order(
+        &self,
+        routes: &[(&'static str, &'static str)],
+        max_bytes: usize,
+        max_depth: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<String>> {
+        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &self.arena[root.0]) else {
+            return Ok(None);
+        };
+        let mut selected = BTreeMap::new();
+        for (index, (key, node)) in entries.iter().enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            if routes.iter().any(|(source, _)| *source == key.as_str()) {
+                selected.insert(key.as_str(), *node);
+            }
+        }
+        let mut projected: Vec<(String, NodeId)> = Vec::new();
+        for &(source, namespace) in routes {
+            let Some(&node) = selected.get(source) else {
+                continue;
+            };
+            if let Some((_, previous)) = projected
+                .iter_mut()
+                .find(|(key, _)| key.as_str() == namespace)
+            {
+                *previous = node;
+            } else {
+                projected.push((namespace.to_owned(), node));
+            }
+        }
+        let mut json = String::from("{");
+        let written = append_ordered_yaml_json::<true>(
+            &self.arena,
+            JsonTask::Mapping(projected.iter(), false),
+            &mut json,
+            max_bytes,
+            max_depth,
+            control,
+        )?;
+        Ok(written.then_some(json))
+    }
+
     fn take_root_key_order(
         &mut self,
         order: &mut Vec<String>,
@@ -737,9 +850,34 @@ fn write_ordered_yaml_json(
     control: &OperationControl,
 ) -> OperationControlResult<String> {
     let mut output = String::new();
-    let mut tasks = vec![JsonTask::Visit(root)];
+    append_ordered_yaml_json::<false>(
+        arena,
+        JsonTask::Visit(root),
+        &mut output,
+        usize::MAX,
+        usize::MAX,
+        control,
+    )?;
+    Ok(output)
+}
+
+fn append_ordered_yaml_json<'a, const BOUNDED: bool>(
+    arena: &'a [YamlNode],
+    first: JsonTask<'a>,
+    output: &mut String,
+    max_bytes: usize,
+    max_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
+    let mut tasks = vec![first];
     let mut steps = 0usize;
     while let Some(task) = tasks.pop() {
+        if BOUNDED
+            && tasks.len() >= max_depth
+            && matches!(&task, JsonTask::Mapping(..) | JsonTask::Sequence(..))
+        {
+            return Ok(false);
+        }
         if steps.is_multiple_of(64) {
             control.checkpoint()?;
         }
@@ -750,7 +888,9 @@ fn write_ordered_yaml_json(
                     value: Value::String(value),
                     ..
                 } => {
-                    append_json_string(&mut output, value, control)?;
+                    if !append_json_string::<BOUNDED>(output, value, max_bytes, control)? {
+                        return Ok(false);
+                    }
                 }
                 YamlNode::Scalar { value, .. } => {
                     output.push_str(&value.to_string());
@@ -780,7 +920,9 @@ fn write_ordered_yaml_json(
                     if comma {
                         output.push(',');
                     }
-                    append_json_string(&mut output, key, control)?;
+                    if !append_json_string::<BOUNDED>(output, key, max_bytes, control)? {
+                        return Ok(false);
+                    }
                     output.push(':');
                     tasks.push(JsonTask::Mapping(entries, true));
                     tasks.push(JsonTask::Visit(*value));
@@ -789,30 +931,38 @@ fn write_ordered_yaml_json(
                 }
             }
         }
+        if BOUNDED && output.len() > max_bytes {
+            return Ok(false);
+        }
     }
     control.checkpoint()?;
-    Ok(output)
+    Ok(true)
 }
 
-fn append_json_string(
+fn append_json_string<const BOUNDED: bool>(
     output: &mut String,
     mut text: &str,
+    max_bytes: usize,
     control: &OperationControl,
-) -> OperationControlResult<()> {
+) -> OperationControlResult<bool> {
     const CHUNK_BYTES: usize = 4 * 1024;
     output.push('"');
     while !text.is_empty() {
         let end = text.floor_char_boundary(CHUNK_BYTES);
         let (chunk, remaining) = text.split_at(end);
         let quoted = serde_json::to_string(chunk).expect("strings are serializable to JSON");
-        output.push_str(&quoted[1..quoted.len() - 1]);
+        let escaped = &quoted[1..quoted.len() - 1];
+        if BOUNDED && escaped.len() > max_bytes.saturating_sub(output.len()) {
+            return Ok(false);
+        }
+        output.push_str(escaped);
         if !remaining.is_empty() {
             control.checkpoint()?;
         }
         text = remaining;
     }
     output.push('"');
-    Ok(())
+    Ok(true)
 }
 
 struct Frame {
@@ -1317,13 +1467,14 @@ mod tests {
     fn ordered_json_string_chunks_preserve_utf8_and_observe_cancellation() {
         let value = "界\n\"\\".repeat(3000);
         let mut output = String::new();
-        append_json_string(&mut output, &value, &OperationControl::new()).unwrap();
+        append_json_string::<false>(&mut output, &value, usize::MAX, &OperationControl::new())
+            .unwrap();
         assert_eq!(output, serde_json::to_string(&value).unwrap());
 
         let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
         output.clear();
-        assert!(append_json_string(&mut output, &value, &control).is_err());
+        assert!(append_json_string::<false>(&mut output, &value, usize::MAX, &control).is_err());
     }
 
     #[test]

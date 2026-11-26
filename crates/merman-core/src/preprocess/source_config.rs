@@ -432,6 +432,7 @@ pub struct FrontmatterSourceEvidence {
     has_config: bool,
     rewrite_safe: bool,
     fields: Option<MermaidConfig>,
+    insert_order: Option<super::rewrite_order::FrontmatterInsertOrder>,
 }
 
 impl FrontmatterSourceEvidence {
@@ -442,6 +443,7 @@ impl FrontmatterSourceEvidence {
         has_config: bool,
         rewrite_safe: bool,
         fields: Option<MermaidConfig>,
+        insert_order: Option<super::rewrite_order::FrontmatterInsertOrder>,
     ) -> Self {
         Self {
             full_span,
@@ -450,6 +452,7 @@ impl FrontmatterSourceEvidence {
             has_config,
             rewrite_safe,
             fields,
+            insert_order,
         }
     }
 
@@ -478,13 +481,24 @@ impl FrontmatterSourceEvidence {
         self.fields.as_ref()
     }
 
+    #[doc(hidden)]
+    pub fn insert_order(&self) -> Option<&super::rewrite_order::FrontmatterInsertOrder> {
+        self.insert_order.as_ref()
+    }
+
     #[cfg(test)]
     fn estimated_owned_heap_bytes(&self) -> usize {
-        self.indent.capacity().saturating_add(
-            self.fields
-                .as_ref()
-                .map_or(0, MermaidConfig::estimated_owned_heap_bytes),
-        )
+        self.indent
+            .capacity()
+            .saturating_add(
+                self.fields
+                    .as_ref()
+                    .map_or(0, MermaidConfig::estimated_owned_heap_bytes),
+            )
+            .saturating_add(self.insert_order.as_ref().map_or(
+                0,
+                super::rewrite_order::FrontmatterInsertOrder::estimated_owned_heap_bytes,
+            ))
     }
 }
 
@@ -498,6 +512,7 @@ pub struct SourceConfigEvidence {
     directives: Vec<SourceDirectiveEvidence>,
     keys: Vec<SourceConfigKeyEvidence>,
     config_insert_span: SourceSpan,
+    legacy_init_namespace: Option<&'static str>,
     rewrite_safe: bool,
     appearance: SourceAppearanceSummary,
     pub(super) appearance_capture: SourceAppearanceCapture,
@@ -517,6 +532,7 @@ impl SourceConfigEvidence {
             directives: Vec::new(),
             keys: Vec::new(),
             config_insert_span: SourceSpan::new(0, 0),
+            legacy_init_namespace: None,
             rewrite_safe: true,
             appearance: SourceAppearanceSummary::Unknown,
             appearance_capture: SourceAppearanceCapture::default(),
@@ -526,6 +542,15 @@ impl SourceConfigEvidence {
 
     pub fn frontmatter(&self) -> Option<&FrontmatterSourceEvidence> {
         self.frontmatter.as_ref()
+    }
+
+    #[doc(hidden)]
+    pub const fn legacy_init_namespace(&self) -> Option<&'static str> {
+        self.legacy_init_namespace
+    }
+
+    pub(super) fn set_legacy_init_namespace(&mut self, namespace: Option<&'static str>) {
+        self.legacy_init_namespace = namespace;
     }
 
     pub fn directives(&self) -> &[SourceDirectiveEvidence] {

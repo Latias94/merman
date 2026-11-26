@@ -4,7 +4,7 @@ use crate::{
     AnalysisCancellationToken, AnalysisCancelled, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan,
     SourceMap,
 };
-use merman_core::preprocess::SourceConfigEvidence;
+use merman_core::preprocess::{FrontmatterInsertOrder, SourceConfigEvidence};
 use merman_model::{MermaidConfig, SourceSpan};
 use std::collections::BTreeMap;
 use std::mem::size_of;
@@ -26,6 +26,7 @@ pub(crate) struct MigrationFrontmatter {
     pub(crate) has_config: bool,
     pub(crate) rewrite_safe: bool,
     pub(crate) fields: Option<MermaidConfig>,
+    pub(crate) insert_order: Option<FrontmatterInsertOrder>,
 }
 
 #[derive(Debug)]
@@ -35,6 +36,7 @@ pub(crate) struct ConfigMigrationEvidence {
     pub(crate) frontmatter: Option<MigrationFrontmatter>,
     pub(crate) config_insert_span: SourceSpan,
     pub(crate) directive_spans: Vec<SourceSpan>,
+    pub(crate) legacy_init_namespace: Option<&'static str>,
     pub(crate) removals: Vec<SourceSpan>,
 }
 
@@ -136,6 +138,7 @@ impl ConfigMigrationEvidence {
                     has_config: frontmatter.has_config(),
                     rewrite_safe: frontmatter.rewrite_safe(),
                     fields,
+                    insert_order: frontmatter.insert_order().cloned(),
                 })
             }
         };
@@ -146,6 +149,7 @@ impl ConfigMigrationEvidence {
             frontmatter,
             config_insert_span: source_config.config_insert_span(),
             directive_spans,
+            legacy_init_namespace: source_config.legacy_init_namespace(),
             removals,
         })))
     }
@@ -164,6 +168,9 @@ impl ConfigMigrationEvidence {
         weight.add_array::<SourceSpan>(self.directive_spans.capacity());
         if let Some(frontmatter) = &self.frontmatter {
             weight.add_string(&frontmatter.indent);
+            if let Some(order) = &frontmatter.insert_order {
+                weight.add(order.estimated_owned_heap_bytes());
+            }
             if let Some(fields) = &frontmatter.fields {
                 weight.add(crate::retained_weight::ARC_ALLOCATION_OVERHEAD);
                 weight.add(fields.estimated_owned_heap_bytes());

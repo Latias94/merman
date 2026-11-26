@@ -79,6 +79,7 @@ pub(super) fn append_directive_evidence(
             ));
         }
     }
+    evidence.set_legacy_init_namespace(captured.legacy_init_namespace);
     if captured.recovered_incomplete_directive {
         evidence.mark_rewrite_unsafe();
     }
@@ -94,6 +95,8 @@ pub(super) struct ProcessedDirectives {
     pub(super) recovered_incomplete_directive: bool,
     #[cfg(feature = "editor-facts")]
     evidence: Vec<LocalDirectiveEvidence>,
+    #[cfg(feature = "editor-facts")]
+    legacy_init_namespace: Option<&'static str>,
     pub(super) error: Option<Error>,
     pub(super) panic: Option<CapturedPanic>,
     #[cfg(feature = "editor-facts")]
@@ -124,6 +127,8 @@ pub(super) fn process_directives_controlled(
     #[cfg(feature = "editor-facts")]
     let mut appearance_capture = SourceAppearanceCapture::default();
     #[cfg(feature = "editor-facts")]
+    let mut legacy_init_namespace = None;
+    #[cfg(feature = "editor-facts")]
     let mut appearance_complete = true;
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
@@ -135,6 +140,8 @@ pub(super) fn process_directives_controlled(
             recovered_incomplete_directive: false,
             #[cfg(feature = "editor-facts")]
             evidence: Vec::new(),
+            #[cfg(feature = "editor-facts")]
+            legacy_init_namespace: None,
             error: None,
             panic: None,
             #[cfg(feature = "editor-facts")]
@@ -233,6 +240,8 @@ pub(super) fn process_directives_controlled(
                 recovered_incomplete_directive,
                 #[cfg(feature = "editor-facts")]
                 evidence,
+                #[cfg(feature = "editor-facts")]
+                legacy_init_namespace: None,
                 error: first_error,
                 panic: None,
                 #[cfg(feature = "editor-facts")]
@@ -271,6 +280,8 @@ pub(super) fn process_directives_controlled(
                 detector,
                 #[cfg(feature = "editor-facts")]
                 &mut appearance_capture,
+                #[cfg(feature = "editor-facts")]
+                &mut legacy_init_namespace,
                 control,
             )
         };
@@ -291,6 +302,8 @@ pub(super) fn process_directives_controlled(
                             recovered_incomplete_directive,
                             #[cfg(feature = "editor-facts")]
                             evidence,
+                            #[cfg(feature = "editor-facts")]
+                            legacy_init_namespace: None,
                             error: first_error,
                             panic: Some(CapturedPanic::from_payload(payload)),
                             #[cfg(feature = "editor-facts")]
@@ -333,6 +346,8 @@ pub(super) fn process_directives_controlled(
         recovered_incomplete_directive,
         #[cfg(feature = "editor-facts")]
         evidence,
+        #[cfg(feature = "editor-facts")]
+        legacy_init_namespace,
         error: first_error,
         panic: None,
         #[cfg(feature = "editor-facts")]
@@ -347,6 +362,7 @@ pub(super) fn detect_init_controlled(
     input: &str,
     detector: &DiagramTypeDetector<'_>,
     #[cfg(feature = "editor-facts")] appearance_capture: &mut SourceAppearanceCapture,
+    #[cfg(feature = "editor-facts")] legacy_init_namespace: &mut Option<&'static str>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
@@ -385,10 +401,14 @@ pub(super) fn detect_init_controlled(
                 } else {
                     ty
                 };
-                if let Value::Object(obj) = &mut args
-                    && let Some(old) = obj.insert(key.to_string(), diagram_specific_value)
-                {
-                    crate::json_value::drop_value_nonrecursive(old);
+                if let Value::Object(obj) = &mut args {
+                    if let Some(old) = obj.insert(key.to_string(), diagram_specific_value) {
+                        crate::json_value::drop_value_nonrecursive(old);
+                    }
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        *legacy_init_namespace = Some(key);
+                    }
                 }
             } else {
                 crate::json_value::drop_value_nonrecursive(diagram_specific_value);

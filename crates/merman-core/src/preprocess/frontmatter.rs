@@ -2,6 +2,10 @@
 
 use super::config_scan::MAX_CONFIG_NESTING_DEPTH;
 #[cfg(feature = "editor-facts")]
+use super::rewrite_order::{
+    FrontmatterInsertOrder, MAX_INSERT_ORDER_JSON_BYTES, MAX_REWRITE_DEPTH,
+};
+#[cfg(feature = "editor-facts")]
 use super::{
     FrontmatterSourceEvidence, LocalConfigKeyEvidence, PreprocessedSource, SourceConfigCaptureMode,
     SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
@@ -45,6 +49,7 @@ pub(super) fn append_frontmatter_evidence(
                 captured.has_config,
                 captured.rewrite_safe,
                 captured.fields.clone(),
+                captured.insert_order.clone(),
             ))
             .map(|frontmatter| (frontmatter, insert))
         });
@@ -116,6 +121,8 @@ pub(super) struct FrontmatterCapture {
     rewrite_safe: bool,
     #[cfg(feature = "editor-facts")]
     fields: Option<MermaidConfig>,
+    #[cfg(feature = "editor-facts")]
+    insert_order: Option<FrontmatterInsertOrder>,
 }
 
 enum FrontmatterYamlInput<'a> {
@@ -195,6 +202,8 @@ pub(super) fn process_frontmatter_controlled(
             rewrite_safe: true,
             #[cfg(feature = "editor-facts")]
             fields: None,
+            #[cfg(feature = "editor-facts")]
+            insert_order: None,
         });
     };
     let body = &input[location.body.start..location.body.end];
@@ -206,12 +215,29 @@ pub(super) fn process_frontmatter_controlled(
         control,
     )?;
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    let (mut captured, insert_order) = {
+        static ROUTES: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
+            std::sync::OnceLock::new();
+        let routes = capture_mode.collects().then(|| {
+            ROUTES
+                .get_or_init(|| frontmatter_config_routes().collect())
+                .as_slice()
+        });
+        crate::yaml_config::parse_yaml_frontmatter_capture_controlled(
+            yaml_input.text(),
+            MAX_CONFIG_NESTING_DEPTH,
+            routes,
+            MAX_INSERT_ORDER_JSON_BYTES,
+            MAX_REWRITE_DEPTH,
+            control,
+        )?
+    };
+    #[cfg(not(feature = "editor-facts"))]
     let mut captured = crate::yaml_config::parse_yaml_with_capture_controlled(
         yaml_input.text(),
         MAX_CONFIG_NESTING_DEPTH,
         &["title", "displayMode"],
-        #[cfg(feature = "editor-facts")]
-        capture_mode.collects(),
         control,
     )?;
     #[cfg(feature = "editor-facts")]
@@ -255,6 +281,8 @@ pub(super) fn process_frontmatter_controlled(
                 rewrite_safe: false,
                 #[cfg(feature = "editor-facts")]
                 fields: None,
+                #[cfg(feature = "editor-facts")]
+                insert_order: None,
             });
         }
     };
@@ -312,6 +340,8 @@ pub(super) fn process_frontmatter_controlled(
         rewrite_safe,
         #[cfg(feature = "editor-facts")]
         fields,
+        #[cfg(feature = "editor-facts")]
+        insert_order: insert_order.map(FrontmatterInsertOrder::from_json),
     })
 }
 
@@ -434,18 +464,22 @@ fn merge_top_level_frontmatter_diagram_configs(
 ) {
     // Mermaid upstream only consumes `config`, but users commonly read docs examples as allowing
     // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
-    for fact in crate::family::frontmatter_config_aliases() {
-        if let Some(value) = parsed_obj.get(fact.source) {
+    for (key, namespace) in frontmatter_config_routes() {
+        if let Some(value) = parsed_obj.get(key) {
             config.set_value(
-                fact.namespace,
+                namespace,
                 crate::json_value::clone_value_nonrecursive(value),
             );
         }
     }
+}
 
-    for &key in crate::family::frontmatter_config_namespaces() {
-        if let Some(value) = parsed_obj.get(key) {
-            config.set_value(key, crate::json_value::clone_value_nonrecursive(value));
-        }
-    }
+pub(super) fn frontmatter_config_routes() -> impl Iterator<Item = (&'static str, &'static str)> {
+    let aliases = crate::family::frontmatter_config_aliases()
+        .iter()
+        .map(|fact| (fact.source, fact.namespace));
+    let namespaces = crate::family::frontmatter_config_namespaces()
+        .iter()
+        .map(|&key| (key, key));
+    aliases.chain(namespaces)
 }

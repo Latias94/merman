@@ -1,5 +1,6 @@
 use super::config_scan::max_flow_collection_depth_controlled;
 use super::directives::{MAX_DIRECTIVE_CONFIG_PARSE_BYTES, sanitize_directive_controlled};
+use super::frontmatter::frontmatter_config_routes;
 use super::{
     PreprocessedSource, split_frontmatter_block_controlled, text::cleanup_text_controlled,
 };
@@ -12,9 +13,33 @@ use merman_core_preprocess::text::PreprocessMarkers;
 use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use std::sync::Arc;
 
-const MAX_REWRITE_DEPTH: usize = 64;
+pub(super) const MAX_REWRITE_DEPTH: usize = 64;
+const JSON_ESCAPE_EXPANSION: usize = 6;
+pub(super) const MAX_INSERT_ORDER_JSON_BYTES: usize =
+    JSON_ESCAPE_EXPANSION * MAX_DIRECTIVE_CONFIG_PARSE_BYTES;
 const MAX_REWRITE_DIRECTIVES: usize = 128;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrontmatterInsertOrder(Arc<str>);
+
+impl FrontmatterInsertOrder {
+    pub(super) fn from_json(json: String) -> Self {
+        Self(json.into())
+    }
+
+    pub fn estimated_owned_heap_bytes(&self) -> usize {
+        self.0
+            .len()
+            .saturating_add(2 * std::mem::size_of::<usize>())
+    }
+}
+
+pub enum FrontmatterRewrite<'a> {
+    Insert(Option<&'a FrontmatterInsertOrder>),
+    Replace(SourceSpan),
+}
 
 /// Authored order hints for a frontmatter code action. The original parse owns the values.
 pub struct SourceConfigRewriteOrder {
@@ -26,8 +51,9 @@ pub struct SourceConfigRewriteOrder {
 /// Reads only the already-captured source constructs, using the same preprocessing and parsers.
 pub fn source_config_rewrite_order_controlled(
     source: &str,
-    frontmatter: Option<SourceSpan>,
+    frontmatter: FrontmatterRewrite<'_>,
     directives: &[SourceSpan],
+    legacy_init_namespace: Option<&'static str>,
     max_bytes: usize,
     max_nesting_depth: usize,
     control: &OperationControl,
@@ -38,8 +64,9 @@ pub fn source_config_rewrite_order_controlled(
     if directives.len() > MAX_REWRITE_DIRECTIVES {
         return Ok(None);
     }
-    let frontmatter = match frontmatter {
-        Some(span) => {
+    let empty_config = || OrderedJson::from(Value::Object(Map::new()));
+    let (frontmatter, mut compatibility_config) = match frontmatter {
+        FrontmatterRewrite::Replace(span) => {
             let Some(text) = source
                 .get(span.start..span.end)
                 .filter(|s| s.len() <= max_bytes)
@@ -59,32 +86,33 @@ pub fn source_config_rewrite_order_controlled(
             else {
                 return Ok(None);
             };
-            if json.is_empty() {
+            let fields = if json.is_empty() {
                 None
             } else {
-                let mut parser = serde_json::Deserializer::from_str(&json);
-                let Ok(ordered) = OrderedJson::deserialize_with_scope(&mut parser, EveryMember)
-                else {
+                let Some(ordered) = ordered_yaml_json(&json) else {
                     return Ok(None);
                 };
                 Some(ordered)
-            }
+            };
+            (fields, empty_config())
         }
-        None => None,
+        FrontmatterRewrite::Insert(order) => {
+            let order = order
+                .filter(|order| {
+                    max_nesting_depth == MAX_REWRITE_DEPTH
+                        && order.0.len() <= max_bytes.saturating_mul(JSON_ESCAPE_EXPANSION)
+                })
+                .and_then(|order| ordered_yaml_json(&order.0))
+                .unwrap_or_else(empty_config);
+            (None, order)
+        }
     };
 
-    let mut compatibility_config = OrderedJson::from(Value::Object(Map::new()));
     if let Some(fields) = frontmatter.as_ref() {
         let mut config = compatibility_config
             .object_mut()
             .expect("empty config object");
-        let aliases = crate::family::frontmatter_config_aliases()
-            .iter()
-            .map(|fact| (fact.source, fact.namespace));
-        let namespaces = crate::family::frontmatter_config_namespaces()
-            .iter()
-            .map(|&key| (key, key));
-        for (key, namespace) in aliases.chain(namespaces) {
+        for (key, namespace) in frontmatter_config_routes() {
             if let Some(value) = fields.view().get(key) {
                 config.insert(namespace.to_owned(), value.to_ordered());
             }
@@ -108,17 +136,10 @@ pub fn source_config_rewrite_order_controlled(
         if let Some(legacy) = order.view().get("config").map(|value| value.to_ordered()) {
             let mut object = order.object_mut().expect("config is an object member");
             object.retain(|key| key != "config");
-            if directives.len() == 1 {
-                let cleaned = clean_construct(source, control)?;
-                if let Ok(fact) = crate::detect::detect_builtin_controlled(cleaned.text(), control)?
-                {
-                    let name = if fact.id == "flowchart-v2" {
-                        "flowchart"
-                    } else {
-                        fact.id
-                    };
-                    object.insert(name.to_owned(), legacy);
-                }
+            if directives.len() == 1
+                && let Some(namespace) = legacy_init_namespace
+            {
+                object.insert(namespace.to_owned(), legacy);
             }
         }
         // Keep track of the entries that can contribute order, including array items that
@@ -133,6 +154,11 @@ pub fn source_config_rewrite_order_controlled(
         compatibility_config,
         directives: directive_order,
     }))
+}
+
+fn ordered_yaml_json(json: &str) -> Option<OrderedJson> {
+    let mut parser = serde_json::Deserializer::from_str(json);
+    OrderedJson::deserialize_with_scope(&mut parser, EveryMember).ok()
 }
 
 fn clean_construct(
