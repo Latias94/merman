@@ -148,10 +148,10 @@ impl RoutePoint {
     }
 }
 
-/// The fraction of each along-axis leg used by the two handles of an offset cubic.
+/// Along-axis handle fraction for an offset cubic. Keeping it below half orders the controls.
 pub fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
-    let (across, along) = (across.abs(), along.abs());
-    (0.45 + 0.12 * across.min(along) / across.max(along).max(1.0)).clamp(0.42, 0.56)
+    let ratio = across.abs() / along.abs().max(1.0);
+    (4.0 / (1.15 * ratio + 6.4)).clamp(0.25, 0.46)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

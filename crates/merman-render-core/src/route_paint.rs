@@ -1302,6 +1302,56 @@ mod tests {
     }
 
     #[test]
+    fn offset_cubics_have_ordered_handles_in_each_flow_direction() {
+        for (axis, sides) in [
+            (Axis::Vertical, (Side::Bottom, Side::Top)),
+            (Axis::Vertical, (Side::Top, Side::Bottom)),
+            (Axis::Horizontal, (Side::Right, Side::Left)),
+            (Axis::Horizontal, (Side::Left, Side::Right)),
+        ] {
+            let sign = if matches!(sides.0, Side::Top | Side::Left) {
+                -1.0
+            } else {
+                1.0
+            };
+            let point = |along, across| match axis {
+                Axis::Vertical => v(across, sign * along),
+                Axis::Horizontal => h(sign * along, across),
+            };
+            let progress = |p: Point| match axis {
+                Axis::Vertical => sign * p.y,
+                Axis::Horizontal => sign * p.x,
+            };
+            let mut previous = 0.48;
+            for ratio in [0.5, 1.0, 2.0, 4.0, 8.0, 20.0] {
+                let marker = Marker::default();
+                let points = [point(0.0, 0.0), point(112.0, ratio * 100.0)];
+                let painted = build_svg_path(
+                    &points,
+                    sides,
+                    RouteStyle::Curved,
+                    (marker, marker),
+                    CurveTerminals::Fixed,
+                    &[],
+                    None,
+                )
+                .unwrap();
+                let [PathSeg::Line(_), PathSeg::Cubic(curve), PathSeg::Line(_)] =
+                    segments(&painted)[..]
+                else {
+                    panic!("{}", painted.d);
+                };
+                let [start, first, second, end] =
+                    [curve.p0, curve.p1, curve.p2, curve.p3].map(progress);
+                let fraction = (first - start) / (end - start);
+                assert!(first <= second, "{sides:?}, ratio {ratio}: {}", painted.d);
+                assert!((0.25 - 1e-9..=previous + 1e-9).contains(&fraction));
+                previous = fraction;
+            }
+        }
+    }
+
+    #[test]
     fn rounded_quarters_share_short_legs_and_wide_turns_use_both_handles() {
         let points = [v(0.0, 0.0), v(0.0, 30.0), h(16.0, 30.0), v(16.0, 90.0)];
         let m = Marker::default();
