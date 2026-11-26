@@ -787,8 +787,8 @@ A left legend moves the pie by the measured legend text width plus its swatch an
 can expand the final viewBox independently; it does not change that pie translation. Browser text
 measurement can still alter the legend width and root bounds.
 
-Owners: [layout](../../crates/merman-render/src/pie.rs),
-[theme preparation](../../crates/merman-render/src/pie/theme.rs), and
+Owners: [layout](../../crates/merman-render-charts/src/pie/layout.rs),
+[theme preparation](../../crates/merman-render-charts/src/pie/theme.rs), and
 [SVG tests](../../crates/merman-render/tests/pie_svg_test.rs).
 
 ## Quadrant Chart
@@ -836,7 +836,7 @@ intermediate integer range. The final authored ticks assignment wins before the 
 applied. Canonical models retain nonfinite values; compatibility JSON projects them as null.
 
 Owners: [layout](../../crates/merman-render-charts/src/radar/layout.rs),
-[theme evidence](../../crates/merman-render/src/radar/theme.rs), and
+[theme preparation](../../crates/merman-render-charts/src/radar/theme.rs), and
 [SVG tests](../../crates/merman-render/tests/radar_svg_test.rs).
 
 ## Railroad
