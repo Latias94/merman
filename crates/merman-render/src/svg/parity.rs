@@ -316,14 +316,6 @@ mod wardley;
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use css::MermaidBaseCss;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]

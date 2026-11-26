@@ -10,9 +10,7 @@ use merman_render_core::svg_css::CssSelectorDiagramId;
 ))]
 pub(crate) use merman_render_core::svg_css::PreparedCommonNeoCss;
 pub(super) use merman_render_core::svg_css::{
-    FragmentDiagramId, MermaidBaseCss, write_mermaid_base_css_prefix,
-    write_mermaid_base_css_root_rule,
-    write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to,
+    FragmentDiagramId, write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to,
 };
 
 pub(super) fn write_mermaid_paragraph_css_to(
