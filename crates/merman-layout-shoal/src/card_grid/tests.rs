@@ -31,11 +31,16 @@ fn card_chain_wraps_deterministically_and_folds_to_available_width() {
         node.parent = Some(GroupId(0));
     }
     graph.edges.extend((0..8).map(|i| edge(i, i + 1)));
-    let mut options = Options::default();
-    options.capture_node_ranks = true;
-    options.spacing.node = 30.0;
-    options.spacing.rank = 30.0;
-    options.spacing.edge = 4.0;
+    let mut options = Options {
+        capture_node_ranks: true,
+        spacing: crate::Spacing {
+            node: 30.0,
+            rank: 30.0,
+            edge: 4.0,
+            ..crate::Spacing::default()
+        },
+        ..Options::default()
+    };
     let natural = layout_with_control(&graph, &options, &mut NoopWorkControl).unwrap();
     assert_eq!(natural.node_ranks, [0, 0, 0, 1, 1, 1, 2, 2, 2]);
     assert_eq!(natural.nodes[0].center().x, natural.nodes[3].center().x);

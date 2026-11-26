@@ -648,13 +648,8 @@ pub(super) fn spread_with_scratch(
     scratch: &mut HubScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let HubScratch {
-        faces,
-        tails,
-        proposed,
-    } = scratch;
-    let result = spread_faces(drawing, c, graph, options, faces, tails, proposed, work);
-    proposed.clear();
+    let result = spread_faces(drawing, c, graph, options, scratch, work);
+    scratch.proposed.clear();
     result
 }
 
@@ -663,15 +658,18 @@ fn spread_faces(
     c: &Component,
     graph: &Graph,
     options: &Options,
-    faces: &mut Vec<[Face; 2]>,
-    tails: &mut Vec<Tail>,
-    proposed: &mut Vec<(usize, Edit)>,
+    scratch: &mut HubScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     use crate::scratch::clear_reserve;
     if c.links.len() < 2 || c.boundaries || c.pinned || c.group_proxies {
         return Ok(());
     }
+    let HubScratch {
+        faces,
+        tails,
+        proposed,
+    } = scratch;
     work.charge(c.nodes.len())?;
     clear_reserve(faces, c.nodes.len())?;
     faces.resize(c.nodes.len(), [Face::default(); 2]);

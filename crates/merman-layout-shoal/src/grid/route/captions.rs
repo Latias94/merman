@@ -145,15 +145,16 @@ impl Scene {
 }
 
 pub(super) fn place(
+    context: &Routing<'_>,
+    plan: &Plan,
+    scope: usize,
     walls: &[Rect],
-    scope_bounds: Rect,
-    parts: &[Part],
-    sites: &[Site],
     routes: &mut [Routed],
-    metrics: Metrics,
     drawing_bounds: &mut Size,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    let parts = &plan.scopes[scope];
+    let sites = &plan.sites;
     let mut labelled = false;
     for part in parts {
         work.visit(1)?;
@@ -186,6 +187,8 @@ pub(super) fn place(
             }
         }
     }
+    let metrics = context.metrics;
+    let scope_bounds = context.bounds(scope);
     let mut scene = Scene {
         walls: Bvh::build_with_work(geometry, |bounds| *bounds, work)?,
         labels: Vec::new(),

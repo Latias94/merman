@@ -692,7 +692,6 @@ pub(super) fn root(
         &wires,
         &owners,
         &mut shells,
-        axes,
         ctx.options,
         work,
     )?;

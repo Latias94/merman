@@ -47,10 +47,10 @@ pub(super) fn reserve_feedback(
     wires: &[Wire],
     owners: &[usize],
     shells: &mut [Shell],
-    axes: Axes,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Vec<[Option<f64>; 2]>, bool)> {
+    let axes = Axes::new(graph.direction);
     work.charge(wires.len() + shells.len())?;
     let mut feedback = filled(wires.len(), [None; 2])?;
     let pitch = options

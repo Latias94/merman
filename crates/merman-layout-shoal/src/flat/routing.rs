@@ -239,12 +239,16 @@ fn collect_pieces(
     graph: &Graph,
     options: &Options,
     x: &[f64],
-    bands: &mut [Band],
-    index: &[usize],
-    ends: &mut Vec<[EndRoom; 2]>,
-    delta: &mut Vec<i64>,
+    scratch: &mut RoutingScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Gap>> {
+    let RoutingScratch {
+        bands,
+        index,
+        ends,
+        delta,
+        ..
+    } = scratch;
     let g = ranked.expanded;
     let node_count = ranked.component.nodes.len();
     let gap_count = bands.len().saturating_sub(1);
@@ -914,7 +918,7 @@ impl Gap {
             if curved {
                 return Ok(());
             }
-            self.tracks = greedy_tracks(&mut self.pieces, &ids, work)?;
+            self.tracks = greedy_tracks(&mut self.pieces, ids, work)?;
         } else {
             work.sort(ids, |&a, &b| {
                 self.pieces[a]
@@ -927,7 +931,7 @@ impl Gap {
                 let mut promoted = filled(ids.len(), false)?;
                 if curved_levels(
                     &self.pieces,
-                    &ids,
+                    ids,
                     self.height,
                     self.height - guard,
                     &mut promoted,
@@ -946,7 +950,7 @@ impl Gap {
                 let mut flags = promoted.into_iter();
                 ids.retain(|_| flags.next() == Some(true));
             }
-            self.tracks = weighed_tracks(&mut self.pieces, &ids, work)?;
+            self.tracks = weighed_tracks(&mut self.pieces, ids, work)?;
         }
         if self.tracks > 0 {
             let (margin, pitch, _) = track_metrics(options.routing, options.spacing.edge);
@@ -1422,20 +1426,10 @@ fn route_ranked(
         return Err(LayoutError::InvalidInput("incomplete refined vertices"));
     }
     bands(g, &mut scratch.bands, &mut scratch.index, work)?;
+    let mut gaps = collect_pieces(&ranked, graph, options, x, scratch, work)?;
     let bands = &mut scratch.bands;
     let index = &scratch.index;
     let (c, orientation, side_ports) = (ranked.component, ranked.orientation, ranked.side_ports);
-    let mut gaps = collect_pieces(
-        &ranked,
-        graph,
-        options,
-        x,
-        bands,
-        index,
-        &mut scratch.ends,
-        &mut scratch.delta,
-        work,
-    )?;
     place_bands(bands, &mut gaps, options, &mut scratch.ids, work)?;
     let clearance = if options.routing == RoutingStyle::Curved && !g.direct.contains(&true) {
         sweep_clearance(g, c, options, x, index, &mut scratch.rooms, work)?;

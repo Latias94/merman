@@ -58,6 +58,8 @@ struct Plan {
     sites: Vec<Site>,
     scopes: Vec<Vec<Part>>,
     paths: Vec<Vec<Slot>>,
+    truncated: Vec<TruncatedRoute>,
+    border_ports_left: usize,
 }
 
 fn opposite(side: Side) -> Side {
@@ -94,12 +96,16 @@ fn cross(side: Side, p: Point) -> f64 {
 }
 
 impl Plan {
-    fn new(hierarchy: &Hierarchy, graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Self> {
-        work.charge(hierarchy.scopes.len() + graph.edges.len())?;
+    fn new(context: &Routing<'_>, work: &mut Work<'_>) -> LayoutResult<Self> {
+        let scopes = context.hierarchy.scopes.len();
+        let edges = context.graph.edges.len();
+        work.charge(scopes + edges)?;
         Ok(Self {
             sites: Vec::new(),
-            scopes: filled(hierarchy.scopes.len(), Vec::new())?,
-            paths: reserved(graph.edges.len())?,
+            scopes: filled(scopes, Vec::new())?,
+            paths: reserved(edges)?,
+            truncated: Vec::new(),
+            border_ports_left: context.options.caps.max_border_ports,
         })
     }
 
@@ -121,8 +127,6 @@ impl Plan {
         projection: Projection,
         sides: [Side; 2],
         edge: usize,
-        remaining: &mut usize,
-        truncated: &mut Vec<TruncatedRoute>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let spec = &context.graph.edges[edge];
@@ -140,15 +144,15 @@ impl Plan {
             .checked_add(transit(projection.ends[1]))
             .ok_or(WorkError::ArithmeticOverflow)?;
         let mut ends = projection.ends;
-        let kept = if needed <= *remaining {
-            *remaining -= needed;
+        let kept = if needed <= self.border_ports_left {
+            self.border_ports_left -= needed;
             needed
         } else {
             for (end, item) in ends.iter_mut().zip(projection.items) {
                 *end = item.unwrap_or(*end);
             }
             push(
-                truncated,
+                &mut self.truncated,
                 TruncatedRoute {
                     edge: EdgeId(edge as u32),
                     source: h.endpoint(ends[0]),
@@ -665,20 +669,10 @@ pub(crate) fn route_with_fallback(
         metrics,
         options,
     };
-    let mut plan = Plan::new(hierarchy, graph, work)?;
-    let mut truncated = Vec::new();
-    let mut remaining = options.caps.max_border_ports;
+    let mut plan = Plan::new(&context, work)?;
     for (index, &(projection, sides)) in edges.iter().enumerate() {
         work.visit(1)?;
-        plan.edge(
-            &context,
-            projection,
-            sides,
-            index,
-            &mut remaining,
-            &mut truncated,
-            work,
-        )?;
+        plan.edge(&context, projection, sides, index, work)?;
     }
     context.ports(&mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
@@ -746,12 +740,11 @@ pub(crate) fn route_with_fallback(
                 });
             }
             captions::place(
+                &context,
+                &plan,
+                scope,
                 &walls,
-                scope_bounds,
-                parts,
-                &plan.sites,
                 &mut routes,
-                metrics,
                 &mut bounds,
                 work,
             )?;
@@ -759,7 +752,7 @@ pub(crate) fn route_with_fallback(
         routed.push(routes);
     }
     drawing.edges = reserved(edges.len())?;
-    drawing.truncated_routes = truncated;
+    drawing.truncated_routes = plan.truncated;
     for (index, (steps, &(_, sides))) in plan.paths.iter().zip(edges).enumerate() {
         work.visit(1)?;
         let mut points = Vec::<RoutePoint>::new();

@@ -62,21 +62,23 @@ fn replayed_labels_clear_foreign_nodes_shafts_and_markers_or_keep_both_original_
         if obstruction == "node" {
             drawing.nodes.push(rect(44.0, 100.0, 3.0, 40.0));
         }
-        let mut graph = Graph::default();
-        graph.nodes = drawing
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(i, r)| {
-                NodeSpec::new(
-                    Size {
-                        width: r.width,
-                        height: r.height,
-                    },
-                    i as u32,
-                )
-            })
-            .collect();
+        let mut graph = Graph {
+            nodes: drawing
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    NodeSpec::new(
+                        Size {
+                            width: r.width,
+                            height: r.height,
+                        },
+                        i as u32,
+                    )
+                })
+                .collect(),
+            ..Graph::default()
+        };
         graph.nodes[0].contour = ShapeContourHint::Diamond;
         let links: Vec<_> = [(0, 1), (0, 2), (3, 4)]
             .into_iter()
