@@ -560,6 +560,31 @@ fn straight_edges_reserve_both_markers_and_the_middle_label() {
 }
 
 #[test]
+fn discarded_label_tiers_preserve_the_spacing_of_the_retained_tier() {
+    let mut g = graph(
+        vec![size(40.0, 20.0); 4],
+        vec![edge(0, 1), edge(1, 2), edge(2, 3)],
+    );
+    g.edges[2].label = Some(size(16.0, 8.0));
+    let mut options = Options::default();
+    options.inline_labels = false;
+    options.compact_ranks = false;
+    options.caps.max_dummies = 1;
+
+    let last_gap = |drawing: &LayoutOutput| {
+        drawing.nodes[3].y - (drawing.nodes[2].y + drawing.nodes[2].height)
+    };
+    let reference = layout(&g, &options).unwrap();
+    assert_eq!(reference.stats.direct_fallback_edges, 0);
+
+    g.edges[0].label = g.edges[2].label;
+    g.edges[1].label = g.edges[2].label;
+    let capped = layout(&g, &options).unwrap();
+    assert_eq!(capped.stats.direct_fallback_edges, 2);
+    assert!((last_gap(&capped) - last_gap(&reference)).abs() < EPS);
+}
+
+#[test]
 fn competing_minimum_rank_spans_are_feasible_in_every_direction() {
     let mut options = Options::default();
     options.spacing.rank = 100.0;

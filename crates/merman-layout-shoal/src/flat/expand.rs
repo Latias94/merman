@@ -234,7 +234,7 @@ fn prepare_layers(
     work.charge(len.checked_mul(3).ok_or(WorkError::ArithmeticOverflow)?)?;
     let mut delta = filled(len, 0_i64)?;
     let mut members = filled(len, 0_usize)?;
-    let mut dense = filled(len, 0_u32)?;
+    let mut dense = filled(len, u32::MAX)?;
     for &r in &g.rank {
         work.visit(1)?;
         members[r as usize] += 1;
@@ -269,6 +269,7 @@ fn prepare_layers(
         *rank = dense[*rank as usize];
         *rank != u32::MAX
     });
+    debug_assert!(g.inserted_ranks.windows(2).all(|pair| pair[0] < pair[1]));
     rows(&mut g.layers, used)?;
     for (layer, size) in g.layers.iter_mut().zip(members) {
         clear_reserve(layer, size)?;
@@ -276,6 +277,7 @@ fn prepare_layers(
     for r in g.rank.iter_mut().chain(real) {
         work.visit(1)?;
         *r = dense[*r as usize];
+        debug_assert_ne!(*r, u32::MAX);
     }
     Ok(())
 }
@@ -744,6 +746,7 @@ mod tests {
         }
         run(&mut g, 0, usize::MAX).unwrap();
         assert_eq!(g.logical_rank, [0, 2, 3]);
+        assert!(g.inserted_ranks.is_empty());
         assert!(g.layers.iter().all(|r| !r.is_empty()));
         assert_eq!(g.rank, [0, 1, 2]);
         assert_eq!(g.direct, [true, true, false]);
