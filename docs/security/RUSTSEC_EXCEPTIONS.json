@@ -21,6 +21,7 @@
         ],
         [
           "merman-render@0.11.0",
+          "merman-render-core@0.11.0",
           "ratex-svg@0.1.15",
           "ab_glyph@0.2.32",
           "owned_ttf_parser@0.25.1",
@@ -28,6 +29,7 @@
         ],
         [
           "merman-render@0.11.0",
+          "merman-render-core@0.11.0",
           "ratex-svg@0.1.15",
           "ratex-unicode-font@0.1.15",
           "ttf-parser@0.25.1"
