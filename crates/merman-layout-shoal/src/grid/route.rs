@@ -832,7 +832,9 @@ pub(crate) fn draw(
             options,
         };
         for (edge, points) in comb::plan(&context, &plan, origin, work)? {
-            drawing.edges[edge].points = points;
+            let route = &mut drawing.edges[edge];
+            route.points = points;
+            route.shared_bus = true;
         }
     }
     drawing.truncated_routes = plan.truncated;

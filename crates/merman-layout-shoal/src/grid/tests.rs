@@ -391,6 +391,7 @@ fn clear_fan_shares_one_guarded_crossbar_on_all_four_faces() {
                 assert!(face(at(hub_contact), result.nodes[0], hub));
                 assert_eq!(cross(at(hub_contact)), cross(hub_center) + 4.0);
                 assert!(face(at(leaf_contact), result.nodes[index + 1], leaf));
+                assert!(route.shared_bus);
                 assert!(route.points.iter().any(|p| p.kind == KnotKind::GapBoundary));
                 for leg in route.points.windows(2) {
                     let (a, b) = (at(leg[0]), at(leg[1]));

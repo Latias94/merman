@@ -120,10 +120,30 @@ pub(crate) fn edge(edge: &EdgeSpec) -> LayoutResult<()> {
         || ![edge.start_marker, edge.end_marker]
             .into_iter()
             .all(|m| length(m.length) && length(m.width))
+        || !edge.raw_marker_runways().into_iter().all(length)
     {
         return Err(LayoutError::InvalidInput(
             "invalid edge label, marker or weight",
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Endpoint, NodeId};
+
+    #[test]
+    fn edge_validation_rejects_non_finite_or_negative_marker_runways() {
+        let ends = (Endpoint::Node(NodeId(0)), Endpoint::Node(NodeId(1)));
+        for bad in [[f64::NAN, 0.0], [0.0, f64::INFINITY], [-1.0, 0.0]] {
+            let mut spec = EdgeSpec::new(ends.0, ends.1);
+            spec.set_marker_runways(bad);
+            assert!(edge(&spec).is_err(), "{bad:?}");
+        }
+        let mut ok = EdgeSpec::new(ends.0, ends.1);
+        ok.set_marker_runways([0.0, 14.0]);
+        assert!(edge(&ok).is_ok());
+    }
 }

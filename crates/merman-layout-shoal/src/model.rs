@@ -459,10 +459,14 @@ impl EdgeSpec {
     }
 
     /// Records the measured contact-to-turn distances for both marker footprints.
-    /// Set this after assigning the marker metrics. A zero value derives a fallback from the
-    /// footprint for the corresponding endpoint.
+    /// Set this after assigning the marker metrics. Values must be finite and nonnegative;
+    /// zero (or any value below the marker's minimum lead) derives a fallback from the footprint.
     pub fn set_marker_runways(&mut self, runways: [f64; 2]) {
         self.marker_runways = runways;
+    }
+
+    pub(crate) fn raw_marker_runways(&self) -> [f64; 2] {
+        self.marker_runways
     }
 
     pub(crate) fn marker_runways(&self) -> [f64; 2] {

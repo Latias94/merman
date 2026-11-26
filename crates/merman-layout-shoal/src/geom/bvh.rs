@@ -53,6 +53,14 @@ impl<T> Bvh<T> {
     ) -> LayoutResult<Self> {
         let mut nodes = Vec::new();
         if !items.is_empty() {
+            let estimate = items
+                .len()
+                .div_ceil(LEAF_SIZE)
+                .checked_mul(2)
+                .ok_or(crate::WorkError::ArithmeticOverflow)?;
+            nodes
+                .try_reserve(estimate)
+                .map_err(|_| LayoutError::AllocationLimit)?;
             Self::partition(&mut items, 0, &mut nodes, &bounds, work)?;
         }
         Ok(Self { items, nodes })
