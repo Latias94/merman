@@ -782,6 +782,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         options,
         None,
         &edge_style_plan,
+        false,
     )
 }
 
@@ -801,6 +802,10 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         reason = "The Flowchart admission entry point also exists without a solver."
     )
 )]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The backend adapter receives prepared measurement inputs and the family output purpose."
+)]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
     render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
@@ -809,6 +814,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+    #[cfg_attr(not(feature = "layout-shoal"), allow(unused_variables))] prepare_for_svg: bool,
 ) -> Result<model::FlowchartLayout> {
     #[cfg(any(
         feature = "layout-dagre",
@@ -833,6 +839,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
             options,
             svg_label_sidecar,
             edge_style_plan,
+            prepare_for_svg,
         ),
         #[cfg(feature = "layout-elk")]
         GraphLayoutBackend::Elk(algorithm) => {

@@ -8,12 +8,13 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutCluster, LayoutLabel};
 use kurbo::Insets;
 use merman_model::presentation::PresentationConfig;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::FxHashMap;
+use std::collections::HashSet;
 
 pub(super) struct GroupBindings<'a> {
     pub(super) declarations: Vec<usize>,
     pub(super) collapsed: Vec<usize>,
-    pub(super) parents: HashMap<&'a str, u32>,
+    pub(super) parents: FxHashMap<&'a str, u32>,
     pub(super) directions: Vec<Direction>,
 }
 
@@ -34,14 +35,14 @@ pub(super) fn measure<'a>(
     measurement: &FlowchartMeasurement<'_>,
     config: &PresentationConfig,
     graph: &mut MeasuredGraph,
-    endpoints: &mut HashMap<&'a str, Endpoint>,
+    endpoints: &mut FxHashMap<&'a str, Endpoint>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<GroupBindings<'a>> {
     work.charge_adapter(view.subgraphs.len())?;
     let mut seen = HashSet::with_capacity(view.subgraphs.len());
     let mut declarations = Vec::with_capacity(view.subgraphs.len());
     let mut collapsed = Vec::new();
-    let mut parents = HashMap::new();
+    let mut parents = FxHashMap::default();
     let settings = &measurement.settings;
     let default_position = config
         .get_str("flowchart.subGraphTitlePosition")

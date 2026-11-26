@@ -80,7 +80,7 @@ pub(crate) fn edge_paint_error(edge_id: &str, error: route_paint::RoutePaintErro
     }
 }
 
-/// Render-only metadata. Compatibility JSON already carries the coordinates in occurrence order.
+/// Render-only metadata for coordinates in occurrence order.
 #[cfg(all(
     any(feature = "layout-shoal", test),
     any(
@@ -94,6 +94,20 @@ pub(crate) struct RouteTopology {
     pub(crate) endpoints: (Endpoint, Endpoint),
     pub(crate) ports: (Side, Side),
     pub(crate) knots: Vec<(Axis, KnotKind)>,
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+#[derive(Debug)]
+pub(crate) struct FlowchartSvgEdgeGeometry {
+    pub(crate) points: Vec<crate::model::LayoutPoint>,
+    pub(crate) label: Option<crate::model::LayoutLabel>,
 }
 
 #[cfg(all(
@@ -111,6 +125,9 @@ pub(crate) struct AxisRoutes {
     pub(crate) border_stitches: Vec<BorderStitch>,
     pub(crate) clearance: axis_clearance::AxisClearance,
     pub(crate) routes: Vec<Option<RouteTopology>>,
+    /// Geometry in Flowchart edge-owner order when preparing SVG without owned layout edges.
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) svg_edges: Option<Vec<FlowchartSvgEdgeGeometry>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -175,6 +192,21 @@ impl RouteContract {
         return matches!(self, Self::ElkParity);
         #[cfg(not(feature = "layout-elk"))]
         false
+    }
+
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    ))]
+    pub(crate) fn flowchart_svg_edges(&self) -> Option<&[FlowchartSvgEdgeGeometry]> {
+        match self {
+            Self::CanonicalAxis(axis) => axis.svg_edges.as_deref(),
+            _ => None,
+        }
     }
 
     #[cfg(any(

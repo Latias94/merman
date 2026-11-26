@@ -368,7 +368,7 @@ impl StepBadges {
             if let Some(label) = ctx
                 .layout_edges_by_key
                 .get(&edge.key)
-                .and_then(|edge| edge.label.as_ref())
+                .and_then(|edge| edge.label())
                 && let Some(point) = labels.position(edge.key)
             {
                 obstacles.push(Obstacle {

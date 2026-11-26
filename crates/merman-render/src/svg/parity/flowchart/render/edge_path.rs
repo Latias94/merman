@@ -72,7 +72,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
         if let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) {
-            ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+            ctx.work_meter.charge(layout_edge.points().len().max(2))?;
         }
         flowchart_compute_edge_path_geom(
             FlowchartEdgePathGeomRequest {

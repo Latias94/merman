@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         trace_enabled: _,
     } = request;
 
-    let le = ctx.layout_edges_by_key.get(&key)?;
+    let le = ctx.layout_edges_by_key.get(&key)?.materialized()?;
     let mut label = ctx.uses_elk_adapter_dom.then(|| le.label.clone()).flatten();
     if let Some(label) = label.as_mut() {
         label.x += ctx.tx - origin_x;
@@ -26,7 +26,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         // raw layout empty so a real two-point section still follows the routed-edge path.
         let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
         if let Some(label) = label.as_mut()
-            && let Some(midpoint) = missing_section_label_position(ctx, key, le, origin_x, origin_y)
+            && let Some(midpoint) =
+                missing_section_label_position(ctx, key, &le.points, origin_x, origin_y)
         {
             label.x = midpoint.x;
             label.y = midpoint.y;
@@ -199,7 +200,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         origin_y,
         trace_enabled,
     } = request;
-    let le = ctx.layout_edges_by_key.get(&key)?;
+    let le = ctx.layout_edges_by_key.get(&key)?.materialized()?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     let clip_clusters = !is_elk_layout;
     let ClippedEdgeRoute {
@@ -340,7 +341,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
-            layout_edge: le,
+            layout_edge: Some(le),
             origin_x,
             origin_y,
             base_points,

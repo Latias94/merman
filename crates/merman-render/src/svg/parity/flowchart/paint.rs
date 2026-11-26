@@ -42,7 +42,18 @@ pub(super) fn with_flowchart_paint_context<T>(
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
     }
-    let owner_occurrences = layout.edge_owners.validate(&layout.edges, &model.edges)?;
+    #[cfg(feature = "layout-shoal")]
+    let svg_edges = layout.route_contract.flowchart_svg_edges();
+    let validate_layout_edges = || layout.edge_owners.validate(&layout.edges, &model.edges);
+    #[cfg(feature = "layout-shoal")]
+    let owner_occurrences = match svg_edges {
+        Some(edges) => layout
+            .edge_owners
+            .validate_projected(edges.len(), &model.edges)?,
+        None => validate_layout_edges()?,
+    };
+    #[cfg(not(feature = "layout-shoal"))]
+    let owner_occurrences = validate_layout_edges()?;
 
     let measurer = options.text_measurer();
 
@@ -191,17 +202,9 @@ pub(super) fn with_flowchart_paint_context<T>(
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_key: FxHashMap<
-        crate::flowchart::FlowchartEdgeKey,
-        &crate::model::LayoutEdge,
-    > = FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for (key, edge) in layout.edge_owners.iter().zip(&layout.edges) {
-        if layout_edges_by_key.insert(key, edge).is_some() {
-            return Err(crate::Error::InvalidModel {
-                message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
-            });
-        }
-    }
+    let mut layout_edges_by_key =
+        FxHashMap::with_capacity_and_hasher(layout.edge_owners.len(), Default::default());
+    layout_edges_by_key.extend(FlowchartLayoutEdgeRef::in_layout_order(layout));
 
     let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
         FxHashMap::with_capacity_and_hasher(layout.clusters.len(), Default::default());
@@ -322,7 +325,7 @@ pub(super) fn prepare_edge_routes(
             trace_enabled: false,
         };
         if let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) {
-            ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+            ctx.work_meter.charge(layout_edge.points().len().max(2))?;
         }
         if ctx.uses_elk_adapter_dom {
             if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
@@ -503,7 +506,7 @@ impl FlowchartEdgeLabels {
             {
                 continue;
             }
-            let Some(layout_edge) = ctx.layout_edges_by_key.get(&edge.key) else {
+            let Some(&layout_edge) = ctx.layout_edges_by_key.get(&edge.key) else {
                 continue;
             };
             let root = hierarchy.edge_root(edge.key)?.unwrap_or("");
@@ -531,7 +534,7 @@ impl FlowchartEdgeLabels {
             };
             let plain = flowchart_label_plain_text(text, label_type, html);
             let empty = crate::flowchart::flowchart_label_text_is_empty_for_mode(&plain, html);
-            let position = if let Some(label) = layout_edge.label.as_ref() {
+            let position = if let Some(label) = layout_edge.label() {
                 if ctx.swimlane_direction.is_none() && !html && empty && text.is_empty() {
                     continue;
                 }
@@ -549,7 +552,7 @@ impl FlowchartEdgeLabels {
                 if ctx.swimlane_direction.is_some() || empty {
                     continue;
                 }
-                fallback_label_position(ctx, layout_edge, origin_x, origin_y)
+                fallback_label_position(ctx, layout_edge.points(), origin_x, origin_y)
             };
             self.positions.insert(
                 edge.key,
@@ -587,12 +590,11 @@ impl FlowchartEdgeLabels {
 
 fn fallback_label_position(
     ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::model::LayoutEdge,
+    points: &[crate::model::LayoutPoint],
     origin_x: f64,
     origin_y: f64,
 ) -> crate::model::LayoutPoint {
-    let points: Vec<_> = edge
-        .points
+    let points: Vec<_> = points
         .iter()
         .map(|point| crate::model::LayoutPoint {
             x: point.x + ctx.tx - origin_x,
@@ -983,6 +985,8 @@ mod tests {
                     ports: (Side::Right, Side::Left),
                     knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
                 })],
+                #[cfg(feature = "layout-shoal")]
+                svg_edges: None,
             }
             .into(),
         );
@@ -1060,6 +1064,8 @@ mod tests {
                         .to_vec(),
                     }),
                 ],
+                #[cfg(feature = "layout-shoal")]
+                svg_edges: None,
             }
             .into(),
         );

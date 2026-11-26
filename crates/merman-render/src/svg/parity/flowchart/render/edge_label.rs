@@ -62,7 +62,7 @@ fn position_flowchart_edge_label(
 pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
     ctx: &FlowchartRenderCtx<'_>,
     key: crate::flowchart::FlowchartEdgeKey,
-    layout_edge: &crate::model::LayoutEdge,
+    layout_edge: FlowchartLayoutEdgeRef<'_>,
     label: &crate::model::LayoutLabel,
     origin_x: f64,
     origin_y: f64,
@@ -83,17 +83,21 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
         return position_flowchart_edge_label(layout_anchor, geom, always_recompute);
     }
 
+    let points = layout_edge.points();
     if let Some(midpoint) =
-        edge_geom::missing_section_label_position(ctx, key, layout_edge, origin_x, origin_y)
+        edge_geom::missing_section_label_position(ctx, key, points, origin_x, origin_y)
     {
         return midpoint;
     }
 
     // Geometry caching only skips routes with fewer than two points. For that degenerate case,
     // `calcLabelPosition` either keeps the anchor (empty) or returns the sole waypoint.
-    if always_recompute || layout_edge.to_cluster.is_some() || layout_edge.from_cluster.is_some() {
-        let points = layout_edge
-            .points
+    if always_recompute
+        || layout_edge
+            .materialized()
+            .is_some_and(|edge| edge.to_cluster.is_some() || edge.from_cluster.is_some())
+    {
+        let points = points
             .iter()
             .map(|point| crate::model::LayoutPoint {
                 x: point.x + ctx.tx - origin_x,
@@ -228,7 +232,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         && let Some(label) = ctx
             .layout_edges_by_key
             .get(&key)
-            .and_then(|edge| edge.label.as_ref())
+            .and_then(|edge| edge.label())
     {
         let position = placements
             .local_position(key, ctx, origin_x, origin_y)
@@ -301,7 +305,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     );
     if !ctx.edge_html_labels {
         if let Some(le) = ctx.layout_edges_by_key.get(&key) {
-            if let Some(lbl) = le.label.as_ref() {
+            if let Some(lbl) = le.label() {
                 let position = placements
                     .local_position(key, ctx, origin_x, origin_y)
                     .unwrap_or(crate::model::LayoutPoint {
@@ -444,7 +448,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     };
 
     if let Some(le) = ctx.layout_edges_by_key.get(&key) {
-        if let Some(lbl) = le.label.as_ref() {
+        if let Some(lbl) = le.label() {
             let position = placements
                 .local_position(key, ctx, origin_x, origin_y)
                 .unwrap_or(crate::model::LayoutPoint {
@@ -618,7 +622,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) else {
         return Ok(());
     };
-    let Some(label) = layout_edge.label.as_ref() else {
+    let Some(label) = layout_edge.label() else {
         return Ok(());
     };
 

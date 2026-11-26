@@ -28,14 +28,14 @@ pub(super) fn paint(
     } = request;
     let invalid = || edge_paint_error(&edge.id, route_paint::RoutePaintError::InvalidGeometry);
     let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
-    if route.knots.len() != solved.points.len() || solved.points.len() < 2 {
+    let solved_points = solved.points();
+    if route.knots.len() != solved_points.len() || solved_points.len() < 2 {
         return Err(invalid());
     }
     points.clear();
-    points.reserve_exact(solved.points.len());
+    points.reserve_exact(solved_points.len());
     points.extend(
-        solved
-            .points
+        solved_points
             .iter()
             .zip(&route.knots)
             .map(|(point, &(axis, kind))| RoutePoint {
@@ -157,8 +157,7 @@ pub(super) fn paint(
         .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })
         .collect();
     if trace_enabled {
-        let base_points: Vec<_> = solved
-            .points
+        let base_points: Vec<_> = solved_points
             .iter()
             .map(|p| crate::model::LayoutPoint {
                 x: p.x + ctx.tx - origin_x,
@@ -168,7 +167,7 @@ pub(super) fn paint(
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
-            layout_edge: solved,
+            layout_edge: solved.materialized(),
             origin_x,
             origin_y,
             base_points: &base_points,
@@ -190,7 +189,7 @@ pub(super) fn paint(
         line_hop_applied: false,
         original_label_path_points: Vec::new(),
         label_path_points: Vec::new(),
-        label_anchor: solved.label.as_ref().map(|p| crate::model::LayoutPoint {
+        label_anchor: solved.label().map(|p| crate::model::LayoutPoint {
             x: p.x + ctx.tx - origin_x,
             y: p.y + ctx.ty - origin_y,
         }),

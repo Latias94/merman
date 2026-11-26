@@ -20,6 +20,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -118,7 +119,8 @@ fn measure(
     };
     let mut node_slots = Vec::new();
     let mut group_slots = Vec::new();
-    let mut endpoints = HashMap::with_capacity(working.nodes.len());
+    let mut endpoints =
+        FxHashMap::with_capacity_and_hasher(working.nodes.len(), Default::default());
     for (slot, node) in working.nodes.values().enumerate() {
         let endpoint = match node.kind {
             WorkingNodeKind::Content => {
@@ -450,6 +452,7 @@ impl Bindings {
                 border_stitches: solved.border_stitches,
                 clearance: AxisClearance::new(obstacles),
                 routes,
+                svg_edges: None,
             }
             .into(),
         ))

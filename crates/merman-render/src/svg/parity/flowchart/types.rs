@@ -25,6 +25,58 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum FlowchartLayoutEdgeRef<'a> {
+    Materialized(&'a crate::model::LayoutEdge),
+    #[cfg(feature = "layout-shoal")]
+    Projected(&'a crate::graph_layout::FlowchartSvgEdgeGeometry),
+}
+
+impl<'a> FlowchartLayoutEdgeRef<'a> {
+    pub(super) fn in_layout_order(
+        layout: &'a FlowchartLayout,
+    ) -> impl ExactSizeIterator<Item = (crate::flowchart::FlowchartEdgeKey, Self)> + 'a {
+        #[cfg(feature = "layout-shoal")]
+        let projected = layout.route_contract.flowchart_svg_edges();
+        // Paint preparation validates the row count before iterating the owners.
+        layout
+            .edge_owners
+            .iter()
+            .enumerate()
+            .map(move |(index, key)| {
+                #[cfg(feature = "layout-shoal")]
+                if let Some(edges) = projected {
+                    return (key, Self::Projected(&edges[index]));
+                }
+                (key, Self::Materialized(&layout.edges[index]))
+            })
+    }
+
+    pub(super) fn points(self) -> &'a [crate::model::LayoutPoint] {
+        match self {
+            Self::Materialized(edge) => &edge.points,
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(edge) => &edge.points,
+        }
+    }
+
+    pub(super) fn label(self) -> Option<&'a crate::model::LayoutLabel> {
+        match self {
+            Self::Materialized(edge) => edge.label.as_ref(),
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(edge) => edge.label.as_ref(),
+        }
+    }
+
+    pub(super) fn materialized(self) -> Option<&'a crate::model::LayoutEdge> {
+        match self {
+            Self::Materialized(edge) => Some(edge),
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(_) => None,
+        }
+    }
+}
+
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) prepared_nodes:
         &'a super::node_inventory::FlowchartPreparedNodes,
@@ -83,7 +135,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
     pub(in crate::svg::parity::flowchart) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
     pub(in crate::svg::parity::flowchart) layout_edges_by_key:
-        FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::model::LayoutEdge>,
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartLayoutEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
     pub(in crate::svg::parity::flowchart) elk_cluster_geometry:

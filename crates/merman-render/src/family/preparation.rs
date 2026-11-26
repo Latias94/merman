@@ -452,6 +452,7 @@ fn prepare_flowchart_family<'parsed>(
                         execution,
                         svg_label_sidecar,
                         edge_style_plan,
+                        preparation != FamilyPreparation::Layout,
                     )
                 },
             )?,
@@ -1355,6 +1356,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                         &execution,
                         sidecar,
                         edge_style_plan,
+                        preparation != FamilyPreparation::Layout,
                     )
                 },
             )?;

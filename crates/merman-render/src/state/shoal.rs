@@ -25,6 +25,7 @@ use crate::text::TextMeasurer;
 use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::state::StateDiagramRenderEdge;
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -116,7 +117,7 @@ fn measure<'a>(
     let index = |index: usize, work: &OperationLayoutWorkControl| {
         u32::try_from(index).map_err(|_| Error::from(work.record_arithmetic_overflow()))
     };
-    let mut endpoints = HashMap::with_capacity(model.nodes.len());
+    let mut endpoints = FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
     let mut leaves = Vec::new();
     let mut groups = Vec::new();
     for (sequence, node) in model.nodes.iter().enumerate() {
@@ -354,7 +355,7 @@ fn effective_group_directions(
     Ok(directions)
 }
 
-fn note_group_aliases(model: &StateDiagramModel) -> HashMap<&str, &str> {
+fn note_group_aliases(model: &StateDiagramModel) -> FxHashMap<&str, &str> {
     let declared_groups = || {
         model.nodes.iter().filter_map(|node| {
             let id = node.id.as_str();
@@ -363,7 +364,7 @@ fn note_group_aliases(model: &StateDiagramModel) -> HashMap<&str, &str> {
                 .flatten()
         })
     };
-    let last_by_owner: HashMap<_, _> = declared_groups().collect();
+    let last_by_owner: FxHashMap<_, _> = declared_groups().collect();
     declared_groups()
         .map(|(owner, id)| (id, last_by_owner[owner]))
         .collect()

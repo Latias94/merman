@@ -5,7 +5,7 @@ mod groups;
 use super::measured::{FlowchartMeasurement, MeasuredNode as LeafSize};
 use super::{
     FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -14,7 +14,9 @@ use crate::graph_layout::ir::{
     SolvedGraph,
 };
 use crate::graph_layout::route_paint::ObstacleOwner;
-use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
+use crate::graph_layout::{
+    AxisRoutes, FlowchartSvgEdgeGeometry, RouteContract, RouteTopology, placement,
+};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
@@ -23,20 +25,21 @@ use crate::model::{
 use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
-fn paint_clearance(
+fn paint_clearance<'a>(
     nodes: &[LayoutNode],
     clusters: &[LayoutCluster],
-    edges: &[LayoutEdge],
     owners: &[FlowchartEdgeKey],
+    edge_label: impl Fn(usize) -> Option<&'a LayoutLabel>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<AxisClearance> {
-    if edges.is_empty() {
+    if owners.is_empty() {
         return Ok(AxisClearance::default());
     }
     let shapes = work.checked_add(nodes.len(), clusters.len())?;
-    work.charge_adapter(work.checked_add(shapes, edges.len())?)?;
+    work.charge_adapter(work.checked_add(shapes, owners.len())?)?;
     let mut boxes = Vec::with_capacity(shapes);
     let label_box = |label: &LayoutLabel| {
         kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
@@ -53,17 +56,8 @@ fn paint_clearance(
             ObstacleOwner::GroupTitle(index as u32),
         ));
     }
-    for (edge, owner) in edges.iter().zip(owners) {
-        for label in [
-            &edge.label,
-            &edge.start_label_left,
-            &edge.start_label_right,
-            &edge.end_label_left,
-            &edge.end_label_right,
-        ]
-        .into_iter()
-        .flatten()
-        {
+    for (index, owner) in owners.iter().enumerate() {
+        if let Some(label) = edge_label(index) {
             boxes.push((
                 label_box(label),
                 ObstacleOwner::EdgeLabel(owner.semantic_index()),
@@ -75,6 +69,10 @@ fn paint_clearance(
     Ok(AxisClearance::new(boxes))
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The adapter receives prepared measurement inputs and the family output purpose."
+)]
 pub(crate) fn layout(
     model: &FlowchartModel,
     render_context: &FlowchartRenderContext,
@@ -83,6 +81,7 @@ pub(crate) fn layout(
     execution: &LayoutExecution<'_>,
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_styles: &crate::svg::FlowchartEdgeStylePlan,
+    prepare_for_svg: bool,
 ) -> Result<FlowchartLayout> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
     work.charge_adapter(0)?;
@@ -115,7 +114,14 @@ pub(crate) fn layout(
         &mut work,
     )?;
     drop(graph);
-    bindings.project(view, &measurement, solved, placement, &mut work)
+    bindings.project(
+        view,
+        &measurement,
+        solved,
+        placement,
+        prepare_for_svg,
+        &mut work,
+    )
 }
 
 /// Node order matches the measured graph. Edge keys retain the semantic occurrence even when
@@ -201,8 +207,10 @@ fn measure(
         groups: Vec::new(),
         edges: Vec::with_capacity(view.edges.len()),
     };
-    let mut endpoints =
-        HashMap::with_capacity(work.checked_add(view.nodes.len(), view.subgraphs.len())?);
+    let mut endpoints = FxHashMap::with_capacity_and_hasher(
+        work.checked_add(view.nodes.len(), view.subgraphs.len())?,
+        Default::default(),
+    );
     let groups = groups::measure(view, measurement, config, &mut graph, &mut endpoints, work)?;
     let mut bindings = FlowchartBindings {
         nodes: Vec::with_capacity(view.nodes.len()),
@@ -370,6 +378,7 @@ impl FlowchartBindings {
         measurement: &FlowchartMeasurement<'_>,
         solved: SolvedGraph,
         placement: GraphPlacement,
+        prepare_for_svg: bool,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<FlowchartLayout> {
         work.charge_adapter(self.flow_relative_nodes.len())?;
@@ -390,9 +399,11 @@ impl FlowchartBindings {
         let clusters = groups::project(&self.groups, solved.groups, model, &measurement.settings);
         work.charge_adapter(model.edges.len())?;
         let mut routes = vec![None; model.edges.len()];
-        work.charge_adapter(solved.edges.len())?;
-        let mut owners = Vec::with_capacity(solved.edges.len());
-        let mut edges = Vec::with_capacity(solved.edges.len());
+        let edge_count = solved.edges.len();
+        work.charge_adapter(edge_count)?;
+        let mut owners = Vec::with_capacity(edge_count);
+        let mut svg_edges = prepare_for_svg.then(|| Vec::with_capacity(edge_count));
+        let mut edges = Vec::with_capacity(if prepare_for_svg { 0 } else { edge_count });
         for ((key, projected), route) in model.projected_edges().zip(solved.edges) {
             work.charge_adapter(route.points.len())?;
             let (points, knots) = route
@@ -406,22 +417,14 @@ impl FlowchartBindings {
                 ports: route.ports,
                 knots,
             });
-            edges.push(LayoutEdge {
-                id: projected.semantic.id.clone(),
-                from: projected.from.to_owned(),
-                to: projected.to.to_owned(),
-                from_cluster: None,
-                to_cluster: None,
-                points,
-                label: route.label,
-                start_label_left: None,
-                start_label_right: None,
-                end_label_left: None,
-                end_label_right: None,
-                start_marker: None,
-                end_marker: None,
-                stroke_dasharray: None,
-            });
+            if let Some(svg_edges) = &mut svg_edges {
+                svg_edges.push(FlowchartSvgEdgeGeometry {
+                    points,
+                    label: route.label,
+                });
+            } else {
+                edges.push(layout_edge(projected, points, route.label));
+            }
             owners.push(key);
         }
         let bounds = (!self.nodes.is_empty() || !clusters.is_empty()).then_some(Bounds {
@@ -442,7 +445,16 @@ impl FlowchartBindings {
                 self.nodes.iter().map(|node| node.id.clone()).collect(),
             );
         }
-        let clearance = paint_clearance(&self.nodes, &clusters, &edges, &owners, work)?;
+        let clearance = paint_clearance(
+            &self.nodes,
+            &clusters,
+            &owners,
+            |index| match &svg_edges {
+                Some(svg_edges) => svg_edges[index].label.as_ref(),
+                None => edges[index].label.as_ref(),
+            },
+            work,
+        )?;
         Ok(FlowchartLayout {
             nodes: self.nodes,
             edges,
@@ -459,9 +471,61 @@ impl FlowchartBindings {
                     border_stitches,
                     clearance,
                     routes,
+                    svg_edges,
                 }
                 .into(),
             ),
         })
     }
+}
+
+fn layout_edge(
+    edge: ProjectedFlowchartEdge<'_>,
+    points: Vec<LayoutPoint>,
+    label: Option<LayoutLabel>,
+) -> LayoutEdge {
+    LayoutEdge {
+        id: edge.semantic.id.clone(),
+        from: edge.from.to_owned(),
+        to: edge.to.to_owned(),
+        from_cluster: None,
+        to_cluster: None,
+        points,
+        label,
+        start_label_left: None,
+        start_label_right: None,
+        end_label_left: None,
+        end_label_right: None,
+        start_marker: None,
+        end_marker: None,
+        stroke_dasharray: None,
+    }
+}
+
+pub(crate) fn materialize_edges(
+    model: FlowchartRenderModelRef<'_>,
+    owners: &FlowchartEdgeOwners,
+    geometry: &[FlowchartSvgEdgeGeometry],
+) -> Result<Vec<LayoutEdge>> {
+    owners.validate_projected(geometry.len(), &model.edges)?;
+    owners
+        .iter()
+        .zip(geometry)
+        .map(|(key, geometry)| {
+            let edge = &model.edges[key.semantic_index()];
+            let projected =
+                super::project_flowchart_edge(edge, model.render_context).ok_or_else(|| {
+                    Error::InvalidModel {
+                        message: format!(
+                            "Flowchart layout contains hidden edge occurrence {key:?}"
+                        ),
+                    }
+                })?;
+            Ok(layout_edge(
+                projected,
+                geometry.points.clone(),
+                geometry.label.clone(),
+            ))
+        })
+        .collect()
 }
