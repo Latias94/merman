@@ -165,6 +165,14 @@ bundle. An unknown or missing product fingerprint leaves raw observations availa
 withholds the product ratio.
 For `mmdc`, a configured browser file is recorded separately from the command. The collector
 reports the actual browser executable as unobserved.
+
+For a Merman Node `--variant-layout`, collection and report replay use `node_fixed_layouts` in
+`workloads.json` to check the SVG plan's exact `layout-*` capability list. Intrinsic families
+report none. For Dagre or ELK site choices, Architecture requires `layout-cytoscape`, and Block
+and C4 report none. All three require `layout-shoal` in the Shoal variant. Swimlane can use the
+Flowchart renderer under a site layout and is not exempt. A selectable family's fallback does
+not prove that the requested backend ran.
+
 Read coverage before interpreting a time. A matching text assertion establishes presence in the
 SVG text representation. Clipping, overlap and shaping require the visual checks. Complete-batch
 ratios use the same successful, repeatable population on both sides. When a report comes from a
