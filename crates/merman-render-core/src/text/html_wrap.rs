@@ -1,7 +1,9 @@
 //! Shared CSS whitespace and line-box planning for HTML labels.
 
 use super::line_break::{HtmlBreakKind, html_break_spaces_segments_with_metadata_and_checkpoints};
-use crate::environment::BuiltinHtmlLineWidth;
+use super::measurement::{BuiltinHtmlLineWidth, TRUSTED_MEASUREMENT};
+use super::{TextMeasurer, TextStyle};
+use crate::mermaid_style::HtmlTextSpacing;
 use std::ops::Range;
 
 #[cfg(test)]
@@ -32,7 +34,7 @@ pub(super) fn html_line_text_with_break(
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum HtmlWhiteSpace {
+pub enum HtmlWhiteSpace {
     #[default]
     Normal,
     Nowrap,
@@ -43,7 +45,7 @@ pub(crate) enum HtmlWhiteSpace {
 }
 
 impl HtmlWhiteSpace {
-    pub(crate) fn from_css_value(value: &str) -> Option<Self> {
+    pub fn from_css_value(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "normal" => Some(Self::Normal),
             "nowrap" => Some(Self::Nowrap),
@@ -55,7 +57,7 @@ impl HtmlWhiteSpace {
         }
     }
 
-    pub(crate) fn preserves_spaces(self) -> bool {
+    pub fn preserves_spaces(self) -> bool {
         matches!(self, Self::Pre | Self::PreWrap | Self::BreakSpaces)
     }
 
@@ -72,7 +74,7 @@ struct WhiteSpaceRun {
 
 /// Decoded text with computed whitespace modes, retained across inline element boundaries.
 #[derive(Debug, Default)]
-pub(crate) struct NormalizedHtmlText {
+pub struct NormalizedHtmlText {
     text: String,
     runs: Vec<WhiteSpaceRun>,
     collapsed_space: bool,
@@ -81,7 +83,7 @@ pub(crate) struct NormalizedHtmlText {
 }
 
 impl NormalizedHtmlText {
-    pub(crate) fn single_mode(text: &str, mode: HtmlWhiteSpace) -> Self {
+    pub fn single_mode(text: &str, mode: HtmlWhiteSpace) -> Self {
         Self {
             text: text.to_owned(),
             runs: vec![WhiteSpaceRun {
@@ -92,21 +94,21 @@ impl NormalizedHtmlText {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.text.len()
     }
 
-    pub(crate) fn at_line_start(&self) -> bool {
+    pub fn at_line_start(&self) -> bool {
         self.text.is_empty()
             || self.text.ends_with('\n')
             || (self.text == " " && !self.mode_at(0).preserves_spaces())
     }
 
-    pub(crate) fn inline_boundary(&mut self, depth: usize, mode: HtmlWhiteSpace) {
+    pub fn inline_boundary(&mut self, depth: usize, mode: HtmlWhiteSpace) {
         if let Some((offset, previous_depth, previous_mode)) = self.boundaries.last_mut()
             && *offset == self.text.len()
         {
@@ -149,12 +151,12 @@ impl NormalizedHtmlText {
         }
     }
 
-    pub(crate) fn hard_break(&mut self) {
+    pub fn hard_break(&mut self) {
         self.push('\n', HtmlWhiteSpace::Pre);
         self.collapsed_space = true;
     }
 
-    pub(crate) fn append<E>(
+    pub fn append<E>(
         &mut self,
         text: &str,
         mode: HtmlWhiteSpace,
@@ -195,12 +197,12 @@ impl NormalizedHtmlText {
 }
 
 #[derive(Debug)]
-pub(crate) struct PlannedHtmlLine {
-    pub(crate) text: String,
-    pub(crate) width: f64,
-    pub(crate) alignment_width: f64,
-    pub(crate) source_range: Range<usize>,
-    pub(crate) selected_hyphen: bool,
+pub struct PlannedHtmlLine {
+    pub text: String,
+    pub width: f64,
+    pub alignment_width: f64,
+    pub source_range: Range<usize>,
+    pub selected_hyphen: bool,
 }
 
 fn separator(ch: char) -> bool {
@@ -469,7 +471,7 @@ impl Candidate {
 }
 
 /// Plans HTML line boxes after entity decoding and CSS whitespace normalization.
-pub(crate) fn plan_html_lines<E>(
+pub(super) fn plan_html_lines<E>(
     source: &NormalizedHtmlText,
     max_width: Option<f64>,
     builtin: Option<BuiltinHtmlLineWidth>,
@@ -485,8 +487,24 @@ pub(crate) fn plan_html_lines<E>(
     )
 }
 
+/// Plans decoded HTML with the route's streaming width only for a uniform text style.
+pub fn plan_html_lines_with_measurer<E>(
+    source: &NormalizedHtmlText,
+    max_width: Option<f64>,
+    uniform: Option<(&dyn TextMeasurer, &TextStyle, HtmlTextSpacing)>,
+    measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Vec<PlannedHtmlLine>, E> {
+    let builtin = uniform.and_then(|(measurer, style, spacing)| {
+        measurer
+            .begin_html_line_width(TRUSTED_MEASUREMENT, style)
+            .map(|width| width.with_spacing(spacing))
+    });
+    plan_html_lines_with_ranges(source, max_width, builtin, measure, checkpoint)
+}
+
 /// Retains exact normalized-source ranges for consumers that preserve inline text styles.
-pub(crate) fn plan_html_lines_with_ranges<E>(
+pub(super) fn plan_html_lines_with_ranges<E>(
     source: &NormalizedHtmlText,
     max_width: Option<f64>,
     builtin: Option<BuiltinHtmlLineWidth>,

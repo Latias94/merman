@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
-use merman_render_core::text::TextStyle;
+use merman_render_core::text::{TextMeasurer, TextStyle};
 use merman_render_core::{Bounds, Error, Result};
 
 use super::{
@@ -17,22 +17,12 @@ const BONE_PER_CHILD: f64 = 5.0;
 const COS_A: f64 = 0.139_173_100_960_065_47;
 const SIN_A: f64 = 0.990_268_068_741_570_4;
 
-pub trait IshikawaTextMeasurer {
-    fn text_style(&self, class_name: &str) -> &TextStyle;
-    fn measure_head_width_px(&self, text: &str, style: &TextStyle) -> f64;
-    fn measure_label_horizontal_px(&self, text: &str, style: &TextStyle) -> (f64, (f64, f64));
-    fn measure_vertical_bbox_px(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        baseline: IshikawaTextBaseline,
-    ) -> Option<(f64, f64)>;
-}
-
 pub fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramModel,
     cfg: &IshikawaLayoutSettings,
-    measurer: &dyn IshikawaTextMeasurer,
+    head_style: &TextStyle,
+    body_style: &TextStyle,
+    measurer: &dyn TextMeasurer,
 ) -> Result<IshikawaDiagramLayout> {
     let Some(root_id) = model.root else {
         return Ok(IshikawaDiagramLayout {
@@ -63,6 +53,8 @@ pub fn layout_ishikawa_diagram_typed(
         })?;
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
+        head_style,
+        body_style,
         measurer,
         records: &model.nodes,
         bounds: BoundsAcc::new(),
@@ -198,7 +190,9 @@ fn count_descendants(records: &[IshikawaNode], root: usize, seen: &mut [bool]) -
 
 struct LayoutCtx<'a> {
     cfg: IshikawaLayoutSettings,
-    measurer: &'a dyn IshikawaTextMeasurer,
+    head_style: &'a TextStyle,
+    body_style: &'a TextStyle,
+    measurer: &'a dyn TextMeasurer,
     records: &'a [IshikawaNode],
     bounds: BoundsAcc,
     head: Option<IshikawaHeadLayout>,
@@ -623,7 +617,11 @@ fn text_layout(
 ) -> IshikawaTextLayout {
     let lines = split_lines(text);
     let line_height = ctx.cfg.font_size * 1.05;
-    let measure_style = ctx.measurer.text_style(class_name);
+    let measure_style = if class_name == "ishikawa-head-label" {
+        ctx.head_style
+    } else {
+        ctx.body_style
+    };
     let horizontal = ishikawa_text_bbox_x(ctx, &lines, measure_style, class_name, anchor);
     let width = horizontal.left + horizontal.right;
     let single_height = ishikawa_text_bbox_height_px(class_name, measure_style.font_size);
@@ -643,7 +641,7 @@ fn text_layout(
         IshikawaTextBaseline::Hanging => y,
     };
     let (min_y, height) = ishikawa_measured_vertical_bounds(
-        |line, style, baseline| ctx.measurer.measure_vertical_bbox_px(line, style, baseline),
+        |line, style, baseline| ishikawa_vertical_bbox(ctx.measurer, line, style, baseline),
         &lines,
         measure_style,
         line_height,
@@ -668,6 +666,29 @@ fn text_layout(
             max_y: min_y + height,
         },
     }
+}
+
+fn ishikawa_vertical_bbox(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    baseline: IshikawaTextBaseline,
+) -> Option<(f64, f64)> {
+    let offset = match baseline {
+        IshikawaTextBaseline::Middle => {
+            measurer.measure_svg_raw_text_middle_bbox_y_offset_px(text, style)
+        }
+        IshikawaTextBaseline::Baseline => {
+            measurer.measure_svg_raw_text_bbox_y_offset_px(text, style)
+        }
+        IshikawaTextBaseline::Hanging => {
+            measurer.measure_svg_raw_text_hanging_bbox_y_offset_px(text, style)
+        }
+    }?;
+    Some((
+        offset,
+        measurer.measure_svg_raw_text_bbox_height_px(text, style),
+    ))
 }
 
 fn ishikawa_measured_vertical_bounds(
@@ -714,7 +735,7 @@ fn ishikawa_text_bbox_x(
 
     for line in lines {
         let line_bounds = if class_name == "ishikawa-head-label" {
-            let width = ctx.measurer.measure_head_width_px(line, style);
+            let width = ctx.measurer.measure_svg_raw_text_bbox_width_px(line, style);
             TextHorizontalBounds {
                 left: width / 2.0,
                 right: width / 2.0,
@@ -735,8 +756,12 @@ fn ishikawa_anchored_line_bbox_x(
     style: &TextStyle,
     anchor: TextAnchor,
 ) -> TextHorizontalBounds {
-    let (computed, (center_left, center_right)) =
-        ctx.measurer.measure_label_horizontal_px(line, style);
+    let computed = ctx
+        .measurer
+        .measure_svg_text_computed_length_px(line, style);
+    let (center_left, center_right) = ctx
+        .measurer
+        .measure_svg_text_bbox_x_with_ascii_overhang(line, style);
     let computed = computed.max(0.0);
     let half = computed / 2.0;
     let start_overhang = (center_left - half).max(0.0);

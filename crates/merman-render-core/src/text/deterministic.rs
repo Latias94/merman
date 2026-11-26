@@ -1,6 +1,9 @@
 //! Deterministic text measurement and wrapping fallback.
 
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
+#[cfg(feature = "svg-output")]
+use super::measurement::BuiltinSvgComputedLength;
+use super::measurement::{BuiltinHtmlLineWidth, TrustedMeasurementQuery};
 #[cfg(test)]
 use super::wrap::GraphemeSplitStats as LongWordSplitStats;
 use super::wrap::visit_grapheme_lines_to_width;
@@ -125,7 +128,7 @@ trait LineWidthProvider {
 
     fn width_px(&mut self, text: &str) -> Result<f64, Self::Error>;
 
-    fn begin_html_line_width(&self) -> Option<crate::environment::BuiltinHtmlLineWidth> {
+    fn begin_html_line_width(&self) -> Option<BuiltinHtmlLineWidth> {
         None
     }
 
@@ -144,15 +147,13 @@ trait LineWidthProvider {
 impl LineWidthProvider for LineWidthModel<'_> {
     type Error = Infallible;
 
-    fn begin_html_line_width(&self) -> Option<crate::environment::BuiltinHtmlLineWidth> {
+    fn begin_html_line_width(&self) -> Option<BuiltinHtmlLineWidth> {
         let factor = match self.source {
             LineWidthSource::Heuristic => 0.0,
             LineWidthSource::UniformAdvanceEm(factor) => factor,
             LineWidthSource::Callback(_) => return None,
         };
-        Some(crate::environment::BuiltinHtmlLineWidth::deterministic(
-            self.style, factor,
-        ))
+        Some(BuiltinHtmlLineWidth::deterministic(self.style, factor))
     }
 
     fn width_px(&mut self, text: &str) -> Result<f64, Infallible> {
@@ -293,7 +294,7 @@ impl DeterministicTextMeasurer {
     /// their zero glyph advance without deleting the input controls before shaping.
     ///
     /// The callback must return a finite, non-negative width in CSS pixels. Use
-    /// [`crate::environment::HostTextMeasurer`] when measurement can fail or vary by operation.
+    /// [`super::measurement::HostTextMeasurer`] when measurement can fail or vary by operation.
     pub fn with_width_callback(
         self,
         width_px: impl Fn(&str, &TextStyle) -> f64 + Send + Sync + 'static,
@@ -391,7 +392,8 @@ impl DeterministicTextMeasurer {
         })
     }
 
-    pub(crate) fn split_line_to_words(text: &str) -> Vec<String> {
+    #[doc(hidden)]
+    pub fn split_line_to_words(text: &str) -> Vec<String> {
         // Mirrors Mermaid's `splitLineToWords` fallback behavior when `Intl.Segmenter` is absent:
         // split by spaces, then re-add the spaces as separate tokens (preserving multiple spaces).
         let parts = text.split(' ').collect::<Vec<_>>();
@@ -602,21 +604,23 @@ impl TextMeasurer for DeterministicTextMeasurer {
     #[allow(private_interfaces)]
     fn begin_html_line_width(
         &self,
+        _: TrustedMeasurementQuery,
         style: &TextStyle,
-    ) -> Option<crate::environment::BuiltinHtmlLineWidth> {
-        Some(crate::environment::BuiltinHtmlLineWidth::deterministic(
+    ) -> Option<BuiltinHtmlLineWidth> {
+        Some(BuiltinHtmlLineWidth::deterministic(
             style,
             self.char_width_factor,
         ))
     }
 
+    #[cfg(feature = "svg-output")]
     #[allow(private_interfaces)]
     fn begin_svg_text_computed_length(
         &self,
+        _: TrustedMeasurementQuery,
         style: &TextStyle,
-    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
-        (self.char_width_factor == 0.0)
-            .then(|| crate::environment::BuiltinSvgComputedLength::deterministic(style))
+    ) -> Option<BuiltinSvgComputedLength> {
+        (self.char_width_factor == 0.0).then(|| BuiltinSvgComputedLength::deterministic(style))
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
@@ -1448,7 +1452,7 @@ mod tests {
             let text = "left<br>👩‍🔬A\u{301}right";
             let expected = measurer.measure_html_line_width_px(text, &style);
             let mut streamed = measurer
-                .begin_html_line_width(&style)
+                .begin_html_line_width(crate::text::measurement::TRUSTED_MEASUREMENT, &style)
                 .expect("built-in line width");
             for part in ["left<", "br>", "👩", "\u{200d}", "🔬A", "\u{301}right"] {
                 streamed.push_text(part);

@@ -4,7 +4,7 @@ use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
 use merman_render_core::config::{ConfigLookup, config_bool, config_f64_css_px as config_f64};
-use merman_render_core::text::TextStyle;
+use merman_render_core::text::{TextMeasurer, TextStyle};
 use merman_render_core::{Error, LayoutPoint, Result};
 use merman_theme_contract::v2::FamilyTheme;
 use rustc_hash::FxHashMap;
@@ -14,12 +14,6 @@ use super::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartRoleFonts,
     XyChartSeriesPaintPlan, XyChartTextData, XyChartTextRole,
 };
-
-/// The two SVG text measurements XYChart layout requests from the render host.
-pub trait XyChartTextMeasurer {
-    fn measure_svg_text_bounding_client_rect_width_px(&self, text: &str, style: &TextStyle) -> f64;
-    fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64;
-}
 
 /// Role sizes and the same font families the host supplies to SVG emission.
 pub struct XyChartLayoutTypography<'a> {
@@ -267,7 +261,7 @@ fn max_text_dimension(
     font_size: f64,
     font_family: &str,
     font_weight: Option<&str>,
-    measurer: &dyn XyChartTextMeasurer,
+    measurer: &dyn TextMeasurer,
 ) -> Dimension {
     let style = TextStyle {
         font_family: Some(font_family.to_string()),
@@ -302,7 +296,7 @@ fn single_text_height(
     font_size: f64,
     font_family: &str,
     font_weight: Option<&str>,
-    measurer: &dyn XyChartTextMeasurer,
+    measurer: &dyn TextMeasurer,
 ) -> f64 {
     if text.trim().is_empty() {
         return 0.0;
@@ -325,7 +319,7 @@ fn calculate_legend_space(
     chart_config: &ChartConfig,
     available_space: Dimension,
     font_family: &str,
-    measurer: &dyn XyChartTextMeasurer,
+    measurer: &dyn TextMeasurer,
 ) -> Dimension {
     if plots.is_empty() {
         return Dimension {
@@ -780,7 +774,7 @@ impl Axis {
         &mut self,
         available: Dimension,
         font_family: &str,
-        measurer: &dyn XyChartTextMeasurer,
+        measurer: &dyn TextMeasurer,
     ) -> Dimension {
         self.show_title = false;
         self.show_label = false;
@@ -1236,7 +1230,7 @@ pub fn layout_xychart_diagram_typed(
     series_paint: &XyChartSeriesPaintPlan,
     typography: XyChartLayoutTypography<'_>,
     native: Option<&FamilyTheme>,
-    text_measurer: &dyn XyChartTextMeasurer,
+    text_measurer: &dyn TextMeasurer,
 ) -> Result<(XyChartDiagramLayout, Vec<usize>)> {
     if series_paint.plot_count() != model.plots.len() {
         return Err(Error::InvalidModel {
@@ -1909,7 +1903,15 @@ mod tests {
 
     struct UserUnitMeasurer;
 
-    impl XyChartTextMeasurer for UserUnitMeasurer {
+    impl TextMeasurer for UserUnitMeasurer {
+        fn measure(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> merman_render_core::text::TextMetrics {
+            panic!("XYChart layout must use the literal SVG probes")
+        }
+
         fn measure_svg_text_bounding_client_rect_width_px(
             &self,
             text: &str,
@@ -1940,7 +1942,15 @@ mod tests {
     fn xychart_dimension_probe_keeps_literal_markup_in_one_svg_run() {
         struct LiteralRunMeasurer;
 
-        impl XyChartTextMeasurer for LiteralRunMeasurer {
+        impl TextMeasurer for LiteralRunMeasurer {
+            fn measure(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> merman_render_core::text::TextMetrics {
+                panic!("XYChart layout must use the literal SVG probes")
+            }
+
             fn measure_svg_text_bounding_client_rect_width_px(
                 &self,
                 text: &str,

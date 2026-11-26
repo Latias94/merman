@@ -176,7 +176,7 @@ mod graph_layout;
 )]
 mod html;
 #[cfg(feature = "diagram-info")]
-pub mod info;
+use merman_render_structured::info;
 #[cfg(feature = "diagram-ishikawa")]
 pub mod ishikawa;
 #[cfg(feature = "diagram-journey")]

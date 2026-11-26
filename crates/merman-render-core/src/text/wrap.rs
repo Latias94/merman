@@ -399,7 +399,9 @@ pub fn wrap_label_like_mermaid_lines(
     }
 }
 
-pub(crate) fn wrap_label_like_mermaid_lines_with_checkpoint(
+#[cfg(feature = "svg-output")]
+#[doc(hidden)]
+pub fn wrap_label_like_mermaid_lines_with_checkpoint(
     label: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,

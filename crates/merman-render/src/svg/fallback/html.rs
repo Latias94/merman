@@ -1,6 +1,4 @@
-#[cfg(test)]
-use crate::text::html_wrap::plan_html_lines;
-use crate::text::html_wrap::{NormalizedHtmlText, PlannedHtmlLine, plan_html_lines_with_ranges};
+use crate::text::html_wrap::{NormalizedHtmlText, PlannedHtmlLine, plan_html_lines_with_measurer};
 use crate::text::{HtmlWhiteSpace, TextMeasurer, TextStyle, resolve_css_font_weight};
 use std::borrow::Cow;
 use std::ops::Range;
@@ -163,20 +161,16 @@ impl NormalizedFallbackText {
             .first()
             .map(|run| run.typography.text_style())
             .unwrap_or_else(|| fallback.clone());
-        let builtin = if uniform {
+        let uniform = uniform.then(|| {
             let spacing = self.runs.first().map_or(Default::default(), |run| {
                 run.typography.text_geometry.spacing
             });
-            measurer
-                .begin_html_line_width(&uniform_style)
-                .map(|width| width.with_spacing(spacing))
-        } else {
-            None
-        };
-        plan_html_lines_with_ranges(
+            (measurer, &uniform_style, spacing)
+        });
+        plan_html_lines_with_measurer(
             &self.source,
             max_width,
-            builtin,
+            uniform,
             &mut |text, range, selected_hyphen| {
                 let mut width = 0.0;
                 let mut group: Option<(&ResolvedFallbackTypography, usize, usize)> = None;
@@ -459,11 +453,11 @@ pub(super) fn wrap_html_text<E>(
     style: &TextStyle,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<PlannedHtmlLine>, E> {
-    plan_html_lines(
+    plan_html_lines_with_measurer(
         text,
         max_width,
-        measurer.begin_html_line_width(style),
-        &mut |text| Ok(measurer.measure_html_line_width_px(text, style)),
+        Some((measurer, style, Default::default())),
+        &mut |text, _, _| Ok(measurer.measure_html_line_width_px(text, style)),
         checkpoint,
     )
 }

@@ -6,20 +6,6 @@ use std::sync::Arc;
 use super::{InlineTextRun, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::mermaid_style::{CssFontSizeContext, TextStyleCascade, visit_parsed_style_declarations};
 
-pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> bool {
-    match (left, right) {
-        (None, None) => true,
-        (Some(left), Some(right)) => {
-            std::ptr::eq(left, right)
-                || (left.font_size == right.font_size
-                    && left.font_family == right.font_family
-                    && left.font_weight == right.font_weight
-                    && left.font_style == right.font_style)
-        }
-        _ => false,
-    }
-}
-
 pub(super) struct TerminalFonts {
     root_font_size: f64,
     // The cached ancestry maximum makes text-range struts independent of stack depth.

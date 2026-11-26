@@ -14,9 +14,10 @@ errors. `root-svg` provides viewport planning and emission for family SVG docume
 validation for postprocessing.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
-`css-style` provides presentation lookups, Mermaid CSS value parsing, and shared text style and
-measurement types. `text-layout` provides font stacks, text tokenization, line breaking, and width
-estimation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+`css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
+trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
+line breaking. With `resources`, it also provides host measurement routing and provenance for one
+operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
 `theme-elevation` and `theme-label-background` add shadow silhouettes and measured label
 backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer

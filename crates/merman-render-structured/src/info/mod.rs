@@ -7,7 +7,7 @@ use merman_render_core::{
     mermaid_style::font_family_css,
     number_format::canonical_number,
     svg_css::PreparedCommonCss,
-    text::TextStyle,
+    text::{TextMeasurer, TextStyle},
 };
 use merman_theme_contract::v2::{Color, FamilyTheme};
 use serde::{Deserialize, Serialize};
@@ -20,8 +20,6 @@ const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
 const INFO_VERSION_FONT_SIZE_PX: f64 = 32.0;
 const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
 const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
-
-type MeasureVersionBBox<'a> = dyn Fn(&str, &TextStyle) -> ((f64, f64), f64) + 'a;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InfoDiagramLayout {
@@ -60,18 +58,16 @@ struct InfoVersionGeometry {
 }
 
 /// Prepares the Info layout and the style used to measure and emit its version text.
-///
-/// `measure_bbox` returns the left and right SVG extents, then the raw SVG bbox height.
 pub fn prepare_info_diagram(
     config: &PresentationConfig,
     native: Option<&FamilyTheme>,
-    measure_bbox: &MeasureVersionBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> (InfoDiagramLayout, InfoAppearance) {
     if let Some(theme) = native {
         let typography = &theme.typography;
         let font_family = font_family_css(typography.stack(typography.code_family));
         let (layout, version) =
-            InfoVersionGeometry::prepare(&font_family, typography.base_size_px * 2.0, measure_bbox);
+            InfoVersionGeometry::prepare(&font_family, typography.base_size_px * 2.0, measurer);
         return (
             layout,
             InfoAppearance::Native(InfoNativeStyle {
@@ -90,7 +86,7 @@ pub fn prepare_info_diagram(
     let css =
         PreparedCommonCss::with_resolved_typography(effective_config, font_family, font_size_css);
     let (layout, version) =
-        InfoVersionGeometry::prepare(css.font_family(), INFO_VERSION_FONT_SIZE_PX, measure_bbox);
+        InfoVersionGeometry::prepare(css.font_family(), INFO_VERSION_FONT_SIZE_PX, measurer);
     (
         layout,
         InfoAppearance::Mermaid(InfoClassicStyle { css, version }),
@@ -101,7 +97,7 @@ impl InfoVersionGeometry {
     fn prepare(
         font_family: &str,
         font_size_px: f64,
-        measure_bbox: &MeasureVersionBBox<'_>,
+        measurer: &dyn TextMeasurer,
     ) -> (InfoDiagramLayout, Self) {
         let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
         let style = TextStyle {
@@ -109,8 +105,10 @@ impl InfoVersionGeometry {
             font_size: font_size_px,
             ..TextStyle::default()
         };
-        let ((left, right), text_height) = measure_bbox(&version, &style);
-        let text_height = text_height.max(0.0);
+        let (left, right) = measurer.measure_svg_text_bbox_x(&version, &style);
+        let text_height = measurer
+            .measure_svg_raw_text_bbox_height_px(&version, &style)
+            .max(0.0);
         let anchor_x = INFO_VERSION_BASELINE_X_PX / INFO_BASELINE_WIDTH_PX;
         let anchor_y = INFO_VERSION_BASELINE_Y_PX / INFO_BASELINE_HEIGHT_PX;
         // Keep the upstream viewport as a minimum and preserve the anchor's relative position
@@ -150,13 +148,24 @@ impl InfoVersionGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_render_core::text::TextMetrics;
+
+    struct FixedMeasurement;
+
+    impl TextMeasurer for FixedMeasurement {
+        fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 128.0,
+                height: 32.0,
+                line_count: 1,
+            }
+        }
+    }
 
     #[test]
     fn info_layout_records_upstream_configured_canvas_size() {
         let (layout, appearance) =
-            prepare_info_diagram(&PresentationConfig::default(), None, &|_, _| {
-                ((64.0, 64.0), 32.0)
-            });
+            prepare_info_diagram(&PresentationConfig::default(), None, &FixedMeasurement);
         let InfoAppearance::Mermaid(style) = appearance else {
             panic!("expected Mermaid appearance");
         };
