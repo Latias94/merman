@@ -112,6 +112,15 @@ fn er_parse_diagnostic(diagnostic: ErSyntaxDiagnostic) -> ParseDiagnostic {
             ParseDiagnostic::new(unexpected_eof_message(expected.names()))
                 .with_span(SourceSpan::new(offset, offset), InsertionPoint)
         }
+        ErSyntaxDiagnostic::StyleExpansionLimit {
+            span,
+            unit,
+            actual,
+            maximum,
+        } => ParseDiagnostic::new(format!(
+            "ER style/class replay would materialize {actual} {unit}, exceeding its safety limit of {maximum}"
+        ))
+        .with_span(span, Exact),
     }
 }
 
@@ -1440,6 +1449,35 @@ mod semantic_tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn er_canonical_style_replay_reports_the_refused_directive() {
+        let targets = vec!["A"; 512].join(",");
+        let styles = vec!["fill:red"; 400].join(",");
+        let source = format!("erDiagram\r\nA\r\nstyle {targets} {styles}\r\n");
+        let parsed = parse_er_semantic_model_controlled(
+            &source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+            panic!("expected an ER construction diagnostic");
+        };
+        let keyword = source.find("style").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(keyword, keyword + 5))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        assert_eq!(
+            diagnostic.message(),
+            "ER style/class replay would materialize 204800 string entries, exceeding its safety limit of 200000"
+        );
+    }
+
     #[cfg(feature = "presentation")]
     #[test]
     fn er_typed_projection_omits_editor_observers() {

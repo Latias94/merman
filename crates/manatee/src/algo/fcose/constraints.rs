@@ -1,7 +1,8 @@
 use indexmap::IndexSet;
 
-use super::{FcoseRandom, IndexedFcoseOptions, SimGraph, SimNode};
-use crate::error::{Error, Result};
+use super::{FcoseRandom, IndexedFcoseOptions, SimGraph, SimNode, WorkControl};
+use crate::error::{Error, Result, WorkFailure};
+use crate::work::admit_dynamic_work;
 
 #[derive(Debug, Clone)]
 pub(super) struct Constraints {
@@ -20,22 +21,22 @@ pub(super) struct RelConstraint {
 }
 
 impl Constraints {
-    pub(super) fn from_indexed_opts(sim: &SimGraph, opts: &IndexedFcoseOptions) -> Self {
+    pub(super) fn from_indexed_opts(node_count: usize, opts: &IndexedFcoseOptions) -> Self {
         let mut align_horizontal: Vec<Vec<usize>> = Vec::new();
         let mut align_vertical: Vec<Vec<usize>> = Vec::new();
 
         if let Some(a) = opts.alignment_constraint.as_ref() {
-            align_horizontal = map_indexed_align_lists(&a.horizontal, sim.nodes.len());
-            align_vertical = map_indexed_align_lists(&a.vertical, sim.nodes.len());
+            align_horizontal = map_indexed_align_lists(&a.horizontal, node_count);
+            align_vertical = map_indexed_align_lists(&a.vertical, node_count);
         }
 
         let mut relative: Vec<RelConstraint> = Vec::new();
         for r in &opts.relative_placement_constraint {
             relative.push(RelConstraint {
-                left: r.left.filter(|idx| *idx < sim.nodes.len()),
-                right: r.right.filter(|idx| *idx < sim.nodes.len()),
-                top: r.top.filter(|idx| *idx < sim.nodes.len()),
-                bottom: r.bottom.filter(|idx| *idx < sim.nodes.len()),
+                left: r.left.filter(|idx| *idx < node_count),
+                right: r.right.filter(|idx| *idx < node_count),
+                top: r.top.filter(|idx| *idx < node_count),
+                bottom: r.bottom.filter(|idx| *idx < node_count),
                 gap: r.gap.max(0.0),
             });
         }
@@ -47,32 +48,110 @@ impl Constraints {
         }
     }
 
-    pub(super) fn validate(&self, node_count: usize) -> Result<()> {
-        validate_axis_constraint_graph(
+    pub(super) fn normalize<W: WorkControl + ?Sized>(
+        &mut self,
+        node_count: usize,
+        work_control: &mut W,
+    ) -> Result<bool> {
+        let horizontal = normalize_axis_constraint_graph(
             node_count,
-            &self.align_vertical,
+            &mut self.align_vertical,
             self.relative.iter().filter_map(|constraint| {
                 Some((constraint.left?, constraint.right?, constraint.gap))
             }),
+            self.relative.len(),
             "horizontal",
+            work_control,
         )?;
-        validate_axis_constraint_graph(
+        let vertical = normalize_axis_constraint_graph(
             node_count,
-            &self.align_horizontal,
+            &mut self.align_horizontal,
             self.relative.iter().filter_map(|constraint| {
                 Some((constraint.top?, constraint.bottom?, constraint.gap))
             }),
+            self.relative.len(),
             "vertical",
-        )
+            work_control,
+        )?;
+        if horizontal.is_none() && vertical.is_none() {
+            return Ok(false);
+        }
+
+        self.relative.retain_mut(|constraint| {
+            let remove_horizontal =
+                same_component(horizontal.as_deref(), constraint.left.zip(constraint.right));
+            let remove_vertical =
+                same_component(vertical.as_deref(), constraint.top.zip(constraint.bottom));
+            if remove_horizontal {
+                constraint.left = None;
+                constraint.right = None;
+            }
+            if remove_vertical {
+                constraint.top = None;
+                constraint.bottom = None;
+            }
+            !(remove_horizontal || remove_vertical)
+                || constraint.left.zip(constraint.right).is_some()
+                || constraint.top.zip(constraint.bottom).is_some()
+        });
+        Ok(true)
+    }
+
+    pub(super) fn projection_node_count(&self, sim: &SimGraph) -> Result<usize> {
+        if sim.leaf_count == sim.nodes.len() {
+            return Ok(sim.leaf_count);
+        }
+        let aligned = self
+            .align_horizontal
+            .iter()
+            .chain(&self.align_vertical)
+            .flatten()
+            .copied();
+        let relative = self.relative.iter().flat_map(|constraint| {
+            [
+                constraint.left.zip(constraint.right),
+                constraint.top.zip(constraint.bottom),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|(first, second)| [first, second])
+        });
+        let mut has_compound_target = false;
+        for index in aligned
+            .chain(relative)
+            .filter(|&node| node >= sim.leaf_count)
+        {
+            if !sim.children_by_owner[index].is_empty() {
+                return Err(Error::UnsupportedCompoundConstraint { index });
+            }
+            has_compound_target = true;
+        }
+        Ok(if has_compound_target {
+            sim.nodes.len()
+        } else {
+            sim.leaf_count
+        })
     }
 }
 
-fn validate_axis_constraint_graph(
+fn same_component(components: Option<&[usize]>, pair: Option<(usize, usize)>) -> bool {
+    components
+        .zip(pair)
+        .is_some_and(|(components, (from, to))| components[from] == components[to])
+}
+
+fn normalize_axis_constraint_graph<W: WorkControl + ?Sized>(
     node_count: usize,
-    alignment_groups: &[Vec<usize>],
+    alignment_groups: &mut Vec<Vec<usize>>,
     relative: impl Iterator<Item = (usize, usize, f64)> + Clone,
+    relative_count: usize,
     axis: &'static str,
-) -> Result<()> {
+    work_control: &mut W,
+) -> Result<Option<Vec<usize>>> {
+    let mut edges = relative.peekable();
+    if edges.peek().is_none() {
+        return Ok(None);
+    }
     let mut parent: Vec<usize> = (0..node_count).collect();
 
     fn find(parent: &mut [usize], mut node: usize) -> usize {
@@ -83,17 +162,11 @@ fn validate_axis_constraint_graph(
         node
     }
 
-    for group in alignment_groups {
+    for group in alignment_groups.iter() {
         let Some((&first, rest)) = group.split_first() else {
             continue;
         };
-        if first >= node_count {
-            continue;
-        }
         for &node in rest {
-            if node >= node_count {
-                continue;
-            }
             let first_root = find(&mut parent, first);
             let node_root = find(&mut parent, node);
             if first_root != node_root {
@@ -106,14 +179,10 @@ fn validate_axis_constraint_graph(
         parent[node] = root;
     }
 
-    // The original constraints remain available for the final positive-gap check.
-    // Build the SCC adjacency directly from a copy of the borrowed iterator.
-    let mut edges = relative
-        .filter(|(from, to, _)| *from < node_count && *to < node_count)
-        .map(|(from, to, gap)| (parent[from], parent[to], gap.max(0.0)));
     let mut outgoing = vec![Vec::new(); node_count];
     let mut incoming = vec![Vec::new(); node_count];
     for (from, to, _) in edges.clone() {
+        let (from, to) = (parent[from], parent[to]);
         outgoing[from].push(to);
         incoming[to].push(from);
     }
@@ -158,12 +227,99 @@ fn validate_axis_constraint_graph(
         component_id += 1;
     }
 
-    if edges.any(|(from, to, gap)| {
-        gap > 0.0 && component[from] != usize::MAX && component[from] == component[to]
-    }) {
-        return Err(Error::InfeasibleConstraints { axis });
+    let mut has_internal_edges = false;
+    let mut has_new_alignments = false;
+    let mut has_aliased_endpoints = false;
+    for (from, to, gap) in edges.clone() {
+        if component[parent[from]] != component[parent[to]] {
+            continue;
+        }
+        if gap > 0.0 {
+            return Err(Error::InfeasibleConstraints { axis });
+        }
+        has_internal_edges = true;
+        has_new_alignments |= parent[from] != parent[to];
+        has_aliased_endpoints |= from != to && parent[from] == parent[to];
     }
-    Ok(())
+    if !has_internal_edges {
+        return Ok(None);
+    }
+
+    const NO_GROUP: usize = usize::MAX;
+    const OVERLAPPING_GROUPS: usize = usize::MAX - 1;
+    if has_aliased_endpoints {
+        let comparison_work = alignment_groups
+            .iter()
+            .try_fold(alignment_groups.len(), |work, group| {
+                work.checked_add(group.len())
+            })
+            .and_then(|work| work.checked_add(node_count))
+            .and_then(|work| work.checked_add(relative_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        admit_dynamic_work(work_control, comparison_work)?;
+        finish_order.clear();
+        finish_order.resize(node_count, NO_GROUP);
+        for (group_index, group) in alignment_groups.iter().enumerate() {
+            let Some(&first) = group.first() else {
+                continue;
+            };
+            let authored = &mut finish_order[parent[first]];
+            match *authored {
+                NO_GROUP => *authored = group_index,
+                OVERLAPPING_GROUPS => {}
+                previous if alignment_groups[previous] != *group => {
+                    *authored = OVERLAPPING_GROUPS;
+                }
+                _ => {}
+            }
+        }
+    }
+    let requires_merge = |from: usize, to: usize| {
+        component[parent[from]] == component[parent[to]]
+            && from != to
+            && (parent[from] != parent[to]
+                || (has_aliased_endpoints && finish_order[parent[from]] == OVERLAPPING_GROUPS))
+    };
+    if has_aliased_endpoints && !has_new_alignments {
+        has_new_alignments = edges.clone().any(|(from, to, _)| requires_merge(from, to));
+    }
+
+    let mut normalization_work = node_count
+        .checked_add(relative_count)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    if has_new_alignments {
+        normalization_work = normalization_work
+            .checked_add(component_id)
+            .and_then(|work| work.checked_add(node_count))
+            .and_then(|work| work.checked_add(relative_count))
+            .and_then(|work| work.checked_add(alignment_groups.len()))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+    }
+    admit_dynamic_work(work_control, normalization_work)?;
+
+    if has_new_alignments {
+        let mut merged = vec![None; component_id];
+        for (from, to, _) in edges {
+            if requires_merge(from, to) {
+                merged[component[parent[from]]].get_or_insert_with(Vec::new);
+            }
+        }
+        for (node, &root) in parent.iter().enumerate() {
+            if let Some(group) = &mut merged[component[root]] {
+                group.push(node);
+            }
+        }
+        alignment_groups.retain(|group| {
+            group
+                .first()
+                .is_none_or(|&first| merged[component[parent[first]]].is_none())
+        });
+        alignment_groups.extend(merged.into_iter().flatten());
+    }
+    for (node, root) in parent.into_iter().enumerate() {
+        component[node] = component[root];
+    }
+    Ok(Some(component))
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -471,7 +471,8 @@ class PlannerTests(unittest.TestCase):
             "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
             "scripts/audit_plan.py": {"hygiene", "npm", "security"},
             "scripts/generate-rust-license-report.py": {"hygiene", "security"},
-            "scripts/strict_json.py": {"hygiene", "security"},
+            "scripts/cargo_lock_identity.py": {"hygiene", "security", "web"},
+            "scripts/strict_json.py": {"hygiene", "security", "web"},
             "scripts/verify_artifact_dependency_closures.py": {
                 "hygiene",
                 "security",

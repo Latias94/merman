@@ -2,6 +2,7 @@
 
 mod lexer;
 mod parser;
+mod style_replay;
 
 use crate::scan::collect_lexical_events;
 use indexmap::IndexMap;
@@ -10,13 +11,26 @@ use merman_model::families::er::{
     ErAttribute, ErClassDef, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship, ErSubgraph,
 };
 use merman_model::text::is_ecmascript_whitespace;
-use merman_model::{OperationControl, OperationControlResult};
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
 use std::collections::HashSet;
+use style_replay::{STYLE_REPLAY_LIMIT, StyleReplay, StyleReplayCost};
 
 pub use lexer::{ErDirection, ErIdList, ErLexicalError, ErLexicalEvent, ErToken};
 pub use parser::{ErExpectedTokens, ErSyntaxDiagnostic};
 
 type ErParsedActions = Result<(ErActionArena, ErActionList), ErSyntaxDiagnostic>;
+
+#[derive(Debug)]
+enum ErFailure {
+    Syntax(ErSyntaxDiagnostic),
+    Cancelled(OperationCancelled),
+}
+
+impl From<OperationCancelled> for ErFailure {
+    fn from(cancelled: OperationCancelled) -> Self {
+        Self::Cancelled(cancelled)
+    }
+}
 
 /// Lexed ER source. Token and diagnostic offsets refer to the supplied input.
 pub struct ErSyntax {
@@ -47,8 +61,11 @@ impl ErSyntax {
             Err(diagnostic) => return Ok(Err(diagnostic)),
         };
         let mut db = ErDb::new();
-        db.replay(arena, actions, control)?;
-        Ok(Ok(db.into_semantic_model()))
+        match db.replay(arena, actions, control, STYLE_REPLAY_LIMIT) {
+            Ok(()) => Ok(Ok(db.into_semantic_model())),
+            Err(ErFailure::Syntax(diagnostic)) => Ok(Err(diagnostic)),
+            Err(ErFailure::Cancelled(cancelled)) => Err(cancelled),
+        }
     }
 
     fn into_actions(self, control: &OperationControl) -> OperationControlResult<ErParsedActions> {
@@ -76,14 +93,17 @@ enum Action {
     SetClass {
         entities: Vec<String>,
         classes: Vec<String>,
+        span: SourceSpan,
     },
     AddClassDef {
         classes: Vec<String>,
         raw: String,
+        span: SourceSpan,
     },
     AddCssStyles {
         entities: Vec<String>,
         raw: String,
+        span: SourceSpan,
     },
     AddSubgraph {
         id: String,
@@ -252,56 +272,6 @@ impl ErDb {
         });
     }
 
-    fn set_class(&mut self, entities: &[String], classes: &[String]) {
-        for e in entities {
-            if let Some(node) = self.entities.get_mut(e) {
-                for cls in classes {
-                    node.css_classes.push(' ');
-                    node.css_classes.push_str(cls);
-                }
-            }
-            if let Some(index) = self.subgraph_lookup.get(e).copied()
-                && let Some(subgraph) = self.subgraphs.get_mut(index)
-            {
-                subgraph.classes.extend(classes.iter().cloned());
-            }
-        }
-    }
-
-    fn add_class_def(&mut self, classes: &[String], styles: &[String]) {
-        for id in classes {
-            let entry = self
-                .classes
-                .entry(id.to_string())
-                .or_insert_with(|| ErClassDef {
-                    id: id.to_string(),
-                    ..Default::default()
-                });
-
-            for s in styles {
-                if s.contains("color") {
-                    entry.text_styles.push(s.replace("fill", "bgFill"));
-                }
-                entry.styles.push(s.to_string());
-            }
-        }
-    }
-
-    fn add_css_styles(&mut self, entities: &[String], styles: &[String]) {
-        for id in entities {
-            if let Some(entity) = self.entities.get_mut(id) {
-                for style in styles {
-                    entity.css_styles.push(style.to_string());
-                }
-            }
-            if let Some(index) = self.subgraph_lookup.get(id).copied()
-                && let Some(subgraph) = self.subgraphs.get_mut(index)
-            {
-                subgraph.css_styles.extend(styles.iter().cloned());
-            }
-        }
-    }
-
     fn complete_subgraph(
         &mut self,
         completion: ErSubgraphCompletion,
@@ -358,7 +328,9 @@ impl ErDb {
         mut arena: ErActionArena,
         actions: ErActionList,
         control: &OperationControl,
-    ) -> OperationControlResult<()> {
+        style_limit: StyleReplayCost,
+    ) -> Result<(), ErFailure> {
+        let mut styles = StyleReplay::new(control, style_limit);
         let mut frames = vec![ErReplayFrame {
             next: actions.first,
             subgraph: None,
@@ -407,15 +379,19 @@ impl ErDb {
                     self.add_entity(&b, None);
                     self.add_relationship(&a, &role, &b, spec);
                 }
-                Action::SetClass { entities, classes } => self.set_class(&entities, &classes),
-                Action::AddClassDef { classes, raw } => {
-                    let styles = split_styles(&raw);
-                    self.add_class_def(&classes, &styles);
+                Action::SetClass {
+                    entities,
+                    classes,
+                    span,
+                } => styles.set_class(self, &entities, &classes, span)?,
+                Action::AddClassDef { classes, raw, span } => {
+                    styles.add_class_def(self, classes, &raw, span)?
                 }
-                Action::AddCssStyles { entities, raw } => {
-                    let styles = split_styles(&raw);
-                    self.add_css_styles(&entities, &styles);
-                }
+                Action::AddCssStyles {
+                    entities,
+                    raw,
+                    span,
+                } => styles.add_css_styles(self, &entities, &raw, span)?,
                 Action::AddSubgraph {
                     id,
                     title,
@@ -461,10 +437,6 @@ impl ErDb {
             subgraphs: self.subgraphs,
         }
     }
-}
-
-fn split_styles(raw: &str) -> Vec<String> {
-    raw.split(',').map(str::to_string).collect()
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ owners rather than being duplicated across Markdown files.
 | Select or author a native theme | [Theme v2 guide](rendering/custom-diagram-themes.md) and [family support](rendering/diagram-theme-coverage.md) |
 | Render terminal diagrams or inspect ASCII support and tradeoffs | [ASCII and Unicode rendering](rendering/ascii/README.md) and [support matrix](rendering/ASCII_SUPPORT_MATRIX.md) |
 | Understand current architecture | [Repository context](../CONTEXT.md), [model/source ownership](adr/0099-model-and-source-boundaries.md), and [family/operation contract](adr/0073-family-owned-diagram-architecture.md) |
+| Follow the accepted v0.11 architecture direction | [Vertical workspace ownership](adr/0103-vertical-workspace-crate-boundaries.md), [paint scenes and SVG profiles](adr/0104-paint-scene-ir-and-dual-output-profiles.md), and [Rust features and safe facade](adr/0105-ergonomic-feature-tiers-and-safe-facade-api.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
 | Read renderer benchmarks or investigate performance | [Reader-facing results](performance/reports/README.md), [benchmark contract](performance/BENCHMARKING.md) and [runbook](performance/RUNBOOK.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |

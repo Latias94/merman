@@ -1,3 +1,4 @@
+use merman_core_preprocess::scan::controlled::ControlledScanCheckpoints;
 use merman_core_preprocess::{MappedSource, SourceEdit};
 
 #[cfg(feature = "editor-facts")]
@@ -14,7 +15,7 @@ pub struct PreprocessedSource {
     global_directive_prefixes: Vec<String>,
     #[cfg(feature = "editor-facts")]
     recovered_incomplete_directive: bool,
-    frontmatter_line_offset: usize,
+    parser_line_offset: usize,
     first_line_column_offset: usize,
 }
 
@@ -37,7 +38,7 @@ impl PreprocessedSource {
             global_directive_prefixes: Vec::new(),
             #[cfg(feature = "editor-facts")]
             recovered_incomplete_directive: false,
-            frontmatter_line_offset: 0,
+            parser_line_offset: 0,
             first_line_column_offset: 0,
         })
     }
@@ -60,11 +61,11 @@ impl PreprocessedSource {
 
     #[cfg(any(feature = "presentation", feature = "diagram-agentflow"))]
     pub(crate) fn parser_position_offset(&self) -> (usize, usize) {
-        (self.frontmatter_line_offset, self.first_line_column_offset)
+        (self.parser_line_offset, self.first_line_column_offset)
     }
 
     pub(super) fn record_frontmatter_removal(&mut self, end: usize) {
-        self.frontmatter_line_offset += self.text()[..end]
+        self.parser_line_offset += self.text()[..end]
             .bytes()
             .filter(|byte| *byte == b'\n')
             .count();
@@ -73,6 +74,45 @@ impl PreprocessedSource {
 
     pub(super) fn set_first_line_column_offset(&mut self, columns: usize) {
         self.first_line_column_offset = columns;
+    }
+
+    pub(super) fn rebase_parser_start_controlled(
+        &mut self,
+        original: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        self.prepare_span_mapping_controlled(control)?;
+        let Some(prefix) = self
+            .try_map_span(SourceSpan::new(0, 0))
+            .and_then(|origin| original.get(..origin.start))
+        else {
+            return Ok(());
+        };
+        let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+        let mut lines = 0;
+        let mut columns = 0;
+        let mut previous_cr = false;
+        for character in prefix.chars() {
+            checkpoints.scanned(character.len_utf8())?;
+            match character {
+                '\r' => {
+                    lines += 1;
+                    columns = 0;
+                }
+                '\n' => {
+                    if !previous_cr {
+                        lines += 1;
+                    }
+                    columns = 0;
+                }
+                _ => columns += character.len_utf16(),
+            }
+            previous_cr = character == '\r';
+        }
+        checkpoints.finish()?;
+        self.parser_line_offset = lines;
+        self.first_line_column_offset = columns;
+        Ok(())
     }
 
     pub fn try_map_span(&self, span: SourceSpan) -> Option<SourceSpan> {

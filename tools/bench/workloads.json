@@ -178,7 +178,27 @@
        "orders":["canonical","declarations-reverse","declarations-1","declarations-2","declarations-3","edges-reverse","edges-1","edges-2","edges-3"]}
     ]
   },
-  "node_intrinsic_layout_types": ["sequence"],
+  "node_fixed_layouts": [
+    {
+      "diagram_types": [
+        "cynefin", "error", "eventmodeling", "gantt", "gitGraph", "info", "ishikawa",
+        "journey", "kanban", "packet", "pie", "quadrantChart", "radar",
+        "railroad", "railroadAbnf", "railroadEbnf", "railroadPeg", "sankey", "sequence",
+        "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"
+      ],
+      "required_capability_ids": []
+    },
+    {
+      "diagram_types": ["block", "c4"],
+      "site_layouts": ["dagre", "elk"],
+      "required_capability_ids": []
+    },
+    {
+      "diagram_types": ["architecture"],
+      "site_layouts": ["dagre", "elk"],
+      "required_capability_ids": ["layout-cytoscape"]
+    }
+  ],
   "node_products": {
     "merman": {
       "package": "@mermanjs/node",

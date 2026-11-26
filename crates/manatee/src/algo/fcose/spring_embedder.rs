@@ -127,6 +127,7 @@ impl SimGraph {
     ) -> std::result::Result<(), WorkFailure> {
         let SpringEmbedderContext {
             constraints,
+            projection_node_count,
             options: opts,
             work_plan,
             rng,
@@ -239,7 +240,7 @@ impl SimGraph {
         if has_constraints {
             work_control.charge(work_plan.run_setup_work_units())?;
             handle_constraints_pre_layout(
-                &mut self.nodes[..self.leaf_count],
+                &mut self.nodes[..projection_node_count],
                 constraints,
                 work_control,
             )?;

@@ -277,6 +277,7 @@ export class MermanEngine {
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -285,6 +286,7 @@ export class MermanEngine {
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -356,50 +358,51 @@ export class MermanEngine {
     return this.#execute(request, options, true);
   }
 
-  #execute(request, { signal, timeoutMs } = {}, includeMetadata, diagramId) {
+  #execute(request, options = {}, includeMetadata, diagramId) {
     try {
+      const { signal, timeoutMs } = options;
       this.#executor.assertOpen();
+      const directSvg = this.#usesDirectSvg(request, includeMetadata);
+      const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
+      const { expectation } = prepared;
+      if (signal?.aborted) return Promise.reject(abortError());
+      const useTypedId = diagramId !== undefined && prepareSvgDiagramId(
+        prepared, diagramId, timeoutMs, directSvg && !!this.#transport.executeSvgWithId,
+      );
+      let execute;
+      if (useTypedId) {
+        execute = (forwarded) => this.#transport.executeSvgWithId(request.source, diagramId, forwarded, timeoutMs);
+      } else if (directSvg) {
+        const optionsJson = prepareDirectSvgOptions(prepared, timeoutMs);
+        const { source } = prepared.request;
+        execute = (forwarded) => this.#transport.executeSvg(source, optionsJson, forwarded, timeoutMs);
+      } else {
+        const requestJson = operationRequestJson(prepared, includeMetadata);
+        execute = (forwarded) => this.#transport.execute(requestJson, forwarded, timeoutMs);
+      }
+      return this.#executor.submit(
+        async () => {
+          // A signal can flip after queue admission but before this start microtask runs. That work
+          // has not crossed the transport boundary, so preserve the established AbortError result.
+          if (signal?.aborted) throw abortError();
+          let response;
+          try {
+            response = await executeTransportOperation(execute, signal);
+          } catch (cause) {
+            throw decodeWireInvocationError(cause, "Merman operation");
+          }
+          return this.#decodeOperationResponse(response, expectation, {
+            includeMetadata,
+            directSvg,
+            signal,
+            timeoutMs,
+          });
+        },
+        { signal },
+      );
     } catch (error) {
       return Promise.reject(error);
     }
-    const directSvg = this.#usesDirectSvg(request, includeMetadata);
-    const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
-    const { expectation } = prepared;
-    if (signal?.aborted) return Promise.reject(abortError());
-    const useTypedId = diagramId !== undefined && prepareSvgDiagramId(
-      prepared, diagramId, timeoutMs, directSvg && !!this.#transport.executeSvgWithId,
-    );
-    let execute;
-    if (useTypedId) {
-      execute = (forwarded) => this.#transport.executeSvgWithId(request.source, diagramId, forwarded, timeoutMs);
-    } else if (directSvg) {
-      const optionsJson = prepareDirectSvgOptions(prepared, timeoutMs);
-      const { source } = prepared.request;
-      execute = (forwarded) => this.#transport.executeSvg(source, optionsJson, forwarded, timeoutMs);
-    } else {
-      const requestJson = operationRequestJson(prepared, includeMetadata);
-      execute = (forwarded) => this.#transport.execute(requestJson, forwarded, timeoutMs);
-    }
-    return this.#executor.submit(
-      async () => {
-        // A signal can flip after queue admission but before this start microtask runs. That work
-        // has not crossed the transport boundary, so preserve the established AbortError result.
-        if (signal?.aborted) throw abortError();
-        let response;
-        try {
-          response = await executeTransportOperation(execute, signal);
-        } catch (cause) {
-          throw decodeWireInvocationError(cause, "Merman operation");
-        }
-        return this.#decodeOperationResponse(response, expectation, {
-          includeMetadata,
-          directSvg,
-          signal,
-          timeoutMs,
-        });
-      },
-      { signal },
-    );
   }
 
   executeOperationSync(request, options = {}) {
@@ -583,6 +586,9 @@ function directSvgFrameBytes(sourceBytes, timeoutMs) {
 }
 
 function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
+  if (prepared.request.operation_id !== "svg") {
+    throw new TypeError("diagramId is only supported by renderSvg() and renderSvgSync().");
+  }
   if (typeof diagramId !== "string") throw new TypeError("diagramId must be a string when provided.");
   if (prepared.value.optionsJson !== undefined) {
     throw new TypeError("diagramId and optionsJson cannot be used together.");

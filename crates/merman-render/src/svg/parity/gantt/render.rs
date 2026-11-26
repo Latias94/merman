@@ -210,7 +210,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     model: &GanttDiagramRenderModel,
     style: &GanttStyle,
     task_source_indices: &[usize],
-    effective_config: &serde_json::Value,
+    effective_config: &dyn crate::config::ConfigLookup,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");

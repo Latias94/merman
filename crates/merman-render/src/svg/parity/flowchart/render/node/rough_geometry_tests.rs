@@ -253,6 +253,7 @@ fn hand_drawn_subroutine_draws_hatching_and_side_rules_before_the_label() {
             0.0,
             crate::svg::parity::timing::RenderTiming::disabled(),
             &mut Default::default(),
+            &mut String::new(),
         )?;
         let doc = crate::xml_dom::Document::parse(&svg).unwrap();
         let node = doc.root_element();
@@ -300,6 +301,7 @@ fn math_only_shape_prefix_keeps_the_next_actual_rough_path() {
                         0.0,
                         crate::svg::parity::timing::RenderTiming::disabled(),
                         &mut Default::default(),
+                        &mut String::new(),
                     )?;
                     assert!(svg.contains("data-id=\"A\""));
                     assert!(!svg.contains("NaN"), "{look} {seed} {shape}");

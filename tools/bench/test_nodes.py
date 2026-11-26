@@ -531,6 +531,54 @@ class ProcessRoundTests(unittest.TestCase):
                 self.assertIsNone(projected["doc"]["ratio"])
                 self.assertEqual(projected["control"]["eligible_pairs"], 1 if change == "old-collector" else 2)
 
+    def test_replay_requires_the_same_fixed_or_selected_layout_capabilities(self):
+        self.args.variant = ["peer=pele", "dagre=merman::{}", "elk=merman::{}", "shoal=merman::{}"]
+        self.args.variant_layout = ["dagre=dagre", "elk=elk", "shoal=shoal"]
+        self.freeze({"doc": ["info", "architecture", "block", "swimlane"], "control": ["c"]})
+
+        def edit_plans(round_no, raw):
+            if layout := raw.get("variant", {}).get("site_layout"):
+                raw["scenarios"][0]["layout_plans"] = [
+                    dict(diagram_type="info", required_capability_ids=[]),
+                    dict(diagram_type="architecture",
+                         required_capability_ids=["layout-shoal" if layout == "shoal" else "layout-cytoscape"]),
+                    dict(diagram_type="block", required_capability_ids=["layout-shoal"] if layout == "shoal" else []),
+                    dict(diagram_type="swimlane", required_capability_ids=[f"layout-{layout}"]),
+                ]
+
+        self.edit = edit_plans
+        self.run_matrix()
+        bundle = self.args.out_dir
+        verified = load_rounds(bundle)
+        self.assertEqual(verified["status"], "complete")
+        self.assertTrue(all(row["eligible_pairs"] == 2 for row in verified["latency"]))
+
+        for layout, kind, wrong in (
+            ("dagre", "info", ["layout-dagre"]),
+            ("dagre", "architecture", ["layout-dagre"]),
+            ("elk", "swimlane", ["layout-dagre"]),
+            ("shoal", "architecture", ["layout-cytoscape"]),
+            ("shoal", "block", []),
+        ):
+            with self.subTest(layout=layout, kind=kind):
+                path = bundle / "rounds" / "002" / f"{layout}.json"
+                original = path.read_bytes()
+                raw = json.loads(original)
+                plan = next(plan for plan in raw["scenarios"][0]["layout_plans"] if plan["diagram_type"] == kind)
+                plan["required_capability_ids"] = wrong
+                path.write_bytes(json.dumps(raw).encode())
+                try:
+                    projected = load_rounds(bundle)
+                finally:
+                    path.write_bytes(original)
+                self.assertEqual(projected["status"], "incomplete")
+                for row in projected["latency"]:
+                    if (row["peer"], row["scenario"]) == (layout, "doc"):
+                        self.assertEqual((row["eligible_pairs"], row["reasons"]), (1, ["evidence-mismatch"]))
+                        self.assertIsNone(row["ratio"])
+                    else:
+                        self.assertEqual(row["eligible_pairs"], 2)
+
     def test_no_options_bridge_keeps_raw_observations_and_withholds_comparisons(self):
         self.args.variant = ["matched=merman::{}", "no-options=merman", "peer=pele"]
         rounds = self.run_matrix()

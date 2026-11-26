@@ -41,6 +41,29 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-wasi",
     "merman-wasm",
 ];
+const FACADE_CARGO_AGGREGATES: &[(&str, &[&str])] = &[
+    (
+        "core-diagrams",
+        &[
+            "diagram-architecture",
+            "diagram-block",
+            "diagram-c4",
+            "diagram-class",
+            "diagram-er",
+            "diagram-flowchart",
+            "diagram-gantt",
+            "diagram-mindmap",
+            "diagram-pie",
+            "diagram-sequence",
+            "diagram-state",
+            "diagram-xychart",
+        ],
+    ),
+    (
+        "layout-mermaid-legacy",
+        &["layout-cytoscape", "layout-dagre", "layout-elk"],
+    ),
+];
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman",
@@ -674,6 +697,7 @@ impl FeatureGraph {
             self.validate_published_default_contracts(PUBLISHED_DEFAULT_CONTRACTS)?;
         report.feature_allowlists = self.validate_public_feature_allowlists()?;
         self.validate_diagram_selectors()?;
+        self.validate_facade_cargo_aggregates()?;
         report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?
             + self.validate_native_runtime_feature_contract()?
             + self.validate_font_feature_contracts()?;
@@ -760,6 +784,13 @@ impl FeatureGraph {
         }
         allowed.insert("default".to_string());
         allowed.extend(extras.iter().map(|feature| (*feature).to_string()));
+        if package_name == "merman" {
+            allowed.extend(
+                FACADE_CARGO_AGGREGATES
+                    .iter()
+                    .map(|(feature, _)| (*feature).to_string()),
+            );
+        }
         let unexpected = package
             .features
             .keys()
@@ -772,6 +803,27 @@ impl FeatureGraph {
                 package.manifest_path.display(),
                 unexpected.join(", ")
             )));
+        }
+        Ok(())
+    }
+
+    fn validate_facade_cargo_aggregates(&self) -> Result<(), XtaskError> {
+        let facade = self.package("merman")?;
+        for &(feature, members) in FACADE_CARGO_AGGREGATES {
+            if capability_contract::CAPABILITY_IDS.contains(&feature) {
+                return Err(matrix_error(format!(
+                    "{}: `{feature}` is a Cargo aggregate, not a runtime capability",
+                    facade.manifest_path.display()
+                )));
+            }
+            let actual = direct_feature_members(facade, feature)?;
+            let expected = members.iter().map(|member| (*member).to_string()).collect();
+            if actual != expected {
+                return Err(matrix_error(format!(
+                    "{}: `{feature}` must contain only {expected:?}; found {actual:?}",
+                    facade.manifest_path.display()
+                )));
+            }
         }
         Ok(())
     }
@@ -1257,6 +1309,14 @@ impl FeatureGraph {
             None,
             "rustdoc-default",
         ));
+        for &(feature, _) in FACADE_CARGO_AGGREGATES {
+            cases.insert(BuildCase::new(
+                "merman",
+                vec![feature.to_string()],
+                None,
+                "facade-cargo-aggregate",
+            ));
+        }
         for package in ["merman", "merman-rustdoc"] {
             for feature in ["complete-svg", "complete-svg-elk"] {
                 cases.insert(BuildCase::new(
@@ -2134,6 +2194,7 @@ mod tests {
     fn workspace_manifests_satisfy_static_feature_owner_contracts() {
         let graph = manifest_feature_graph();
         graph.validate_public_feature_allowlists().unwrap();
+        graph.validate_facade_cargo_aggregates().unwrap();
         graph
             .validate_empty_default_contracts(EMPTY_DEFAULT_PACKAGES)
             .unwrap();
@@ -2149,6 +2210,54 @@ mod tests {
     #[test]
     fn resolved_workspace_satisfies_feature_contracts() {
         FeatureGraph::load().unwrap().validate().unwrap();
+    }
+
+    #[test]
+    fn facade_cargo_aggregates_reject_missing_and_extra_members() {
+        for (feature, extra) in [
+            ("core-diagrams", "svg"),
+            ("layout-mermaid-legacy", "layout-shoal"),
+        ] {
+            for omit_member in [false, true] {
+                let mut graph = graph(vec![package("merman", FACADE_CARGO_AGGREGATES)]);
+                let members = graph
+                    .packages
+                    .get_mut("merman")
+                    .unwrap()
+                    .features
+                    .get_mut(feature)
+                    .unwrap();
+                if omit_member {
+                    members.pop();
+                } else {
+                    members.push(extra.to_string());
+                }
+                let error = graph.validate_facade_cargo_aggregates().unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("`{feature}` must contain only")),
+                    "{error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn facade_cargo_aggregates_do_not_widen_transport_allowlists() {
+        for package_name in transport_packages() {
+            let graph = graph(vec![package(package_name, FACADE_CARGO_AGGREGATES)]);
+            let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+                .iter()
+                .find_map(|(candidate, extras)| (*candidate == package_name).then_some(*extras))
+                .unwrap();
+            let error = graph
+                .validate_public_feature_allowlist(package_name, extras)
+                .unwrap_err();
+            for &(feature, _) in FACADE_CARGO_AGGREGATES {
+                assert!(error.to_string().contains(feature), "{error}");
+            }
+        }
     }
 
     #[test]

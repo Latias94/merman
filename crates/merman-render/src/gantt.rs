@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64};
+use crate::config::{ConfigLookup, config_bool as cfg_bool, config_f64 as cfg_f64};
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
@@ -32,12 +32,10 @@ fn instant_to_local(ms: i64, local_time_zone: &LocalTimeZone) -> Option<OffsetDa
     local_time_zone.at_instant(ms)
 }
 
-fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_i64()
+fn gantt_section_or_root(config: &dyn ConfigLookup) -> &dyn ConfigLookup {
+    config
+        .get("gantt")
+        .map_or(config, |section| section as &dyn ConfigLookup)
 }
 
 fn month_name_short(m: u32) -> &'static str {
@@ -1141,7 +1139,7 @@ pub(crate) fn gantt_section_class_suffix(
 pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     diagram_title: Option<&str>,
-    config: &serde_json::Value,
+    config: &dyn ConfigLookup,
     style: &GanttStyle,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
@@ -1151,7 +1149,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     let mut m = model.clone();
     let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
-    let gantt_cfg = config.get("gantt").unwrap_or(config);
+    let gantt_cfg = gantt_section_or_root(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);
     let bar_height = cfg_f64(gantt_cfg, &["barHeight"]).unwrap_or(20.0);
     let top_padding = cfg_f64(gantt_cfg, &["topPadding"]).unwrap_or(50.0);
@@ -1167,7 +1165,10 @@ pub(crate) fn layout_gantt_diagram_typed(
         .native()
         .and_then(|native| native.task_font_size)
         .unwrap_or_else(|| cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0));
-    let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
+    let number_section_styles = gantt_cfg
+        .get("numberSectionStyles")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(4);
 
     let cfg_display_mode = gantt_cfg
         .get("displayMode")

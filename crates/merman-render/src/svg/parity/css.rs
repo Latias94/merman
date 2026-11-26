@@ -150,7 +150,7 @@ impl PreparedCommonCss {
     }
 
     pub(crate) fn new(
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
         resolved_font_family: Option<&str>,
     ) -> Self {
         let font_family = resolved_font_family.map_or_else(

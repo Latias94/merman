@@ -203,7 +203,8 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/generate-rust-license-report.py": frozenset(
         {"hygiene", "security"}
     ),
-    "scripts/strict_json.py": frozenset({"hygiene", "security"}),
+    "scripts/cargo_lock_identity.py": frozenset({"hygiene", "security", "web"}),
+    "scripts/strict_json.py": frozenset({"hygiene", "security", "web"}),
     "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
     "scripts/test_publish.py": frozenset({"hygiene"}),

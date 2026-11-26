@@ -13,6 +13,9 @@ mod fonts;
 mod heuristic;
 #[cfg(feature = "text-layout")]
 pub mod line_break;
+#[cfg(feature = "text-layout")]
+#[doc(hidden)]
+pub mod measurement;
 mod whitespace;
 #[cfg(feature = "text-layout")]
 pub use create_text::non_markdown_svg_words;

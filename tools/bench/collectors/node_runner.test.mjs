@@ -118,7 +118,8 @@ test("Merman forwards the frozen ID on every render stage and marks no-options c
           return ${JSON.stringify(svg("ROOT"))}.replace('ROOT', mode === 'none' ? 'merman' : sources[source]);
         },
         svgPlanJsonSync(source, opts) {
-          if (draws !== 8 || !sources[source] || !matchesOptions(source, opts)) {
+          const matchesPlanOptions = mode === 'direct' ? arguments.length === 1 : matchesOptions(source, opts);
+          if (draws !== 8 || !sources[source] || !matchesPlanOptions) {
             throw new Error('wrong layout probe');
           }
           probes++;
@@ -236,6 +237,52 @@ test("Merman requires an explicit layout capability and verifies the actual root
     assert.equal(row.warm_samples[0].results[0].svg_root_id, id);
   }
   assert.equal(good.coverage.full_batch_comparable, true);
+});
+
+test("Merman site layouts admit fixed family capabilities without admitting selectable fallbacks", (t) => {
+  const dir = project(t);
+  install(dir, "@mermanjs/node", `
+    export function createNodeEngine() {
+      return {
+        runtimeCatalog: { package_version: '1.2.3' },
+        renderSvgSync(source, { diagramId }) {
+          return '<svg id="' + diagramId + '"><text>Drawing</text></svg>';
+        },
+        svgPlanJsonSync(source) {
+          const [diagram_type, ...required_capability_ids] = source.split(' ');
+          return JSON.stringify({ ready: true, diagram_type, required_capability_ids });
+        },
+        dispose() {},
+      };
+    }
+  `);
+  for (const layout of ["dagre", "elk", "shoal"]) {
+    const selected = `layout-${layout}`;
+    const shoal = layout === "shoal";
+    const accepted = [
+      ["info", "math"], ["gitGraph"], ["railroadAbnf"],
+      ["architecture", shoal ? selected : "layout-cytoscape"],
+      ["block", ...(shoal ? [selected] : [])], ["c4", ...(shoal ? [selected] : [])],
+      ["swimlane", selected], ["classDiagram", selected],
+    ];
+    const rejected = layout === "elk" ? ["swimlane", "layout-dagre"]
+      : ["architecture", shoal ? "layout-cytoscape" : selected];
+    const probe = ([type, ...caps]) => request([type, ...caps].join(" "), type);
+    plan(dir, [
+      { id: "accepted", requests: accepted.map(probe) },
+      { id: "rejected", requests: [probe(rejected)] },
+    ]);
+    const { report, status } = run(dir, "merman", ["--variant-label", layout, "--site-layout", layout,
+      "--direct-id", "--samples", "1", "--warmup-calls", "0"]);
+    assert.equal(status, 1);
+    const [good, failure] = report.scenarios;
+    assert.equal(good.coverage?.full_batch_comparable, true, good.error);
+    assert.deepEqual(good.layout_plans, accepted.map(([diagram_type, ...required_capability_ids]) =>
+      ({ diagram_type, required_capability_ids })));
+    const [type, capability] = rejected;
+    assert.equal(failure.status, "failed");
+    assert.equal(failure.error, `Scenario 1 (rejected): ${type}: requested ${layout}. SVG plan reports ${capability}.`);
+  }
 });
 
 test("public entries isolate duplicate scenarios, reuse one engine and preserve source bytes and IDs", (t) => {

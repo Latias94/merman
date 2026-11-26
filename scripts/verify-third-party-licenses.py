@@ -10,7 +10,6 @@ import os
 import re
 import sys
 import tempfile
-import tomllib
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -21,12 +20,22 @@ try:
         load_artifact_profiles,
         validate_artifact_profile_manifest,
     )
+    from scripts.cargo_lock_identity import (
+        CargoLockIdentityError,
+        load_cargo_packages as read_cargo_packages,
+        third_party_cargo_lock_sha256,
+    )
     from scripts import strict_json
 except ModuleNotFoundError:
     from artifact_profile_recipe import (
         ArtifactProfileError,
         load_artifact_profiles,
         validate_artifact_profile_manifest,
+    )
+    from cargo_lock_identity import (
+        CargoLockIdentityError,
+        load_cargo_packages as read_cargo_packages,
+        third_party_cargo_lock_sha256,
     )
     import strict_json
 
@@ -159,12 +168,9 @@ def load_cargo_packages(root: Path, relative: Path, cache: dict[Path, list[dict[
         return cache[relative]
     path = require_regular_file(root, relative, "Cargo lock")
     try:
-        document = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
-        raise ContractError(f"cannot read Cargo lock {relative}: {error}") from error
-    packages = document.get("package")
-    if not isinstance(packages, list) or not all(isinstance(item, dict) for item in packages):
-        raise ContractError(f"Cargo lock {relative} has no package array")
+        packages = read_cargo_packages(path)
+    except CargoLockIdentityError as error:
+        raise ContractError(str(error)) from error
     cache[relative] = packages
     return packages
 
@@ -413,19 +419,23 @@ def validate_web_rust_report(
             "version",
             "command_profile",
             "offline",
-            "cargo_lock_sha256",
+            "third_party_cargo_lock_sha256",
             "configuration_sha256",
             "artifact_profile_sha256",
         },
         set(),
         f"Web Rust report {scope_id} generator",
     )
+    try:
+        lock_digest = third_party_cargo_lock_sha256(root / "Cargo.lock")
+    except CargoLockIdentityError as error:
+        raise ContractError(str(error)) from error
     expected_generator = {
         "name": "cargo-about",
         "version": CARGO_ABOUT_VERSION,
         "command_profile": "artifact-profile-runtime",
         "offline": True,
-        "cargo_lock_sha256": sha256(root / "Cargo.lock"),
+        "third_party_cargo_lock_sha256": lock_digest,
         "configuration_sha256": sha256(root / "about.toml"),
         "artifact_profile_sha256": sha256_json(expected_profile),
     }

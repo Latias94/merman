@@ -159,7 +159,8 @@ impl PreprocessResult {
 }
 
 pub(crate) fn select_family_parser_source_controlled(
-    source: PreprocessedSource,
+    original: &str,
+    mut source: PreprocessedSource,
     with_comments: Option<PreprocessedSource>,
     diagram_type: &str,
     config: &MermaidConfig,
@@ -177,6 +178,12 @@ pub(crate) fn select_family_parser_source_controlled(
             encode_mermaid_entities_like_upstream_controlled(&mut with_comments, control)?;
             return Ok(with_comments);
         }
+    }
+    if cfg!(feature = "diagram-agentflow")
+        && diagram_type == "agentflow"
+        && !source.text().is_empty()
+    {
+        source.rebase_parser_start_controlled(original, control)?;
     }
     Ok(source)
 }

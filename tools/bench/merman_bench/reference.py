@@ -11,8 +11,16 @@ from .svg import EXPECTED_OUTCOMES
 
 _WORKLOADS = json.loads((Path(__file__).resolve().parents[1] / "workloads.json").read_bytes())
 NODE_PRODUCTS = _WORKLOADS["node_products"]
-NODE_INTRINSIC_LAYOUT_TYPES = frozenset(_WORKLOADS["node_intrinsic_layout_types"])
 LAYOUTS = ("dagre", "elk", "shoal")
+
+
+def node_expected_layout_capabilities(diagram_type, site_layout):
+    for rule in _WORKLOADS["node_fixed_layouts"]:
+        if diagram_type in rule["diagram_types"] and (
+            "site_layouts" not in rule or site_layout in rule["site_layouts"]
+        ):
+            return rule["required_capability_ids"]
+    return [f"layout-{site_layout}"]
 
 
 def valid_node_variant_label(label):

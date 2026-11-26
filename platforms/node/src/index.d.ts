@@ -348,6 +348,8 @@ export interface RenderSvgOptions {
   optionsJson?: string;
 }
 
+type SvgPlanOptions = Omit<RenderSvgOptions, "diagramId"> & { diagramId?: never };
+
 export interface MermanOperationRequest {
   operationId: string;
   source: string;
@@ -510,10 +512,10 @@ export declare class MermanEngine {
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;
   /** Synchronous rendering is intended only for explicit SSG build paths. */
   renderSvgSync(source: string, options?: Omit<RenderSvgOptions, "signal">): string;
-  svgPlanJson(source: string, options?: RenderSvgOptions): Promise<string>;
+  svgPlanJson(source: string, options?: SvgPlanOptions): Promise<string>;
   svgPlanJsonSync(
     source: string,
-    options?: Omit<RenderSvgOptions, "signal">,
+    options?: Omit<SvgPlanOptions, "signal">,
   ): string;
   themeCatalog(): ThemeCatalog;
   /** Exports the editable v2 document, including every declared appearance. */

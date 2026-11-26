@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import {
   BINDING_OPERATION_METADATA_CONTRACT,
   BINDING_PAYLOAD_SCHEMAS,
@@ -528,6 +530,21 @@ export function strictUtf8ByteLength(value, label = "text") {
   return measureUtf8Field(value, label, Infinity, false);
 }
 
+function utf8FieldLimitError(label, maxUtf8Bytes) {
+  return new MermanInvalidTransportError(
+    `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
+  );
+}
+
+function isolatedUtf16FieldError(value, label, maxUtf8Bytes) {
+  if (value.length > maxUtf8Bytes / 3 && Buffer.byteLength(value, "utf8") > maxUtf8Bytes) {
+    return utf8FieldLimitError(label, maxUtf8Bytes);
+  }
+  return new MermanInvalidTransportError(
+    `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
+  );
+}
+
 function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes, maxDocumentUtf8Bytes = Infinity) {
   let bytes = 0;
   let escapeBytes = 0;
@@ -541,24 +558,18 @@ function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes, maxDocum
     } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const low = value.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
-        throw new MermanInvalidTransportError(
-          `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
-        );
+        throw isolatedUtf16FieldError(value, label, maxUtf8Bytes);
       }
       bytes += 4;
       index += 1;
     } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      throw new MermanInvalidTransportError(
-        `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
-      );
+      throw isolatedUtf16FieldError(value, label, maxUtf8Bytes);
     } else {
       bytes += 3;
     }
   }
   if (bytes > maxUtf8Bytes) {
-    throw new MermanInvalidTransportError(
-      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
-    );
+    throw utf8FieldLimitError(label, maxUtf8Bytes);
   }
   if (bytes > maxDocumentUtf8Bytes) {
     throw new MermanInvalidTransportError(

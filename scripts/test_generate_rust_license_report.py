@@ -19,6 +19,8 @@ report = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = report
 SPEC.loader.exec_module(report)
 
+WORKSPACE_ONLY_LOCK = 'version = 4\n[[package]]\nname = "workspace-member"\nversion = "0.1.0"\n'
+
 WEB_PROFILE_FEATURES = {
     "web-analysis": ["analysis"],
     "web-ascii": ["ascii"],
@@ -36,6 +38,44 @@ WEB_PROFILE_FEATURES = {
 
 
 class RustLicenseReportTests(unittest.TestCase):
+    def test_lock_fingerprint_uses_external_identities_only(self) -> None:
+        registry = (
+            '[[package]]\nname = "registry"\nversion = "1.2.3"\n'
+            'source = "registry+https://example.invalid/index"\nchecksum = "'
+            + "a" * 64
+            + '"\n'
+        )
+        git = (
+            '[[package]]\nname = "git"\nversion = "1.0.0"\n'
+            'source = "git+https://example.invalid/repo#abc"\n'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            lock = Path(temporary) / "Cargo.lock"
+            lock.write_text(WORKSPACE_ONLY_LOCK + registry + git, encoding="utf-8")
+            baseline = report.third_party_cargo_lock_sha256(lock)
+            self.assertEqual(baseline, report.sha256_json([
+                ("git", "1.0.0", "git+https://example.invalid/repo#abc"),
+                ("registry", "1.2.3", "registry+https://example.invalid/index", "a" * 64),
+            ]))
+
+            reordered = (
+                "version = 4\n" + git + registry + 'dependencies = ["git"]\n'
+                '[[package]]\nname = "new-workspace-member"\nversion = "0.2.0"\n'
+            )
+            lock.write_text(reordered, encoding="utf-8")
+            self.assertEqual(report.third_party_cargo_lock_sha256(lock), baseline)
+
+            for before, after in (
+                ("name = \"registry\"", "name = \"registry-fork\""),
+                ("1.2.3", "1.2.4"),
+                ("index", "mirror"),
+                ("a" * 64, "b" * 64),
+                ("#abc", "#def"),
+            ):
+                with self.subTest(field=before):
+                    lock.write_text(reordered.replace(before, after), encoding="utf-8")
+                    self.assertNotEqual(report.third_party_cargo_lock_sha256(lock), baseline)
+
     def test_single_artifact_cli_requires_an_output_and_explicit_profile(self) -> None:
         with self.assertRaises(SystemExit):
             report.parse_args(["--write", "--artifact-profile", "sdk-wasi-standard"])
@@ -78,7 +118,7 @@ class RustLicenseReportTests(unittest.TestCase):
     def test_normalization_removes_host_paths_and_private_workspace_crates(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+            (root / "Cargo.lock").write_text(WORKSPACE_ONLY_LOCK, encoding="utf-8")
             (root / "about.toml").write_text("accepted = []", encoding="utf-8")
             raw = {
                 "licenses": [
@@ -123,7 +163,7 @@ class RustLicenseReportTests(unittest.TestCase):
     def test_normalization_rejects_a_report_without_third_party_licenses(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+            (root / "Cargo.lock").write_text(WORKSPACE_ONLY_LOCK, encoding="utf-8")
             (root / "about.toml").write_text("accepted = []", encoding="utf-8")
             with self.assertRaisesRegex(
                 report.RustLicenseReportError, "no third-party licenses"
@@ -336,7 +376,7 @@ class RustLicenseReportTests(unittest.TestCase):
     def test_native_outputs_generate_each_shared_observation_once(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+            (root / "Cargo.lock").write_text(WORKSPACE_ONLY_LOCK, encoding="utf-8")
             (root / "about.toml").write_text("accepted = []", encoding="utf-8")
             profile = artifact_profile_fixture(
                 report.PYTHON_ARTIFACT_PROFILE_ID,
@@ -370,7 +410,7 @@ class RustLicenseReportTests(unittest.TestCase):
     def test_native_report_merges_target_licenses_and_keeps_target_closures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+            (root / "Cargo.lock").write_text(WORKSPACE_ONLY_LOCK, encoding="utf-8")
             (root / "about.toml").write_text("accepted = []", encoding="utf-8")
             recipe = artifact_profile_fixture(
                 "native",
@@ -483,7 +523,7 @@ def normalized_license(package_name: str) -> dict[str, object]:
 
 
 def write_web_profile_fixture(root: Path) -> dict[str, object]:
-    (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+    (root / "Cargo.lock").write_text(WORKSPACE_ONLY_LOCK, encoding="utf-8")
     (root / "about.toml").write_text("accepted = []", encoding="utf-8")
     manifest = root / "crates/merman-wasm/Cargo.toml"
     manifest.parent.mkdir(parents=True)

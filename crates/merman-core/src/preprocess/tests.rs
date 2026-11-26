@@ -365,6 +365,7 @@ fn preprocess_keeps_entity_encoding_and_source_maps_on_both_parser_buffers() {
             assert!(with_comments.text().contains("title='😀'>#35;</span>"));
 
             let selected = select_family_parser_source_controlled(
+                &input,
                 result.source,
                 result.with_comments,
                 diagram_type,

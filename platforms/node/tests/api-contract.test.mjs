@@ -968,8 +968,8 @@ test("operation deadlines use the additive request control field", async () => {
     { kind: "sync", timeoutMs: 0 },
   ]);
   for (const timeoutMs of [-1, 0.5, 0x1_0000_0000, Number.POSITIVE_INFINITY, "1"]) {
-    assert.throws(
-      () => engine.executeOperation(request, { timeoutMs }),
+    await assert.rejects(
+      engine.executeOperation(request, { timeoutMs }),
       /timeoutMs must be an integer from 0 through 4294967295/i,
     );
   }
@@ -1014,8 +1014,8 @@ test("already-aborted operations preserve canonical request precedence", async (
   ];
 
   for (const { name, request, error } of cases) {
-    assert.throws(
-      () => engine.executeOperation(request, { signal: controller.signal }),
+    await assert.rejects(
+      engine.executeOperation(request, { signal: controller.signal }),
       error,
       name,
     );
@@ -1063,8 +1063,8 @@ test("operation URI policy normalizes empty values and rejects forbidden identif
     },
   ]);
 
-  assert.throws(
-    () => engine.executeOperation({
+  await assert.rejects(
+    engine.executeOperation({
       operationId: "svg",
       source: "flowchart TD\nA --> B",
       uri: "file:///diagram.mmd",
@@ -1090,10 +1090,13 @@ test("operation request fields accept exact UTF-8 ceilings and reject plus one",
 
   const exactSource = "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes);
   assert.equal(await engine.renderSvg(exactSource), "<svg />");
-  assert.throws(
-    () => engine.renderSvg(`${exactSource}x`),
+  await assert.rejects(
+    engine.renderSvg(`${exactSource}x`),
     /field limit/i,
   );
+  const exactInvalidSource = `${exactSource.slice(3)}\ud800`;
+  await assert.rejects(engine.renderSvg(exactInvalidSource), /isolated UTF-16 surrogate/i);
+  await assert.rejects(engine.renderSvg(`${exactInvalidSource}x`), /field limit/i);
 
   const exactOptionsJson = "{}" + " ".repeat(
     NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes - 2,
@@ -1102,8 +1105,8 @@ test("operation request fields accept exact UTF-8 ceilings and reject plus one",
     await engine.renderSvg("flowchart TD\nA", { optionsJson: exactOptionsJson }),
     "<svg />",
   );
-  assert.throws(
-    () => engine.renderSvg("flowchart TD\nA", { optionsJson: `${exactOptionsJson} ` }),
+  await assert.rejects(
+    engine.renderSvg("flowchart TD\nA", { optionsJson: `${exactOptionsJson} ` }),
     /field limit|wire limit/i,
   );
 
@@ -1118,16 +1121,16 @@ test("operation request fields accept exact UTF-8 ceilings and reject plus one",
     }),
     MermanOperationError,
   );
-  assert.throws(
-    () => engine.executeOperation({
+  await assert.rejects(
+    engine.executeOperation({
       operationId: "document-analysis-json",
       source: "flowchart TD\nA",
       uri: "",
     }),
     /requires a non-empty uri/i,
   );
-  assert.throws(
-    () => engine.executeOperation({
+  await assert.rejects(
+    engine.executeOperation({
       operationId: "document-analysis-json",
       source: "flowchart TD\nA",
       uri: `${exactUri}x`,
@@ -1207,13 +1210,27 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
       future_metadata: { preserved: true },
     }),
   );
-  assert.equal(await engine.svgPlanJson("flowchart TD\nA --> B"), JSON.stringify(plan));
-  assert.equal(engine.svgPlanJsonSync("flowchart TD\nA --> B"), JSON.stringify(plan));
+  const source = "flowchart TD\nA --> B";
+  const optionsJson = '{ "svg": { "diagram_id": "raw-plan-id" } }';
+  assert.equal(await engine.svgPlanJson(source), JSON.stringify(plan));
+  assert.equal(engine.svgPlanJsonSync(source), JSON.stringify(plan));
+  assert.equal(await engine.svgPlanJson(source, { optionsJson }), JSON.stringify(plan));
+  assert.equal(engine.svgPlanJsonSync(source, { optionsJson }), JSON.stringify(plan));
+  const unsupportedId = { name: "TypeError", message: /diagramId is only supported/ };
+  await assert.rejects(engine.svgPlanJson(source, { diagramId: "plan-id" }), unsupportedId);
+  assert.throws(
+    () => engine.svgPlanJsonSync(source, { diagramId: "plan-id", optionsJson }),
+    unsupportedId,
+  );
   assert.deepEqual(metadataCalls, ["supported-diagrams"]);
-  assert.deepEqual(factory.calls.map(({ operation_id }) => operation_id), [
-    "svg-plan-json",
-    "svg-plan-json",
-  ]);
+  const request = {
+    operation_id: "svg-plan-json",
+    source,
+    uri: null,
+    include_metadata: false,
+  };
+  const requestWithOptions = { ...request, options_json: optionsJson };
+  assert.deepEqual(factory.calls, [request, request, requestWithOptions, requestWithOptions]);
   await engine.dispose();
   assert.throws(
     () => engine.metadataJson("supported-diagrams"),
@@ -1447,6 +1464,7 @@ test("SVG diagramId reuses validated options on the generic transport", async (c
     assert.throws(() => engine.renderSvgSync(source, { diagramId, optionsJson: "{}" }), /cannot be used together/);
     assert.throws(() => engine.renderSvgSync(source, { diagramId: 42 }), /must be a string/);
     assert.throws(() => engine.renderSvgSync(source, { diagramId: "\ud800" }), /isolated UTF-16 surrogate/);
+    await assert.rejects(engine.renderSvg(source, { diagramId, optionsJson: "{}" }), /cannot be used together/);
     assert.equal(factory.calls.length, 3);
   } finally {
     await engine.dispose();

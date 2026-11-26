@@ -19,6 +19,7 @@ try:
         load_artifact_profiles,
         validate_artifact_profile_manifest,
     )
+    from scripts.cargo_lock_identity import CargoLockIdentityError, third_party_cargo_lock_sha256
     from scripts import strict_json
 except ModuleNotFoundError:
     from artifact_profile_recipe import (
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
         load_artifact_profiles,
         validate_artifact_profile_manifest,
     )
+    from cargo_lock_identity import CargoLockIdentityError, third_party_cargo_lock_sha256
     import strict_json
 
 
@@ -370,7 +372,7 @@ def normalize_report(
         "version": CARGO_ABOUT_VERSION,
         "command_profile": "workspace-all-features-runtime",
         "offline": True,
-        "cargo_lock_sha256": sha256_file(root / "Cargo.lock"),
+        "third_party_cargo_lock_sha256": third_party_cargo_lock_sha256(root / "Cargo.lock"),
         "configuration_sha256": sha256_file(root / "about.toml"),
     }
     if artifact_profile is None:
@@ -556,7 +558,7 @@ def build_native_report(
             else "artifact-profile-target-union"
         ),
         "offline": True,
-        "cargo_lock_sha256": sha256_file(root / "Cargo.lock"),
+        "third_party_cargo_lock_sha256": third_party_cargo_lock_sha256(root / "Cargo.lock"),
         "configuration_sha256": sha256_file(root / "about.toml"),
         "artifact_bundle_sha256": sha256_json(artifact_bundle),
     }
@@ -732,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
                 + "; run "
                 "`python3 scripts/generate-rust-license-report.py --write`"
             )
-    except (OSError, RustLicenseReportError) as error:
+    except (OSError, CargoLockIdentityError, RustLicenseReportError) as error:
         print(f"Rust dependency license report failed: {error}", file=sys.stderr)
         return 1
     total_bytes = sum(len(generated) for generated in generated_outputs.values())

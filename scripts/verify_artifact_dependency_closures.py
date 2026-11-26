@@ -194,6 +194,8 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
         exclusions.append(PackageFeatureExclusion(SVG_FONT_BACKEND, ("system-fonts",)))
         if variant == "standard":
             exclusions.append(PackageFeatureExclusion("fontdb", ("fontconfig", "fs", "memmap")))
+    else:
+        exclusions.append(PackageFeatureExclusion(SVG_FONT_BACKEND, ("memmap-fonts", "system-fonts")))
     return ClosureClaim(
         claim_id=f"{profile_id}-capability-and-runtime-boundary",
         profile_id=profile_id,
@@ -390,6 +392,7 @@ SEMANTIC_CLAIMS = (
         forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "png")),
+            PackageFeatureExclusion(SVG_FONT_BACKEND, ("memmap-fonts",)),
         ),
     ),
     ClosureClaim(

@@ -32,22 +32,28 @@ This development-build example enables Shoal as the only graph engine for Flowch
 ```toml
 [dependencies]
 merman = { path = "../merman/crates/merman", default-features = false, features = ["svg", "diagram-flowchart", "layout-shoal"] }
-serde_json = "1"
 ```
 
 ```rust
-use merman::{MermaidEngine, Renderer, SourcePresentationConfig};
+use merman::{LayoutBackend, Renderer};
 
-let config = SourcePresentationConfig::from_value(serde_json::json!({
-    "flowchart": { "layout": "shoal" }
-}));
-let renderer = Renderer::new()
-    .with_presentation_engine(MermaidEngine::new().with_site_config(config));
+let renderer = Renderer::builder()
+    .with_default_layout(LayoutBackend::Shoal)
+    .build()?;
+let svg = renderer.render_svg("flowchart TD\nA[Start] --> B[Done]")?;
+println!("{}", svg.svg());
 ```
 
-The scoped key sets the Flowchart default for that renderer. For a global default, set top-level
-`"layout": "shoal"`. Document frontmatter and directives follow Mermaid’s configuration
-precedence. A document override can request a different engine and will need that engine’s feature.
+`with_default_layout` sets the renderer's top-level site default. Use
+`with_site_config` with a `MermaidConfig` to set a family-specific default such as
+`flowchart.layout`. Document frontmatter and directives still follow Mermaid's configuration
+precedence. A document override can request a different engine and will need that engine's feature.
+
+The one-argument helpers use bounded defaults for SVG, ASCII, PNG, JPEG, and PDF. They return
+`RenderError::NoDiagram` when detection finds no diagram, without hiding errors in a recognized
+diagram. For per-call limits and cancellation, use the relevant `*_with` method with an explicit
+target request and `OperationControl`, or use `Renderer::render(RenderRequest)` to retain the
+optional-output contract.
 
 For a defaults-off build that previously depended on Dagre, add `layout-dagre`. With a host allowlist,
 include `RenderCapabilityPolicy::deny_all().with_allowed(RenderCapability::LayoutDagre)` in the

@@ -13,7 +13,7 @@ use crate::{
 use crate::{DiagramRegistry, ParsedDiagram};
 use merman_model::presentation::PresentationMetadata;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 #[path = "parse_pipeline.rs"]
 pub(crate) mod parse_pipeline;
@@ -22,7 +22,7 @@ type ResolvedSiteConfig =
     std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>;
 type SiteAppearanceCache = BTreeMap<
     (&'static str, MermaidThemeId),
-    std::result::Result<Arc<SiteAppearance>, theme::ThemeResolutionError>,
+    std::result::Result<Arc<SiteAppearance>, Arc<theme::ThemeResolutionError>>,
 >;
 
 #[derive(Clone, Debug)]
@@ -59,27 +59,49 @@ impl SiteConfigInitialization {
             .clone()
     }
 
+    fn lock_appearances(&self) -> MutexGuard<'_, SiteAppearanceCache> {
+        self.materialized_appearances
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                let appearances = poisoned.into_inner();
+                self.materialized_appearances.clear_poison();
+                appearances
+            })
+    }
+
     fn materialize_appearance(
         &self,
         section: &'static str,
         theme: MermaidThemeId,
         materialize: impl FnOnce() -> ResolvedSiteConfig,
     ) -> ResolvedSiteConfig {
-        let Ok(mut appearances) = self.materialized_appearances.try_lock() else {
-            return materialize();
-        };
         let key = (section, theme);
-        if appearances.len() >= merman_model::family::diagram_family_selectors().len()
-            && !appearances.contains_key(&key)
-        {
-            return materialize();
-        }
-        appearances
-            .entry(key)
-            .or_insert_with(|| materialize().map(|config| Arc::new(SiteAppearance::new(config))))
-            .as_ref()
-            .map(SiteAppearance::fork)
-            .map_err(Clone::clone)
+        let capacity = merman_model::family::diagram_family_selectors().len();
+        let (cached, has_room) = {
+            let appearances = self.lock_appearances();
+            (appearances.get(&key).cloned(), appearances.len() < capacity)
+        };
+        let appearance = match cached {
+            Some(appearance) => appearance,
+            None if !has_room => return materialize(),
+            None => {
+                let candidate = materialize()
+                    .map(|config| Arc::new(SiteAppearance::new(config)))
+                    .map_err(Arc::new);
+                let winner = {
+                    let mut appearances = self.lock_appearances();
+                    let winner = appearances.get(&key).cloned();
+                    if winner.is_none() && appearances.len() < capacity {
+                        appearances.insert(key, candidate.clone());
+                    }
+                    winner
+                };
+                winner.unwrap_or(candidate)
+            }
+        };
+        appearance
+            .map(|appearance| appearance.fork())
+            .map_err(Arc::unwrap_or_clone)
     }
 }
 
@@ -570,6 +592,21 @@ impl MermaidEngine {
             .parse_render_model_controlled_in_context(operation, operation_context)
     }
 
+    /// Like the in-context render parser, but returns `None` on top-level detection failure
+    /// even in strict mode. Errors from a detected family's parser retain their original type.
+    #[doc(hidden)]
+    pub fn parse_detected_render_model_in_context_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+        operation_context: &merman_model::runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .allow_missing_diagram()
+            .parse_render_model_controlled_in_context(operation, operation_context)
+    }
+
     /// Async facade for [`MermaidEngine::parse_diagram_for_render_model_sync`].
     ///
     /// The work is CPU-bound and executes synchronously.
@@ -678,5 +715,106 @@ impl MermaidEngine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         self.parse_diagram_with_type_sync(diagram_type, text, options)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn site_appearance_cache_rechecks_winner_and_remaining_capacity() {
+        let selectors = merman_model::family::diagram_family_selectors();
+        let theme_id = MermaidThemeId::Dark;
+        let materialize = || {
+            Ok(SourcePresentationConfig::from_value(
+                serde_json::json!({"theme": "dark"}),
+            ))
+        };
+
+        for competing_section in ["flowchart", "sequence"] {
+            let initialization =
+                SiteConfigInitialization::new(&SourcePresentationConfig::empty_object());
+            let cache = &initialization.materialized_appearances;
+            let seed = Arc::new(SiteAppearance::new(SourcePresentationConfig::empty_object()));
+            cache.lock().unwrap().extend(
+                selectors
+                    .iter()
+                    .take(selectors.len() - 1)
+                    .map(|selector| ((selector.feature, theme_id), Ok(Arc::clone(&seed)))),
+            );
+
+            let mut competing = None;
+            let resolved = initialization
+                .materialize_appearance("flowchart", theme_id, || {
+                    assert!(cache.try_lock().is_ok());
+                    competing = Some(initialization.materialize_appearance(
+                        competing_section,
+                        theme_id,
+                        materialize,
+                    )?);
+                    materialize()
+                })
+                .unwrap();
+            let competing = competing.unwrap();
+            assert_eq!(resolved, competing);
+            assert_eq!(
+                resolved
+                    .as_config()
+                    .shares_storage_with(competing.as_config()),
+                competing_section == "flowchart",
+            );
+            let entries = cache.lock().unwrap();
+            assert_eq!(entries.len(), selectors.len());
+            assert!(entries.contains_key(&(competing_section, theme_id)));
+        }
+    }
+
+    #[cfg(panic = "unwind")]
+    #[test]
+    fn site_appearance_cache_resumes_memoization_after_poison() {
+        let initialization =
+            SiteConfigInitialization::new(&SourcePresentationConfig::empty_object());
+        let cache = &initialization.materialized_appearances;
+        let poison = || {
+            let unwind = std::panic::catch_unwind(|| {
+                let _guard = cache.try_lock().unwrap();
+                panic!("poison site appearance cache");
+            });
+            assert!(unwind.is_err());
+            assert!(cache.is_poisoned());
+        };
+        let theme_id = MermaidThemeId::Dark;
+        let error = theme::ThemeResolutionError::EvaluationLimit(
+            merman_model::presentation::ThemeEvaluationLimitExceeded {
+                limit: "THEME_COLOR_LIMIT",
+                requested: "65".to_owned(),
+                max: 64,
+            },
+        );
+        let cold = initialization
+            .materialize_appearance("flowchart", theme_id, || Err(error.clone()))
+            .unwrap_err();
+        poison();
+        let warm = initialization
+            .materialize_appearance("flowchart", theme_id, || panic!("cached error was lost"))
+            .unwrap_err();
+        assert_eq!(cold, error);
+        assert_eq!(warm, error);
+        assert!(!cache.is_poisoned());
+
+        let cold = initialization
+            .materialize_appearance("sequence", theme_id, || {
+                poison();
+                Ok(SourcePresentationConfig::from_value(
+                    serde_json::json!({"theme": "dark"}),
+                ))
+            })
+            .unwrap();
+        assert!(!cache.is_poisoned());
+        let warm = initialization
+            .materialize_appearance("sequence", theme_id, || panic!("recovered write was lost"))
+            .unwrap();
+        assert!(cold.as_config().shares_storage_with(warm.as_config()));
     }
 }

@@ -226,9 +226,11 @@ pub struct IndexedFcoseOptions {
     pub node_separation: Option<f64>,
     pub num_iter: Option<usize>,
     pub default_edge_length: Option<f64>,
-    /// Alignment groups use FCoSE element indices: leaves first, then compounds.
+    /// Alignment groups use FCoSE element indices: leaves first, then compounds. Only leaves
+    /// and empty compounds can be direct constraint targets.
     pub alignment_constraint: Option<IndexedAlignmentConstraint>,
-    /// Relative constraints use FCoSE element indices: leaves first, then compounds.
+    /// Relative constraints use FCoSE element indices: leaves first, then compounds. Only leaves
+    /// and empty compounds can be direct constraint targets.
     pub relative_placement_constraint: Vec<IndexedRelativePlacementConstraint>,
     pub compound_padding: Option<f64>,
     pub relocate_center: Option<(f64, f64)>,
@@ -367,7 +369,7 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
         .ok_or(WorkFailure::ArithmeticOverflow)?;
     work_control.check(input_scan_bound)?;
 
-    let shape = FcoseConstraintWorkShape::from_indexed_options(
+    let mut shape = FcoseConstraintWorkShape::from_indexed_options(
         opts,
         node_count,
         input_group_count,
@@ -384,6 +386,17 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
         .seed_offset
         .or(opts.random_seed_offset)
         .unwrap_or(usize::from(opts.randomize));
+    let prepared_constraints = if shape.may_collapse_zero_gap() {
+        let setup_work = shape.setup_work_units(schedule)?;
+        work_control.check(setup_work)?;
+        let mut constraints = Constraints::from_indexed_opts(node_count, opts);
+        if constraints.normalize(node_count, work_control)? {
+            shape = shape.with_normalized_constraints(&constraints)?;
+        }
+        Some(constraints)
+    } else {
+        None
+    };
     let work_plan = FcoseWorkPlan::from_schedule(
         schedule,
         node_count,
@@ -391,15 +404,19 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
         random_seed_offset,
         random_policy.reset_seed_each_run,
     )?;
-    // Check 3 admits the complete predictable schedule, including compound-topology construction,
-    // before SimGraph/Constraints allocation. Spectral convergence and relative-projection clone
-    // work remain exact dynamic charges.
+    // Admit the predictable schedule before building the simulation. For rows that could
+    // collapse, a non-consuming setup check protected classification and normalization.
     work_control.check(work_plan.maximum_work_units())?;
     work_control.charge(work_plan.setup_work_units())?;
+    let constraints = if let Some(constraints) = prepared_constraints {
+        constraints
+    } else {
+        let mut constraints = Constraints::from_indexed_opts(node_count, opts);
+        constraints.normalize(node_count, work_control)?;
+        constraints
+    };
     let mut sim = SimGraph::from_indexed(graph);
-
-    let constraints = Constraints::from_indexed_opts(&sim, opts);
-    constraints.validate(sim.nodes.len())?;
+    let projection_node_count = constraints.projection_node_count(&sim)?;
 
     let spectral_topology = if opts.randomize && sim.leaf_count > 0 {
         Some(spectral::SpectralTopology::build(
@@ -465,6 +482,7 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
             .unwrap_or((0.0, 0.0));
         sim.run_spring_embedder(SpringEmbedderContext {
             constraints: &constraints,
+            projection_node_count,
             options: opts,
             work_plan,
             rng: &mut rng,
@@ -823,6 +841,7 @@ struct OwnerBounds {
 
 struct SpringEmbedderContext<'a, W: WorkControl + ?Sized> {
     constraints: &'a Constraints,
+    projection_node_count: usize,
     options: &'a IndexedFcoseOptions,
     work_plan: FcoseWorkPlan,
     rng: &'a mut FcoseRandom,

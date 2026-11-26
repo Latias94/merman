@@ -47,7 +47,8 @@ fn er_flat_action_storage_and_membership_work_grow_with_records() {
         assert_eq!(actions.first, actions.last, "one top-level subgraph");
 
         let mut db = ErDb::new();
-        db.replay(arena, actions, &control).unwrap();
+        db.replay(arena, actions, &control, STYLE_REPLAY_LIMIT)
+            .unwrap();
         assert_eq!(db.subgraphs.len(), depth);
         assert_eq!(db.membership_candidates, depth);
         assert_eq!(db.completed_members.len(), depth);
@@ -69,7 +70,11 @@ fn er_cancellation_during_one_deep_action_preserves_completed_inner_subgraphs() 
     let control = OperationControl::new();
     control.cancel_after_checkpoints(12);
     let mut db = ErDb::new();
-    let cancelled = db.replay(arena, actions, &control).unwrap_err();
+    let Err(ErFailure::Cancelled(cancelled)) =
+        db.replay(arena, actions, &control, STYLE_REPLAY_LIMIT)
+    else {
+        panic!("subgraph completion observes cancellation");
+    };
     assert_eq!(control.checkpoint(), Err(cancelled));
     assert!(
         !db.subgraphs.is_empty(),
@@ -103,4 +108,159 @@ fn er_cancellation_during_token_delivery_retains_the_terminal_outcome() {
         panic!("token delivery observes cancellation");
     };
     assert_eq!(control.checkpoint(), Err(cancelled));
+}
+
+fn replay_styles_with_control(
+    source: &str,
+    control: &OperationControl,
+    limit: StyleReplayCost,
+) -> (ErDb, Result<(), ErFailure>) {
+    let parsing = OperationControl::new();
+    let (arena, actions) = ErSyntax::lex(source, &parsing)
+        .unwrap()
+        .into_actions(&parsing)
+        .unwrap()
+        .unwrap();
+    let mut db = ErDb::new();
+    let result = db.replay(arena, actions, control, limit);
+    (db, result)
+}
+
+#[test]
+fn er_style_replay_charges_exact_cumulative_copies_and_utf8_bytes() {
+    let source = concat!(
+        "erDiagram\n",
+        "style FUTURE color:orange\n",
+        "class FUTURE early\n",
+        "subgraph SHARED\n",
+        "INNER\n",
+        "end\n",
+        "SHARED\n",
+        "FUTURE\n",
+        "style SHARED,SHARED,MISSING fill:é,stroke:blue\n",
+        "class SHARED,SHARED,MISSING hot,冷\n",
+        "classDef hot,cold,hot fillcolor:fill,stroke:blue\n",
+        "classDef hot fill:blue\n",
+    );
+    let exact = StyleReplayCost {
+        string_entries: 22,
+        text_bytes: 238,
+    };
+    let control = OperationControl::new();
+    let (db, result) = replay_styles_with_control(source, &control, exact);
+    result.unwrap();
+    let styles = ["fill:é", "stroke:blue", "fill:é", "stroke:blue"];
+    assert_eq!(db.entities["SHARED"].css_styles, styles);
+    assert_eq!(db.entities["SHARED"].css_classes, "default hot 冷 hot 冷");
+    assert_eq!(db.subgraphs[0].css_styles, styles);
+    assert_eq!(db.subgraphs[0].classes, ["hot", "冷", "hot", "冷"]);
+    assert_eq!(db.entities["FUTURE"].css_classes, "default");
+    assert!(db.entities["FUTURE"].css_styles.is_empty());
+    assert!(!db.entities.contains_key("MISSING"));
+    assert_eq!(
+        db.classes.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["hot", "cold"]
+    );
+    assert_eq!(
+        db.classes["hot"].styles,
+        [
+            "fillcolor:fill",
+            "stroke:blue",
+            "fillcolor:fill",
+            "stroke:blue",
+            "fill:blue"
+        ]
+    );
+    assert_eq!(
+        db.classes["hot"].text_styles,
+        ["bgFillcolor:bgFill", "bgFillcolor:bgFill"]
+    );
+    assert_eq!(db.classes["cold"].styles, ["fillcolor:fill", "stroke:blue"]);
+
+    for (limit, expected_unit, expected_actual) in [
+        (
+            StyleReplayCost {
+                string_entries: exact.string_entries - 1,
+                ..exact
+            },
+            "string entries",
+            exact.string_entries,
+        ),
+        (
+            StyleReplayCost {
+                text_bytes: exact.text_bytes - 1,
+                ..exact
+            },
+            "UTF-8 bytes",
+            exact.text_bytes,
+        ),
+    ] {
+        let (db, result) = replay_styles_with_control(source, &control, limit);
+        let Err(ErFailure::Syntax(ErSyntaxDiagnostic::StyleExpansionLimit {
+            span,
+            unit,
+            actual,
+            maximum,
+        })) = result
+        else {
+            panic!("expected an ER style construction limit");
+        };
+        let keyword = source.rfind("classDef").unwrap();
+        assert_eq!(span, SourceSpan::new(keyword, keyword + "classDef".len()));
+        assert_eq!(unit, expected_unit);
+        assert_eq!(actual, expected_actual);
+        assert_eq!(maximum, expected_actual - 1);
+        assert_eq!(db.classes["hot"].styles.len(), 4);
+    }
+}
+
+#[test]
+fn er_style_replay_refuses_a_whole_directive_before_copying() {
+    let source = "erDiagram\nA\nB\nstyle A,B fill:red,color:blue\n";
+    let limit = StyleReplayCost {
+        string_entries: 3,
+        text_bytes: 36,
+    };
+    let (db, result) = replay_styles_with_control(source, &OperationControl::new(), limit);
+    assert!(matches!(
+        result,
+        Err(ErFailure::Syntax(ErSyntaxDiagnostic::StyleExpansionLimit {
+            unit: "string entries",
+            actual: 4,
+            maximum: 3,
+            ..
+        }))
+    ));
+    assert!(
+        db.entities
+            .values()
+            .all(|entity| entity.css_styles.is_empty())
+    );
+
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(3);
+    let (db, result) = replay_styles_with_control(source, &control, limit);
+    let Err(ErFailure::Cancelled(cancelled)) = result else {
+        panic!("cancellation at admission precedes a construction limit");
+    };
+    assert_eq!(control.checkpoint(), Err(cancelled));
+    assert!(
+        db.entities
+            .values()
+            .all(|entity| entity.css_styles.is_empty())
+    );
+}
+
+#[test]
+fn er_style_replay_poll_interrupts_a_single_directive_between_copies() {
+    let source = "erDiagram\nA\nB\nstyle A,B fill:red,color:blue\n";
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(6);
+    let (db, result) = replay_styles_with_control(source, &control, STYLE_REPLAY_LIMIT);
+    let Err(ErFailure::Cancelled(cancelled)) = result else {
+        panic!("style copy loop observes cancellation");
+    };
+    assert_eq!(control.checkpoint(), Err(cancelled));
+    assert_eq!(db.entities["A"].css_styles, ["fill:red", "color:blue"]);
+    assert!(db.entities["B"].css_styles.is_empty());
 }

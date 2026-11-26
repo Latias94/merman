@@ -1,9 +1,9 @@
-use crate::config::{config_f64, config_string};
+use crate::config::{ConfigLookup, config_f64, config_string};
 use crate::svg::PreparedCommonCss;
 use crate::theme::{FamilyTheme, font_family_css};
 use merman_model::presentation::PresentationConfig;
 
-use super::super::GanttNativeStyle;
+use super::super::{GanttNativeStyle, gantt_section_or_root};
 use super::font_size::GanttFontSize;
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,6 @@ impl GanttCssBinding {
         config: &PresentationConfig,
     ) -> (GanttNativeStyle, Self) {
         let typography = &theme.typography;
-        let config_value = config.as_value();
         let font = ["themeVariables.fontFamily", "fontFamily"]
             .into_iter()
             .filter(|path| config.explicit_config_owns_path(path))
@@ -61,17 +60,14 @@ impl GanttCssBinding {
         ]
         .into_iter()
         .filter(|(path, _)| config.explicit_config_owns_path(path))
-        .find_map(|(_, path)| crate::config::config_f64_css_absolute_px(config_value, path))
+        .find_map(|(_, path)| crate::config::config_f64_css_absolute_px(config, path))
         .filter(|size| *size >= 0.0)
         .unwrap_or(typography.base_size_px);
         let native = GanttNativeStyle::new(theme, config, &font, base_size);
-        let mut css = Self::new(config_value, &font);
-        css.common = PreparedCommonCss::with_resolved_typography(
-            config_value,
-            font,
-            format!("{base_size}px"),
-        );
-        let gantt_config = config_value.get("gantt").unwrap_or(config_value);
+        let mut css = Self::new(config, &font);
+        css.common =
+            PreparedCommonCss::with_resolved_typography(config, font, format!("{base_size}px"));
+        let gantt_config = gantt_section_or_root(config);
         let task_size = serde_json::json!(
             native
                 .task_font_size
@@ -88,7 +84,7 @@ impl GanttCssBinding {
         (native, css)
     }
 
-    pub(super) fn new(config: &serde_json::Value, font_family: &str) -> Self {
+    pub(super) fn new(config: &dyn ConfigLookup, font_family: &str) -> Self {
         let option = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
@@ -99,7 +95,7 @@ impl GanttCssBinding {
         )
         .expect("prepared common CSS has an absolute root font size");
         let text_color = common.text_color().to_owned();
-        let gantt_config = config.get("gantt").unwrap_or(config);
+        let gantt_config = gantt_section_or_root(config);
         let task_size = serde_json::json!(config_f64(gantt_config, &["fontSize"]).unwrap_or(11.0));
         let task_font_size = GanttFontSize::resolve(Some(&task_size), inherited_font_size);
         let section_font_size =

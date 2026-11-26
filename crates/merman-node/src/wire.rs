@@ -32,6 +32,7 @@ use serde_json::Value;
 const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
+const OPERATION_OPTIONS_JSON_LABEL: &str = "operation request options_json";
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
 } else {
@@ -620,6 +621,16 @@ pub(crate) enum DirectSvgOptions<'a> {
 }
 
 #[cfg(feature = "transport-napi")]
+impl<'a> DirectSvgOptions<'a> {
+    fn json(self) -> Option<&'a str> {
+        match self {
+            Self::Json(json) => json,
+            Self::DiagramId(_) => None,
+        }
+    }
+}
+
+#[cfg(feature = "transport-napi")]
 pub(crate) fn execute_svg_with_admitted_control(
     engine: &BindingEngine,
     source: &str,
@@ -633,20 +644,19 @@ pub(crate) fn execute_svg_with_admitted_control(
             DirectSvgOptions::DiagramId(id)
                 if !direct_svg_id_fits(source, id, admitted_timeout_ms) =>
             {
-                fallback = serde_json::json!({"svg": {"diagram_id": id}}).to_string();
+                fallback =
+                    prepare_direct_svg_id_fallback(source, id, &control, admitted_timeout_ms)?;
                 DirectSvgOptions::Json(Some(fallback.as_str()))
             }
-            options => options,
+            options => {
+                validate_direct_svg_framing(source, options.json(), admitted_timeout_ms)?;
+                control
+                    .checkpoint_at(OperationPhase::Admission)
+                    .map_err(BindingError::cancelled)?;
+                options
+            }
         };
-        let options_json = match options {
-            DirectSvgOptions::Json(options_json) => options_json,
-            DirectSvgOptions::DiagramId(_) => None,
-        };
-        validate_direct_svg_framing(source, options_json, admitted_timeout_ms)?;
-        control
-            .checkpoint_at(OperationPhase::Admission)
-            .map_err(BindingError::cancelled)?;
-        let decoded = decode_operation_request_options(options_json)?;
+        let decoded = decode_operation_request_options(options.json())?;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
@@ -700,18 +710,74 @@ fn direct_svg_id_fits(source: &str, id: &str, timeout_ms: Option<u32>) -> bool {
 }
 
 #[cfg(feature = "transport-napi")]
+fn prepare_direct_svg_id_fallback(
+    source: &str,
+    id: &str,
+    control: &OperationControl,
+    timeout_ms: Option<u32>,
+) -> Result<String, BindingError> {
+    #[derive(Serialize)]
+    struct Svg<'a> {
+        diagram_id: &'a str,
+    }
+    #[derive(Serialize)]
+    struct Options<'a> {
+        svg: Svg<'a>,
+    }
+
+    let contract = node_wire_contract();
+    validate_direct_svg_source(source, contract.fields.source_utf8_bytes)?;
+    let options = Options {
+        svg: Svg { diagram_id: id },
+    };
+    let mut count = CompactJsonByteCount::default();
+    serde_json::to_writer(&mut count, &options).map_err(direct_svg_size_error)?;
+    let frame_bytes = direct_svg_frame_bytes(true, timeout_ms)
+        .saturating_add(count.json_bytes)
+        .saturating_add(count.outer_escape_bytes);
+    let max = contract.documents.request.max_utf8_bytes;
+    if frame_bytes.saturating_add(source.len().saturating_mul(6)) > max {
+        let mut source_bytes = JsonByteCount(0);
+        serde_json::to_writer(&mut source_bytes, source).map_err(direct_svg_size_error)?;
+        validate_document_bytes(
+            frame_bytes.saturating_add(source_bytes.0 - 2),
+            "operation request",
+            max,
+        )
+        .map_err(caller_options_error)?;
+    }
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    ensure_field_bytes(
+        count.json_bytes,
+        OPERATION_OPTIONS_JSON_LABEL,
+        contract.fields.options_json_utf8_bytes,
+    )
+    .map_err(caller_options_error)?;
+    serde_json::to_string(&options).map_err(|error| {
+        BindingError::internal(format!("failed to serialize Node SVG options: {error}"))
+    })
+}
+
+#[cfg(feature = "transport-napi")]
+fn validate_direct_svg_source(source: &str, max_utf8_bytes: usize) -> Result<(), BindingError> {
+    ensure_field(source, "operation request source", max_utf8_bytes).map_err(caller_options_error)
+}
+
+#[cfg(feature = "transport-napi")]
+fn direct_svg_size_error(error: serde_json::Error) -> BindingError {
+    BindingError::internal(format!("failed to size Node SVG request: {error}"))
+}
+
+#[cfg(feature = "transport-napi")]
 fn validate_direct_svg_framing(
     source: &str,
     options_json: Option<&str>,
     timeout_ms: Option<u32>,
 ) -> Result<(), BindingError> {
     let contract = node_wire_contract();
-    ensure_field(
-        source,
-        "operation request source",
-        contract.fields.source_utf8_bytes,
-    )
-    .map_err(caller_options_error)?;
+    validate_direct_svg_source(source, contract.fields.source_utf8_bytes)?;
     let frame_bytes = direct_svg_frame_bytes(options_json.is_some(), timeout_ms);
     let text_bytes = source
         .len()
@@ -724,9 +790,7 @@ fn validate_direct_svg_framing(
             .and_then(|()| {
                 options_json.map_or(Ok(()), |json| serde_json::to_writer(&mut count, json))
             })
-            .map_err(|error| {
-                BindingError::internal(format!("failed to size Node SVG request: {error}"))
-            })?;
+            .map_err(direct_svg_size_error)?;
         validate_document_bytes(count.0, "operation request", max).map_err(caller_options_error)?;
     }
     Ok(())
@@ -846,7 +910,7 @@ fn decode_operation_request_options(
         return Ok(None);
     };
     let contract = node_wire_contract();
-    let label = "operation request options_json";
+    let label = OPERATION_OPTIONS_JSON_LABEL;
     ensure_field(options_json, label, contract.fields.options_json_utf8_bytes)
         .map_err(caller_options_error)?;
     validate_bounded_json_text(options_json, label, contract.documents.binding_options)
@@ -1002,6 +1066,30 @@ struct JsonByteCount(usize);
 impl std::io::Write for JsonByteCount {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         self.0 += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "transport-napi")]
+#[derive(Default)]
+struct CompactJsonByteCount {
+    json_bytes: usize,
+    outer_escape_bytes: usize,
+}
+
+#[cfg(feature = "transport-napi")]
+impl std::io::Write for CompactJsonByteCount {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let escapes = bytes
+            .iter()
+            .filter(|&&byte| matches!(byte, b'"' | b'\\'))
+            .count();
+        self.json_bytes = self.json_bytes.saturating_add(bytes.len());
+        self.outer_escape_bytes = self.outer_escape_bytes.saturating_add(escapes);
         Ok(bytes.len())
     }
 
@@ -1580,8 +1668,9 @@ fn producer_error(message: String) -> BindingError {
 mod tests {
     #[cfg(feature = "transport-napi")]
     use super::{
-        DirectSvgOptions, SuccessEnvelope, direct_svg_response, execute_svg_with_admitted_control,
-        parse_operation_request_framing, success_data_envelope, validate_direct_svg_framing,
+        DirectSvgOptions, SuccessEnvelope, direct_svg_id_fits, direct_svg_response,
+        execute_svg_with_admitted_control, parse_operation_request_framing,
+        prepare_direct_svg_id_fallback, success_data_envelope, validate_direct_svg_framing,
     };
     use super::{
         NodeDocumentLimits, NodeTransportKind, admitted_operation_control, create_engine,
@@ -2500,6 +2589,89 @@ mod tests {
                 assert_eq!(render(DirectSvgOptions::DiagramId(id)), expected);
             }
         }
+    }
+
+    #[cfg(feature = "transport-napi")]
+    #[test]
+    fn typed_svg_id_fallback_matches_json_at_the_options_limit() {
+        let source = "flowchart LR\nA --> B";
+        let prefix = "\"\\\t\n\r\u{8}\u{c}\u{1f}é🧪\u{2028}\u{2029}/";
+        let options_json = |id: &str| serde_json::json!({"svg": {"diagram_id": id}}).to_string();
+        let max = node_wire_contract().fields.options_json_utf8_bytes;
+        let remaining = max - options_json(prefix).len();
+        let mut id = format!(
+            "{prefix}{}{}",
+            "\0".repeat(remaining / 6),
+            "x".repeat(remaining % 6)
+        );
+        let expected = options_json(&id);
+        assert_eq!(expected.len(), max);
+        assert!(!direct_svg_id_fits(source, &id, None));
+
+        let control = admitted_operation_control(None);
+        assert_eq!(
+            prepare_direct_svg_id_fallback(source, &id, &control, None).unwrap(),
+            expected
+        );
+        id.push('x');
+        let error = prepare_direct_svg_id_fallback(source, &id, &control, None).unwrap_err();
+        assert!(error.message().contains("options_json exceeds"));
+    }
+
+    #[cfg(feature = "transport-napi")]
+    #[test]
+    fn typed_svg_id_fallback_preserves_admission_error_precedence() {
+        let engine = create_engine("").unwrap();
+        let contract = node_wire_contract();
+        let id = "\0".repeat(contract.fields.options_json_utf8_bytes / 6 + 1);
+        let options = serde_json::json!({"svg": {"diagram_id": &id}}).to_string();
+        let timeout = Some(u32::MAX);
+        let empty_source_bytes = serde_json::json!({
+            "operation_id": "svg",
+            "source": "",
+            "uri": null,
+            "options_json": &options,
+            "include_metadata": false,
+            "operation_control": {"timeout_ms": u32::MAX},
+        })
+        .to_string()
+        .len();
+        let remaining = contract.documents.request.max_utf8_bytes - empty_source_bytes;
+        let mut source = format!(
+            "{}{}",
+            "\0".repeat(remaining / 6),
+            "x".repeat(remaining % 6)
+        );
+        assert!(!direct_svg_id_fits(&source, &id, timeout));
+
+        let reject = |source: &str, cancelled| {
+            let control = admitted_operation_control(timeout);
+            if cancelled {
+                control.cancel();
+            }
+            let run = |options| {
+                execute_svg_with_admitted_control(
+                    &engine,
+                    source,
+                    options,
+                    control.clone(),
+                    timeout,
+                )
+                .unwrap_err()
+            };
+            let error = run(DirectSvgOptions::DiagramId(&id));
+            assert_eq!(error, run(DirectSvgOptions::Json(Some(&options))));
+            error
+        };
+        assert!(
+            reject(&source, false)
+                .message()
+                .contains("options_json exceeds")
+        );
+        let cancelled = reject(&source, true);
+        assert_eq!(cancelled.cancellation_details().unwrap().phase, "admission");
+        source.push('x');
+        assert!(reject(&source, true).message().contains("wire limit"));
     }
 
     #[test]
