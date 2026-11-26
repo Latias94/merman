@@ -1184,6 +1184,7 @@ impl<'a> ParsePipeline<'a> {
         control.checkpoint()?;
 
         let source = crate::preprocess::select_family_parser_source_controlled(
+            self.text,
             pre.source,
             pre.with_comments,
             &diagram_type,
