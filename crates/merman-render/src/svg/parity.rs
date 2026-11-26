@@ -30,6 +30,7 @@ use base64::Engine as _;
 )]
 use indexmap::IndexMap;
 use merman_model::OperationPhase;
+use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
@@ -244,15 +245,6 @@ mod radar;
 mod railroad;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod root_svg;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1096,6 +1088,8 @@ fn finish_family_svg(
     execution: &SvgExecution<'_>,
     effective_config: &merman_model::presentation::PresentationConfig,
 ) -> Result<(String, bool)> {
+    use merman_theme_contract::v2::Paint;
+
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let session = execution.family.session();
@@ -1103,15 +1097,50 @@ fn finish_family_svg(
     let background = session.canvas_background();
     let diagram_id = execution.validated_diagram_id;
     let rooted_svg = if let Some(theme) = session.native_theme() {
-        rooted_svg.apply_native_canvas(theme, background, diagram_id, meter)?
+        let resolved = theme.resolved();
+        let roles = &resolved.family(rooted_svg.family().as_str()).roles;
+        let background = background.map(Paint::Solid);
+        let paint = background.as_ref().unwrap_or(&roles.canvas);
+        apply_root_canvas(
+            rooted_svg,
+            paint,
+            &resolved.canvas().textures,
+            &roles.stroke_guide,
+            diagram_id,
+            meter,
+        )?
     } else if let Some(background) = background {
-        let paint = merman_theme_contract::v2::Paint::Solid(background);
-        rooted_svg.apply_canvas(&paint, &[], &paint, diagram_id, meter)?
+        let paint = Paint::Solid(background);
+        apply_root_canvas(rooted_svg, &paint, &[], &paint, diagram_id, meter)?
     } else {
         rooted_svg
     };
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     apply_theme_css(svg, effective_config, session)
+}
+
+fn apply_root_canvas(
+    rooted_svg: root_svg::RootedSvg,
+    paint: &merman_theme_contract::v2::Paint,
+    textures: &[merman_theme_contract::v2::Texture],
+    guide: &merman_theme_contract::v2::Paint,
+    diagram_id: Option<SvgId<'_>>,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> Result<root_svg::RootedSvg> {
+    rooted_svg.prepend_body(work_meter, |mut out, root_id, view_box| {
+        let scope = match diagram_id {
+            Some(id) => id,
+            None => SvgId::new(root_id).ok_or_else(|| Error::InvalidModel {
+                message: "SVG canvas requires a normalized diagram ID".to_owned(),
+            })?,
+        };
+        let viewport =
+            view_box.map(|bounds| [bounds.min_x, bounds.min_y, bounds.width, bounds.height]);
+        let _ = crate::theme::canvas_svg::write_canvas(
+            &mut out, scope, viewport, paint, textures, guide,
+        );
+        Ok(())
+    })
 }
 
 #[allow(

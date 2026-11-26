@@ -9,7 +9,8 @@ feature provides render policies and the operation meter that shares limits and 
 across layout and SVG emission. The renderer supplies that meter to the Dagre, ELK, Shoal, and
 Cytoscape adapters selected by its layout features.
 `svg-output` provides bounded SVG writing, XML text serialization, base styles, and shared render
-errors. `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
+errors. `root-svg` provides viewport planning and emission for family SVG documents.
+`svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.

@@ -1,21 +1,28 @@
-use super::*;
-use crate::DiagramFamilyId;
+//! Root viewport planning and document emission shared by built-in SVG families.
+
+use crate::number_format::canonical_number as fmt;
 use crate::resources::OperationWorkMeter;
+use crate::svg_css::SvgId;
+use crate::svg_output::{BoundedSvgOutput, SvgOutput};
+use crate::xml::escape_attr_into;
+use crate::{Error, Result};
+use merman_model::family::DiagramFamilyId;
 use std::borrow::Cow;
+use std::fmt::Write as _;
 use std::ops::Range;
 
 const DEFERRED_ROOT_ATTRIBUTE_VALUE: &str = "";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct DiagramBounds {
-    pub(super) min_x: f64,
-    pub(super) min_y: f64,
-    pub(super) width: f64,
-    pub(super) height: f64,
+pub struct DiagramBounds {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl DiagramBounds {
-    pub(super) fn from_view_box(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
+    pub fn from_view_box(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
         Self {
             min_x,
             min_y,
@@ -24,13 +31,7 @@ impl DiagramBounds {
         }
     }
 
-    pub(super) fn from_extents(
-        min_x: f64,
-        min_y: f64,
-        max_x: f64,
-        max_y: f64,
-        padding: f64,
-    ) -> Self {
+    pub fn from_extents(min_x: f64, min_y: f64, max_x: f64, max_y: f64, padding: f64) -> Self {
         let padding = if padding.is_finite() {
             padding.max(0.0)
         } else {
@@ -46,15 +47,15 @@ impl DiagramBounds {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct ViewBox {
-    pub(super) min_x: f64,
-    pub(super) min_y: f64,
-    pub(super) width: f64,
-    pub(super) height: f64,
+pub struct ViewBox {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl ViewBox {
-    pub(super) fn new(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
+    pub fn new(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
         Self {
             min_x,
             min_y,
@@ -73,7 +74,7 @@ impl ViewBox {
         Ok(Self::new(min_x, min_y, width, height))
     }
 
-    pub(super) fn attr(self) -> String {
+    pub fn attr(self) -> String {
         format!(
             "{} {} {} {}",
             fmt(self.min_x),
@@ -85,7 +86,7 @@ impl ViewBox {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum RootMaxWidth {
+pub enum RootMaxWidth {
     ViewBox,
     SvgNumber(f64),
     CssSixSignificant(f64),
@@ -120,26 +121,15 @@ impl RootMaxWidth {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum RootSizing {
+enum RootSizing {
     Responsive,
-    Mermaid {
-        use_max_width: bool,
-    },
-    #[cfg(all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ))]
-    MermaidOrIntrinsic {
-        use_max_width: bool,
-    },
-    MermaidWithResponsiveHeight {
-        use_max_width: bool,
-        height: f64,
-    },
+    Mermaid { use_max_width: bool },
+    MermaidOrIntrinsic { use_max_width: bool },
+    MermaidWithResponsiveHeight { use_max_width: bool, height: f64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct RootViewportSpec {
+pub struct RootViewportSpec {
     view_box: Option<DiagramBounds>,
     max_width: RootMaxWidth,
     sizing: RootSizing,
@@ -147,7 +137,7 @@ pub(super) struct RootViewportSpec {
 }
 
 impl RootViewportSpec {
-    pub(super) fn responsive(bounds: DiagramBounds) -> Self {
+    pub fn responsive(bounds: DiagramBounds) -> Self {
         Self {
             view_box: Some(bounds),
             max_width: RootMaxWidth::ViewBox,
@@ -156,7 +146,7 @@ impl RootViewportSpec {
         }
     }
 
-    pub(super) fn responsive_without_view_box(max_width: f64) -> Self {
+    pub fn responsive_without_view_box(max_width: f64) -> Self {
         Self {
             view_box: None,
             max_width: RootMaxWidth::SvgNumber(max_width),
@@ -165,34 +155,26 @@ impl RootViewportSpec {
         }
     }
 
-    pub(super) fn mermaid(bounds: DiagramBounds, use_max_width: bool) -> Self {
+    pub fn mermaid(bounds: DiagramBounds, use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::Mermaid { use_max_width },
             ..Self::responsive(bounds)
         }
     }
 
-    #[cfg(all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ))]
-    pub(super) fn mermaid_or_intrinsic(bounds: DiagramBounds, use_max_width: bool) -> Self {
+    pub fn mermaid_or_intrinsic(bounds: DiagramBounds, use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
             ..Self::responsive(bounds)
         }
     }
 
-    pub(super) fn with_max_width(mut self, max_width: RootMaxWidth) -> Self {
+    pub fn with_max_width(mut self, max_width: RootMaxWidth) -> Self {
         self.max_width = max_width;
         self
     }
 
-    pub(super) fn with_mermaid_responsive_height(
-        mut self,
-        use_max_width: bool,
-        height: f64,
-    ) -> Self {
+    pub fn with_mermaid_responsive_height(mut self, use_max_width: bool, height: f64) -> Self {
         self.sizing = RootSizing::MermaidWithResponsiveHeight {
             use_max_width,
             height,
@@ -200,34 +182,34 @@ impl RootViewportSpec {
         self
     }
 
-    pub(super) fn with_fixed_size(mut self, width: f64, height: f64) -> Self {
+    pub fn with_fixed_size(mut self, width: f64, height: f64) -> Self {
         self.fixed_size = Some((width, height));
         self
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RootStylePlacement {
+pub enum RootStylePlacement {
     Viewport,
     AfterRoleDescription,
     Tail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RootResponsiveHeightPlacement {
+pub enum RootResponsiveHeightPlacement {
     BeforeExtraAttrs,
     AfterExtraAttrs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RootDomProfile {
-    pub(super) style_viewbox_order: SvgRootStyleViewBoxOrder,
-    pub(super) fixed_height_placement: SvgRootFixedHeightPlacement,
-    pub(super) aria_attr_order: SvgRootAriaAttrOrder,
-    pub(super) responsive_style_placement: RootStylePlacement,
-    pub(super) fixed_style_placement: RootStylePlacement,
-    pub(super) responsive_height_placement: RootResponsiveHeightPlacement,
-    pub(super) trailing_newline: bool,
+pub struct RootDomProfile {
+    pub style_viewbox_order: SvgRootStyleViewBoxOrder,
+    pub fixed_height_placement: SvgRootFixedHeightPlacement,
+    pub aria_attr_order: SvgRootAriaAttrOrder,
+    pub responsive_style_placement: RootStylePlacement,
+    pub fixed_style_placement: RootStylePlacement,
+    pub responsive_height_placement: RootResponsiveHeightPlacement,
+    pub trailing_newline: bool,
 }
 
 impl Default for RootDomProfile {
@@ -245,8 +227,8 @@ impl Default for RootDomProfile {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum RootDiagramId<'a> {
-    Projected(SvgDiagramId<'a>),
+pub enum RootDiagramId<'a> {
+    Projected(SvgId<'a>),
     Raw(&'a str),
 }
 
@@ -291,8 +273,8 @@ impl PartialEq for RootDiagramId<'_> {
 
 impl Eq for RootDiagramId<'_> {}
 
-impl<'a> From<SvgDiagramId<'a>> for RootDiagramId<'a> {
-    fn from(diagram_id: SvgDiagramId<'a>) -> Self {
+impl<'a> From<SvgId<'a>> for RootDiagramId<'a> {
+    fn from(diagram_id: SvgId<'a>) -> Self {
         Self::Projected(diagram_id)
     }
 }
@@ -303,24 +285,21 @@ impl<'a> From<&'a str> for RootDiagramId<'a> {
     }
 }
 
-pub(super) struct RootChrome<'a> {
-    pub(super) diagram_id: RootDiagramId<'a>,
-    pub(super) class: Option<&'a str>,
-    pub(super) extra_attrs: &'a [(&'a str, &'a str)],
-    pub(super) aria_roledescription: &'a str,
-    pub(super) aria_labelledby: Option<&'a str>,
-    pub(super) aria_describedby: Option<&'a str>,
-    pub(super) after_roledescription_attrs: &'a [(&'a str, &'a str)],
-    pub(super) tail_attrs: &'a [(&'a str, &'a str)],
-    pub(super) custom_properties: &'a [(&'a str, &'a str)],
-    pub(super) dom: RootDomProfile,
+pub struct RootChrome<'a> {
+    pub diagram_id: RootDiagramId<'a>,
+    pub class: Option<&'a str>,
+    pub extra_attrs: &'a [(&'a str, &'a str)],
+    pub aria_roledescription: &'a str,
+    pub aria_labelledby: Option<&'a str>,
+    pub aria_describedby: Option<&'a str>,
+    pub after_roledescription_attrs: &'a [(&'a str, &'a str)],
+    pub tail_attrs: &'a [(&'a str, &'a str)],
+    pub custom_properties: &'a [(&'a str, &'a str)],
+    pub dom: RootDomProfile,
 }
 
 impl<'a> RootChrome<'a> {
-    pub(super) fn new(
-        diagram_id: impl Into<RootDiagramId<'a>>,
-        aria_roledescription: &'a str,
-    ) -> Self {
+    pub fn new(diagram_id: impl Into<RootDiagramId<'a>>, aria_roledescription: &'a str) -> Self {
         Self {
             diagram_id: diagram_id.into(),
             class: None,
@@ -337,28 +316,24 @@ impl<'a> RootChrome<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct DeferredRootSpec {
+pub struct DeferredRootSpec {
     sizing: RootSizing,
 }
 
 impl DeferredRootSpec {
-    pub(super) fn responsive() -> Self {
+    pub fn responsive() -> Self {
         Self {
             sizing: RootSizing::Responsive,
         }
     }
 
-    pub(super) fn mermaid(use_max_width: bool) -> Self {
+    pub fn mermaid(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::Mermaid { use_max_width },
         }
     }
 
-    #[cfg(all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ))]
-    pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
+    pub fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
         }
@@ -382,7 +357,7 @@ enum RootDocumentState {
 }
 
 #[derive(Debug)]
-pub(super) struct RootDocument {
+pub struct RootDocument {
     family: DiagramFamilyId,
     diagram_id: String,
     state: RootDocumentState,
@@ -393,7 +368,7 @@ pub(super) struct RootDocument {
 /// The field is intentionally private: sibling family modules may return this type, but only the
 /// Root Viewport protocol can construct or unwrap it.
 #[derive(Debug)]
-pub(super) struct RootedSvg {
+pub struct RootedSvg {
     svg: String,
     family: DiagramFamilyId,
     diagram_id: String,
@@ -402,14 +377,14 @@ pub(super) struct RootedSvg {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct RootViewportContext<'a> {
+pub struct RootViewportContext<'a> {
     family: DiagramFamilyId,
     diagram_id: RootDiagramId<'a>,
     canvas_padding: f64,
 }
 
 impl<'a> RootViewportContext<'a> {
-    pub(super) fn new(family: DiagramFamilyId, diagram_id: impl Into<RootDiagramId<'a>>) -> Self {
+    pub fn new(family: DiagramFamilyId, diagram_id: impl Into<RootDiagramId<'a>>) -> Self {
         Self {
             family,
             diagram_id: diagram_id.into(),
@@ -417,12 +392,12 @@ impl<'a> RootViewportContext<'a> {
         }
     }
 
-    pub(super) fn with_canvas_padding(mut self, padding: f64) -> Self {
+    pub fn with_canvas_padding(mut self, padding: f64) -> Self {
         self.canvas_padding = padding;
         self
     }
 
-    pub(super) fn begin_document(
+    pub fn begin_document(
         &self,
         out: &mut impl SvgOutput,
         spec: DeferredRootSpec,
@@ -439,17 +414,9 @@ impl<'a> RootViewportContext<'a> {
             | RootSizing::Mermaid {
                 use_max_width: true,
             } => true,
-            #[cfg(all(
-                feature = "diagram-architecture",
-                any(feature = "layout-cytoscape", feature = "layout-shoal")
-            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => true,
-            #[cfg(all(
-                feature = "diagram-architecture",
-                any(feature = "layout-cytoscape", feature = "layout-shoal")
-            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => false,
@@ -564,7 +531,7 @@ impl<'a> RootViewportContext<'a> {
         })
     }
 
-    pub(super) fn finish_document(
+    pub fn finish_document(
         &self,
         out: &mut impl SvgOutput,
         document: RootDocument,
@@ -659,7 +626,7 @@ impl<'a> RootViewportContext<'a> {
         })
     }
 
-    pub(super) fn write_open(
+    pub fn write_open(
         &self,
         out: &mut impl SvgOutput,
         spec: RootViewportSpec,
@@ -677,7 +644,7 @@ impl<'a> RootViewportContext<'a> {
         self.write_plan(out, &plan, chrome)
     }
 
-    pub(super) fn write_plan(
+    pub fn write_plan(
         &self,
         out: &mut impl SvgOutput,
         plan: &RootViewportPlan,
@@ -782,7 +749,7 @@ impl<'a> RootViewportContext<'a> {
         })
     }
 
-    pub(super) fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
+    pub fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
         let padding = spec.view_box.map_or(0.0, |_| self.canvas_padding);
         let view_box = spec
             .view_box
@@ -813,10 +780,6 @@ impl<'a> RootViewportContext<'a> {
             RootSizing::Mermaid {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
-            #[cfg(all(
-                feature = "diagram-architecture",
-                any(feature = "layout-cytoscape", feature = "layout-shoal")
-            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
@@ -843,10 +806,6 @@ impl<'a> RootViewportContext<'a> {
                 let (width, height) = fixed_dimensions()?;
                 (false, Some(width), Some(height))
             }
-            #[cfg(all(
-                feature = "diagram-architecture",
-                any(feature = "layout-cytoscape", feature = "layout-shoal")
-            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => (false, None, None),
@@ -867,62 +826,31 @@ impl<'a> RootViewportContext<'a> {
 }
 
 impl RootedSvg {
-    #[cfg(test)]
-    pub(super) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.svg
     }
 
-    pub(super) fn apply_native_canvas(
-        self,
-        theme: &crate::theme::NativeTheme,
-        background: Option<crate::theme::Color>,
-        diagram_id: Option<SvgId<'_>>,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self> {
-        use merman_theme_contract::v2::Paint;
-
-        let resolved = theme.resolved();
-        let roles = &resolved.family(self.family.as_str()).roles;
-        let background = background.map(Paint::Solid);
-        let paint = background.as_ref().unwrap_or(&roles.canvas);
-        self.apply_canvas(
-            paint,
-            &resolved.canvas().textures,
-            &roles.stroke_guide,
-            diagram_id,
-            work_meter,
-        )
+    pub const fn family(&self) -> DiagramFamilyId {
+        self.family
     }
 
-    pub(super) fn apply_canvas(
+    /// Inserts a trusted fragment at the start of the existing root body under the same budget.
+    /// The writer receives the original root ID and resolved viewport, and may only append text.
+    pub fn prepend_body(
         mut self,
-        paint: &merman_theme_contract::v2::Paint,
-        textures: &[merman_theme_contract::v2::Texture],
-        guide: &merman_theme_contract::v2::Paint,
-        diagram_id: Option<SvgId<'_>>,
         work_meter: &OperationWorkMeter,
+        write: impl FnOnce(&mut dyn std::fmt::Write, &str, Option<ViewBox>) -> Result<()>,
     ) -> Result<Self> {
-        let scope = match diagram_id {
-            Some(id) => id,
-            None => SvgId::new(&self.diagram_id).ok_or_else(|| Error::InvalidModel {
-                message: "SVG canvas requires a normalized diagram ID".to_owned(),
-            })?,
-        };
-        let viewport = self
-            .view_box
-            .map(|bounds| [bounds.min_x, bounds.min_y, bounds.width, bounds.height]);
         let mut out = BoundedSvgOutput::resume(self.svg, work_meter);
         out.write_deferred_at(self.root_open_end, |out| {
-            let _ = crate::theme::canvas_svg::write_canvas(
-                out, scope, viewport, paint, textures, guide,
-            );
+            write(out, &self.diagram_id, self.view_box)?;
             out.checkpoint()
         })?;
         self.svg = out.finish()?;
         Ok(self)
     }
 
-    pub(super) fn into_string_for(self, expected_family: DiagramFamilyId) -> Result<String> {
+    pub fn into_string_for(self, expected_family: DiagramFamilyId) -> Result<String> {
         if self.family != expected_family {
             return Err(Error::InvalidModel {
                 message: format!(
@@ -950,7 +878,8 @@ impl std::fmt::Display for RootedSvg {
 }
 
 impl RootDocument {
-    pub(super) fn complete(self, out: String) -> Result<RootedSvg> {
+    /// Completes root provenance for finished output, not its final SVG policy admission.
+    pub fn complete(self, out: String) -> Result<RootedSvg> {
         let family = self.family;
         let diagram_id = self.diagram_id.clone();
         RootViewportContext::new(family, diagram_id.as_str()).complete_document(out, self)
@@ -958,7 +887,7 @@ impl RootDocument {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct RootViewportPlan {
+pub struct RootViewportPlan {
     family: DiagramFamilyId,
     diagram_id: String,
     view_box: Option<ViewBox>,
@@ -970,7 +899,7 @@ pub(super) struct RootViewportPlan {
 }
 
 impl RootViewportPlan {
-    pub(super) fn view_box(&self) -> Option<ViewBox> {
+    pub fn view_box(&self) -> Option<ViewBox> {
         self.view_box
     }
 }
@@ -998,6 +927,10 @@ fn with_custom_properties<'a>(
         let _ = write!(style, "{key}: {value};");
     }
     Ok((!style.is_empty()).then_some(Cow::Owned(style)))
+}
+
+fn fmt_string(value: f64) -> String {
+    fmt(value).to_string()
 }
 
 fn format_css_max_width(value: f64) -> String {
@@ -1077,19 +1010,19 @@ enum SvgRootWidth<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SvgRootStyleViewBoxOrder {
+pub enum SvgRootStyleViewBoxOrder {
     StyleThenViewBox,
     ViewBoxThenStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SvgRootAriaAttrOrder {
+pub enum SvgRootAriaAttrOrder {
     DescribedbyThenLabelledby,
     LabelledbyThenDescribedby,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SvgRootFixedHeightPlacement {
+pub enum SvgRootFixedHeightPlacement {
     BeforeXmlns,
     AfterXmlns,
     AfterClass,
@@ -1772,7 +1705,7 @@ mod tests {
             .unwrap();
 
         let rooted = document.complete(out).unwrap();
-        let document = crate::xml_dom::Document::parse(&rooted).unwrap();
+        let document = roxmltree::Document::parse(&rooted).unwrap();
         let root = document.root_element();
         assert_eq!(root.attribute("id"), Some(diagram_id.as_str()));
         assert_eq!(root.attribute("viewBox"), Some("1 2 30 40"));

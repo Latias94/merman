@@ -118,7 +118,7 @@ math = [
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "rough-svg", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "root-svg", "rough-svg", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }

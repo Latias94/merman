@@ -29,6 +29,9 @@ pub mod number_format;
 mod render_error;
 #[cfg(feature = "resources")]
 pub mod resources;
+#[cfg(feature = "root-svg")]
+#[doc(hidden)]
+pub mod root_svg;
 #[cfg(feature = "rough-svg")]
 #[doc(hidden)]
 pub mod rough_svg;
