@@ -1,16 +1,16 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::LineCursor;
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, family::EditorFactsDemand,
 };
 use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::timeline::TimelineSourceFact;
 use merman_core_structured::timeline::{
-    ParsedTimelineEvents, TimelineEventIssue, TimelinePeriodSuffix, TimelineSource,
-    parse_acc_descr_block, parse_colon_directive, parse_space_directive, parse_timeline_events,
-    parse_timeline_header, parse_timeline_period, starts_timeline_comment,
+    TimelineEventIssue, TimelineObservation, TimelineSource, TimelineSourceIssue,
+    parse_timeline_semantic_source_controlled,
 };
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
@@ -32,9 +32,11 @@ pub(crate) fn timeline_syntax_construction_count() -> usize {
     TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
+use merman_model::families::timeline::TimelineDiagramModel;
+#[cfg(test)]
+use merman_model::families::timeline::TimelineDirection;
 #[cfg(feature = "presentation")]
 use merman_model::families::timeline::TimelineOutputData;
-use merman_model::families::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut TimelineDiagramModel,
@@ -43,53 +45,6 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_title(&mut model.title, config);
     crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
-
-#[derive(Debug, Default)]
-struct TimelineDb {
-    direction: TimelineDirection,
-    title: String,
-    acc_title: String,
-    acc_descr: String,
-
-    current_section: String,
-    current_section_index: Option<usize>,
-    sections: Vec<String>,
-    tasks: Vec<TimelineTask>,
-    next_id: i64,
-}
-
-impl TimelineDb {
-    fn add_section(&mut self, txt: &str) {
-        self.current_section = txt.to_string();
-        self.current_section_index = Some(self.sections.len());
-        self.sections.push(txt.to_string());
-    }
-
-    fn add_task(&mut self, period: &str) {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.tasks.push(TimelineTask {
-            id,
-            section: self.current_section.clone(),
-            section_index: self.current_section_index,
-            task_type: self.current_section.clone(),
-            task: period.to_string(),
-            score: 0,
-            events: Vec::new(),
-        });
-    }
-
-    fn add_event(&mut self, event: &str) -> Result<()> {
-        let Some(last) = self.tasks.last_mut() else {
-            return Err(Error::diagram_parse_fallback(
-                "timeline".to_string(),
-                "event without a preceding task".to_string(),
-            ));
-        };
-        last.events.push(event.to_string());
-        Ok(())
-    }
 }
 
 struct TimelineSemanticSource {
@@ -200,31 +155,58 @@ impl TimelineParseOutcome {
 }
 
 #[cfg(feature = "editor-facts")]
-fn push_timeline_payload_fact(
-    demand: EditorFactsDemand,
-    facts: &mut Option<EditorSemanticFacts>,
-    text: &str,
-    span: SourceSpan,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    if !demand.captures_rich() {
-        return;
-    }
-    let Some(facts) = facts else {
-        return;
+fn record_timeline_fact(facts: &mut EditorSemanticFacts, fact: TimelineSourceFact<'_>) {
+    let (value, prefix, detail) = match fact {
+        TimelineSourceFact::Title(value) => (value, Some("title"), "timeline title"),
+        TimelineSourceFact::AccTitle(value) => {
+            (value, Some("accTitle"), "timeline accessibility title")
+        }
+        TimelineSourceFact::AccDescr(value) => (
+            value,
+            Some("accDescr"),
+            "timeline accessibility description",
+        ),
+        TimelineSourceFact::Section {
+            selection,
+            statement,
+        } => {
+            return push_timeline_outline_fact(
+                facts,
+                selection,
+                statement,
+                "timeline section",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        TimelineSourceFact::Task {
+            selection,
+            statement,
+        } => {
+            return push_timeline_outline_fact(
+                facts,
+                selection,
+                statement,
+                "timeline task",
+                EditorSemanticKind::Event,
+            );
+        }
+        TimelineSourceFact::Event(value) => (value, None, "timeline event"),
     };
+    if let Some(prefix) = prefix {
+        facts.push_directive_prefix(prefix);
+    }
+    let span = value.span();
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
         span,
     ));
-    if text.is_empty() {
+    if value.text.is_empty() {
         return;
     }
     facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
+        value.text.to_string(),
         Some(detail.to_string()),
-        kind,
+        EditorSemanticKind::String,
         span,
         span,
     ));
@@ -232,33 +214,25 @@ fn push_timeline_payload_fact(
 
 #[cfg(feature = "editor-facts")]
 fn push_timeline_outline_fact(
-    demand: EditorFactsDemand,
-    facts: &mut Option<EditorSemanticFacts>,
-    text: &str,
+    facts: &mut EditorSemanticFacts,
+    selection: TimelineSource<'_>,
     statement_span: SourceSpan,
-    selection: SourceSpan,
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
-    if !demand.captures_rich() {
-        return;
-    }
-    let Some(facts) = facts else {
-        return;
-    };
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
-        selection,
+        selection.span(),
     ));
-    if text.is_empty() {
+    if selection.text.is_empty() {
         return;
     }
     facts.push_symbol(EditorSemanticSymbol::outline(
-        text.to_string(),
+        selection.text.to_string(),
         Some(detail.to_string()),
         kind,
         statement_span,
-        selection,
+        selection.span(),
     ));
 }
 
@@ -303,13 +277,47 @@ fn timeline_event_parse_issue(
     )
 }
 
-fn scan_timeline_events<'source>(
-    input: TimelineSource<'source>,
-    lines: &mut LineCursor<'source>,
-    control: &OperationControl,
-) -> OperationControlResult<ParsedTimelineEvents<'source>> {
-    let source = TimelineSource::new(&lines.source()[input.start..], input.start);
-    parse_timeline_events(source, |offset| lines.resume_at(offset), control)
+fn timeline_source_parse_issue(
+    issue: TimelineSourceIssue<'_>,
+    diagram_type: &str,
+) -> TimelineParseIssue {
+    let exact = |message, span| {
+        timeline_parse_issue(
+            Error::diagram_parse_exact(diagram_type, message, span),
+            span,
+        )
+    };
+    let empty_value = |message, offset| {
+        timeline_parse_issue(
+            Error::diagram_parse_insertion_point(diagram_type, message, offset),
+            SourceSpan::new(offset, offset),
+        )
+    };
+    match issue {
+        TimelineSourceIssue::ExpectedHeader(span) => exact("expected timeline header", span),
+        TimelineSourceIssue::UnexpectedHeader(span) => exact("unexpected timeline header", span),
+        TimelineSourceIssue::EmptyAccTitle(offset) => {
+            empty_value("expected accTitle value", offset)
+        }
+        TimelineSourceIssue::EmptyAccDescr(offset) => {
+            empty_value("expected accDescr value", offset)
+        }
+        TimelineSourceIssue::UnterminatedAccDescr(span) => timeline_parse_issue(
+            Error::diagram_parse_insertion_point(
+                diagram_type,
+                "unterminated accDescr block",
+                span.end,
+            ),
+            span,
+        ),
+        TimelineSourceIssue::EventWithoutTask(span) => timeline_parse_issue(
+            Error::diagram_parse_fallback("timeline", "event without a preceding task"),
+            span,
+        ),
+        TimelineSourceIssue::EventSyntax { statement, issue } => {
+            timeline_event_parse_issue(issue, statement, diagram_type)
+        }
+    }
 }
 
 #[cfg(feature = "compat-json")]
@@ -426,311 +434,38 @@ fn construct_timeline_semantic_source_controlled(
     #[cfg(test)]
     TIMELINE_SYNTAX_CONSTRUCTION_COUNT.set(TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_timeline_semantic_source(
-        code,
-        diagram_type,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    )
-}
-
-fn parse_timeline_semantic_source(
-    code: &str,
-    diagram_type: &str,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
-) -> OperationControlResult<TimelineParseOutcome> {
-    control.checkpoint()?;
-    let mut db = TimelineDb::default();
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = editor_demand
         .needs_recovery()
         .then(EditorSemanticFacts::new);
+    #[cfg(feature = "editor-facts")]
+    let capture_facts = editor_demand.captures_rich();
+    #[cfg(not(feature = "editor-facts"))]
+    let capture_facts = false;
     let mut issues = Vec::new();
-    let mut lines = LineCursor::new(code);
-    let mut header_seen = false;
-
-    while let Some((line, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        let line = TimelineSource::new(line, line_start);
-        let significant = line.trim();
-        if significant.text.is_empty() {
-            continue;
-        }
-
-        if starts_timeline_comment(significant.text) {
-            continue;
-        }
-        if significant.text.starts_with('#') {
-            continue;
-        }
-
-        if !header_seen {
-            let Some((direction, remainder)) = parse_timeline_header(significant) else {
-                issues.push(timeline_parse_issue(
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        "expected timeline header",
-                        significant.span(),
-                    ),
-                    significant.span(),
-                ));
-                continue;
-            };
-
-            header_seen = true;
-            db.direction = direction;
-            if !remainder.text.is_empty() {
-                lines.resume_same_line_at(remainder.start);
-            }
-            continue;
-        }
-
-        let statement = line.trim_start();
-        // Header tokens retain their priority over periods, but are only valid once.
-        if let Some((_, remainder)) = parse_timeline_header(statement) {
-            let span = SourceSpan::new(statement.start, remainder.start);
-            issues.push(timeline_parse_issue(
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    "unexpected timeline header",
-                    span,
-                ),
-                span,
-            ));
-            continue;
-        }
-        let token_source = TimelineSource::new(&code[statement.start..], statement.start);
-        if let Some(value) = parse_space_directive(token_source, "title", control)? {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("title");
+    let parsed = parse_timeline_semantic_source_controlled(
+        code,
+        capture_facts,
+        &mut |observation| match observation {
+            TimelineObservation::Issue(issue) => {
+                issues.push(timeline_source_parse_issue(issue, diagram_type));
             }
             #[cfg(feature = "editor-facts")]
-            push_timeline_payload_fact(
-                editor_demand,
-                &mut editor_facts,
-                value.text,
-                value.span(),
-                "timeline title",
-                EditorSemanticKind::String,
-            );
-            db.title = value.text.to_string();
-            lines.resume_at(value.end());
-            continue;
-        }
-
-        if let Some(value) = parse_colon_directive(token_source, "accTitle", control)? {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accTitle");
-            }
-            #[cfg(feature = "editor-facts")]
-            push_timeline_payload_fact(
-                editor_demand,
-                &mut editor_facts,
-                value.text,
-                value.span(),
-                "timeline accessibility title",
-                EditorSemanticKind::String,
-            );
-            if value.text.is_empty() {
-                issues.push(timeline_parse_issue(
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "expected accTitle value",
-                        value.start,
-                    ),
-                    value.span(),
-                ));
-            } else {
-                db.acc_title = value.text.to_string();
-            }
-            lines.resume_at(value.end());
-            continue;
-        }
-
-        if let Some(value) = parse_colon_directive(token_source, "accDescr", control)? {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescr");
-            }
-            #[cfg(feature = "editor-facts")]
-            push_timeline_payload_fact(
-                editor_demand,
-                &mut editor_facts,
-                value.text,
-                value.span(),
-                "timeline accessibility description",
-                EditorSemanticKind::String,
-            );
-            if value.text.is_empty() {
-                issues.push(timeline_parse_issue(
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "expected accDescr value",
-                        value.start,
-                    ),
-                    value.span(),
-                ));
-            } else {
-                db.acc_descr = value.text.to_string();
-            }
-            lines.resume_at(value.end());
-            continue;
-        }
-
-        if let Some(parsed) =
-            parse_acc_descr_block(token_source, |offset| lines.resume_at(offset), control)?
-        {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescr");
-            }
-            #[cfg(feature = "editor-facts")]
-            push_timeline_payload_fact(
-                editor_demand,
-                &mut editor_facts,
-                parsed.value.text,
-                parsed.value.span(),
-                "timeline accessibility description",
-                EditorSemanticKind::String,
-            );
-            if parsed.closing.is_none() {
-                let span = SourceSpan::new(parsed.keyword.start, code.len());
-                issues.push(timeline_parse_issue(
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "unterminated accDescr block",
-                        code.len(),
-                    ),
-                    span,
-                ));
-            }
-            if !parsed.value.text.is_empty() {
-                db.acc_descr = parsed.value.text.to_string();
-            }
-            continue;
-        }
-
-        if let Some(value) = parse_space_directive(token_source, "section", control)? {
-            #[cfg(feature = "editor-facts")]
-            let selection = value.trim();
-            #[cfg(feature = "editor-facts")]
-            push_timeline_outline_fact(
-                editor_demand,
-                &mut editor_facts,
-                selection.text,
-                SourceSpan::new(statement.start, value.end()),
-                selection.span(),
-                "timeline section",
-                EditorSemanticKind::Namespace,
-            );
-            db.add_section(value.text);
-            lines.resume_at(value.end());
-            continue;
-        }
-
-        if statement.text.starts_with(':') {
-            let parsed = scan_timeline_events(statement, &mut lines, control)?;
-            for event in parsed.events {
-                match db.add_event(event.text) {
-                    Ok(()) => {
-                        #[cfg(feature = "editor-facts")]
-                        push_timeline_payload_fact(
-                            editor_demand,
-                            &mut editor_facts,
-                            event.text,
-                            event.span(),
-                            "timeline event",
-                            EditorSemanticKind::String,
-                        );
-                    }
-                    Err(error) => issues.push(timeline_parse_issue(error, event.span())),
+            TimelineObservation::Fact(fact) => {
+                if let Some(facts) = editor_facts.as_mut() {
+                    record_timeline_fact(facts, fact);
                 }
             }
-            if let Some(issue) = parsed.issue {
-                issues.push(timeline_event_parse_issue(issue, statement, diagram_type));
-            }
-            continue;
-        }
-
-        let parsed = parse_timeline_period(statement);
-        if parsed.task.text.is_empty() {
-            continue;
-        }
-
-        #[cfg(feature = "editor-facts")]
-        push_timeline_outline_fact(
-            editor_demand,
-            &mut editor_facts,
-            parsed.task.text,
-            statement.span(),
-            parsed.task.span(),
-            "timeline task",
-            EditorSemanticKind::Event,
-        );
-        db.add_task(parsed.period.text);
-
-        match parsed.suffix {
-            TimelinePeriodSuffix::None => {}
-            TimelinePeriodSuffix::HashComment => {}
-            TimelinePeriodSuffix::Events(events_source) => {
-                let events = scan_timeline_events(events_source, &mut lines, control)?;
-                for event in events.events {
-                    match db.add_event(event.text) {
-                        Ok(()) => {
-                            #[cfg(feature = "editor-facts")]
-                            push_timeline_payload_fact(
-                                editor_demand,
-                                &mut editor_facts,
-                                event.text,
-                                event.span(),
-                                "timeline event",
-                                EditorSemanticKind::String,
-                            );
-                        }
-                        Err(error) => issues.push(timeline_parse_issue(error, event.span())),
-                    }
-                }
-                if let Some(issue) = events.issue {
-                    issues.push(timeline_event_parse_issue(
-                        issue,
-                        events_source,
-                        diagram_type,
-                    ));
-                }
-            }
-        }
-    }
-
-    control.checkpoint()?;
-    let model = TimelineDiagramModel {
-        direction: db.direction,
-        title: (!db.title.is_empty()).then_some(db.title),
-        acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
-        acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-        sections: db.sections,
-        tasks: db.tasks,
-    };
+            #[cfg(not(feature = "editor-facts"))]
+            TimelineObservation::Fact(_) => {}
+        },
+        control,
+    )?;
     Ok(TimelineParseOutcome {
         source: TimelineSemanticSource {
-            model,
+            model: parsed.model,
             #[cfg(feature = "presentation")]
-            output_data: if header_seen {
+            output_data: if parsed.header_seen {
                 TimelineOutputData::Model
             } else {
                 TimelineOutputData::Empty
