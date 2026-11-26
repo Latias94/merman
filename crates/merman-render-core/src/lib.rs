@@ -25,6 +25,9 @@ pub mod mermaid_style;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod number_format;
+#[cfg(feature = "paint-scene")]
+#[doc(hidden)]
+pub mod paint_scene;
 #[cfg(feature = "svg-output")]
 mod render_error;
 #[cfg(feature = "resources")]

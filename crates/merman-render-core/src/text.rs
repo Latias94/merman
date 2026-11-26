@@ -59,13 +59,13 @@ pub mod measurement;
 mod whitespace;
 #[cfg(feature = "text-layout")]
 pub use create_text::non_markdown_svg_words;
-pub use css_font::{is_css_wide_keyword, resolve_css_font_weight};
+pub use css_font::{FontStyle, GenericFontFamily, is_css_wide_keyword, resolve_css_font_weight};
 #[cfg(feature = "text-layout")]
 pub use css_font_stack::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_default};
 #[cfg(feature = "text-layout")]
 pub use fonts::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
-    FontStack, FontStackError, FontStyle, GenericFontFamily,
+    FontStack, FontStackError,
 };
 #[cfg(feature = "text-layout")]
 pub use heuristic::{append_text_width_em, estimate_text_width_em};
