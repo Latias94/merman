@@ -122,8 +122,8 @@ impl<'a> ActorLabelContext<'a> {
             let color = super::super::util::cssom_color_value(color);
             let _ = write!(style, "{property}: {color};");
         };
-        if !self.native && self.compat.actor_palette_mode() {
-            let (stroke, fill) = self.compat.actor_palette(actor_index);
+        if !self.native && self.compat.actor_palette.enabled() {
+            let (stroke, fill) = self.compat.actor_palette.actor_colors(actor_index);
             for (property, color) in [("stroke", stroke), ("fill", fill)] {
                 if let Some(color) = color {
                     declaration(property, color);

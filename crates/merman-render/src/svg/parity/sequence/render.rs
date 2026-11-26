@@ -1,6 +1,5 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
-use super::activation::SequenceActivationPlan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actors::{
@@ -13,6 +12,7 @@ use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
 use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use kurbo::{Rect, Shape};
+use merman_render_sequence::activation::SequenceActivationPlan;
 use merman_theme_contract::v2::{Elevation, MarkerStyle};
 use rustc_hash::FxHashMap;
 
@@ -176,9 +176,15 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         radius,
         options,
     )?;
-    let mut activation_plan =
-        SequenceActivationPlan::new(&layout.activations, prepared.activation_geometry());
-    activation_plan.prepare_paint(stroke_width, radius, options)?;
+    let activation_plan = SequenceActivationPlan::prepare(
+        &layout.activations,
+        prepared.activation_geometry(),
+        stroke_width,
+        radius,
+        compat.is_neo,
+        &compat.actor_palette,
+        options.work_meter(),
+    )?;
     let box_paint_bounds =
         super::frames::builtin_box_paint_bounds(&layout.boxes, compat, checkpoints)?;
     let diagram_id = options.diagram_id_or("merman");
@@ -197,7 +203,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             actor_paint_bounds.as_ref(),
             message_paint.bounds.as_ref(),
             note_paint.bounds.as_ref(),
-            activation_plan.bounds.as_ref(),
+            activation_plan.bounds(),
         ],
         defer_paint_bounds,
     )?;
@@ -425,7 +431,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                     native_actor_depth_bounds.as_ref(),
                     message_paint.bounds.as_ref(),
                     note_paint.bounds.as_ref(),
-                    activation_plan.bounds.as_ref(),
+                    activation_plan.bounds(),
                     lifeline_bounds.as_ref(),
                     frame_paint.bounds.borrow().as_ref(),
                     keyword_paint.bounds.borrow().as_ref(),

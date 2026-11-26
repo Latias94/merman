@@ -1,15 +1,21 @@
 use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
 use std::collections::BTreeMap;
 
-pub(crate) fn sequence_activation_start_x(center_x: f64, stacked_size: usize, width: f64) -> f64 {
+mod geometry;
+mod palette;
+mod svg;
+
+pub use geometry::{
+    SequenceActivationGeometryBuilder, SequenceActivationGroup, SequencePreparedActivationGeometry,
+};
+pub use palette::SequenceActorPalette;
+pub use svg::SequenceActivationPlan;
+
+fn sequence_activation_start_x(center_x: f64, stacked_size: usize, width: f64) -> f64 {
     center_x + (((stacked_size as f64) - 1.0) * width) / 2.0
 }
 
-pub(crate) fn sequence_activation_stack_bounds(
-    depth: usize,
-    center_x: f64,
-    width: f64,
-) -> (f64, f64) {
+pub fn sequence_activation_stack_bounds(depth: usize, center_x: f64, width: f64) -> (f64, f64) {
     let mut left = center_x - 1.0;
     let mut right = center_x + 1.0;
     if depth == 0 {
@@ -23,20 +29,20 @@ pub(crate) fn sequence_activation_stack_bounds(
     (left, right)
 }
 
-pub(super) struct SequenceActivationState {
+pub struct SequenceActivationState {
     width: f64,
     depths: BTreeMap<usize, usize>,
 }
 
 impl SequenceActivationState {
-    pub(super) fn new(width: f64) -> Self {
+    pub fn new(width: f64) -> Self {
         Self {
             width,
             depths: BTreeMap::new(),
         }
     }
 
-    pub(super) fn handle_directive(
+    pub fn handle_directive(
         &mut self,
         msg: &SequenceMessage,
         actor_index: &std::collections::HashMap<&str, usize>,
@@ -73,7 +79,7 @@ impl SequenceActivationState {
         }
     }
 
-    pub(super) fn actor_bounds(&self, actor_index: usize, center_x: f64) -> (f64, f64) {
+    pub fn actor_bounds(&self, actor_index: usize, center_x: f64) -> (f64, f64) {
         sequence_activation_stack_bounds(
             self.depths.get(&actor_index).copied().unwrap_or_default(),
             center_x,
@@ -81,7 +87,7 @@ impl SequenceActivationState {
         )
     }
 
-    pub(super) fn width(&self) -> f64 {
+    pub fn width(&self) -> f64 {
         self.width
     }
 }

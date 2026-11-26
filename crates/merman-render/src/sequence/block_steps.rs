@@ -1,4 +1,3 @@
-use super::activation::SequenceActivationState;
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::messages::{
     SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
@@ -18,6 +17,7 @@ use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_sequence::activation::SequenceActivationState;
 use std::collections::HashMap;
 
 const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];

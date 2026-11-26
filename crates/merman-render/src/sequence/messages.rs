@@ -1,5 +1,4 @@
 use super::SequenceLayoutCheckpoints;
-use super::activation::SequenceActivationState;
 use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
 use super::message_metrics::SequenceMessageBoundMetrics;
 use super::metrics::{
@@ -15,6 +14,7 @@ use merman_model::families::sequence::{
     SequenceMessageStroke, SequenceSignalSemantics,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_sequence::activation::SequenceActivationState;
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;

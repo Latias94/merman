@@ -4,13 +4,13 @@ use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_objec
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceDrawnTextNode, SequenceMathHeightMode,
-    measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
-    sequence_drawn_text_style, sequence_drawn_text_y,
+    measure_sequence_drawn_line_height, sequence_drawn_text_style, sequence_drawn_text_y,
 };
 use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessageStroke,
 };
+use merman_render_sequence::activation::sequence_activation_stack_bounds;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 

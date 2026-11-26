@@ -1,7 +1,3 @@
-use super::activation::SequenceActivationState;
-use super::activation_geometry::{
-    SequenceActivationGeometryBuilder, SequencePreparedActivationGeometry,
-};
 use super::actors::{
     SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
     SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
@@ -24,6 +20,9 @@ use merman_model::families::sequence::{
     SequenceMessageKind,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_sequence::activation::{
+    SequenceActivationGeometryBuilder, SequenceActivationState, SequencePreparedActivationGeometry,
+};
 use merman_render_sequence::frame::SequenceBlockLayout;
 use std::collections::HashMap;
 
@@ -329,7 +328,7 @@ fn handle_sequence_directive<'a>(
                     state.activation_geometry.include_inserted_top(
                         stop_y - 10.0,
                         ctx.box_margin,
-                        ctx.checkpoints,
+                        ctx.checkpoints.work_meter,
                     )?;
                     include_rect_stack_bounds(&mut state.rect_stack, start_x, stop_x, stop_y);
                     state.include_inserted_horizontal(start_x, stop_x, ctx.box_margin);
@@ -465,7 +464,7 @@ fn handle_sequence_note(
     state.activation_geometry.include_inserted_top(
         note.node.y - note.node.height / 2.0,
         ctx.box_margin,
-        ctx.checkpoints,
+        ctx.checkpoints.work_meter,
     )?;
 
     nodes.push(note.node);
@@ -548,7 +547,7 @@ fn handle_sequence_message(
     state.activation_geometry.include_inserted_top(
         inserted_top_y,
         ctx.box_margin,
-        ctx.checkpoints,
+        ctx.checkpoints.work_meter,
     )?;
     state.cursor_y += cursor_step;
     let lifecycle_adjustment = state
@@ -692,7 +691,9 @@ pub(super) fn build_sequence_layout_graph(
     } else {
         state.cursor_y
     };
-    let (activations, activation_geometry) = state.activation_geometry.finish(ctx.checkpoints)?;
+    let (activations, activation_geometry) = state
+        .activation_geometry
+        .finish(ctx.checkpoints.work_meter)?;
     Ok(SequenceLayoutGraph {
         nodes,
         edges,

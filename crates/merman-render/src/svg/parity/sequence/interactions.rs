@@ -1,10 +1,10 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
-use super::activation::{SequenceActivationPlan, render_sequence_activation_group};
 use super::blocks::{SequenceBlockRenderContext, render_sequence_block};
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
+use merman_render_sequence::activation::SequenceActivationPlan;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
@@ -71,7 +71,7 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        render_sequence_activation_group(out, activation_plan, &msg.id, ctx.compat)?;
+        activation_plan.write_group(out, &msg.id)?;
         render_sequence_note(out, message_index, msg, &note_ctx)?;
 
         let Some(index) = ctx.frame_placements.get(message_index).copied().flatten() else {

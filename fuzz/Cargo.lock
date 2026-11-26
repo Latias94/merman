@@ -1251,6 +1251,7 @@ dependencies = [
  "merman-render-core",
  "rustc-hash",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -111,9 +111,10 @@ admission, and the editor and compatibility projections.
 `merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
 facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
 
-`merman-render-sequence` owns participant geometry, glyphs, lifelines, and prepared control
-frames. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter.
-It owns text and math measurement, label placement, and layout orchestration.
+`merman-render-sequence` owns the Sequence layout types, participant geometry, glyphs, lifelines,
+and prepared control frames. It owns activation state, geometry, palette slots, and balanced SVG
+groups. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter
+and still orchestrates text, math, label placement, and the complete document.
 
 ### Chart rendering
 
