@@ -84,14 +84,16 @@ measurement, asset policy, layout output projection, and SVG emission.
 
 `merman-core-structured` owns Info and Ishikawa syntax, Packet field scanning and bounded row
 expansion, Railroad dialect parsing and recovery, Sankey CSV parsing and graph construction, and
-Treemap row parsing and hierarchy construction. `merman-core` prepares the source, builds
-Ishikawa's semantic tree, supplies config-dependent sanitization, and maps models and syntax
-diagnostics into public parse results with optional editor facts.
+Treemap row parsing and hierarchy construction. It also owns Timeline lexing, parsing and model
+construction, using the shared line cursor in `merman-core-preprocess`. `merman-core` prepares
+the source, builds Ishikawa's semantic tree, supplies config-dependent sanitization, and maps
+models and syntax diagnostics into public parse results with optional editor facts.
 
-`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, Railroad, and
-Ishikawa. It consumes canonical model data and uses the shared CSS, text, and controlled Rough SVG
-contracts in `merman-render-core`. `merman-render` dispatches through the family features and owns
-the operation's measurement, Ishikawa theme resolution, and root SVG policy.
+`merman-render-structured` owns the typed layout and complete SVG emission for Info, and typed
+layout and SVG contents for Packet, Railroad, and Ishikawa. It uses the shared root SVG, CSS,
+text, and controlled Rough SVG contracts in `merman-render-core`. `merman-render` dispatches
+through the family features and supplies the operation's measurement, viewport and output policies,
+including final canvas and SVG admission.
 
 ### Graph syntax
 
