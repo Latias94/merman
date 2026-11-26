@@ -57,6 +57,8 @@ See the [native package example](packages/node/README.md#compiled-themes) and th
 
 Set `diagramId` on `renderSvg()` or `renderSvgSync()` to give one SVG a stable ID. Use
 `optionsJson` with `svg.diagram_id` when the request also sets other overrides.
+`svgPlanJson()` and `svgPlanJsonSync()` accept overrides through `optionsJson`. Passing a top-level
+`diagramId` throws a `TypeError` synchronously.
 
 ```js
 const svg = await engine.renderSvg(source, { diagramId: "deployment-preview" });

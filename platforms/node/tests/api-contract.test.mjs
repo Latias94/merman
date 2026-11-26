@@ -1207,13 +1207,27 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
       future_metadata: { preserved: true },
     }),
   );
-  assert.equal(await engine.svgPlanJson("flowchart TD\nA --> B"), JSON.stringify(plan));
-  assert.equal(engine.svgPlanJsonSync("flowchart TD\nA --> B"), JSON.stringify(plan));
+  const source = "flowchart TD\nA --> B";
+  const optionsJson = '{ "svg": { "diagram_id": "raw-plan-id" } }';
+  assert.equal(await engine.svgPlanJson(source), JSON.stringify(plan));
+  assert.equal(engine.svgPlanJsonSync(source), JSON.stringify(plan));
+  assert.equal(await engine.svgPlanJson(source, { optionsJson }), JSON.stringify(plan));
+  assert.equal(engine.svgPlanJsonSync(source, { optionsJson }), JSON.stringify(plan));
+  const unsupportedId = { name: "TypeError", message: /diagramId is only supported/ };
+  assert.throws(() => engine.svgPlanJson(source, { diagramId: "plan-id" }), unsupportedId);
+  assert.throws(
+    () => engine.svgPlanJsonSync(source, { diagramId: "plan-id", optionsJson }),
+    unsupportedId,
+  );
   assert.deepEqual(metadataCalls, ["supported-diagrams"]);
-  assert.deepEqual(factory.calls.map(({ operation_id }) => operation_id), [
-    "svg-plan-json",
-    "svg-plan-json",
-  ]);
+  const request = {
+    operation_id: "svg-plan-json",
+    source,
+    uri: null,
+    include_metadata: false,
+  };
+  const requestWithOptions = { ...request, options_json: optionsJson };
+  assert.deepEqual(factory.calls, [request, request, requestWithOptions, requestWithOptions]);
   await engine.dispose();
   assert.throws(
     () => engine.metadataJson("supported-diagrams"),

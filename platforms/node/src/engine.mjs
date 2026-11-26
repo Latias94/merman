@@ -277,6 +277,7 @@ export class MermanEngine {
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -285,6 +286,7 @@ export class MermanEngine {
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { timeoutMs: options.timeoutMs },
       false,
+      options.diagramId,
     );
   }
 
@@ -583,6 +585,9 @@ function directSvgFrameBytes(sourceBytes, timeoutMs) {
 }
 
 function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
+  if (prepared.request.operation_id !== "svg") {
+    throw new TypeError("diagramId is only supported by renderSvg() and renderSvgSync().");
+  }
   if (typeof diagramId !== "string") throw new TypeError("diagramId must be a string when provided.");
   if (prepared.value.optionsJson !== undefined) {
     throw new TypeError("diagramId and optionsJson cannot be used together.");
