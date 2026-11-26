@@ -8,4 +8,4 @@ mod svg;
 pub use config::{SankeyConfigView, SankeyRenderSettings};
 pub use layout::layout_sankey_diagram_typed;
 pub use model::{SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
-pub use svg::{SankeySvgBody, SankeySvgLink, SankeySvgLinkPaint};
+pub use svg::{SankeySvgBody, SankeySvgBodyStyle, SankeySvgLink, SankeySvgLinkPaint};
