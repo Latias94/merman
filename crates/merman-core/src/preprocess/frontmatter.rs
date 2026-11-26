@@ -37,10 +37,7 @@ pub(super) fn append_frontmatter_evidence(
         .zip(captured.body)
         .and_then(|(full, local_body)| {
             let full = source.try_map_span(SourceSpan::new(full.start, full.end))?;
-            let body = map_frontmatter_body_span_to_original(source, local_body)?;
-            // The mapped body end is the exact edit boundary used by the existing insertion
-            // projection. For CRLF it intentionally sits between `\r` and `\n`; the projection
-            // replaces that boundary with a complete CRLF-delimited config block.
+            let body = source.try_map_span(SourceSpan::new(local_body.start, local_body.end))?;
             let insert = SourceSpan::new(body.end, body.end);
             Some(FrontmatterSourceEvidence::new(
                 full,
@@ -80,25 +77,6 @@ pub(super) fn append_frontmatter_evidence(
         ));
     }
     control.checkpoint()
-}
-
-#[cfg(feature = "editor-facts")]
-fn map_frontmatter_body_span_to_original(
-    source: &PreprocessedSource,
-    body: FrontmatterByteSpan,
-) -> Option<SourceSpan> {
-    let mut mapped = source.try_map_span(SourceSpan::new(body.start, body.end))?;
-    // The frontmatter locator intentionally leaves the `\r` from a CRLF immediately before the
-    // closing delimiter inside the body range. Preprocessing normalizes that pair to one `\n`,
-    // whose left boundary maps before the original `\r`. Recover the locator's original boundary
-    // from the same edit map without rescanning or retaining source text.
-    if source.text().as_bytes().get(body.end) == Some(&b'\n') {
-        let newline = source.try_map_span(SourceSpan::new(body.end, body.end + 1))?;
-        if newline.end.saturating_sub(newline.start) == 2 && mapped.end == newline.start {
-            mapped.end = newline.end - 1;
-        }
-    }
-    Some(mapped)
 }
 
 pub(super) struct ProcessedFrontmatter {
@@ -299,6 +277,9 @@ pub(super) fn process_frontmatter_controlled(
         parsed_obj.get("displayMode"),
         captured.collection_text.remove("displayMode"),
     );
+    #[cfg(feature = "editor-facts")]
+    let insert_order =
+        insert_order.and_then(|order| order.with_display_mode(display_mode.as_deref()));
 
     let mut config = MermaidConfig::empty_object();
     merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
@@ -341,7 +322,7 @@ pub(super) fn process_frontmatter_controlled(
         #[cfg(feature = "editor-facts")]
         fields,
         #[cfg(feature = "editor-facts")]
-        insert_order: insert_order.map(FrontmatterInsertOrder::from_json),
+        insert_order,
     })
 }
 

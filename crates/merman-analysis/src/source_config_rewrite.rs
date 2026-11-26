@@ -223,8 +223,19 @@ fn frontmatter_config_edit_cancellable(
         Some(frontmatter) if frontmatter.has_config => {
             FrontmatterRewrite::Replace(frontmatter.full_span)
         }
-        Some(frontmatter) => FrontmatterRewrite::Insert(frontmatter.insert_order.as_ref()),
-        None => FrontmatterRewrite::Insert(None),
+        Some(frontmatter) => {
+            let Some(order) = frontmatter.insert_order.as_ref() else {
+                return Ok(None);
+            };
+            FrontmatterRewrite::Insert {
+                frontmatter: Some(order),
+                config: &config,
+            }
+        }
+        None => FrontmatterRewrite::Insert {
+            frontmatter: None,
+            config: &config,
+        },
     };
     let Some(order) = source_config_rewrite_order_controlled(
         source,
@@ -387,25 +398,18 @@ fn frontmatter_config_insertion_cancellable(
     let Some(existing_body) = source.get(body_span.start..body_span.end) else {
         return Ok(None);
     };
-    let insertion_splits_crlf =
-        existing_body.ends_with('\r') && source[body_span.end..].starts_with('\n');
-    if !is_whitespace_cancellable(existing_body, cancellation)? {
-        if insertion_splits_crlf {
-            if !insertion.push_char('\n') {
-                return Ok(None);
-            }
-        } else if !existing_body.ends_with('\n') && !insertion.push_str(newline) {
-            return Ok(None);
-        }
+    let body_is_whitespace = is_whitespace_cancellable(existing_body, cancellation)?;
+    let body_ends_with_line_break = existing_body.ends_with(['\r', '\n']);
+    if body_is_whitespace && !existing_body.is_empty() && !body_ends_with_line_break {
+        return Ok(None);
+    }
+    if !body_is_whitespace && !body_ends_with_line_break && !insertion.push_str(newline) {
+        return Ok(None);
     }
     if !insertion.push_str(&indented_body) {
         return Ok(None);
     }
-    if insertion_splits_crlf {
-        if !insertion.push_char('\r') {
-            return Ok(None);
-        }
-    } else if body_span.start == body_span.end && !insertion.push_str(newline) {
+    if !source[body_span.end..].starts_with(['\r', '\n']) && !insertion.push_str(newline) {
         return Ok(None);
     }
     cancellation.checkpoint()?;
@@ -612,11 +616,6 @@ impl BoundedReplacement {
         }
         self.text.push_str(value);
         true
-    }
-
-    fn push_char(&mut self, value: char) -> bool {
-        let mut encoded = [0; 4];
-        self.push_str(value.encode_utf8(&mut encoded))
     }
 
     fn finish(self) -> String {
@@ -1001,19 +1000,34 @@ mod tests {
 
     #[test]
     fn init_directive_migration_preserves_crlf_when_inserting_config() {
-        let source = "---\r\ntitle: Demo\r\ncustom: keep\r\n---\r\n%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
-        let source_map = SourceMap::new(source);
+        for (existing, retained) in [
+            (
+                "title: 图\r\ncustom: keep\r\n",
+                "title: 图\r\ncustom: keep\r\n",
+            ),
+            ("\r\n", ""),
+        ] {
+            let source = format!(
+                "---\r\n{existing}---\r\n%%{{ init: {{\"theme\":\"dark\"}} }}%%\r\nflowchart TD\r\nA-->B\r\n"
+            );
+            let source_map = SourceMap::new(source.as_str());
+            let fix = migration_fix(&source, &source_map).expect("migration fix");
+            let insertion = fix
+                .edits
+                .iter()
+                .find(|edit| edit.span.byte_start == edit.span.byte_end)
+                .expect("frontmatter insertion");
+            assert_eq!(
+                source_map.byte_offset_for_utf16_position(insertion.span.lsp_range.start),
+                Some(insertion.span.byte_start),
+            );
 
-        let fix = migration_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
-
-        assert!(
-            edited.starts_with("---\r\ntitle: Demo\r\ncustom: keep\r\nconfig:\r\n"),
-            "{edited:?}"
-        );
-        assert!(edited.contains("theme: dark\r\n"));
-        assert!(!edited.contains("%%{ init"));
-        assert_only_crlf_newlines(&edited);
+            let edited = apply_fix(&source, &fix);
+            let expected = format!("---\r\n{retained}config:\r\n  theme: dark\r\n---\r\n");
+            assert!(edited.starts_with(&expected), "{edited:?}");
+            assert!(!edited.contains("%%{ init"));
+            assert_only_crlf_newlines(&edited);
+        }
     }
 
     #[test]
@@ -1127,6 +1141,108 @@ mod tests {
         );
         assert!(edited.contains("  flowchart:\n    nodeSpacing: 9\n    curve: basis\n"));
         assert!(!edited.contains("%%{"));
+    }
+
+    #[test]
+    fn init_directive_migration_skips_nonappendable_yaml() {
+        let depth = MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH + 1;
+        let deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        for existing in [
+            format!("{{notes: {deep}}}"),
+            format!("- {deep}"),
+            format!("notes: {deep}\n..."),
+            format!("  notes: {deep}"),
+            String::from("null"),
+            String::from("..."),
+            String::from("title: |+\n  original title"),
+            String::from("   "),
+        ] {
+            let source = format!(
+                "---\n{existing}\n---\n%%{{ init: {{theme: 'dark'}} }}%%\nflowchart TD\nA-->B\n"
+            );
+            let original =
+                crate::test_support::capture_source_metadata(&source).expect("original source");
+            assert_eq!(original.config.get_str("theme"), Some("dark"));
+            let source_map = SourceMap::new(source.as_str());
+            assert!(
+                migration_fix(&source, &source_map).is_none(),
+                "{existing:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn init_directive_migration_skips_non_idempotent_insertions() {
+        let depth = MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH + 1;
+        let notes = format!("notes: {}0{}", "[".repeat(depth), "]".repeat(depth));
+        for (existing, init, slot, value) in [
+            (
+                "flowchart-v2: {wrappingWidth: [{width: 10, height: 20}]}",
+                "{theme: 'dark'}",
+                "/flowchart/wrappingWidth",
+                serde_json::json!([{"width": 10, "height": 20}]),
+            ),
+            (
+                "displayMode: compact",
+                "{gantt: {displayMode: 'accurate'}}",
+                "/gantt/displayMode",
+                serde_json::json!("accurate"),
+            ),
+        ] {
+            let source = format!(
+                "---\n{notes}\n{existing}\n---\n%%{{ init: {init} }}%%\nflowchart TD\nA-->B\n"
+            );
+            let original =
+                crate::test_support::capture_source_metadata(&source).expect("original source");
+            assert_eq!(original.config.as_value().pointer(slot), Some(&value));
+            let source_map = SourceMap::new(source.as_str());
+            assert!(migration_fix(&source, &source_map).is_none(), "{existing}");
+        }
+    }
+
+    #[test]
+    fn init_directive_migration_keeps_safe_insertions_without_compatibility_routes() {
+        for (indent, existing) in [
+            ("", ""),
+            ("", "title: Example"),
+            ("", "displayMode: compact"),
+            ("  ", "  title: Indented"),
+        ] {
+            let source = format!(
+                "{indent}---\n{existing}\n{indent}---\n%%{{ init: {{theme: 'dark'}} }}%%\nflowchart TD\nA-->B\n"
+            );
+            let source_map = SourceMap::new(source.as_str());
+            let original =
+                crate::test_support::capture_source_metadata(&source).expect("original source");
+            let fix = migration_fix(&source, &source_map).expect("safe insertion");
+            let edited = apply_fix(&source, &fix);
+            let migrated =
+                crate::test_support::capture_source_metadata(&edited).expect("edited source");
+            assert_eq!(migrated.config.as_value(), original.config.as_value());
+            assert_eq!(migrated.title, original.title);
+            assert!(!edited.contains("%%{"));
+        }
+    }
+
+    #[test]
+    fn init_directive_migration_skips_an_exhausted_compatibility_projection() {
+        let depth = MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH + 1;
+        let deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        let source = format!(
+            "---\nflowchart-v2: {{themeVariables: {{fontSize: {deep}}}}}\n---\n\
+             %%{{ init: {{flowchart: {{themeVariables: {{fontSize: 12}}}}}} }}%%\nflowchart TD\nA-->B\n"
+        );
+        let original =
+            crate::test_support::capture_source_metadata(&source).expect("original source");
+        assert_eq!(
+            original
+                .config
+                .as_value()
+                .pointer("/flowchart/themeVariables/fontSize"),
+            Some(&serde_json::json!(12)),
+        );
+        let source_map = SourceMap::new(source.as_str());
+        assert!(migration_fix(&source, &source_map).is_none());
     }
 
     #[test]

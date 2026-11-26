@@ -4,12 +4,14 @@ use super::frontmatter::frontmatter_config_routes;
 use super::{
     PreprocessedSource, split_frontmatter_block_controlled, text::cleanup_text_controlled,
 };
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
 use merman_core_preprocess::directives::normalize_directive_quotes_controlled;
 use merman_core_preprocess::scan::controlled::{
     ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
 };
 use merman_core_preprocess::text::PreprocessMarkers;
+use merman_model::config::values_equal_controlled;
+use merman_model::json::clone_value_nonrecursive_controlled;
 use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -22,22 +24,121 @@ pub(super) const MAX_INSERT_ORDER_JSON_BYTES: usize =
 const MAX_REWRITE_DIRECTIVES: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FrontmatterInsertOrder(Arc<str>);
+pub struct FrontmatterInsertOrder {
+    compatibility: CompatibilityOrder,
+    display_mode: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum CompatibilityOrder {
+    NoRoutes,
+    Captured(Arc<str>),
+    ExceededBudget,
+}
 
 impl FrontmatterInsertOrder {
-    pub(super) fn from_json(json: String) -> Self {
-        Self(json.into())
+    pub(crate) fn without_compatibility_routes() -> Self {
+        Self {
+            compatibility: CompatibilityOrder::NoRoutes,
+            display_mode: None,
+        }
+    }
+
+    pub(crate) fn from_compatibility_capture(json: Option<String>) -> Self {
+        Self {
+            compatibility: match json {
+                Some(json) => CompatibilityOrder::Captured(json.into()),
+                None => CompatibilityOrder::ExceededBudget,
+            },
+            display_mode: None,
+        }
+    }
+
+    pub(super) fn with_display_mode(mut self, display_mode: Option<&str>) -> Option<Self> {
+        if let Some(mode) = display_mode {
+            if mode.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
+                return None;
+            }
+            self.display_mode = Some(mode.into());
+        }
+        Some(self)
     }
 
     pub fn estimated_owned_heap_bytes(&self) -> usize {
-        self.0
-            .len()
-            .saturating_add(2 * std::mem::size_of::<usize>())
+        let size = |text: &str| text.len().saturating_add(2 * std::mem::size_of::<usize>());
+        let compatibility = match &self.compatibility {
+            CompatibilityOrder::Captured(json) => size(json),
+            CompatibilityOrder::NoRoutes | CompatibilityOrder::ExceededBudget => 0,
+        };
+        compatibility.saturating_add(self.display_mode.as_deref().map_or(0, size))
+    }
+
+    fn compatible_order_controlled(
+        &self,
+        config: &Value,
+        max_bytes: usize,
+        max_nesting_depth: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<OrderedJson>> {
+        let display_mode = self.display_mode.as_deref();
+        if display_mode.is_some_and(|mode| {
+            config.pointer("/gantt/displayMode").and_then(Value::as_str) != Some(mode)
+        }) {
+            return Ok(None);
+        }
+
+        let json = match &self.compatibility {
+            CompatibilityOrder::NoRoutes => return Ok(Some(empty_order())),
+            CompatibilityOrder::Captured(json) => json,
+            CompatibilityOrder::ExceededBudget => return Ok(None),
+        };
+        if max_nesting_depth != MAX_REWRITE_DEPTH
+            || json.len() > max_bytes.saturating_mul(JSON_ESCAPE_EXPANSION)
+            || !supports_compatibility_replay(config)
+        {
+            return Ok(None);
+        }
+        let Some(order) = ordered_yaml_json(json) else {
+            return Ok(None);
+        };
+        let Some(compatibility) = clone_value_nonrecursive_controlled(
+            &order.value,
+            max_bytes,
+            max_nesting_depth,
+            control,
+        )?
+        else {
+            return Ok(None);
+        };
+        let mut replay = MermaidConfig::from_value(compatibility);
+        replay.deep_merge(config);
+        crate::config::mirror_legacy_font_family_into_theme_variables(&mut replay);
+        if let Some(mode) = display_mode {
+            replay.set_value("gantt.displayMode", Value::String(mode.to_owned()));
+        }
+        let equal = values_equal_controlled(replay.as_value(), config, Some(control))?;
+        Ok(equal.then_some(order))
     }
 }
 
+/// Reject arrays at the two levels where a merge can append values or replay array updates.
+fn supports_compatibility_replay(config: &Value) -> bool {
+    config.as_object().is_some_and(|root| {
+        root.values().all(|value| {
+            !value.is_array()
+                && value
+                    .as_object()
+                    .is_none_or(|members| members.values().all(|value| !value.is_array()))
+        })
+    })
+}
+
 pub enum FrontmatterRewrite<'a> {
-    Insert(Option<&'a FrontmatterInsertOrder>),
+    Insert {
+        frontmatter: Option<&'a FrontmatterInsertOrder>,
+        /// Authored overrides already bounded by the caller's migration budget.
+        config: &'a Value,
+    },
     Replace(SourceSpan),
 }
 
@@ -64,7 +165,6 @@ pub fn source_config_rewrite_order_controlled(
     if directives.len() > MAX_REWRITE_DIRECTIVES {
         return Ok(None);
     }
-    let empty_config = || OrderedJson::from(Value::Object(Map::new()));
     let (frontmatter, mut compatibility_config) = match frontmatter {
         FrontmatterRewrite::Replace(span) => {
             let Some(text) = source
@@ -94,16 +194,26 @@ pub fn source_config_rewrite_order_controlled(
                 };
                 Some(ordered)
             };
-            (fields, empty_config())
+            (fields, empty_order())
         }
-        FrontmatterRewrite::Insert(order) => {
-            let order = order
-                .filter(|order| {
-                    max_nesting_depth == MAX_REWRITE_DEPTH
-                        && order.0.len() <= max_bytes.saturating_mul(JSON_ESCAPE_EXPANSION)
-                })
-                .and_then(|order| ordered_yaml_json(&order.0))
-                .unwrap_or_else(empty_config);
+        FrontmatterRewrite::Insert {
+            frontmatter,
+            config,
+        } => {
+            let order = if let Some(frontmatter) = frontmatter {
+                let Some(order) = frontmatter.compatible_order_controlled(
+                    config,
+                    max_bytes,
+                    max_nesting_depth,
+                    control,
+                )?
+                else {
+                    return Ok(None);
+                };
+                order
+            } else {
+                empty_order()
+            };
             (None, order)
         }
     };
@@ -154,6 +264,10 @@ pub fn source_config_rewrite_order_controlled(
         compatibility_config,
         directives: directive_order,
     }))
+}
+
+fn empty_order() -> OrderedJson {
+    OrderedJson::from(Value::Object(Map::new()))
 }
 
 fn ordered_yaml_json(json: &str) -> Option<OrderedJson> {

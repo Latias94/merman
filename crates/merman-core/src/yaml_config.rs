@@ -1,9 +1,9 @@
 #[cfg(feature = "editor-facts")]
-use crate::preprocess::SourceConfigPath;
+use crate::preprocess::{FrontmatterInsertOrder, SourceConfigPath};
 use crate::{OperationControl, OperationControlResult};
-#[cfg(feature = "editor-facts")]
-use granit_parser::Span;
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
+#[cfg(feature = "editor-facts")]
+use granit_parser::{Span, StructureStyle};
 use merman_model::json::{JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES};
 use serde_json::{Map, Number, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -78,7 +78,7 @@ struct InsertOrderCapture<'a> {
     routes: &'a [(&'static str, &'static str)],
     max_bytes: usize,
     max_depth: usize,
-    output: &'a mut Option<String>,
+    output: &'a mut Option<FrontmatterInsertOrder>,
 }
 
 pub(crate) fn parse_yaml_with_capture_controlled(
@@ -111,7 +111,7 @@ pub(crate) fn parse_yaml_frontmatter_capture_controlled(
     max_order_bytes: usize,
     max_order_depth: usize,
     control: &OperationControl,
-) -> OperationControlResult<(YamlValueCapture, Option<String>)> {
+) -> OperationControlResult<(YamlValueCapture, Option<FrontmatterInsertOrder>)> {
     let Some(routes) = insert_routes else {
         let captured = parse_yaml_with_capture_controlled(
             input,
@@ -232,6 +232,10 @@ fn parse_yaml_controlled(
         #[cfg(feature = "editor-facts")]
         capture.keys,
     );
+    #[cfg(feature = "editor-facts")]
+    {
+        builder.frontmatter_appendable = capture.insert_order.is_some();
+    }
 
     // Feature unification may enable comment support for semantic-only callers.
     // Emit comments only when collecting editor evidence.
@@ -304,8 +308,20 @@ fn parse_yaml_controlled(
     #[cfg(feature = "editor-facts")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
+    #[cfg(feature = "editor-facts")]
+    let insert_order = capture
+        .insert_order
+        .filter(|_| builder.frontmatter_appendable);
     let captured = (|| {
         if !value.as_ref().is_ok_and(Value::is_object) {
+            #[cfg(feature = "editor-facts")]
+            if let Some(insert_order) = insert_order
+                && input.is_empty()
+                && builder.root.is_none()
+                && matches!(&value, Ok(Value::Null))
+            {
+                *insert_order.output = Some(FrontmatterInsertOrder::without_compatibility_routes());
+            }
             return Ok(YamlCollectionText::new());
         }
         #[cfg(feature = "editor-facts")]
@@ -320,20 +336,27 @@ fn parse_yaml_controlled(
             builder.capture_collection_text(capture.collection_text_keys, control)?
         };
         #[cfg(feature = "editor-facts")]
-        if let Some(insert_order) = capture.insert_order
+        if let Some(insert_order) = insert_order
             && let Ok(Value::Object(fields)) = &value
             && !fields.contains_key("config")
-            && insert_order
+        {
+            let order = if insert_order
                 .routes
                 .iter()
                 .any(|(key, _)| fields.contains_key(*key))
-        {
-            *insert_order.output = builder.frontmatter_insert_order(
-                insert_order.routes,
-                insert_order.max_bytes,
-                insert_order.max_depth,
-                control,
-            )?;
+            {
+                FrontmatterInsertOrder::from_compatibility_capture(
+                    builder.frontmatter_insert_order(
+                        insert_order.routes,
+                        insert_order.max_bytes,
+                        insert_order.max_depth,
+                        control,
+                    )?,
+                )
+            } else {
+                FrontmatterInsertOrder::without_compatibility_routes()
+            };
+            *insert_order.output = Some(order);
         }
         if let Some(order) = capture.root_key_order {
             builder.take_root_key_order(order, control)?;
@@ -403,6 +426,8 @@ struct YamlValueBuilder {
     key_evidence: Vec<YamlConfigKeyEvidence>,
     #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
+    #[cfg(feature = "editor-facts")]
+    frontmatter_appendable: bool,
 }
 
 impl YamlValueBuilder {
@@ -424,6 +449,8 @@ impl YamlValueBuilder {
             key_evidence: Vec::new(),
             #[cfg(feature = "editor-facts")]
             rewrite_safe: true,
+            #[cfg(feature = "editor-facts")]
+            frontmatter_appendable: false,
         }
     }
 
@@ -434,10 +461,14 @@ impl YamlValueBuilder {
         #[cfg(feature = "editor-facts")] span: Span,
     ) -> Result<(), String> {
         match event {
-            Event::StreamStart
-            | Event::StreamEnd
-            | Event::DocumentStart(..)
-            | Event::DocumentEnd => Ok(()),
+            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => Ok(()),
+            Event::DocumentEnd => {
+                #[cfg(feature = "editor-facts")]
+                if self.frontmatter_appendable && !span.is_empty() {
+                    self.frontmatter_appendable = false;
+                }
+                Ok(())
+            }
             #[cfg(feature = "editor-facts")]
             Event::Comment(_, _) => {
                 self.rewrite_safe = false;
@@ -463,6 +494,13 @@ impl YamlValueBuilder {
                 )
             }
             Event::Scalar(raw, style, anchor_id, tag) => {
+                #[cfg(feature = "editor-facts")]
+                if self.frontmatter_appendable
+                    && matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
+                    && span.end.byte_offset() == Some(input.len())
+                {
+                    self.frontmatter_appendable = false;
+                }
                 #[cfg(feature = "editor-facts")]
                 if anchor_id != 0
                     || tag.is_some()
@@ -506,12 +544,17 @@ impl YamlValueBuilder {
                     path,
                 })
             }
-            Event::MappingStart(_, anchor_id, _tag) => {
+            Event::MappingStart(_style, anchor_id, _tag) => {
                 #[cfg(feature = "editor-facts")]
                 if anchor_id != 0 || _tag.is_some() {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
+                #[cfg(feature = "editor-facts")]
+                if self.frontmatter_appendable && matches!(role, Role::Root) {
+                    self.frontmatter_appendable =
+                        _style == StructureStyle::Block && span.start.col() == 0;
+                }
                 #[cfg(feature = "editor-facts")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {

@@ -50,7 +50,10 @@ fn init_rewrite_uses_first_detector_namespace_without_scanning_the_diagram_tail(
     control.cancel_after_checkpoints(128);
     let ordered = source_config_rewrite_order_controlled(
         &long_source,
-        FrontmatterRewrite::Insert(None),
+        FrontmatterRewrite::Insert {
+            frontmatter: None,
+            config: config.as_value(),
+        },
         &spans,
         namespace,
         1024,
