@@ -2,7 +2,7 @@
 
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
-use merman_render_core::{Error, Result, layout_work::OperationLayoutWorkControl};
+use merman_render_core::{Result, layout_work::OperationLayoutWorkControl};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 
