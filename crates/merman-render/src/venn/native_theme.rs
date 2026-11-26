@@ -4,33 +4,6 @@ use crate::theme::{Color, FamilyTheme, font_family_css};
 
 const CIRCLE_OPACITY: f64 = 0.45;
 
-#[derive(Clone, Copy)]
-pub(super) struct VennFontSizes {
-    pub(super) title: f64,
-    pub(super) area: f64,
-    pub(super) text_node: f64,
-}
-
-impl VennFontSizes {
-    pub(super) fn new(native_base: Option<f64>, scale: f64) -> Self {
-        native_base.map_or(
-            Self {
-                title: 32.0 * scale,
-                area: 48.0 * scale,
-                text_node: 40.0 * scale,
-            },
-            |base| {
-                let body = 2.0 * scale * base;
-                Self {
-                    title: body * 1.25,
-                    area: body,
-                    text_node: body,
-                }
-            },
-        )
-    }
-}
-
 pub(crate) fn native_font_size(
     theme: Option<&FamilyTheme>,
     config: &PresentationConfig,

@@ -1,5 +1,7 @@
 mod base_typography;
-pub(crate) mod bpmn;
+pub(crate) use merman_render_flow::bpmn;
+#[cfg(test)]
+mod bpmn_layout_tests;
 mod class_style;
 mod compatibility;
 mod config;
@@ -16,7 +18,7 @@ mod lane_title;
 mod measured;
 mod node;
 mod self_loop;
-mod shapes;
+mod shape_validation;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
 mod source_style;
@@ -236,6 +238,10 @@ pub(crate) use label::{
 pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
+pub(crate) use merman_render_flow::shapes::{
+    FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
+    is_flowchart_process_shape,
+};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::NodeLayoutDimensionsRequest;
 pub(crate) use node::{
@@ -248,10 +254,9 @@ pub(crate) use self_loop::{
     flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
 };
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-pub(crate) use shapes::validate_flowchart_model_shapes;
-pub(crate) use shapes::{
-    FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
-    is_flowchart_process_shape, validate_flowchart_node_asset_dimensions,
+pub(crate) use shape_validation::validate_flowchart_model_shapes;
+pub(crate) use shape_validation::{
+    resolve_flowchart_shape, validate_flowchart_node_asset_dimensions,
 };
 #[cfg(any(
     feature = "layout-dagre",

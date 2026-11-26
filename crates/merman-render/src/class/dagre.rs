@@ -238,6 +238,7 @@ fn project_graph(measured: MeasuredGraph) -> ClassLayoutGraph {
             ..Default::default()
         };
         if let Some(meta) = &edge.terminals {
+            let extras = &mut *label.extras;
             for (key, metrics) in [
                 ("startLeft", meta.start_left),
                 ("startRight", meta.start_right),
@@ -249,18 +250,14 @@ fn project_graph(measured: MeasuredGraph) -> ClassLayoutGraph {
                         ("width".to_owned(), Value::from(width)),
                         ("height".to_owned(), Value::from(height)),
                     ];
-                    label.extras.insert(
+                    extras.insert(
                         key.to_owned(),
                         Value::Object(dimensions.into_iter().collect()),
                     );
                 }
             }
-            label
-                .extras
-                .insert("startMarker".to_string(), meta.start_marker.into());
-            label
-                .extras
-                .insert("endMarker".to_string(), meta.end_marker.into());
+            extras.insert("startMarker".to_string(), meta.start_marker.into());
+            extras.insert("endMarker".to_string(), meta.end_marker.into());
         }
         graph.set_edge_named(source, target, Some(id), Some(label));
     }
@@ -664,8 +661,9 @@ fn extract_cluster_graph(
 }
 
 fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
+    let extras = &*e.extras;
     let get_pair = |key: &str| -> Option<(f64, f64)> {
-        let obj = e.extras.get(key)?;
+        let obj = extras.get(key)?;
         let w = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let h = obj.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
         if w > 0.0 && h > 0.0 {
@@ -674,13 +672,11 @@ fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
             None
         }
     };
-    let start_marker = e
-        .extras
+    let start_marker = extras
         .get("startMarker")
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
-    let end_marker = e
-        .extras
+    let end_marker = extras
         .get("endMarker")
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);

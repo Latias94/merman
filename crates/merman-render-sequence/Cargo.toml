@@ -1,0 +1,22 @@
+[package]
+name = "merman-render-sequence"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Participant geometry and SVG drawing for Merman's Sequence renderer."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+benchmark-stages = ["merman-model/benchmark-stages"]
+
+[dependencies]
+merman-model = { workspace = true, features = ["diagram-sequence"] }
+merman-render-core = { workspace = true, features = ["svg-output"] }
+rustc-hash.workspace = true
+serde.workspace = true

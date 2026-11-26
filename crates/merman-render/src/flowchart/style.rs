@@ -1,5 +1,5 @@
 use crate::mermaid_style::{
-    HtmlTextGeometryDeclarations, HtmlTextProperty, ParsedStyleDeclaration,
+    HtmlTextGeometryDeclarations, HtmlTextProperty, InvalidCssLength, ParsedStyleDeclaration,
 };
 use crate::text::{TextMetrics, TextStyle};
 use indexmap::{IndexMap, map::Entry};
@@ -325,7 +325,7 @@ impl FlowchartRectangleCssSize {
         &mut self,
         property: &str,
         important: bool,
-        length: impl FnOnce() -> Result<Option<f64>, ()>,
+        length: impl FnOnce() -> Result<Option<f64>, InvalidCssLength>,
     ) {
         if let Some(index) = rectangle_dimension_index(property)
             && (important || !self.important[index])
@@ -399,7 +399,7 @@ pub(crate) fn flowchart_node_layout_style<'a>(
     inline_styles: &[String],
 ) -> (FlowchartTextStyleResolution<'a>, [Option<f64>; 2]) {
     let classes = flowchart_effective_node_class_names(class_defs, classes);
-    if classes.is_empty() && inline_styles.is_empty() {
+    if inline_styles.is_empty() && classes.clone().next().is_none() {
         return (FlowchartTextStyleResolution::borrowed(base), [None; 2]);
     }
 
@@ -428,16 +428,13 @@ const IMPLICIT_NODE_CLASSES: [&str; 2] = ["default", "node"];
 pub(crate) fn flowchart_effective_node_class_names<'a>(
     class_defs: &'a IndexMap<String, Vec<String>>,
     classes: &'a [String],
-) -> Vec<&'a str> {
-    let mut effective: Vec<&'a str> =
-        Vec::with_capacity(classes.len() + IMPLICIT_NODE_CLASSES.len());
-    for name in IMPLICIT_NODE_CLASSES {
-        if class_defs.contains_key(name) {
-            effective.push(name);
-        }
-    }
-    effective.extend(classes.iter().map(|class| class.as_str()));
-    effective
+) -> impl Iterator<Item = &'a str> + Clone {
+    let [default, node] =
+        IMPLICIT_NODE_CLASSES.map(|name| class_defs.contains_key(name).then_some(name));
+    default
+        .into_iter()
+        .chain(node)
+        .chain(classes.iter().map(String::as_str))
 }
 
 pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
@@ -447,7 +444,7 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     inline_styles: &[String],
 ) -> Cow<'a, TextStyle> {
     let effective_classes = flowchart_effective_node_class_names(class_defs, classes);
-    if effective_classes.is_empty() && inline_styles.is_empty() {
+    if inline_styles.is_empty() && effective_classes.clone().next().is_none() {
         return Cow::Borrowed(base);
     }
     flowchart_text_style_resolver_for_class_names(

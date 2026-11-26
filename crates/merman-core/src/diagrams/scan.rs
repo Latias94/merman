@@ -1,130 +1,8 @@
 pub(crate) use merman_model::text::is_ecmascript_whitespace;
 
-/// One rule dispatch. A skipped rule must consume input or leave its lexical state.
-/// Empty tokens are valid when they drain pending output or complete a state transition.
-pub(crate) enum ScanStep<T> {
-    Emit(T),
-    Skip,
-    End,
-}
-
-pub(crate) trait TokenScanner {
-    type Event;
-
-    fn scan_step(&mut self) -> ScanStep<Self::Event>;
-
-    fn next_token(&mut self) -> Option<Self::Event> {
-        loop {
-            match self.scan_step() {
-                ScanStep::Emit(event) => return Some(event),
-                ScanStep::Skip => {}
-                ScanStep::End => return None,
-            }
-        }
-    }
-}
-
-/// A forward cursor over spanned lexical events, with one buffered lookahead.
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-state",
-    feature = "diagram-sequence"
-))]
-pub(crate) struct TokenStream<'a, I: Iterator> {
-    events: std::iter::Peekable<I>,
-    control: &'a crate::OperationControl,
-    fetched: usize,
-    checked_lookahead: bool,
-    previous_end: usize,
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-state",
-    feature = "diagram-sequence"
-))]
-impl<'a, I, T, E> TokenStream<'a, I>
-where
-    I: Iterator<Item = Result<(usize, T, usize), E>>,
-{
-    pub(crate) fn new(events: I, control: &'a crate::OperationControl) -> Self {
-        Self {
-            events: events.peekable(),
-            control,
-            fetched: 0,
-            checked_lookahead: false,
-            previous_end: 0,
-        }
-    }
-
-    pub(crate) fn peek(&mut self) -> crate::OperationControlResult<Option<&I::Item>> {
-        let event = self.events.peek();
-        if !self.checked_lookahead && event.is_some() {
-            if self.fetched.is_multiple_of(128) {
-                self.control.checkpoint()?;
-            }
-            self.checked_lookahead = true;
-            self.fetched = self.fetched.saturating_add(1);
-        }
-        Ok(event)
-    }
-
-    pub(crate) fn bump(&mut self) -> crate::OperationControlResult<Option<I::Item>> {
-        if self.peek()?.is_none() {
-            return Ok(None);
-        }
-        let event = self.events.next();
-        self.checked_lookahead = false;
-        if let Some(Ok((_, _, end))) = &event {
-            self.previous_end = *end;
-        }
-        Ok(event)
-    }
-
-    /// The end of the last consumed token, excluding skipped input.
-    pub(crate) const fn previous_end(&self) -> usize {
-        self.previous_end
-    }
-}
-
-pub(crate) fn collect_lexical_events<S: TokenScanner>(
-    scanner: &mut S,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Vec<S::Event>> {
-    let mut events = Vec::new();
-    let mut steps = 0usize;
-    loop {
-        if steps.is_multiple_of(128) {
-            control.checkpoint()?;
-        }
-        match scanner.scan_step() {
-            ScanStep::Emit(event) => events.push(event),
-            ScanStep::Skip => {}
-            ScanStep::End => break,
-        }
-        steps = steps.wrapping_add(1);
-    }
-    control.checkpoint()?;
-    Ok(events)
-}
-
 pub(crate) fn strip_line_ending(segment: &str) -> &str {
     let segment = segment.strip_suffix('\n').unwrap_or(segment);
     segment.strip_suffix('\r').unwrap_or(segment)
-}
-
-pub(crate) fn consume_line_ending(source: &str, offset: usize) -> Option<usize> {
-    match source.as_bytes().get(offset).copied()? {
-        b'\r' if source.as_bytes().get(offset + 1) == Some(&b'\n') => Some(offset + 2),
-        b'\r' | b'\n' => Some(offset + 1),
-        _ => None,
-    }
 }
 
 pub(crate) struct LineCursor<'a> {
@@ -303,10 +181,6 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
         .sum()
 }
 
-pub(crate) fn is_ecmascript_inline_whitespace(ch: char) -> bool {
-    is_ecmascript_whitespace(ch) && !matches!(ch, '\r' | '\n')
-}
-
 pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
     let mut end = s.len();
     for (i, c) in s.char_indices() {
@@ -321,9 +195,9 @@ pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        LineCursor, consume_line_ending, leading_whitespace_len, physical_line_at,
-        split_ascii_indent, split_indent, split_indent_by, split_statement_suffix_hash_or_semi,
-        starts_with_case_insensitive, strip_line_ending,
+        LineCursor, leading_whitespace_len, physical_line_at, split_ascii_indent, split_indent,
+        split_indent_by, split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
+        strip_line_ending,
     };
 
     #[test]
@@ -331,14 +205,6 @@ mod tests {
         assert_eq!(strip_line_ending("line\n"), "line");
         assert_eq!(strip_line_ending("line\r\n"), "line");
         assert_eq!(strip_line_ending("line"), "line");
-    }
-
-    #[test]
-    fn consume_line_ending_accepts_cr_lf_and_crlf() {
-        assert_eq!(consume_line_ending("\r", 0), Some(1));
-        assert_eq!(consume_line_ending("\n", 0), Some(1));
-        assert_eq!(consume_line_ending("\r\n", 0), Some(2));
-        assert_eq!(consume_line_ending("x", 0), None);
     }
 
     #[test]

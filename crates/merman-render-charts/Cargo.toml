@@ -1,0 +1,43 @@
+[package]
+name = "merman-render-charts"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Layout, geometry, and presentation for Merman's chart families."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
+diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
+diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
+diagram-sankey = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-sankey"]
+diagram-treemap = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-treemap"]
+diagram-venn = [
+    "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
+]
+diagram-wardley = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley"]
+diagram-xychart = [
+    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",
+]
+
+[dependencies]
+cssparser = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
+libm = { workspace = true, optional = true }
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
+merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
+merman-theme-contract = { workspace = true, optional = true }
+rustc-hash = { workspace = true, optional = true }
+ryu-js = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }

@@ -1,7 +1,7 @@
 use super::super::*;
 use super::actor_man_glyphs::{ActorManGlyphPlacement, write_actor_man_glyph};
-use super::actor_shapes::is_actor_man_variant;
 use super::actors::SequenceActorRenderContext;
+use merman_render_sequence::actor::is_actor_man_variant;
 
 pub(super) fn render_sequence_actor_man_tops(
     out: &mut impl SvgOutput,

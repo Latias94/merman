@@ -893,8 +893,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 label_markup
             );
         } else {
-            let label_text =
-                crate::graph_label::flowchart_label_plain_text_for_layout(&label, "text", false);
+            let label_text = crate::graph_label::flowchart_non_markdown_svg_plain_text(&label);
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
@@ -1045,10 +1044,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 })?
             );
         } else {
-            let label_text = crate::graph_label::flowchart_label_plain_text_for_layout(
+            let label_text = crate::graph_label::flowchart_non_markdown_svg_plain_text(
                 &decode_block_label_html(&e.label),
-                "text",
-                false,
             );
             options
                 .work_meter()

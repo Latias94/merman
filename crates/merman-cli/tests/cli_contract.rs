@@ -1120,25 +1120,34 @@ fn layout_projects_geometry_by_default_and_can_emit_a_snapshot() {
 
     assert!(snapshot.status.success(), "{:?}", snapshot.stderr);
     let snapshot: Value = serde_json::from_slice(&snapshot.stdout).unwrap();
-    let expected = merman::model::ManagedJson::from(serde_json::json!({
+    let expected = serde_json::json!({
         "schema_version": 1,
         "family_id": "flowchart",
         "diagram_type": "flowchart-v2",
         "layout": snapshot["layout"],
-    }));
+    });
     for pretty in [false, true] {
         let mut args = vec!["layout", "-"];
-        let mut bytes = Vec::new();
         if pretty {
             args.push("--pretty");
-            expected.write_json_pretty(&mut bytes).unwrap();
-        } else {
-            expected.write_json(&mut bytes).unwrap();
         }
-        bytes.push(b'\n');
         let geometry = run_with_stdin(&args, source);
         assert!(geometry.status.success(), "{:?}", geometry.stderr);
-        assert_eq!(geometry.stdout, bytes, "pretty={pretty}");
+        let repeated = run_with_stdin(&args, source);
+        assert!(repeated.status.success(), "{:?}", repeated.stderr);
+        assert_eq!(geometry.stdout, repeated.stdout, "pretty={pretty}");
+
+        let payload = geometry
+            .stdout
+            .strip_suffix(b"\n")
+            .expect("layout output should end with a newline");
+        if pretty {
+            assert!(payload.starts_with(b"{\n  \""));
+        } else {
+            assert!(!payload.contains(&b'\n'));
+        }
+        let geometry: Value = serde_json::from_slice(payload).unwrap();
+        assert_eq!(geometry, expected, "pretty={pretty}");
     }
     assert!(snapshot["layout"]["FlowchartV2"].is_object());
     assert_eq!(snapshot["meta"]["diagram_type"], "flowchart-v2");

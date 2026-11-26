@@ -441,15 +441,10 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let projection = super::super::SvgDiagramIdProjection {
-            work_meter: &meter,
-            projected_bytes: std::cell::Cell::new(0),
-            error: std::cell::RefCell::new(None),
-        };
-        let id = SvgDiagramId {
-            value: "markers",
-            projection: &projection,
-        };
+        let projection = super::super::SvgDiagramIdProjection::new(&meter);
+        let id = SvgDiagramId::new("markers")
+            .unwrap()
+            .with_projection(&projection);
         for kind in BaseEdgeMarkerKind::ALL {
             let suffix = kind.suffix();
             let (base, margin) = suffix

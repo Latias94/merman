@@ -10,7 +10,7 @@ impl BoundaryRoutes {
     }
 
     pub(crate) fn obstacle(&mut self, rect: Rect, work: &mut Work<'_>) -> LayoutResult<()> {
-        self.0.add(Owner::Node, Bounds::of(rect)?, work)
+        self.0.add(Owner::Node, Bounds::checked_rect(rect)?, work)
     }
 
     pub(crate) fn record(
@@ -27,7 +27,7 @@ impl BoundaryRoutes {
         ] {
             if let (Some(center), Some(size)) = (center, size) {
                 self.0
-                    .add(Owner::End, Bounds::centered(center, size)?, work)?;
+                    .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
             }
         }
         self.markers(id, spec, old_ports(edge)?.map(|p| (p.at, p.side)), work)?;
@@ -92,10 +92,10 @@ impl BoundaryRoutes {
             if wall_start >= end || wall_end <= start {
                 continue;
             }
-            let (low, high) = if side.axis() == Axis::Vertical {
-                (wall.x0, wall.x1)
+            let [low, high] = if side.axis() == Axis::Vertical {
+                wall.x
             } else {
-                (wall.y0, wall.y1)
+                wall.y
             };
             push(
                 blocked,
@@ -208,7 +208,7 @@ impl BoundaryRoutes {
         }
         if let (Some(center), Some(size)) = (edge.label_center, spec.label) {
             self.0
-                .add(Owner::End, Bounds::centered(center, size)?, work)?;
+                .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
         }
         self.0.add_stroke(id, &edge, work)?;
         if let Some(size) = spec.start_label {
@@ -222,13 +222,13 @@ impl BoundaryRoutes {
                 work,
             )?;
             self.0
-                .add(Owner::End, Bounds::centered(center, size)?, work)?;
+                .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
             edge.start_label_center = Some(center);
         }
         if let Some(size) = spec.end_label {
             let center = end_label(&edge, true, size, spec.end_marker, options, &self.0, work)?;
             self.0
-                .add(Owner::End, Bounds::centered(center, size)?, work)?;
+                .add(Owner::End, Bounds::checked_centered(center, size)?, work)?;
             edge.end_label_center = Some(center);
         }
         Ok(edge)

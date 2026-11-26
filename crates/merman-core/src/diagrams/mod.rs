@@ -34,11 +34,7 @@ pub(crate) mod er;
 pub(crate) mod error_diagram;
 #[cfg(feature = "diagram-event-modeling")]
 pub(crate) mod eventmodeling;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) mod flowchart;
 #[cfg(feature = "diagram-gantt")]
 pub(crate) mod gantt;
@@ -48,13 +44,6 @@ pub(crate) mod git_graph;
 pub(crate) mod info;
 #[cfg(feature = "diagram-ishikawa")]
 pub(crate) mod ishikawa;
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-mod jison_unicode;
 #[cfg(feature = "diagram-journey")]
 pub(crate) mod journey;
 #[cfg(feature = "diagram-kanban")]

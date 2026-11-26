@@ -30,11 +30,16 @@ impl PreparedMathOccurrenceId {
         update_len_prefixed(&mut hasher, role.as_bytes());
         update_len_prefixed(&mut hasher, key.as_bytes());
         let digest = hasher.finalize();
-        Self(Arc::from(format!(
-            "{}/{role}/sha256:{}",
-            family_id.as_str(),
-            data_encoding::HEXLOWER.encode_display(&digest)
-        )))
+        let family = family_id.as_str();
+        let suffix = "/sha256:";
+        let mut id =
+            String::with_capacity(family.len() + 1 + role.len() + suffix.len() + 2 * digest.len());
+        id.push_str(family);
+        id.push('/');
+        id.push_str(role);
+        id.push_str(suffix);
+        merman_model::push_hex_lower(&mut id, &digest);
+        Self(Arc::from(id))
     }
 
     pub(crate) fn as_str(&self) -> &str {

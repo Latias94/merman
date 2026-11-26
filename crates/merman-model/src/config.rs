@@ -12,7 +12,9 @@ use crate::json::{
 use crate::resources::ModelComplexity;
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
+use std::cmp::Ordering;
 use std::fmt;
+use std::iter::Peekable;
 use std::ops::ControlFlow;
 use std::sync::{Arc, OnceLock};
 
@@ -105,8 +107,9 @@ impl SectionOverrides {
         SectionEntries {
             base,
             changed,
-            base_entries: base.iter(),
-            changed_entries: changed.iter(),
+            base_entries: base.iter().peekable(),
+            changed_entries: changed.iter().peekable(),
+            insertion_order: json_map_preserves_insertion_order(),
         }
     }
 
@@ -119,23 +122,52 @@ impl SectionOverrides {
     }
 }
 
+fn json_map_preserves_insertion_order() -> bool {
+    // A downstream crate can enable serde_json's insertion-ordered backend. Use the backend's
+    // documented iteration order so layered and flat configurations report the same first limit.
+    static INSERTION_ORDER: OnceLock<bool> = OnceLock::new();
+    *INSERTION_ORDER.get_or_init(|| {
+        let mut values = Map::new();
+        values.insert("b".to_owned(), Value::Null);
+        values.insert("a".to_owned(), Value::Null);
+        values.keys().next().is_some_and(|key| key == "b")
+    })
+}
+
 #[derive(Clone)]
 pub(crate) struct SectionEntries<'a> {
     base: &'a Map<String, Value>,
     changed: &'a Map<String, Value>,
-    base_entries: serde_json::map::Iter<'a>,
-    changed_entries: serde_json::map::Iter<'a>,
+    base_entries: Peekable<serde_json::map::Iter<'a>>,
+    changed_entries: Peekable<serde_json::map::Iter<'a>>,
+    insertion_order: bool,
 }
 
 impl<'a> Iterator for SectionEntries<'a> {
     type Item = (&'a String, &'a Value);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((key, original)) = self.base_entries.next() {
-            return Some((key, self.changed.get(key).unwrap_or(original)));
+        if self.insertion_order {
+            if let Some((key, original)) = self.base_entries.next() {
+                return Some((key, self.changed.get(key).unwrap_or(original)));
+            }
+            return self
+                .changed_entries
+                .find(|(key, _)| !self.base.contains_key(key.as_str()));
         }
-        self.changed_entries
-            .find(|(key, _)| !self.base.contains_key(key.as_str()))
+
+        match (self.base_entries.peek(), self.changed_entries.peek()) {
+            (Some((base, _)), Some((changed, _))) => match base.cmp(changed) {
+                Ordering::Less => self.base_entries.next(),
+                Ordering::Equal => {
+                    let _ = self.base_entries.next();
+                    self.changed_entries.next()
+                }
+                Ordering::Greater => self.changed_entries.next(),
+            },
+            (Some(_), None) => self.base_entries.next(),
+            (None, _) => self.changed_entries.next(),
+        }
     }
 }
 
@@ -1124,7 +1156,8 @@ mod tests {
             );
         });
 
-        assert_eq!(observed, ["pie.textPosition", "list"]);
+        observed.sort_unstable();
+        assert_eq!(observed, ["list", "pie.textPosition"]);
         assert_eq!(copies, 0);
         assert!(Arc::ptr_eq(&original.value, &config.value));
     }
@@ -1142,15 +1175,18 @@ mod tests {
         });
 
         assert_eq!(copies, 1);
-        assert_eq!(observed, ["same", "zero", "one"]);
-        assert_eq!(
-            original.as_value().to_string(),
-            r#"{"same":true,"zero":-0.0,"one":1}"#
-        );
-        assert_eq!(
-            config.as_value().to_string(),
-            r#"{"same":true,"zero":0.0,"one":1.0,"added":{}}"#
-        );
+        observed.sort_unstable();
+        assert_eq!(observed, ["one", "same", "zero"]);
+        for (key, before, after) in [
+            ("same", "true", "true"),
+            ("zero", "-0.0", "0.0"),
+            ("one", "1", "1.0"),
+        ] {
+            assert_eq!(original.get(key).unwrap().to_string(), before, "{key}");
+            assert_eq!(config.get(key).unwrap().to_string(), after, "{key}");
+        }
+        assert_eq!(original.get("added"), None);
+        assert_eq!(config.get("added"), Some(&json!({})));
     }
 
     #[test]

@@ -3,6 +3,7 @@ use crate::{
     MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
     options_json::{AnalysisOptionsJson, AnalysisOptionsJsonError, MAX_FIXED_UNIX_MILLIS},
 };
+use merman_model::json::ordered::OrderedJsonRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -707,6 +708,15 @@ impl AnalysisConfigContract {
     pub fn decode_json(
         self,
         value: &Value,
+    ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
+        self.decode_ordered_json(value.into())
+    }
+
+    /// Decodes JSON with the member order captured by a transport at its wire boundary.
+    #[doc(hidden)]
+    pub fn decode_ordered_json(
+        self,
+        value: OrderedJsonRef<'_>,
     ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
         decode::decode_json(value)
     }

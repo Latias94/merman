@@ -113,7 +113,6 @@ layout-dagre = ["svg", "merman-bindings-core/layout-dagre"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
 [dependencies]
-data-encoding.workspace = true
 merman-bindings-core.workspace = true
 merman-export = { workspace = true, optional = true }
 merman.workspace = true
@@ -122,4 +121,5 @@ sha2.workspace = true
 
 [dev-dependencies]
 cc = "1.11.0"
+data-encoding.workspace = true
 libloading = "0.9.0"

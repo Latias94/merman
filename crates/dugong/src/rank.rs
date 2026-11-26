@@ -35,6 +35,7 @@ pub struct RankPlan {
 pub(crate) enum RankError {
     Work(crate::WorkError),
     InvalidNetworkSimplexTree,
+    RankTraversalCycle,
 }
 
 impl From<crate::WorkError> for RankError {
@@ -48,10 +49,16 @@ impl From<RankError> for crate::LayoutError {
         match error {
             RankError::Work(error) => Self::Work(error),
             RankError::InvalidNetworkSimplexTree => Self::InvalidNetworkSimplexTree,
+            RankError::RankTraversalCycle => Self::RankTraversalCycle,
         }
     }
 }
 
+/// Ranks the graph directly with its configured ranker.
+///
+/// Unlike [`plan`], this does not run cycle breaking. If the longest-path traversal
+/// revisits an active node, it returns [`crate::LayoutError::RankTraversalCycle`]
+/// without publishing any of its staged ranks.
 pub fn rank(
     g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
 ) -> Result<(), crate::LayoutError> {

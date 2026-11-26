@@ -121,6 +121,7 @@ struct ExpectedSurface {
 /// used for release recipes. It must not reconstruct a second Web feature map.
 #[derive(Debug, Clone)]
 pub(crate) struct WasmArtifactProfile {
+    #[cfg(feature = "wasm-host")]
     pub(crate) diagram_families: Vec<String>,
     pub(crate) id: String,
     pub(crate) semantic_target: String,
@@ -1130,6 +1131,7 @@ fn wasm_artifact_profiles(
             capabilities: profile.expected.capabilities.clone(),
             runtime_ids: profile.expected.runtime_ids.clone(),
             outputs: profile.expected.outputs.clone(),
+            #[cfg(feature = "wasm-host")]
             diagram_families: profile.expected.diagram_families.clone(),
         });
     }

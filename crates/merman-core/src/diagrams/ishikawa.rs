@@ -1,6 +1,10 @@
+use crate::Error;
+#[cfg(any(feature = "compat-json", feature = "presentation"))]
+use crate::Result;
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::strip_line_ending;
+#[cfg(any(test, feature = "editor-facts"))]
+use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -9,7 +13,9 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, Result, SourceSpan};
+use merman_core_structured::ishikawa::{
+    IshikawaSyntax, IshikawaSyntaxError, IshikawaSyntaxNode, scan_ishikawa_lines_controlled,
+};
 #[cfg(all(test, feature = "compat-json"))]
 use merman_model::families::ishikawa::project_root_controlled;
 pub(crate) use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
@@ -42,18 +48,8 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
-#[derive(Debug, Clone)]
-struct FlatNode {
-    raw_level: usize,
-    text: String,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-    #[cfg(feature = "editor-facts")]
-    selection: SourceSpan,
-}
-
 struct IshikawaSemanticSource {
-    nodes: Vec<FlatNode>,
+    nodes: Vec<IshikawaSyntaxNode>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -249,10 +245,6 @@ pub(crate) fn parse_ishikawa_semantic_model_controlled(
     })
 }
 
-struct IshikawaHeader {
-    root: Option<FlatNode>,
-}
-
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_ishikawa_semantic_source(
     code: &str,
@@ -279,51 +271,7 @@ fn construct_ishikawa_semantic_source_controlled(
     #[cfg(test)]
     ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.set(ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut nodes = Vec::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-    let mut first_error = None;
-
-    for segment in code.split_inclusive('\n') {
-        control.checkpoint()?;
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        if is_space_or_comment_line(line) {
-            continue;
-        }
-
-        if !header_seen {
-            match parse_ishikawa_header_line(line, line_start, diagram_type) {
-                Ok(header) => {
-                    header_seen = true;
-                    if let Some(root) = header.root {
-                        nodes.push(root);
-                    }
-                }
-                Err(error) => {
-                    let span = SourceSpan::new(line_start, line_start + line.len());
-                    first_error.get_or_insert((error, span));
-                }
-            }
-            continue;
-        }
-
-        match parse_ishikawa_node_line(line, line_start, diagram_type) {
-            Ok(node) => nodes.push(node),
-            Err(error) => {
-                let span = SourceSpan::new(line_start, line_start + line.len());
-                first_error.get_or_insert((error, span));
-            }
-        }
-    }
-
-    if !header_seen {
-        first_error.get_or_insert((
-            Error::diagram_parse_insertion_point(diagram_type.to_string(), "expected ishikawa", 0),
-            SourceSpan::new(0, 0),
-        ));
-    }
+    let IshikawaSyntax { nodes, first_error } = scan_ishikawa_lines_controlled(code, control)?;
 
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = editor_demand
@@ -342,14 +290,20 @@ fn construct_ishikawa_semantic_source_controlled(
         }
     }
     if let Some(failure) = first_error {
-        let error = failure.0;
-        #[cfg(feature = "editor-facts")]
-        let span = failure.1;
+        let (message, span) = match failure {
+            IshikawaSyntaxError::MissingHeader => ("expected ishikawa", None),
+            IshikawaSyntaxError::InvalidHeader(span) => ("expected ishikawa", Some(span)),
+            IshikawaSyntaxError::InvalidNode(span) => ("expected ishikawa node", Some(span)),
+        };
+        let error = match span {
+            Some(span) => Error::diagram_parse_exact(diagram_type, message, span),
+            None => Error::diagram_parse_insertion_point(diagram_type, message, 0),
+        };
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
             facts.mark_recovered_from_parse_error(
                 format!("ishikawa parser recovered after parse error: {error}"),
-                Some(span),
+                Some(span.unwrap_or(SourceSpan::new(0, 0))),
             );
         }
         return Ok(Err(IshikawaParseFailure {
@@ -366,87 +320,12 @@ fn construct_ishikawa_semantic_source_controlled(
     }))
 }
 
-fn parse_ishikawa_header_line(
-    line: &str,
-    line_start: usize,
-    diagram_type: &str,
-) -> Result<IshikawaHeader> {
-    let trimmed_start = line.len().saturating_sub(line.trim_start().len());
-    let trimmed = &line[trimmed_start..];
-    for header in ["ishikawa-beta", "ishikawa"] {
-        if !starts_with_ignore_ascii_case(trimmed, header) {
-            continue;
-        }
-        let rest = &trimmed[header.len()..];
-        if rest
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-        {
-            continue;
-        }
-        let text = rest.trim();
-        if text.is_empty() {
-            return Ok(IshikawaHeader { root: None });
-        }
-        #[cfg(feature = "editor-facts")]
-        let rel = rest.len().saturating_sub(rest.trim_start().len());
-        #[cfg(feature = "editor-facts")]
-        let start = line_start + trimmed_start + header.len() + rel;
-        #[cfg(feature = "editor-facts")]
-        let end = start + text.len();
-        return Ok(IshikawaHeader {
-            root: Some(FlatNode {
-                raw_level: 0,
-                text: text.to_string(),
-                #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(line_start, line_start + line.len()),
-                #[cfg(feature = "editor-facts")]
-                selection: SourceSpan::new(start, end),
-            }),
-        });
-    }
-
-    Err(Error::diagram_parse_exact(
-        diagram_type.to_string(),
-        "expected ishikawa",
-        SourceSpan::new(line_start, line_start + line.len()),
-    ))
-}
-
-fn parse_ishikawa_node_line(line: &str, line_start: usize, diagram_type: &str) -> Result<FlatNode> {
-    let indent = line
-        .chars()
-        .take_while(|ch| matches!(ch, ' ' | '\t'))
-        .count();
-    let body = &line[indent..];
-    let text = body.trim();
-    if text.is_empty() {
-        return Err(Error::diagram_parse_exact(
-            diagram_type.to_string(),
-            "expected ishikawa node",
-            SourceSpan::new(line_start, line_start + line.len()),
-        ));
-    }
-
-    #[cfg(feature = "editor-facts")]
-    let rel = body.len().saturating_sub(body.trim_start().len());
-    #[cfg(feature = "editor-facts")]
-    let start = line_start + indent + rel;
-    #[cfg(feature = "editor-facts")]
-    let end = start + text.len();
-    Ok(FlatNode {
-        raw_level: indent,
-        text: text.to_string(),
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(line_start, line_start + line.len()),
-        #[cfg(feature = "editor-facts")]
-        selection: SourceSpan::new(start, end),
-    })
-}
-
 #[cfg(feature = "editor-facts")]
-fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: &FlatNode, is_root: bool) {
+fn push_ishikawa_node_fact(
+    facts: &mut EditorSemanticFacts,
+    node: &IshikawaSyntaxNode,
+    is_root: bool,
+) {
     let detail = if is_root {
         "ishikawa effect"
     } else {
@@ -466,7 +345,7 @@ fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: &FlatNode, is_
 }
 
 fn nodes_to_semantic_model_controlled(
-    nodes: Vec<FlatNode>,
+    nodes: Vec<IshikawaSyntaxNode>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<IshikawaDiagramModel> {
     let mut iter = nodes.into_iter();
@@ -507,17 +386,6 @@ fn nodes_to_semantic_model_controlled(
         nodes: arena,
         ..Default::default()
     })
-}
-
-fn is_space_or_comment_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed.is_empty() || trimmed.starts_with("%%")
-}
-
-fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
-    value
-        .get(..prefix.len())
-        .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
 }
 
 #[cfg(all(test, feature = "compat-json"))]

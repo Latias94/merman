@@ -45,7 +45,7 @@ impl NodeSourcePaint {
         let Some(shape) = shape else {
             return Ok(owners);
         };
-        let Ok(shape) = FlowchartShape::resolve(shape) else {
+        let Some(shape) = FlowchartShape::resolve(shape) else {
             return Ok(owners);
         };
         let (bpmn_shape, native_rectangle) = match shape {
@@ -221,7 +221,7 @@ impl PreparedNodeTerminal {
         };
         let mut selection = PreparedNodeSelection::prepare(inputs, &source);
         if let Some(native) = inputs.native {
-            let shape = terminal_shape.and_then(|name| FlowchartShape::resolve(name).ok());
+            let shape = terminal_shape.and_then(FlowchartShape::resolve);
             if let Some((fill, text)) = native.node_colors(shape, ordinal, classes) {
                 if source.fill.is_none() && !terminal_sources.fill {
                     let fill = fill.to_string();

@@ -4,7 +4,7 @@ use super::*;
 use crate::graph_layout::{
     RouteTopology,
     axis_clearance::AxisClearance,
-    contour,
+    contour, edge_paint_error,
     ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
@@ -16,6 +16,7 @@ pub(super) fn paint(
     route: &RouteTopology,
     stitches: &[BorderStitch],
     clearance: &AxisClearance,
+    points: &mut Vec<RoutePoint>,
 ) -> Result<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -25,22 +26,25 @@ pub(super) fn paint(
         origin_y,
         trace_enabled,
     } = request;
-    let invalid = || route_paint::RoutePaintError::InvalidGeometry.for_edge(&edge.id);
+    let invalid = || edge_paint_error(&edge.id, route_paint::RoutePaintError::InvalidGeometry);
     let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
     if route.knots.len() != solved.points.len() || solved.points.len() < 2 {
         return Err(invalid());
     }
-    let mut points: Vec<_> = solved
-        .points
-        .iter()
-        .zip(&route.knots)
-        .map(|(p, &(axis, kind))| RoutePoint {
-            x: p.x + ctx.tx - origin_x,
-            y: p.y + ctx.ty - origin_y,
-            axis,
-            kind,
-        })
-        .collect();
+    points.clear();
+    points.reserve_exact(solved.points.len());
+    points.extend(
+        solved
+            .points
+            .iter()
+            .zip(&route.knots)
+            .map(|(point, &(axis, kind))| RoutePoint {
+                x: point.x + ctx.tx - origin_x,
+                y: point.y + ctx.ty - origin_y,
+                axis,
+                kind,
+            }),
+    );
     let box_contacts = (points[0], points[points.len() - 1]);
     let center = |x, y| crate::model::LayoutPoint {
         x: x + ctx.tx - origin_x,
@@ -89,7 +93,7 @@ pub(super) fn paint(
     )
     .ok_or_else(invalid)?;
     contour::inset_endpoints(
-        &mut points,
+        points,
         (&source_profile, &source_center, route.ports.0),
         (&target_profile, &target_center, route.ports.1),
     );
@@ -128,7 +132,7 @@ pub(super) fn paint(
     };
     let clearance = clearance.resolve(ctx.work_meter)?;
     let painted = route_paint::build_svg_path(
-        &points,
+        points,
         (source_lead, target_lead),
         style,
         super::super::flowchart_marker_metrics(edge),
@@ -147,7 +151,7 @@ pub(super) fn paint(
             ),
         ),
     )
-    .map_err(|error| error.for_edge(&edge.id))?;
+    .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points
         .iter()
         .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })

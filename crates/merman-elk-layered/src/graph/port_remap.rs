@@ -1,7 +1,82 @@
-//! References retained by one physical single-graph barycenter sweep.
+//! Port slot mappings and reference sites used while reordering a graph.
 
 use super::{LGraph, PortRef, ReorderNodePortsWorkContext, remap_self_loop_holder_ports};
 use crate::work::{WorkControl, WorkError, checked_mul, checked_sum};
+
+/// Composes original-to-current port slots during a pass that reads only port records.
+/// Edge endpoints and all other external port references are restored together before the
+/// pass returns, including after an interruption. Stable node slots key the maps. The sorter
+/// admits deferred permutations only after checking all reference indices against fixed sizes.
+#[derive(Default)]
+pub(crate) enum PendingPortRemap {
+    #[default]
+    Empty,
+    Single {
+        owner: usize,
+        slots: Vec<usize>,
+    },
+    Multiple(Vec<Option<Vec<usize>>>),
+}
+
+impl PendingPortRemap {
+    pub(crate) fn reorder(&mut self, graph: &mut LGraph, owner: usize, order: Vec<usize>) {
+        let Some((old_to_new, true)) = graph.permute_node_ports(owner, order) else {
+            return;
+        };
+        match self {
+            Self::Empty => {
+                *self = Self::Single {
+                    owner,
+                    slots: old_to_new,
+                };
+            }
+            Self::Single {
+                owner: first,
+                slots,
+            } if *first == owner => compose_port_slots(slots, &old_to_new),
+            Self::Single {
+                owner: first,
+                slots,
+            } => {
+                let mut owners = Vec::new();
+                owners.resize_with(graph.layerless_nodes.len(), || None);
+                owners[*first] = Some(std::mem::take(slots));
+                owners[owner] = Some(old_to_new);
+                *self = Self::Multiple(owners);
+            }
+            Self::Multiple(owners) => {
+                let pending = &mut owners[owner];
+                if let Some(slots) = pending {
+                    compose_port_slots(slots, &old_to_new);
+                } else {
+                    *pending = Some(old_to_new);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn apply(self, graph: &mut LGraph) {
+        match self {
+            Self::Empty => {}
+            Self::Single { owner, slots } => {
+                graph.remap_deferred_port_references(|node| {
+                    (node == owner).then_some(slots.as_slice())
+                });
+            }
+            Self::Multiple(owners) => {
+                graph.remap_deferred_port_references(|owner| {
+                    owners.get(owner).and_then(Option::as_deref)
+                });
+            }
+        }
+    }
+}
+
+fn compose_port_slots(slots: &mut [usize], old_to_new: &[usize]) {
+    for current in slots {
+        *current = old_to_new[*current];
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 enum Reference {

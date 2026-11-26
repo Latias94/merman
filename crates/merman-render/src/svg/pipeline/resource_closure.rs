@@ -1,7 +1,5 @@
-use cssparser::{BasicParseErrorKind, Parser, SourceLocation, Token};
+use merman_render_core::svg_css::{CssResourceUrl, visit_css_resource_urls};
 use std::collections::BTreeSet;
-
-const CSS_RESOURCE_NESTING_HARD_LIMIT: u8 = 64;
 
 /// Terminal inventory of same-document and inline resources referenced by a sealed SVG.
 ///
@@ -86,13 +84,22 @@ impl SvgResourceClosureBuilder {
     }
 
     fn observe_css_urls(&mut self, css: &str, scope: CssReferenceScope) -> Result<(), String> {
-        let mut parser = Parser::new(css);
-        let mut error_location = parser.current_source_location();
-        collect_css_urls(&mut parser, self, scope, 0, &mut error_location).map_err(|error| {
-            format!(
-                "failed to inventory terminal CSS resources at line {}, column {}: {}",
-                error_location.line, error_location.column, error.kind
-            )
+        visit_css_resource_urls(css, |url| match url {
+            CssResourceUrl::SameDocumentFragment(fragment) => match scope {
+                CssReferenceScope::Concrete => self.observe_parsed_fragment_reference(fragment),
+                CssReferenceScope::ConditionalStylesheet => {
+                    self.stylesheet_fragment_ids.insert(fragment.to_owned());
+                }
+            },
+            CssResourceUrl::DataScheme => self.observe_inline_data_resource(),
+        })
+        .map_err(|error| {
+            let context = if error.is_malformed_token() {
+                " survived terminal validation"
+            } else {
+                ""
+            };
+            format!("failed to inventory terminal CSS resources at {error}{context}")
         })
     }
 
@@ -134,93 +141,10 @@ impl SvgResourceClosureBuilder {
     }
 }
 
-fn collect_css_urls<'i>(
-    parser: &mut Parser<'i>,
-    resources: &mut SvgResourceClosureBuilder,
-    scope: CssReferenceScope,
-    depth: u8,
-    error_location: &mut SourceLocation,
-) -> Result<(), cssparser::ParseError<String>> {
-    // cssparser consumes the rest of a nested block even on failure. Capture the location
-    // before unwinding so diagnostics still identify the failing token, not the block end.
-    *error_location = parser.current_source_location();
-    if depth > CSS_RESOURCE_NESTING_HARD_LIMIT {
-        return Err(cssparser::ParseError::custom(format!(
-            "CSS resource nesting exceeds {CSS_RESOURCE_NESTING_HARD_LIMIT}"
-        )));
-    }
-
-    loop {
-        *error_location = parser.current_source_location();
-        let token = match parser.next_including_whitespace() {
-            Ok(token) => token.clone(),
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
-
-        match token {
-            Token::UnquotedUrl(url) => observe_url(resources, &url, scope),
-            Token::Function(name) if name.eq_ignore_ascii_case("url") => {
-                let url = parser.parse_nested_block(|nested| {
-                    *error_location = nested.current_source_location();
-                    let value = nested.expect_string_cloned()?;
-                    *error_location = nested.current_source_location();
-                    nested.expect_exhausted()?;
-                    Ok::<_, cssparser::ParseError<String>>(value)
-                })?;
-                observe_url(resources, &url, scope);
-            }
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
-                parser.parse_nested_block(|nested| {
-                    collect_css_urls(
-                        nested,
-                        resources,
-                        scope,
-                        depth.saturating_add(1),
-                        error_location,
-                    )
-                })?;
-            }
-            Token::BadUrl(_) | Token::BadString(_) => {
-                *error_location = parser.current_source_location();
-                return Err(cssparser::ParseError::custom(
-                    "malformed CSS token survived terminal validation".to_owned(),
-                ));
-            }
-            _ => {}
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CssReferenceScope {
     Concrete,
     ConditionalStylesheet,
-}
-
-fn observe_url(resources: &mut SvgResourceClosureBuilder, url: &str, scope: CssReferenceScope) {
-    let url = url.trim();
-    if let Some(fragment) = url
-        .strip_prefix('#')
-        .filter(|fragment| !fragment.is_empty())
-    {
-        match scope {
-            CssReferenceScope::Concrete => resources.observe_parsed_fragment_reference(fragment),
-            CssReferenceScope::ConditionalStylesheet => {
-                resources
-                    .stylesheet_fragment_ids
-                    .insert(fragment.to_owned());
-            }
-        }
-    } else if url
-        .get(..5)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
-    {
-        resources.observe_inline_data_resource();
-    }
 }
 
 #[cfg(test)]
@@ -258,11 +182,7 @@ mod tests {
 
     #[test]
     fn css_inventory_retains_its_explicit_nesting_limit() {
-        let css = format!(
-            "{}url(#paint){}",
-            "f(".repeat(usize::from(CSS_RESOURCE_NESTING_HARD_LIMIT)),
-            ")".repeat(usize::from(CSS_RESOURCE_NESTING_HARD_LIMIT)),
-        );
+        let css = format!("{}url(#paint){}", "f(".repeat(64), ")".repeat(64));
         let mut resources = SvgResourceClosureBuilder::default();
         resources.observe_inline_css_urls(&css).unwrap();
         resources.observe_parsed_fragment_id("paint");

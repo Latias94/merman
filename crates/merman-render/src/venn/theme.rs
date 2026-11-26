@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 
 use merman_model::presentation::PresentationConfig;
+use merman_render_charts::venn::VennFontSizes;
 
 use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
@@ -50,7 +51,7 @@ impl VennTypographyThemePlan {
     }
 
     pub(crate) fn title_font_size(&self, scale: f64) -> f64 {
-        super::native_theme::VennFontSizes::new(
+        VennFontSizes::new(
             self.native.as_ref().and_then(|native| native.base_size),
             scale,
         )
@@ -58,7 +59,7 @@ impl VennTypographyThemePlan {
     }
 
     pub(crate) fn area_font_size(&self, scale: f64) -> f64 {
-        super::native_theme::VennFontSizes::new(
+        VennFontSizes::new(
             self.native.as_ref().and_then(|native| native.base_size),
             scale,
         )

@@ -76,10 +76,11 @@ The Typst wrapper version in `distribution/typst/merman/typst.toml` is independe
 
 ## Verification
 
-Build, budget, and install the provenance-bound publish artifact in one production pass:
+Build, budget, and install the provenance-bound publish artifact in one production pass.
+The `wasm-host` feature enables interpreter validation in xtask.
 
 ```bash
-cargo run --locked -p xtask -- build-typst-package --profile publish \
+cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
@@ -102,7 +103,7 @@ report the replacement package-build command instead of producing another artifa
 Compile the wrapper examples and tests against the exact staged bundle with:
 
 ```bash
-cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
+cargo run --locked -p xtask --features wasm-host -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
 `--skip-wasm-build` is smoke-only. It still validates current source, features, tools, flags,

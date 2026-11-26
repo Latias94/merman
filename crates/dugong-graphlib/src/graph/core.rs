@@ -1971,6 +1971,35 @@ where
         }
     }
 
+    /// Tests a stored ordered endpoint pair through the incremental adjacency index.
+    /// Parallel edge names do not affect membership.
+    #[doc(hidden)]
+    pub fn has_pinned_successor_ix(&self, v_ix: usize, w_ix: usize) -> bool {
+        self.endpoint_key_adj.contains_link(v_ix, w_ix)
+    }
+
+    /// Checks whether two live nodes have a shared canonical successor.
+    /// Calls `before_probe` before testing each target in the smaller successor row.
+    #[doc(hidden)]
+    pub fn try_has_common_pinned_successor_ix<ProbeError>(
+        &self,
+        mut v_ix: usize,
+        mut u_ix: usize,
+        mut before_probe: impl FnMut() -> Result<(), ProbeError>,
+    ) -> Result<bool, ProbeError> {
+        if self.endpoint_key_adj.successor_count(v_ix) > self.endpoint_key_adj.successor_count(u_ix)
+        {
+            std::mem::swap(&mut v_ix, &mut u_ix);
+        }
+        for target_ix in self.endpoint_key_adj.successors(v_ix) {
+            before_probe()?;
+            if self.has_pinned_successor_ix(u_ix, target_ix) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Iterates canonical successor properties in pinned JavaScript Object.keys order.
     #[doc(hidden)]
     pub fn for_each_pinned_successor_ix<F>(&self, v_ix: usize, mut f: F)
@@ -2459,13 +2488,17 @@ where
     }
 
     pub fn sources(&self) -> Vec<&str> {
-        if !self.options.directed {
-            return self.nodes().collect();
-        }
-        self.node_indices_in_object_key_order()
-            .filter(|&node_ix| self.endpoint_key_adj.predecessor_count(node_ix) == 0)
+        self.source_node_ixs()
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
+    }
+
+    /// Iterates the same live sources as `sources()` in object-key order without allocating.
+    #[doc(hidden)]
+    pub fn source_node_ixs(&self) -> impl Iterator<Item = usize> + '_ {
+        self.node_indices_in_object_key_order().filter(|&node_ix| {
+            !self.options.directed || self.endpoint_key_adj.predecessor_count(node_ix) == 0
+        })
     }
 
     pub fn sinks(&self) -> Vec<&str> {

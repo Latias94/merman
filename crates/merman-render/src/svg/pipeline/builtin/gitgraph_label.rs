@@ -2,9 +2,9 @@ use crate::Result;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 
-use super::util::{extract_quoted_attr, find_tag_end, set_or_insert_quoted_attr};
 use crate::DiagramFamilyId;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{extract_quoted_attr, find_tag_end, set_or_insert_quoted_attr};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GitGraphBranchLabelBaselinePostprocessor;

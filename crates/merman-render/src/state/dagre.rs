@@ -800,23 +800,19 @@ fn layout_prepared_node(
         let Some(e) = prepared.graph.edge_by_key(&key) else {
             continue;
         };
-        let original_id = get_extras_string(&e.extras, "originalId").unwrap_or_else(|| {
+        let extras = &*e.extras;
+        let original_id = get_extras_string(extras, "originalId").unwrap_or_else(|| {
             key.name
                 .clone()
                 .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w))
         });
-        let logical_self_loop_id = get_extras_string(&e.extras, "selfLoopId");
-        let segment = e
-            .extras
-            .get("segment")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
+        let logical_self_loop_id = get_extras_string(extras, "selfLoopId");
+        let segment = extras.get("segment").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
         let original_from =
-            get_extras_string(&e.extras, "originalFrom").unwrap_or_else(|| key.v.clone());
-        let original_to =
-            get_extras_string(&e.extras, "originalTo").unwrap_or_else(|| key.w.clone());
-        let from_cluster = get_extras_string(&e.extras, "fromCluster");
-        let to_cluster = get_extras_string(&e.extras, "toCluster");
+            get_extras_string(extras, "originalFrom").unwrap_or_else(|| key.v.clone());
+        let original_to = get_extras_string(extras, "originalTo").unwrap_or_else(|| key.w.clone());
+        let from_cluster = get_extras_string(extras, "fromCluster");
+        let to_cluster = get_extras_string(extras, "toCluster");
 
         // Mermaid's dagre wrapper emits "edgeLabel" placeholder groups even when the visible
         // label is empty. Dagre still assigns an `(x, y)` label position for those edges, and the
@@ -1349,10 +1345,11 @@ fn build_state_diagram_dagre_input(
             weight: 1.0,
             ..Default::default()
         };
-        set_extras_string(&mut base.extras, "originalId", &e.id);
-        set_extras_string(&mut base.extras, "originalFrom", &e.start);
-        set_extras_string(&mut base.extras, "originalTo", &e.end);
-        set_extras_i32(&mut base.extras, "segment", 0);
+        let extras = &mut *base.extras;
+        set_extras_string(extras, "originalId", &e.id);
+        set_extras_string(extras, "originalFrom", &e.start);
+        set_extras_string(extras, "originalTo", &e.end);
+        set_extras_i32(extras, "segment", 0);
 
         if e.start != e.end {
             let start_id = dagre_id_by_semantic_id
@@ -1419,7 +1416,6 @@ fn build_state_diagram_dagre_input(
         let mut edge1 = base.clone();
         edge1.width = 0.0;
         edge1.height = 0.0;
-        set_extras_i32(&mut edge1.extras, "segment", 0);
         set_extras_string(&mut edge1.extras, "originalId", &id1);
         set_extras_string(&mut edge1.extras, "selfLoopId", &e.id);
 
@@ -1428,7 +1424,7 @@ fn build_state_diagram_dagre_input(
         set_extras_string(&mut edge_mid.extras, "originalId", &idm);
         set_extras_string(&mut edge_mid.extras, "selfLoopId", &e.id);
 
-        let mut edge2 = base.clone();
+        let mut edge2 = base;
         edge2.width = 0.0;
         edge2.height = 0.0;
         set_extras_i32(&mut edge2.extras, "segment", 2);

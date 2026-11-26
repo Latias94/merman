@@ -16,8 +16,14 @@ pub(crate) fn capacity_bytes<T>(values: &Vec<T>) -> usize {
 /// Reusable layout arrays and accepted editor geometry, bounded between solves and after errors.
 #[derive(Debug)]
 pub struct LayoutScratch {
-    max_retained_bytes: usize,
+    retention: Retention,
     expanded: Expanded,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Retention {
+    Workspace(usize),
+    EmptyRows(usize),
 }
 
 impl Default for LayoutScratch {
@@ -28,7 +34,16 @@ impl Default for LayoutScratch {
 impl LayoutScratch {
     pub fn with_max_retained_bytes(max_retained_bytes: usize) -> Self {
         Self {
-            max_retained_bytes,
+            retention: Retention::Workspace(max_retained_bytes),
+            expanded: Expanded::default(),
+        }
+    }
+
+    /// Keeps only empty rank and edge-chain rows between independent layouts.
+    #[doc(hidden)]
+    pub fn with_max_retained_row_bytes(max_retained_bytes: usize) -> Self {
+        Self {
+            retention: Retention::EmptyRows(max_retained_bytes),
             expanded: Expanded::default(),
         }
     }
@@ -37,20 +52,23 @@ impl LayoutScratch {
             .retained_bytes()
             .saturating_add(self.expanded.component_cache.retained_bytes())
     }
+
     pub(crate) fn frame(&mut self) -> Frame<'_> {
         Frame {
             expanded: &mut self.expanded,
-            limit: self.max_retained_bytes,
+            retention: self.retention,
         }
     }
 }
 pub(crate) struct Frame<'a> {
     pub(crate) expanded: &'a mut Expanded,
-    limit: usize,
+    retention: Retention,
 }
 impl Frame<'_> {
     pub(crate) fn begin_components(&mut self) {
-        self.expanded.component_cache.begin(self.limit);
+        if let Retention::Workspace(limit) = self.retention {
+            self.expanded.component_cache.begin(limit);
+        }
     }
 
     pub(crate) fn pause_components(&mut self) {
@@ -64,14 +82,21 @@ impl Frame<'_> {
 
 impl Drop for Frame<'_> {
     fn drop(&mut self) {
+        let limit = match self.retention {
+            Retention::Workspace(limit) => limit,
+            Retention::EmptyRows(limit) => {
+                self.expanded.retain_empty_rows(limit);
+                return;
+            }
+        };
         self.expanded.component_cache.discard_pending();
         let mut used = self.expanded.retained_bytes();
-        if used > self.limit {
+        if used > limit {
             let cache = std::mem::take(&mut self.expanded.component_cache);
             *self.expanded = Expanded::default();
             self.expanded.component_cache = cache;
             used = 0;
         }
-        self.expanded.component_cache.trim(self.limit - used);
+        self.expanded.component_cache.trim(limit - used);
     }
 }

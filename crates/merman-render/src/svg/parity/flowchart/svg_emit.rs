@@ -94,10 +94,6 @@ pub(super) fn render_flowchart_svg_model(
             let use_max_width = render_config.use_max_width;
             let title_top_margin = render_config.title_top_margin;
             let marker_plan = FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan)?;
-            let mut edge_path_cache: FxHashMap<
-                crate::flowchart::FlowchartEdgeKey,
-                FlowchartEdgePathCacheEntry,
-            > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
 
             let subgraph_title_y_shift =
                 crate::flowchart::FlowchartConfigView::new(effective_config)
@@ -123,6 +119,7 @@ pub(super) fn render_flowchart_svg_model(
                 mut bbox_min_y,
                 mut bbox_max_x,
                 mut bbox_max_y,
+                mut edge_path_cache,
             } = prepare_flowchart_viewbox_bounds(
                 FlowchartViewboxBoundsRequest {
                     ctx,
@@ -134,7 +131,6 @@ pub(super) fn render_flowchart_svg_model(
                     timing: render_timing,
                     viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
                     detail: &mut detail,
-                    edge_path_cache: &mut edge_path_cache,
                 },
                 hierarchy_plan,
             )?;
@@ -315,7 +311,7 @@ pub(super) fn render_flowchart_svg_model(
                                 slots.as_ref(),
                             )
                         } else {
-                            let id = super::css::FlowchartCssSelectorDiagramId::new(diagram_id);
+                            let id = css_selector_diagram_id(diagram_id);
                             match slots {
                                 Some(slots) => super::agentflow::write_flowchart_container_css(
                                     &mut css_out,

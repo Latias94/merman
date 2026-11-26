@@ -49,7 +49,8 @@ pub(crate) fn parent_dummy_chains_controlled(
                     && path_v
                         .as_deref()
                         .and_then(|pv| g.node(pv))
-                        .and_then(|n| n.max_rank)
+                        .and_then(|node| node.compound.as_deref())
+                        .and_then(|compound| compound.max_rank)
                         .unwrap_or(i32::MAX / 2)
                         < rank
                 {
@@ -68,7 +69,8 @@ pub(crate) fn parent_dummy_chains_controlled(
                         .get(path_idx + 1)
                         .and_then(|p| p.as_ref())
                         .and_then(|pv| g.node(pv))
-                        .and_then(|n| n.min_rank)
+                        .and_then(|node| node.compound.as_deref())
+                        .and_then(|compound| compound.min_rank)
                         .unwrap_or(i32::MIN / 2)
                         <= rank
                 {

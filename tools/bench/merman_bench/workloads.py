@@ -1043,7 +1043,9 @@ def main(argv=None):
     matrix.add_argument("--peer", action="append", help="select a registered peer (repeatable, default: all)")
     matrix.add_argument("--variant", action="append", metavar="LABEL=ENGINE[:MODULE][:OPTIONS_JSON]",
                         help="select a named Node variant (repeat at least twice; first is the baseline). "
-                             "Use ::OPTIONS_JSON with the locked Merman entry, or omit it to pass no direct options.")
+                             "Use ::OPTIONS_JSON with the locked Merman entry.")
+    matrix.add_argument("--variant-direct-id", action="append", metavar="LABEL",
+                        help="pass the frozen diagram ID as diagramId for a Merman variant without Options JSON")
     matrix.add_argument("--variant-layout", action="append", metavar="LABEL=LAYOUT",
                         help="set dagre, elk, or shoal once at construction for a Merman variant")
     matrix.add_argument("--samples", type=int, default=3, help="warm batches inside each scenario worker")

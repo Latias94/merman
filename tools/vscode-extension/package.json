@@ -1,43 +1,4 @@
 {
-  "name": "merman-vscode",
-  "displayName": "Merman",
-  "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
-  "version": "0.1.0",
-  "publisher": "latias94",
-  "preview": true,
-  "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://github.com/Latias94/merman#readme",
-  "bugs": {
-    "url": "https://github.com/Latias94/merman/issues"
-  },
-  "qna": false,
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Latias94/merman.git"
-  },
-  "engines": {
-    "vscode": "^1.145.0",
-    "npm": ">=12.2.2"
-  },
-  "categories": [
-    "Programming Languages",
-    "Linters",
-    "Other"
-  ],
-  "keywords": [
-    "mermaid",
-    "diagram",
-    "preview",
-    "lsp",
-    "diagnostics",
-    "export",
-    "markdown",
-    "mdx"
-  ],
-  "galleryBanner": {
-    "color": "#0B3D3A",
-    "theme": "dark"
-  },
   "activationEvents": [
     "onLanguage:mermaid",
     "onLanguage:markdown",
@@ -57,246 +18,272 @@
     "workspaceContains:**/*.mmd",
     "workspaceContains:**/*.mermaid"
   ],
-  "main": "./dist/extension.js",
-  "extensionKind": [
-    "workspace"
-  ],
+  "allowScripts": {
+    "@vscode/vsce-sign@2.1.0": true,
+    "esbuild@0.28.2": true
+  },
+  "bugs": {
+    "url": "https://github.com/Latias94/merman/issues"
+  },
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": "limited",
-      "description": "Preview, export, and packaged language intelligence are available in Restricted Mode. Custom executable paths, custom launch arguments, and Cargo-run development settings require Workspace Trust."
+      "description": "Preview, export, and packaged language intelligence are available in Restricted Mode. Custom executable paths, custom launch arguments, and Cargo-run development settings require Workspace Trust.",
+      "supported": "limited"
     }
   },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
   "contributes": {
-    "languages": [
+    "commands": [
       {
-        "id": "mermaid",
-        "aliases": [
-          "Mermaid",
-          "mermaid"
-        ],
-        "extensions": [
-          ".mmd",
-          ".mermaid"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ],
-    "snippets": [
+        "command": "merman.restartLanguageServer",
+        "title": "Merman: Restart Language Server"
+      },
       {
-        "language": "mermaid",
-        "path": "./snippets/mermaid.json"
+        "category": "Merman",
+        "command": "merman.openPreview",
+        "icon": "$(open-preview)",
+        "title": "Merman: Open Preview"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.togglePreviewLock",
+        "icon": "$(lock)",
+        "title": "Merman: Toggle Preview Lock"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.refreshPreview",
+        "icon": "$(refresh)",
+        "title": "Merman: Refresh Preview"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.showPreviewSource",
+        "icon": "$(go-to-file)",
+        "title": "Merman: Show Preview Source"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.export",
+        "icon": "$(export)",
+        "title": "Merman: Export..."
+      },
+      {
+        "category": "Merman",
+        "command": "merman.exportSvg",
+        "icon": "$(export)",
+        "title": "Merman: Export SVG"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.exportPng",
+        "icon": "$(file-media)",
+        "title": "Merman: Export PNG"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.copySvg",
+        "icon": "$(copy)",
+        "title": "Merman: Copy SVG"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.copyPng",
+        "icon": "$(file-media)",
+        "title": "Merman: Copy PNG"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.showRuleCatalog",
+        "title": "Merman: Show Rule Catalog"
+      },
+      {
+        "category": "Merman",
+        "command": "merman.showConfigSchema",
+        "title": "Merman: Show Config Schema"
       }
     ],
     "configuration": [
       {
-        "title": "Merman: Runtime",
         "properties": {
-          "merman.server.path": {
-            "type": "string",
+          "merman.cli.path": {
             "default": "",
+            "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary. Configured executables require workspace trust.",
+            "order": 30,
             "restricted": true,
-            "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary. Configured executables require workspace trust.",
             "scope": "machine-overridable",
-            "order": 10
+            "type": "string"
           },
           "merman.server.args": {
-            "type": "array",
+            "default": [],
             "items": {
               "type": "string"
             },
-            "default": [],
-            "restricted": true,
             "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly. Requires Workspace Trust because this is a restricted setting.",
-            "scope": "machine-overridable",
-            "order": 20
-          },
-          "merman.cli.path": {
-            "type": "string",
-            "default": "",
+            "order": 20,
             "restricted": true,
-            "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary. Configured executables require workspace trust.",
             "scope": "machine-overridable",
-            "order": 30
+            "type": "array"
+          },
+          "merman.server.path": {
+            "default": "",
+            "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary. Configured executables require workspace trust.",
+            "order": 10,
+            "restricted": true,
+            "scope": "machine-overridable",
+            "type": "string"
           }
-        }
+        },
+        "title": "Merman: Runtime"
       },
       {
-        "title": "Merman: Language Intelligence",
         "properties": {
-          "merman.languageIntelligence.enabled": {
-            "type": "boolean",
-            "default": true,
-            "markdownDescription": "Start the local `merman-lsp` language server for Tree-sitter syntax highlighting, completion, hover, symbols, references, rename, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
-            "scope": "window",
-            "order": 10
-          },
           "merman.diagnostics.enabled": {
-            "type": "boolean",
             "default": true,
             "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman syntax highlighting, completion, hover, symbols, references, rename, preview, and export remain available.",
+            "order": 20,
             "scope": "window",
-            "order": 20
+            "type": "boolean"
+          },
+          "merman.languageIntelligence.enabled": {
+            "default": true,
+            "markdownDescription": "Start the local `merman-lsp` language server for Tree-sitter syntax highlighting, completion, hover, symbols, references, rename, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
+            "order": 10,
+            "scope": "window",
+            "type": "boolean"
           },
           "merman.trace.server": {
-            "type": "string",
+            "default": "off",
             "enum": [
               "off",
               "messages",
               "verbose"
             ],
-            "default": "off",
-            "markdownDescription": "LSP trace level forwarded to the VS Code language client.",
-            "scope": "window",
             "enumDescriptions": [
               "Disable LSP tracing.",
               "Trace LSP protocol messages.",
               "Trace LSP protocol messages with verbose payload detail."
             ],
-            "order": 30
+            "markdownDescription": "LSP trace level forwarded to the VS Code language client.",
+            "order": 30,
+            "scope": "window",
+            "type": "string"
           }
-        }
+        },
+        "title": "Merman: Language Intelligence"
       },
       {
-        "title": "Merman: Analysis",
         "properties": {
-          "merman.analysis.fixed_today": {
-            "type": "string",
-            "markdownDescription": "Optional canonical deterministic local civil date forwarded to `merman-lsp`. Leave unset to use the connected server's default. Years 0000 through 9999 use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The date and its local-midnight instant are validated when the configuration is applied.",
-            "scope": "window",
-            "order": 10,
-            "pattern": "^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$"
-          },
           "merman.analysis.fixed_local_offset_minutes": {
+            "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options. Leave unset or set `null` to use the connected server's default.",
+            "maximum": 1439,
+            "minimum": -1439,
+            "order": 20,
+            "scope": "window",
             "type": [
               "integer",
               "null"
-            ],
-            "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options. Leave unset or set `null` to use the connected server's default.",
+            ]
+          },
+          "merman.analysis.fixed_today": {
+            "markdownDescription": "Optional canonical deterministic local civil date forwarded to `merman-lsp`. Leave unset to use the connected server's default. Years 0000 through 9999 use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The date and its local-midnight instant are validated when the configuration is applied.",
+            "order": 10,
+            "pattern": "^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$",
             "scope": "window",
-            "order": 20,
-            "minimum": -1439,
-            "maximum": 1439
+            "type": "string"
           },
           "merman.analysis.fixed_unix_millis": {
-            "type": [
-              "integer",
-              "null"
-            ],
             "markdownDescription": "Optional precise deterministic Unix timestamp in milliseconds forwarded to `merman-lsp`. Leave unset or set `null` to use the connected server's default. Cannot be combined with `merman.analysis.fixed_today`.",
-            "scope": "window",
-            "order": 25,
+            "maximum": 8640000000000000,
             "minimum": -8640000000000000,
-            "maximum": 8640000000000000
-          },
-          "merman.analysis.site_config": {
-            "type": "object",
-            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options. Leave unset to use the connected server's default.",
+            "order": 25,
             "scope": "window",
-            "order": 30
-          },
-          "merman.analysis.resources.limits.max_source_bytes": {
             "type": [
               "integer",
               "null"
-            ],
-            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. Leave unset or set `null` to use the connected server's default.",
-            "scope": "window",
-            "order": 40,
-            "minimum": 1,
-            "maximum": 4294967295
+            ]
           },
-          "merman.analysis.resources.limits.max_document_diagrams": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. Leave unset or set `null` to use the connected server's default; `0` rejects documents containing any Mermaid diagram.",
+          "merman.analysis.lint.disable_rules": {
+            "items": {
+              "examples": [
+                "merman.authoring.config.prefer_init_directive",
+                "merman.authoring.config.prefer_frontmatter_config",
+                "merman.compatibility.config.deprecated_flowchart_html_labels",
+                "merman.compatibility.config.deprecated_external_diagram_loading",
+                "merman.parse.no_diagram",
+                "merman.parse.diagram_parse",
+                "merman.compatibility.unsupported_diagram",
+                "merman.parse.recovered_editor_facts",
+                "merman.config.malformed_front_matter",
+                "merman.config.invalid_directive_json",
+                "merman.config.invalid_front_matter_yaml",
+                "merman.config.invalid_theme_color",
+                "merman.block.width_exceeds_columns",
+                "merman.authoring.flowchart.explicit_direction",
+                "merman.semantic.flowchart.unknown_style_target",
+                "merman.semantic.agentflow.shape_removed",
+                "merman.semantic.agentflow.shape_unsupported",
+                "merman.semantic.agentflow.containment_violation",
+                "merman.authoring.class.ignored_statement",
+                "merman.git_graph.duplicate_commit_id"
+              ],
+              "type": "string"
+            },
+            "markdownDescription": "Lint rules disabled in `merman-lsp`.",
+            "order": 70,
             "scope": "window",
-            "order": 41,
-            "minimum": 0,
-            "maximum": 4294967295
+            "type": "array"
+          },
+          "merman.analysis.lint.enable_rules": {
+            "items": {
+              "examples": [
+                "merman.authoring.config.prefer_init_directive",
+                "merman.authoring.config.prefer_frontmatter_config",
+                "merman.compatibility.config.deprecated_flowchart_html_labels",
+                "merman.compatibility.config.deprecated_external_diagram_loading",
+                "merman.parse.no_diagram",
+                "merman.parse.diagram_parse",
+                "merman.compatibility.unsupported_diagram",
+                "merman.parse.recovered_editor_facts",
+                "merman.config.malformed_front_matter",
+                "merman.config.invalid_directive_json",
+                "merman.config.invalid_front_matter_yaml",
+                "merman.config.invalid_theme_color",
+                "merman.block.width_exceeds_columns",
+                "merman.authoring.flowchart.explicit_direction",
+                "merman.semantic.flowchart.unknown_style_target",
+                "merman.semantic.agentflow.shape_removed",
+                "merman.semantic.agentflow.shape_unsupported",
+                "merman.semantic.agentflow.containment_violation",
+                "merman.authoring.class.ignored_statement",
+                "merman.git_graph.duplicate_commit_id"
+              ],
+              "type": "string"
+            },
+            "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
+            "order": 60,
+            "scope": "window",
+            "type": "array"
           },
           "merman.analysis.lint.profile": {
-            "type": "string",
-            "markdownDescription": "Lint profile forwarded to `merman-lsp`. Leave unset to use the connected server's default profile.",
-            "scope": "window",
-            "order": 50,
             "examples": [
               "core",
               "recommended",
               "strict"
-            ]
-          },
-          "merman.analysis.lint.enable_rules": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "examples": [
-                "merman.authoring.config.prefer_init_directive",
-                "merman.authoring.config.prefer_frontmatter_config",
-                "merman.compatibility.config.deprecated_flowchart_html_labels",
-                "merman.compatibility.config.deprecated_external_diagram_loading",
-                "merman.parse.no_diagram",
-                "merman.parse.diagram_parse",
-                "merman.compatibility.unsupported_diagram",
-                "merman.parse.recovered_editor_facts",
-                "merman.config.malformed_front_matter",
-                "merman.config.invalid_directive_json",
-                "merman.config.invalid_front_matter_yaml",
-                "merman.config.invalid_theme_color",
-                "merman.block.width_exceeds_columns",
-                "merman.authoring.flowchart.explicit_direction",
-                "merman.semantic.flowchart.unknown_style_target",
-                "merman.semantic.agentflow.shape_removed",
-                "merman.semantic.agentflow.shape_unsupported",
-                "merman.semantic.agentflow.containment_violation",
-                "merman.authoring.class.ignored_statement",
-                "merman.git_graph.duplicate_commit_id"
-              ]
-            },
-            "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
+            ],
+            "markdownDescription": "Lint profile forwarded to `merman-lsp`. Leave unset to use the connected server's default profile.",
+            "order": 50,
             "scope": "window",
-            "order": 60
-          },
-          "merman.analysis.lint.disable_rules": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "examples": [
-                "merman.authoring.config.prefer_init_directive",
-                "merman.authoring.config.prefer_frontmatter_config",
-                "merman.compatibility.config.deprecated_flowchart_html_labels",
-                "merman.compatibility.config.deprecated_external_diagram_loading",
-                "merman.parse.no_diagram",
-                "merman.parse.diagram_parse",
-                "merman.compatibility.unsupported_diagram",
-                "merman.parse.recovered_editor_facts",
-                "merman.config.malformed_front_matter",
-                "merman.config.invalid_directive_json",
-                "merman.config.invalid_front_matter_yaml",
-                "merman.config.invalid_theme_color",
-                "merman.block.width_exceeds_columns",
-                "merman.authoring.flowchart.explicit_direction",
-                "merman.semantic.flowchart.unknown_style_target",
-                "merman.semantic.agentflow.shape_removed",
-                "merman.semantic.agentflow.shape_unsupported",
-                "merman.semantic.agentflow.containment_violation",
-                "merman.authoring.class.ignored_statement",
-                "merman.git_graph.duplicate_commit_id"
-              ]
-            },
-            "markdownDescription": "Lint rules disabled in `merman-lsp`.",
-            "scope": "window",
-            "order": 70
+            "type": "string"
           },
           "merman.analysis.lint.rule_severities": {
-            "type": "array",
             "items": {
-              "type": "object",
               "properties": {
                 "rule_id": {
-                  "type": "string",
                   "examples": [
                     "merman.authoring.config.prefer_init_directive",
                     "merman.authoring.config.prefer_frontmatter_config",
@@ -318,57 +305,65 @@
                     "merman.semantic.agentflow.containment_violation",
                     "merman.authoring.class.ignored_statement",
                     "merman.git_graph.duplicate_commit_id"
-                  ]
+                  ],
+                  "type": "string"
                 },
                 "severity": {
-                  "type": "string",
                   "examples": [
                     "error",
                     "warning",
                     "info",
                     "hint"
-                  ]
+                  ],
+                  "type": "string"
                 }
               },
               "required": [
                 "rule_id",
                 "severity"
-              ]
+              ],
+              "type": "object"
             },
             "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
+            "order": 80,
             "scope": "window",
-            "order": 80
+            "type": "array"
+          },
+          "merman.analysis.resources.limits.max_document_diagrams": {
+            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. Leave unset or set `null` to use the connected server's default; `0` rejects documents containing any Mermaid diagram.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "order": 41,
+            "scope": "window",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "merman.analysis.resources.limits.max_source_bytes": {
+            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. Leave unset or set `null` to use the connected server's default.",
+            "maximum": 4294967295,
+            "minimum": 1,
+            "order": 40,
+            "scope": "window",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "merman.analysis.site_config": {
+            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options. Leave unset to use the connected server's default.",
+            "order": 30,
+            "scope": "window",
+            "type": "object"
           }
-        }
+        },
+        "title": "Merman: Analysis"
       },
       {
-        "title": "Merman: Preview and Export",
         "properties": {
-          "merman.sourceActions.enabled": {
-            "type": "boolean",
-            "default": true,
-            "markdownDescription": "Show Merman source-scoped CodeLens actions above `.mmd` files and Markdown/MDX Mermaid fences. Disable this when another preview/export extension owns those editor actions.",
-            "scope": "resource",
-            "order": 10
-          },
-          "merman.preview.diagramTheme": {
-            "type": "string",
-            "examples": [
-              "source",
-              "default",
-              "dark",
-              "neo-dark",
-              "studio",
-              "gruvbox",
-              "file"
-            ],
-            "default": "source",
-            "scope": "window",
-            "order": 20,
-            "markdownDescription": "Theme for new preview panels and document export/copy commands. Use a Merman preset or Mermaid Classic ID from the installed CLI's catalog. `source` uses the diagram's authored theme or the Mermaid default. `file` loads `#merman.preview.themeFile#`."
-          },
           "merman.preview.appearance": {
-            "type": "string",
+            "default": "follow-editor",
             "enum": [
               "follow-editor",
               "light",
@@ -379,45 +374,13 @@
               "Use the theme's light appearance.",
               "Use the theme's dark appearance."
             ],
-            "default": "follow-editor",
-            "scope": "window",
+            "markdownDescription": "Appearance preference for Merman presets and custom files. Single-appearance themes use their default appearance. Mermaid Classic and Source / default use their own colors.",
             "order": 21,
-            "markdownDescription": "Appearance preference for Merman presets and custom files. Single-appearance themes use their default appearance. Mermaid Classic and Source / default use their own colors."
-          },
-          "merman.preview.themeFile": {
-            "type": "string",
-            "default": "",
             "scope": "window",
-            "order": 22,
-            "markdownDescription": "Merman v2 theme JSON used when `#merman.preview.diagramTheme#` is `file`. Use an absolute path or a path relative to the source document's workspace folder. Use Import theme in the preview to load a file for that panel."
-          },
-          "merman.preview.displayMode": {
-            "type": "string",
-            "enum": [
-              "svg",
-              "ascii",
-              "unicode"
-            ],
-            "enumDescriptions": [
-              "Render SVG preview output.",
-              "Render ASCII text preview output.",
-              "Render Unicode text preview output."
-            ],
-            "default": "svg",
-            "scope": "window",
-            "order": 30,
-            "markdownDescription": "Default display mode for new Merman preview panels. The preview toolbar can override this for the current panel session."
-          },
-          "merman.preview.fitWidth": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0,
-            "scope": "resource",
-            "order": 31,
-            "markdownDescription": "Experimental SVG preview layout width in CSS pixels for Shoal and Kanban. Set `0` to disable. Requires a CLI that supports layout fit-width."
+            "type": "string"
           },
           "merman.preview.background": {
-            "type": "string",
+            "default": "theme",
             "enum": [
               "theme",
               "paper",
@@ -430,212 +393,141 @@
               "Override the rendered canvas with transparency, including exports.",
               "Override the rendered canvas with dark paint, including exports."
             ],
-            "default": "theme",
-            "scope": "window",
+            "markdownDescription": "Canvas override for SVG previews and image export/copy. `theme` uses the diagram's canvas. Use `#merman.preview.viewerBackground#` to change the surrounding viewer.",
             "order": 40,
-            "markdownDescription": "Canvas override for SVG previews and image export/copy. `theme` uses the diagram's canvas. Use `#merman.preview.viewerBackground#` to change the surrounding viewer."
+            "scope": "window",
+            "type": "string"
+          },
+          "merman.preview.diagramTheme": {
+            "default": "source",
+            "examples": [
+              "source",
+              "default",
+              "dark",
+              "neo-dark",
+              "studio",
+              "gruvbox",
+              "file"
+            ],
+            "markdownDescription": "Theme for new preview panels and document export/copy commands. Use a Merman preset or Mermaid Classic ID from the installed CLI's catalog. `source` uses the diagram's authored theme or the Mermaid default. `file` loads `#merman.preview.themeFile#`.",
+            "order": 20,
+            "scope": "window",
+            "type": "string"
+          },
+          "merman.preview.displayMode": {
+            "default": "svg",
+            "enum": [
+              "svg",
+              "ascii",
+              "unicode"
+            ],
+            "enumDescriptions": [
+              "Render SVG preview output.",
+              "Render ASCII text preview output.",
+              "Render Unicode text preview output."
+            ],
+            "markdownDescription": "Default display mode for new Merman preview panels. The preview toolbar can override this for the current panel session.",
+            "order": 30,
+            "scope": "window",
+            "type": "string"
+          },
+          "merman.preview.fitWidth": {
+            "default": 0,
+            "markdownDescription": "Experimental SVG preview layout width in CSS pixels for Shoal and Kanban. Set `0` to disable. Requires a CLI that supports layout fit-width.",
+            "minimum": 0,
+            "order": 31,
+            "scope": "resource",
+            "type": "number"
+          },
+          "merman.preview.themeFile": {
+            "default": "",
+            "markdownDescription": "Merman v2 theme JSON used when `#merman.preview.diagramTheme#` is `file`. Use an absolute path or a path relative to the source document's workspace folder. Use Import theme in the preview to load a file for that panel.",
+            "order": 22,
+            "scope": "window",
+            "type": "string"
           },
           "merman.preview.viewerBackground": {
-            "type": "string",
+            "default": "auto",
             "enum": [
               "auto",
               "paper",
               "transparent",
               "dark"
             ],
-            "default": "auto",
-            "scope": "window",
+            "markdownDescription": "Viewer backing only; never changes exported SVG/PNG bytes. Automatic uses the displayed diagram's selected appearance where available. A light-only artistic theme remains light inside a dark editor.",
             "order": 41,
-            "markdownDescription": "Viewer backing only; never changes exported SVG/PNG bytes. Automatic uses the displayed diagram's selected appearance where available. A light-only artistic theme remains light inside a dark editor."
+            "scope": "window",
+            "type": "string"
+          },
+          "merman.sourceActions.enabled": {
+            "default": true,
+            "markdownDescription": "Show Merman source-scoped CodeLens actions above `.mmd` files and Markdown/MDX Mermaid fences. Disable this when another preview/export extension owns those editor actions.",
+            "order": 10,
+            "scope": "resource",
+            "type": "boolean"
           }
-        }
+        },
+        "title": "Merman: Preview and Export"
       },
       {
-        "title": "Merman: Development",
         "properties": {
-          "merman.server.useCargoRun": {
-            "type": "boolean",
-            "default": false,
-            "restricted": true,
-            "markdownDescription": "Development only: launch `merman-lsp` through `cargo run -p merman-lsp --` instead of the packaged binary. Requires workspace trust.",
-            "scope": "machine-overridable",
-            "order": 10
-          },
-          "merman.server.cargoArgs": {
-            "type": "array",
+          "merman.cli.cargoArgs": {
+            "default": [],
             "items": {
               "type": "string"
             },
-            "default": [],
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo. Requires Workspace Trust because this is a restricted setting.",
+            "order": 40,
             "restricted": true,
-            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo. Requires Workspace Trust because this is a restricted setting.",
             "scope": "machine-overridable",
-            "order": 20
+            "type": "array"
           },
           "merman.cli.useCargoRun": {
-            "type": "boolean",
             "default": false,
-            "restricted": true,
             "markdownDescription": "Development only: launch `merman-cli` through `cargo run -p merman-cli --` instead of the packaged binary. Requires workspace trust.",
+            "order": 30,
+            "restricted": true,
             "scope": "machine-overridable",
-            "order": 30
+            "type": "boolean"
           },
-          "merman.cli.cargoArgs": {
-            "type": "array",
+          "merman.server.cargoArgs": {
+            "default": [],
             "items": {
               "type": "string"
             },
-            "default": [],
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo. Requires Workspace Trust because this is a restricted setting.",
+            "order": 20,
             "restricted": true,
-            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo. Requires Workspace Trust because this is a restricted setting.",
             "scope": "machine-overridable",
-            "order": 40
+            "type": "array"
+          },
+          "merman.server.useCargoRun": {
+            "default": false,
+            "markdownDescription": "Development only: launch `merman-lsp` through `cargo run -p merman-lsp --` instead of the packaged binary. Requires workspace trust.",
+            "order": 10,
+            "restricted": true,
+            "scope": "machine-overridable",
+            "type": "boolean"
           }
-        }
+        },
+        "title": "Merman: Development"
       }
     ],
-    "commands": [
+    "languages": [
       {
-        "command": "merman.restartLanguageServer",
-        "title": "Merman: Restart Language Server"
-      },
-      {
-        "command": "merman.openPreview",
-        "title": "Merman: Open Preview",
-        "category": "Merman",
-        "icon": "$(open-preview)"
-      },
-      {
-        "command": "merman.togglePreviewLock",
-        "title": "Merman: Toggle Preview Lock",
-        "category": "Merman",
-        "icon": "$(lock)"
-      },
-      {
-        "command": "merman.refreshPreview",
-        "title": "Merman: Refresh Preview",
-        "category": "Merman",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "merman.showPreviewSource",
-        "title": "Merman: Show Preview Source",
-        "category": "Merman",
-        "icon": "$(go-to-file)"
-      },
-      {
-        "command": "merman.export",
-        "title": "Merman: Export...",
-        "category": "Merman",
-        "icon": "$(export)"
-      },
-      {
-        "command": "merman.exportSvg",
-        "title": "Merman: Export SVG",
-        "category": "Merman",
-        "icon": "$(export)"
-      },
-      {
-        "command": "merman.exportPng",
-        "title": "Merman: Export PNG",
-        "category": "Merman",
-        "icon": "$(file-media)"
-      },
-      {
-        "command": "merman.copySvg",
-        "title": "Merman: Copy SVG",
-        "category": "Merman",
-        "icon": "$(copy)"
-      },
-      {
-        "command": "merman.copyPng",
-        "title": "Merman: Copy PNG",
-        "category": "Merman",
-        "icon": "$(file-media)"
-      },
-      {
-        "command": "merman.showRuleCatalog",
-        "title": "Merman: Show Rule Catalog",
-        "category": "Merman"
-      },
-      {
-        "command": "merman.showConfigSchema",
-        "title": "Merman: Show Config Schema",
-        "category": "Merman"
+        "aliases": [
+          "Mermaid",
+          "mermaid"
+        ],
+        "configuration": "./language-configuration.json",
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ],
+        "id": "mermaid"
       }
     ],
     "menus": {
-      "editor/title": [
-        {
-          "command": "merman.openPreview",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@10"
-        },
-        {
-          "command": "merman.export",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@11"
-        },
-        {
-          "command": "merman.exportSvg",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@12"
-        }
-      ],
-      "editor/context": [
-        {
-          "command": "merman.openPreview",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@10"
-        },
-        {
-          "command": "merman.export",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@11"
-        },
-        {
-          "command": "merman.exportSvg",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@12"
-        },
-        {
-          "command": "merman.exportPng",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@13"
-        },
-        {
-          "command": "merman.copySvg",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
-          "group": "navigation@14"
-        },
-        {
-          "command": "merman.copyPng",
-          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable",
-          "group": "navigation@15"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "merman.openPreview",
-          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
-          "group": "navigation@10"
-        },
-        {
-          "command": "merman.export",
-          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
-          "group": "navigation@11"
-        },
-        {
-          "command": "merman.exportSvg",
-          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
-          "group": "navigation@12"
-        },
-        {
-          "command": "merman.exportPng",
-          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
-          "group": "navigation@13"
-        }
-      ],
       "commandPalette": [
         {
           "command": "merman.openPreview",
@@ -667,27 +559,90 @@
           "command": "merman.copyPng",
           "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
         }
+      ],
+      "editor/context": [
+        {
+          "command": "merman.openPreview",
+          "group": "navigation@10",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.export",
+          "group": "navigation@11",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportSvg",
+          "group": "navigation@12",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportPng",
+          "group": "navigation@13",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copySvg",
+          "group": "navigation@14",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copyPng",
+          "group": "navigation@15",
+          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "merman.openPreview",
+          "group": "navigation@10",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.export",
+          "group": "navigation@11",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportSvg",
+          "group": "navigation@12",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "merman.openPreview",
+          "group": "navigation@10",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx"
+        },
+        {
+          "command": "merman.export",
+          "group": "navigation@11",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx"
+        },
+        {
+          "command": "merman.exportSvg",
+          "group": "navigation@12",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx"
+        },
+        {
+          "command": "merman.exportPng",
+          "group": "navigation@13",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx"
+        }
       ]
-    }
-  },
-  "scripts": {
-    "build": "npm run licenses:check && npm run clean && npm run compile && npm run bundle",
-    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "compile": "tsc -p .",
-    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false --legal-comments=external",
-    "check": "tsc -p . --noEmit",
-    "test": "npm run build && node --test --test-concurrency=1 dist/test/**/*.test.js scripts/*.test.mjs",
-    "test:extension-host": "npm run build && node scripts/run-extension-host-smoke.mjs",
-    "prepare:binaries": "node scripts/prepare-binaries.mjs",
-    "package": "npm run build && node scripts/package-vsix.mjs",
-    "verify:vsix": "node scripts/verify-vsix.mjs",
-    "smoke:vsix": "node scripts/smoke-vsix.mjs",
-    "licenses:check": "node --test ../../scripts/npm-license-report.test.mjs && node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
-    "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
+    },
+    "snippets": [
+      {
+        "language": "mermaid",
+        "path": "./snippets/mermaid.json"
+      }
+    ]
   },
   "dependencies": {
     "vscode-languageclient": "11.0.0"
   },
+  "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
   "devDependencies": {
     "@types/node": "26.6.6",
     "@types/vscode": "1.145.0",
@@ -696,19 +651,64 @@
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   },
+  "displayName": "Merman",
+  "engines": {
+    "npm": ">=12.2.2",
+    "vscode": "^1.145.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "galleryBanner": {
+    "color": "#0B3D3A",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/Latias94/merman#readme",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "preview",
+    "lsp",
+    "diagnostics",
+    "export",
+    "markdown",
+    "mdx"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "./dist/extension.js",
+  "name": "merman-vscode",
   "overrides": {
-    "vscode-languageclient": {
+    "@vscode/vsce": {
       "minimatch": "11.0.5"
     },
-    "@vscode/vsce": {
+    "vscode-languageclient": {
       "minimatch": "11.0.5"
     }
   },
   "patchedDependencies": {
     "vscode-languageclient@11.0.0": "patches/vscode-languageclient@11.0.0.patch"
   },
-  "allowScripts": {
-    "@vscode/vsce-sign@2.1.0": true,
-    "esbuild@0.28.2": true
-  }
+  "preview": true,
+  "publisher": "latias94",
+  "qna": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Latias94/merman.git"
+  },
+  "scripts": {
+    "build": "npm run licenses:check && npm run clean && npm run compile && npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false --legal-comments=external",
+    "check": "tsc -p . --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "compile": "tsc -p .",
+    "licenses:check": "node --test ../../scripts/npm-license-report.test.mjs && node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
+    "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write",
+    "package": "npm run build && node scripts/package-vsix.mjs",
+    "prepare:binaries": "node scripts/prepare-binaries.mjs",
+    "smoke:vsix": "node scripts/smoke-vsix.mjs",
+    "test": "npm run build && node --test --test-concurrency=1 dist/test/**/*.test.js scripts/*.test.mjs",
+    "test:extension-host": "npm run build && node scripts/run-extension-host-smoke.mjs",
+    "verify:vsix": "node scripts/verify-vsix.mjs"
+  },
+  "version": "0.1.0"
 }

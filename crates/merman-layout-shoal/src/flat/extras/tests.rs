@@ -341,15 +341,15 @@ fn interlocking_corridor_is_admitted_before_grid_allocation_and_clears_every_wal
             Ok(())
         }
     }
-    let draw = |budget| -> LayoutResult<(Vec<Point>, usize)> {
+    let draw = |boxes: &[Rect], budget| -> LayoutResult<(Vec<Point>, usize)> {
         let mut meter = Meter {
             max: budget,
             used: 0,
         };
         let mut w = Work::new(&mut meter);
         let mut obstacles = Obstacles::new();
-        for b in boxes {
-            obstacles.add(Owner::Node, Bounds::of(b)?, &mut w)?;
+        for &b in boxes {
+            obstacles.add(Owner::Node, Bounds::checked_rect(b)?, &mut w)?;
         }
         let mut path = Vec::new();
         let ports = [
@@ -367,8 +367,20 @@ fn interlocking_corridor_is_admitted_before_grid_allocation_and_clears_every_wal
         w.finish()?;
         Ok((path, meter.used))
     };
-    let (path, units) = draw(usize::MAX).unwrap();
-    assert!(path.len() > 4);
+    let (path, units) = draw(&boxes, usize::MAX).unwrap();
+    assert_eq!(
+        path,
+        [
+            p(0., 0.),
+            p(0., -1.),
+            p(1., -1.),
+            p(3., -1.),
+            p(7., -1.),
+            p(9., -1.),
+            p(10., -1.),
+            p(10., 0.),
+        ]
+    );
     let pts: Vec<_> = path
         .iter()
         .enumerate()
@@ -385,8 +397,24 @@ fn interlocking_corridor_is_admitted_before_grid_allocation_and_clears_every_wal
         .collect();
     check_path(&pts, &boxes);
     assert!(units > 100);
-    assert_eq!(draw(units).unwrap().0, path);
-    assert_eq!(draw(100), Err(LayoutError::Work(WorkError::Interrupted)));
+    assert_eq!(draw(&boxes, units).unwrap().0, path);
+    assert_eq!(
+        draw(&boxes, 100),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+    assert_eq!(
+        draw(&boxes, units - 1),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+
+    let repeated = boxes.repeat(128);
+    let (repeated_path, repeated_units) = draw(&repeated, usize::MAX).unwrap();
+    assert_eq!(repeated_path, path);
+    assert_eq!(draw(&repeated, repeated_units).unwrap().0, path);
+    assert_eq!(
+        draw(&repeated, repeated_units - 1),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
 }
 
 #[test]

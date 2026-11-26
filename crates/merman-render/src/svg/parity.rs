@@ -30,6 +30,8 @@ use base64::Engine as _;
 )]
 use indexmap::IndexMap;
 use merman_model::OperationPhase;
+use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
+use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
 
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -221,7 +223,6 @@ pub(crate) use markers::BaseEdgeMarkerKind;
 mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
-mod output;
 #[cfg(feature = "diagram-packet")]
 mod packet;
 #[cfg_attr(
@@ -372,13 +373,21 @@ use style::is_text_style_key;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
+pub(crate) use util::escape_attr;
+pub(crate) use util::escape_xml;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use util::{
     config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
     escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
     fmt_string, json_stringify_points, json_stringify_points_into, normalize_css_font_family,
-    scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
+    scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
 };
-pub(crate) use util::{escape_attr, escape_xml};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
@@ -666,99 +675,7 @@ pub(crate) fn normalize_svg_render_options(
     })
 }
 
-struct SvgDiagramIdProjection<'a> {
-    work_meter: &'a crate::resources::OperationWorkMeter,
-    projected_bytes: std::cell::Cell<usize>,
-    error: std::cell::RefCell<Option<Error>>,
-}
-
-impl SvgDiagramIdProjection<'_> {
-    fn write(&self, value: &str, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.error.borrow().is_some() {
-            return Ok(());
-        }
-        let Some(projected_bytes) = self.projected_bytes.get().checked_add(value.len()) else {
-            self.error.replace(Some(
-                self.work_meter
-                    .terminate_svg_byte_count_overflow(
-                        crate::resources::ResourceLimitPhase::SvgOutput,
-                        OperationPhase::Emit,
-                    )
-                    .into(),
-            ));
-            return Ok(());
-        };
-        match self.work_meter.preflight_svg_byte_count(
-            projected_bytes,
-            crate::resources::ResourceLimitPhase::SvgOutput,
-            OperationPhase::Emit,
-        ) {
-            Ok(()) => {
-                self.projected_bytes.set(projected_bytes);
-                formatter.write_str(value)
-            }
-            Err(error) => {
-                self.error.replace(Some(error.into()));
-                Ok(())
-            }
-        }
-    }
-
-    fn finish(&self) -> Result<()> {
-        match self.error.borrow_mut().take() {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
-    }
-}
-
-/// A normalized diagram identifier whose output occurrences are admitted before they are written.
-///
-/// The raw string is available only for semantic inputs such as deterministic seeds and ownership
-/// checks. SVG, CSS, URL, ARIA, and marker output must format this value so the operation observes
-/// the cumulative identifier contribution before caller-controlled fanout can grow the document.
-#[derive(Clone, Copy)]
-pub(super) struct SvgDiagramId<'a> {
-    value: &'a str,
-    projection: &'a SvgDiagramIdProjection<'a>,
-}
-
-impl<'a> SvgDiagramId<'a> {
-    pub(super) fn semantic_str(self) -> &'a str {
-        self.value
-    }
-}
-
-impl std::fmt::Debug for SvgDiagramId<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_tuple("SvgDiagramId")
-            .field(&self.value)
-            .finish()
-    }
-}
-
-impl std::fmt::Display for SvgDiagramId<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.projection.write(self.value, formatter)
-    }
-}
-
-pub(super) trait SvgDiagramIdValue: Copy + std::fmt::Display {
-    fn semantic_value(&self) -> &str;
-}
-
-impl SvgDiagramIdValue for SvgDiagramId<'_> {
-    fn semantic_value(&self) -> &str {
-        self.value
-    }
-}
-
-impl SvgDiagramIdValue for &str {
-    fn semantic_value(&self) -> &str {
-        self
-    }
-}
+pub(super) type SvgDiagramId<'a> = SvgId<'a>;
 
 /// A point captured while diagnosing one flowchart edge route.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -900,6 +817,7 @@ pub(crate) struct SvgExecution<'a> {
     pub(crate) generation: super::SvgGeneration,
     family: FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
+    validated_diagram_id: Option<SvgId<'a>>,
     diagram_id_projection: SvgDiagramIdProjection<'a>,
     timing: timing::RenderTiming,
     pub(crate) debug: &'a SvgDebugOptions,
@@ -929,17 +847,23 @@ impl<'a> SvgExecution<'a> {
         } else {
             timing::RenderTiming::disabled()
         };
+        let validated_diagram_id = request
+            .diagram_id
+            .as_deref()
+            .map(|id| {
+                SvgId::new(id).ok_or_else(|| Error::InvalidModel {
+                    message: "SVG execution requires a normalized diagram ID".to_owned(),
+                })
+            })
+            .transpose()?;
         let execution = Self {
             request,
             generation: super::SvgGeneration::Full,
             family,
             text_measurer: session
                 .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit),
-            diagram_id_projection: SvgDiagramIdProjection {
-                work_meter: session.work_meter().as_ref(),
-                projected_bytes: std::cell::Cell::new(0),
-                error: std::cell::RefCell::new(None),
-            },
+            validated_diagram_id,
+            diagram_id_projection: SvgDiagramIdProjection::new(session.work_meter().as_ref()),
             timing,
             debug,
         };
@@ -968,14 +892,17 @@ impl<'a> SvgExecution<'a> {
         &'execution self,
         fallback: &'static str,
     ) -> SvgDiagramId<'execution> {
-        SvgDiagramId {
-            value: self.request.diagram_id.as_deref().unwrap_or(fallback),
-            projection: &self.diagram_id_projection,
-        }
+        self.project_svg_id(self.validated_diagram_id.unwrap_or_else(|| {
+            SvgId::new(fallback).expect("built-in fallback SVG diagram ID must be valid")
+        }))
+    }
+
+    fn project_svg_id<'execution>(&'execution self, id: SvgId<'execution>) -> SvgId<'execution> {
+        id.with_projection(&self.diagram_id_projection)
     }
 
     pub(super) fn has_explicit_diagram_id(&self) -> bool {
-        self.request.diagram_id.is_some()
+        self.validated_diagram_id.is_some()
     }
 
     fn root_viewport<'execution>(
@@ -1174,11 +1101,12 @@ fn finish_family_svg(
     let session = execution.family.session();
     let meter = execution.work_meter();
     let background = session.canvas_background();
+    let diagram_id = execution.validated_diagram_id;
     let rooted_svg = if let Some(theme) = session.native_theme() {
-        rooted_svg.apply_native_canvas(theme, background, meter)?
+        rooted_svg.apply_native_canvas(theme, background, diagram_id, meter)?
     } else if let Some(background) = background {
         let paint = merman_theme_contract::v2::Paint::Solid(background);
-        rooted_svg.apply_canvas(&paint, &[], &paint, meter)?
+        rooted_svg.apply_canvas(&paint, &[], &paint, diagram_id, meter)?
     } else {
         rooted_svg
     };
@@ -1349,14 +1277,9 @@ fn render_builtin_family_artifact_raw(
             ),
         },
         #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Packet(artifact) => {
+            packet::render_packet_family_artifact(artifact, title, options)
+        }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),

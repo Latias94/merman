@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-hierarchy`, `d3-path`, `d3-sankey`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-ego-tree`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -72,6 +72,18 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`
 
+### d3-hierarchy
+
+The Treemap layout translates D3 hierarchy traversal, squarify, dice, and slice algorithms in Rust with operation work accounting.
+
+- Version: `3.1.2`
+- Source: https://github.com/d3/d3-hierarchy.git @ `7bea49efdc1093b28a8d60d2f8717d8a17803564`
+- Source path: `src`
+- Relationship: `modified`, `translated`
+- License: `ISC`
+- Local evidence: `crates/merman-render-charts/src/treemap/layout.rs`
+- Legal file: `THIRD_PARTY_LICENSES/d3-hierarchy/LICENSE`
+
 ### d3-path
 
 The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs.
@@ -81,8 +93,20 @@ The Pie SVG renderer translates D3 path rounding and arc serialization, includin
 - Source path: `src/path.js`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render/src/svg/parity/pie/render.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/util.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-path/LICENSE`
+
+### d3-sankey
+
+The Sankey layout translates D3's link alignment, relaxation, and collision resolution in Rust.
+
+- Version: `0.12.3`
+- Source: https://github.com/d3/d3-sankey.git @ `bb7233ea0004669878d922e55fe83084ef3cb555`
+- Source path: `src/sankey.js`
+- Relationship: `modified`, `translated`
+- License: `BSD-3-Clause`
+- Local evidence: `crates/merman-render-charts/src/sankey/layout.rs`
+- Legal file: `THIRD_PARTY_LICENSES/d3-sankey/LICENSE`
 
 ### d3-shape
 
@@ -93,7 +117,7 @@ The SVG parity layer translates D3 curve algorithms, including basis, natural, s
 - Source path: `src/curve`
 - Relationship: `modified`, `translated`
 - License: `ISC`
-- Local evidence: `crates/merman-render/src/svg/parity/curve.rs`
+- Local evidence: `crates/merman-render-charts/src/pie/geometry.rs`, `crates/merman-render/src/svg/parity/curve.rs`
 - Legal file: `THIRD_PARTY_LICENSES/d3-shape/LICENSE`
 
 ### Dagre
@@ -129,7 +153,7 @@ The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient op
 - Source path: `.`
 - Relationship: `modified`, `translated`
 - License: `BSD-3-Clause`
-- Local evidence: `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`
 - Legal file: `THIRD_PARTY_LICENSES/fmin/LICENSE`
 
 ### Graphlib
@@ -177,7 +201,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/quadrantchart/layout.rs`, `crates/merman-render-charts/src/quadrantchart/svg.rs`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-charts/src/wardley/layout.rs`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-flow/src`, `crates/merman-render-sequence/src/frame`, `crates/merman-render-structured/src/info`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -216,19 +240,17 @@ The roughr fork aligns its randomization and drawing-operation semantics with Ro
 - Local evidence: `crates/roughr`
 - Legal file: `THIRD_PARTY_LICENSES/roughjs/LICENSE`
 
-### roxmltree private XML DOM
+### ego-tree code in roxmltree
 
-The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT.
+Both roxmltree releases identify their tree structure as derived from ego-tree under ISC. This notice supplements the roxmltree crate licenses listed in the Rust dependency report.
 
-- Version: `0.21.1 with upstream iterative element fix`
-- Source: https://github.com/RazrFalcon/roxmltree @ `3f5c78dea57662b43a2f41961397b1f5ffe27166`
-- Source path: `src`
-- Relationship: `copied`, `modified`
-- License: `MIT AND ISC`
-- Local evidence: `crates/merman-render/src/xml_dom`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE`
+- Version: `roxmltree 0.20.0 and 0.21.2`
+- Source: https://github.com/RazrFalcon/roxmltree @ `b04f75f6a0d17c6248de3eb1b1013bf1bbac44ae`
+- Source path: `src/lib.rs`
+- Relationship: `linked`
+- License: `ISC`
+- Local evidence: `Cargo.lock`, `crates/merman-render/Cargo.toml`, `crates/merman-render-core/Cargo.toml`, `vendor/usvg/Cargo.toml`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ### sanitize-url
 
@@ -263,7 +285,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn.rs`
+- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn/theme/css_binding.rs`, `crates/merman-render-charts/src/venn/solver.rs`
 - Legal file: `THIRD_PARTY_LICENSES/venn-js/LICENSE`
 
 ### ZenUML Core

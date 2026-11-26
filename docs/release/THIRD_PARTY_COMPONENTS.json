@@ -103,7 +103,9 @@
         "cytoscape",
         "cytoscape-cose-bilkent",
         "cytoscape-fcose",
+        "d3-hierarchy",
         "d3-path",
+        "d3-sankey",
         "d3-shape",
         "dagre",
         "dompurify",
@@ -115,7 +117,7 @@
         "non-layered-tidy-tree-layout",
         "rough-rs",
         "roughjs",
-        "roxmltree-dom",
+        "roxmltree-ego-tree",
         "sanitize-url",
         "unicode-linebreak",
         "venn-js",
@@ -138,7 +140,7 @@
       "id": "raster-export",
       "description": "Raster output using the Merman resvg and usvg forks.",
       "extends": [],
-      "components": ["resvg", "resvg-iir-blur", "usvg"]
+      "components": ["resvg", "resvg-iir-blur", "roxmltree-ego-tree", "usvg"]
     },
     {
       "id": "pdf-export",
@@ -206,6 +208,7 @@
       "extends": [],
       "components": [
         "d3-path",
+        "d3-sankey",
         "d3-shape",
         "dompurify",
         "elkjs",
@@ -391,6 +394,31 @@
       "notice": "The headless Architecture layout is a modified Rust implementation of FCoSE behavior."
     },
     {
+      "id": "d3-hierarchy",
+      "name": "d3-hierarchy",
+      "version": "3.1.2",
+      "source": {
+        "repository": "https://github.com/d3/d3-hierarchy.git",
+        "ref": "v3.1.2",
+        "commit": "7bea49efdc1093b28a8d60d2f8717d8a17803564",
+        "path": "src"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render-charts/src/treemap/layout.rs"],
+      "license_expression": "ISC",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-hierarchy/LICENSE",
+          "sha256": "e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-hierarchy/7bea49efdc1093b28a8d60d2f8717d8a17803564/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "pinned-source", "evidence": "The v3.1.2 Git tag and npm gitHead agree with the d3-hierarchy version in the pinned Mermaid 12.3.0 pnpm lock."}],
+      "notice": "The Treemap layout translates D3 hierarchy traversal, squarify, dice, and slice algorithms in Rust with operation work accounting."
+    },
+    {
       "id": "d3-path",
       "name": "d3-path",
       "version": "3.1.1",
@@ -401,7 +429,7 @@
         "path": "src/path.js"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/svg/parity/pie/render.rs"],
+      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/util.rs"],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -424,6 +452,39 @@
       "notice": "The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs."
     },
     {
+      "id": "d3-sankey",
+      "name": "d3-sankey",
+      "version": "0.12.3",
+      "source": {
+        "repository": "https://github.com/d3/d3-sankey.git",
+        "ref": "v0.12.3",
+        "commit": "bb7233ea0004669878d922e55fe83084ef3cb555",
+        "path": "src/sankey.js"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render-charts/src/sankey/layout.rs"],
+      "license_expression": "BSD-3-Clause",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-sankey/LICENSE",
+          "sha256": "2bf785e778d67a4f5266cffcd4f2cc5bb98cde73791666e7efeb8002ba32dfa5",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-sankey/bb7233ea0004669878d922e55fe83084ef3cb555/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/d3-sankey",
+          "version": "0.12.3",
+          "integrity": "sha512-nQhsBRmM19Ax5xEIPLMY9ZmJ/cDvd1BG3UVvt5h3WRxKg5zGRbvnteTyWAbzeSvlh3tW7ZEmq4VwR5mB3tutmQ=="
+        }
+      ],
+      "notice": "The Sankey layout translates D3's link alignment, relaxation, and collision resolution in Rust."
+    },
+    {
       "id": "d3-shape",
       "name": "d3-shape",
       "version": "3.2.0",
@@ -434,7 +495,7 @@
         "path": "src/curve"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/svg/parity/curve.rs"],
+      "local_paths": ["crates/merman-render-charts/src/pie/geometry.rs", "crates/merman-render/src/svg/parity/curve.rs"],
       "license_expression": "ISC",
       "license_files": [
         {
@@ -587,7 +648,7 @@
         "path": "."
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-render/src/venn.rs"],
+      "local_paths": ["crates/merman-render-charts/src/venn/solver.rs"],
       "license_expression": "BSD-3-Clause",
       "license_files": [
         {
@@ -863,10 +924,24 @@
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
       "local_paths": [
         "crates/merman-core/src",
+        "crates/merman-core-flow/src",
+        "crates/merman-core-preprocess/src/scan/langium.rs",
+        "crates/merman-core-structured/src/info.rs",
+        "crates/merman-core-structured/src/ishikawa.rs",
         "crates/merman-model/src",
         "crates/merman-markup/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "crates/merman-render-charts/src/quadrantchart/layout.rs",
+        "crates/merman-render-charts/src/quadrantchart/svg.rs",
+        "crates/merman-render-charts/src/radar/layout.rs",
+        "crates/merman-render-charts/src/treemap/layout.rs",
+        "crates/merman-render-charts/src/venn/layout.rs",
+        "crates/merman-render-charts/src/wardley/layout.rs",
+        "crates/merman-render-core/src/step_animation.rs",
+        "crates/merman-render-flow/src",
+        "crates/merman-render-sequence/src/frame",
+        "crates/merman-render-structured/src/info",
         "fixtures"
       ],
       "license_expression": "MIT",
@@ -1245,7 +1320,11 @@
         "path": "src"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-core/src/diagrams/venn.rs", "crates/merman-render/src/venn.rs"],
+      "local_paths": [
+        "crates/merman-core/src/diagrams/venn.rs",
+        "crates/merman-render/src/venn/theme/css_binding.rs",
+        "crates/merman-render-charts/src/venn/solver.rs"
+      ],
       "license_expression": "MIT",
       "license_files": [
         {
@@ -1633,54 +1712,32 @@
       "notice": "Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes follow the admitted ZenUML Core 3.50.1 source baseline."
     },
     {
-      "id": "roxmltree-dom",
-      "name": "roxmltree private XML DOM",
-      "version": "0.21.1 with upstream iterative element fix",
+      "id": "roxmltree-ego-tree",
+      "name": "ego-tree code in roxmltree",
+      "version": "roxmltree 0.20.0 and 0.21.2",
       "source": {
         "repository": "https://github.com/RazrFalcon/roxmltree",
-        "ref": "3f5c78dea57662b43a2f41961397b1f5ffe27166",
-        "commit": "3f5c78dea57662b43a2f41961397b1f5ffe27166",
-        "path": "src"
+        "ref": "crates.io:roxmltree@0.21.2",
+        "commit": "b04f75f6a0d17c6248de3eb1b1013bf1bbac44ae",
+        "path": "src/lib.rs"
       },
-      "relationships": [
-        "copied",
-        "modified"
-      ],
-      "local_paths": [
-        "crates/merman-render/src/xml_dom"
-      ],
-      "license_expression": "MIT AND ISC",
+      "relationships": ["linked"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/Cargo.toml", "crates/merman-render-core/Cargo.toml", "vendor/usvg/Cargo.toml"],
+      "license_expression": "ISC",
       "license_files": [
         {
-          "path": "THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT",
-          "sha256": "fffe218c1e349e1d482a05677f2ce850502f88298174d77f6ac7c04821db7899",
-          "source_url": "https://raw.githubusercontent.com/RazrFalcon/roxmltree/3f5c78dea57662b43a2f41961397b1f5ffe27166/LICENSE-MIT",
-          "source_path": "LICENSE-MIT",
-          "role": "license"
-        },
-        {
-          "path": "THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC",
+          "path": "THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC",
           "sha256": "c6a4ae2a0565d17ac7fccae808275596fc5959ffdf507107d001bc4669189e45",
           "source_url": "https://raw.githubusercontent.com/causal-agent/ego-tree/v0.6.3/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
-        },
-        {
-          "path": "THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
-          "source_url": "https://raw.githubusercontent.com/RazrFalcon/roxmltree/3f5c78dea57662b43a2f41961397b1f5ffe27166/LICENSE-APACHE",
-          "source_path": "LICENSE-APACHE",
-          "role": "license"
         }
       ],
       "locks": [
-        {
-          "type": "pinned-file",
-          "path": "crates/merman-render/src/xml_dom/UPSTREAM.md",
-          "sha256": "cc378b7cebc2c8a39aae57b54c111fffddebdfa03fe56599c9931c290ae183b2"
-        }
+        {"type": "cargo", "path": "Cargo.lock", "package": "roxmltree", "version": "0.20.0", "checksum": "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "roxmltree", "version": "0.21.2", "checksum": "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"}
       ],
-      "notice": "The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT."
+      "notice": "Both roxmltree releases identify their tree structure as derived from ego-tree under ISC. This notice supplements the roxmltree crate licenses listed in the Rust dependency report."
     },
     {
       "id": "usvg",

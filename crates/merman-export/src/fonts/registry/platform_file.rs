@@ -136,8 +136,8 @@ impl<'a> OpenPlatformFont<'a> {
         if !matches_symbol_page(expected, os2.as_deref()) {
             return Ok(None);
         }
-        if request.implicit {
-            if !crate::font_selection::allows_font_tables(
+        if request.implicit
+            && !crate::font_selection::allows_font_tables(
                 &head,
                 os2.as_deref(),
                 &cmap,
@@ -145,9 +145,9 @@ impl<'a> OpenPlatformFont<'a> {
                 request
                     .fallback
                     .map(|fallback| (fallback.text, fallback.rtl)),
-            ) {
-                return Ok(None);
-            }
+            )
+        {
+            return Ok(None);
         }
         if let Some(fallback) = request.fallback {
             if !platform::cluster::cmap_may_cover_with_os2(

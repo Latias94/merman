@@ -272,9 +272,20 @@ class PlannerTests(unittest.TestCase):
             "crates/merman/src/render.rs": True,
             "crates/merman/src/svg/mod.rs": True,
             "crates/merman-core/src/diagram/mod.rs": True,
+            "crates/merman-core-graph/src/er/mod.rs": True,
+            "crates/merman-core-flow/src/flowchart/lexer.rs": True,
+            "crates/merman-core-preprocess/src/lib.rs": True,
+            "crates/merman-core-sequence/src/sequence/parser.rs": True,
+            "crates/merman-core-structured/src/railroad.rs": True,
             "crates/merman-model/src/families/gantt.rs": True,
             "crates/merman-markup/src/sanitize/fragment.rs": True,
             "crates/merman-render/src/lib.rs": True,
+            "crates/merman-render-core/src/lib.rs": True,
+            "crates/merman-render-structured/src/packet/mod.rs": True,
+            "crates/merman-render-charts/src/pie/mod.rs": True,
+            "crates/merman-render-flow/src/shapes.rs": True,
+            "crates/merman-render-graph/src/er/markers.rs": True,
+            "crates/merman-render-sequence/src/actor/glyph.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
             "crates/xtask/src/cmd/flowchart_elk_corpus.rs": True,
             "crates/xtask/src/cmd/parser_differential.rs": True,
@@ -329,6 +340,17 @@ class PlannerTests(unittest.TestCase):
                 "python",
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-graph/src/er/mod.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-flow/src/flowchart/lexer.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-preprocess/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-sequence/src/sequence/parser.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-core-structured/src/railroad.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-structured/src/packet/mod.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-charts/src/pie/mod.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-flow/src/shapes.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-graph/src/er/markers.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-render-sequence/src/actor/glyph.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-model/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-markup/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
@@ -381,6 +403,8 @@ class PlannerTests(unittest.TestCase):
 
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
         fixtures = {
+            "crates/xtask/Cargo.toml": {"core", "hygiene", "typst"},
+            "crates/xtask/src/cmd/profile_budget.rs": {"core", "hygiene", "typst"},
             "crates/xtask/src/cmd/wasm_size_matrix.rs": {
                 "core",
                 "hygiene",
@@ -1063,12 +1087,17 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                     job.index(fetch), job.index("scripts/verify_artifact_dependency_closures.py")
                 )
 
-    def test_performance_paths_include_shared_model_and_markup_sources(self) -> None:
+    def test_performance_paths_include_shared_model_markup_and_render_sources(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml"
         ).read_text(encoding="utf-8")
         paths = workflow.split("    paths:\n", 1)[1].split("  schedule:", 1)[0]
-        for root in ["merman-model", "merman-markup"]:
+        for root in (
+            "merman-core-flow", "merman-core-graph", "merman-core-sequence", "merman-core-structured",
+            "merman-model", "merman-markup",
+            "merman-render-charts", "merman-render-core", "merman-render-flow",
+            "merman-render-graph", "merman-render-sequence", "merman-render-structured",
+        ):
             self.assertIn(f'      - "crates/{root}/**"', paths)
 
     def test_manual_full_owner_verification_is_explicit_and_opt_in(self) -> None:

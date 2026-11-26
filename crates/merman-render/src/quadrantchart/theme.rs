@@ -1,13 +1,10 @@
-use merman_model::families::quadrant_chart::{
-    QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
-};
+use merman_model::families::quadrant_chart::QuadrantChartDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::theme::FamilyTheme;
 
-mod css_binding;
-pub(super) use css_binding::QuadrantChartCssBinding;
+pub(super) use merman_render_charts::quadrantchart::QuadrantChartCssBinding;
 
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPointThemePlan {
@@ -15,13 +12,6 @@ pub(crate) struct QuadrantChartPointThemePlan {
     native: Option<super::native_theme::QuadrantNativeStyle>,
     common_css: crate::svg::PreparedCommonCss,
     point_count: usize,
-}
-
-pub(super) struct QuadrantChartPointBinding<'a> {
-    pub(super) radius: f64,
-    pub(super) fill: &'a str,
-    pub(super) stroke_color: &'a str,
-    pub(super) stroke_width: &'a str,
 }
 
 impl QuadrantChartPointThemePlan {
@@ -78,44 +68,14 @@ impl QuadrantChartPointThemePlan {
         ))
     }
 
-    pub(crate) fn css(&self) -> &QuadrantChartCssBinding {
+    pub(super) fn css(&self) -> &QuadrantChartCssBinding {
         &self.css
     }
 
-    pub(super) fn point_binding<'a>(
-        &'a self,
-        index: usize,
-        point: &'a QuadrantChartPointModel,
-        class_styles: Option<&'a QuadrantChartStyles>,
-        default_radius: f64,
-    ) -> QuadrantChartPointBinding<'a> {
-        let point_ink = self
-            .native
+    pub(super) fn native_point_inks(&self) -> Option<&[String]> {
+        self.native
             .as_ref()
             .and_then(|style| style.points.as_deref())
-            .map_or(self.css.quadrant_point_fill.as_str(), |points| {
-                &points[index % points.len()]
-            });
-        QuadrantChartPointBinding {
-            radius: point
-                .styles
-                .radius
-                .or_else(|| class_styles.and_then(|style| style.radius))
-                .unwrap_or(default_radius),
-            fill: super::point_source_fill(point, class_styles).unwrap_or(point_ink),
-            stroke_color: point
-                .styles
-                .stroke_color
-                .as_deref()
-                .or_else(|| class_styles.and_then(|style| style.stroke_color.as_deref()))
-                .unwrap_or(point_ink),
-            stroke_width: point
-                .styles
-                .stroke_width
-                .as_deref()
-                .or_else(|| class_styles.and_then(|style| style.stroke_width.as_deref()))
-                .unwrap_or("0px"),
-        }
     }
 
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {

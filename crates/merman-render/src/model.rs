@@ -4,47 +4,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Bounds {
-    pub min_x: f64,
-    pub min_y: f64,
-    pub max_x: f64,
-    pub max_y: f64,
-}
-
-impl Bounds {
-    pub fn from_points(points: impl IntoIterator<Item = (f64, f64)>) -> Option<Self> {
-        let mut it = points.into_iter();
-        let (x0, y0) = it.next()?;
-        let mut b = Self {
-            min_x: x0,
-            min_y: y0,
-            max_x: x0,
-            max_y: y0,
-        };
-        for (x, y) in it {
-            b.min_x = b.min_x.min(x);
-            b.min_y = b.min_y.min(y);
-            b.max_x = b.max_x.max(x);
-            b.max_y = b.max_y.max(y);
-        }
-        Some(b)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutPoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutLabel {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
+pub use merman_render_core::{
+    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+};
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-class")]
@@ -79,70 +41,6 @@ pub struct ClassPreparedHtmlNodeLabels {
 pub enum ClassNodeLabelPlan {
     RowMetrics(ClassNodeRowMetrics),
     PreparedHtml(ClassPreparedHtmlNodeLabels),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutNode {
-    pub id: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub is_cluster: bool,
-    #[serde(skip)]
-    pub label_width: Option<f64>,
-    #[serde(skip)]
-    pub label_height: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutCluster {
-    pub id: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    /// Mermaid cluster "diff" value used during cluster positioning.
-    pub diff: f64,
-    /// Mermaid cluster "offsetY" value: title bbox height minus half padding.
-    pub offset_y: f64,
-    pub title: String,
-    pub title_label: LayoutLabel,
-    pub requested_dir: Option<String>,
-    pub effective_dir: String,
-    pub padding: f64,
-    pub title_margin_top: f64,
-    pub title_margin_bottom: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutEdge {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    #[serde(default)]
-    pub from_cluster: Option<String>,
-    #[serde(default)]
-    pub to_cluster: Option<String>,
-    pub points: Vec<LayoutPoint>,
-    pub label: Option<LayoutLabel>,
-    #[serde(default)]
-    pub start_label_left: Option<LayoutLabel>,
-    #[serde(default)]
-    pub start_label_right: Option<LayoutLabel>,
-    #[serde(default)]
-    pub end_label_left: Option<LayoutLabel>,
-    #[serde(default)]
-    pub end_label_right: Option<LayoutLabel>,
-    /// Optional SVG marker id for marker-start (e.g. ER cardinality markers).
-    #[serde(default)]
-    pub start_marker: Option<String>,
-    /// Optional SVG marker id for marker-end (e.g. ER cardinality markers).
-    #[serde(default)]
-    pub end_marker: Option<String>,
-    /// Optional SVG dash pattern (e.g. identifying vs non-identifying ER relationships).
-    #[serde(default)]
-    pub stroke_dasharray: Option<String>,
 }
 
 /// Edge geometry prepared by the same family-local route and label decisions as SVG.
@@ -340,397 +238,36 @@ pub struct MindmapDiagramLayout {
     pub swimlane_lanes: Vec<LayoutCluster>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-sankey")]
-pub struct SankeyNodeLayout {
-    pub id: String,
-    pub index: usize,
-    pub depth: usize,
-    pub height: usize,
-    pub layer: usize,
-    pub value: f64,
-    pub x0: f64,
-    pub x1: f64,
-    pub y0: f64,
-    pub y1: f64,
-}
+pub use merman_render_charts::sankey::{SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-sankey")]
-pub struct SankeyLinkLayout {
-    pub index: usize,
-    pub source: String,
-    pub target: String,
-    pub value: f64,
-    pub width: f64,
-    pub y0: f64,
-    pub y1: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-sankey")]
-pub struct SankeyDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    pub node_width: f64,
-    pub node_padding: f64,
-    pub nodes: Vec<SankeyNodeLayout>,
-    pub links: Vec<SankeyLinkLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-radar")]
-pub struct RadarAxisLayout {
-    pub label: String,
-    pub angle: f64,
-    pub line_x2: f64,
-    pub line_y2: f64,
-    pub label_x: f64,
-    pub label_y: f64,
-}
+pub use merman_render_charts::radar::{
+    RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout, RadarGraticuleShapeLayout,
+    RadarLegendItemLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-radar")]
-pub struct RadarGraticuleShapeLayout {
-    pub kind: String,
-    #[serde(default, with = "crate::radar::point_list::radius")]
-    pub r: Option<f64>,
-    #[serde(default, with = "crate::radar::point_list")]
-    pub points: Vec<LayoutPoint>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-radar")]
-pub struct RadarCurveLayout {
-    pub label: String,
-    pub class_index: i64,
-    #[serde(default, with = "crate::radar::point_list")]
-    pub points: Vec<LayoutPoint>,
-    pub path_d: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-radar")]
-pub struct RadarLegendItemLayout {
-    pub label: String,
-    pub class_index: i64,
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-radar")]
-pub struct RadarDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub svg_width: f64,
-    pub svg_height: f64,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub radius: f64,
-    pub axis_label_factor: f64,
-    pub title_y: f64,
-    #[serde(default)]
-    pub axes: Vec<RadarAxisLayout>,
-    #[serde(default)]
-    pub graticules: Vec<RadarGraticuleShapeLayout>,
-    #[serde(default)]
-    pub curves: Vec<RadarCurveLayout>,
-    #[serde(default)]
-    pub legend_items: Vec<RadarLegendItemLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-treemap")]
-pub struct TreemapSectionLayout {
-    pub name: String,
-    pub depth: i64,
-    pub value: f64,
-    pub x0: f64,
-    pub y0: f64,
-    pub x1: f64,
-    pub y1: f64,
-    #[serde(default)]
-    pub class_selector: Option<String>,
-    #[serde(default)]
-    pub css_compiled_styles: Option<Vec<String>>,
-}
+pub use merman_render_charts::treemap::{
+    TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-treemap")]
-pub struct TreemapLeafLayout {
-    pub name: String,
-    pub value: f64,
-    #[serde(default)]
-    pub parent_name: Option<String>,
-    pub x0: f64,
-    pub y0: f64,
-    pub x1: f64,
-    pub y1: f64,
-    #[serde(default)]
-    pub class_selector: Option<String>,
-    #[serde(default)]
-    pub css_compiled_styles: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-treemap")]
-pub struct TreemapDiagramLayout {
-    pub title_height: f64,
-    pub width: f64,
-    pub height: f64,
-    pub use_max_width: bool,
-    pub diagram_padding: f64,
-    pub show_values: bool,
-    pub value_format: String,
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub sections: Vec<TreemapSectionLayout>,
-    #[serde(default)]
-    pub leaves: Vec<TreemapLeafLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-venn")]
-pub struct VennCircleLayout {
-    pub set: String,
-    pub x: f64,
-    pub y: f64,
-    pub radius: f64,
-}
+pub use merman_render_charts::venn::{
+    VennAreaLayout, VennCircleLayout, VennDiagramLayout, VennTextAreaLayout,
+    VennTextDebugCellLayout, VennTextNodeLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-venn")]
-pub struct VennAreaLayout {
-    pub sets: Vec<String>,
-    pub size: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    pub text_x: f64,
-    pub text_y: f64,
-    pub text_disjoint: bool,
-    #[serde(default)]
-    pub circles: Vec<VennCircleLayout>,
-    pub path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-venn")]
-pub struct VennTextDebugCellLayout {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-venn")]
-pub struct VennTextAreaLayout {
-    pub sets: Vec<String>,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub inner_radius: f64,
-    pub font_size: f64,
-    #[serde(default)]
-    pub debug_cells: Vec<VennTextDebugCellLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-venn")]
-pub struct VennTextNodeLayout {
-    pub sets: Vec<String>,
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-venn")]
-pub struct VennDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    pub diagram_height: f64,
-    pub title_height: f64,
-    pub scale: f64,
-    pub padding: f64,
-    pub use_max_width: bool,
-    pub use_debug_layout: bool,
-    #[serde(default)]
-    pub areas: Vec<VennAreaLayout>,
-    #[serde(default)]
-    pub text_areas: Vec<VennTextAreaLayout>,
-    #[serde(default)]
-    pub text_nodes: Vec<VennTextNodeLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-xychart")]
-pub struct XyChartRectData {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub fill: String,
-    #[serde(rename = "strokeFill")]
-    pub stroke_fill: String,
-    #[serde(rename = "strokeWidth")]
-    pub stroke_width: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-xychart")]
-pub struct XyChartTextData {
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-    pub fill: String,
-    #[serde(rename = "fontSize")]
-    pub font_size: f64,
-    #[serde(default)]
-    pub rotation: f64,
-    #[serde(rename = "verticalPos")]
-    pub vertical_pos: String,
-    #[serde(rename = "horizontalPos")]
-    pub horizontal_pos: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-xychart")]
-pub struct XyChartPathData {
-    pub path: String,
-    #[serde(default)]
-    pub fill: Option<String>,
-    #[serde(rename = "strokeFill")]
-    pub stroke_fill: String,
-    #[serde(rename = "strokeWidth")]
-    pub stroke_width: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-#[cfg(feature = "diagram-xychart")]
-pub enum XyChartDrawableElem {
-    #[serde(rename = "rect")]
-    Rect {
-        #[serde(rename = "groupTexts")]
-        group_texts: Vec<String>,
-        data: Vec<XyChartRectData>,
-    },
-    #[serde(rename = "text")]
-    Text {
-        #[serde(rename = "groupTexts")]
-        group_texts: Vec<String>,
-        data: Vec<XyChartTextData>,
-    },
-    #[serde(rename = "path")]
-    Path {
-        #[serde(rename = "groupTexts")]
-        group_texts: Vec<String>,
-        data: Vec<XyChartPathData>,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-xychart")]
-pub struct XyChartDiagramLayout {
-    pub width: f64,
-    pub height: f64,
-    #[serde(rename = "chartOrientation")]
-    pub chart_orientation: String,
-    #[serde(rename = "showDataLabel")]
-    pub show_data_label: bool,
-    #[serde(rename = "showDataLabelOutsideBar", default)]
-    pub show_data_label_outside_bar: bool,
-    #[serde(rename = "backgroundColor")]
-    pub background_color: String,
-    #[serde(rename = "labelData")]
-    pub label_data: Vec<String>,
-    #[serde(default)]
-    pub drawables: Vec<XyChartDrawableElem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub struct QuadrantChartTextData {
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-    pub fill: String,
-    #[serde(rename = "fontSize")]
-    pub font_size: f64,
-    #[serde(default)]
-    pub rotation: f64,
-    #[serde(rename = "verticalPos")]
-    pub vertical_pos: String,
-    #[serde(rename = "horizontalPos")]
-    pub horizontal_pos: String,
-}
+pub use merman_render_charts::xychart::{
+    XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
+};
 
 #[cfg(feature = "diagram-quadrant-chart")]
-pub type QuadrantChartAxisLabelData = QuadrantChartTextData;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub struct QuadrantChartQuadrantData {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub fill: String,
-    pub text: QuadrantChartTextData,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub struct QuadrantChartBorderLineData {
-    #[serde(rename = "strokeWidth")]
-    pub stroke_width: f64,
-    #[serde(rename = "strokeFill")]
-    pub stroke_fill: String,
-    pub x1: f64,
-    pub y1: f64,
-    pub x2: f64,
-    pub y2: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub struct QuadrantChartPointData {
-    pub x: f64,
-    pub y: f64,
-    pub fill: String,
-    pub radius: f64,
-    #[serde(rename = "strokeColor")]
-    pub stroke_color: String,
-    #[serde(rename = "strokeWidth")]
-    pub stroke_width: String,
-    pub text: QuadrantChartTextData,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub struct QuadrantChartDiagramLayout {
-    pub width: f64,
-    pub height: f64,
-    #[serde(default)]
-    pub title: Option<QuadrantChartTextData>,
-    pub quadrants: Vec<QuadrantChartQuadrantData>,
-    #[serde(rename = "borderLines")]
-    pub border_lines: Vec<QuadrantChartBorderLineData>,
-    pub points: Vec<QuadrantChartPointData>,
-    #[serde(rename = "axisLabels")]
-    pub axis_labels: Vec<QuadrantChartAxisLabelData>,
-}
+pub use merman_render_charts::quadrantchart::{
+    QuadrantChartAxisLabelData, QuadrantChartBorderLineData, QuadrantChartDiagramLayout,
+    QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(any(
@@ -1036,35 +573,8 @@ pub struct ErDiagramLayout {
     pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
-/// A control-frame divider. Its horizontal endpoints are the enclosing frame's edges.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg(feature = "diagram-sequence")]
-pub struct SequenceFrameSectionLayout {
-    /// ID of the semantic `else`, `and`, or `option` message.
-    pub id: String,
-    pub label: String,
-    pub y: f64,
-}
-
-/// Final drawing bounds of a visible Sequence control frame, in diagram coordinates.
-///
-/// `x` and `y` are the top-left corner, unlike the center-based participant nodes. Frames
-/// retain source order, including nested frames. Background `rect` blocks remain in `nodes`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg(feature = "diagram-sequence")]
-pub struct SequenceFrameLayout {
-    /// ID of the semantic message that opens the frame.
-    pub id: String,
-    pub kind: merman_model::families::sequence::SequenceControlKind,
-    /// Semantic label before presentation-specific brackets, wrapping, and entity decoding.
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sections: Vec<SequenceFrameSectionLayout>,
-}
+pub use merman_render_sequence::frame::{SequenceFrameLayout, SequenceFrameSectionLayout};
 
 /// One completed activation bar, ordered by its activation-start occurrence.
 ///
@@ -1123,85 +633,16 @@ pub struct SequenceDiagramLayout {
     pub title: Option<SequenceTextLayout>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-info")]
-pub struct InfoDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub version: String,
-}
+pub use merman_render_structured::info::InfoDiagramLayout;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-packet")]
-pub struct PacketBlockLayout {
-    pub start: f64,
-    pub end: f64,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
+pub use merman_render_structured::packet::{
+    PacketBlockLayout, PacketDiagramLayout, PacketWordLayout,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-packet")]
-pub struct PacketWordLayout {
-    pub blocks: Vec<PacketBlockLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-packet")]
-pub struct PacketDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub width: f64,
-    pub height: f64,
-    pub row_height: f64,
-    pub padding_x: f64,
-    pub padding_y: f64,
-    pub bit_width: f64,
-    pub bits_per_row: f64,
-    pub show_bits: bool,
-    pub words: Vec<PacketWordLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-pie")]
-pub struct PieSliceLayout {
-    pub label: String,
-    pub value: f64,
-    pub start_angle: f64,
-    pub end_angle: f64,
-    pub is_full_circle: bool,
-    pub percent: i64,
-    pub text_x: f64,
-    pub text_y: f64,
-    pub fill: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-pie")]
-pub struct PieLegendItemLayout {
-    pub label: String,
-    pub value: f64,
-    pub fill: String,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-pie")]
-pub struct PieDiagramLayout {
-    pub bounds: Option<Bounds>,
-    #[serde(default)]
-    pub title: Option<String>,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub radius: f64,
-    pub outer_radius: f64,
-    pub legend_x: f64,
-    pub legend_start_y: f64,
-    pub legend_step_y: f64,
-    pub slices: Vec<PieSliceLayout>,
-    pub legend_items: Vec<PieLegendItemLayout>,
-}
+pub use merman_render_charts::pie::{PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-timeline")]
@@ -1759,57 +1200,10 @@ pub struct CynefinDiagramLayout {
     pub transitions: Vec<CynefinTransitionLayout>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-railroad")]
-pub struct RailroadDiagramLayout {
-    pub bounds: Option<Bounds>,
-    pub diagram_type: String,
-    pub width: f64,
-    pub height: f64,
-    pub use_max_width: bool,
-    pub rules: Vec<RailroadRuleLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-railroad")]
-pub struct RailroadRuleLayout {
-    pub name: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub baseline_y: f64,
-    pub name_width: f64,
-    pub definition_x: f64,
-    pub start_marker_x: f64,
-    pub end_marker_x: f64,
-    pub marker_radius: f64,
-    pub elements: Vec<RailroadElementLayout>,
-    pub paths: Vec<RailroadPathLayout>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-railroad")]
-pub struct RailroadElementLayout {
-    pub kind: String,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub text_x: f64,
-    pub text_y: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "diagram-railroad")]
-pub struct RailroadPathLayout {
-    #[serde(default)]
-    pub x: f64,
-    #[serde(default)]
-    pub y: f64,
-    pub d: String,
-}
+pub use merman_render_structured::railroad::{
+    RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout, RailroadRuleLayout,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-gantt")]

@@ -11,12 +11,29 @@ pub(crate) fn unexpected_eof_message<'a>(expected: impl Iterator<Item = &'a str>
     with_expectations("unexpected end of input".to_string(), expected)
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 pub(crate) fn unexpected_token_message<'a>(
     token: &impl std::fmt::Debug,
     expected: impl Iterator<Item = &'a str>,
 ) -> String {
+    let debug = format!("{token:?}");
+    let variant = debug
+        .split_once('(')
+        .map_or(debug.as_str(), |(name, _)| name);
+    unexpected_token_name_message(variant, expected)
+}
+
+pub(crate) fn unexpected_token_name_message<'a>(
+    variant: &str,
+    expected: impl Iterator<Item = &'a str>,
+) -> String {
     with_expectations(
-        format!("unexpected {}", format_found_token(token)),
+        format!("unexpected {}", format_found_token(variant)),
         expected,
     )
 }
@@ -42,16 +59,7 @@ fn humanize_expected_token(token: &str) -> String {
     }
 }
 
-fn format_found_token<T>(token: &T) -> String
-where
-    T: std::fmt::Debug,
-{
-    let debug = format!("{token:?}");
-    let variant = debug
-        .split_once('(')
-        .map(|(name, _)| name)
-        .unwrap_or(debug.as_str());
-
+fn format_found_token(variant: &str) -> String {
     match variant {
         "Sep" | "Newline" => "statement separator".to_string(),
         "StyleSep" => "style separator".to_string(),

@@ -5,16 +5,11 @@
 //! corners when using curved interpolators.
 
 pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::LayoutPoint>) {
-    if points.is_empty() {
-        return;
-    }
-
     const CORNER_DIST: f64 = 5.0;
-    let mut corner_positions: Vec<usize> = Vec::new();
-    for i in 1..points.len().saturating_sub(1) {
-        let prev = &points[i - 1];
-        let curr = &points[i];
-        let next = &points[i + 1];
+    let mut corners = (1..points.len().saturating_sub(1)).filter(|&index| {
+        let prev = &points[index - 1];
+        let curr = &points[index];
+        let next = &points[index + 1];
 
         let is_corner_xy = prev.x == curr.x
             && curr.y == next.y
@@ -25,14 +20,11 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
             && (curr.x - prev.x).abs() > CORNER_DIST
             && (curr.y - next.y).abs() > CORNER_DIST;
 
-        if is_corner_xy || is_corner_yx {
-            corner_positions.push(i);
-        }
-    }
-
-    if corner_positions.is_empty() {
+        is_corner_xy || is_corner_yx
+    });
+    let Some(first_corner) = corners.next() else {
         return;
-    }
+    };
 
     fn find_adjacent_point(
         point_a: &crate::model::LayoutPoint,
@@ -54,15 +46,14 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
 
     let a = (2.0_f64).sqrt() * 2.0;
     let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
-    for i in 0..points.len() {
-        if !corner_positions.contains(&i) {
-            out.push(points[i].clone());
-            continue;
+    let mut copy_from = 0;
+    for index in std::iter::once(first_corner).chain(corners) {
+        for point in &points[copy_from..index] {
+            out.push(point.clone());
         }
-
-        let prev = &points[i - 1];
-        let next = &points[i + 1];
-        let corner = &points[i];
+        let prev = &points[index - 1];
+        let next = &points[index + 1];
+        let corner = &points[index];
         let new_prev = find_adjacent_point(prev, corner, CORNER_DIST);
         let new_next = find_adjacent_point(next, corner, CORNER_DIST);
         let x_diff = new_next.x - new_prev.x;
@@ -104,6 +95,10 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
 
         out.push(new_corner);
         out.push(new_next);
+        copy_from = index + 1;
+    }
+    for point in &points[copy_from..] {
+        out.push(point.clone());
     }
 
     *points = out;

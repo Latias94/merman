@@ -10,7 +10,6 @@
 mod artifact_contract;
 mod error;
 mod operation_control;
-mod token;
 
 use artifact_contract::android_artifact_contract;
 use error::binding_error_text;
@@ -23,6 +22,8 @@ use jni::{
     strings::JNIString,
     sys::{JNI_ERR, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6, jboolean, jint, jlong},
 };
+use merman_bindings_core::transport_boundary::catch_transport_unwind;
+use merman_bindings_core::transport_handles::HandleRegistry;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
     BindingError, BindingOperationRequest, BindingOperationResult, OperationControl,
@@ -33,12 +34,9 @@ use operation_control::JniOperationControlRegistry;
 #[cfg(feature = "svg")]
 use std::cell::Cell;
 use std::{
-    collections::BTreeMap,
     ffi::c_void,
-    panic::{AssertUnwindSafe, catch_unwind},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, MutexGuard},
 };
-use token::next_monotonic_jni_token;
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 2;
 
@@ -64,41 +62,10 @@ impl JniEngineState {
     }
 }
 
-#[derive(Default)]
-struct JniEngineRegistry {
-    last_token: u64,
-    states: BTreeMap<u64, Arc<JniEngineState>>,
-}
-
-impl JniEngineRegistry {
-    fn register(
-        &mut self,
-        state: Arc<JniEngineState>,
-    ) -> Result<jlong, (Box<BindingError>, Arc<JniEngineState>)> {
-        let token = match next_monotonic_jni_token(
-            self.last_token,
-            "Android engine token space is exhausted",
-        ) {
-            Ok(token) => token,
-            Err(error) => return Err((Box::new(error), state)),
-        };
-        self.last_token = token;
-        let previous = self.states.insert(token, state);
-        debug_assert!(previous.is_none(), "Android engine tokens are never reused");
-        Ok(token as jlong)
-    }
-
-    fn acquire(&self, token: u64) -> Option<Arc<JniEngineState>> {
-        self.states.get(&token).map(Arc::clone)
-    }
-
-    fn retire(&mut self, token: u64) -> Option<Arc<JniEngineState>> {
-        self.states.remove(&token)
-    }
-}
-
-static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
-static OPERATION_CONTROL_REGISTRY: OnceLock<Mutex<JniOperationControlRegistry>> = OnceLock::new();
+static ENGINE_REGISTRY: Mutex<HandleRegistry<Arc<JniEngineState>>> =
+    Mutex::new(HandleRegistry::new(i64::MAX as u64));
+static OPERATION_CONTROL_REGISTRY: Mutex<JniOperationControlRegistry> =
+    Mutex::new(JniOperationControlRegistry::new());
 
 #[cfg(feature = "svg")]
 struct JniHostTextMeasurer {
@@ -342,13 +309,13 @@ pub unsafe extern "system" fn JNI_OnLoad(
     if vm.is_null() {
         return JNI_ERR;
     }
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
+    let outcome = catch_transport_unwind(|| {
         let vm = unsafe { JavaVM::from_raw(vm) };
         vm.with_top_local_frame(register_native_methods)
-    }));
+    });
     match outcome {
-        Ok(Ok(())) => JNI_VERSION_1_6,
-        Ok(Err(_)) | Err(_) => JNI_ERR,
+        Some(Ok(())) => JNI_VERSION_1_6,
+        Some(Err(_)) | None => JNI_ERR,
     }
 }
 
@@ -547,12 +514,8 @@ fn native_operation_control_new<'local>(
     timeout_ms: jlong,
     has_timeout_ms: jboolean,
 ) -> JniResult<jlong> {
-    let result = operation_control_timeout_ms(timeout_ms, has_timeout_ms).and_then(|timeout_ms| {
-        operation_control_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .issue(timeout_ms)
-    });
+    let result = operation_control_timeout_ms(timeout_ms, has_timeout_ms)
+        .and_then(|timeout_ms| operation_control_registry().issue(timeout_ms));
     match result {
         Ok(token) => Ok(token as jlong),
         Err(error) => {
@@ -597,12 +560,8 @@ fn native_operation_control_release<'local>(
     _class: JClass<'local>,
     token: jlong,
 ) -> JniResult<()> {
-    let result = operation_control_token(token).and_then(|token| {
-        operation_control_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .release(token)
-    });
+    let result = operation_control_token(token)
+        .and_then(|token| operation_control_registry().release(token));
     if let Err(error) = result {
         throw_merman_exception(env, binding_error_text(error));
     }
@@ -686,17 +645,10 @@ fn native_engine_new<'local>(
             engine: Mutex::new(Some(engine)),
             admission,
         });
-        let publication = engine_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .register(state);
-        match publication {
-            Ok(handle) => Ok(handle),
-            Err((error, state)) => {
-                drop(state);
-                Err(*error)
-            }
-        }
+        let publication = engine_registry().try_insert(state);
+        publication
+            .map(|handle| handle as jlong)
+            .map_err(|_| BindingError::internal("Android engine token space is exhausted"))
     })();
     match result {
         Ok(handle) => Ok(handle),
@@ -715,18 +667,12 @@ fn native_engine_try_close<'local>(
     let Some(token) = jni_token(handle) else {
         return Ok(JNI_TRUE);
     };
-    let state = engine_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .acquire(token);
+    let state = engine_registry().get(token).cloned();
     let Some(state) = state else {
         return Ok(JNI_TRUE);
     };
     let close = state.admission.try_close_detaching(|| {
-        let retired = engine_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .retire(token);
+        let retired = engine_registry().remove(token);
         retired.as_ref().and_then(|state| state.detach_engine())
     });
     match close {
@@ -842,12 +788,16 @@ fn binding_operation_request<'a>(
     }
 }
 
-fn engine_registry() -> &'static Mutex<JniEngineRegistry> {
-    ENGINE_REGISTRY.get_or_init(|| Mutex::new(JniEngineRegistry::default()))
+fn engine_registry() -> MutexGuard<'static, HandleRegistry<Arc<JniEngineState>>> {
+    ENGINE_REGISTRY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn operation_control_registry() -> &'static Mutex<JniOperationControlRegistry> {
-    OPERATION_CONTROL_REGISTRY.get_or_init(|| Mutex::new(JniOperationControlRegistry::default()))
+fn operation_control_registry() -> MutexGuard<'static, JniOperationControlRegistry> {
+    OPERATION_CONTROL_REGISTRY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn operation_control_timeout_ms(
@@ -872,10 +822,7 @@ fn operation_control_token(token: jlong) -> Result<u64, BindingError> {
 
 fn acquire_operation_control(token: jlong) -> Result<OperationControl, BindingError> {
     let token = operation_control_token(token)?;
-    operation_control_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .acquire(token)
+    operation_control_registry().acquire(token)
 }
 
 // Token lifetime belongs to JNI, but request identity and cancellation precedence belong to the
@@ -903,10 +850,7 @@ fn engine_token(env: &mut Env<'_>, handle: jlong) -> Option<u64> {
 }
 
 fn acquire_engine_state(env: &mut Env<'_>, token: u64) -> Option<Arc<JniEngineState>> {
-    let state = engine_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .acquire(token);
+    let state = engine_registry().get(token).cloned();
     if state.is_none() {
         throw_merman_exception(env, "Merman engine is closed");
     }

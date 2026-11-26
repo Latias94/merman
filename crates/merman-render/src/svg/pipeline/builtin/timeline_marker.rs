@@ -6,9 +6,11 @@
 
 use std::borrow::Cow;
 
-use super::util::{SvgTagScanner, next_svg_quoted_attr_with_checkpoints, start_tag_name};
 use crate::svg::pipeline::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use crate::{DiagramFamilyId, Result};
+use merman_render_core::svg_scan::{
+    SvgTagScanner, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 
 const LEGACY_MARKER_ID: &str = "undefined-arrowhead";
 const LEGACY_REFERENCE: &str = "url(#arrowhead)";

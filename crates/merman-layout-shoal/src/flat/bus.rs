@@ -1,6 +1,7 @@
 //! Finish unlabelled directed fans in the clearance left by node and port placement.
 
 use super::{Component, Csr, Drawing, canonical_size, physical_side, validate};
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, Graph, LayoutError, MarkerMetrics, NodeSpec, Options, Point, PortSideHint, Rect,
@@ -26,31 +27,7 @@ impl Contact {
         if length == 0.0 || width == 0.0 {
             return None;
         }
-        let Point { x, y } = self.at;
-        let half = width * 0.5;
-        let (x, y) = match self.side {
-            Side::Top => ([x - half, x + half], [y - length, y]),
-            Side::Bottom => ([x - half, x + half], [y, y + length]),
-            Side::Left => ([x - length, x], [y - half, y + half]),
-            Side::Right => ([x, x + length], [y - half, y + half]),
-        };
-        Some(Bounds { x, y })
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Bounds {
-    x: [f64; 2],
-    y: [f64; 2],
-}
-
-impl Bounds {
-    fn intersects(self, other: Self) -> bool {
-        overlaps(self.x, other.x) && overlaps(self.y, other.y)
-    }
-
-    fn finite(self) -> bool {
-        self.x.into_iter().chain(self.y).all(f64::is_finite)
+        Some(Bounds::marker(self.at, self.side, self.marker))
     }
 }
 
@@ -80,10 +57,7 @@ impl Scene {
     ) -> LayoutResult<Self> {
         work.charge(drawing.nodes.len())?;
         let mut walls = reserved(drawing.nodes.len())?;
-        walls.extend(drawing.nodes.iter().map(|r| Bounds {
-            x: [r.x, r.x + r.width],
-            y: [r.y, r.y + r.height],
-        }));
+        walls.extend(drawing.nodes.iter().copied().map(Bounds::of));
         work.charge(drawing.edges.len())?;
         let mut ends = reserved(drawing.edges.len())?;
         for (index, (id, route)) in drawing.edges.iter().enumerate() {
@@ -123,13 +97,9 @@ impl Scene {
                 (route.end_label_center, spec.end_label),
             ] {
                 if let (Some(p), Some(s)) = (center, size) {
-                    let s = canonical_size(graph.direction, s);
                     push(
                         &mut walls,
-                        Bounds {
-                            x: [p.x - s.width * 0.5, p.x + s.width * 0.5],
-                            y: [p.y - s.height * 0.5, p.y + s.height * 0.5],
-                        },
+                        Bounds::centered(p, canonical_size(graph.direction, s)),
                     )?;
                 }
             }
@@ -329,7 +299,10 @@ fn shelf(
         let mut blocks_shelf = false;
         for shaft in shafts {
             if owner != Some(shaft.tip) {
-                if shaft.marker.is_some_and(|m| wall.intersects(m)) {
+                if shaft
+                    .marker
+                    .is_some_and(|m| overlaps(wall.x, m.x) && overlaps(wall.y, m.y))
+                {
                     return Ok(false);
                 }
                 if shaft.tip.side.axis() == Axis::Horizontal {

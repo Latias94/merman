@@ -1,0 +1,1035 @@
+#[cfg(feature = "editor-facts")]
+use super::ast::FlowchartClickEditorEvidence;
+use super::{
+    ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
+    LinkStyleStmt, StyleStmt, TitleKind,
+};
+use merman_model::{SourceSpan, text::is_ecmascript_whitespace};
+
+pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
+    let (payload, kind) = parse_node_label_payload(raw)?;
+    Ok(parsed_label_text(raw, payload, kind))
+}
+
+pub(super) fn parse_node_label_payload(raw: &str) -> Result<(&str, TitleKind), LexError> {
+    if raw.starts_with('"') {
+        return super::text::parse_quoted_label(raw);
+    }
+
+    let text = super::text::trim_flowdb_label_text(raw);
+
+    // Mermaid Jison-based flowchart lexer treats these as structural tokens (PS/PE/SQE/etc)
+    // and will throw parse errors if they appear inside TEXT.
+    if text.contains(['"', '(', ')', '[', ']', '{', '}', '|']) {
+        return Err(LexError::new(
+            "Invalid text label: contains structural characters; quote it to use them",
+        ));
+    }
+    if contains_bound_at(raw) {
+        return Err(LexError::new(
+            "Invalid text label: unquoted `@` must be preceded by whitespace",
+        ));
+    }
+    Ok((raw, TitleKind::Text))
+}
+
+fn parsed_label_text(raw: &str, payload: &str, kind: TitleKind) -> LabeledText {
+    let text = super::text::trim_flowdb_label_text(payload);
+    LabeledText {
+        text: text.to_string(),
+        kind,
+        span: None,
+        selection: Some(super::text::borrowed_span(raw, text)),
+    }
+}
+
+fn contains_bound_at(raw: &str) -> bool {
+    raw.char_indices().any(|(index, ch)| {
+        ch == '@'
+            && raw[..index]
+                .chars()
+                .next_back()
+                .is_none_or(|previous| !super::is_ecmascript_trim_char(previous))
+    })
+}
+
+pub(super) fn parse_edge_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
+    if raw.is_empty() {
+        return Err(LexError::new(
+            "Flowchart edge label payload cannot be empty",
+        ));
+    }
+
+    if raw.starts_with('"') {
+        return parse_node_label_text(raw);
+    }
+    if raw.contains('"') {
+        return Err(LexError::new(
+            "Invalid edge label: quoted strings cannot be mixed with unquoted text",
+        ));
+    }
+
+    let (text, kind) = super::parse_edge_label_text(raw);
+    let payload = super::text::trim_flowdb_label_text(raw);
+    Ok(LabeledText {
+        text,
+        kind,
+        span: None,
+        selection: Some(super::text::borrowed_span(raw, payload)),
+    })
+}
+
+pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str, usize) {
+    // Mermaid supports a special "rect" variant via `[|borders:...|Label]`.
+    // The `[|` token is recognized lexically before FlowDB trim. Leading whitespace therefore
+    // keeps this on the ordinary square-label path and is not allowed to synthesize a rect.
+    let Some(rest) = raw.strip_prefix('|') else {
+        return ("square", raw, 0);
+    };
+    let Some((prefix, label)) = rest.split_once('|') else {
+        return ("square", raw, 0);
+    };
+    if prefix.starts_with("borders:") {
+        let offset = 1 + prefix.len() + 1;
+        return ("rect", label, offset);
+    }
+    ("square", raw, 0)
+}
+
+fn split_first_word(s: &str) -> Option<(&str, &str)> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let first = &trimmed[..i];
+    let rest = &trimmed[i..];
+    Some((first, rest))
+}
+
+fn parse_styles_list(s: &str) -> Vec<String> {
+    // Used by `classDef` / `style` statements. Mermaid normalizes these style tokens by trimming
+    // whitespace around each comma-separated entry.
+    let placeholder = "\u{0000}";
+    let replaced = s.replace("\\,", placeholder);
+    replaced
+        .split(',')
+        .map(|p| p.replace(placeholder, ","))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+fn parse_linkstyle_styles_list(s: &str) -> Vec<String> {
+    // Mermaid's Jison grammar preserves whitespace inside each style token (e.g. `, stroke: ...`
+    // becomes `" stroke: ..."`) and downstream FlowDB joins the style list verbatim via
+    // `styles.join(';')` (see `flow.jison` + `flowDb.updateLink(...)`).
+    //
+    // Keep the raw spacing (except for filtering out all-whitespace entries).
+    let placeholder = "\u{0000}";
+    let replaced = s.replace("\\,", placeholder);
+    replaced
+        .split(',')
+        .map(|p| p.replace(placeholder, ","))
+        .filter(|p| !p.trim().is_empty())
+        .collect()
+}
+
+pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, LexError> {
+    let Some((target, styles_raw)) = split_first_word(rest) else {
+        return Err(LexError::new("Invalid style statement".to_string()));
+    };
+    let styles = parse_styles_list(styles_raw);
+    Ok(StyleStmt {
+        target: target.trim().to_string(),
+        target_span: None,
+        styles,
+        #[cfg(feature = "editor-facts")]
+        styles_text: None,
+        #[cfg(feature = "editor-facts")]
+        styles_span: None,
+        #[cfg(feature = "editor-facts")]
+        editor_evidence: Default::default(),
+    })
+}
+
+pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStmt, LexError> {
+    let Some((ids_raw, styles_raw)) = split_first_word(rest) else {
+        return Err(LexError::new("Invalid classDef statement".to_string()));
+    };
+    let ids = ids_raw
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    let styles = parse_styles_list(styles_raw);
+    Ok(ClassDefStmt {
+        ids,
+        #[cfg(feature = "editor-facts")]
+        id_spans: Vec::new(),
+        styles,
+        #[cfg(feature = "editor-facts")]
+        styles_text: None,
+        #[cfg(feature = "editor-facts")]
+        styles_span: None,
+        #[cfg(feature = "editor-facts")]
+        editor_evidence: Default::default(),
+    })
+}
+
+pub(super) fn parse_class_assign_stmt(
+    rest: &str,
+) -> std::result::Result<ClassAssignStmt, LexError> {
+    let Some((targets_raw, class_raw)) = split_first_word(rest) else {
+        return Err(LexError::new("Invalid class statement".to_string()));
+    };
+    let targets = targets_raw
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    let class_name = class_raw.trim().to_string();
+    if class_name.is_empty() {
+        return Err(LexError::new("Invalid class statement".to_string()));
+    }
+    Ok(ClassAssignStmt {
+        targets,
+        #[cfg(feature = "editor-facts")]
+        target_spans: Vec::new(),
+        class_name,
+        #[cfg(feature = "editor-facts")]
+        class_name_span: None,
+        #[cfg(feature = "editor-facts")]
+        editor_evidence: Default::default(),
+    })
+}
+
+pub(super) fn attach_style_stmt_spans(stmt: &mut StyleStmt, rest: &str, rest_start: usize) {
+    let Some((target, _styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_span = Some(target.span);
+    #[cfg(feature = "editor-facts")]
+    if let Some(styles) = trim_spanned_slice(_styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, rest_start: usize) {
+    let Some((ids, styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.id_spans = split_comma_value_spans(ids.text, ids.span.start);
+    if let Some(styles) = trim_spanned_slice(styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+pub(super) fn attach_class_assign_stmt_spans(
+    stmt: &mut ClassAssignStmt,
+    rest: &str,
+    rest_start: usize,
+) {
+    let Some((targets, class_name)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_spans = split_comma_value_spans(targets.text, targets.span.start);
+    stmt.class_name_span = trim_spanned_slice(class_name).map(|class_name| class_name.span);
+}
+
+#[derive(Clone, Copy)]
+struct SpannedSlice<'a> {
+    #[cfg_attr(
+        not(feature = "editor-facts"),
+        allow(
+            dead_code,
+            reason = "The shared source slice retains text for optional editor span refinement."
+        )
+    )]
+    text: &'a str,
+    span: SourceSpan,
+}
+
+fn split_first_word_with_span(
+    rest: &str,
+    rest_start: usize,
+) -> Option<(SpannedSlice<'_>, SpannedSlice<'_>)> {
+    let leading = rest.len().saturating_sub(rest.trim_start().len());
+    let trimmed = &rest[leading..];
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut first_len = 0usize;
+    while first_len < trimmed.len() && !trimmed.as_bytes()[first_len].is_ascii_whitespace() {
+        first_len += 1;
+    }
+
+    let first_start = rest_start + leading;
+    let rest_after_first_start = first_start + first_len;
+    Some((
+        SpannedSlice {
+            text: &trimmed[..first_len],
+            span: SourceSpan::new(first_start, rest_after_first_start),
+        },
+        SpannedSlice {
+            text: &trimmed[first_len..],
+            span: SourceSpan::new(rest_after_first_start, rest_start + rest.len()),
+        },
+    ))
+}
+
+#[cfg(feature = "editor-facts")]
+fn trim_spanned_slice(slice: SpannedSlice<'_>) -> Option<SpannedSlice<'_>> {
+    let leading = slice
+        .text
+        .len()
+        .saturating_sub(slice.text.trim_start().len());
+    let text = &slice.text[leading..];
+    let trimmed_len = text.trim_end().len();
+    if trimmed_len == 0 {
+        return None;
+    }
+    let start = slice.span.start + leading;
+    Some(SpannedSlice {
+        text: &text[..trimmed_len],
+        span: SourceSpan::new(start, start + trimmed_len),
+    })
+}
+
+#[cfg(feature = "editor-facts")]
+fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
+    let mut out = Vec::new();
+    let mut value_start = 0usize;
+    let bytes = text.as_bytes();
+
+    for idx in 0..=bytes.len() {
+        if idx != bytes.len() && bytes[idx] != b',' {
+            continue;
+        }
+
+        let value = &text[value_start..idx];
+        if let Some(value) = trim_spanned_slice(SpannedSlice {
+            text: value,
+            span: SourceSpan::new(text_start + value_start, text_start + idx),
+        }) {
+            out.push(value.span);
+        }
+        value_start = idx.saturating_add(1);
+    }
+
+    out
+}
+
+struct ClickParse<'a> {
+    input: &'a str,
+    end: usize,
+    i: usize,
+}
+
+impl<'a> ClickParse<'a> {
+    fn new(input: &'a str, body: SourceSpan) -> Self {
+        Self {
+            input,
+            end: body.end,
+            i: body.start,
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        self.i = self.end
+            - self
+                .rest()
+                .trim_start_matches(is_ecmascript_whitespace)
+                .len();
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.rest().as_bytes().first().copied()
+    }
+
+    fn take_word(&mut self) -> Option<String> {
+        self.skip_ws();
+        let word = self.rest().split(is_ecmascript_whitespace).next()?;
+        self.i += word.len();
+        (!word.is_empty()).then(|| word.to_string())
+    }
+
+    fn reject_direction(&self) -> Result<(), LexError> {
+        let prefix = self
+            .rest()
+            .split(['\r', '\n', '\u{2028}', '\u{2029}'])
+            .next()
+            .unwrap_or_default();
+        // Only the whitespace between `direction` and its value can cross the line.
+        if let Some(matched) = super::lexer::match_direction(&self.input[self.i..], prefix) {
+            let value_start = self.i + matched.offset;
+            return Err(LexError::with_span(
+                "unexpected direction in Flowchart click statement",
+                SourceSpan::new(value_start, value_start + matched.direction.len()),
+            ));
+        }
+        Ok(())
+    }
+
+    fn skip_initial_ws(&mut self) -> Result<(), LexError> {
+        if self.rest().starts_with(is_ecmascript_whitespace) {
+            // In Jison's INITIAL state the direction rules precede SPACE.
+            self.reject_direction()?;
+            self.skip_ws();
+        }
+        Ok(())
+    }
+
+    fn skip_click_separator(&mut self) -> Result<(), LexError> {
+        // The click state consumes one separator after the target, as does the HREF rule.
+        if let Some(separator) = self.rest().chars().next()
+            && is_ecmascript_whitespace(separator)
+        {
+            self.i += separator.len_utf8();
+        }
+        self.skip_initial_ws()
+    }
+
+    fn take_quoted(&mut self) -> Result<Option<String>, LexError> {
+        self.skip_initial_ws()?;
+        if self.peek() != Some(b'"') {
+            return Ok(None);
+        }
+        self.i += 1;
+        let rest = self.rest();
+        let (text, after_quote) = rest.split_once('"').unwrap_or((rest, ""));
+        self.i = self.end - after_quote.len();
+        Ok(Some(text.to_string()))
+    }
+
+    fn rest(&self) -> &'a str {
+        &self.input[self.i..self.end]
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<SourceSpan> {
+    (parser.i > boundary_end).then(|| {
+        // Keep the completion slot after the first separator, including any
+        // remaining spaces, without placing a byte span inside a UTF-8 character.
+        let separator_len = parser.input[boundary_end..parser.i]
+            .chars()
+            .next()
+            .map_or(0, char::len_utf8);
+        SourceSpan::new(boundary_end + separator_len, parser.end)
+    })
+}
+
+#[cfg(feature = "editor-facts")]
+fn click_action_prefix(word: &str) -> bool {
+    !word.is_empty() && ("href".starts_with(word) || "call".starts_with(word))
+}
+
+#[cfg(feature = "editor-facts")]
+fn click_statement_error(
+    message: impl Into<String>,
+    evidence: FlowchartClickEditorEvidence,
+) -> LexError {
+    evidence
+        .iter()
+        .fold(LexError::new(message), |error, expected| {
+            error.expecting(expected.kind, expected.span)
+        })
+}
+
+pub(super) fn parse_click_stmt(
+    input: &str,
+    body: SourceSpan,
+) -> std::result::Result<ClickStmt, LexError> {
+    let mut p = ClickParse::new(input, body);
+    p.skip_ws();
+    let id_start = p.i;
+    let Some(id) = p.take_word() else {
+        return Err(LexError::new("Invalid click statement".to_string()));
+    };
+    let mut ids = Vec::new();
+    #[cfg(feature = "editor-facts")]
+    let mut id_spans = Vec::new();
+    for (target, _span) in split_click_targets(&id, id_start) {
+        ids.push(target.to_string());
+        #[cfg(feature = "editor-facts")]
+        id_spans.push(_span);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    let target_end = p.i;
+    p.skip_click_separator()?;
+    #[cfg(feature = "editor-facts")]
+    let after_target = click_following_span(&p, target_end);
+    let tooltip: Option<String>;
+    let action: ClickAction;
+
+    if p.rest().starts_with("href")
+        && p.rest()
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
+    {
+        #[cfg(feature = "editor-facts")]
+        let action_start = p.i;
+        let _ = p.take_word();
+        #[cfg(feature = "editor-facts")]
+        let action_end = p.i;
+        #[cfg(feature = "editor-facts")]
+        let action_span = SourceSpan::new(action_start, action_end);
+        p.skip_click_separator()?;
+        #[cfg(feature = "editor-facts")]
+        let interaction_evidence = FlowchartClickEditorEvidence::new(
+            Some(action_span),
+            click_following_span(&p, action_end),
+        );
+        let Some(link) = p.take_quoted()? else {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click statement")
+                }
+            });
+        };
+        let maybe_tt = p.take_quoted()?;
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click target",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click target")
+                }
+            });
+        }
+        tooltip = maybe_tt;
+        action = ClickAction::Link {
+            href: link,
+            target: maybe_target,
+        };
+        p.skip_ws();
+        if p.i != p.end {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
+        }
+        return Ok(ClickStmt {
+            ids,
+            #[cfg(feature = "editor-facts")]
+            id_spans,
+            tooltip,
+            action,
+            #[cfg(feature = "editor-facts")]
+            editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
+            interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
+            recovery_error: None,
+        });
+    }
+
+    if p.rest().starts_with("call")
+        && p.rest()
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
+    {
+        #[cfg(feature = "editor-facts")]
+        let action_start = p.i;
+        let _ = p.take_word();
+        #[cfg(feature = "editor-facts")]
+        let action_end = p.i;
+        p.skip_ws();
+        #[cfg(feature = "editor-facts")]
+        let interaction_evidence = FlowchartClickEditorEvidence::new(
+            Some(SourceSpan::new(action_start, action_end)),
+            click_following_span(&p, action_end),
+        );
+        let start = p.i;
+        while let Some(ch) = p.rest().chars().next() {
+            if is_ecmascript_whitespace(ch) || ch == '(' {
+                break;
+            }
+            p.i += ch.len_utf8();
+        }
+        if p.i == start {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click statement")
+                }
+            });
+        }
+        p.skip_ws();
+        if p.peek() == Some(b'(') {
+            p.i += 1;
+            let Some(close) = p.rest().find(')') else {
+                return Err({
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        click_statement_error(
+                            "Unterminated click callback arguments",
+                            #[cfg(feature = "editor-facts")]
+                            interaction_evidence,
+                        )
+                    }
+                    #[cfg(not(feature = "editor-facts"))]
+                    {
+                        LexError::new("Unterminated click callback arguments")
+                    }
+                });
+            };
+            p.i += close + 1;
+        }
+
+        tooltip = p.take_quoted()?;
+        action = ClickAction::Callback;
+        p.skip_ws();
+        if p.i != p.end {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
+        }
+        return Ok(ClickStmt {
+            ids,
+            #[cfg(feature = "editor-facts")]
+            id_spans,
+            tooltip,
+            action,
+            #[cfg(feature = "editor-facts")]
+            editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
+            interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
+            recovery_error: None,
+        });
+    }
+
+    if let Some(link) = p.take_quoted()? {
+        #[cfg(feature = "editor-facts")]
+        let interaction_evidence = FlowchartClickEditorEvidence::new(None, after_target);
+        let maybe_tt = p.take_quoted()?;
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Invalid click target",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Invalid click target")
+                }
+            });
+        }
+        tooltip = maybe_tt;
+        action = ClickAction::Link {
+            href: link,
+            target: maybe_target,
+        };
+        p.skip_ws();
+        if p.i != p.end {
+            return Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    click_statement_error(
+                        "Unexpected content after click statement",
+                        #[cfg(feature = "editor-facts")]
+                        interaction_evidence,
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    LexError::new("Unexpected content after click statement")
+                }
+            });
+        }
+        return Ok(ClickStmt {
+            ids,
+            #[cfg(feature = "editor-facts")]
+            id_spans,
+            tooltip,
+            action,
+            #[cfg(feature = "editor-facts")]
+            editor_evidence: Default::default(),
+            #[cfg(feature = "editor-facts")]
+            interaction_evidence,
+            #[cfg(any(test, feature = "editor-facts"))]
+            recovery_error: None,
+        });
+    }
+
+    #[cfg(feature = "editor-facts")]
+    let function_start = p.i;
+    // A bare callback name is an INITIAL token. `call` has its own name and argument states.
+    p.reject_direction()?;
+    let Some(_function_name) = p.take_word() else {
+        return Err({
+            #[cfg(feature = "editor-facts")]
+            {
+                click_statement_error(
+                    "Invalid click statement",
+                    FlowchartClickEditorEvidence::new(after_target, None),
+                )
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                LexError::new("Invalid click statement")
+            }
+        });
+    };
+    #[cfg(feature = "editor-facts")]
+    let function_span = SourceSpan::new(function_start, p.i);
+    #[cfg(feature = "editor-facts")]
+    let interaction_evidence = if click_action_prefix(&_function_name) {
+        FlowchartClickEditorEvidence::new(Some(function_span), None)
+    } else {
+        FlowchartClickEditorEvidence::new(None, after_target)
+    };
+    tooltip = p.take_quoted()?;
+    action = ClickAction::Callback;
+    p.skip_ws();
+    if p.i != p.end {
+        return Err({
+            #[cfg(feature = "editor-facts")]
+            {
+                click_statement_error(
+                    "Unexpected content after click statement",
+                    #[cfg(feature = "editor-facts")]
+                    interaction_evidence,
+                )
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                LexError::new("Unexpected content after click statement")
+            }
+        });
+    }
+    Ok(ClickStmt {
+        ids,
+        #[cfg(feature = "editor-facts")]
+        id_spans,
+        tooltip,
+        action,
+        #[cfg(feature = "editor-facts")]
+        editor_evidence: Default::default(),
+        #[cfg(feature = "editor-facts")]
+        interaction_evidence,
+        #[cfg(any(test, feature = "editor-facts"))]
+        recovery_error: None,
+    })
+}
+
+pub(super) fn split_click_targets(
+    text: &str,
+    text_start: usize,
+) -> impl Iterator<Item = (&str, SourceSpan)> {
+    // Keep JavaScript split's empty entries so IDs and authored byte spans stay paired.
+    let mut cursor = text_start;
+    text.split(',').map(move |target| {
+        let span = SourceSpan::new(cursor, cursor + target.len());
+        cursor += target.len() + 1;
+        (target, span)
+    })
+}
+
+pub(super) fn parse_link_style_stmt(
+    rest: &str,
+    _rest_start: usize,
+) -> std::result::Result<LinkStyleStmt, LexError> {
+    let mut p = ClickParse::new(rest, SourceSpan::new(0, rest.len()));
+    p.skip_ws();
+    let Some(pos_raw) = p.take_word() else {
+        return Err(LexError::new("Invalid linkStyle statement".to_string()));
+    };
+
+    let positions = if pos_raw == "default" {
+        vec![LinkStylePos::Default]
+    } else {
+        pos_raw
+            .split(',')
+            .map(|s| {
+                let idx = s
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| LexError::new("Invalid linkStyle statement".to_string()))?;
+                Ok(LinkStylePos::Index(idx))
+            })
+            .collect::<std::result::Result<Vec<_>, LexError>>()?
+    };
+
+    p.skip_ws();
+    let mut interpolate: Option<String> = None;
+    if p.rest().starts_with("interpolate")
+        && p.rest()
+            .get("interpolate".len()..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
+    {
+        let _ = p.take_word();
+        interpolate = p.take_word();
+    }
+
+    // Mermaid's `linkStyle ... interpolate <curve> ...` still tokenizes the styles list without the
+    // leading whitespace between the curve name and the first style token. Keep the whitespace
+    // inside comma-separated tokens (handled by `parse_linkstyle_styles_list`), but drop the
+    // leading separator spaces at the list boundary.
+    p.skip_ws();
+    let styles = parse_linkstyle_styles_list(p.rest());
+    Ok(LinkStyleStmt {
+        positions,
+        interpolate,
+        styles,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_click_body(body: &str) -> Result<ClickStmt, LexError> {
+        parse_click_stmt(body, SourceSpan::new(0, body.len()))
+    }
+
+    #[test]
+    fn markdown_labels_preserve_valid_payloads_and_plain_backticks() {
+        for (raw, expected, expected_kind) in [
+            (r#""`""ok`""#, "ok", TitleKind::Markdown),
+            (r#""`ok`""""#, "ok", TitleKind::Markdown),
+            (r#""`""ok`""""#, "ok", TitleKind::Markdown),
+            ("\"\"\"ok\"", "ok", TitleKind::String),
+            ("\"ok\"\"\"", "ok", TitleKind::String),
+            (
+                "\"`first\n [雪] {text} (round) | -->\nlast`\"",
+                "first\n [雪] {text} (round) | -->\nlast",
+                TitleKind::Markdown,
+            ),
+            (
+                r#""`Path: C:\Temp\file\n`""#,
+                r#"Path: C:\Temp\file\n"#,
+                TitleKind::Markdown,
+            ),
+            ("\"` \n `\"", "", TitleKind::Markdown),
+            (
+                "\"first `code` last\"",
+                "first `code` last",
+                TitleKind::String,
+            ),
+            ("`first`", "`first`", TitleKind::Text),
+        ] {
+            for label in [parse_node_label_text(raw), parse_edge_text(raw)] {
+                let label = label.expect("valid Jison label token");
+                assert_eq!(label.text, expected, "{raw:?}");
+                assert_eq!(label.kind, expected_kind, "{raw:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_callback() {
+        let stmt = parse_click_body("A callback").unwrap();
+        assert_eq!(stmt.ids, vec!["A"]);
+        assert!(stmt.tooltip.is_none());
+        match stmt.action {
+            ClickAction::Callback => {}
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_call_callback_empty_args() {
+        let stmt = parse_click_body("A call callback()").unwrap();
+        assert_eq!(stmt.ids, vec!["A"]);
+        assert!(stmt.tooltip.is_none());
+        match stmt.action {
+            ClickAction::Callback => {}
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_call_callback_with_args() {
+        let stmt = parse_click_body("A call callback(\"test0\", test1, test2)").unwrap();
+        match stmt.action {
+            ClickAction::Callback => {}
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_link_and_tooltip_and_target() {
+        let stmt = parse_click_body("A \"click.html\" \"tooltip\" _blank").unwrap();
+        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
+        match stmt.action {
+            ClickAction::Link { href, target } => {
+                assert_eq!(href, "click.html");
+                assert_eq!(target.as_deref(), Some("_blank"));
+            }
+            _ => panic!("expected link action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_accepts_ecmascript_whitespace_without_corrupting_utf8_spans() {
+        for separator in [
+            "\u{0009}", "\u{000a}", "\u{000b}", "\u{000c}", "\u{000d}", "\u{0020}", "\u{00a0}",
+            "\u{1680}", "\u{2000}", "\u{2001}", "\u{2002}", "\u{2003}", "\u{2004}", "\u{2005}",
+            "\u{2006}", "\u{2007}", "\u{2008}", "\u{2009}", "\u{200a}", "\u{2028}", "\u{2029}",
+            "\u{202f}", "\u{205f}", "\u{3000}", "\u{feff}",
+        ] {
+            let prefix = "graph LR\nclick ";
+            let source = format!(
+                "{prefix}A{separator}href{separator}\"url\"{separator}\"tip\"{separator}_blank"
+            );
+            let stmt =
+                parse_click_stmt(&source, SourceSpan::new(prefix.len(), source.len())).unwrap();
+            assert_eq!(stmt.ids, vec!["A"]);
+            assert_eq!(stmt.tooltip.as_deref(), Some("tip"));
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(
+                stmt.id_spans[0],
+                SourceSpan::new(prefix.len(), prefix.len() + 1)
+            );
+            #[cfg(feature = "editor-facts")]
+            let expected_payload = format!("\"url\"{separator}\"tip\"{separator}_blank");
+            #[cfg(feature = "editor-facts")]
+            for expected in stmt.interaction_evidence.iter() {
+                let span = expected.span;
+                let actual = source
+                    .get(span.start..span.end)
+                    .expect("interaction spans must stay on UTF-8 character boundaries");
+                match expected.kind {
+                    crate::flowchart::FlowchartExpectationKind::InteractionAction => {
+                        #[cfg(feature = "editor-facts")]
+                        assert_eq!(actual, "href")
+                    }
+                    crate::flowchart::FlowchartExpectationKind::Payload => {
+                        assert_eq!(actual, expected_payload)
+                    }
+                    _ => panic!("unexpected click interaction evidence"),
+                }
+            }
+        }
+        assert!(parse_click_body("A\u{0085}href\u{0085}\"url\"").is_err());
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_href_link_and_tooltip_and_target() {
+        let stmt = parse_click_body("A href \"click.html\" \"tooltip\" _blank").unwrap();
+        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
+        match stmt.action {
+            ClickAction::Link { href, target } => {
+                assert_eq!(href, "click.html");
+                assert_eq!(target.as_deref(), Some("_blank"));
+            }
+            _ => panic!("expected link action"),
+        }
+    }
+
+    #[test]
+    fn click_direction_precedence_follows_jison_token_boundaries() {
+        use super::super::{Lexer, Tok};
+
+        for source in [
+            "click A href \"direction LR\"",
+            "click A \"direction LR\"",
+            "click A call \t f(direction LR)",
+            "click direction LR",
+            "click A,direction href\u{00a0}\"direction\nLR\" \"tip\" _blank",
+            "click A callback \"tip\u{2028}direction LR\"",
+            "click A callback \"direction BR\"",
+        ] {
+            assert!(
+                matches!(
+                    Lexer::new(source).next(),
+                    Some(Ok((_, Tok::ClickStmt(_), _)))
+                ),
+                "{source:?}"
+            );
+        }
+
+        for (source, value) in [
+            ("click A href \"url\" \"direction LR\"", "LR"),
+            ("click A callback \"direction LR\"", "LR"),
+            ("click A href  \"direction LR\"", "LR"),
+            ("click A \"url\" \"direction RL\"", "RL"),
+            ("click A call f() \"direction TD\"", "TD"),
+            ("click A\u{3000}\u{00a0}call f(direction BT)", "BT"),
+            (
+                "click A href \"direction TB\" \"tip; direction\nRLfoo\"",
+                "RL",
+            ),
+            ("click 雪 callbackdirection\n \u{00a0}LR", "LR"),
+        ] {
+            let Some(Err(error)) = Lexer::new(source).next() else {
+                panic!("expected a direction error for {source:?}");
+            };
+            let span = error.span.expect("direction value span");
+            assert_eq!(&source[span.start..span.end], value, "{source:?}");
+        }
+    }
+}

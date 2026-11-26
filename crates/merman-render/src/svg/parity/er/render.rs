@@ -1,6 +1,6 @@
 use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
-use super::markers::{ErMarkerDefs, er_unified_marker_id, write_er_marker_definitions};
+use merman_render_graph::er::{ErMarkerDefs, er_unified_marker_id, write_er_marker_definitions};
 #[cfg(feature = "layout-shoal")]
 mod canonical;
 mod swimlane;
@@ -749,7 +749,6 @@ pub(crate) fn render_er_diagram_svg_model(
         &mut out,
         ErMarkerDefs {
             diagram_id,
-            diagram_type,
             include_md_parent,
             canonical: uses_canonical_routes,
             neo: data_look == "neo",
@@ -955,11 +954,11 @@ pub(crate) fn render_er_diagram_svg_model(
             let start_marker_id = e
                 .start_marker
                 .as_deref()
-                .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker));
+                .map(|marker| er_unified_marker_id(diagram_id, marker));
             let end_marker_id = e
                 .end_marker
                 .as_deref()
-                .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker));
+                .map(|marker| er_unified_marker_id(diagram_id, marker));
             if let Some(marker) = &start_marker_id {
                 let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_attr(marker));
             }

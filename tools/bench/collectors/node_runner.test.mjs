@@ -89,7 +89,7 @@ const drawModule = `
   }
 `;
 
-test("Merman forwards the frozen ID on every bridge stage and marks no-options calls ineligible", (t) => {
+test("Merman forwards the frozen ID on every render stage and marks no-options calls ineligible", (t) => {
   const dir = project(t);
   const optionsJson = ' { "site_config": {"svg": {"string": "{\\\"}"}}, "\\u0073vg": { "pipeline": "readable" } } ';
   const explicit = (id) => optionsJson.replace('{ "pipeline"', `{"diagram_id":${JSON.stringify(id)}, "pipeline"`);
@@ -100,24 +100,31 @@ test("Merman forwards the frozen ID on every bridge stage and marks no-options c
       const sources = { first: 'fixed', second: 'rotating' };
       let draws = 0;
       let probes = 0;
-      let omitted;
+      let mode;
       let wrongRequest = false;
       const expected = ${JSON.stringify({ first: explicit("fixed"), second: explicit("rotating") })};
+      const matchesOptions = (source, opts) => {
+        if (mode === 'none') return opts === undefined;
+        if (!opts || Object.keys(opts).length !== 1) return false;
+        return mode === 'direct' ? opts.diagramId === sources[source] : opts.optionsJson === expected[source];
+      };
       return {
         runtimeCatalog: { package_version: "1.2.3" },
         renderSvgSync(source, opts) {
           draws++;
-          omitted ??= arguments.length === 1;
+          mode ??= arguments.length === 1 ? 'none' : (opts?.diagramId === undefined ? 'explicit' : 'direct');
           wrongRequest ||= draws % 2 !== (source === 'first' ? 1 : 0) ||
-              (omitted ? arguments.length !== 1 : opts?.optionsJson !== expected[source]);
-          return ${JSON.stringify(svg("ROOT"))}.replace('ROOT', omitted ? 'merman' : sources[source]);
+              arguments.length !== (mode === 'none' ? 1 : 2) || !matchesOptions(source, opts);
+          return ${JSON.stringify(svg("ROOT"))}.replace('ROOT', mode === 'none' ? 'merman' : sources[source]);
         },
         svgPlanJsonSync(source, opts) {
-          if (draws !== 8 || !sources[source] || opts?.optionsJson !== (omitted ? undefined : expected[source])) {
+          if (draws !== 8 || !sources[source] || !matchesOptions(source, opts)) {
             throw new Error('wrong layout probe');
           }
           probes++;
-          return JSON.stringify({ ready: true, diagram_type: 'flowchart-v2', required_capability_ids: ['layout-' + layout] });
+          return JSON.stringify(source === 'second'
+            ? { ready: true, diagram_type: 'sequence', required_capability_ids: ['svg'] }
+            : { ready: true, diagram_type: 'flowchart-v2', required_capability_ids: ['layout-' + layout] });
         },
         dispose() {
           if (draws !== 8 || probes !== 2 || wrongRequest) throw new Error('wrong render or layout probe');
@@ -127,26 +134,32 @@ test("Merman forwards the frozen ID on every bridge stage and marks no-options c
   `);
   const requests = [request("first", "fixed"), request("second", "rotating")];
   plan(dir, [{ id: "doc", requests }]);
-  for (const [label, text] of [["none", null], ["explicit", optionsJson]]) {
+  for (const [label, text] of [["none", null], ["explicit", optionsJson], ["direct", null]]) {
+    const direct = label === "direct";
+    const omitted = label === "none";
     const args = ["--variant-label", label, "--site-layout", "shoal", "--samples", "2",
       "--warmup-calls", "2", "--warmup-ms", "10000"];
     if (text !== null) args.push(`--options-json=${text}`);
+    if (direct) args.push("--direct-id");
     const { report, status, stderr } = run(dir, "merman", args);
     assert.equal(status, 0, stderr);
     assert.equal(report.engine, "merman");
-    assert.deepEqual(report.variant, { label, options_json: text, site_layout: "shoal" });
-    assert.equal(report.diagram_id_mode, text === null ? "omitted" : "plan");
+    assert.deepEqual(report.variant, { label, options_json: text, site_layout: "shoal",
+      ...(direct ? { direct_id: true } : {}) });
+    assert.equal(report.diagram_id_mode, omitted ? "omitted" : "plan");
     const [row] = report.scenarios;
     assert.deepEqual(row.requests.map((r) => r.diagram_id), ["fixed", "rotating"]);
     assert.equal(row.warmup.calls, 2);
-    assert.deepEqual(row.layout_plans, Array.from({ length: 2 }, () =>
-      ({ diagram_type: "flowchart-v2", required_capability_ids: ["layout-shoal"] })));
-    assert.equal(row.coverage.full_batch_comparable, text !== null);
+    assert.deepEqual(row.layout_plans, [
+      { diagram_type: "flowchart-v2", required_capability_ids: ["layout-shoal"] },
+      { diagram_type: "sequence", required_capability_ids: ["svg"] },
+    ]);
+    assert.equal(row.coverage.full_batch_comparable, !omitted);
     for (const batch of [row.cold_batch, ...row.warm_samples]) {
-      if (text === null) assert.equal(batch.complete_batch_ms, null);
+      if (omitted) assert.equal(batch.complete_batch_ms, null);
       for (const [i, result] of batch.results.entries()) {
-        const id = text === null ? "merman" : requests[i].diagram_id;
-        assert.equal(result.status, text === null ? "diagram-id-not-applied" : "ok");
+        const id = omitted ? "merman" : requests[i].diagram_id;
+        assert.equal(result.status, omitted ? "diagram-id-not-applied" : "ok");
         assert.equal(result.svg_root_id, id);
         assert.equal(result.output_sha256, sha256(svg(id)));
       }
@@ -155,6 +168,12 @@ test("Merman forwards the frozen ID on every bridge stage and marks no-options c
   const conflict = run(dir, "merman", ["--variant-label", "conflict", '--options-json={"svg":{"diagram_id":"fixed"}}']);
   assert.equal(conflict.status, 1);
   assert.match(conflict.report.scenarios[0].error, /svg\.diagram_id conflicts with frozen diagram_id "rotating"/u);
+  for (const [engine, args] of [["merman", []], ["pele", ["--variant-label", "peer"]],
+    ["merman", ["--variant-label", "conflict", "--options-json={}"]]]) {
+    const result = run(dir, engine, [...args, "--direct-id"]);
+    assert.equal(result.status, 1);
+    assert.match(result.report.error, /--direct-id requires a Merman variant without --options-json/u);
+  }
 });
 
 test("Merman fills nullable SVG options and passes normalized-id inputs verbatim to the SDK", (t) => {

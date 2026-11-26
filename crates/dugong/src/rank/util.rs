@@ -1,14 +1,30 @@
 //! Rank helpers (longest-path, slack).
 
 use crate::graphlib::{EdgeKey, Graph};
+use crate::rank::RankError;
 use crate::work::{checked_add, checked_mul};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use rustc_hash::FxHashMap as HashMap;
+use std::collections::hash_map::Entry;
 
+/// Ranks the graph directly using the longest-path compatibility API.
+///
+/// # Panics
+///
+/// Panics if rank arithmetic overflows or the traversal revisits an active node.
+/// Use [`crate::rank::rank`] with the `longest-path` ranker for typed errors.
 pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let mut work_control = crate::NoopWorkControl;
-    longest_path_controlled(g, &mut work_control)
-        .expect("rank arithmetic must fit the public longest-path compatibility API");
+    if let Err(error) = longest_path_controlled(g, &mut work_control) {
+        match error {
+            RankError::Work(error) => {
+                panic!(
+                    "rank arithmetic must fit the public longest-path compatibility API: {error:?}"
+                )
+            }
+            error => panic!("{}", crate::LayoutError::from(error)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +68,7 @@ fn longest_path_work_plan(
 pub(crate) fn longest_path_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn crate::WorkControl,
-) -> Result<(), crate::WorkError> {
+) -> Result<(), RankError> {
     let plan = longest_path_work_plan(g)?;
     work_control.charge(plan.work_units)?;
     crate::rank::validate_rank_arithmetic(g)?;
@@ -60,11 +76,15 @@ pub(crate) fn longest_path_controlled(
         g.prepare_adjacency_cache();
     }
     struct Frame {
-        v: String,
-        edges: Vec<EdgeKey>,
+        v_ix: usize,
         next_edge: usize,
         rank: Option<i128>,
-        incoming_minlen: Option<i128>,
+        incoming_minlen: usize,
+    }
+
+    enum Visit {
+        Active,
+        Complete(i32),
     }
 
     fn apply_candidate(rank: &mut Option<i128>, candidate: i128) {
@@ -74,49 +94,51 @@ pub(crate) fn longest_path_controlled(
         });
     }
 
-    let sources: Vec<String> = g.sources().into_iter().map(|s| s.to_string()).collect();
-    let mut visited: HashMap<String, i128> = HashMap::default();
+    let directed = g.is_directed();
+    let mut visits: HashMap<usize, Visit> = HashMap::default();
     let mut staged_ranks = Vec::with_capacity(g.node_count());
-    for v in sources {
-        if visited.contains_key(&v) {
+    let mut stack = Vec::new();
+    for v_ix in g.source_node_ixs() {
+        let Entry::Vacant(source) = visits.entry(v_ix) else {
             continue;
-        }
+        };
+        source.insert(Visit::Active);
 
-        let mut stack = vec![Frame {
-            edges: g.out_edges(&v, None),
-            v,
+        stack.push(Frame {
+            v_ix,
             next_edge: 0,
             rank: None,
-            incoming_minlen: None,
-        }];
+            incoming_minlen: 0,
+        });
 
         while let Some(frame) = stack.last_mut() {
-            if let Some(rank) = visited.get(frame.v.as_str()).copied() {
-                let incoming_minlen = frame.incoming_minlen;
-                let _ = stack.pop();
-                if let (Some(parent), Some(minlen)) = (stack.last_mut(), incoming_minlen) {
-                    apply_candidate(&mut parent.rank, rank - minlen);
-                }
-                continue;
-            }
-
-            if frame.next_edge < frame.edges.len() {
-                let edge = frame.edges[frame.next_edge].clone();
+            let edge = if directed {
+                g.out_edge_entry_ix_at(frame.v_ix, frame.next_edge)
+            } else {
+                // Match Graphlib's undirected out_edges: follow the canonical `w` endpoint.
+                g.undirected_edge_entry_ix_at(frame.v_ix, frame.next_edge)
+            };
+            if let Some((_, w_ix, _, label)) = edge {
                 frame.next_edge += 1;
-                let minlen = g
-                    .edge_by_key(&edge)
-                    .map(|lbl| lbl.minlen as i128)
-                    .unwrap_or(1);
-                if let Some(child_rank) = visited.get(edge.w.as_str()).copied() {
-                    apply_candidate(&mut frame.rank, child_rank - minlen);
-                } else {
-                    stack.push(Frame {
-                        edges: g.out_edges(&edge.w, None),
-                        v: edge.w,
-                        next_edge: 0,
-                        rank: None,
-                        incoming_minlen: Some(minlen),
-                    });
+                match visits.entry(w_ix) {
+                    Entry::Occupied(child) => match child.get() {
+                        Visit::Active => return Err(RankError::RankTraversalCycle),
+                        Visit::Complete(rank) => {
+                            apply_candidate(
+                                &mut frame.rank,
+                                i128::from(*rank) - label.minlen as i128,
+                            );
+                        }
+                    },
+                    Entry::Vacant(child) => {
+                        child.insert(Visit::Active);
+                        stack.push(Frame {
+                            v_ix: w_ix,
+                            next_edge: 0,
+                            rank: None,
+                            incoming_minlen: label.minlen,
+                        });
+                    }
                 }
                 continue;
             }
@@ -126,12 +148,10 @@ pub(crate) fn longest_path_controlled(
             };
             let rank = frame.rank.unwrap_or(0);
             let rank_i32 = i32::try_from(rank).map_err(|_| crate::WorkError::ArithmeticOverflow)?;
-            if let Some(node_ix) = g.node_ix(&frame.v) {
-                staged_ranks.push((node_ix, rank_i32));
-            }
-            visited.insert(frame.v, rank);
-            if let (Some(parent), Some(minlen)) = (stack.last_mut(), frame.incoming_minlen) {
-                apply_candidate(&mut parent.rank, rank - minlen);
+            staged_ranks.push((frame.v_ix, rank_i32));
+            visits.insert(frame.v_ix, Visit::Complete(rank_i32));
+            if let Some(parent) = stack.last_mut() {
+                apply_candidate(&mut parent.rank, rank - frame.incoming_minlen as i128);
             }
         }
     }
@@ -261,6 +281,69 @@ mod tests {
     }
 
     #[test]
+    fn longest_path_rejects_a_raw_undirected_edge_in_both_public_entries() {
+        let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
+            directed: false,
+            ..GraphOptions::default()
+        });
+        graph.graph_mut().ranker = Some("longest-path".to_owned());
+        graph.set_edge("a", "b");
+        graph.node_mut("a").unwrap().rank = Some(17);
+        let source_ranks = rank_snapshot(&graph);
+
+        assert_eq!(
+            crate::rank::rank(&mut graph),
+            Err(crate::LayoutError::RankTraversalCycle)
+        );
+        assert_eq!(rank_snapshot(&graph), source_ranks);
+        let compatibility =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| longest_path(&mut graph)));
+        assert!(compatibility.is_err());
+        assert_eq!(rank_snapshot(&graph), source_ranks);
+    }
+
+    #[test]
+    fn longest_path_rejects_a_reachable_back_edge_after_admission() {
+        let mut graph = graph_with_nodes(&["start", "sink", "a", "b"]);
+        graph.graph_mut().ranker = Some("tight-tree".to_owned());
+        graph.set_edge("start", "sink");
+        graph.set_edge("start", "a");
+        graph.set_edge("a", "b");
+        graph.set_edge("b", "a");
+        graph.node_mut("sink").unwrap().rank = Some(17);
+        let source_ranks = rank_snapshot(&graph);
+        let units = longest_path_work_plan(&graph).unwrap().work_units;
+
+        graph.edge_mut("b", "a", None).unwrap().minlen = i32::MAX as usize + 1;
+        let mut rejected = RecordingWorkControl::with_limit(units - 1);
+        assert_eq!(
+            crate::rank::rank_controlled(&mut graph, &mut rejected),
+            Err(RankError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(rejected.charges, [units]);
+        assert_eq!(rejected.remaining, Some(units - 1));
+        assert!(!graph.is_adjacency_cache_current());
+
+        let mut invalid = RecordingWorkControl::with_limit(units);
+        assert_eq!(
+            crate::rank::rank_controlled(&mut graph, &mut invalid),
+            Err(RankError::Work(WorkError::ArithmeticOverflow))
+        );
+        assert_eq!(invalid.charges, [units]);
+        assert!(!graph.is_adjacency_cache_current());
+
+        graph.edge_mut("b", "a", None).unwrap().minlen = 1;
+        let mut admitted = RecordingWorkControl::with_limit(units);
+        assert_eq!(
+            crate::rank::rank_controlled(&mut graph, &mut admitted),
+            Err(RankError::RankTraversalCycle)
+        );
+        assert_eq!(admitted.charges, [units]);
+        assert_eq!(admitted.remaining, Some(0));
+        assert_eq!(rank_snapshot(&graph), source_ranks);
+    }
+
+    #[test]
     fn longest_path_rejects_before_cold_csr_or_rank_mutation() {
         let mut rejected_graph = chain_graph();
         rejected_graph.for_each_node_mut(|_id, node| node.rank = Some(17));
@@ -272,7 +355,7 @@ mod tests {
         let mut rejected = RecordingWorkControl::with_limit(plan.work_units - 1);
         assert_eq!(
             longest_path_controlled(&mut rejected_graph, &mut rejected),
-            Err(WorkError::Interrupted)
+            Err(RankError::Work(WorkError::Interrupted))
         );
         assert_eq!(rejected.charges, [plan.work_units]);
         assert_eq!(rejected.remaining, Some(plan.work_units - 1));
@@ -343,7 +426,7 @@ mod tests {
 
         assert_eq!(
             longest_path_controlled(&mut graph, &mut work_control),
-            Err(WorkError::ArithmeticOverflow)
+            Err(RankError::Work(WorkError::ArithmeticOverflow))
         );
         assert_eq!(work_control.charges, [plan.work_units]);
         assert_eq!(work_control.remaining, Some(0));

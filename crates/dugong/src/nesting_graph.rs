@@ -141,22 +141,18 @@ fn add_child_nesting_edges(
     bottom: &str,
     child: &str,
 ) -> Result<(), WorkError> {
-    let child_node = g.node(child).cloned().unwrap_or_default();
-    let child_top = child_node
-        .border_top
-        .as_deref()
+    let borders = g.node(child).and_then(|node| node.compound.as_deref());
+    let child_top = borders.and_then(|borders| borders.border_top.as_deref());
+    let child_bottom = borders
+        .and_then(|borders| borders.border_bottom.as_deref())
         .unwrap_or(child)
         .to_string();
-    let child_bottom = child_node
-        .border_bottom
-        .as_deref()
-        .unwrap_or(child)
-        .to_string();
-    let this_weight = if child_node.border_top.is_some() {
+    let this_weight = if child_top.is_some() {
         ctx.weight
     } else {
         2.0 * ctx.weight
     };
+    let child_top = child_top.unwrap_or(child).to_string();
     let minlen = if child_top != child_bottom {
         1usize
     } else {
@@ -242,10 +238,9 @@ fn nesting_dfs(
                 parent_assignments.push((bottom_ix, parent_ix));
 
                 if let Some(lbl) = g.node_mut(&v) {
-                    lbl.border_top = Some(top.clone());
-                }
-                if let Some(lbl) = g.node_mut(&v) {
-                    lbl.border_bottom = Some(bottom.clone());
+                    let compound = lbl.compound_mut();
+                    compound.border_top = Some(top.clone());
+                    compound.border_bottom = Some(bottom.clone());
                 }
 
                 stack.push(NestingDfsFrame::LinkRoot {
@@ -610,12 +605,12 @@ mod tests {
 
         run(&mut graph);
 
-        let cluster = graph.node("cluster").cloned().expect("cluster label");
-        let top = cluster.border_top.expect("top border");
-        let bottom = cluster.border_bottom.expect("bottom border");
+        let cluster = graph.node("cluster").unwrap().compound.as_deref().unwrap();
+        let top = cluster.border_top.as_deref().expect("top border");
+        let bottom = cluster.border_bottom.as_deref().expect("bottom border");
         assert_eq!(
             graph.children("cluster"),
-            vec!["first", "second", top.as_str(), bottom.as_str()]
+            vec!["first", "second", top, bottom]
         );
     }
 }

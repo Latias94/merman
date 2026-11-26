@@ -1406,7 +1406,7 @@ mod tests {
 
         fvar[second..second + 4].copy_from_slice(b"wdth");
         let fixed_value = (100_i32 << 16).to_be_bytes();
-        for bytes in fvar[second + 4..second + 16].chunks_exact_mut(4) {
+        for bytes in fvar[second + 4..second + 16].as_chunks_mut::<4>().0 {
             bytes.copy_from_slice(&fixed_value);
         }
         let fixed_width = fvar::Table::parse(&fvar).unwrap();
@@ -1685,8 +1685,9 @@ mod tests {
         let variable = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
         let mut replacement = variable.to_vec();
         let count = usize::from(u16::from_be_bytes(replacement[4..6].try_into().unwrap()));
-        let fvar = replacement[12..12 + count * 16]
-            .chunks_exact_mut(16)
+        let (records, _) = replacement[12..12 + count * 16].as_chunks_mut::<16>();
+        let fvar = records
+            .iter_mut()
             .find(|record| &record[..4] == b"fvar")
             .unwrap();
         // Keep the sorted directory and physical names, but remove the variation axis table.

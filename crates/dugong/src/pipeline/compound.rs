@@ -11,17 +11,20 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
         .map(|s| s.to_string())
         .collect();
     for v in &compound_nodes {
-        let Some(node) = g.node(v).cloned() else {
+        let Some(compound) = g.node(v).and_then(|node| node.compound.as_deref()) else {
             continue;
         };
-        let (Some(bt), Some(bb)) = (node.border_top.clone(), node.border_bottom.clone()) else {
+        let (Some(bt), Some(bb)) = (
+            compound.border_top.as_deref(),
+            compound.border_bottom.as_deref(),
+        ) else {
             continue;
         };
 
-        let Some(t) = g.node(&bt) else {
+        let Some(t) = g.node(bt) else {
             continue;
         };
-        let Some(b) = g.node(&bb) else {
+        let Some(b) = g.node(bb) else {
             continue;
         };
         let (Some(ty), Some(by)) = (t.y, b.y) else {
@@ -32,7 +35,7 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
         // Using only the last border node can over-estimate geometry when border nodes drift
         // across ranks (notably in extracted subgraphs without external edges).
         let mut lx: f64 = f64::INFINITY;
-        for id in node.border_left.iter().filter_map(|v| v.as_ref()) {
+        for id in compound.border_left.iter().flatten() {
             let Some(n) = g.node(id) else {
                 continue;
             };
@@ -42,7 +45,7 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
             lx = lx.min(x);
         }
         let mut rx: f64 = f64::NEG_INFINITY;
-        for id in node.border_right.iter().filter_map(|v| v.as_ref()) {
+        for id in compound.border_right.iter().flatten() {
             let Some(n) = g.node(id) else {
                 continue;
             };

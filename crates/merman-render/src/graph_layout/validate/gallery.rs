@@ -351,7 +351,7 @@ fn check_unmarked_departure(
     if marker == FlowEdgeMarker::None
         && path.attribute("data-look") != Some("handDrawn")
         && matches!(
-            shape.and_then(|name| Shape::resolve(name).ok()),
+            shape.and_then(Shape::resolve),
             Some(
                 Shape::Diamond
                     | Shape::Choice

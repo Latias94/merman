@@ -1,0 +1,22 @@
+[package]
+name = "merman-render-flow"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shape vocabulary and geometry for Merman's flow diagram renderers."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
+
+[dependencies]
+dugong = { workspace = true, optional = true }
+kurbo.workspace = true
+merman-render-core.workspace = true
+serde_json = { workspace = true, optional = true }

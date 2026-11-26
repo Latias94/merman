@@ -433,10 +433,15 @@ fn node_render_dimensions(
     let p = padding.max(0.0);
 
     let shape = layout_shape.unwrap_or("squareRect");
-    let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
+    let resolved_shape = super::resolve_flowchart_shape(shape)
         .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
     if let crate::flowchart::FlowchartShape::Bpmn(shape) = resolved_shape {
-        let geometry = shape.geometry(metrics, text_h > 0.0, false, false);
+        let geometry = shape.geometry(
+            kurbo::Size::new(metrics.width, metrics.height),
+            text_h > 0.0,
+            false,
+            false,
+        );
         return (geometry.width, geometry.height);
     }
 
@@ -1442,7 +1447,7 @@ impl NodeLayoutDimensionsRequest<'_> {
     ) -> crate::Result<((f64, f64), Option<PreparedFlowchartNodeGeometry>)> {
         use super::FlowchartShape;
 
-        let shape = FlowchartShape::resolve(self.layout_shape.unwrap_or("squareRect"))?;
+        let shape = super::resolve_flowchart_shape(self.layout_shape.unwrap_or("squareRect"))?;
         let (geometry, size) = if shape == FlowchartShape::ImageSquare
             && let Some(href) = self.node_img.filter(|href| !href.trim().is_empty())
         {
@@ -1510,7 +1515,7 @@ fn node_layout_dimensions(
 
     if let crate::flowchart::FlowchartShape::Bpmn(shape) = resolved_shape {
         let geometry = shape.geometry(
-            metrics,
+            kurbo::Size::new(metrics.width, metrics.height),
             has_label,
             node_icon.is_some_and(|icon| !icon.is_empty()),
             false,

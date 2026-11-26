@@ -725,7 +725,6 @@ mod tests {
     use super::*;
     use crate::model::{LayoutEdge, LayoutPoint};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use std::cell::{Cell, RefCell};
     use std::fmt;
     use std::ops::Range;
 
@@ -798,7 +797,7 @@ mod tests {
                     description: "Alice".to_string(),
                     actor_type: "participant".to_string(),
                     wrap: false,
-                    links: serde_json::Map::new(),
+                    links: Default::default(),
                     properties: serde_json::Map::new(),
                 },
             ),
@@ -809,7 +808,7 @@ mod tests {
                     description: "Bob".to_string(),
                     actor_type: "participant".to_string(),
                     wrap: false,
-                    links: serde_json::Map::new(),
+                    links: Default::default(),
                     properties: serde_json::Map::new(),
                 },
             ),
@@ -905,11 +904,7 @@ mod tests {
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
         let typography = default_sequence_typography(&sanitize_config);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let projection = SvgDiagramIdProjection {
-            work_meter: &meter,
-            projected_bytes: Cell::new(0),
-            error: RefCell::new(None),
-        };
+        let projection = SvgDiagramIdProjection::new(&meter);
         let ctx = SequenceMessageRenderContext {
             model: &model,
             nodes_by_id: &nodes_by_id,
@@ -918,10 +913,9 @@ mod tests {
             sanitize_config: &sanitize_config,
             measurer: &measurer,
             message_align: "center",
-            diagram_id: SvgDiagramId {
-                value: "sequence-sink-failure",
-                projection: &projection,
-            },
+            diagram_id: SvgDiagramId::new("sequence-sink-failure")
+                .unwrap()
+                .with_projection(&projection),
             actor_height: 65.0,
             sequence_width: 150.0,
             activation_width: 10.0,

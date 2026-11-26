@@ -1,17 +1,19 @@
+use super::repulsion_grid::RepulsionGrid;
+use super::spring_embedder::{for_each_owner_local_pair, owner_local_pair_work};
 use super::{
     BoundsExtras, CompoundTopology, Constraints, DisjointSet, FcoseConstraintWorkShape,
     FcoseIterationSchedule, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource, FcoseWorkPlan,
     IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions, IndexedGraph,
     IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, NoopWorkControl, RelConstraint,
-    RepulsionGrid, RepulsionGridPlan, RepulsionGridStorageKind, SimGraph, SimNode, Vec2,
-    WorkControl, XorShift64Star, admit_dynamic_work, apply_reflection_for_relative_placement,
-    for_each_owner_local_pair, layout, layout_indexed,
-    layout_indexed_with_random_policy_and_work_control, new_fcose_random, owner_local_pair_work,
+    RepulsionGridPlan, RepulsionGridStorageKind, SimGraph, SimNode, Vec2, WorkControl,
+    XorShift64Star, apply_reflection_for_relative_placement, layout, layout_indexed,
+    layout_indexed_with_random_policy_and_work_control, new_fcose_random,
     procrustes_transform_for_alignments, reset_fcose_random_for_run,
 };
 use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
 use crate::error::{Error, WorkFailure};
 use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
+use crate::work::admit_dynamic_work;
 
 #[derive(Default)]
 struct RecordingWorkControl {
@@ -2288,6 +2290,108 @@ fn repulsion_grid_storage_variants_preserve_surrounding_order() {
 }
 
 #[test]
+fn repulsion_grid_scan_promotion_precedes_per_node_admission() {
+    let repulsion_range = 10.0;
+    let node_order = [0, 1];
+    // The candidate implicit charge is six. A scan total of exactly six keeps the sparse
+    // grid, while seven promotes it before either per-node admission.
+    for (width, charges, promoted) in [(1.0, &[3, 3][..], false), (11.0, &[6][..], true)] {
+        let mut nodes = [node_at(10.0, 0.0, width, 1.0), node_at(10.0, 0.0, 1.0, 1.0)];
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            40.0,
+            1.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Sparse);
+        let mut grid = RepulsionGrid::build_from_plan(
+            None,
+            plan,
+            0.0,
+            0.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap();
+        let mut control = RejectingPreflight {
+            reject_on_check: usize::MAX,
+            ..RejectingPreflight::default()
+        };
+        grid.prepare_refresh(&nodes, &node_order, true, &mut control)
+            .unwrap();
+
+        assert_eq!(control.checks, charges);
+        assert_eq!(control.charges, charges);
+        assert_eq!(
+            matches!(grid.cells, super::RepulsionGridCells::Implicit { .. }),
+            promoted
+        );
+    }
+}
+
+#[test]
+fn rejected_late_repulsion_grid_promotion_preserves_prepared_counts() {
+    let repulsion_range = 10.0;
+    let mut nodes: [SimNode; 3] = std::array::from_fn(|_| node_at(0.0, 0.0, 30.0, 1.0));
+    let node_order = [2, 0, 1];
+    let plan =
+        RepulsionGridPlan::from_geometry(0.0, 0.0, 30.0, 1.0, &nodes, repulsion_range, &node_order)
+            .unwrap()
+            .unwrap();
+    assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+    let mut grid = RepulsionGrid::build_from_plan(
+        None,
+        plan,
+        0.0,
+        0.0,
+        &mut nodes,
+        repulsion_range,
+        &node_order,
+    )
+    .unwrap();
+    grid.prepare_refresh(&nodes, &[0], false, &mut NoopWorkControl)
+        .unwrap();
+
+    let mut rejecting = RejectingPreflight {
+        reject_on_check: 4,
+        ..RejectingPreflight::default()
+    };
+    assert_eq!(
+        grid.prepare_refresh(&nodes, &node_order, true, &mut rejecting),
+        Err(WorkFailure::Interrupted)
+    );
+    assert_eq!(rejecting.checks, [3, 3, 3, 21]);
+    assert_eq!(rejecting.charges, [3, 3, 3]);
+    assert!(matches!(grid.cells, super::RepulsionGridCells::Dense(_)));
+
+    let mut after = RecordingWorkControl::default();
+    let mut seen = [0; 3];
+    let mut seen_generation = 0;
+    for idx in [2, 0] {
+        grid.refresh_node_surrounding(
+            idx,
+            &mut nodes,
+            &[0; 3],
+            1,
+            repulsion_range,
+            &mut seen,
+            &mut seen_generation,
+            &mut after,
+        )
+        .unwrap();
+    }
+    assert_eq!(after.charges, [9]);
+    assert_eq!(nodes[2].surrounding, [0, 1]);
+    assert_eq!(nodes[0].surrounding, [2, 1]);
+}
+
+#[test]
 fn repulsion_grid_promotes_cubic_materialized_queries_to_implicit() {
     fn assert_promoted(node_count: usize) {
         let repulsion_range = 10.0;
@@ -2461,6 +2565,58 @@ fn relative_placement_gap_is_center_to_center() {
     apply_constraints_to_displacements(&nodes, &c, &mut disps, 1e9);
     let gap = (nodes[1].center_x() + disps[1].0) - (nodes[0].center_x() + disps[0].0);
     assert!((gap - 50.0).abs() < 1e-9, "gap: got {gap}");
+}
+
+#[test]
+fn relative_placement_generic_projection_preserves_chain_gaps_and_admission() {
+    let node_count = 65;
+    let mut nodes: Vec<SimNode> = (0..node_count)
+        .map(|index| node_at(index as f64 * 0.7, 0.0, 10.0, 10.0))
+        .collect();
+    let constraints = Constraints {
+        align_horizontal: Vec::new(),
+        align_vertical: Vec::new(),
+        relative: (1..node_count)
+            .map(|index| RelConstraint {
+                left: Some(index - 1),
+                right: Some(index),
+                top: None,
+                bottom: None,
+                gap: 3.0,
+            })
+            .collect(),
+    };
+    let mut control = RecordingWorkControl {
+        reject_after: Some(node_count - 1),
+        ..RecordingWorkControl::default()
+    };
+    let mut interrupted = nodes.clone();
+    assert_eq!(
+        super::handle_constraints_pre_layout(&mut interrupted, &constraints, &mut control),
+        Err(WorkFailure::Interrupted)
+    );
+    assert!(control.charges.iter().copied().eq(2..=node_count));
+    for (interrupted, original) in interrupted.iter().zip(&nodes) {
+        assert_eq!(
+            (interrupted.left, interrupted.top),
+            (original.left, original.top)
+        );
+    }
+
+    let mut control = RecordingWorkControl::default();
+    super::handle_constraints_pre_layout(&mut nodes, &constraints, &mut control)
+        .expect("generic relative projection");
+
+    for pair in nodes.windows(2) {
+        let gap = pair[1].center_x() - pair[0].center_x();
+        assert!((gap - 3.0).abs() < 1e-9, "unexpected chain gap: {gap}");
+    }
+    assert!(
+        control
+            .charges
+            .into_iter()
+            .eq((2..=node_count).chain([node_count]))
+    );
 }
 
 #[test]

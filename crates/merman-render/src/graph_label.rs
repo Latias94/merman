@@ -1,4 +1,5 @@
 use crate::html::label_box::{HtmlLabelBox, HtmlLabelWidth};
+#[cfg(feature = "markdown-labels")]
 use crate::math::MathRenderer;
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
@@ -25,6 +26,7 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) measurer: &'a dyn TextMeasurer,
     pub(crate) raw_label: &'a str,
@@ -55,22 +57,24 @@ pub(crate) fn flowchart_node_label_min_width(
     if raw_label.is_empty()
         || matches!(
             shape,
-            Ok(FlowchartShape::Anchor
-                | FlowchartShape::Circle
-                | FlowchartShape::Choice
-                | FlowchartShape::CrossedCircle
-                | FlowchartShape::DoubleCircle
-                | FlowchartShape::FilledCircle
-                | FlowchartShape::ForkJoin
-                | FlowchartShape::FramedCircle
-                | FlowchartShape::SmallCircle
-                | FlowchartShape::LightningBolt
-                | FlowchartShape::Icon
-                | FlowchartShape::IconCircle
-                | FlowchartShape::IconRounded
-                | FlowchartShape::IconSquare
-                | FlowchartShape::ImageSquare
-                | FlowchartShape::CollapsedGroup)
+            Some(
+                FlowchartShape::Anchor
+                    | FlowchartShape::Circle
+                    | FlowchartShape::Choice
+                    | FlowchartShape::CrossedCircle
+                    | FlowchartShape::DoubleCircle
+                    | FlowchartShape::FilledCircle
+                    | FlowchartShape::ForkJoin
+                    | FlowchartShape::FramedCircle
+                    | FlowchartShape::SmallCircle
+                    | FlowchartShape::LightningBolt
+                    | FlowchartShape::Icon
+                    | FlowchartShape::IconCircle
+                    | FlowchartShape::IconRounded
+                    | FlowchartShape::IconSquare
+                    | FlowchartShape::ImageSquare
+                    | FlowchartShape::CollapsedGroup
+            )
         )
     {
         return 0.0;
@@ -181,6 +185,11 @@ pub(crate) fn flowchart_svg_source_word_lines_plain_text(lines: &[Vec<String>]) 
         }
     }
     out
+}
+
+pub(crate) fn flowchart_non_markdown_svg_plain_text(label: &str) -> String {
+    let word_lines = flowchart_non_markdown_svg_source_word_lines(label);
+    flowchart_svg_source_word_lines_plain_text(&word_lines)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -633,12 +642,14 @@ pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
     label.is_empty()
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn flowchart_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
 ) -> crate::text::TextMetrics {
     flowchart_label_metrics_with_html_geometry(request, HtmlTextGeometryDeclarations::default())
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn flowchart_label_metrics_with_html_geometry(
     request: FlowchartLabelMetricsRequest<'_>,
     geometry: HtmlTextGeometryDeclarations,
@@ -678,6 +689,7 @@ pub(crate) fn flowchart_label_metrics_with_html_geometry(
     }
 }
 
+#[cfg(feature = "markdown-labels")]
 fn flowchart_math_label_metrics_for_layout(
     request: &FlowchartLabelMetricsRequest<'_>,
 ) -> Option<crate::text::TextMetrics> {
@@ -731,7 +743,7 @@ pub(crate) fn flowchart_label_sanitize_config(
 }
 
 /// Measures the exact sanitized XHTML retained for the corresponding HTML-label terminal.
-#[cfg(test)]
+#[cfg(all(test, feature = "markdown-labels"))]
 pub(crate) fn flowchart_html_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
@@ -743,6 +755,7 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
     )
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn flowchart_html_label_metrics_with_geometry(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
@@ -791,6 +804,7 @@ pub(crate) fn flowchart_html_label_box(
     .flatten()
 }
 
+#[cfg(feature = "markdown-labels")]
 fn flowchart_html_label_content_metrics(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
@@ -1283,6 +1297,7 @@ pub(crate) fn flowchart_non_markdown_label_for_html<'a>(
     Cow::Owned(out)
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn flowchart_label_plain_text_for_layout(
     label: &str,
     label_type: &str,
@@ -1499,8 +1514,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         }
         _ => {
             if !html_labels {
-                let word_lines = flowchart_non_markdown_svg_source_word_lines(label);
-                return flowchart_svg_source_word_lines_plain_text(&word_lines);
+                return flowchart_non_markdown_svg_plain_text(label);
             }
 
             let normalized = label.replace("\r\n", "\n");
@@ -1631,7 +1645,7 @@ pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> Co
             cursor = start + 1;
             continue;
         }
-        let Some(end) = crate::svg::scanner::find_tag_end(input, start) else {
+        let Some(end) = merman_render_core::svg_scan::find_tag_end(input, start) else {
             cursor = start;
             break;
         };
@@ -1672,12 +1686,13 @@ pub(crate) fn is_single_img_label(label: &str) -> bool {
     if !starts_with_img_tag(label) {
         return false;
     }
-    let Some(end) = crate::svg::scanner::find_tag_end(label, 0) else {
+    let Some(end) = merman_render_core::svg_scan::find_tag_end(label, 0) else {
         return false;
     };
     flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
 }
 
+#[cfg(feature = "markdown-labels")]
 pub(crate) fn flowchart_label_html_source(
     label: &str,
     label_type: &str,

@@ -1,4 +1,3 @@
-use super::super::markers::er_marker_paint_bounds;
 use crate::er::ErCssBinding;
 use crate::graph_layout::{canonical::CanonicalRoutes, route_paint::RouteStyle};
 use crate::model::{LayoutEdge, LayoutPoint};
@@ -6,6 +5,7 @@ use crate::resources::OperationWorkMeter;
 use crate::svg::parity::{canonical_rough::constrained_rough_edge_path, svg_path_bounds_from_d};
 use crate::{Error, Result};
 use kurbo::{Rect, Vec2};
+use merman_render_graph::er::er_marker_paint_bounds;
 use roughr::core::RoughRandomness;
 
 pub(super) struct PaintedEdge {

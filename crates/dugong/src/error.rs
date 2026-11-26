@@ -1,9 +1,9 @@
-//! Public failures from the complete Dagre layout pipeline.
+//! Public failures from Dagre ranking and layout.
 
 use crate::WorkError;
 use crate::graphlib::EdgeKey;
 
-/// Failure returned by the complete Dagre layout pipeline.
+/// Failure returned by Dagre ranking or the complete layout pipeline.
 ///
 /// Low-level rank helpers and the complete pipeline preserve `minlen = 0`, matching Mermaid's
 /// dagre-d3-es companion. Rankers that leave an edge endpoint and its route point coincident fail
@@ -11,8 +11,13 @@ use crate::graphlib::EdgeKey;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LayoutError {
-    DegenerateEdgeGeometry { edge: EdgeKey, node: String },
+    DegenerateEdgeGeometry {
+        edge: EdgeKey,
+        node: String,
+    },
     InvalidNetworkSimplexTree,
+    /// The longest-path traversal followed an edge to a node already on its active path.
+    RankTraversalCycle,
     Work(WorkError),
 }
 
@@ -33,6 +38,9 @@ impl std::fmt::Display for LayoutError {
             Self::InvalidNetworkSimplexTree => {
                 f.write_str("network simplex encountered an invalid mutable tree state")
             }
+            Self::RankTraversalCycle => {
+                f.write_str("longest-path rank traversal encountered a cycle")
+            }
             Self::Work(error) => error.fmt(f),
         }
     }
@@ -42,7 +50,9 @@ impl std::error::Error for LayoutError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Work(error) => Some(error),
-            Self::DegenerateEdgeGeometry { .. } | Self::InvalidNetworkSimplexTree => None,
+            Self::DegenerateEdgeGeometry { .. }
+            | Self::InvalidNetworkSimplexTree
+            | Self::RankTraversalCycle => None,
         }
     }
 }

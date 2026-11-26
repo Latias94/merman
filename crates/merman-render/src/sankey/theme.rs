@@ -4,15 +4,13 @@ use std::sync::Arc;
 
 use merman_model::OperationPhase;
 use merman_model::presentation::PresentationConfig;
+use merman_render_charts::sankey::{SankeyConfigView, SankeyRenderSettings};
 
 use crate::Result;
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::svg::PreparedCommonCss;
 use crate::theme::{Color, FamilyTheme};
-
-use super::SankeyConfigView;
-use super::config::SankeyRenderSettings;
 
 const TABLEAU10: [&str; 10] = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",

@@ -22,8 +22,15 @@ use std::num::NonZeroU64;
 #[cfg(test)]
 use std::rc::Rc;
 use std::sync::Arc;
+#[cfg(feature = "layout-shoal")]
+use std::sync::Weak;
 use std::sync::atomic::{AtomicU64, Ordering};
 use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(feature = "layout-shoal")]
+mod shoal_scratch;
+#[cfg(feature = "layout-shoal")]
+use shoal_scratch::ShoalScratchPool;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
@@ -1742,6 +1749,8 @@ pub struct RenderEnvironment {
     icon_registry: Option<IconRegistry>,
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
+    #[cfg(feature = "layout-shoal")]
+    shoal_scratch: Option<Arc<ShoalScratchPool>>,
     font_catalog: FontCatalog,
     font_source_policy: FontSourcePolicy,
     trusted_theme_css: bool,
@@ -1784,6 +1793,8 @@ impl RenderEnvironment {
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
+            #[cfg(feature = "layout-shoal")]
+            shoal_scratch: None,
             font_catalog: FontCatalog::system_fonts(),
             font_source_policy: FontSourcePolicy::default(),
             trusted_theme_css: false,
@@ -1851,6 +1862,17 @@ impl RenderEnvironment {
 
     pub const fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
         self.resource_policy = policy;
+        self
+    }
+
+    /// Reuses row storage on independent, flat, natural-width Shoal layouts.
+    ///
+    /// This environment and its clones share one idle slot with at most 64 KiB of row storage.
+    /// Keep an environment alive across operations to reuse it. Each operation still owns its
+    /// session and resource accounting, and preview frames keep their own storage.
+    #[cfg(feature = "layout-shoal")]
+    pub fn with_shoal_scratch_reuse(mut self) -> Self {
+        self.shoal_scratch.get_or_insert_with(Arc::default);
         self
     }
 
@@ -1953,6 +1975,11 @@ impl RenderEnvironment {
                 self.resource_policy,
                 control,
             )),
+            #[cfg(feature = "layout-shoal")]
+            shoal_scratch: self
+                .shoal_scratch
+                .as_ref()
+                .map_or_else(Weak::new, Arc::downgrade),
             font_catalog: self.font_catalog.clone(),
             font_source_policy: self.font_source_policy.clone(),
             trusted_theme_css: self.trusted_theme_css,
@@ -1980,6 +2007,9 @@ pub struct RenderSession {
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
+    // A prepared artifact can outlive its operation's environment without retaining the pool.
+    #[cfg(feature = "layout-shoal")]
+    shoal_scratch: Weak<ShoalScratchPool>,
     font_catalog: FontCatalog,
     font_source_policy: FontSourcePolicy,
     trusted_theme_css: bool,
@@ -2107,11 +2137,17 @@ impl RenderSession {
                 .math_backend
                 .as_ref()
                 .is_some_and(|backend| backend.supports_resource_policy(self.resource_policy)),
+            _ => false,
         }
     }
 
     pub(crate) fn work_meter(&self) -> &Arc<OperationWorkMeter> {
         &self.work_meter
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal_scratch(&self) -> Option<Arc<ShoalScratchPool>> {
+        self.shoal_scratch.upgrade()
     }
 
     /// Checks the operation-owned control at an SVG/render phase boundary.

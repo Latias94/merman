@@ -1957,21 +1957,21 @@ jobs:
                 for path, payload in payloads.items():
                     path.write_bytes(payload)
                     path.with_name(path.name + ".sha256").write_text(
-                        hashlib.sha256(payload).hexdigest() + "\n", encoding="ascii",
+                        hashlib.sha256(payload).hexdigest() + "\n", encoding="ascii", newline="\n",
                     )
                 if failure == "missing-aar-checksum":
                     (candidate / f"{aar_name}.sha256").unlink()
                 elif failure == "bad-aar-checksum":
-                    (candidate / f"{aar_name}.sha256").write_text("0" * 64 + "\n")
+                    (candidate / f"{aar_name}.sha256").write_bytes(b"0" * 64 + b"\n")
                 elif failure == "bad-repository-checksum":
                     repository_dir = signed if central else candidate
-                    (repository_dir / f"{repository_name}.sha256").write_text("0" * 64 + "\n")
+                    (repository_dir / f"{repository_name}.sha256").write_bytes(b"0" * 64 + b"\n")
                 elif failure == "missing-signed-repository":
                     (signed / repository_name).unlink()
                 elif failure == "missing-central-bundle":
                     (signed / central_name).unlink()
                 elif failure == "bad-central-bundle-checksum":
-                    (signed / f"{central_name}.sha256").write_text("0" * 64 + "\n")
+                    (signed / f"{central_name}.sha256").write_bytes(b"0" * 64 + b"\n")
 
                 result = subprocess.run(
                     [BASH, "-c", command], cwd=root, capture_output=True, text=True, timeout=15,

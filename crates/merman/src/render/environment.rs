@@ -239,6 +239,14 @@ impl SvgEnvironment {
         self
     }
 
+    /// Reuses bounded row storage across independent, flat, natural-width Shoal layouts.
+    /// Keep this environment alive and clone it into each request that should reuse storage.
+    #[cfg(feature = "layout-shoal")]
+    pub fn with_shoal_scratch_reuse(mut self) -> Self {
+        self.backend = self.backend.with_shoal_scratch_reuse();
+        self
+    }
+
     /// Allows document-provided Mermaid `themeCSS` from a trusted source. Defaults to false.
     pub fn with_trusted_theme_css(mut self, allow: bool) -> Self {
         self.backend = self.backend.with_trusted_theme_css(allow);

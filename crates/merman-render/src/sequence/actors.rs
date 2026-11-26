@@ -1,9 +1,5 @@
 use super::SequenceLayoutCheckpoints;
-use super::constants::{
-    SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, SEQUENCE_ACTOR_POPUP_ROW_HEIGHT,
-    SequenceActorLabelFootprint, SequenceActorLabelKind, sequence_actor_lifeline_start_y,
-    sequence_actor_stack_height, sequence_actor_visual_height,
-};
+use super::constants::{SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, SEQUENCE_ACTOR_POPUP_ROW_HEIGHT};
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
@@ -18,6 +14,10 @@ use crate::{Error, Result};
 use merman_model::families::sequence::SequenceActor;
 use merman_model::families::sequence::SequenceDiagramModel;
 use merman_model::presentation::PresentationConfig;
+use merman_render_sequence::actor::{
+    SequenceActorLabelFootprint, SequenceActorLabelKind, sequence_actor_lifeline_start_y,
+    sequence_actor_popup_rect_height, sequence_actor_stack_height, sequence_actor_visual_height,
+};
 use std::collections::{BTreeMap, HashMap};
 
 use super::metrics::measure_svg_like_with_html_br;
@@ -223,7 +223,7 @@ fn actor_popup_layouts(
         } else {
             ctx.actor_height
         };
-        let origin_y = super::constants::sequence_actor_popup_rect_height(
+        let origin_y = sequence_actor_popup_rect_height(
             &actor.actor_type,
             visual_height,
             popup_base_height,
@@ -375,9 +375,9 @@ fn measure_actor_boxes(
         } else {
             None
         };
-        let stack_height = footprint
-            .as_ref()
-            .map_or(stack_height, |label| stack_height.max(label.layout_height));
+        let stack_height = footprint.as_ref().map_or(stack_height, |label| {
+            stack_height.max(label.layout_height())
+        });
         actor_label_footprints.push(footprint);
         actor_text_heights.push(text_h);
         actor_base_heights.push(ctx.actor_height.max(stack_height).max(1.0));

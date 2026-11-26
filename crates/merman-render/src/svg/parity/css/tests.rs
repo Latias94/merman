@@ -320,7 +320,12 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
         &merman_model::families::pie::PieDiagramModel::default(),
         &cfg,
     );
-    write_pie_css(&mut css, "pie", &paint_plan).unwrap();
+    write_pie_css(
+        &mut output::XmlTextOutput::new(&mut css),
+        SvgId::new("pie").unwrap(),
+        &paint_plan,
+    )
+    .unwrap();
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
     assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));

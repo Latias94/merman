@@ -250,8 +250,11 @@ fn sort_subgraph_sorts_border_nodes_to_the_extremes_of_the_subgraph() {
     g.set_node(
         "sg1",
         NodeLabel {
-            border_left: vec![Some("bl".to_string())],
-            border_right: vec![Some("br".to_string())],
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                border_left: vec![Some("bl".to_string())],
+                border_right: vec![Some("br".to_string())],
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );
@@ -298,8 +301,11 @@ fn sort_subgraph_assigns_a_barycenter_to_a_subgraph_based_on_previous_border_nod
     g.set_node(
         "sg",
         NodeLabel {
-            border_left: vec![Some("bl2".to_string())],
-            border_right: vec![Some("br2".to_string())],
+            compound: Some(Box::new(dugong::CompoundNodeLabel {
+                border_left: vec![Some("bl2".to_string())],
+                border_right: vec![Some("br2".to_string())],
+                ..Default::default()
+            })),
             ..Default::default()
         },
     );

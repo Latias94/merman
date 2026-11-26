@@ -170,7 +170,7 @@ impl EditorRenamePolicy {
             feature = "diagram-agentflow"
         ))]
         if self == Self::FlowchartNodeId {
-            return crate::diagrams::flowchart::node_rename_text(name, preceding, following);
+            return merman_core_flow::flowchart::node_rename_text(name, preceding, following);
         }
         let _ = (preceding, following);
         name.to_owned()
@@ -204,7 +204,9 @@ impl EditorRenamePolicy {
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow"
             ))]
-            Self::FlowchartNodeId => crate::diagrams::flowchart::is_valid_editor_node_id(candidate),
+            Self::FlowchartNodeId => {
+                merman_core_flow::flowchart::is_valid_editor_node_id(candidate)
+            }
             #[cfg(not(feature = "diagram-git-graph"))]
             Self::GitGraphReference => false,
             #[cfg(feature = "diagram-git-graph")]

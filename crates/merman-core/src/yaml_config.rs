@@ -4,8 +4,9 @@ use crate::{OperationControl, OperationControlResult};
 #[cfg(feature = "editor-facts")]
 use granit_parser::Span;
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
+use merman_model::json::{JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES};
 use serde_json::{Map, Number, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::size_of;
 
 const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
@@ -24,17 +25,20 @@ pub(crate) fn parse_yaml_value_controlled(
     max_nesting_depth: usize,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value, String>> {
-    let materialization_budget = input
-        .len()
-        .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
-        .max(YAML_MATERIALIZATION_MIN_BYTES);
     parse_yaml_value_with_limits_controlled(
         input,
         YAML_PARSER_MAX_INPUT_BYTES,
         max_nesting_depth,
-        materialization_budget,
+        default_materialization_budget(input),
         control,
     )
+}
+
+fn default_materialization_budget(input: &str) -> usize {
+    input
+        .len()
+        .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
+        .max(YAML_MATERIALIZATION_MIN_BYTES)
 }
 
 #[cfg(feature = "editor-facts")]
@@ -47,29 +51,118 @@ pub(crate) struct YamlConfigKeyEvidence {
 
 pub(crate) struct YamlValueCapture {
     pub(crate) value: Result<Value, String>,
+    pub(crate) collection_text: YamlCollectionText,
     #[cfg(feature = "editor-facts")]
     pub(crate) keys: Vec<YamlConfigKeyEvidence>,
     #[cfg(feature = "editor-facts")]
     pub(crate) rewrite_safe: bool,
 }
 
+/// Ordered JSON text for requested top-level collection fields.
+pub(crate) type YamlCollectionText = BTreeMap<&'static str, String>;
+
+#[derive(Default)]
+struct Capture<'a> {
+    collection_text_keys: &'a [&'static str],
+    root_key_order: Option<&'a mut Vec<String>>,
+    #[cfg(feature = "editor-facts")]
+    ordered_document: Option<&'a mut String>,
+    #[cfg(feature = "editor-facts")]
+    insert_order: Option<InsertOrderCapture<'a>>,
+    #[cfg(feature = "editor-facts")]
+    keys: bool,
+}
+
 #[cfg(feature = "editor-facts")]
-pub(crate) fn parse_yaml_value_capture_controlled(
+struct InsertOrderCapture<'a> {
+    routes: &'a [(&'static str, &'static str)],
+    max_bytes: usize,
+    max_depth: usize,
+    output: &'a mut Option<String>,
+}
+
+pub(crate) fn parse_yaml_with_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
+    collection_text_keys: &[&'static str],
+    #[cfg(feature = "editor-facts")] capture_keys: bool,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
-    let materialization_budget = input
-        .len()
-        .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
-        .max(YAML_MATERIALIZATION_MIN_BYTES);
-    parse_yaml_value_with_limits_capture_controlled(
+    parse_yaml_controlled(
         input,
         YAML_PARSER_MAX_INPUT_BYTES,
         max_nesting_depth,
-        materialization_budget,
+        default_materialization_budget(input),
+        Capture {
+            collection_text_keys,
+            #[cfg(feature = "editor-facts")]
+            keys: capture_keys,
+            ..Capture::default()
+        },
         control,
     )
+}
+
+#[cfg(feature = "editor-facts")]
+pub(crate) fn parse_yaml_frontmatter_capture_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    insert_routes: Option<&[(&'static str, &'static str)]>,
+    max_order_bytes: usize,
+    max_order_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<(YamlValueCapture, Option<String>)> {
+    let Some(routes) = insert_routes else {
+        let captured = parse_yaml_with_capture_controlled(
+            input,
+            max_nesting_depth,
+            &["title", "displayMode"],
+            false,
+            control,
+        )?;
+        return Ok((captured, None));
+    };
+    let mut insert_order = None;
+    let captured = parse_yaml_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        default_materialization_budget(input),
+        Capture {
+            collection_text_keys: &["title", "displayMode"],
+            keys: true,
+            insert_order: Some(InsertOrderCapture {
+                routes,
+                max_bytes: max_order_bytes,
+                max_depth: max_order_depth,
+                output: &mut insert_order,
+            }),
+            ..Capture::default()
+        },
+        control,
+    )?;
+    Ok((captured, insert_order))
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) fn parse_yaml_value_with_root_order_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<Result<(Value, Vec<String>), String>> {
+    let mut root_key_order = Vec::new();
+    let captured = parse_yaml_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        default_materialization_budget(input),
+        Capture {
+            root_key_order: Some(&mut root_key_order),
+            ..Capture::default()
+        },
+        control,
+    )?;
+    Ok(captured.value.map(|value| (value, root_key_order)))
 }
 
 pub(crate) fn parse_yaml_value_with_limits_controlled(
@@ -79,43 +172,45 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
     materialization_budget: usize,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value, String>> {
-    Ok(parse_yaml_value_with_limits_capture_mode_controlled(
+    Ok(parse_yaml_controlled(
         input,
         max_input_bytes,
         max_nesting_depth,
         materialization_budget,
-        #[cfg(feature = "editor-facts")]
-        false,
+        Capture::default(),
         control,
     )?
     .value)
 }
 
 #[cfg(feature = "editor-facts")]
-fn parse_yaml_value_with_limits_capture_controlled(
+pub(crate) fn parse_yaml_ordered_document_controlled(
     input: &str,
-    max_input_bytes: usize,
+    max_bytes: usize,
     max_nesting_depth: usize,
-    materialization_budget: usize,
     control: &OperationControl,
-) -> OperationControlResult<YamlValueCapture> {
-    parse_yaml_value_with_limits_capture_mode_controlled(
+) -> OperationControlResult<Option<String>> {
+    let mut ordered_document = String::new();
+    let captured = parse_yaml_controlled(
         input,
-        max_input_bytes,
+        max_bytes,
         max_nesting_depth,
-        materialization_budget,
-        #[cfg(feature = "editor-facts")]
-        true,
+        max_bytes,
+        Capture {
+            ordered_document: Some(&mut ordered_document),
+            ..Capture::default()
+        },
         control,
-    )
+    )?;
+    Ok(captured.value.ok().map(|_| ordered_document))
 }
 
-fn parse_yaml_value_with_limits_capture_mode_controlled(
+fn parse_yaml_controlled(
     input: &str,
     max_input_bytes: usize,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    #[cfg(feature = "editor-facts")] capture_keys: bool,
+    capture: Capture<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
     control.checkpoint()?;
@@ -124,6 +219,7 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
             value: Err(format!(
                 "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
             )),
+            collection_text: YamlCollectionText::new(),
             #[cfg(feature = "editor-facts")]
             keys: Vec::new(),
             #[cfg(feature = "editor-facts")]
@@ -134,14 +230,14 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
         max_nesting_depth,
         materialization_budget,
         #[cfg(feature = "editor-facts")]
-        capture_keys,
+        capture.keys,
     );
 
     // Feature unification may enable comment support for semantic-only callers.
     // Emit comments only when collecting editor evidence.
     let options = granit_parser::options! {
         #[cfg(feature = "editor-facts")]
-        emit_comments: capture_keys,
+        emit_comments: capture.keys,
         #[cfg(not(feature = "editor-facts"))]
         emit_comments: false,
     };
@@ -153,27 +249,30 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
             Ok(event) => event,
             Err(error) => {
                 #[cfg(feature = "editor-facts")]
-                if capture_keys && error.kind() == &granit_parser::ErrorKind::TooManyComments {
+                if capture.keys && error.kind() == &granit_parser::ErrorKind::TooManyComments {
                     // Optional editor evidence must not narrow semantic source acceptance.
                     // Discard partial evidence and retry once without comment buffering,
                     // preserving the caller's control and all semantic resource limits.
                     drop(builder);
-                    return Ok(YamlValueCapture {
-                        value: parse_yaml_value_with_limits_controlled(
-                            input,
-                            max_input_bytes,
-                            max_nesting_depth,
-                            materialization_budget,
-                            control,
-                        )?,
-                        keys: Vec::new(),
-                        rewrite_safe: false,
-                    });
+                    let mut semantic = parse_yaml_controlled(
+                        input,
+                        max_input_bytes,
+                        max_nesting_depth,
+                        materialization_budget,
+                        Capture {
+                            keys: false,
+                            ..capture
+                        },
+                        control,
+                    )?;
+                    semantic.rewrite_safe = false;
+                    return Ok(semantic);
                 }
                 #[cfg(feature = "editor-facts")]
                 let (keys, _) = builder.take_capture();
                 return Ok(YamlValueCapture {
                     value: Err(error.to_string()),
+                    collection_text: YamlCollectionText::new(),
                     #[cfg(feature = "editor-facts")]
                     keys,
                     #[cfg(feature = "editor-facts")]
@@ -192,6 +291,7 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
             let (keys, _) = builder.take_capture();
             return Ok(YamlValueCapture {
                 value: Err(error),
+                collection_text: YamlCollectionText::new(),
                 #[cfg(feature = "editor-facts")]
                 keys,
                 #[cfg(feature = "editor-facts")]
@@ -204,8 +304,54 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
     #[cfg(feature = "editor-facts")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
+    let captured = (|| {
+        if !value.as_ref().is_ok_and(Value::is_object) {
+            return Ok(YamlCollectionText::new());
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(document) = capture.ordered_document
+            && let Some(root) = builder.root
+        {
+            *document = write_ordered_yaml_json(&builder.arena, root, control)?;
+        }
+        let collection_text = if capture.collection_text_keys.is_empty() {
+            YamlCollectionText::new()
+        } else {
+            builder.capture_collection_text(capture.collection_text_keys, control)?
+        };
+        #[cfg(feature = "editor-facts")]
+        if let Some(insert_order) = capture.insert_order
+            && let Ok(Value::Object(fields)) = &value
+            && !fields.contains_key("config")
+            && insert_order
+                .routes
+                .iter()
+                .any(|(key, _)| fields.contains_key(*key))
+        {
+            *insert_order.output = builder.frontmatter_insert_order(
+                insert_order.routes,
+                insert_order.max_bytes,
+                insert_order.max_depth,
+                control,
+            )?;
+        }
+        if let Some(order) = capture.root_key_order {
+            builder.take_root_key_order(order, control)?;
+        }
+        Ok(collection_text)
+    })();
+    let collection_text = match captured {
+        Ok(text) => text,
+        Err(cancelled) => {
+            if let Ok(value) = value {
+                crate::json_value::drop_value_nonrecursive(value);
+            }
+            return Err(cancelled);
+        }
+    };
     Ok(YamlValueCapture {
         value,
+        collection_text,
         #[cfg(feature = "editor-facts")]
         keys,
         #[cfg(feature = "editor-facts")]
@@ -563,7 +709,7 @@ impl YamlValueBuilder {
     }
 
     fn finish_controlled(
-        self,
+        &self,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Value, String>> {
         if !self.stack.is_empty() {
@@ -581,6 +727,102 @@ impl YamlValueBuilder {
             control,
         )
     }
+
+    fn capture_collection_text(
+        &self,
+        allowed_keys: &[&'static str],
+        control: &OperationControl,
+    ) -> OperationControlResult<YamlCollectionText> {
+        let mut text = YamlCollectionText::new();
+        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &self.arena[root.0]) else {
+            return Ok(text);
+        };
+        for (index, (key, node)) in entries.iter().enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            let Some(key) = allowed_keys
+                .iter()
+                .copied()
+                .find(|allowed| *allowed == key.as_str())
+            else {
+                continue;
+            };
+            if matches!(
+                self.arena[node.0],
+                YamlNode::Sequence(_) | YamlNode::Mapping(_)
+            ) {
+                // JSON text is externally visible for these fields. Use the already validated
+                // YAML arena to retain source order through alias expansion and nested objects.
+                text.insert(key, write_ordered_yaml_json(&self.arena, *node, control)?);
+            }
+        }
+        Ok(text)
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn frontmatter_insert_order(
+        &self,
+        routes: &[(&'static str, &'static str)],
+        max_bytes: usize,
+        max_depth: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<String>> {
+        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &self.arena[root.0]) else {
+            return Ok(None);
+        };
+        let mut selected = BTreeMap::new();
+        for (index, (key, node)) in entries.iter().enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            if routes.iter().any(|(source, _)| *source == key.as_str()) {
+                selected.insert(key.as_str(), *node);
+            }
+        }
+        let mut projected: Vec<(String, NodeId)> = Vec::new();
+        for &(source, namespace) in routes {
+            let Some(&node) = selected.get(source) else {
+                continue;
+            };
+            if let Some((_, previous)) = projected
+                .iter_mut()
+                .find(|(key, _)| key.as_str() == namespace)
+            {
+                *previous = node;
+            } else {
+                projected.push((namespace.to_owned(), node));
+            }
+        }
+        let mut json = String::from("{");
+        let written = append_ordered_yaml_json::<true>(
+            &self.arena,
+            JsonTask::Mapping(projected.iter(), false),
+            &mut json,
+            max_bytes,
+            max_depth,
+            control,
+        )?;
+        Ok(written.then_some(json))
+    }
+
+    fn take_root_key_order(
+        &mut self,
+        order: &mut Vec<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &mut self.arena[root.0]) else {
+            return Ok(());
+        };
+        order.reserve(entries.len());
+        for (index, (key, _)) in entries.drain(..).enumerate() {
+            if index.is_multiple_of(64) {
+                control.checkpoint()?;
+            }
+            order.push(key);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -594,6 +836,133 @@ enum YamlNode {
     },
     Sequence(Vec<NodeId>),
     Mapping(Vec<(String, NodeId)>),
+}
+
+enum JsonTask<'a> {
+    Visit(NodeId),
+    Sequence(std::slice::Iter<'a, NodeId>, bool),
+    Mapping(std::slice::Iter<'a, (String, NodeId)>, bool),
+}
+
+fn write_ordered_yaml_json(
+    arena: &[YamlNode],
+    root: NodeId,
+    control: &OperationControl,
+) -> OperationControlResult<String> {
+    let mut output = String::new();
+    append_ordered_yaml_json::<false>(
+        arena,
+        JsonTask::Visit(root),
+        &mut output,
+        usize::MAX,
+        usize::MAX,
+        control,
+    )?;
+    Ok(output)
+}
+
+fn append_ordered_yaml_json<'a, const BOUNDED: bool>(
+    arena: &'a [YamlNode],
+    first: JsonTask<'a>,
+    output: &mut String,
+    max_bytes: usize,
+    max_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
+    let mut tasks = vec![first];
+    let mut steps = 0usize;
+    while let Some(task) = tasks.pop() {
+        if BOUNDED
+            && tasks.len() >= max_depth
+            && matches!(&task, JsonTask::Mapping(..) | JsonTask::Sequence(..))
+        {
+            return Ok(false);
+        }
+        if steps.is_multiple_of(64) {
+            control.checkpoint()?;
+        }
+        steps += 1;
+        match task {
+            JsonTask::Visit(node) => match &arena[node.0] {
+                YamlNode::Scalar {
+                    value: Value::String(value),
+                    ..
+                } => {
+                    if !append_json_string::<BOUNDED>(output, value, max_bytes, control)? {
+                        return Ok(false);
+                    }
+                }
+                YamlNode::Scalar { value, .. } => {
+                    output.push_str(&value.to_string());
+                }
+                YamlNode::Sequence(items) => {
+                    output.push('[');
+                    tasks.push(JsonTask::Sequence(items.iter(), false));
+                }
+                YamlNode::Mapping(entries) => {
+                    output.push('{');
+                    tasks.push(JsonTask::Mapping(entries.iter(), false));
+                }
+            },
+            JsonTask::Sequence(mut items, comma) => {
+                if let Some(item) = items.next() {
+                    if comma {
+                        output.push(',');
+                    }
+                    tasks.push(JsonTask::Sequence(items, true));
+                    tasks.push(JsonTask::Visit(*item));
+                } else {
+                    output.push(']');
+                }
+            }
+            JsonTask::Mapping(mut entries, comma) => {
+                if let Some((key, value)) = entries.next() {
+                    if comma {
+                        output.push(',');
+                    }
+                    if !append_json_string::<BOUNDED>(output, key, max_bytes, control)? {
+                        return Ok(false);
+                    }
+                    output.push(':');
+                    tasks.push(JsonTask::Mapping(entries, true));
+                    tasks.push(JsonTask::Visit(*value));
+                } else {
+                    output.push('}');
+                }
+            }
+        }
+        if BOUNDED && output.len() > max_bytes {
+            return Ok(false);
+        }
+    }
+    control.checkpoint()?;
+    Ok(true)
+}
+
+fn append_json_string<const BOUNDED: bool>(
+    output: &mut String,
+    mut text: &str,
+    max_bytes: usize,
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
+    const CHUNK_BYTES: usize = 4 * 1024;
+    output.push('"');
+    while !text.is_empty() {
+        let end = text.floor_char_boundary(CHUNK_BYTES);
+        let (chunk, remaining) = text.split_at(end);
+        let quoted = serde_json::to_string(chunk).expect("strings are serializable to JSON");
+        let escaped = &quoted[1..quoted.len() - 1];
+        if BOUNDED && escaped.len() > max_bytes.saturating_sub(output.len()) {
+            return Ok(false);
+        }
+        output.push_str(escaped);
+        if !remaining.is_empty() {
+            control.checkpoint()?;
+        }
+        text = remaining;
+    }
+    output.push('"');
+    Ok(true)
 }
 
 struct Frame {
@@ -856,25 +1225,18 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
         YamlNode::Scalar {
             value: Value::String(value),
             ..
-        } => size_of::<Value>().saturating_add(value.len()),
+        } => JSON_VALUE_CHARGE_BYTES.saturating_add(value.len()),
         YamlNode::Scalar {
             value:
                 Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_),
             ..
-        } => size_of::<Value>(),
-        YamlNode::Sequence(items) => size_of::<Value>()
+        } => JSON_VALUE_CHARGE_BYTES,
+        YamlNode::Sequence(items) => JSON_VALUE_CHARGE_BYTES
             .saturating_add(size_of::<Vec<Value>>())
-            .saturating_add(items.len().saturating_mul(size_of::<Value>())),
+            .saturating_add(items.len().saturating_mul(JSON_VALUE_CHARGE_BYTES)),
         YamlNode::Mapping(entries) => entries.iter().fold(
-            size_of::<Value>()
-                .saturating_add(size_of::<Map<String, Value>>())
-                .saturating_add(
-                    entries.len().saturating_mul(
-                        size_of::<String>()
-                            .saturating_add(size_of::<Value>())
-                            .saturating_add(size_of::<usize>().saturating_mul(4)),
-                    ),
-                ),
+            (2 * JSON_VALUE_CHARGE_BYTES)
+                .saturating_add(entries.len().saturating_mul(JSON_OBJECT_ENTRY_CHARGE_BYTES)),
             |total, (key, _)| total.saturating_add(key.len()),
         ),
     }
@@ -1087,7 +1449,7 @@ mod tests {
 
     #[cfg(feature = "editor-facts")]
     fn capture_yaml(input: &str) -> YamlValueCapture {
-        parse_yaml_value_capture_controlled(input, 16, &OperationControl::new())
+        parse_yaml_with_capture_controlled(input, 16, &[], true, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
@@ -1099,6 +1461,20 @@ mod tests {
         let result = parse_yaml_value_controlled("value: 1\n", 16, &control);
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
+    }
+
+    #[test]
+    fn ordered_json_string_chunks_preserve_utf8_and_observe_cancellation() {
+        let value = "界\n\"\\".repeat(3000);
+        let mut output = String::new();
+        append_json_string::<false>(&mut output, &value, usize::MAX, &OperationControl::new())
+            .unwrap();
+        assert_eq!(output, serde_json::to_string(&value).unwrap());
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        output.clear();
+        assert!(append_json_string::<false>(&mut output, &value, usize::MAX, &control).is_err());
     }
 
     #[test]
@@ -1199,8 +1575,16 @@ second: *base
             let expected =
                 parse_yaml_value_with_limits_controlled(&input, 4096, depth, budget, &control)
                     .expect("active control");
-            let captured = parse_yaml_value_with_limits_capture_controlled(
-                &input, 4096, depth, budget, &control,
+            let captured = parse_yaml_controlled(
+                &input,
+                4096,
+                depth,
+                budget,
+                Capture {
+                    keys: true,
+                    ..Capture::default()
+                },
+                &control,
             )
             .expect("active control");
 
@@ -1338,20 +1722,15 @@ config: *defaults
     #[test]
     fn caller_can_apply_a_stricter_yaml_materialization_budget() {
         let control = OperationControl::new();
-        let result = parse_yaml_value_with_limits_controlled(
-            "values: [one, two, three, four]\n",
-            1024,
-            16,
-            8,
-            &control,
-        )
-        .expect("active control");
-
-        let error = result.expect_err("the caller budget must reject materialization");
-        assert!(
-            error.contains("safe materialization budget"),
-            "unexpected error: {error}"
-        );
+        let input = "name: [one, two]\n";
+        let bytes = 8 * JSON_VALUE_CHARGE_BYTES + 10 * size_of::<usize>() + 10;
+        let parse = |budget| {
+            parse_yaml_value_with_limits_controlled(input, 1024, 16, budget, &control)
+                .expect("active control")
+        };
+        assert_eq!(parse(bytes), Ok(json!({ "name": ["one", "two"] })));
+        let error = parse(bytes - 1).expect_err("the caller budget must reject materialization");
+        assert!(error.contains("safe materialization budget"), "{error}");
     }
 
     #[test]

@@ -11,7 +11,7 @@ from sys import float_info
 
 from .coverage import _schema_v1, _source_digest, summarize_coverage
 from .node import _comparison_file, _process_order
-from .reference import (LAYOUTS, NODE_PRODUCTS, _product as reference_product,
+from .reference import (LAYOUTS, NODE_INTRINSIC_LAYOUT_TYPES, NODE_PRODUCTS, _product as reference_product,
                         _scenario as compare_scenario,
                         node_worker_failures, product_label, valid_node_variant_label)
 
@@ -323,7 +323,7 @@ def _replay_pair(workers, compared, planned):
         variant = raw.get("variant")
         if raw["engine"] != "merman" or variant is None:
             continue
-        if variant["options_json"] is None:
+        if variant["options_json"] is None and not variant.get("direct_id"):
             return "diagram-id-not-applied"
         if raw.get("diagram_id_mode") != "plan":
             return "diagram-id-unverified"
@@ -331,8 +331,11 @@ def _replay_pair(workers, compared, planned):
             plans = row.get("layout_plans")
             if not isinstance(plans, list) or len(plans) != len(planned) or any(
                 not isinstance(plan, dict) or not isinstance(plan.get("required_capability_ids"), list)
-                or [cap for cap in plan["required_capability_ids"] if isinstance(cap, str) and cap.startswith("layout-")]
-                != [f"layout-{layout}"] for plan in plans
+                or not isinstance(plan.get("diagram_type"), str)
+                or any(not isinstance(cap, str) for cap in plan["required_capability_ids"])
+                or [cap for cap in plan["required_capability_ids"] if cap.startswith("layout-")]
+                != ([] if plan["diagram_type"] in NODE_INTRINSIC_LAYOUT_TYPES else [f"layout-{layout}"])
+                for plan in plans
             ):
                 return "evidence-mismatch"
 
@@ -492,6 +495,10 @@ def _variant_engines(directory, rounds, digest):
         if options is not None and (engine != "merman" or not isinstance(options, str) or not options.strip()):
             raise ValueError("invalid Node variant Options JSON")
         expected = dict(label=label, options_json=options)
+        if "direct_id" in row:
+            if row["direct_id"] is not True or engine != "merman" or options is not None:
+                raise ValueError("invalid Node variant direct diagram ID settings")
+            expected["direct_id"] = True
         if "site_layout" in row:
             if engine != "merman" or row["site_layout"] not in LAYOUTS:
                 raise ValueError("invalid Node variant layout")

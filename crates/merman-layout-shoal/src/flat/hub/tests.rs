@@ -256,3 +256,44 @@ fn a_250_leaf_fan_without_face_capacity_uses_only_linear_work() {
     assert_eq!(drawing.edges, before);
     assert!(meter.0 <= 2 * c.nodes.len() + c.links.len());
 }
+
+#[test]
+fn wall_index_preserves_strict_contact_in_each_ordered_block_and_tail() {
+    let walls = (0..113)
+        .map(|index| {
+            let x = f64::from(index) * 4.0;
+            Bounds {
+                x: [x, x + 2.0],
+                y: [0.0, 2.0],
+            }
+        })
+        .collect::<Vec<_>>();
+    let point = |x, y| Bounds {
+        x: [x; 2],
+        y: [y; 2],
+    };
+    let clear = point(-1.0, -1.0);
+    let mut edit = Edit {
+        points: Vec::new(),
+        side: Side::Top,
+        body: [clear; 2],
+        retained: clear,
+        envelope: clear,
+        mark: Some(point(197.0, 1.0)),
+    };
+    let mut index = WallIndex::default();
+    assert!(index.blocks(&walls, &edit));
+    assert_eq!(index.indexed_blocks, 3);
+
+    edit.mark = None;
+    assert!(!index.blocks(&walls, &edit));
+    assert_eq!(index.indexed_blocks, 7);
+    assert_eq!(index.postorder.len(), 11);
+    for wall in &walls {
+        let [left, right] = wall.x;
+        edit.body[0] = point(left, 1.0);
+        assert!(!index.blocks(&walls, &edit));
+        edit.body[0] = point(left.midpoint(right), 1.0);
+        assert!(index.blocks(&walls, &edit));
+    }
+}

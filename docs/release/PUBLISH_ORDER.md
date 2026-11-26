@@ -659,7 +659,13 @@ These additions are absent from published ABI 2 package `0.5.0`, which bundles M
 and the frozen `0.3.0`/`0.4.0` registry artifacts. The `0.6.0` submission and registry availability
 must be verified independently of the workspace Cargo release.
 
-For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, `build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json` for one production/budget/package pass, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA.
+Run `verify-typst-profile-constants` and the `typst-wasm` dependency-closure check. Enable xtask's
+`wasm-host` feature for `build-typst-package --profile publish`, supplying
+`--budget-file docs/release/WASM_SIZE_BUDGETS.json`, and for the full `typst-package-smoke` run.
+[Release preflight recipes](RELEASING.md#release-preflight)
+
+Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
 ## Publish Order
 

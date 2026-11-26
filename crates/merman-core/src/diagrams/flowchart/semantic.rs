@@ -6,8 +6,8 @@ use merman_model::warnings::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowNodeSyntax, FlowSubGraph,
-    FlowchartAst, LinkStylePos, Node, StatementEvent, Stmt, TitleKind,
+    ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowSubGraph, FlowchartAst, LinkStylePos,
+    Node, NodeAction, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
@@ -30,7 +30,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) diagram_type: &'a str,
     pub(super) config: &'a MermaidConfig,
     pub(super) shape_data_documents:
-        &'a HashMap<String, std::result::Result<serde_json::Value, String>>,
+        &'a HashMap<String, std::result::Result<ShapeDataDocument, String>>,
     pub(super) control: &'a OperationControl,
 }
 
@@ -330,7 +330,7 @@ impl<'a> FlowchartSemanticContext<'a> {
 
     fn observe_node_group(
         &mut self,
-        nodes: &[Node],
+        nodes: &[NodeAction],
         active_subgraphs: &HashMap<String, usize>,
         seen_vertex_ids: &mut HashSet<String>,
         vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
@@ -345,21 +345,17 @@ impl<'a> FlowchartSemanticContext<'a> {
                 self.vertex_calls.push(node.id.clone());
                 seen_vertex_ids.insert(node.id.clone());
                 if let Some(style) = vertex_css.get_mut(&node.id) {
-                    let style = style.get_or_insert_default();
-                    style.styles.extend(node.styles.iter().cloned());
+                    style.get_or_insert_default();
                 }
 
                 let target = &mut self.nodes[self.node_index[&node.id]];
-                if node.label.is_some() {
-                    target.label.clone_from(&node.label);
-                    target.label_type = node.label_type.clone();
-                    target.label_span = node.label_span;
-                    target.label_selection = node.label_selection;
+                if let Some(label) = &node.label {
+                    target.label = Some(label.text.clone());
+                    target.label_type = label.kind.clone();
                 }
                 if node.shape.is_some() {
                     target.shape.clone_from(&node.shape);
                 }
-                target.styles.extend(node.styles.iter().cloned());
             }
 
             // A styledVertex calls setClass after addVertex, even when addVertex routed
@@ -408,11 +404,12 @@ impl<'a> FlowchartSemanticContext<'a> {
         active_subgraphs: &HashMap<String, usize>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
-        let value = match Self::shape_data_value(self.shape_data_documents, self.diagram_type, yaml)
-        {
-            Ok(value) => value,
-            Err(error) => return Ok(Err(error)),
-        };
+        let document =
+            match Self::shape_data_document(self.shape_data_documents, self.diagram_type, yaml) {
+                Ok(document) => document,
+                Err(error) => return Ok(Err(error)),
+            };
+        let value = &document.value;
         // FlowDB routes metadata to an already declared subgraph before checking edge IDs.
         if active_subgraphs.get(target).is_some_and(|&subgraph_index| {
             self.apply_shape_data_to_subgraph(subgraph_index, target, value)
@@ -427,8 +424,11 @@ impl<'a> FlowchartSemanticContext<'a> {
 
         self.vertex_calls.push(target.to_string());
         let idx = self.ensure_authored_node(target);
-        Ok(apply_shape_data_value_to_node(&mut self.nodes[idx], value)
-            .map_err(|error| Error::diagram_parse_fallback(self.diagram_type.to_string(), error)))
+        Ok(
+            apply_shape_data_value_to_node(&mut self.nodes[idx], document).map_err(|error| {
+                Error::diagram_parse_fallback(self.diagram_type.to_string(), error)
+            }),
+        )
     }
 
     fn add_class_to_target(
@@ -493,11 +493,11 @@ impl<'a> FlowchartSemanticContext<'a> {
         Ok(Ok(()))
     }
 
-    fn shape_data_value<'b>(
-        documents: &'b HashMap<String, std::result::Result<serde_json::Value, String>>,
+    fn shape_data_document<'b>(
+        documents: &'b HashMap<String, std::result::Result<ShapeDataDocument, String>>,
         diagram_type: &str,
         yaml: &str,
-    ) -> Result<&'b serde_json::Value> {
+    ) -> Result<&'b ShapeDataDocument> {
         match documents
             .get(yaml)
             .expect("flowchart shape data must be prepared before semantic construction")
@@ -607,21 +607,15 @@ impl<'a> FlowchartSemanticContext<'a> {
     fn ensure_authored_node(&mut self, id: &str) -> usize {
         if let Some(&idx) = self.node_index.get(id) {
             self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-            self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
             return idx;
         }
         let idx = self.nodes.len();
         self.nodes.push(Node {
             id: id.to_string(),
             provenance: FlowNodeProvenance::Authored,
-            syntax: FlowNodeSyntax::ExplicitDefinition,
-            id_span: None,
             label: None,
             label_type: TitleKind::Text,
-            label_span: None,
-            label_selection: None,
             shape: None,
-            shape_data: None,
             icon: None,
             form: None,
             pos: None,

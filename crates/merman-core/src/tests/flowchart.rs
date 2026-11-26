@@ -2256,6 +2256,23 @@ fn parse_diagram_flowchart_object_dimensions_follow_plain_yaml_numeric_coercion(
 }
 
 #[test]
+fn parse_diagram_flowchart_shape_data_reports_the_first_authored_error() {
+    let engine = MermaidEngine::new();
+    let width = "  w:\n    toString: bad\n";
+    let shape = "  shape: this-shape-does-not-exist\n";
+    for ([first, second], expected) in [
+        ([width, shape], "Cannot convert object to primitive value"),
+        ([shape, width], "No such shape: this-shape-does-not-exist."),
+    ] {
+        let source = format!("flowchart LR\nA@{{\n{first}{second}}}\n");
+        let error = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_err();
+        assert!(error.to_string().contains(expected), "{source}: {error}");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_empty_metadata_label_preserves_text_and_label_type() {
     let engine = MermaidEngine::new();
 

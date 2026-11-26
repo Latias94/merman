@@ -368,11 +368,16 @@ mod tests {
         let mut edge_label = EdgeLabel {
             width: 12.0,
             height: 8.0,
+            owner_index: Some(0),
             ..Default::default()
         };
         edge_label.extras.insert(
             "source".to_string(),
             serde_json::Value::String(key.name.clone().unwrap_or_default()),
+        );
+        edge_label.extras.insert(
+            "caller".into(),
+            serde_json::json!({ "nested": ["self edge", null] }),
         );
         NodeLabel {
             width: 12.0,
@@ -845,9 +850,22 @@ mod tests {
         let first = graph.edge("a", "a", Some("self_1")).unwrap();
         assert_eq!(first.width, 12.0);
         assert_eq!(first.height, 8.0);
+        assert_eq!(first.owner_index, Some(0));
         assert_eq!(
             first.extras.get("source"),
             Some(&serde_json::Value::String("self_1".to_string()))
+        );
+        let invalid = graph
+            .node("invalid")
+            .unwrap()
+            .dummy_edge
+            .original()
+            .unwrap();
+        assert_eq!(invalid.label.owner_index, first.owner_index);
+        assert_eq!(invalid.label.extras["caller"], first.extras["caller"]);
+        assert_eq!(
+            first.extras["caller"],
+            serde_json::json!({ "nested": ["self edge", null] })
         );
         assert_eq!(first.x, Some(150.0));
         assert_eq!(first.y, Some(70.0));

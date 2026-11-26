@@ -379,6 +379,29 @@ impl RepulsionGrid {
         })
     }
 
+    fn scan_work_exceeds(&self, nodes: &[SimNode], node_order: &[usize], work: usize) -> bool {
+        // Even a full-grid scan for every entry cannot exceed this bound. If it fits, the
+        // materialized path can compute each node's bounds just once, at scan admission.
+        let grid_cells = (self.size_x as u128) * (self.size_y as u128);
+        if grid_cells.saturating_mul(node_order.len() as u128) <= work as u128 {
+            return false;
+        }
+
+        // Resolve scan-based promotion before attempting any per-node admission. Once the
+        // prefix exceeds the limit, later entries cannot change that decision.
+        node_order
+            .iter()
+            .try_fold(work as u128, |remaining, &idx| {
+                let count = nodes
+                    .get(idx)
+                    .and_then(|node| self.scan_bounds(node))
+                    .map(GridScanBounds::cell_count)
+                    .unwrap_or_default();
+                remaining.checked_sub(count)
+            })
+            .is_none()
+    }
+
     fn switch_to_implicit(&mut self, node_order: &[usize]) -> std::result::Result<(), WorkFailure> {
         let mut stored_order = Vec::new();
         stored_order
@@ -413,41 +436,37 @@ impl RepulsionGrid {
             .then(|| implicit_grid_work_units(node_order.len() as u128))
             .flatten()
             .and_then(|work| usize::try_from(work).ok());
-        let mut scan_cell_counts = Vec::new();
-        scan_cell_counts
-            .try_reserve_exact(node_order.len())
-            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
-        let mut total_scan_cell_work = 0u128;
-        for &idx in node_order {
-            let count = nodes
-                .get(idx)
-                .and_then(|node| self.scan_bounds(node))
-                .map(GridScanBounds::cell_count)
-                .unwrap_or_default();
-            scan_cell_counts.push(count);
-            total_scan_cell_work = total_scan_cell_work.saturating_add(count);
-        }
-        if implicit_work.is_some_and(|work| total_scan_cell_work > work as u128) {
-            let implicit_work = implicit_work.expect("checked by is_some_and");
-            admit_dynamic_work(work_control, implicit_work)?;
+        if let Some(work) =
+            implicit_work.filter(|&work| self.scan_work_exceeds(nodes, node_order, work))
+        {
+            admit_dynamic_work(work_control, work)?;
             return self.switch_to_implicit(node_order);
         }
 
-        let mut candidate_visit_counts_u128 = Vec::new();
-        candidate_visit_counts_u128
+        // Reuse the empty buffer after reset if it fits the current bound. Leave any
+        // previously published counts intact until the replacement succeeds.
+        let mut candidate_visit_counts = if !self.materialized_refresh_prepared
+            && self.candidate_visit_counts.capacity() <= nodes.len()
+        {
+            std::mem::take(&mut self.candidate_visit_counts)
+        } else {
+            Vec::new()
+        };
+        candidate_visit_counts
             .try_reserve_exact(nodes.len())
             .map_err(|_| WorkFailure::ArithmeticOverflow)?;
-        candidate_visit_counts_u128.resize(nodes.len(), 0u128);
+        candidate_visit_counts.resize(nodes.len(), 0);
         let mut total_candidate_visits = 0u128;
-        for (&idx, &scan_cell_count) in node_order.iter().zip(&scan_cell_counts) {
+        let mut visit_count_overflowed = false;
+        for &idx in node_order {
             let Some(node) = nodes.get(idx) else {
                 continue;
             };
             let Some(bounds) = self.scan_bounds(node) else {
                 continue;
             };
-            let scan_cell_count =
-                usize::try_from(scan_cell_count).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            let scan_cell_count = usize::try_from(bounds.cell_count())
+                .map_err(|_| WorkFailure::ArithmeticOverflow)?;
             admit_dynamic_work(work_control, scan_cell_count)?;
 
             let mut visits = 0u128;
@@ -456,20 +475,24 @@ impl RepulsionGrid {
                     visits = visits.saturating_add(self.cell(gx, gy).len() as u128);
                 }
             }
-            candidate_visit_counts_u128[idx] = visits;
+            match usize::try_from(visits) {
+                Ok(count) => candidate_visit_counts[idx] = count,
+                Err(_) => visit_count_overflowed = true,
+            }
             total_candidate_visits = total_candidate_visits.saturating_add(visits);
         }
 
-        if implicit_work.is_some_and(|work| total_candidate_visits > work as u128) {
-            let implicit_work = implicit_work.expect("checked by is_some_and");
-            admit_dynamic_work(work_control, implicit_work)?;
+        if let Some(work) = implicit_work.filter(|&work| total_candidate_visits > work as u128) {
+            admit_dynamic_work(work_control, work)?;
             return self.switch_to_implicit(node_order);
         }
 
-        self.candidate_visit_counts = candidate_visit_counts_u128
-            .into_iter()
-            .map(|visits| usize::try_from(visits).map_err(|_| WorkFailure::ArithmeticOverflow))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        // Preserve the original error precedence: all scan admissions and the implicit
+        // promotion decision come before rejecting an unrepresentable visit count.
+        if visit_count_overflowed {
+            return Err(WorkFailure::ArithmeticOverflow);
+        }
+        self.candidate_visit_counts = candidate_visit_counts;
         self.materialized_refresh_prepared = true;
         Ok(())
     }

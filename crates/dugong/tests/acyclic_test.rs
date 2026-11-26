@@ -124,42 +124,31 @@ fn acyclic_undo_does_not_change_edges_where_the_original_graph_was_acyclic() {
 fn acyclic_undo_can_restore_previously_reversed_edges() {
     for acyclicer in ["greedy", "dfs", "unknown-should-still-work"] {
         let mut g = new_graph(acyclicer);
-        g.set_edge_with_label(
-            "a",
-            "b",
-            EdgeLabel {
-                minlen: 2,
-                weight: 3.0,
-                ..Default::default()
-            },
-        );
-        g.set_edge_with_label(
-            "b",
-            "a",
-            EdgeLabel {
-                minlen: 3,
-                weight: 4.0,
-                ..Default::default()
-            },
-        );
+        let mut forward = EdgeLabel {
+            minlen: 2,
+            weight: 3.0,
+            owner_index: Some(0),
+            ..Default::default()
+        };
+        forward
+            .extras
+            .insert("source".into(), serde_json::json!(["a", "b"]));
+        let mut backward = EdgeLabel {
+            minlen: 3,
+            weight: 4.0,
+            owner_index: Some(1),
+            ..Default::default()
+        };
+        backward
+            .extras
+            .insert("source".into(), serde_json::json!(["b", "a"]));
+        g.set_edge_named("a", "b", Some("same"), Some(forward.clone()));
+        g.set_edge_named("b", "a", Some("same"), Some(backward.clone()));
+
         acyclic::run(&mut g);
         acyclic::undo(&mut g);
-        assert_eq!(
-            g.edge("a", "b", None).unwrap(),
-            &EdgeLabel {
-                minlen: 2,
-                weight: 3.0,
-                ..Default::default()
-            }
-        );
-        assert_eq!(
-            g.edge("b", "a", None).unwrap(),
-            &EdgeLabel {
-                minlen: 3,
-                weight: 4.0,
-                ..Default::default()
-            }
-        );
+        assert_eq!(g.edge("a", "b", Some("same")), Some(&forward));
+        assert_eq!(g.edge("b", "a", Some("same")), Some(&backward));
         assert_eq!(g.edge_count(), 2);
     }
 }

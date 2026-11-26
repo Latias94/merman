@@ -87,7 +87,7 @@ impl ShapePortProfile {
         rectangle_radii: Option<(f64, f64)>,
     ) -> crate::Result<Self> {
         let name = node.layout_shape.as_deref().unwrap_or("squareRect");
-        let shape = S::resolve(name)?;
+        let shape = flowchart::resolve_flowchart_shape(name)?;
         if let Some(geometry) = geometry {
             return Ok(match geometry {
                 PreparedFlowchartNodeGeometry::Rectangle(rectangle) => {

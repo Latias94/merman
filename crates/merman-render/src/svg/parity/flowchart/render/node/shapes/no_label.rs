@@ -332,14 +332,14 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
     use crate::flowchart::FlowchartShape;
     use crate::svg::parity::roughjs_common::{roughjs_circle_operations, roughjs_rect_operations};
     match FlowchartShape::resolve(common.shape) {
-        Ok(FlowchartShape::Anchor) => {
+        Some(FlowchartShape::Anchor) => {
             let _ = roughjs_circle_operations(2.0, common.hand_drawn_seed);
         }
-        Ok(FlowchartShape::FramedCircle) => {
+        Some(FlowchartShape::FramedCircle) => {
             let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
             let _ = roughjs_circle_operations(5.0, common.hand_drawn_seed);
         }
-        Ok(FlowchartShape::ForkJoin) => {
+        Some(FlowchartShape::ForkJoin) => {
             let (w, h) = fork_dimensions(common);
             let _ = roughjs_rect_operations(RoughRectSpec {
                 x: -w / 2.0,
@@ -352,7 +352,7 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
                 randomness: common.hand_drawn_seed,
             });
         }
-        Ok(FlowchartShape::LightningBolt) => {
+        Some(FlowchartShape::LightningBolt) => {
             let (_, _, path) = bolt_geometry(common);
             let _ = roughjs_prepare_paths_for_svg_path(
                 super::super::roughjs::RoughGeometryTarget::Query,
@@ -363,10 +363,10 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
                 common.hand_drawn_seed,
             );
         }
-        Ok(FlowchartShape::FilledCircle) => {
+        Some(FlowchartShape::FilledCircle) => {
             let _ = roughjs_circle_operations(14.0, common.hand_drawn_seed);
         }
-        Ok(FlowchartShape::CrossedCircle) => {
+        Some(FlowchartShape::CrossedCircle) => {
             let r = crate::flowchart::CROSSED_CIRCLE_RADIUS;
             let _ = roughjs_circle_operations(r * 2.0, common.hand_drawn_seed);
             let _ = roughjs_prepare_paths_for_svg_path(

@@ -11,6 +11,13 @@ pub(crate) struct StateDocumentScratch {
 }
 
 impl StateDocumentScratch {
+    pub(super) fn from_parsed_parts(builder: StateDocumentBuilder, root: StateDocumentId) -> Self {
+        Self {
+            builder,
+            root: Some(root),
+        }
+    }
+
     pub(crate) fn push(&mut self, statements: Vec<StateStatement>) -> StateDocumentId {
         self.builder.append(statements)
     }

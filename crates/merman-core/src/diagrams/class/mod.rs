@@ -3,13 +3,10 @@ pub(crate) use merman_model::families::class::{
     REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
 };
 
-mod ast;
 mod db;
 #[cfg(feature = "editor-facts")]
 mod editor;
-mod lexer;
 mod parse;
-mod parser;
 pub(crate) mod source_data;
 
 #[cfg(all(test, feature = "presentation"))]
@@ -25,12 +22,10 @@ pub(crate) use parse::parse_class_typed_with_render_context_controlled;
 #[cfg(test)]
 pub(crate) use parse::{class_syntax_construction_count, reset_class_syntax_construction_count};
 
-pub(crate) use ast::{Action, Relation, RelationData};
 #[cfg(feature = "editor-facts")]
 pub(crate) use editor::editor_rename_edits;
 #[cfg(feature = "editor-facts")]
-pub(crate) use lexer::editor_name_requires_backticks;
-pub(crate) use lexer::{LexError, Tok};
+pub(crate) use merman_core_graph::class::editor_name_requires_backticks;
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(

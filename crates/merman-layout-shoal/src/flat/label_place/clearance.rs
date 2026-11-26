@@ -1,74 +1,20 @@
+pub(super) use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, push, reserved};
-use crate::{MarkerMetrics, Point, Rect, RoutePoint, RoutingStyle, Side, Size};
+use crate::{MarkerMetrics, Point, RoutePoint, RoutingStyle, Side, Size};
 
 const LEAF_SIZE: usize = 8;
 const MAX_WALLS: usize = 16 * 1024;
 const MAX_KNOTS: usize = 2 * MAX_WALLS;
 const MAX_CHECKS: usize = 128 * 1024;
 
-#[derive(Clone, Copy)]
-pub(super) struct Bounds {
-    pub(super) x: [f64; 2],
-    pub(super) y: [f64; 2],
-}
-
 impl Bounds {
-    pub(super) fn of(rect: Rect) -> Self {
-        Self {
-            x: [rect.x, rect.x + rect.width],
-            y: [rect.y, rect.y + rect.height],
-        }
-    }
-
     pub(super) fn label(at: Point, size: Size, pad: f64) -> Self {
         let (w, h) = (size.width * 0.5 + pad, size.height * 0.5 + pad);
-        Self {
-            x: [at.x - w, at.x + w],
-            y: [at.y - h, at.y + h],
-        }
-    }
-
-    fn marker(at: Point, side: Side, marker: MarkerMetrics) -> Self {
-        let Point { x, y } = at;
-        let half = marker.width * 0.5;
-        let length = marker.length;
-        let (x, y) = match side {
-            Side::Top => ([x - half, x + half], [y - length, y]),
-            Side::Bottom => ([x - half, x + half], [y, y + length]),
-            Side::Left => ([x - length, x], [y - half, y + half]),
-            Side::Right => ([x, x + length], [y - half, y + half]),
-        };
-        Self { x, y }
-    }
-
-    fn span(from: Point, to: Point) -> Self {
-        Self {
-            x: [from.x.min(to.x), from.x.max(to.x)],
-            y: [from.y.min(to.y), from.y.max(to.y)],
-        }
-    }
-
-    pub(super) fn finite(self) -> bool {
-        self.x.into_iter().chain(self.y).all(f64::is_finite)
+        Self::from_half_extents(at, w, h)
     }
 
     pub(super) fn contains_center(self, center: Point) -> bool {
         self.x[0] < center.x && center.x < self.x[1] && self.y[0] < center.y && center.y < self.y[1]
-    }
-
-    fn union(self, other: Self) -> Self {
-        let union = |a: [f64; 2], b: [f64; 2]| [a[0].min(b[0]), a[1].max(b[1])];
-        Self {
-            x: union(self.x, other.x),
-            y: union(self.y, other.y),
-        }
-    }
-
-    pub(super) fn overlaps(self, other: Self) -> bool {
-        self.x[0] <= other.x[1]
-            && other.x[0] <= self.x[1]
-            && self.y[0] <= other.y[1]
-            && other.y[0] <= self.y[1]
     }
 
     fn hits_segment(self, from: Point, to: Point) -> bool {
@@ -213,17 +159,17 @@ impl Scene {
         let bends = style != RoutingStyle::Polyline;
         for i in 1..self.knots.len() {
             let (a, b) = (self.knots[i - 1], self.knots[i]);
-            let bounds = Bounds::span(a, b);
+            let bounds = Bounds::between(a, b);
             if bends && !aligned(a, b) {
                 // Sweeps and steps are coordinate-monotone. Terminal smoothing may absorb
                 // the preceding/following collinear shaft, extending the same envelope.
                 let last = self.knots.len() - 1;
                 let mut sweep = bounds;
                 if i == 2 && aligned(self.knots[0], a) {
-                    sweep = sweep.union(Bounds::span(self.knots[0], b));
+                    sweep = sweep.union(Bounds::between(self.knots[0], b));
                 }
                 if i + 1 == last && aligned(b, self.knots[last]) {
-                    sweep = sweep.union(Bounds::span(a, self.knots[last]));
+                    sweep = sweep.union(Bounds::between(a, self.knots[last]));
                 }
                 if !self.add(sweep, Some(edge), Shape::Area, work)? {
                     return Ok(false);
@@ -236,7 +182,7 @@ impl Scene {
                 && aligned(a, b)
                 && aligned(b, end)
                 && !aligned(a, end)
-                && !self.add(Bounds::span(a, end), Some(edge), Shape::Corner(b), work)?
+                && !self.add(Bounds::between(a, end), Some(edge), Shape::Corner(b), work)?
             {
                 return Ok(false);
             }

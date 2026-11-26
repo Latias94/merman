@@ -7,7 +7,6 @@
 
 #![forbid(unsafe_code)]
 
-mod css_identifier;
 mod fallback;
 pub(crate) use fallback::measure_styled_html_label;
 #[cfg_attr(
@@ -59,15 +58,14 @@ pub(crate) use parity::state_canonical_marker;
 ))]
 pub(crate) use parity::{FlowchartRenderConfig, prepare_flowchart_render_config};
 mod pipeline;
-pub(crate) mod scanner;
 
-pub(crate) use css_identifier::escape_css_identifier;
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{
     IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
+pub(crate) use merman_render_core::svg_css::escape_css_identifier;
 #[cfg(all(
     feature = "diagram-architecture",
     any(feature = "layout-cytoscape", feature = "layout-shoal")

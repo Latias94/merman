@@ -1,3 +1,4 @@
+use merman_bindings_core::transport_handles::HandleCounter;
 use merman_bindings_core::{BindingEngine, BindingError, BindingOperationRequest, MetadataKey};
 
 use crate::fonts;
@@ -46,7 +47,6 @@ struct ResultEntry {
     result: OwnedResult,
 }
 
-#[derive(Default)]
 pub(crate) struct Runtime {
     pub(crate) inputs: Inputs,
     addresses: Addresses,
@@ -54,11 +54,30 @@ pub(crate) struct Runtime {
     results: Vec<ResultEntry>,
     result_bytes: usize,
     font_bytes: usize,
-    last_handle: u32,
+    handles: HandleCounter,
     pub(crate) limits: Limits,
 }
 
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::with_handle_limit(u32::MAX)
+    }
+}
+
 impl Runtime {
+    pub(crate) fn with_handle_limit(max_handle: u32) -> Self {
+        Self {
+            inputs: Inputs::default(),
+            addresses: Addresses::default(),
+            engines: Vec::new(),
+            results: Vec::new(),
+            result_bytes: 0,
+            font_bytes: 0,
+            handles: HandleCounter::new(u64::from(max_handle)),
+            limits: Limits::default(),
+        }
+    }
+
     pub(crate) fn alloc(&mut self, len: u32) -> u32 {
         self.inputs.alloc(len, self.limits, &mut self.addresses)
     }
@@ -72,10 +91,13 @@ impl Runtime {
     }
 
     fn next_handle(&mut self) -> Result<u32, BindingError> {
-        self.last_handle = self.last_handle.checked_add(1).ok_or_else(|| {
-            BindingError::internal("WASI handle space exhausted; replace the instance")
-        })?;
-        Ok(self.last_handle)
+        // The counter's upper bound fits in u32.
+        self.handles
+            .allocate()
+            .map(|handle| handle as u32)
+            .ok_or_else(|| {
+                BindingError::internal("WASI handle space exhausted; replace the instance")
+            })
     }
 
     fn publish(&mut self, payload: Payload) -> Result<u32, BindingError> {
@@ -139,6 +161,7 @@ impl Runtime {
                 "WASI engine registry allocation failed",
             )));
         }
+        // A failed result publication still consumes the reserved engine handle.
         let engine_handle = match self.next_handle() {
             Ok(handle) => handle,
             Err(error) => return self.finish(Err(error)),
@@ -149,7 +172,7 @@ impl Runtime {
             Vec::new(),
             b"{\"version\":1,\"ok\":true}".to_vec(),
         );
-        // Publish both identities or neither; reserve the engine slot before the result commit.
+        // The engine slot is already reserved, so a successful result commits both entries.
         match self.publish(payload) {
             Ok(result_handle) => {
                 self.engines.push(EngineEntry {
@@ -261,11 +284,6 @@ impl Runtime {
             self.font_bytes,
             self.result_bytes,
         )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn exhaust_handles(&mut self, last: u32) {
-        self.last_handle = last;
     }
 }
 

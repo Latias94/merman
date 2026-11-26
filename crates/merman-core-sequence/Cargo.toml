@@ -1,0 +1,24 @@
+[package]
+name = "merman-core-sequence"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Syntax parser for Merman's Mermaid sequence diagrams."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+editor-facts = []
+
+[dependencies]
+merman-core-preprocess.workspace = true
+merman-model = { workspace = true, features = ["diagram-sequence"] }
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }

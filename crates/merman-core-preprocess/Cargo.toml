@@ -1,0 +1,23 @@
+[package]
+name = "merman-core-preprocess"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Controlled source text edits and byte-span mapping for Merman."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+mermaid-unicode = []
+
+[dependencies]
+merman-model.workspace = true
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }

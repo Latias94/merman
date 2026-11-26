@@ -27,8 +27,6 @@ pub(crate) mod contour;
 pub(crate) mod ir;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod placement;
-#[cfg(any(feature = "layout-shoal", test))]
-pub(crate) mod route_paint;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal_bridge;
 #[cfg(test)]
@@ -45,6 +43,42 @@ pub(crate) use ir::Marker;
     )
 ))]
 use ir::{Axis, BorderStitch, Endpoint, KnotKind, Side};
+#[cfg(any(
+    feature = "layout-shoal",
+    all(
+        test,
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )
+))]
+pub(crate) use merman_render_core::route_paint;
+
+#[cfg(any(feature = "layout-shoal", test))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    all(
+        feature = "layout-shoal",
+        any(
+            feature = "diagram-architecture",
+            feature = "diagram-c4",
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
+    )
+))]
+pub(crate) fn edge_paint_error(edge_id: &str, error: route_paint::RoutePaintError) -> crate::Error {
+    crate::Error::InvalidModel {
+        message: format!("Could not paint canonical edge `{edge_id}`: {error}"),
+    }
+}
 
 /// Render-only metadata. Compatibility JSON already carries the coordinates in occurrence order.
 #[cfg(all(

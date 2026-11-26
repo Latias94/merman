@@ -1,0 +1,22 @@
+[package]
+name = "merman-render-graph"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Geometry and SVG rendering primitives for Merman's graph families."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-er = ["dep:merman-render-core", "merman-render-core/svg-output"]
+layout-shoal = ["dep:kurbo"]
+
+[dependencies]
+kurbo = { workspace = true, optional = true }
+merman-render-core = { workspace = true, optional = true }

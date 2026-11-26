@@ -3,7 +3,9 @@ use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+use crate::inline_config::parse_mermaid_inline_object_with_text_controlled;
 use crate::sanitize::sanitize_text;
+use crate::yaml_config::YamlCollectionText;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
 use crate::{Error, MermaidConfig, Result, SourceSpan};
@@ -160,6 +162,12 @@ struct KanbanShapeData {
     fields: Vec<KanbanMetadataField>,
 }
 
+struct ParsedKanbanShapeData {
+    span: SourceSpan,
+    document: crate::json_value::ManagedJson,
+    collection_text: YamlCollectionText,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct KanbanSourceLine<'a> {
     text: &'a str,
@@ -263,7 +271,7 @@ impl KanbanDb {
         level: usize,
         spec: KanbanNodeSpec,
         span: SourceSpan,
-        shape_data: Option<(KanbanShapeData, crate::json_value::ManagedJson)>,
+        shape_data: Option<ParsedKanbanShapeData>,
         config: &MermaidConfig,
     ) -> Result<()> {
         let mut id = sanitize_text(&spec.id_raw, config);
@@ -288,8 +296,13 @@ impl KanbanDb {
             shape: None,
         };
 
-        if let Some((shape_data, document)) = shape_data {
-            apply_shape_data(&mut node, document.as_value(), shape_data.span)?;
+        if let Some(ParsedKanbanShapeData {
+            span,
+            document,
+            collection_text,
+        }) = shape_data
+        {
+            apply_shape_data(&mut node, document.as_value(), collection_text, span)?;
             node.metadata = Some(document);
         }
 
@@ -326,7 +339,12 @@ impl KanbanDb {
     }
 }
 
-fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -> Result<()> {
+fn apply_shape_data(
+    node: &mut KanbanNode,
+    document: &Value,
+    mut collection_text: YamlCollectionText,
+    span: SourceSpan,
+) -> Result<()> {
     let Some(obj) = document.as_object() else {
         return Ok(());
     };
@@ -348,10 +366,10 @@ fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -
         node.label = label.clone();
     }
     if let Some(icon) = obj.get("icon") {
-        node.icon = Some(value_to_string(icon));
+        node.icon = value_to_string(icon, collection_text.remove("icon"));
     }
     if let Some(assigned) = obj.get("assigned") {
-        node.assigned = Some(value_to_string(assigned));
+        node.assigned = value_to_string(assigned, collection_text.remove("assigned"));
     }
     // Mermaid gates the YAML value before converting it to a string (kanbanDb.ts).
     if let Some(ticket) = obj.get("ticket").filter(|value| match value {
@@ -361,24 +379,25 @@ fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -
         Value::String(value) => !value.is_empty(),
         Value::Array(_) | Value::Object(_) => true,
     }) {
-        node.ticket = Some(value_to_string(ticket));
+        node.ticket = value_to_string(ticket, collection_text.remove("ticket"));
     }
     if let Some(priority) = obj.get("priority") {
-        node.priority = Some(value_to_string(priority));
+        node.priority = value_to_string(priority, collection_text.remove("priority"));
     }
 
     Ok(())
 }
 
-fn value_to_string(v: &Value) -> String {
+fn value_to_string(v: &Value, collection: Option<String>) -> Option<String> {
     match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n
-            .as_f64()
-            .map_or_else(|| n.to_string(), crate::utils::format_js_number),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(
+            n.as_f64()
+                .map_or_else(|| n.to_string(), crate::utils::format_js_number),
+        ),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Null => Some("null".to_string()),
+        Value::Array(_) | Value::Object(_) => collection,
     }
 }
 
@@ -1543,11 +1562,13 @@ fn parse_kanban_statement(
     }
     let shape_data = match shape_data {
         Some(shape_data) => {
-            let document = match crate::inline_config::parse_mermaid_inline_object_controlled(
+            let parsed_metadata = parse_mermaid_inline_object_with_text_controlled(
                 &shape_data.text,
+                &["icon", "assigned", "ticket", "priority"],
                 control,
-            )? {
-                Ok(document) => document,
+            )?;
+            let (document, collection_text) = match parsed_metadata {
+                Ok(data) => data,
                 Err(error) => {
                     return Ok(Err(Error::diagram_parse_exact(
                         "kanban",
@@ -1556,10 +1577,11 @@ fn parse_kanban_statement(
                     )));
                 }
             };
-            Some((
-                shape_data,
-                crate::json_value::ManagedJson::from_value(document),
-            ))
+            Some(ParsedKanbanShapeData {
+                span: shape_data.span,
+                document: crate::json_value::ManagedJson::from_value(document),
+                collection_text,
+            })
         }
         None => None,
     };
@@ -2636,6 +2658,40 @@ mod semantic_tests {
             authored["assigned"],
             serde_json::json!(9_007_199_254_740_993_u64)
         );
+    }
+
+    #[test]
+    fn semantic_collection_metadata_preserves_nested_authored_order() {
+        let model = parse_semantic(concat!(
+            "kanban\n",
+            "  todo[Todo]\n",
+            "    card[Task]@{\n",
+            "      details: &details\n",
+            "        z:\n",
+            "          - second: 9007199254740993\n",
+            "            first: true\n",
+            "        a: []\n",
+            "      assigned: *details\n",
+            "      ticket:\n",
+            "        - *details\n",
+            "        - 0\n",
+            "      icon: *details\n",
+            "      priority: *details\n",
+            "    }\n",
+        ));
+        let card = &model.nodes[1];
+        let details_text = r#"{"z":[{"second":9007199254740993,"first":true}],"a":[]}"#;
+        assert_eq!(card.assigned.as_deref(), Some(details_text));
+        assert_eq!(card.icon.as_deref(), Some(details_text));
+        assert_eq!(card.priority.as_deref(), Some(details_text));
+        assert_eq!(card.ticket, Some(format!("[{details_text},0]")));
+        let metadata = card.metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata["details"],
+            serde_json::json!({"z": [{"second": 9007199254740993_u64, "first": true}], "a": []})
+        );
+        assert_eq!(metadata["assigned"], metadata["details"]);
+        assert_eq!(metadata["ticket"][0], metadata["details"]);
     }
 
     #[test]

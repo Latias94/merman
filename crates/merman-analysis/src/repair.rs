@@ -4,7 +4,7 @@ use crate::{
     AnalysisCancellationToken, AnalysisCancelled, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan,
     SourceMap,
 };
-use merman_core::preprocess::SourceConfigEvidence;
+use merman_core::preprocess::{FrontmatterInsertOrder, SourceConfigEvidence};
 use merman_model::{MermaidConfig, SourceSpan};
 use std::collections::BTreeMap;
 use std::mem::size_of;
@@ -26,6 +26,7 @@ pub(crate) struct MigrationFrontmatter {
     pub(crate) has_config: bool,
     pub(crate) rewrite_safe: bool,
     pub(crate) fields: Option<MermaidConfig>,
+    pub(crate) insert_order: Option<FrontmatterInsertOrder>,
 }
 
 #[derive(Debug)]
@@ -34,6 +35,8 @@ pub(crate) struct ConfigMigrationEvidence {
     pub(crate) authored_config: MermaidConfig,
     pub(crate) frontmatter: Option<MigrationFrontmatter>,
     pub(crate) config_insert_span: SourceSpan,
+    pub(crate) directive_spans: Vec<SourceSpan>,
+    pub(crate) legacy_init_namespace: Option<&'static str>,
     pub(crate) removals: Vec<SourceSpan>,
 }
 
@@ -50,6 +53,7 @@ impl ConfigMigrationEvidence {
             return Ok(None);
         }
         let source = source_map.source();
+        let mut directive_spans = Vec::new();
         let mut removals = Vec::new();
         for (index, directive) in source_config.directives().iter().enumerate() {
             if index.is_multiple_of(128) {
@@ -65,6 +69,7 @@ impl ConfigMigrationEvidence {
             if source.get(span.start..span.end).is_none() {
                 return Ok(None);
             }
+            directive_spans.push(span);
             removals.push(
                 crate::source_config_rewrite::directive_removal_span_cancellable(
                     source,
@@ -133,6 +138,7 @@ impl ConfigMigrationEvidence {
                     has_config: frontmatter.has_config(),
                     rewrite_safe: frontmatter.rewrite_safe(),
                     fields,
+                    insert_order: frontmatter.insert_order().cloned(),
                 })
             }
         };
@@ -142,6 +148,8 @@ impl ConfigMigrationEvidence {
             authored_config,
             frontmatter,
             config_insert_span: source_config.config_insert_span(),
+            directive_spans,
+            legacy_init_namespace: source_config.legacy_init_namespace(),
             removals,
         })))
     }
@@ -157,8 +165,12 @@ impl ConfigMigrationEvidence {
                 .estimated_owned_heap_bytes_excluding_source(),
         );
         weight.add_array::<SourceSpan>(self.removals.capacity());
+        weight.add_array::<SourceSpan>(self.directive_spans.capacity());
         if let Some(frontmatter) = &self.frontmatter {
             weight.add_string(&frontmatter.indent);
+            if let Some(order) = &frontmatter.insert_order {
+                weight.add(order.estimated_owned_heap_bytes());
+            }
             if let Some(fields) = &frontmatter.fields {
                 weight.add(crate::retained_weight::ARC_ALLOCATION_OVERHEAD);
                 weight.add(fields.estimated_owned_heap_bytes());

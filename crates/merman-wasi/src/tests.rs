@@ -210,9 +210,11 @@ fn input_result_and_handle_budgets_fail_without_releasing_other_owners() {
     assert_eq!(runtime.runtime_catalog(), 0);
     assert_ne!(runtime.result_info(first), 0);
     assert_eq!(runtime.result_free(first), 0);
-    assert_ne!(runtime.runtime_catalog(), 0);
-    let mut exhausted = Runtime::default();
-    exhausted.exhaust_handles(u32::MAX);
+    assert_eq!(runtime.runtime_catalog(), first + 1);
+    let mut exhausted = Runtime::with_handle_limit(1);
+    let last = exhausted.runtime_catalog();
+    assert_eq!(last, 1);
+    assert_eq!(exhausted.result_free(last), 0);
     assert_eq!(exhausted.runtime_catalog(), 0);
     assert_eq!(exhausted.counts(), (0, 0, 0, 0));
 }
@@ -291,10 +293,11 @@ fn execute(
 fn engine_and_result_handles_are_disjoint_never_reissued_and_results_outlive_close() {
     let mut runtime = Runtime::default();
     let (engine, constructor) = new_engine(&mut runtime, None, false);
-    assert_ne!(engine, constructor);
+    assert_eq!((engine, constructor), (1, 2));
     assert_eq!(runtime.engine_close(constructor), wire::INVALID_HANDLE);
     assert_eq!(runtime.result_free(engine), wire::INVALID_HANDLE);
     let result = runtime.runtime_catalog();
+    assert_eq!(result, constructor + 1);
     let saved = runtime.result(result).unwrap().bytes.to_vec();
     assert_eq!(runtime.result_free(constructor), 0);
     assert_eq!(runtime.engine_close(engine), 0);
@@ -302,24 +305,24 @@ fn engine_and_result_handles_are_disjoint_never_reissued_and_results_outlive_clo
     assert_eq!(runtime.result(result).unwrap().bytes.as_ref(), saved);
     assert_eq!(runtime.counts().2, 0);
     let stale = execute(&mut runtime, engine, "semantic-json", b"", None);
+    assert_eq!(stale, result + 1);
     assert_eq!(
         error_json(&runtime, stale)["code_name"],
         "MERMAN_INVALID_ARGUMENT"
     );
-    let (next_engine, next_constructor) = new_engine(&mut runtime, None, false);
-    assert!(next_engine > engine && next_constructor > constructor);
+    assert_eq!(
+        new_engine(&mut runtime, None, false),
+        (stale + 1, stale + 2)
+    );
 }
 
 #[cfg(feature = "native-fonts")]
 #[test]
 fn constructor_result_failure_is_transactional_even_at_handle_exhaustion() {
-    for last in [0, u32::MAX - 1] {
-        let mut runtime = Runtime::default();
-        if last == 0 {
-            runtime.limits.results = 0;
-        } else {
-            runtime.exhaust_handles(last);
-        }
+    for (max_handle, result_limit, next_handle) in [(u32::MAX, 0, 2), (1, 1, 0)] {
+        let mut runtime = Runtime::with_handle_limit(max_handle);
+        let default_result_limit = runtime.limits.results;
+        runtime.limits.results = result_limit;
         let fonts = include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf");
         let (font_off, font_len) = input(&mut runtime, fonts);
         let config = json!({"version": 1, "fonts": [{"offset": 0, "length": font_len}], "bundled_fonts": false});
@@ -329,6 +332,8 @@ fn constructor_result_failure_is_transactional_even_at_handle_exhaustion() {
             0
         );
         assert_eq!(runtime.counts(), (0, 0, 0, 0));
+        runtime.limits.results = default_result_limit;
+        assert_eq!(runtime.runtime_catalog(), next_handle);
     }
 }
 

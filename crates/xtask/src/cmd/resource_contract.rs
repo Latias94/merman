@@ -1,14 +1,14 @@
 //! Cross-platform projections of the resource policy descriptors.
 //!
-//! The input descriptors in `merman-core` and render descriptors in `merman-render` are the
-//! authorities. This module only projects their stable identifiers and validation metadata into
-//! host-language builders; it does not define another budget table.
+//! Resource owners supply their stable identifiers and validation metadata. This module projects
+//! that metadata into host-language builders without linking the export codecs.
 
 use crate::XtaskError;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract,
     BindingTransportKey, CapabilityKey, OperationKey, RuntimePolicyExposure,
-    RuntimeResourceContract, TargetKey, binding_resource_contract,
+    RuntimeResourceContract, TargetKey,
+    binding_resource_contract_with_export_metadata as binding_resource_contract,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

@@ -78,26 +78,32 @@ pub(crate) fn solve<'id>(
         Vec::new()
     };
     let reuse_components = !fit_width && anchors.is_some();
+    let placement = Placement {
+        width,
+        capture_ranks: capture,
+        reuse_components,
+        hints: &hints,
+        incident_signatures: anchors
+            .as_ref()
+            .map_or(&[], anchors::Components::signatures),
+        constraints,
+    };
+    if !fit_width
+        && !capture
+        && execution.previous_shoal_frame.is_none()
+        && graph.groups.is_empty()
+        && placement.constraints.lane_order.is_empty()
+        && let Some(pool) = execution.family.session().shoal_scratch()
+    {
+        let solved = pool.solve(|scratch| shoal_bridge::solve(graph, placement, scratch, work))?;
+        return Ok((solved, GraphPlacement::default()));
+    }
     let mut scratch = if reuse_components {
         execution.shoal_preview_scratch(previous)
     } else {
         LayoutScratch::with_max_retained_bytes(0)
     };
-    let solved = shoal_bridge::solve(
-        graph,
-        Placement {
-            width,
-            capture_ranks: capture,
-            reuse_components,
-            hints: &hints,
-            incident_signatures: anchors
-                .as_ref()
-                .map_or(&[], anchors::Components::signatures),
-            constraints,
-        },
-        &mut scratch,
-        work,
-    )?;
+    let solved = shoal_bridge::solve(graph, placement, &mut scratch, work)?;
     let placement = GraphPlacement {
         adaptation: fit_width.then(|| {
             LayoutAdaptationObservation::fit_width(execution.container_width, solved.bounds.width)

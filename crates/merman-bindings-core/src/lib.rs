@@ -31,7 +31,11 @@ mod svg_viewport;
 pub use svg_viewport::BindingSvgViewport;
 #[cfg(feature = "svg")]
 mod text_measurement;
+#[doc(hidden)]
+pub mod transport_boundary;
 mod transport_contract;
+#[doc(hidden)]
+pub mod transport_handles;
 
 #[cfg(feature = "ascii")]
 mod ascii;
@@ -61,8 +65,8 @@ pub use common::{
 };
 #[doc(hidden)]
 pub use common::{
-    BindingJsSafeResourceErrorDetails, DecodedOperationOptions, binding_error_details_json,
-    binding_error_js_details_json, binding_error_js_payload_json_bytes,
+    BindingErrorBody, BindingJsSafeResourceErrorDetails, DecodedOperationOptions,
+    binding_error_details_json, binding_error_js_details_json, binding_error_js_payload_json_bytes,
     enforce_options_json_byte_budget, enforce_options_json_byte_len,
 };
 pub use engine::BindingEngine;
@@ -105,6 +109,9 @@ pub use operation_contract::{
 };
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
+#[cfg(feature = "export-resource-metadata")]
+#[doc(hidden)]
+pub use resource_contract::binding_resource_contract_with_export_metadata;
 pub use resource_contract::{
     BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceContract, BindingResourceLimitDescriptor,
     BindingResourceProfileDescriptor, binding_resource_contract,

@@ -22,17 +22,13 @@ const SEQUENCE_BOX_LAYOUT_WORK_UNITS: usize = 4;
 const SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS: usize = 2;
 const SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS: usize = 2;
 const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
-const SEQUENCE_CHECKPOINT_INTERVAL: usize = 64;
 
 mod activation;
 mod activation_geometry;
 mod actors;
-mod block_collection;
-mod block_geometry;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
-mod drawing_geometry;
 mod math_artifact;
 mod message_metrics;
 mod messages;
@@ -52,14 +48,12 @@ pub(crate) use theme_binding::SequenceCompatBinding;
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
-pub(crate) use constants::{
-    SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    SequenceActorBands, SequenceActorLabelFootprint,
-};
+pub(crate) use constants::{SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES};
 pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
     SequenceMathSidecarBuilder,
 };
+pub(crate) use merman_render_sequence::actor::SequenceActorLabelFootprint;
 #[cfg(test)]
 pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{
@@ -73,7 +67,9 @@ pub(crate) use notes::sequence_note_final_wrapped_lines;
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
-use drawing_geometry::{SequenceFrameGeometry, prepare_sequence_frame_geometry};
+use merman_render_sequence::frame::{
+    SEQUENCE_CHECKPOINT_INTERVAL, SequenceFrameGeometry, prepare_sequence_frame_geometry,
+};
 use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use root_bounds::{
@@ -671,7 +667,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         &edges,
         &block_layouts_by_id,
         block_label_box_metrics.width(),
-        checkpoints,
+        work_meter.as_ref(),
     )?;
 
     let mut boxes = Vec::with_capacity(box_layouts.len());

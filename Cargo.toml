@@ -7,6 +7,11 @@ members = [
     "crates/merman-fixture-render-context",
     "crates/merman-theme-contract",
     "crates/merman-core",
+    "crates/merman-core-flow",
+    "crates/merman-core-graph",
+    "crates/merman-core-preprocess",
+    "crates/merman-core-sequence",
+    "crates/merman-core-structured",
     "crates/merman-model",
     "crates/merman-markup",
     "crates/merman-doc",
@@ -23,6 +28,12 @@ members = [
     "crates/merman-layout-shoal",
     "crates/merman-rustdoc",
     "crates/merman-render",
+    "crates/merman-render-charts",
+    "crates/merman-render-core",
+    "crates/merman-render-flow",
+    "crates/merman-render-graph",
+    "crates/merman-render-sequence",
+    "crates/merman-render-structured",
     "crates/merman-unicode-linebreak",
     "crates/merman-export",
     "crates/merman-typst-plugin",
@@ -81,6 +92,7 @@ indexmap = "2.14.2"
 libc = "0.2.191"
 # Pin numerical kernels so deterministic geometry changes are reviewed explicitly.
 libm = { version = "=0.2.16", default-features = false }
+memchr = "2"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 ratex-font = "0.1.15"
 ratex-layout = "0.1.15"
@@ -162,6 +174,11 @@ merman-analysis = { path = "crates/merman-analysis", version = "0.11.0", default
 merman-ascii = { path = "crates/merman-ascii", version = "0.11.0", default-features = false }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.11.0", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.11.0", default-features = false }
+merman-core-flow = { path = "crates/merman-core-flow", version = "0.11.0", default-features = false }
+merman-core-graph = { path = "crates/merman-core-graph", version = "0.11.0", default-features = false }
+merman-core-preprocess = { path = "crates/merman-core-preprocess", version = "0.11.0" }
+merman-core-sequence = { path = "crates/merman-core-sequence", version = "0.11.0", default-features = false }
+merman-core-structured = { path = "crates/merman-core-structured", version = "0.11.0", default-features = false }
 merman-model = { path = "crates/merman-model", version = "0.11.0", default-features = false }
 merman-markup = { path = "crates/merman-markup", version = "0.11.0", default-features = false }
 merman-doc = { path = "crates/merman-doc", version = "0.11.0", default-features = false }
@@ -170,6 +187,12 @@ merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.11.0", d
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.11.0" }
 merman-layout-shoal = { path = "crates/merman-layout-shoal", version = "0.11.0" }
 merman-render = { path = "crates/merman-render", version = "0.11.0", default-features = false }
+merman-render-charts = { path = "crates/merman-render-charts", version = "0.11.0", default-features = false }
+merman-render-core = { path = "crates/merman-render-core", version = "0.11.0", default-features = false }
+merman-render-flow = { path = "crates/merman-render-flow", version = "0.11.0", default-features = false }
+merman-render-graph = { path = "crates/merman-render-graph", version = "0.11.0", default-features = false }
+merman-render-sequence = { path = "crates/merman-render-sequence", version = "0.11.0", default-features = false }
+merman-render-structured = { path = "crates/merman-render-structured", version = "0.11.0", default-features = false }
 merman-export = { path = "crates/merman-export", version = "0.11.0", default-features = false }
 dugong = { path = "crates/dugong", version = "0.11.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.11.0" }

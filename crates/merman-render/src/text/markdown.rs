@@ -1,13 +1,6 @@
 //! Mermaid-like Markdown tokenization helpers.
 
-use super::{is_ecmascript_whitespace, trim_ecmascript_whitespace};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MermaidMarkdownWordType {
-    Normal,
-    Strong,
-    Em,
-}
+use super::{MermaidMarkdownWordType, is_ecmascript_whitespace, trim_ecmascript_whitespace};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MermaidMarkdownAnalysis {

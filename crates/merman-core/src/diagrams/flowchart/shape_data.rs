@@ -2,6 +2,11 @@ use super::{Node, TitleKind};
 use crate::diagrams::shapes::is_valid_pinned_shape;
 use serde_json::Value;
 
+pub(super) struct ShapeDataDocument {
+    pub(super) value: Value,
+    pub(super) key_order: Vec<String>,
+}
+
 pub(super) fn value_to_string(v: &Value) -> Option<String> {
     crate::inline_config::value_to_string(v)
 }
@@ -67,18 +72,17 @@ fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
 
 pub(super) fn apply_shape_data_value_to_node(
     node: &mut Node,
-    document: &Value,
+    document: &ShapeDataDocument,
 ) -> std::result::Result<(), String> {
-    let map = match document.as_object() {
-        Some(m) => m,
-        None => return Ok(()),
-    };
-
     let mut provided_label: Option<String> = None;
     let mut provided_label_type: Option<TitleKind> = None;
     let mut provided_visual = false;
-    for (k, v) in map {
-        match k.as_str() {
+    // Mermaid applies authored fields in order, including their coercion and shape errors.
+    for key in &document.key_order {
+        let Some(v) = document.value.get(key) else {
+            continue;
+        };
+        match key.as_str() {
             "shape" => {
                 let Some(shape) = v.as_str().filter(|shape| !shape.is_empty()) else {
                     continue;
@@ -98,8 +102,6 @@ pub(super) fn apply_shape_data_value_to_node(
                 if let Some(label) = metadata_string(v) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
-                    node.label_span = None;
-                    node.label_selection = None;
                 }
             }
             "labelType" => {
@@ -163,8 +165,6 @@ pub(super) fn apply_shape_data_value_to_node(
         let current_text = node.label.as_deref().unwrap_or(node.id.as_str());
         if current_text == node.id {
             node.label = Some(String::new());
-            node.label_span = None;
-            node.label_selection = None;
         }
     }
 

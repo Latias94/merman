@@ -326,11 +326,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
-          cargo run --locked -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
+          cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
           # The builder verifies the current workspace plugin version and protocol.
           # The independent wrapper's version-pinned suite belongs to its package owner.
-          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --examples-only --typst "${typst_bin}"
+          cargo run --locked -p xtask --features wasm-host -- typst-package-smoke --profile publish --skip-wasm-build --examples-only --typst "${typst_bin}"
 
   publish:
     needs: [validate-inputs, preflight, web-owner-preflight, typst-owner-preflight]

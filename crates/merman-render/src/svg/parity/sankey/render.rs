@@ -1,166 +1,31 @@
 use super::super::*;
-use std::borrow::Cow;
-
-#[derive(Clone, Copy)]
-struct SankeyScopedId<'a> {
-    diagram_id: Option<SvgDiagramId<'a>>,
-    local_id: &'a str,
-}
-
-impl std::fmt::Display for SankeyScopedId<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.diagram_id {
-            Some(diagram_id) => write!(formatter, "{diagram_id}-{}", self.local_id),
-            None => formatter.write_str(self.local_id),
-        }
-    }
-}
-
-/// Writer-local generated IDs retain last-ID ownership for duplicate node occurrences.
-struct SankeyTerminalNodeIndex {
-    by_id: std::collections::HashMap<String, String>,
-}
-
-impl SankeyTerminalNodeIndex {
-    fn new(
-        nodes: &[crate::model::SankeyNodeLayout],
-        next_generated_id: &mut impl FnMut(&str) -> String,
-    ) -> Self {
-        let mut by_id = std::collections::HashMap::with_capacity(nodes.len());
-        for node in nodes {
-            by_id.insert(node.id.clone(), next_generated_id("node-"));
-        }
-        Self { by_id }
-    }
-
-    fn terminal_uid(&self, node_id: &str) -> Option<&str> {
-        self.by_id.get(node_id).map(String::as_str)
-    }
-}
-
-fn write_sankey_nodes(
-    out: &mut impl SvgOutput,
-    nodes: &[crate::model::SankeyNodeLayout],
-    node_palette: &crate::sankey::SankeyNodePalette,
-    terminal_node_index: &SankeyTerminalNodeIndex,
-    scope_generated_ids: bool,
-    diagram_id: SvgDiagramId<'_>,
-) -> Result<()> {
-    for (node_index, node) in nodes.iter().enumerate() {
-        let fallback_uid;
-        let local_uid = match terminal_node_index.terminal_uid(&node.id) {
-            Some(node_uid) => node_uid,
-            None => {
-                fallback_uid = "node-0".to_string();
-                &fallback_uid
-            }
-        };
-        let node_uid = SankeyScopedId {
-            diagram_id: scope_generated_ids.then_some(diagram_id),
-            local_id: local_uid,
-        };
-        let x = node.x0;
-        let y = node.y0;
-        let w = node.x1 - node.x0;
-        let h = node.y1 - node.y0;
-        let fill =
-            node_palette
-                .fill_for(node_index, &node.id)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!(
-                        "Sankey node palette has no paint for node {} at ordinal {}",
-                        node.id,
-                        node_index + 1
-                    ),
-                })?;
-        let _ = write!(
-            out,
-            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
-            id = escape_attr_display(node_uid),
-            x = fmt(x),
-            y = fmt(y),
-            h = fmt(h),
-            w = fmt(w),
-            fill = escape_attr(fill),
-        );
-        out.checkpoint()?;
-    }
-    Ok(())
-}
+use crate::sankey::{SankeyLinkPaint, SankeyNodePalette};
+use merman_render_charts::sankey::{SankeySvgBody, SankeySvgLink, SankeySvgLinkPaint};
 
 fn write_sankey_links(
     out: &mut impl SvgOutput,
+    body: &mut SankeySvgBody<'_>,
     layout: &SankeyDiagramLayout,
-    node_palette: &crate::sankey::SankeyNodePalette,
-    next_generated_id: &mut impl FnMut(&str) -> String,
-    diagram_id: Option<SvgDiagramId<'_>>,
+    node_palette: &SankeyNodePalette,
 ) -> Result<()> {
-    let link_group_open = format!(
-        r#"<g class="link" style="mix-blend-mode: {};">"#,
+    body.write_links(
+        out,
         node_palette.link_blend_mode_css(),
-    );
-    for (link_index, link) in layout.links.iter().enumerate() {
-        let prepared =
-            node_palette
-                .terminal_link(link_index)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!("Sankey has no prepared link at ordinal {}", link_index + 1),
-                })?;
-        let source = &layout.nodes[prepared.source_layout_index];
-        let target = &layout.nodes[prepared.target_layout_index];
-
-        let sx = source.x1;
-        let tx = target.x0;
-        let mx = (sx + tx) / 2.0;
-        let path_d = format!(
-            "M{sx},{y0}C{mx},{y0},{mx},{y1},{tx},{y1}",
-            sx = fmt(sx),
-            y0 = fmt(link.y0),
-            mx = fmt(mx),
-            y1 = fmt(link.y1),
-            tx = fmt(tx),
-        );
-
-        out.push_str(&link_group_open);
-        out.checkpoint()?;
-
-        let stroke = match prepared.paint {
-            crate::sankey::SankeyLinkPaint::Solid(css) => Cow::Borrowed(css),
-            crate::sankey::SankeyLinkPaint::Gradient {
-                source: source_color,
-                target: target_color,
-            } => {
-                let gradient_id = next_generated_id("linearGradient-");
-                let scoped_gradient_id = SankeyScopedId {
-                    diagram_id,
-                    local_id: &gradient_id,
-                };
-                let _ = write!(
-                    out,
-                    r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="{x1}" x2="{x2}"><stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></linearGradient>"#,
-                    id = escape_attr_display(scoped_gradient_id),
-                    x1 = fmt(sx),
-                    x2 = fmt(tx),
-                    c1 = escape_attr(source_color),
-                    c2 = escape_attr(target_color),
-                );
-                out.checkpoint()?;
-                Cow::Owned(format!("url(#{})", scoped_gradient_id))
-            }
-        };
-
-        let stroke_width = link.width.max(1.0);
-        let _ = write!(
-            out,
-            r#"<path d="{d}" stroke="{stroke}" stroke-width="{sw}"/></g>"#,
-            d = escape_xml(&path_d),
-            stroke = escape_attr(&stroke),
-            sw = fmt(stroke_width),
-        );
-        out.checkpoint()?;
-    }
-
-    Ok(())
+        node_palette.link_stroke_opacity(),
+        |link_index| {
+            let prepared = node_palette.terminal_link(link_index)?;
+            Some(SankeySvgLink {
+                source: &layout.nodes[prepared.source_layout_index],
+                target: &layout.nodes[prepared.target_layout_index],
+                paint: match prepared.paint {
+                    SankeyLinkPaint::Solid(css) => SankeySvgLinkPaint::Solid(css),
+                    SankeyLinkPaint::Gradient { source, target } => {
+                        SankeySvgLinkPaint::Gradient { source, target }
+                    }
+                },
+            })
+        },
+    )
 }
 
 pub(crate) fn render_sankey_diagram_svg(
@@ -304,48 +169,12 @@ pub(crate) fn render_sankey_diagram_svg(
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
-    let mut uid_count: usize = 0;
-    let mut next_generated_id = |prefix: &str| -> String {
-        uid_count += 1;
-        format!("{prefix}{uid_count}")
-    };
-
-    let terminal_node_index = SankeyTerminalNodeIndex::new(&layout.nodes, &mut next_generated_id);
-
-    let mut append_links = |out: &mut BoundedSvgOutput<'_>| -> Result<()> {
-        let _ = write!(
-            out,
-            r#"<g class="links" fill="none" stroke-opacity="{}">"#,
-            node_palette.link_stroke_opacity()
-        );
-        out.checkpoint()?;
-        write_sankey_links(
-            out,
-            layout,
-            node_palette,
-            &mut next_generated_id,
-            scope_generated_ids.then_some(diagram_id),
-        )?;
-        out.push_str("</g>");
-        out.checkpoint()
-    };
-
+    let mut body = SankeySvgBody::new(layout, scope_generated_ids.then_some(diagram_id));
     if node_palette.links_before_nodes() {
-        append_links(&mut out)?;
+        write_sankey_links(&mut out, &mut body, layout, node_palette)?;
     }
 
-    out.push_str(r#"<g class="nodes">"#);
-    out.checkpoint()?;
-    write_sankey_nodes(
-        &mut out,
-        &layout.nodes,
-        node_palette,
-        &terminal_node_index,
-        scope_generated_ids,
-        diagram_id,
-    )?;
-    out.push_str("</g>");
-    out.checkpoint()?;
+    body.write_nodes(&mut out, |index, id| node_palette.fill_for(index, id))?;
     let label_weight = style
         .label_weight
         .map_or_else(String::new, |weight| format!(r#" font-weight="{weight}""#));
@@ -402,7 +231,7 @@ pub(crate) fn render_sankey_diagram_svg(
     out.push_str("</g>");
     out.checkpoint()?;
     if !node_palette.links_before_nodes() {
-        append_links(&mut out)?;
+        write_sankey_links(&mut out, &mut body, layout, node_palette)?;
     }
     out.push_str("</svg>");
     root_document.complete(out.finish()?)
@@ -412,8 +241,6 @@ pub(crate) fn render_sankey_diagram_svg(
 mod tests {
     use super::*;
     use crate::model::SankeyNodeLayout;
-    use std::fmt;
-    use std::ops::Range;
 
     fn sankey_node(id: impl Into<String>, index: usize, x0: f64, x1: f64) -> SankeyNodeLayout {
         SankeyNodeLayout {
@@ -476,136 +303,6 @@ mod tests {
         .expect("resolve baseline Sankey node palette")
     }
 
-    fn build_terminal_node_index(nodes: &[SankeyNodeLayout]) -> SankeyTerminalNodeIndex {
-        let mut uid_count = 0;
-        let mut next_generated_id = |prefix: &str| {
-            uid_count += 1;
-            format!("{prefix}{uid_count}")
-        };
-        SankeyTerminalNodeIndex::new(nodes, &mut next_generated_id)
-    }
-
-    #[derive(Default)]
-    struct RejectAfterFirstWrite {
-        write_attempts: usize,
-        reject_after: usize,
-        rejected: bool,
-        retained: String,
-    }
-
-    impl RejectAfterFirstWrite {
-        fn record_write(&mut self, value: &str) -> fmt::Result {
-            self.write_attempts += 1;
-            if self.write_attempts == self.reject_after.max(1) {
-                self.rejected = true;
-                return Err(fmt::Error);
-            }
-            self.retained.push_str(value);
-            Ok(())
-        }
-    }
-
-    impl fmt::Write for RejectAfterFirstWrite {
-        fn write_str(&mut self, value: &str) -> fmt::Result {
-            self.record_write(value)
-        }
-    }
-
-    impl SvgOutput for RejectAfterFirstWrite {
-        fn push_str(&mut self, value: &str) {
-            let _ = self.record_write(value);
-        }
-
-        fn push(&mut self, value: char) {
-            let mut encoded = [0u8; 4];
-            let _ = self.record_write(value.encode_utf8(&mut encoded));
-        }
-
-        fn len(&self) -> usize {
-            self.retained.len()
-        }
-
-        fn as_str(&self) -> &str {
-            self.retained.as_str()
-        }
-
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
-            self.retained.replace_range(range, replacement);
-            Ok(())
-        }
-
-        fn checkpoint(&mut self) -> crate::Result<()> {
-            if self.rejected {
-                Err(crate::Error::InvalidModel {
-                    message: "test SVG sink rejected the first write".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    #[test]
-    fn sankey_nodes_stop_after_the_first_svg_sink_failure() {
-        let nodes = (0..4)
-            .map(|index| crate::model::SankeyNodeLayout {
-                id: format!("node-{index}"),
-                index,
-                depth: index,
-                height: 0,
-                layer: index,
-                value: 1.0,
-                x0: index as f64,
-                x1: index as f64 + 10.0,
-                y0: 0.0,
-                y1: 20.0,
-            })
-            .collect::<Vec<_>>();
-        let layout = crate::model::SankeyDiagramLayout {
-            bounds: None,
-            width: 100.0,
-            height: 100.0,
-            node_width: 10.0,
-            node_padding: 12.0,
-            nodes: nodes.clone(),
-            links: Vec::new(),
-        };
-        let work_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        ));
-        let node_palette = crate::sankey::SankeyNodePalette::prepare_labels_and_nodes(
-            merman_model::presentation::PresentationConfig::default().as_value(),
-            &layout,
-            &work_meter,
-        )
-        .expect("resolve baseline Sankey node palette");
-        let terminal_node_index = build_terminal_node_index(&nodes);
-        let mut out = RejectAfterFirstWrite::default();
-
-        let request = SvgRenderOptions {
-            diagram_id: Some("sankey".to_string()),
-            ..SvgRenderOptions::default()
-        };
-        let error =
-            with_test_svg_execution(crate::DiagramFamilyId::SANKEY, &request, |execution| {
-                write_sankey_nodes(
-                    &mut out,
-                    &nodes,
-                    &node_palette,
-                    &terminal_node_index,
-                    false,
-                    execution.diagram_id_or("sankey"),
-                )
-            })
-            .expect_err("the rejecting sink must stop Sankey node emission");
-
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
-        assert_eq!(
-            out.write_attempts, 1,
-            "Sankey node emission must stop at the first failed sink checkpoint"
-        );
-    }
-
     #[test]
     fn sankey_endpoint_index_preserves_representative_link_svg_and_linear_lookup_count() {
         let layout = sankey_layout(
@@ -623,27 +320,19 @@ mod tests {
         node_palette
             .prepare_links(&layout, "#445566", &test_link_work_meter())
             .expect("prepare representative links");
-        let mut uid_count = layout.nodes.len();
-        let mut next_generated_id = |prefix: &str| {
-            uid_count += 1;
-            format!("{prefix}{uid_count}")
-        };
+        let mut body = SankeySvgBody::new(&layout, None);
         let mut out = String::new();
 
-        write_sankey_links(
-            &mut out,
-            &layout,
-            &node_palette,
-            &mut next_generated_id,
-            None,
-        )
-        .expect("write representative Sankey links");
+        write_sankey_links(&mut out, &mut body, &layout, &node_palette)
+            .expect("write representative Sankey links");
 
         assert_eq!(
             out,
             concat!(
+                r#"<g class="links" fill="none" stroke-opacity="0.5">"#,
                 r##"<g class="link" style="mix-blend-mode: multiply;"><path d="M10,5C25,5,25,7,40,7" stroke="#445566" stroke-width="3"/></g>"##,
                 r##"<g class="link" style="mix-blend-mode: multiply;"><path d="M50,9C65,9,65,11,80,11" stroke="#445566" stroke-width="4"/></g>"##,
+                "</g>",
             )
         );
         assert_eq!(
@@ -666,8 +355,6 @@ mod tests {
         node_palette
             .prepare_links(&layout, "source", &test_link_work_meter())
             .expect("prepare duplicate-ID link");
-        let terminal_node_index = build_terminal_node_index(&layout.nodes);
-        assert_eq!(terminal_node_index.terminal_uid("A"), Some("node-2"));
         let prepared = node_palette
             .terminal_link(0)
             .expect("prepared duplicate link");
@@ -676,25 +363,21 @@ mod tests {
             prepared.paint,
             crate::sankey::SankeyLinkPaint::Solid("#4e79a7")
         ));
-        let mut uid_count = layout.nodes.len();
-        let mut next_generated_id = |prefix: &str| {
-            uid_count += 1;
-            format!("{prefix}{uid_count}")
-        };
+        let mut body = SankeySvgBody::new(&layout, None);
         let mut out = String::new();
+        body.write_nodes(&mut out, |index, id| node_palette.fill_for(index, id))
+            .expect("write duplicate-ID Sankey nodes");
+        assert!(!out.contains(r#"id="node-1""#));
+        assert_eq!(out.matches(r#"id="node-2""#).count(), 2);
+        assert_eq!(out.matches(r#"id="node-3""#).count(), 1);
+        out.clear();
 
-        write_sankey_links(
-            &mut out,
-            &layout,
-            &node_palette,
-            &mut next_generated_id,
-            None,
-        )
-        .expect("write duplicate-ID Sankey link");
+        write_sankey_links(&mut out, &mut body, &layout, &node_palette)
+            .expect("write duplicate-ID Sankey link");
 
         assert_eq!(
             out,
-            r##"<g class="link" style="mix-blend-mode: multiply;"><path d="M10,4C30,4,30,6,50,6" stroke="#4e79a7" stroke-width="2"/></g>"##
+            r##"<g class="links" fill="none" stroke-opacity="0.5"><g class="link" style="mix-blend-mode: multiply;"><path d="M10,4C30,4,30,6,50,6" stroke="#4e79a7" stroke-width="2"/></g></g>"##
         );
         assert_eq!(node_palette.link_lookup_stats(), (3, 2));
     }
@@ -741,35 +424,6 @@ mod tests {
     }
 
     #[test]
-    fn prepared_gradient_stops_before_path_when_gradient_sink_fails() {
-        let layout = sankey_layout(
-            vec![
-                sankey_node("A", 0, 0.0, 10.0),
-                sankey_node("B", 1, 40.0, 50.0),
-            ],
-            vec![sankey_link(0, "A", "B", 1.0, 5.0, 7.0)],
-        );
-        let mut palette = baseline_node_palette(&layout);
-        palette
-            .prepare_links(&layout, "gradient", &test_link_work_meter())
-            .expect("prepare gradient");
-        let mut generated = 2;
-        let mut next_id = |prefix: &str| {
-            generated += 1;
-            format!("{prefix}{generated}")
-        };
-        let mut out = RejectAfterFirstWrite {
-            reject_after: 2,
-            ..Default::default()
-        };
-        write_sankey_links(&mut out, &layout, &palette, &mut next_id, None)
-            .expect_err("failed gradient must stop path emission");
-        assert!(!out.retained.contains("<path"));
-        assert_eq!(out.write_attempts, 2);
-        assert_eq!(generated, 3);
-    }
-
-    #[test]
     fn prepared_link_modes_preserve_gradient_ids_and_reuse_final_node_paints() {
         let layout = sankey_layout(
             vec![
@@ -797,30 +451,19 @@ mod tests {
                 .prepare_links(&layout, mode, &test_link_work_meter())
                 .expect("prepare link mode");
             for _ in 0..2 {
-                let mut uid_count = 0;
-                let mut next_id = |prefix: &str| {
-                    uid_count += 1;
-                    format!("{prefix}{uid_count}")
-                };
-                let _ids = SankeyTerminalNodeIndex::new(&layout.nodes, &mut next_id);
                 let request = SvgRenderOptions {
                     diagram_id: Some("example".into()),
                     ..SvgRenderOptions::default()
                 };
                 let mut out = String::new();
                 with_test_svg_execution(crate::DiagramFamilyId::SANKEY, &request, |execution| {
-                    write_sankey_links(
-                        &mut out,
-                        &layout,
-                        &palette,
-                        &mut next_id,
-                        Some(execution.diagram_id_or("sankey")),
-                    )
+                    let mut body =
+                        SankeySvgBody::new(&layout, Some(execution.diagram_id_or("sankey")));
+                    write_sankey_links(&mut out, &mut body, &layout, &palette)
                 })
                 .expect("emit prepared links");
                 assert!(out.contains(&format!("stroke=\"{expected_stroke}\"")));
                 assert!(out.contains("stroke-width=\"1\""));
-                assert_eq!(uid_count, if mode == "gradient" { 3 } else { 2 });
                 if mode == "gradient" {
                     assert!(out.contains("x1=\"10\" x2=\"40\""));
                     assert!(out.contains("stop-color=\"var(--node)\""));

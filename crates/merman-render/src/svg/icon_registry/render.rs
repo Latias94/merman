@@ -1,9 +1,8 @@
 use super::IconRenderRequest;
-use super::ingest::ResolvedIcon;
-use super::xml::ValidatedIconBody;
 use crate::svg::pipeline::validate_well_formed_svg_with_controls;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use merman_model::OperationPhase;
+use merman_render_core::icon_registry::{IconDefsPlacement, ParsedIconBody, ResolvedIcon};
 #[cfg(test)]
 use quick_xml::events::Event;
 use std::cell::Cell;
@@ -141,6 +140,7 @@ impl SanitizeOutputSink for BoundedSanitizeSink<'_> {
 
 pub(super) fn render_resolved_icon(
     icon: &ResolvedIcon,
+    body: &ParsedIconBody,
     request: &IconRenderRequest<'_>,
 ) -> crate::Result<String> {
     let width = render_dimension(request.width_px, "width")?;
@@ -150,7 +150,7 @@ pub(super) fn render_resolved_icon(
         .extra_class
         .map(|class| format!(r#" class="{}""#, escape_xml_attr(class)))
         .unwrap_or_default();
-    let xlink_attr = if icon.body.uses_xlink() {
+    let xlink_attr = if body.uses_xlink() {
         r#" xmlns:xlink="http://www.w3.org/1999/xlink""#
     } else {
         ""
@@ -162,24 +162,41 @@ pub(super) fn render_resolved_icon(
         js_number(transformed.width),
         js_number(transformed.height),
     );
-    let projected_body_bytes = transformed.projected_body_bytes(&icon.body)?;
+    let (wrapper_start, wrapper_end, defs) = match transformed.wrapper.as_deref() {
+        Some(start) => (start, "</g>", IconDefsPlacement::Hoisted),
+        None => ("", "", IconDefsPlacement::Inline),
+    };
+    let projected_body_bytes = body
+        .rewritten_len(defs)
+        .ok()
+        .and_then(|bytes| bytes.checked_add(wrapper_start.len()))
+        .and_then(|bytes| bytes.checked_add(wrapper_end.len()))
+        .ok_or_else(|| crate::Error::icon_processing("transformed icon size overflowed"))?;
     let projected_svg_bytes = open
         .len()
         .checked_add(projected_body_bytes)
         .and_then(|bytes| bytes.checked_add("</svg>".len()))
         .ok_or_else(|| crate::Error::icon_processing("projected icon SVG size overflowed"))?;
-    let sanitizer_ceiling =
-        sanitizer_output_ceiling(projected_svg_bytes, icon.body.element_count())?;
-    let work_units = icon_render_work_units(icon, projected_svg_bytes, sanitizer_ceiling)?;
+    let sanitizer_ceiling = sanitizer_output_ceiling(projected_svg_bytes, body.element_count())?;
+    let work_units = icon_render_work_units(body, projected_svg_bytes, sanitizer_ceiling)?;
 
     // Both ledgers are charged before cloning the retained body or allocating the assembled SVG.
     request.work_meter.charge_emit_work(work_units)?;
     request.work_meter.charge_svg_bytes(projected_svg_bytes)?;
 
-    let body = transformed.apply(&icon.body, request.id_scope)?;
+    let rewritten = body.rewrite_ids(request.id_scope, defs).map_err(|_| {
+        crate::Error::icon_processing(match defs {
+            IconDefsPlacement::Inline => "validated icon ID scoping failed",
+            IconDefsPlacement::Hoisted => "validated icon transform assembly failed",
+        })
+    })?;
+    let (definitions, content) = rewritten.untrusted_xml_parts();
     let mut raw_svg = String::with_capacity(projected_svg_bytes);
     raw_svg.push_str(&open);
-    raw_svg.push_str(&body);
+    raw_svg.push_str(definitions);
+    raw_svg.push_str(wrapper_start);
+    raw_svg.push_str(content);
+    raw_svg.push_str(wrapper_end);
     raw_svg.push_str("</svg>");
     if raw_svg.len() > projected_svg_bytes {
         return Err(crate::Error::icon_processing(
@@ -319,18 +336,17 @@ fn sanitizer_output_ceiling(
 }
 
 fn icon_render_work_units(
-    icon: &ResolvedIcon,
+    body: &ParsedIconBody,
     projected_svg_bytes: usize,
     sanitizer_ceiling: usize,
 ) -> crate::Result<usize> {
-    let edit_work = icon
-        .body
+    let edit_work = body
         .edit_count()
         .checked_mul(4)
         .ok_or_else(|| crate::Error::icon_processing("icon edit work estimate overflowed"))?;
     let projected_work = ceil_div(projected_svg_bytes, WORK_BYTES_PER_UNIT);
     let sanitizer_work = ceil_div(sanitizer_ceiling, WORK_BYTES_PER_UNIT);
-    ceil_div(icon.body.source_len(), WORK_BYTES_PER_UNIT)
+    ceil_div(body.source_len(), WORK_BYTES_PER_UNIT)
         // Assembly is bounded by the transformed source. Tokenizer/tree work is charged by
         // check_parse_storage before allocation, independently of emitted output length.
         .checked_add(projected_work)
@@ -359,39 +375,16 @@ struct TransformedIcon {
     top: f64,
     width: f64,
     height: f64,
-    wrapper: Option<(String, &'static str)>,
-}
-
-impl TransformedIcon {
-    fn projected_body_bytes(&self, body: &ValidatedIconBody) -> crate::Result<usize> {
-        let Some((start, end)) = &self.wrapper else {
-            return Ok(body.scoped_len());
-        };
-        body.transformed_scoped_len(start.len(), end.len())
-            .map_err(|_| crate::Error::icon_processing("transformed icon size overflowed"))
-    }
-
-    fn apply(&self, body: &ValidatedIconBody, scope: super::IconIdScope) -> crate::Result<String> {
-        let Some((start, end)) = &self.wrapper else {
-            return body
-                .scope(scope)
-                .map_err(|_| crate::Error::icon_processing("validated icon ID scoping failed"));
-        };
-        body.scope_transformed(scope, start, end)
-            .map_err(|_| crate::Error::icon_processing("validated icon transform assembly failed"))
-    }
+    wrapper: Option<String>,
 }
 
 fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
-    let mut left = icon.left;
-    let mut top = icon.top;
-    let mut width = icon.width;
-    let mut height = icon.height;
+    let [mut left, mut top, mut width, mut height] = icon.view_box();
     let mut transformations = Vec::with_capacity(3);
-    let mut rotation = i32::from(icon.rotate);
+    let mut rotation = i32::from(icon.rotate());
 
-    if icon.h_flip {
-        if icon.v_flip {
+    if icon.h_flip() {
+        if icon.v_flip() {
             rotation += 2;
         } else {
             transformations.push(format!(
@@ -403,7 +396,7 @@ fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
             left = 0.0;
             top = 0.0;
         }
-    } else if icon.v_flip {
+    } else if icon.v_flip() {
         transformations.push(format!(
             "translate({} {})",
             js_number(-left),
@@ -452,12 +445,8 @@ fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
             ));
         }
     }
-    let wrapper = (!transformations.is_empty()).then(|| {
-        (
-            format!(r#"<g transform="{}">"#, transformations.join(" ")),
-            "</g>",
-        )
-    });
+    let wrapper = (!transformations.is_empty())
+        .then(|| format!(r#"<g transform="{}">"#, transformations.join(" ")));
     Ok(TransformedIcon {
         left,
         top,
@@ -487,9 +476,8 @@ fn js_number(mut value: f64) -> String {
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-    use crate::svg::icon_registry::{icon_id_scope_for_test, limits::IconRegistryBuildLimits};
+    use crate::svg::icon_registry::{IconPack, IconRegistry, icon_id_scope_for_test, render_icon};
     use serde_json::json;
-    use std::sync::Arc;
 
     #[derive(Debug)]
     struct InvalidUtf8Sink<'a>(BoundedSanitizeSink<'a>);
@@ -522,20 +510,13 @@ mod tests {
         }
     }
 
-    fn resolved_icon(body: &str) -> ResolvedIcon {
-        ResolvedIcon {
-            body: Arc::new(
-                ValidatedIconBody::parse(body.to_owned(), 0, &IconRegistryBuildLimits::fixed())
-                    .expect("test icon body must be admitted"),
-            ),
-            left: 0.0,
-            top: 0.0,
-            width: 16.0,
-            height: 16.0,
-            h_flip: false,
-            v_flip: false,
-            rotate: 0,
-        }
+    fn registry_with_icon(body: &str) -> IconRegistry {
+        let json = serde_json::to_vec(&json!({
+            "prefix": "test",
+            "icons": {"icon": {"body": body}}
+        }))
+        .unwrap();
+        IconRegistry::from_packs([IconPack::new(&json)]).expect("test icon body must be admitted")
     }
 
     fn render(
@@ -551,15 +532,15 @@ mod tests {
         security_level: &str,
         policy: RenderResourcePolicy,
     ) -> (crate::Result<String>, usize) {
-        let icon = resolved_icon(body);
+        let registry = registry_with_icon(body);
         let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
         let work_meter = OperationWorkMeter::new(policy);
-        let result = render_resolved_icon(
-            &icon,
-            &IconRenderRequest {
+        let result = render_icon(
+            &registry,
+            IconRenderRequest {
                 icon_name: "test:icon",
                 width_px: 16.0,
                 height_px: 16.0,
@@ -570,7 +551,10 @@ mod tests {
                 work_meter: &work_meter,
             },
         );
-        (result, work_meter.used())
+        (
+            result.map(|svg| svg.expect("test icon must resolve")),
+            work_meter.used(),
+        )
     }
 
     fn render_repeated_with_usage(
@@ -579,7 +563,7 @@ mod tests {
         repetitions: usize,
         policy: RenderResourcePolicy,
     ) -> (crate::Result<Vec<String>>, usize, usize) {
-        let icon = resolved_icon(body);
+        let registry = registry_with_icon(body);
         let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
@@ -589,19 +573,22 @@ mod tests {
         let result = (|| {
             for index in 0..repetitions {
                 let scope = format!("icon-scope-{index}");
-                rendered.push(render_resolved_icon(
-                    &icon,
-                    &IconRenderRequest {
-                        icon_name: "test:icon",
-                        width_px: 16.0,
-                        height_px: 16.0,
-                        fallback_prefix: None,
-                        extra_class: None,
-                        id_scope: icon_id_scope_for_test(&scope),
-                        effective_config: &config,
-                        work_meter: &work_meter,
-                    },
-                )?);
+                rendered.push(
+                    render_icon(
+                        &registry,
+                        IconRenderRequest {
+                            icon_name: "test:icon",
+                            width_px: 16.0,
+                            height_px: 16.0,
+                            fallback_prefix: None,
+                            extra_class: None,
+                            id_scope: icon_id_scope_for_test(&scope),
+                            effective_config: &config,
+                            work_meter: &work_meter,
+                        },
+                    )?
+                    .expect("test icon must resolve"),
+                );
             }
             Ok(rendered)
         })();

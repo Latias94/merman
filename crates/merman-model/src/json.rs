@@ -1,12 +1,27 @@
 //! Iterative JSON value ownership used by configuration and explicit projections.
 
 mod managed;
+#[doc(hidden)]
+pub mod ordered;
 pub use managed::ManagedJson;
 
 use crate::{OperationControl, OperationControlResult};
 use serde_json::Number;
 use serde_json::{Map, Value};
 use std::mem::size_of;
+
+/// Base charge for a JSON value or object header in configuration budgets.
+///
+/// The original accounting used the insertion-ordered JSON representation, which
+/// reserved seven pointer-sized words and two 64-bit hash seeds on supported targets.
+/// Keep that charge independent of the backing map selected by Cargo features.
+#[doc(hidden)]
+pub const JSON_VALUE_CHARGE_BYTES: usize = size_of::<([usize; 7], [u64; 2])>();
+
+/// Charge for an object entry before accounting for its key bytes and child value.
+#[doc(hidden)]
+pub const JSON_OBJECT_ENTRY_CHARGE_BYTES: usize =
+    size_of::<String>() + JSON_VALUE_CHARGE_BYTES + 4 * size_of::<usize>();
 
 pub fn number_value(value: f64) -> Value {
     if value.is_finite()
@@ -77,7 +92,7 @@ pub(crate) fn clone_object_nonrecursive_controlled<'a>(
         }
     }
     cloner.visit()?;
-    if !cloner.charge(size_of::<Value>()) {
+    if !cloner.charge(JSON_VALUE_CHARGE_BYTES) {
         return Ok(None);
     }
     let object = ManagedJson::from_value(cloner.collect_object(len, entries.map(|(key, _)| key))?);
@@ -211,24 +226,20 @@ impl<'a> ValueCloner<'a> {
 }
 
 fn object_structural_weight<'a>(len: usize, keys: impl Iterator<Item = &'a String>) -> usize {
-    let entries = len.saturating_mul(
-        size_of::<String>()
-            .saturating_add(size_of::<Value>())
-            .saturating_add(size_of::<usize>().saturating_mul(4)),
-    );
+    let entries = len.saturating_mul(JSON_OBJECT_ENTRY_CHARGE_BYTES);
     keys.fold(entries, |weight, key| weight.saturating_add(key.len()))
 }
 
 fn value_structural_weight(value: &Value) -> usize {
     match value {
-        Value::Array(items) => items.len().saturating_mul(size_of::<Value>()),
+        Value::Array(items) => items.len().saturating_mul(JSON_VALUE_CHARGE_BYTES),
         Value::Object(entries) => object_structural_weight(entries.len(), entries.keys()),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => 0,
     }
 }
 
 fn value_clone_weight(value: &Value) -> usize {
-    size_of::<Value>().saturating_add(match value {
+    JSON_VALUE_CHARGE_BYTES.saturating_add(match value {
         Value::String(value) => value.len(),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => 0,
     })

@@ -86,14 +86,9 @@ fn borrowed_projection_preserves_order_without_typed_lifecycle_witnesses() {
         .compatibility_projection("sequence")
         .serialize(&mut serde_json::Serializer::new(&mut serialized))
         .unwrap();
-    let projection: Value = serde_json::from_slice(&serialized).unwrap();
+    let projection: IndexMap<String, Value> = serde_json::from_slice(&serialized).unwrap();
     assert_eq!(
-        projection
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
+        projection.keys().map(String::as_str).collect::<Vec<_>>(),
         [
             "type",
             "title",
@@ -134,7 +129,7 @@ fn complexity_retains_arbitrary_actor_json_depth() {
             description: "A".into(),
             actor_type: "participant".into(),
             wrap: false,
-            links: serde_json::Map::new(),
+            links: Default::default(),
             properties: serde_json::Map::from_iter([("payload".into(), payload)]),
         },
     );

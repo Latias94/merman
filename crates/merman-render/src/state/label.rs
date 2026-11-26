@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
 use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::svg::scanner::find_tag_end;
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, html_has_soft_break_opportunity,
     measure_html_with_inline_styles, mermaid_markdown_to_xhtml_label_fragment,
 };
+use merman_render_core::svg_scan::find_tag_end;
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateLabelMeasurement {

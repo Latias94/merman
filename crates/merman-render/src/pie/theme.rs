@@ -1,108 +1,40 @@
-use std::collections::HashMap;
-use std::sync::OnceLock;
-
 use merman_model::families::pie::PieDiagramModel;
+use merman_render_charts::pie::PieMermaidStyle;
 
-mod css_binding;
-pub(crate) use css_binding::{PieCssBinding, PieTextRole};
-
-const MERMAID_PIE_PALETTE: [(&str, &str); 12] = [
-    ("themeVariables.pie1", "#ECECFF"),
-    ("themeVariables.pie2", "#ffffde"),
-    ("themeVariables.pie3", "hsl(80, 100%, 56.2745098039%)"),
-    ("themeVariables.pie4", "hsl(240, 100%, 86.2745098039%)"),
-    ("themeVariables.pie5", "hsl(60, 100%, 63.5294117647%)"),
-    ("themeVariables.pie6", "hsl(80, 100%, 76.2745098039%)"),
-    ("themeVariables.pie7", "hsl(300, 100%, 76.2745098039%)"),
-    ("themeVariables.pie8", "hsl(180, 100%, 56.2745098039%)"),
-    ("themeVariables.pie9", "hsl(0, 100%, 56.2745098039%)"),
-    ("themeVariables.pie10", "hsl(300, 100%, 56.2745098039%)"),
-    ("themeVariables.pie11", "hsl(150, 100%, 56.2745098039%)"),
-    ("themeVariables.pie12", "hsl(0, 100%, 66.2745098039%)"),
-];
+#[cfg(test)]
+use crate::Result;
+use crate::config::{ConfigLookup, config_font_family_css};
+use crate::svg::PreparedCommonCss;
 
 #[derive(Debug)]
 pub(crate) struct PieThemePlan {
-    css: PieCssBinding,
-    fills: HashMap<String, String>,
-    content_width: OnceLock<f64>,
+    pub(super) style: PieMermaidStyle,
+    pub(super) common: PreparedCommonCss,
 }
 
 impl PieThemePlan {
-    pub(crate) fn baseline(
-        model: &PieDiagramModel,
-        effective_config: &impl crate::config::ConfigLookup,
-    ) -> Self {
-        let mut fills = HashMap::new();
-        for section in &model.sections {
-            let (path, fallback) = MERMAID_PIE_PALETTE[fills.len() % MERMAID_PIE_PALETTE.len()];
-            fills.entry(section.label.clone()).or_insert_with(|| {
-                crate::config::selected_config_string(effective_config, &[path])
-                    .map_or(fallback, |(_, fill)| fill)
-                    .to_owned()
-            });
-        }
-        Self {
-            css: PieCssBinding::new(effective_config),
-            fills,
-            content_width: OnceLock::new(),
-        }
+    pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &impl ConfigLookup) -> Self {
+        let style = PieMermaidStyle::baseline(model, effective_config);
+        let inherited_font_size = style.css_binding().inherited_font_size_px();
+        let common = PreparedCommonCss::with_resolved_typography(
+            effective_config,
+            config_font_family_css(effective_config),
+            format!("{inherited_font_size}px"),
+        )
+        .with_configured_root_font_family(effective_config);
+        Self { style, common }
     }
 
-    pub(crate) fn css_binding(&self) -> &PieCssBinding {
-        &self.css
+    pub(crate) fn mermaid_style(&self) -> &PieMermaidStyle {
+        &self.style
     }
 
-    pub(super) fn prepare_content_width(&self, width: f64) -> crate::Result<()> {
-        self.content_width
-            .set(width)
-            .map_err(|_| crate::Error::InvalidModel {
-                message: "Pie content geometry was already prepared".to_string(),
-            })
+    pub(crate) fn common_css(&self) -> &PreparedCommonCss {
+        &self.common
     }
 
-    pub(crate) fn content_width(&self) -> crate::Result<f64> {
-        self.content_width
-            .get()
-            .copied()
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: "Pie content geometry has not been prepared".to_string(),
-            })
-    }
-
-    pub(crate) fn fill_for(&self, label: &str) -> Option<&str> {
-        self.fills.get(label).map(String::as_str)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn bound_css_preserves_raw_values_and_color_fallbacks() {
-        let plan = PieThemePlan::baseline(
-            &PieDiagramModel::default(),
-            &json!({"themeVariables": {
-                "textColor": "var(--section-color)",
-                "taskTextDarkColor": "currentColor",
-                "pieStrokeWidth": 3,
-                "pieOuterStrokeWidth": "calc(1px + 1em)",
-                "pieOpacity": 0.4,
-                "pieTitleTextSize": "1.5em"
-            }}),
-        );
-        let css = plan.css_binding();
-        assert_eq!(css.text_fill(PieTextRole::Title), "currentColor");
-        assert_eq!(css.text_fill(PieTextRole::Legend), "currentColor");
-        assert_eq!(css.text_fill(PieTextRole::Section), "var(--section-color)");
-        assert_eq!(css.slice_stroke_width, "3");
-        assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
-        assert_eq!(css.outer_stroke_width_number, 2.0);
-        assert_eq!(css.slice_opacity, "0.4");
-        assert_eq!(css.text_size(PieTextRole::Title), "1.5em");
-        assert_eq!(css.title_measurement_style().font_size, 24.0);
-        assert_eq!(css.legend_measurement_style().font_size, 17.0);
+    #[cfg(test)]
+    pub(crate) fn content_width(&self) -> Result<f64> {
+        self.style.content_width()
     }
 }

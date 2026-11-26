@@ -188,10 +188,9 @@ fn prepare_sankey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = crate::sankey::layout_sankey_diagram_typed_with_work_meter(
+    let layout = merman_render_charts::sankey::layout_sankey_diagram_typed(
         model,
         meta.effective_config.as_value(),
-        execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
     let native = execution.native_family_theme();
@@ -312,19 +311,11 @@ fn prepare_info_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::info::{InfoAppearance, InfoClassicStyle, InfoNativeStyle};
-
-    let (layout, typography_theme) = match execution.native_family_theme() {
-        Some(theme) => {
-            let (layout, style) = InfoNativeStyle::resolve(theme, execution.text_measurer());
-            (layout, InfoAppearance::Native(style))
-        }
-        None => {
-            let (layout, style) =
-                InfoClassicStyle::resolve(&meta.effective_config, execution.text_measurer());
-            (layout, InfoAppearance::Mermaid(style))
-        }
-    };
+    let (layout, typography_theme) = crate::info::prepare_info_diagram(
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.text_measurer(),
+    );
     Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         typography_theme,
@@ -617,10 +608,10 @@ fn prepare_pie_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::pie::{PieAppearance, PieNativeStyle};
+    use crate::pie::PieAppearance;
 
     if let Some(theme) = execution.native_family_theme() {
-        let (layout, style) = PieNativeStyle::prepare(
+        let (layout, style) = crate::pie::prepare_native_pie(
             theme,
             model,
             meta.title.as_deref(),
@@ -840,11 +831,11 @@ fn prepare_xy_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::xychart::{XyChartSeriesPaintPlan, XyChartTypographyThemePlan};
+    use crate::xychart::{XyChartTypographyThemePlan, resolve_series_paint};
 
     let native = execution.native_family_theme();
     let config = &meta.effective_config;
-    let series_paint = XyChartSeriesPaintPlan::new(config, model, native);
+    let series_paint = resolve_series_paint(config, model, native);
     let typography_theme = native.map_or_else(
         || XyChartTypographyThemePlan::resolve(config),
         |theme| XyChartTypographyThemePlan::native(config, &theme.typography),
@@ -934,8 +925,7 @@ fn prepare_packet_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution.native_family_theme();
-    let typography_theme =
-        crate::packet::PacketTypographyThemePlan::resolve(native, &meta.effective_config);
+    let style = crate::packet::PacketStyle::resolve(native, &meta.effective_config);
     let layout = crate::packet::layout_packet_diagram_typed(
         model,
         meta.title.as_deref(),
@@ -944,7 +934,7 @@ fn prepare_packet_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Packet(Box::new(
         PacketFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            typography_theme,
+            style,
         },
     )))
 }

@@ -1105,7 +1105,8 @@ fn enforce_relative_placement<W: WorkControl + ?Sized>(
 
         while let Some(cur) = q.pop_front() {
             let cur_pos = position[&cur];
-            for neigh in &dag[&cur] {
+            let outgoing = &dag[&cur];
+            for (index, neigh) in outgoing.iter().enumerate() {
                 let want = cur_pos + neigh.gap;
                 if position[&neigh.id] < want {
                     position.insert(neigh.id, want);
@@ -1120,43 +1121,44 @@ fn enforce_relative_placement<W: WorkControl + ?Sized>(
                     past[&cur].len(),
                     past[&neigh.id].len(),
                 )?;
-                let mut merged: IndexSet<usize> = past[&cur].clone();
+                // The queue visits a node only after all of its incoming edges. After its
+                // last outgoing edge, a non-sink's predecessor set has no further readers.
+                let mut merged = if index + 1 == outgoing.len() {
+                    past.swap_remove(&cur)
+                        .expect("queued node has predecessors")
+                } else {
+                    past[&cur].clone()
+                };
                 for v in past[&neigh.id].iter().copied() {
                     merged.insert(v);
                 }
-                past.insert(neigh.id, merged);
+                past[&neigh.id] = merged;
             }
         }
 
-        // Readjust position after enforcement.
-        let mut sink_nodes: IndexSet<usize> = IndexSet::new();
-        for (&k, neigh) in dag.iter() {
-            if neigh.is_empty() {
-                sink_nodes.insert(k);
-            }
-        }
-
+        // Readjust sinks in the original DAG order, independently of removals from `past`.
         let mut components: Vec<IndexSet<usize>> = Vec::new();
-        for (&k, set) in past.iter() {
-            if !sink_nodes.contains(&k) || set.is_empty() {
+        for (&k, outgoing) in dag.iter() {
+            if !outgoing.is_empty() {
                 continue;
             }
-            let Some(&first) = set.iter().next() else {
+            let set = &past[&k];
+            let Some(&first) = set.first() else {
                 continue;
             };
             if !components.is_empty() {
                 work_control.charge(components.len())?;
             }
-            if let Some(idx) = components.iter().position(|c| c.contains(&first)) {
-                charge_relative_projection_work(work_control, components[idx].len(), set.len())?;
-                let mut merged = components[idx].clone();
-                for v in set.iter().copied() {
-                    merged.insert(v);
+            let component = components.iter_mut().find(|c| c.contains(&first));
+            let component_len = component.as_deref().map_or(0, IndexSet::len);
+            charge_relative_projection_work(work_control, component_len, set.len())?;
+            let set = past.swap_remove(&k).expect("sink retains its predecessors");
+            if let Some(component) = component {
+                for v in set {
+                    component.insert(v);
                 }
-                components[idx] = merged;
             } else {
-                charge_relative_projection_work(work_control, set.len(), 0)?;
-                components.push(set.clone());
+                components.push(set);
             }
         }
 

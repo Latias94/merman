@@ -6,273 +6,273 @@ export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:0c26d41286136ae5f3a76c0b6bd1
 
 export const TARGETS = [
   {
-    "id": "native",
-    "description": "Native Rust, CLI, and native binding artifacts."
+    "description": "Native Rust, CLI, and native binding artifacts.",
+    "id": "native"
   },
   {
-    "id": "typst",
-    "description": "Pure-WASM Typst plugin artifacts."
+    "description": "Pure-WASM Typst plugin artifacts.",
+    "id": "typst"
   },
   {
-    "id": "web",
-    "description": "Browser wasm-bindgen artifacts."
+    "description": "Browser wasm-bindgen artifacts.",
+    "id": "web"
   }
 ] as const;
 
 export const CAPABILITIES = [
   {
-    "id": "analysis",
-    "kind": "api",
     "description": "Expose diagnostics and semantic analysis APIs.",
+    "id": "analysis",
+    "implications": [],
+    "kind": "api",
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "ascii",
-    "kind": "output",
     "description": "Render supported Mermaid semantics as terminal text.",
+    "id": "ascii",
+    "implications": [],
+    "kind": "output",
     "targets": [
       "native",
       "web"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "editor",
-    "kind": "api",
     "description": "Expose parser-backed editor intelligence APIs.",
+    "id": "editor",
+    "implications": [],
+    "kind": "api",
     "targets": [
       "native",
       "web"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "fixes",
-    "kind": "api",
     "description": "Generate diagnostic replacement edits when explicitly requested.",
-    "targets": [
-      "native",
-      "web"
-    ],
+    "id": "fixes",
     "implications": [
       "analysis"
+    ],
+    "kind": "api",
+    "targets": [
+      "native",
+      "web"
     ]
   },
   {
-    "id": "icons",
-    "kind": "tool",
     "description": "Compile CLI local Iconify pack loading.",
+    "id": "icons",
+    "implications": [],
+    "kind": "tool",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "jpeg",
-    "kind": "output",
     "description": "Export rendered diagrams as JPEG.",
+    "id": "jpeg",
+    "implications": [],
+    "kind": "output",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "layout-cytoscape",
-    "kind": "engine",
     "description": "Enable Mermaid Cytoscape-backed layout behavior.",
+    "id": "layout-cytoscape",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "implications": [
-      "svg"
     ]
   },
   {
-    "id": "layout-dagre",
-    "kind": "engine",
     "description": "Enable Mermaid Dagre-backed SVG graph layout.",
+    "id": "layout-dagre",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "implications": [
-      "svg"
     ]
   },
   {
-    "id": "layout-elk",
-    "kind": "engine",
     "description": "Enable Mermaid ELK-backed layout behavior.",
+    "id": "layout-elk",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "implications": [
-      "svg"
     ]
   },
   {
-    "id": "layout-shoal",
-    "kind": "engine",
     "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.",
-    "targets": [
-      "native",
-      "web"
-    ],
+    "id": "layout-shoal",
     "implications": [
       "svg"
-    ]
-  },
-  {
-    "id": "markdown",
-    "kind": "tool",
-    "description": "Compile CLI Markdown batch conversion.",
-    "targets": [
-      "native"
     ],
-    "implications": []
-  },
-  {
-    "id": "math",
     "kind": "engine",
-    "description": "Render Mermaid math labels with the selected math engine.",
     "targets": [
       "native",
       "web"
-    ],
-    "implications": [
-      "svg"
     ]
   },
   {
-    "id": "native-fonts",
-    "kind": "adapter",
+    "description": "Compile CLI Markdown batch conversion.",
+    "id": "markdown",
+    "implications": [],
+    "kind": "tool",
+    "targets": [
+      "native"
+    ]
+  },
+  {
+    "description": "Render Mermaid math labels with the selected math engine.",
+    "id": "math",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine",
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
     "description": "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
+    "id": "native-fonts",
+    "implications": [],
+    "kind": "adapter",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "network-icons",
-    "kind": "tool",
     "description": "Compile CLI network icon loading commands.",
+    "id": "network-icons",
+    "implications": [],
+    "kind": "tool",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "parallel-markdown",
-    "kind": "tool",
     "description": "Compile parallel CLI Markdown batch processing.",
-    "targets": [
-      "native"
-    ],
-    "implications": []
-  },
-  {
-    "id": "pdf",
-    "kind": "output",
-    "description": "Export rendered diagrams as PDF.",
-    "targets": [
-      "native"
-    ],
-    "implications": []
-  },
-  {
-    "id": "png",
-    "kind": "output",
-    "description": "Export rendered diagrams as PNG.",
-    "targets": [
-      "native"
-    ],
-    "implications": []
-  },
-  {
-    "id": "rustdoc",
+    "id": "parallel-markdown",
+    "implications": [],
     "kind": "tool",
-    "description": "Compile checked static Mermaid fragment generation for Rustdoc.",
     "targets": [
       "native"
-    ],
+    ]
+  },
+  {
+    "description": "Export rendered diagrams as PDF.",
+    "id": "pdf",
+    "implications": [],
+    "kind": "output",
+    "targets": [
+      "native"
+    ]
+  },
+  {
+    "description": "Export rendered diagrams as PNG.",
+    "id": "png",
+    "implications": [],
+    "kind": "output",
+    "targets": [
+      "native"
+    ]
+  },
+  {
+    "description": "Compile checked static Mermaid fragment generation for Rustdoc.",
+    "id": "rustdoc",
     "implications": [
       "layout-cytoscape",
       "markdown"
+    ],
+    "kind": "tool",
+    "targets": [
+      "native"
     ]
   },
   {
-    "id": "shell-completions",
-    "kind": "tool",
     "description": "Compile CLI shell completion generation.",
+    "id": "shell-completions",
+    "implications": [],
+    "kind": "tool",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "svg",
-    "kind": "output",
     "description": "Render Mermaid input as SVG.",
+    "id": "svg",
+    "implications": [],
+    "kind": "output",
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "system-clock",
-    "kind": "adapter",
     "description": "Compile the native system clock adapter.",
+    "id": "system-clock",
+    "implications": [],
+    "kind": "adapter",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "system-random",
-    "kind": "adapter",
     "description": "Compile the native system randomness adapter.",
+    "id": "system-random",
+    "implications": [],
+    "kind": "adapter",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "system-timezone",
-    "kind": "adapter",
     "description": "Compile the native system time-zone adapter.",
+    "id": "system-timezone",
+    "implications": [],
+    "kind": "adapter",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   },
   {
-    "id": "system-timing",
-    "kind": "adapter",
     "description": "Compile the native monotonic timing adapter.",
+    "id": "system-timing",
+    "implications": [],
+    "kind": "adapter",
     "targets": [
       "native"
-    ],
-    "implications": []
+    ]
   }
 ] as const;
 
 export const OUTPUTS = [
   {
-    "id": "ascii",
     "capability": "ascii",
     "description": "Plain terminal text output.",
+    "id": "ascii",
     "media_type": "text/plain; charset=utf-8",
     "targets": [
       "native",
@@ -280,36 +280,36 @@ export const OUTPUTS = [
     ]
   },
   {
-    "id": "jpeg",
     "capability": "jpeg",
     "description": "JPEG image output.",
+    "id": "jpeg",
     "media_type": "image/jpeg",
     "targets": [
       "native"
     ]
   },
   {
-    "id": "pdf",
     "capability": "pdf",
     "description": "Portable Document Format output.",
+    "id": "pdf",
     "media_type": "application/pdf",
     "targets": [
       "native"
     ]
   },
   {
-    "id": "png",
     "capability": "png",
     "description": "Portable Network Graphics output.",
+    "id": "png",
     "media_type": "image/png",
     "targets": [
       "native"
     ]
   },
   {
-    "id": "svg",
     "capability": "svg",
     "description": "Scalable Vector Graphics output.",
+    "id": "svg",
     "media_type": "image/svg+xml",
     "targets": [
       "native",
@@ -321,14 +321,14 @@ export const OUTPUTS = [
 
 export const BINDING_OPERATIONS = [
   {
-    "id": "analysis-facts-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return semantic facts JSON.",
+    "id": "analysis-facts-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -336,14 +336,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "analysis-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return diagnostics JSON.",
+    "id": "analysis-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -352,14 +352,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "ascii",
-    "maturity": "stable",
     "capability": "ascii",
-    "output": "ascii",
     "compiled_prerequisites": [],
     "description": "Render Mermaid input as terminal text.",
+    "id": "ascii",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "text/plain; charset=utf-8",
+    "output": "ascii",
     "requires_uri": false,
     "targets": [
       "native",
@@ -367,14 +367,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "document-analysis-facts-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+    "id": "document-analysis-facts-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": true,
     "targets": [
       "native",
@@ -382,14 +382,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "document-analysis-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+    "id": "document-analysis-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": true,
     "targets": [
       "native",
@@ -397,14 +397,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "edge-geometry-json",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Compute Mermaid edge paint geometry as JSON without serializing SVG.",
+    "id": "edge-geometry-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -412,14 +412,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "export-theme-preset",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Export a built-in native preset as an editable v2 theme document.",
+    "id": "export-theme-preset",
     "input_kind": "theme-preset-id",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -428,30 +428,30 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "jpeg",
-    "maturity": "stable",
     "capability": "jpeg",
-    "output": "jpeg",
     "compiled_prerequisites": [
       "svg"
     ],
     "description": "Render Mermaid input as JPEG.",
+    "id": "jpeg",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "image/jpeg",
+    "output": "jpeg",
     "requires_uri": false,
     "targets": [
       "native"
     ]
   },
   {
-    "id": "layout-json",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Render Mermaid input into layout model JSON.",
+    "id": "layout-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -459,46 +459,46 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "pdf",
-    "maturity": "stable",
     "capability": "pdf",
-    "output": "pdf",
     "compiled_prerequisites": [
       "svg"
     ],
     "description": "Render Mermaid input as PDF.",
+    "id": "pdf",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/pdf",
+    "output": "pdf",
     "requires_uri": false,
     "targets": [
       "native"
     ]
   },
   {
-    "id": "png",
-    "maturity": "stable",
     "capability": "png",
-    "output": "png",
     "compiled_prerequisites": [
       "svg"
     ],
     "description": "Render Mermaid input as PNG.",
+    "id": "png",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "image/png",
+    "output": "png",
     "requires_uri": false,
     "targets": [
       "native"
     ]
   },
   {
-    "id": "resolve-theme",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Resolve a native theme document and report contrast notices or a JSON error location.",
+    "id": "resolve-theme",
     "input_kind": "theme-resolve-request-json",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -507,14 +507,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "semantic-json",
-    "maturity": "stable",
     "capability": null,
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Parse Mermaid input into canonical semantic JSON.",
+    "id": "semantic-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -522,14 +522,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "svg",
-    "maturity": "stable",
     "capability": "svg",
-    "output": "svg",
     "compiled_prerequisites": [],
     "description": "Render Mermaid input as SVG.",
+    "id": "svg",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "image/svg+xml",
+    "output": "svg",
     "requires_uri": false,
     "targets": [
       "native",
@@ -538,14 +538,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "svg-plan-json",
-    "maturity": "stable",
     "capability": "svg",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Plan the capabilities required to render Mermaid input as SVG.",
+    "id": "svg-plan-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",
@@ -553,14 +553,14 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "validation-json",
-    "maturity": "stable",
     "capability": "analysis",
-    "output": null,
     "compiled_prerequisites": [],
     "description": "Validate Mermaid input and return validation JSON.",
+    "id": "validation-json",
     "input_kind": "mermaid-source",
+    "maturity": "stable",
     "media_type": "application/json",
+    "output": null,
     "requires_uri": false,
     "targets": [
       "native",

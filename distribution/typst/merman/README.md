@@ -477,7 +477,7 @@ Binding options schema 4 includes top-level `theme`, `background`, `site_config`
 Build the publish package locally:
 
 ```sh
-cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish
 ```
 
 Output: `dist/typst/merman/0.7.0`. The build requires `wasm-tools` and Binaryen `wasm-opt version 133`; the builder applies pinned `wasm-opt -Oz` before stripping custom sections and records both tool versions in the artifact manifest.
@@ -493,7 +493,7 @@ For a manual local install, copy that directory to a preview package path:
 Compile with `typst compile --package-path <package-root> document.typ`. The package smoke command creates this layout automatically:
 
 ```sh
-cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
+cargo run --locked -p xtask --features wasm-host -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
 Append `--typst /path/to/typst` when the CLI is outside `PATH`. Each run owns an independent temporary directory under `target/typst-package-smoke/`. Positive fixtures preserve nested output paths; `tests/compile-fail/` fixtures must fail with their adjacent `.error.txt` diagnostic. Successful runs remove artifacts unless `--keep-artifacts` is passed.

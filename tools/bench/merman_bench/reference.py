@@ -9,7 +9,9 @@ from statistics import median
 from .svg import EXPECTED_OUTCOMES
 
 
-NODE_PRODUCTS = json.loads((Path(__file__).resolve().parents[1] / "workloads.json").read_bytes())["node_products"]
+_WORKLOADS = json.loads((Path(__file__).resolve().parents[1] / "workloads.json").read_bytes())
+NODE_PRODUCTS = _WORKLOADS["node_products"]
+NODE_INTRINSIC_LAYOUT_TYPES = frozenset(_WORKLOADS["node_intrinsic_layout_types"])
 LAYOUTS = ("dagre", "elk", "shoal")
 
 
@@ -111,12 +113,14 @@ def _product(report, node):
                 raise ValueError("product artifact evidence differs from the Node entry")
         variant = report.get("variant")
         if "variant" in report:
-            if (not isinstance(variant, dict) or variant.keys() - {"site_layout"} != {"label", "options_json"}
+            if (not isinstance(variant, dict) or variant.keys() - {"site_layout", "direct_id"} != {"label", "options_json"}
                     or not valid_node_variant_label(variant["label"])):
                 raise ValueError("invalid Node variant identity")
             options = variant["options_json"]
             if options is not None and (engine != "merman" or not isinstance(options, str) or not options.strip()):
                 raise ValueError("explicit Options JSON requires a Merman variant")
+            if "direct_id" in variant and (variant["direct_id"] is not True or engine != "merman" or options is not None):
+                raise ValueError("direct diagram IDs require a Merman variant without Options JSON")
             if "site_layout" in variant and (engine != "merman" or variant["site_layout"] not in LAYOUTS):
                 raise ValueError("a site layout requires a Merman variant and a supported backend")
         return dict(

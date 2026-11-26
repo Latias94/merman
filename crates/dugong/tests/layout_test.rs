@@ -68,16 +68,18 @@ fn controlled_budget_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
             },
         );
     }
-    graph.set_edge_with_label(
-        "a",
-        "b",
-        EdgeLabel {
-            width: 12.0,
-            height: 8.0,
-            points: vec![Point { x: -1.0, y: -2.0 }],
-            ..Default::default()
-        },
+    let mut label = EdgeLabel {
+        width: 12.0,
+        height: 8.0,
+        points: vec![Point { x: -1.0, y: -2.0 }],
+        owner_index: Some(0),
+        ..Default::default()
+    };
+    label.extras.insert(
+        "caller".into(),
+        serde_json::json!({ "array": [true, null] }),
     );
+    graph.set_edge_with_label("a", "b", label);
     graph.set_edge("b", "c");
     graph.graph_mut().width = -30.0;
     graph.graph_mut().height = -40.0;
@@ -106,15 +108,17 @@ fn controlled_self_loop_graph(rankdir: RankDir) -> Graph<NodeLabel, EdgeLabel, G
             ..Default::default()
         },
     );
-    graph.set_edge_with_label(
-        "a",
-        "a",
-        EdgeLabel {
-            width: 50.0,
-            height: 30.0,
-            ..Default::default()
-        },
+    let mut label = EdgeLabel {
+        width: 50.0,
+        height: 30.0,
+        owner_index: Some(u32::MAX),
+        ..Default::default()
+    };
+    label.extras.insert(
+        "caller".into(),
+        serde_json::json!(["loop", { "width": 50 }]),
     );
+    graph.set_edge_with_label("a", "a", label);
     graph
 }
 
@@ -219,6 +223,10 @@ fn controlled_self_loop_layout_is_transactional_at_the_exact_boundary() {
         layout_controlled(&mut admitted, &mut exact_control).unwrap();
         assert_eq!(exact_control.remaining, Some(0));
         assert_budget_graph_layout_eq(&admitted, &measured);
+        let expected = initial.edge("a", "a", None).unwrap();
+        let actual = admitted.edge("a", "a", None).unwrap();
+        assert_eq!(actual.owner_index, expected.owner_index);
+        assert_eq!(actual.extras, expected.extras);
     }
 }
 
@@ -354,14 +362,15 @@ fn controlled_layout_arithmetic_failure_preserves_the_entire_caller_graph() {
         graph.set_node("a", NodeLabel::default());
         graph.set_node("b", NodeLabel::default());
         graph.set_parent("a", "cluster");
-        graph.set_edge_with_label(
-            "a",
-            "b",
-            EdgeLabel {
-                minlen: usize::MAX,
-                ..Default::default()
-            },
-        );
+        let mut label = EdgeLabel {
+            minlen: usize::MAX,
+            owner_index: Some(0),
+            ..Default::default()
+        };
+        label
+            .extras
+            .insert("caller".into(), serde_json::json!([1, { "a": true }]));
+        graph.set_edge_with_label("a", "b", label);
         graph
     }
 
@@ -442,18 +451,18 @@ fn zero_minlen_graph(ranker: Option<&str>) -> Graph<NodeLabel, EdgeLabel, GraphL
             },
         );
     }
-    graph.set_edge_named(
-        "a",
-        "b",
-        Some("zero"),
-        Some(EdgeLabel {
-            minlen: 0,
-            weight: 1.0,
-            labelpos: LabelPos::R,
-            labeloffset: 10.0,
-            ..Default::default()
-        }),
-    );
+    let mut label = EdgeLabel {
+        minlen: 0,
+        weight: 1.0,
+        labelpos: LabelPos::R,
+        labeloffset: 10.0,
+        owner_index: Some(9),
+        ..Default::default()
+    };
+    label
+        .extras
+        .insert("caller".into(), serde_json::json!({ "zero": [0, "0"] }));
+    graph.set_edge_named("a", "b", Some("zero"), Some(label));
     graph
 }
 

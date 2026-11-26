@@ -5,6 +5,88 @@ use crate::graphlib::{Graph, GraphOptions};
 use crate::work::{checked_add, checked_mul, checked_ordered_key_updates};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
+use std::collections::BTreeMap;
+
+type RankGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
+type SpanningGraph = Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>;
+
+/// The simplex only needs the forest's discovery slots and its ordered endpoints.
+#[derive(Default)]
+pub(super) struct FeasibleTreeSeed {
+    pub(super) discovery_order: Vec<usize>,
+    pub(super) edges: Vec<(usize, usize)>,
+    numeric_positions: BTreeMap<u32, usize>,
+    ordinary_positions: Vec<usize>,
+}
+
+impl FeasibleTreeSeed {
+    pub(super) fn ordered_nodes(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.numeric_positions
+            .values()
+            .chain(&self.ordinary_positions)
+            .map(|&position| (position, self.discovery_order[position]))
+    }
+}
+
+trait FeasibleTreeOutput {
+    fn insert_node(
+        &mut self,
+        node: (usize, &str),
+        parent: Option<(usize, &str)>,
+        array_index: Option<u32>,
+        position: usize,
+    );
+
+    fn extend_roots(&self, g: &RankGraph, discovery_order: &[usize], roots: &mut Vec<usize>);
+}
+
+impl FeasibleTreeOutput for SpanningGraph {
+    fn insert_node(
+        &mut self,
+        (_, id): (usize, &str),
+        parent: Option<(usize, &str)>,
+        _array_index: Option<u32>,
+        _position: usize,
+    ) {
+        if let Some((_, parent)) = parent {
+            self.set_edge(parent, id);
+        } else {
+            self.set_node(id, tree::TreeNodeLabel::default());
+        }
+    }
+
+    fn extend_roots(&self, g: &RankGraph, _discovery_order: &[usize], roots: &mut Vec<usize>) {
+        roots.extend(self.nodes().filter_map(|id| g.node_ix(id)));
+    }
+}
+
+impl FeasibleTreeOutput for FeasibleTreeSeed {
+    fn insert_node(
+        &mut self,
+        (g_ix, _): (usize, &str),
+        parent: Option<(usize, &str)>,
+        array_index: Option<u32>,
+        position: usize,
+    ) {
+        if let Some(array_index) = array_index {
+            self.numeric_positions.insert(array_index, position);
+        } else {
+            self.ordinary_positions.push(position);
+        }
+        if let Some((parent_ix, _)) = parent {
+            self.edges.push((parent_ix, g_ix));
+        }
+    }
+
+    fn extend_roots(&self, _g: &RankGraph, discovery_order: &[usize], roots: &mut Vec<usize>) {
+        roots.extend(
+            self.numeric_positions
+                .values()
+                .chain(&self.ordinary_positions)
+                .map(|&position| discovery_order[position]),
+        );
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TightTreeEdge {
@@ -115,9 +197,31 @@ pub fn feasible_tree(
 }
 
 pub(crate) fn feasible_tree_controlled(
-    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    g: &mut RankGraph,
     work_control: &mut dyn WorkControl,
-) -> Result<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>, WorkError> {
+) -> Result<SpanningGraph, WorkError> {
+    let mut output = SpanningGraph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    grow_feasible_tree(g, &mut output, work_control)?;
+    Ok(output)
+}
+
+pub(super) fn feasible_tree_seed_controlled(
+    g: &mut RankGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<FeasibleTreeSeed, WorkError> {
+    let mut output = FeasibleTreeSeed::default();
+    output.discovery_order = grow_feasible_tree(g, &mut output, work_control)?;
+    Ok(output)
+}
+
+fn grow_feasible_tree(
+    g: &mut RankGraph,
+    output: &mut impl FeasibleTreeOutput,
+    work_control: &mut dyn WorkControl,
+) -> Result<Vec<usize>, WorkError> {
     let prepare_adjacency_cache = !g.is_adjacency_cache_current();
     work_control.charge(feasible_tree_setup_work_units(g)?)?;
     crate::rank::validate_rank_arithmetic(g)?;
@@ -134,30 +238,31 @@ pub(crate) fn feasible_tree_controlled(
     let mut in_tree_by_ix: Vec<bool> = vec![false; rank_by_ix.len()];
     let mut tree_g_ixs: Vec<usize> = Vec::new();
 
-    let mut t: Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> = Graph::new(GraphOptions {
-        directed: false,
-        ..Default::default()
-    });
     let mut tight_scratch = TightTreeScratch::default();
 
-    let Some(start) = g.nodes().next().map(|s| s.to_string()) else {
-        return Ok(t);
+    let Some(start) = g.nodes().next() else {
+        return Ok(tree_g_ixs);
     };
     let size = g.node_count();
-    t.set_node(start.clone(), tree::TreeNodeLabel::default());
-    if let Some(ix) = g.node_ix(&start) {
+    if let Some(ix) = g.node_ix(start) {
         if ix >= in_tree_by_ix.len() {
             in_tree_by_ix.resize(ix + 1, false);
             rank_by_ix.resize(ix + 1, 0);
         }
         in_tree_by_ix[ix] = true;
+        output.insert_node(
+            (ix, start),
+            None,
+            g.javascript_array_index_by_node_ix(ix),
+            0,
+        );
         tree_g_ixs.push(ix);
     }
 
     loop {
         work_control.charge(feasible_tree_iteration_work_units(g)?)?;
         if tight_tree(
-            &mut t,
+            output,
             g,
             &rank_by_ix,
             &mut in_tree_by_ix,
@@ -170,17 +275,20 @@ pub(crate) fn feasible_tree_controlled(
         let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
             // Disconnected graphs can occur in downstream usage. Dagre effectively works
             // per component; here we create a forest by starting a new component root.
-            let mut next_root: Option<(usize, String)> = None;
-            g.for_each_node_ix(|ix, id, _lbl| {
+            let mut next_root = None;
+            g.for_each_node_ix(|ix, _id, _lbl| {
                 if next_root.is_some() {
                     return;
                 }
                 if in_tree_by_ix.get(ix).copied().unwrap_or(false) {
                     return;
                 }
-                next_root = Some((ix, id.to_string()));
+                next_root = Some(ix);
             });
-            let Some((ix, next_root)) = next_root else {
+            let Some(ix) = next_root else {
+                break;
+            };
+            let Some(next_root) = g.node_id_by_ix(ix) else {
                 break;
             };
             if ix >= in_tree_by_ix.len() {
@@ -188,15 +296,20 @@ pub(crate) fn feasible_tree_controlled(
                 rank_by_ix.resize(ix + 1, 0);
             }
             in_tree_by_ix[ix] = true;
+            output.insert_node(
+                (ix, next_root),
+                None,
+                g.javascript_array_index_by_node_ix(ix),
+                tree_g_ixs.len(),
+            );
             tree_g_ixs.push(ix);
-            t.set_node(next_root, tree::TreeNodeLabel::default());
             continue;
         };
         let delta = if in_v { slack } else { -slack };
         shift_ranks(g, &mut rank_by_ix, &tree_g_ixs, delta)?;
     }
 
-    Ok(t)
+    Ok(tree_g_ixs)
 }
 
 fn feasible_tree_setup_work_units(
@@ -239,8 +352,8 @@ fn feasible_tree_iteration_work_units(
 }
 
 fn tight_tree(
-    t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    output: &mut impl FeasibleTreeOutput,
+    g: &RankGraph,
     rank_by_ix: &[i128],
     in_tree_by_ix: &mut [bool],
     tree_g_ixs: &mut Vec<usize>,
@@ -248,11 +361,7 @@ fn tight_tree(
 ) -> usize {
     let TightTreeScratch { roots, frames } = scratch;
     roots.clear();
-    t.for_each_node(|id, _label| {
-        if let Some(g_ix) = g.node_ix(id) {
-            roots.push(g_ix);
-        }
-    });
+    output.extend_roots(g, tree_g_ixs, roots);
     for &root_ix in roots.iter() {
         frames.clear();
         let Some(root_frame) = tight_tree_frame(g, root_ix) else {
@@ -287,14 +396,19 @@ fn tight_tree(
                 continue;
             };
             in_tree_by_ix[w_ix] = true;
+            output.insert_node(
+                (w_ix, w_id),
+                Some((tree_v_ix, v_id)),
+                g.javascript_array_index_by_node_ix(w_ix),
+                tree_g_ixs.len(),
+            );
             tree_g_ixs.push(w_ix);
-            t.set_edge(v_id, w_id);
             if let Some(child_frame) = tight_tree_frame(g, w_ix) {
                 frames.push(child_frame);
             }
         }
     }
-    t.node_count()
+    tree_g_ixs.len()
 }
 
 fn find_min_slack_edge(

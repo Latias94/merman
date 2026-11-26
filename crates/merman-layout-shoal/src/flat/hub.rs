@@ -1,6 +1,7 @@
 //! Relieve crowded automatic port rows while the drawing is still in canonical coordinates.
 
 use super::{Component, Drawing, canonical_size, validate};
+use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, MarkerMetrics, Options, Point, PortSideHint,
@@ -11,6 +12,7 @@ const MARKER_PITCH: f64 = 1.15;
 // A component may contain many otherwise independent crowded hubs. Bound the total clearance
 // traversal even when the same walls are in range of all of them.
 const CLEARANCE_PASSES: usize = 64;
+const WALL_BLOCK_SIZE: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum End {
@@ -171,76 +173,14 @@ impl Run {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Bounds {
-    lo: Point,
-    hi: Point,
-}
-
 impl Bounds {
-    fn between(a: Point, b: Point) -> Self {
-        Self {
-            lo: Point {
-                x: a.x.min(b.x),
-                y: a.y.min(b.y),
-            },
-            hi: Point {
-                x: a.x.max(b.x),
-                y: a.y.max(b.y),
-            },
-        }
-    }
-
-    fn node(rect: Rect) -> Self {
-        Self::between(
-            Point {
-                x: rect.x,
-                y: rect.y,
-            },
-            Point {
-                x: rect.x + rect.width,
-                y: rect.y + rect.height,
-            },
-        )
-    }
-
-    fn label(p: Point, size: crate::Size) -> Self {
-        Self::between(
-            Point {
-                x: p.x - size.width * 0.5,
-                y: p.y - size.height * 0.5,
-            },
-            Point {
-                x: p.x + size.width * 0.5,
-                y: p.y + size.height * 0.5,
-            },
-        )
-    }
-
-    fn overlaps(self, wall: Self) -> bool {
-        self.lo.x < wall.hi.x
-            && wall.lo.x < self.hi.x
-            && self.lo.y < wall.hi.y
-            && wall.lo.y < self.hi.y
-    }
-
-    fn has_area(self) -> bool {
-        self.lo.x < self.hi.x && self.lo.y < self.hi.y
-    }
-
     fn path(points: &[RoutePoint]) -> Self {
-        let mut bounds = Self::between(point(points[0]), point(points[0]));
+        let first = point(points[0]);
+        let mut bounds = Self::between(first, first);
         for &p in &points[1..] {
             bounds.include(point(p));
         }
         bounds
-    }
-
-    fn include(&mut self, p: Point) {
-        self.lo.x = self.lo.x.min(p.x);
-        self.lo.y = self.lo.y.min(p.y);
-        self.hi.x = self.hi.x.max(p.x);
-        self.hi.y = self.hi.y.max(p.y);
     }
 }
 
@@ -360,6 +300,11 @@ struct Edit {
 }
 
 impl Edit {
+    fn blocked_by(&self, wall: Bounds) -> bool {
+        self.body.iter().any(|&body| body.overlaps_strictly(wall))
+            || self.mark.is_some_and(|mark| mark.overlaps_strictly(wall))
+    }
+
     fn new(
         run: &Run,
         tail: &Tail,
@@ -475,8 +420,90 @@ impl Edit {
     }
 }
 
+#[derive(Default)]
+struct WallIndex {
+    postorder: Vec<Bounds>,
+    indexed_blocks: usize,
+    disabled: bool,
+}
+
+impl WallIndex {
+    fn new(wall_count: usize) -> Self {
+        Self {
+            disabled: wall_count < 2 * WALL_BLOCK_SIZE,
+            ..Self::default()
+        }
+    }
+
+    fn blocks(&mut self, mut walls: &[Bounds], edit: &Edit) -> bool {
+        let mut blocks = self.indexed_blocks;
+        let mut node_end = 0;
+        while blocks != 0 {
+            let complete = 1 << blocks.ilog2();
+            let (tree, tail) = walls.split_at(complete * WALL_BLOCK_SIZE);
+            node_end += 2 * complete - 1;
+            if self.blocks_tree(node_end - 1, tree, edit) {
+                return true;
+            }
+            walls = tail;
+            blocks -= complete;
+        }
+        while !self.disabled && walls.len() >= WALL_BLOCK_SIZE {
+            let (block, tail) = walls.split_at(WALL_BLOCK_SIZE);
+            let mut bounds = block[0];
+            if edit.blocked_by(bounds) {
+                return true;
+            }
+            for &wall in &block[1..] {
+                if edit.blocked_by(wall) {
+                    return true;
+                }
+                bounds = bounds.union(wall);
+            }
+            self.append_block(bounds);
+            walls = tail;
+        }
+        walls.iter().copied().any(|wall| edit.blocked_by(wall))
+    }
+
+    fn blocks_tree(&self, root: usize, walls: &[Bounds], edit: &Edit) -> bool {
+        if !edit.blocked_by(self.postorder[root]) {
+            return false;
+        }
+        let blocks = walls.len() / WALL_BLOCK_SIZE;
+        if blocks == 1 {
+            walls.iter().copied().any(|wall| edit.blocked_by(wall))
+        } else {
+            let (left, right) = walls.split_at(walls.len() / 2);
+            self.blocks_tree(root - blocks, left, edit) || self.blocks_tree(root - 1, right, edit)
+        }
+    }
+
+    fn append_block(&mut self, bounds: Bounds) {
+        let completed = self.indexed_blocks + 1;
+        let joins = completed.trailing_zeros() as usize;
+        if self.postorder.try_reserve(1 + joins).is_err() {
+            *self = Self {
+                disabled: true,
+                ..Self::default()
+            };
+            return;
+        }
+        self.postorder.push(bounds);
+        let mut span = 2;
+        for _ in 0..joins {
+            let root = self.postorder.len();
+            let bounds = self.postorder[root - span].union(self.postorder[root - 1]);
+            self.postorder.push(bounds);
+            span *= 2;
+        }
+        self.indexed_blocks = completed;
+    }
+}
+
 struct Clearance {
     walls: Vec<Bounds>,
+    wall_index: WallIndex,
     strokes: Vec<Bounds>,
     remaining: usize,
 }
@@ -490,7 +517,7 @@ impl Clearance {
                 .nodes
                 .iter()
                 .copied()
-                .map(Bounds::node)
+                .map(|rect| Bounds::of(rect).ordered())
                 .filter(|b| b.has_area()),
         );
         work.charge(drawing.edges.len())?;
@@ -505,7 +532,8 @@ impl Clearance {
                 (edge.end_label_center, spec.end_label),
             ] {
                 if let (Some(p), Some(size)) = (center, size) {
-                    let bounds = Bounds::label(p, canonical_size(graph.direction, size));
+                    let bounds =
+                        Bounds::centered(p, canonical_size(graph.direction, size)).ordered();
                     if bounds.has_area() {
                         push(&mut walls, bounds)?;
                     }
@@ -517,8 +545,10 @@ impl Clearance {
             .len()
             .saturating_add(walls.len())
             .saturating_mul(CLEARANCE_PASSES);
+        let wall_index = WallIndex::new(walls.len());
         Ok(Self {
             walls,
+            wall_index,
             strokes,
             remaining,
         })
@@ -533,15 +563,12 @@ impl Clearance {
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         for &(edge, ref edit) in proposed {
-            let blocked = |wall| {
-                edit.body.iter().any(|&body| body.overlaps(wall))
-                    || edit.mark.is_some_and(|mark| mark.overlaps(wall))
-            };
             if !visit_clearance(&mut self.remaining, self.walls.len(), work)?
-                || self.walls.iter().copied().any(blocked)
+                || self.wall_index.blocks(&self.walls, edit)
             {
                 return Ok(false);
             }
+            let blocked = |wall| edit.blocked_by(wall);
             let mut patches = proposed.iter().peekable();
             for (i, (id, geom)) in drawing.edges.iter().enumerate() {
                 if !visit_clearance(&mut self.remaining, 1, work)? {
@@ -574,10 +601,10 @@ impl Clearance {
                     // The whole retained envelope also covers corners whose surrounding free
                     // knots are coalesced by the painter before interpolation.
                     let crosses = if let Some(other) = other {
-                        other.retained.overlaps(mark)
-                            || other.body.iter().any(|part| part.overlaps(mark))
+                        other.retained.overlaps_strictly(mark)
+                            || other.body.iter().any(|part| part.overlaps_strictly(mark))
                     } else {
-                        self.strokes[i].overlaps(mark)
+                        self.strokes[i].overlaps_strictly(mark)
                     };
                     if crosses {
                         return Ok(false);

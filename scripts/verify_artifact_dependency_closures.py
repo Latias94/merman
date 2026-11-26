@@ -72,6 +72,10 @@ MATH_BACKEND_PACKAGES = (
     "ratex-lexer", "ratex-parser", "ratex-svg", "ratex-types",
 )
 DAGRE_PACKAGES = ("dugong", "dugong-graphlib")
+FAMILY_RENDER_PACKAGES = (
+    "merman-render-charts", "merman-render-flow", "merman-render-graph",
+    "merman-render-sequence", "merman-render-structured",
+)
 UPSTREAM_RENDERER_PACKAGES = frozenset({"krilla", "krilla-svg", "resvg", "usvg"})
 SVG_FONT_BACKEND = "merman-usvg"
 RASTER_BACKEND_PACKAGES = frozenset({"merman-resvg", SVG_FONT_BACKEND})
@@ -152,8 +156,9 @@ def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
     root = "merman-ffi" if kind == "native" else "merman-wasi"
     elk = ("merman-elk-layered", "merman-layout-elk")
     math = ("ratex-layout", "ratex-parser", "ratex-svg", "ratex-types")
-    required = [root, "merman-bindings-core", "merman", "merman-core", "merman-render",
-                "merman-export", "manatee", "fontdb"]
+    required = [root, "merman-bindings-core", "merman", "merman-core", "merman-core-flow", "merman-core-graph",
+                "merman-core-sequence", "merman-core-structured", "merman-render",
+                *FAMILY_RENDER_PACKAGES, "merman-export", "manatee", "fontdb"]
     forbidden = list(NATIVE_BINDING_FORBIDDEN_PACKAGES)
     omitted_features = []
     if variant == "full":
@@ -202,7 +207,7 @@ SEMANTIC_CLAIMS = (
     ClosureClaim(
         claim_id="static-svg-is-environment-and-export-free",
         profile_id="rust-static-svg",
-        required_packages=("merman", "merman-core", "merman-render"),
+        required_packages=("merman", "merman-core", "merman-render", *FAMILY_RENDER_PACKAGES),
         forbidden_packages=(
             "chrono",
             "getrandom",
@@ -245,7 +250,7 @@ SEMANTIC_CLAIMS = (
     ClosureClaim(
         claim_id="svg-basic-excludes-optional-engines-and-products",
         profile_id="rust-svg-basic",
-        required_packages=("merman", "merman-core", "merman-render"),
+        required_packages=("merman", "merman-core", "merman-render", *FAMILY_RENDER_PACKAGES),
         forbidden_packages=(
             *DAGRE_PACKAGES,
             "brotli-decompressor",
@@ -326,6 +331,7 @@ SEMANTIC_CLAIMS = (
             "clap_complete",
             "merman-export",
             "merman-render",
+            *FAMILY_RENDER_PACKAGES,
             "rayon",
             "reqwest",
             "serde-saphyr",
@@ -412,9 +418,12 @@ SEMANTIC_CLAIMS = (
 # separate from runtime policy: a compiler-only tool is not a runtime dependency leak.
 # Render/Export recipes must satisfy these claims once the M5 source edge is removed.
 SOURCE_INGESTION_PACKAGES = (
-    "merman-core", "granit-parser", "json5", "serde-saphyr",
+    "merman-core", "merman-core-flow", "merman-core-graph", "merman-core-preprocess", "merman-core-sequence",
+    "merman-core-structured",
+    "granit-parser", "json5",
+    "serde-saphyr",
 ) + TREE_SITTER_FORBIDDEN_PACKAGES
-MODEL_ASCII_FORBIDDEN_PACKAGES = SOURCE_INGESTION_PACKAGES + (
+MODEL_ASCII_FORBIDDEN_PACKAGES = SOURCE_INGESTION_PACKAGES + FAMILY_RENDER_PACKAGES + (
     "merman-markup", "html5ever", "url",
 )
 DIAGNOSTICS_ONLY_PROFILES = (
@@ -432,14 +441,19 @@ NORMAL_BUILD_CLAIMS = tuple(
     for profile_id, required, forbidden in (
         ("rust-model", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
         ("rust-model-all", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
-        ("rust-markup", ("merman-markup", "merman-model"), SOURCE_INGESTION_PACKAGES),
+        ("rust-markup", ("merman-markup",), SOURCE_INGESTION_PACKAGES + (
+            "merman-model", "serde_json", "html5ever", "htmlize", "ryu-js", "url",
+        )),
         ("rust-markup-full", ("merman-markup", "merman-model", "html5ever", "url"),
          SOURCE_INGESTION_PACKAGES),
         ("rust-ascii", ("merman-ascii", "merman-model"), MODEL_ASCII_FORBIDDEN_PACKAGES),
-        ("rust-render-native-svg", ("merman-render", "merman-model", "merman-markup"),
-         SOURCE_INGESTION_PACKAGES),
+        ("rust-render-native-svg", (
+            "merman-render", "merman-render-core", *FAMILY_RENDER_PACKAGES,
+            "merman-model", "merman-markup",
+        ), SOURCE_INGESTION_PACKAGES),
+        # Standalone export profiles convert pre-rendered, sealed SVG.
         *((profile_id, ("merman-export", "merman-render", "merman-model"),
-           SOURCE_INGESTION_PACKAGES) for profile_id in (
+           SOURCE_INGESTION_PACKAGES + FAMILY_RENDER_PACKAGES) for profile_id in (
             "rust-export-jpeg", "rust-export-png", "rust-export-pdf",
             "rust-export-native-fonts", "rust-export-native-sdk",
         )),

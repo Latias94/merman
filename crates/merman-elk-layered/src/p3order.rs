@@ -13,7 +13,10 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use crate::graph::{LGraph, LNodeKind, PortRef, PortSide, ReorderNodePortsWorkContext};
+use crate::graph::{
+    FlatPortRemap, LGraph, LNodeKind, PendingPortRemap, PortRef, PortSide,
+    ReorderNodePortsWorkContext,
+};
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 use crate::work::{WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_sum};
 
@@ -114,6 +117,15 @@ impl SweepCopy {
         graph: &mut LGraph,
         set_port_constraints: bool,
     ) -> bool {
+        self.transfer_with_port_remap(graph, set_port_constraints, None)
+    }
+
+    pub(super) fn transfer_with_port_remap(
+        &self,
+        graph: &mut LGraph,
+        set_port_constraints: bool,
+        flat_remap: Option<&FlatPortRemap>,
+    ) -> bool {
         if self.node_order.len() != graph.layers.len() {
             return false;
         }
@@ -138,7 +150,10 @@ impl SweepCopy {
                 let Some(port_order) = port_order_indices_by_id(graph, node, port_order) else {
                     return false;
                 };
-                if !graph.reorder_node_ports(node, port_order) {
+                if graph
+                    .reorder_node_ports_with_remap(node, port_order, flat_remap)
+                    .is_none()
+                {
                     return false;
                 }
                 if set_port_constraints
@@ -364,7 +379,36 @@ pub fn sort_port_lists_with_work_control(
     graph: &mut LGraph,
     work: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    let mut reorder_context = None;
+    // The sorter reads port records and edge reversal flags without consulting port references.
+    // Reconcile the admitted prefix whenever the pass exits.
+    let mut pass = PortListSort {
+        graph,
+        context: PortOrderContext {
+            census: None,
+            pending: Some(PendingPortRemap::default()),
+        },
+    };
+    sort_port_lists_impl(pass.graph, work, &mut pass.context)
+}
+
+struct PortListSort<'a> {
+    graph: &'a mut LGraph,
+    context: PortOrderContext,
+}
+
+impl Drop for PortListSort<'_> {
+    fn drop(&mut self) {
+        if let Some(pending) = self.context.pending.take() {
+            pending.apply(self.graph);
+        }
+    }
+}
+
+fn sort_port_lists_impl(
+    graph: &mut LGraph,
+    work: &mut dyn WorkControl,
+    reorder_context: &mut PortOrderContext,
+) -> Result<(), WorkError> {
     let node_indices = graph
         .layers
         .iter()
@@ -378,7 +422,7 @@ pub fn sort_port_lists_with_work_control(
             order.sort_by(|left, right| {
                 compare_combined_ports(graph, node, *left, *right, constraints)
             });
-            apply_port_order(graph, node, order, work, &mut reorder_context)?;
+            apply_port_order(graph, node, order, work, reorder_context)?;
         } else if constraints.is_side_fixed() {
             let keys = (0..graph.layerless_nodes[node].ports.len())
                 .map(|port| {
@@ -388,14 +432,14 @@ pub fn sort_port_lists_with_work_control(
                     )
                 })
                 .collect::<Vec<_>>();
-            reorder_by_keys(graph, node, keys, work, &mut reorder_context)?;
-            reverse_west_and_south_side(graph, node, work, &mut reorder_context)?;
+            reorder_by_keys(graph, node, keys, work, reorder_context)?;
+            reverse_west_and_south_side(graph, node, work, reorder_context)?;
 
             if graph.options.port_sorting_strategy == PortSortingStrategy::PortDegree {
                 let keys = (0..graph.layerless_nodes[node].ports.len())
                     .map(|port| (port_degree_east_west_key(graph, node, port), port))
                     .collect::<Vec<_>>();
-                reorder_by_keys(graph, node, keys, work, &mut reorder_context)?;
+                reorder_by_keys(graph, node, keys, work, reorder_context)?;
             }
         }
     }
@@ -406,7 +450,7 @@ pub fn sort_by_input_model(
     graph: &mut LGraph,
     work: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    let mut reorder_context = None;
+    let mut reorder_context = PortOrderContext::default();
     let mut layer_index = 0usize;
     while layer_index < graph.layers.len() {
         let previous_layer_index = if layer_index == 0 { 0 } else { layer_index - 1 };
@@ -455,32 +499,58 @@ pub fn sort_by_input_model(
     Ok(())
 }
 
+#[derive(Default)]
+struct PortOrderContext {
+    census: Option<ReorderNodePortsWorkContext>,
+    pending: Option<PendingPortRemap>,
+}
+
 fn apply_port_order(
     graph: &mut LGraph,
     node: usize,
     order: Vec<usize>,
     work: &mut dyn WorkControl,
-    context: &mut Option<ReorderNodePortsWorkContext>,
+    context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     work.check(0)?;
+    let mut check_edge_slots = false;
     if !order
         .iter()
         .copied()
         .eq(0..graph.layerless_nodes[node].ports.len())
     {
-        if context.is_none() {
-            *context = Some(ReorderNodePortsWorkContext::new_with_work_control(
-                graph, work,
-            )?);
+        if context.census.is_none() {
+            let (census, can_defer) = ReorderNodePortsWorkContext::new_with_work_control(
+                graph,
+                work,
+                context.pending.is_some(),
+            )?;
+            context.census = Some(census);
+            check_edge_slots = can_defer;
+            if !can_defer {
+                context.pending = None;
+            }
         }
         let units = context
+            .census
             .as_ref()
             .expect("prepared reference context")
             .reference_work(node)?;
         work.check(units)?;
         work.charge(units)?;
     }
-    graph.reorder_node_ports(node, order);
+    if check_edge_slots {
+        // The first permutation repairs references before any later callback can run. Malformed
+        // slots in other owners keep the entire pass on the immediate path without raising an
+        // error ahead of the owner whose permutation would have indexed them.
+        if !graph.reorder_first_port_list(node, order) {
+            context.pending = None;
+        }
+    } else if let Some(pending) = &mut context.pending {
+        pending.reorder(graph, node, order);
+    } else {
+        graph.reorder_node_ports(node, order);
+    }
     Ok(())
 }
 
@@ -489,7 +559,7 @@ fn reorder_by_keys<K: Ord>(
     node: usize,
     mut keys: Vec<(K, usize)>,
     work: &mut dyn WorkControl,
-    context: &mut Option<ReorderNodePortsWorkContext>,
+    context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     keys.sort_by(|left, right| left.0.cmp(&right.0));
     apply_port_order(
@@ -546,7 +616,7 @@ fn reverse_west_and_south_side(
     graph: &mut LGraph,
     node: usize,
     work: &mut dyn WorkControl,
-    context: &mut Option<ReorderNodePortsWorkContext>,
+    context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     reverse_side_range(graph, node, PortSide::South, work, context)?;
     reverse_side_range(graph, node, PortSide::West, work, context)
@@ -557,7 +627,7 @@ fn reverse_side_range(
     node: usize,
     side: PortSide,
     work: &mut dyn WorkControl,
-    context: &mut Option<ReorderNodePortsWorkContext>,
+    context: &mut PortOrderContext,
 ) -> Result<(), WorkError> {
     let ports = &graph.layerless_nodes[node].ports;
     if ports.is_empty() {
@@ -2109,7 +2179,7 @@ mod tests {
             0,
             PortSide::South,
             &mut crate::work::NoopWorkControl,
-            &mut None,
+            &mut PortOrderContext::default(),
         )
         .unwrap();
         let after_south = graph.layerless_nodes[0]
@@ -2124,7 +2194,7 @@ mod tests {
             0,
             PortSide::West,
             &mut crate::work::NoopWorkControl,
-            &mut None,
+            &mut PortOrderContext::default(),
         )
         .unwrap();
         let after_west = graph.layerless_nodes[0]
@@ -2811,6 +2881,43 @@ mod tests {
             vec![Some(7), Some(8)]
         );
     }
+
+    #[test]
+    fn sweep_copy_reuses_reference_sites_after_an_indexed_permutation() {
+        let mut graph = graph(
+            vec![node("owner"), node("peer")],
+            vec![
+                edge("forward", "owner", "peer"),
+                edge("loop", "owner", "owner"),
+            ],
+        );
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+        crate::selfloops::preprocess_self_loops(&mut graph);
+        initialize_crossing_minimization_port_ids(&mut graph);
+        graph.layerless_nodes[0].ports[1].crossing_minimization_id = None;
+        graph.layerless_nodes[1].origin_port = Some(crate::graph::GraphPortRef {
+            graph_id: graph.id.clone(),
+            port: PortRef { node: 0, port: 2 },
+        });
+        let best = SweepCopy::new(&graph, &[vec![0], vec![1]]);
+        let mut expected = graph.clone();
+        for node in &mut expected.layerless_nodes {
+            node.port_constraints = PortConstraints::FixedOrder;
+        }
+
+        let remap = FlatPortRemap::new(&graph, &mut crate::work::NoopWorkControl).unwrap();
+        assert_eq!(
+            graph.reorder_node_ports_with_remap(0, [2, 0, 1], Some(&remap)),
+            Some(vec![1, 2, 0])
+        );
+        let mut full_walk = graph.clone();
+        assert!(best.transfer_node_and_port_orders_to_graph(&mut full_walk, true));
+        assert!(best.transfer_with_port_remap(&mut graph, true, Some(&remap)));
+        assert_eq!(graph, full_walk);
+        assert_eq!(graph, expected);
+    }
+
     #[test]
     fn sweep_copy_port_lookup_preserves_duplicate_and_mixed_fallback_matches() {
         let mut graph = graph(vec![node("A")], vec![]);

@@ -101,11 +101,12 @@ pub(crate) fn rank_plan_controlled(
     let mut nodes = Vec::with_capacity(input.node_count());
     for id in input.nodes() {
         let node = ranked_graph.node(id);
+        let compound = node.and_then(|node| node.compound.as_deref());
         nodes.push(rank::RankPlanNode {
             id: id.to_string(),
             rank: node.and_then(|label| label.rank),
-            min_rank: node.and_then(|label| label.min_rank),
-            max_rank: node.and_then(|label| label.max_rank),
+            min_rank: compound.and_then(|compound| compound.min_rank),
+            max_rank: compound.and_then(|compound| compound.max_rank),
         });
     }
 
@@ -177,6 +178,11 @@ fn run_rank_phases(
                 node.rank = Some(minlen);
             }
         }
+    } else if uses_network_simplex && g.is_directed() {
+        charge_non_compound_rank_graph(g, work_control)?;
+        let ranks = rank::network_simplex::rank_leaf_projection_controlled(g, work_control)?;
+        work_control.charge(node_snapshot_work_units(g)?)?;
+        ranks.publish(g);
     } else {
         // Dagre ranks a non-compound view. Nesting border nodes remain leaves in that view and
         // carry cluster constraints, while compound labels themselves never receive a leaf rank.
@@ -836,12 +842,13 @@ fn assign_rank_min_max(
     work_control.charge(node_snapshot_work_units(g)?)?;
     let node_ids = g.node_ids();
     for id in node_ids {
-        let Some(node) = g.node(&id).cloned() else {
+        let Some(compound) = g.node(&id).and_then(|node| node.compound.as_deref()) else {
             continue;
         };
-        let (Some(border_top), Some(border_bottom)) =
-            (node.border_top.as_deref(), node.border_bottom.as_deref())
-        else {
+        let (Some(border_top), Some(border_bottom)) = (
+            compound.border_top.as_deref(),
+            compound.border_bottom.as_deref(),
+        ) else {
             continue;
         };
         let (Some(min_rank), Some(max_rank)) = (
@@ -850,9 +857,12 @@ fn assign_rank_min_max(
         ) else {
             continue;
         };
-        if let Some(node) = g.node_mut(&id) {
-            node.min_rank = Some(min_rank);
-            node.max_rank = Some(max_rank);
+        if let Some(compound) = g
+            .node_mut(&id)
+            .and_then(|node| node.compound.as_deref_mut())
+        {
+            compound.min_rank = Some(min_rank);
+            compound.max_rank = Some(max_rank);
         }
     }
     Ok(())
@@ -868,6 +878,14 @@ fn build_non_compound_rank_graph(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    charge_non_compound_rank_graph(g, work_control)?;
+    Ok(util::as_non_compound_graph(g))
+}
+
+fn charge_non_compound_rank_graph(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
     let numeric_order_work =
         checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
     let numeric_adjacency_work = checked_ordered_key_updates(
@@ -877,8 +895,7 @@ fn build_non_compound_rank_graph(
     work_control.charge(checked_add(
         graph_scan_work_units(g)?,
         checked_add(numeric_order_work, numeric_adjacency_work)?,
-    )?)?;
-    Ok(util::as_non_compound_graph(g))
+    )?)
 }
 
 fn node_snapshot_work_units(

@@ -1894,7 +1894,7 @@ fn direction_has_prior_token(value: &str) -> bool {
 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
-    crate::diagrams::flowchart::is_valid_editor_node_id(candidate)
+    merman_core_flow::flowchart::is_valid_editor_node_id(candidate)
         && !starts_reserved_identifier(candidate)
 }
 

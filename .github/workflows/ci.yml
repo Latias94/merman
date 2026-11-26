@@ -620,6 +620,8 @@ jobs:
             cargo nextest run --locked -p merman-render --no-default-features --features "$features" \
               --lib --test diagram_features --test typed_family_api_test --cargo-quiet
           done
+          cargo nextest run --locked -p merman-render-core --no-default-features --features shoal-bridge \
+            --lib -E 'test(layout_work::) | test(graph_layout::shoal::)' --cargo-quiet
 
       - name: Test isolated consumers without diagram families
         run: |
@@ -1069,18 +1071,23 @@ jobs:
         # Metadata loads cross-platform packages even with --filter-platform.
         run: cargo fetch --locked
 
+      - name: Test xtask Wasm host contracts
+        run: >-
+          cargo nextest run --locked -p xtask --features wasm-host --bin xtask --no-fail-fast --cargo-quiet
+          -E 'test(/^cmd::(profile_budget|typst_artifact|typst_package|typst_plugin_smoke|wasm_module_surface)::/)'
+
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build, budget and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Smoke Typst package
         shell: bash
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
+          cargo run --locked -p xtask --features wasm-host -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
 
       - name: Upload Typst package smoke artifacts
         if: failure()
@@ -1134,7 +1141,7 @@ jobs:
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build, budget and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Download Typst compatibility version
         shell: bash
@@ -1156,7 +1163,7 @@ jobs:
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
-          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --tests-only --typst "${typst_bin}"
+          cargo run --locked -p xtask --features wasm-host -- typst-package-smoke --profile publish --skip-wasm-build --tests-only --typst "${typst_bin}"
 
       - name: Upload Typst package compatibility artifacts
         if: failure()

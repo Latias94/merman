@@ -23,16 +23,6 @@ The SVG parity layer translates D3 curve algorithms, including basis, natural, s
 - License: `ISC`
 - Legal file: `THIRD_PARTY_LICENSES/d3-shape/LICENSE`
 
-## fmin
-
-The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient optimization behavior.
-
-- Version: `0.0.4`
-- Source: https://github.com/benfred/fmin.git @ `6b155c9f4a6ecf73ea5d71666da8e5dcd418b18b`
-- Relationship: `modified`, `translated`
-- License: `BSD-3-Clause`
-- Legal file: `THIRD_PARTY_LICENSES/fmin/LICENSE`
-
 ## Mermaid
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
@@ -42,18 +32,6 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
-
-## roxmltree private XML DOM
-
-The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT.
-
-- Version: `0.21.1 with upstream iterative element fix`
-- Source: https://github.com/RazrFalcon/roxmltree @ `3f5c78dea57662b43a2f41961397b1f5ffe27166`
-- Relationship: `copied`, `modified`
-- License: `MIT AND ISC`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC`
-- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE`
 
 ## rough-rs roughr
 
@@ -74,6 +52,16 @@ The roughr fork aligns its randomization and drawing-operation semantics with Ro
 - Relationship: `behavior-reference`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/roughjs/LICENSE`
+
+## ego-tree code in roxmltree
+
+Both roxmltree releases identify their tree structure as derived from ego-tree under ISC. This notice supplements the roxmltree crate licenses listed in the Rust dependency report.
+
+- Version: `roxmltree 0.20.0 and 0.21.2`
+- Source: https://github.com/RazrFalcon/roxmltree @ `b04f75f6a0d17c6248de3eb1b1013bf1bbac44ae`
+- Relationship: `linked`
+- License: `ISC`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-ego-tree/LICENSE-ISC`
 
 ## unicode-linebreak
 

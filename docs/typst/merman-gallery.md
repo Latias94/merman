@@ -5,7 +5,7 @@ This gallery is the maintained index for Typst package smoke artifacts. It is no
 Run locally:
 
 ```sh
-cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst /path/to/typst --keep-artifacts
+cargo run -p xtask --features wasm-host -- typst-package-smoke --skip-wasm-build --typst /path/to/typst --keep-artifacts
 ```
 
 The command prints the unique directory under `target/typst-package-smoke/`. PDFs are in that run's `out/` subdirectory.

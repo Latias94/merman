@@ -603,13 +603,14 @@ pub(crate) fn render_treemap_diagram_svg(
         for slot in 1..palette.fill.len() {
             if slot % 6 != 0 {
                 let id = format!("{diagram_id}-treemap-pattern-{slot}");
-                crate::theme::pattern_svg::data_pattern(
+                let _ = crate::theme::pattern_svg::data_pattern(
                     &mut out,
                     &id,
                     slot,
                     palette.fill(slot),
                     palette.ink(slot),
                 );
+                out.checkpoint()?;
             }
         }
         out.push_str("</defs>");

@@ -2,11 +2,11 @@ use crate::{Error, Result};
 use std::borrow::Cow;
 
 use super::css_override::{CssOverridePolicy, strip_css_important};
-use super::util::{
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
+use merman_render_core::svg_scan::{
     checkpoint_loop, find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints,
     trim_with_checkpoints,
 };
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
 
 mod rewrite;
 

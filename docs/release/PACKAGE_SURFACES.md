@@ -81,8 +81,28 @@ compatible version requirements and intentional upgrade exceptions.
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
-Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
-publication; this repository only validates the external formula after a stable release.
+`merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
+behind `merman-core`. `merman-core-flow` provides Flowchart and Swimlane parsing and Agentflow's
+shared presentation lexer. `merman-core-graph` provides Class, ER, and State syntax parsing.
+`merman-core-sequence` provides Sequence syntax parsing. `merman-core-structured` provides Packet
+syntax parsing and the four Railroad dialects.
+`merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
+contracts. `merman-render-structured` provides Info, Packet, and Railroad layout and SVG contents
+through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
+[Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
+
+`merman-render-charts` provides Pie layout and SVG content through `diagram-pie`. It provides
+Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
+`diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
+`diagram-xychart` selects XY Chart layout and plot geometry.
+`merman-render-flow` provides shape geometry through `diagram-flowchart`, `diagram-swimlane`,
+and `diagram-agentflow`.
+`merman-render-graph` provides ER relationship markers through `diagram-er`.
+`merman-render-sequence` provides participant geometry and drawing through `diagram-sequence`.
+[Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
+
+Homebrew/core owns formula publication; this repository only validates the external formula after
+a stable release.
 
 Android, Python, and Flutter main-line prebuilt products select math explicitly alongside SVG,
 semantic and layout operations, Dagre, ELK, Cytoscape, ASCII, analysis, validation, and
@@ -406,7 +426,7 @@ npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages
-cargo run --locked -p xtask -- build-typst-package --profile publish \
+cargo run --locked -p xtask --features wasm-host -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 

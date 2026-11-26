@@ -119,7 +119,11 @@ fn checked_border_segment_work_plan(
         let result = (|| {
             hierarchy_order_slots =
                 checked_add(hierarchy_order_slots, g.child_order_slot_count(id))?;
-            let Some((min_rank, max_rank)) = node.min_rank.zip(node.max_rank) else {
+            let Some((min_rank, max_rank)) = node
+                .compound
+                .as_deref()
+                .and_then(|compound| compound.min_rank.zip(compound.max_rank))
+            else {
                 return Ok(());
             };
             if max_rank < min_rank {
@@ -161,7 +165,10 @@ fn add_border_segments_for_node(
     ids: &mut DummyNodeIdGen,
     parent_assignments: &mut Vec<(usize, usize)>,
 ) -> Result<(), WorkError> {
-    let Some((min_rank, max_rank)) = g.node(v).and_then(|n| Some((n.min_rank?, n.max_rank?)))
+    let Some((min_rank, max_rank)) = g
+        .node(v)
+        .and_then(|node| node.compound.as_deref())
+        .and_then(|compound| compound.min_rank.zip(compound.max_rank))
     else {
         return Ok(());
     };
@@ -172,9 +179,9 @@ fn add_border_segments_for_node(
     let max_rank_usize =
         usize::try_from(i64::from(max_rank.max(0))).map_err(|_| WorkError::ArithmeticOverflow)?;
     let border_slots = checked_add(max_rank_usize, 1)?;
-    if let Some(n) = g.node_mut(v) {
-        n.border_left = vec![None; border_slots];
-        n.border_right = vec![None; border_slots];
+    if let Some(compound) = g.node_mut(v).and_then(|node| node.compound.as_deref_mut()) {
+        compound.border_left = vec![None; border_slots];
+        compound.border_right = vec![None; border_slots];
     }
 
     let mut prev_left: Option<String> = None;
@@ -235,11 +242,11 @@ fn add_border_node(
         prefix,
     )?;
 
-    if let Some(n) = g.node_mut(sg) {
+    if let Some(compound) = g.node_mut(sg).and_then(|node| node.compound.as_deref_mut()) {
         let idx = rank.max(0) as usize;
         match side {
-            BorderSide::Left => n.border_left[idx] = Some(curr.clone()),
-            BorderSide::Right => n.border_right[idx] = Some(curr.clone()),
+            BorderSide::Left => compound.border_left[idx] = Some(curr.clone()),
+            BorderSide::Right => compound.border_right[idx] = Some(curr.clone()),
         }
     }
 
@@ -284,8 +291,11 @@ mod tests {
         graph.set_node(
             "cluster",
             NodeLabel {
-                min_rank: Some(1),
-                max_rank: Some(3),
+                compound: Some(Box::new(crate::CompoundNodeLabel {
+                    min_rank: Some(1),
+                    max_rank: Some(3),
+                    ..Default::default()
+                })),
                 ..NodeLabel::default()
             },
         );
@@ -321,8 +331,11 @@ mod tests {
         graph.set_node(
             "cluster",
             NodeLabel {
-                min_rank: Some(1),
-                max_rank: Some(2),
+                compound: Some(Box::new(crate::CompoundNodeLabel {
+                    min_rank: Some(1),
+                    max_rank: Some(2),
+                    ..Default::default()
+                })),
                 ..NodeLabel::default()
             },
         );
@@ -330,7 +343,7 @@ mod tests {
 
         add_border_segments(&mut graph);
 
-        let cluster = graph.node("cluster").cloned().expect("cluster label");
+        let cluster = graph.node("cluster").unwrap().compound.as_deref().unwrap();
         let left_1 = cluster.border_left[1].as_deref().expect("left rank 1");
         let right_1 = cluster.border_right[1].as_deref().expect("right rank 1");
         let left_2 = cluster.border_left[2].as_deref().expect("left rank 2");

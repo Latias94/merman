@@ -1,4 +1,7 @@
 use super::*;
+use crate::svg::icon_registry::{
+    IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
+};
 use crate::usecase::actor::{self, ActorPlacement};
 use merman_model::families::usecase::UsecaseNode;
 
@@ -227,26 +230,28 @@ pub(super) fn write_node(
                 );
                 let icon = if let Some(registry) = context.options.icon_registry() {
                     let work = context.options.work_meter();
-                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                    let prefix = IconIdScopePrefix::from_parts(
                         &["usecase-", context.diagram_id.semantic_str(), "-"],
                         work,
                     )?;
-                    registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-                        icon_name: actor.icon.as_deref().unwrap_or(""),
-                        width_px: 42.0,
-                        height_px: 42.0,
-                        fallback_prefix: Some("fa"),
-                        extra_class: None,
-                        id_scope: prefix.scope_parts(&[&actor.id], work)?,
-                        effective_config: context.labels.config,
-                        work_meter: work,
-                    })?
+                    render_icon(
+                        registry,
+                        IconRenderRequest {
+                            icon_name: actor.icon.as_deref().unwrap_or(""),
+                            width_px: 42.0,
+                            height_px: 42.0,
+                            fallback_prefix: Some("fa"),
+                            extra_class: None,
+                            id_scope: prefix.scope_parts(&[&actor.id], work)?,
+                            effective_config: context.labels.config,
+                            work_meter: work,
+                        },
+                    )?
                 } else {
                     None
                 };
                 let fallback = icon.is_none();
-                let icon = icon
-                    .unwrap_or_else(|| crate::svg::icon_registry::mermaid_unknown_icon_svg(42, 42));
+                let icon = icon.unwrap_or_else(|| mermaid_unknown_icon_svg(42, 42));
                 let _ = write!(
                     out,
                     r#"<g class="usecase-actor-icon-symbol{}" aria-hidden="true" transform="translate(-21,-23)"><g>{icon}</g></g>"#,

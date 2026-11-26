@@ -1,8 +1,8 @@
-#[cfg(any(feature = "editor-facts", test))]
 use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
+use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
 #[cfg(feature = "editor-facts")]
 use crate::source_span::{
     has_ascii_separator, keyword_value_span, line_content_end, source_value_span,
@@ -13,9 +13,15 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, ParseDiagnostic};
+use crate::{
+    Error, MermaidConfig, OperationControl, OperationControlResult, ParseDiagnostic,
+    ParseDiagnosticSpanKind,
+};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "editor-facts")]
+use merman_core_graph::class::{ClassLexicalEvent, ClassLexicalExpectation, ClassToken as Tok};
+use merman_core_graph::class::{ClassSyntax, ClassSyntaxDiagnostic};
 use merman_model::families::class as class_typed;
 #[cfg(feature = "editor-facts")]
 use merman_model::text::is_ecmascript_whitespace;
@@ -28,11 +34,7 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
-use super::Tok;
-use super::ast::{ActionArena, Actions};
 use super::db::ClassDb;
-use super::lexer::{ClassLexicalEvent, Lexer};
-use super::parser;
 
 #[cfg(test)]
 thread_local! {
@@ -51,84 +53,31 @@ pub(crate) fn class_syntax_construction_count() -> usize {
     CLASS_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-struct ClassSyntaxOutcome {
-    actions: std::result::Result<Actions, ParseDiagnostic>,
-    #[cfg(feature = "editor-facts")]
-    editor_facts: Option<EditorSemanticFacts>,
+pub(super) fn lex_class_syntax(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<ClassSyntax> {
+    #[cfg(test)]
+    CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+    ClassSyntax::lex(code, control)
 }
 
-pub(super) struct ClassSyntax {
-    pub(super) events: Vec<ClassLexicalEvent>,
-}
-
-impl ClassSyntax {
-    pub(super) fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
-        #[cfg(test)]
-        CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
-
-        let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
-        let mut combined: Vec<ClassLexicalEvent> = Vec::with_capacity(events.len());
-        let mut can_prefix_name = false;
-        let mut in_annotation = false;
-        for (index, event) in events.into_iter().enumerate() {
-            if index.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            let next_can_prefix = !in_annotation
-                && match &event {
-                    Ok((start, Tok::Name(_), end)) => !code[*start..*end].contains(['`', '~']),
-                    _ => false,
-                };
-            match &event {
-                Ok((_, Tok::AnnotationStart, _)) => in_annotation = true,
-                Ok((_, Tok::AnnotationStop | Tok::Newline, _)) => in_annotation = false,
-                _ => {}
-            }
-            // Only alphaNumToken can prefix another className. A quoted or generic name
-            // completes the production; annotations retain their single terminal as well.
-            match (combined.last_mut(), event) {
-                (
-                    Some(Ok((_, Tok::Name(previous), previous_end))),
-                    Ok((_, Tok::Name(next), end)),
-                ) if can_prefix_name => {
-                    previous.push_str(&next);
-                    *previous_end = end;
-                }
-                (_, event) => combined.push(event),
-            }
-            can_prefix_name = next_can_prefix;
+fn class_parse_diagnostic(diagnostic: ClassSyntaxDiagnostic) -> ParseDiagnostic {
+    use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
+    match diagnostic {
+        ClassSyntaxDiagnostic::Lexical(error) => {
+            ParseDiagnostic::new(error.message).with_span(error.span, Exact)
         }
-        control.checkpoint()?;
-        Ok(Self { events: combined })
-    }
-
-    fn into_actions(
-        self,
-        #[cfg(feature = "editor-facts")] code: &str,
-        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-        control: &OperationControl,
-    ) -> OperationControlResult<ClassSyntaxOutcome> {
-        let Self { events } = self;
-        #[cfg(feature = "editor-facts")]
-        let editor_facts = match editor_demand {
-            EditorFactsDemand::Omit => None,
-            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
-            EditorFactsDemand::Capture => Some(collect_class_editor_facts_from_events(
-                &events, code, control,
-            )?),
-        };
-        let mut arena = ActionArena::default();
-        #[cfg(feature = "editor-facts")]
-        {
-            arena.capture_ignored_statements = editor_facts.is_some();
+        ClassSyntaxDiagnostic::UnexpectedToken {
+            token,
+            span,
+            expected,
+        } => ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
+            .with_span(span, Exact),
+        ClassSyntaxDiagnostic::UnexpectedEof { offset, expected } => {
+            ParseDiagnostic::new(unexpected_eof_message(expected.names()))
+                .with_span(SourceSpan::new(offset, offset), InsertionPoint)
         }
-        let actions = parser::parse(&mut arena, events.into_iter(), control)?
-            .map(|list| arena.into_actions(list));
-        Ok(ClassSyntaxOutcome {
-            actions,
-            #[cfg(feature = "editor-facts")]
-            editor_facts,
-        })
     }
 }
 
@@ -222,23 +171,26 @@ fn construct_class_semantic_source<'a>(
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>>
 {
-    let syntax = ClassSyntax::lex(code, control)?;
-    let ClassSyntaxOutcome {
-        actions,
-        #[cfg(feature = "editor-facts")]
-        mut editor_facts,
-    } = syntax.into_actions(
-        #[cfg(feature = "editor-facts")]
-        code,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    )?;
-    let actions = match actions {
+    let syntax = lex_class_syntax(code, control)?;
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit => None,
+        EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+        EditorFactsDemand::Capture => Some(collect_class_editor_facts_from_events(
+            syntax.events(),
+            code,
+            control,
+        )?),
+    };
+    #[cfg(feature = "editor-facts")]
+    let capture_ignored_statements = editor_facts.is_some();
+    #[cfg(not(feature = "editor-facts"))]
+    let capture_ignored_statements = false;
+    let actions = match syntax.into_actions(capture_ignored_statements, control)? {
         Ok(actions) => actions,
         Err(diagnostic) => {
             return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
-                diagnostic,
+                diagnostic: class_parse_diagnostic(diagnostic),
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
@@ -505,8 +457,16 @@ fn collect_class_editor_facts_from_events(
             Ok((start, token, end)) => collector.accept(token, *start, *end, &mut facts),
             Err(error) => {
                 facts.mark_recovered();
-                if let Some(expected) = error.expected_syntax.as_ref() {
-                    facts.push_expected_syntax(*expected);
+                if let Some(expectation) = error.expectation {
+                    let kind = match expectation {
+                        ClassLexicalExpectation::Direction => {
+                            EditorExpectedSyntaxKind::CardinalDirectionValue
+                        }
+                        ClassLexicalExpectation::CallbackArguments => {
+                            EditorExpectedSyntaxKind::Payload
+                        }
+                    };
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(kind, error.span));
                 }
             }
         }
@@ -1598,128 +1558,6 @@ fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fmt::Write as _;
-
-    #[test]
-    fn omitted_editor_facts_do_not_allocate_ignored_statement_actions() {
-        let source = "classDiagram\nFirst\nSecond\n";
-        let control = OperationControl::new();
-        let syntax = ClassSyntax::lex(source, &control).unwrap();
-        let parsed = syntax
-            .into_actions(
-                #[cfg(feature = "editor-facts")]
-                source,
-                #[cfg(feature = "editor-facts")]
-                EditorFactsDemand::Omit,
-                &control,
-            )
-            .unwrap();
-        assert_eq!(parsed.actions.unwrap().count(), 0);
-    }
-
-    fn assert_carrier_work(source: &str, expected: (usize, usize, usize, usize)) {
-        let control = OperationControl::new();
-        let mut arena = ActionArena::default();
-        let root = parser::parse(&mut arena, Lexer::new(source), &control)
-            .unwrap()
-            .expect("Class parser accepts the carrier workload");
-        assert_eq!(arena.carrier_counts(), expected);
-        let materialized = arena.into_actions(root).count();
-        assert_eq!(materialized, expected.0);
-        println!(
-            "source_bytes={} action_records={} action_links={} class_id_records={} \
-             class_id_links={} replayed_events={materialized}",
-            source.len(),
-            expected.0,
-            expected.1,
-            expected.2,
-            expected.3,
-        );
-    }
-
-    #[test]
-    fn grammar_carriers_attach_each_event_once_at_increasing_width_and_depth() {
-        for size in [8, 128, 1_024] {
-            let mut flat = String::from("classDiagram\n");
-            for index in 0..size {
-                writeln!(flat, "class C{index}").unwrap();
-            }
-            assert_carrier_work(&flat, (size, size - 1, 0, 0));
-
-            let mut namespace = String::from("classDiagram\nnamespace N {\n");
-            for index in 0..size {
-                writeln!(namespace, "class C{index}").unwrap();
-            }
-            namespace.push_str("}\n");
-            assert_carrier_work(&namespace, (size + 3, size + 2, size, size - 1));
-
-            let mut nested = String::from("classDiagram\n");
-            for index in 0..size {
-                writeln!(nested, "namespace N{index} {{").unwrap();
-            }
-            nested.push_str("class Leaf\n");
-            nested.push_str(&"}\n".repeat(size));
-            assert_carrier_work(&nested, (size * 3 + 1, size * 3, 1, 0));
-        }
-    }
-
-    #[test]
-    fn class_action_construction_observes_cancellation() {
-        let source = format!("classDiagram\n{}", "class C\n".repeat(1_024));
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(2);
-        let mut arena = ActionArena::default();
-        let error = parser::parse(&mut arena, Lexer::new(&source), &control)
-            .err()
-            .expect("construction checkpoint interrupts the parser");
-        assert!(arena.carrier_counts().0 < 1_024);
-        assert_eq!(error.reason, crate::CancelReason::Requested);
-    }
-
-    #[test]
-    fn classdef_target_lists_observe_cancellation() {
-        let targets = (0..1_024)
-            .map(|index| format!("C{index}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let source = format!("classDiagram\nclassDef {targets} fill:red\n");
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(2);
-        let mut arena = ActionArena::default();
-        let error = parser::parse(&mut arena, Lexer::new(&source), &control)
-            .err()
-            .expect("target list parsing must observe cancellation before expansion");
-        assert_eq!(arena.carrier_counts().0, 0);
-        assert_eq!(error.reason, crate::CancelReason::Requested);
-    }
-
-    #[test]
-    fn cancelled_token_delivery_returns_terminal_before_grammar_eof() {
-        let source = format!("classDiagram\n{}", "class C\n".repeat(256));
-        let control = OperationControl::new();
-        let syntax = ClassSyntax::lex(&source, &control).unwrap();
-        #[cfg(feature = "editor-facts")]
-        let fact_checkpoints = syntax.events.len().div_ceil(128);
-        #[cfg(not(feature = "editor-facts"))]
-        let fact_checkpoints = 0;
-        control.cancel_after_checkpoints(fact_checkpoints + 2);
-        let error = syntax
-            .into_actions(
-                #[cfg(feature = "editor-facts")]
-                &source,
-                #[cfg(feature = "editor-facts")]
-                EditorFactsDemand::Capture,
-                &control,
-            )
-            .err()
-            .expect("cancelled delivery returns the outer terminal");
-        assert_eq!(error.reason, crate::CancelReason::Requested);
-    }
-}
-
-#[cfg(test)]
 mod semantic_tests {
     use super::*;
 
@@ -2030,6 +1868,54 @@ Client --> Service
                 panic!("expected full Class parse diagnostic")
             };
             assert_eq!(full, diagnostic);
+        }
+    }
+
+    #[test]
+    fn class_graph_diagnostics_keep_core_messages_and_span_kinds() {
+        use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
+
+        let unexpected = "classDiagram\r\nclass\r\n";
+        let eof = "classDiagram\nclass ";
+        let lexical = "classDiagram\r\ndirection sideways\r\n";
+        let eof_offset = eof.trim_end().len();
+        let direction_offset = lexical.find("sideways").unwrap();
+        for (source, message, span, kind) in [
+            (
+                unexpected,
+                "unexpected statement separator; expected name",
+                SourceSpan::new(unexpected.len() - 2, unexpected.len()),
+                Exact,
+            ),
+            (
+                eof,
+                "unexpected end of input; expected name",
+                SourceSpan::new(eof_offset, eof_offset),
+                InsertionPoint,
+            ),
+            (
+                lexical,
+                "invalid class direction",
+                SourceSpan::new(direction_offset, direction_offset + "sideways".len()),
+                Exact,
+            ),
+        ] {
+            let error = parse_class_semantic_model_controlled(
+                source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap_err();
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected a Class parse diagnostic for {source:?}");
+            };
+            assert_eq!(diagnostic.message(), message, "{source:?}");
+            assert_eq!(diagnostic.span(), Some(span), "{source:?}");
+            assert_eq!(diagnostic.span_kind(), kind, "{source:?}");
         }
     }
 

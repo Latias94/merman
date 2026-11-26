@@ -234,7 +234,7 @@ fn measure(
         let parent = groups.parents.get(node.id.as_str()).copied();
         let dir = parent.map_or(direction, |group| groups.directions[group as usize]);
         let shape =
-            super::FlowchartShape::resolve(node.layout_shape.as_deref().unwrap_or("squareRect"))?;
+            super::resolve_flowchart_shape(node.layout_shape.as_deref().unwrap_or("squareRect"))?;
         let size = measurement.node(
             node,
             FlowchartSvgLabelOwner::Node(ordinal),

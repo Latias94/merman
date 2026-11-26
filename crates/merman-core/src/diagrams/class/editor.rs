@@ -1,18 +1,19 @@
 //! Class source edits derived from the family's preprocessed syntax.
 
-use super::Tok;
-use super::lexer::Lexer;
 use super::parse::{
-    ClassSyntax, class_editor_events, class_name_base_end, recover_interaction_action,
+    class_editor_events, class_name_base_end, lex_class_syntax, recover_interaction_action,
 };
 use crate::{OperationControl, SourceSpan};
+use merman_core_graph::class::{
+    ClassToken as Tok, editor_name_needs_separator, editor_name_requires_backticks,
+};
 
 pub(crate) fn editor_rename_edits(
     source: &str,
     selections: &[SourceSpan],
     new_name: &str,
 ) -> Option<Vec<(SourceSpan, String)>> {
-    let needs_backticks = super::lexer::editor_name_requires_backticks(new_name)?;
+    let needs_backticks = editor_name_requires_backticks(new_name)?;
     let control = OperationControl::new();
     let preprocessed =
         crate::preprocess::preprocess_builtin_semantic_with_directive_recovery_controlled(
@@ -24,7 +25,7 @@ pub(crate) fn editor_rename_edits(
         .ok()?
         .ok()?;
     let code = preprocessed.code();
-    let syntax = ClassSyntax::lex(code, &control).ok()?;
+    let syntax = lex_class_syntax(code, &control).ok()?;
     let mut selections = selections.to_vec();
     selections.sort_unstable_by_key(|span| (span.start, span.end));
     selections.dedup();
@@ -41,7 +42,7 @@ pub(crate) fn editor_rename_edits(
     let mut edits = Vec::with_capacity(selections.len());
     let mut namespace_name = false;
     let mut click_target = false;
-    for event in class_editor_events(&syntax.events, code, &control) {
+    for event in class_editor_events(syntax.events(), code, &control) {
         let event = event.ok()?;
         let recovered_list = matches!(&event, std::borrow::Cow::Owned(_));
         let (start, token, end) = match event.as_ref() {
@@ -117,7 +118,8 @@ pub(crate) fn editor_rename_edits(
                 let independent = matches!(token, Tok::Name(_)) && !quoted && span.end <= base.end;
                 let replacement = if needs_backticks && independent {
                     format!("`{new_name}`")
-                } else if independent && name_needs_separator(new_name, &source[span.end..]) {
+                } else if independent && editor_name_needs_separator(new_name, &source[span.end..])
+                {
                     format!("{new_name} ")
                 } else {
                     new_name.to_string()
@@ -131,26 +133,4 @@ pub(crate) fn editor_rename_edits(
             .windows(2)
             .all(|pair| pair[0].0.end <= pair[1].0.start))
     .then_some(edits)
-}
-
-fn name_needs_separator(name: &str, suffix: &str) -> bool {
-    if suffix.chars().next().is_some_and(char::is_alphanumeric) {
-        return true;
-    }
-    let operator = if suffix.starts_with("--") {
-        "--"
-    } else if suffix.starts_with("..") {
-        ".."
-    } else {
-        return false;
-    };
-    // Only the adjacent line token is needed to expose a trailing `o` becoming aggregation
-    // or a trailing `-` joining the line. Keep the complete candidate as the first Name.
-    let mut probe = String::with_capacity(name.len() + operator.len());
-    probe.push_str(name);
-    probe.push_str(operator);
-    !matches!(
-        Lexer::new(&probe).next(),
-        Some(Ok((0, Tok::Name(value), end))) if end == name.len() && value == name
-    )
 }

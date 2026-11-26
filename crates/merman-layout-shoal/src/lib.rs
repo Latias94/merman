@@ -5,6 +5,7 @@
 mod adaptive;
 mod compound;
 mod flat;
+mod geom;
 mod model;
 mod options;
 mod ortho;

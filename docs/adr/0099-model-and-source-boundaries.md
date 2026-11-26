@@ -30,13 +30,96 @@ Introduce `merman-model` for canonical family data and its necessary value, iden
 
 Use `merman_model::families::<family>` as the canonical family namespace. Core retains source parser/DB construction privately and depends on these types. ASCII and Render select the shared data and their own handlers without selecting core parsers. Export uses shared execution types and retains its real dependency on Render. The facade owns source-to-output orchestration and may expose an intentional `merman::model` namespace.
 
-Move pure value/model operations with the types; keep source sanitization, detector effects, preprocessing, original-source mapping, source errors and engine initialization at core. Replace source-specific inherent methods with owner functions. Preserve managed deep-value ownership, public model facts, intentional serde differences and actual full payloads. Retire compatibility-only full wrappers and obsolete import paths instead of maintaining parallel models or alias trees.
+`merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
+line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
+and declaration terminals. Core's preprocessing orchestrator combines the frontmatter and
+directive modules, which own their configuration admission and source evidence. Core also owns
+`PreprocessedSource` and the projection of parser diagnostics and editor facts back to the
+original source.
+
+Move pure value/model operations with the types. Keep source sanitization, detector effects,
+preprocessing orchestration, source errors, and engine initialization in Core. Replace
+source-specific inherent methods with owner functions. Preserve managed deep-value ownership,
+public model facts, intentional serde differences and actual full payloads. Retire
+compatibility-only full wrappers and obsolete import paths.
 
 ### Markup safety remains one implementation
 
 Introduce `merman-markup` for the existing HTML/URL/sanitizer implementation, shared CSS structural predicates and Khroma-compatible color operations used by source ingestion and SVG output. This includes `style.rs` predicates used by Class construction and Packet rendering, and `theme_color.rs` operations/local errors used by core themes and SVG. It depends on model/config/control values and never on core or Render. The model package retains only the entity/text helpers its data/terminal consumers use. Output-only navigation/representation helpers and Render's stricter token-aware CSS policy remain Render-owned.
 
 Core and Render use the same markup implementation. This avoids putting expensive source/output sanitization into every model consumer, a core-to-renderer dependency, or duplicated security algorithms. Render and export have no production path back to core. They still use the required HTML/XML/CSS, math and font processing for their own outputs.
+
+### Route painting is independent of diagram families
+
+`merman-render-core` owns layout coordinates, the shared node, edge, cluster, and label types, and
+the geometry that turns a solved route into an SVG path, including marker setback, bounds, and
+obstacle clearance. Diagram families bind semantic data and project it into the layout solver.
+The shared layout adapters connect each solver's work and interruption hooks to the same
+operation meter. Render Core projects shared measured graphs into Shoal and maps solved geometry
+back into the route point types used by the path builder. The renderer selects the operation's
+placement policy and owns layout dispatch.
+
+Render Core also owns shared font stacks, label tokenization and line breaking, SVG XML structure
+admission, and Iconify pack admission and lookup. `merman-render` selects the text measurement
+provider, performs terminal resource and font checks, and applies the operation's output policy
+to icon fragments before they enter a diagram.
+
+### Flow diagrams
+
+`merman-core-flow` owns Flowchart and Swimlane tokenization and predictive syntax parsing, and
+the shared presentation lexer used by Agentflow. Core owns model construction, source mapping,
+diagnostics, and editor recovery.
+
+`merman-render-flow` owns Flowchart, Swimlane, and Agentflow shape geometry. It resolves shape
+aliases and image and icon dimensions, and supplies organic outlines and BPMN connector
+intersections. Its Dagre adapter owns compound graph assembly, cluster anchor selection and
+extraction, and the associated work accounting. `merman-render` owns diagram traversal, text
+measurement, asset policy, layout output projection, and SVG emission.
+
+### Structured diagrams
+
+`merman-core-structured` owns Info and Ishikawa syntax, Packet field scanning and bounded row
+expansion, and the Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares
+the source, builds Ishikawa's semantic tree from the syntax records, and maps each parser's model,
+diagnostics, and optional syntax spans into the public parse result.
+
+`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad. It
+consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
+`merman-render` dispatches to it through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
+It supplies the operation's text measurement to Info and Railroad and applies the root SVG policy.
+
+### Graph syntax
+
+`merman-core-graph` owns Class, ER, and State tokenization and parsing. Its outputs are Class
+grammar actions, the canonical ER model, and the nested State syntax document. It reuses the
+controlled token cursor and pinned Mermaid Unicode rules in `merman-core-preprocess`.
+`merman-core` owns Class and State model construction, source mapping, error messages, resource
+admission, and the editor and compatibility projections.
+
+`merman-render-graph` owns ER relationship marker geometry, names, and SVG definitions.
+`merman-render` resolves source styles and provides the operation's bounded SVG sink.
+
+### Sequence diagrams
+
+`merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
+facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
+
+`merman-render-sequence` owns participant geometry, glyphs, lifelines, and prepared control
+frames. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter.
+It owns text and math measurement, label placement, and layout orchestration.
+
+### Chart rendering
+
+`merman-render-charts` owns typed layout, style binding, and SVG content for Pie. It uses the
+shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
+supplies text metrics and assembles the chart into a scoped SVG document under the render
+operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
+bar label placement. For Sankey, it owns the typed layout and configuration lookup. `merman-render`
+supplies text metrics and emits the SVG for both families.
+The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
+layout and its point and radius codecs, Treemap hierarchy layout, Venn layout and its solver, and
+Wardley layout and annotation boxes. `merman-render` supplies theme precedence, the operation work
+meter, and the SVG document and output policy.
 
 ### Frozen presentation is distinct from engine initialization
 

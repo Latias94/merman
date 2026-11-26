@@ -1,4 +1,5 @@
 use merman_model::presentation::PresentationConfig;
+use merman_render_charts::wardley::WardleyLayoutOverrides;
 
 use crate::config::config_string;
 use crate::theme::{Color, FamilyTheme, font_family_css};
@@ -238,24 +239,11 @@ impl WardleyStyle {
         }));
     }
 
-    pub(super) fn apply_layout_settings(&self, settings: &mut super::WardleySettings) {
-        let Some(native) = &self.native else {
-            return;
-        };
-        if let Some(show_grid) = native.gridlines {
-            settings.show_grid = show_grid;
-        }
-        if let Some(size) = self
-            .font_size(WardleyTextRole::AxisLabel)
-            .and_then(|size| size.used_px)
-        {
-            settings.axis_font_size = size;
-        }
-        if let Some(size) = self
-            .font_size(WardleyTextRole::NodeLabel)
-            .and_then(|size| size.used_px)
-        {
-            settings.label_font_size = size;
+    pub(super) fn layout_overrides(&self) -> WardleyLayoutOverrides {
+        WardleyLayoutOverrides {
+            show_grid: self.native.as_ref().and_then(|native| native.gridlines),
+            use_font_sizes_for_layout: self.is_native(),
+            font_sizes: self.font_sizes.layout_sizes(),
         }
     }
 
@@ -296,10 +284,6 @@ impl WardleyStyle {
 
     pub(crate) fn font_size(&self, role: WardleyTextRole) -> Option<&super::WardleyFontSize> {
         self.font_sizes.role(role)
-    }
-
-    pub(crate) fn apply_known_font_sizes(&self, layout: &mut super::WardleyDiagramLayout) {
-        self.font_sizes.apply_known_sizes(layout);
     }
 }
 

@@ -1,9 +1,8 @@
 //! Pinned Mermaid theme snapshot and behavior-oracle generation.
 //!
 //! Theme classes are ordered JavaScript programs. The checked-in artifacts give the pure-Rust
-//! evaluator exact constructor, no-override, and dark-mode snapshots, while compact final-value
-//! and stage oracles lock the ordering, truthiness, and replay behavior that is easy to lose when
-//! translating mutable JavaScript theme classes.
+//! evaluator the constructor values it reads and exact no-override and dark-mode snapshots.
+//! Final-value and stage oracles preserve ordering, truthiness, and replay behavior.
 
 use super::mermaid_reference::MermaidProjectionRuntime;
 use super::{sort_json_value_keys, write_pretty_json};
@@ -18,7 +17,7 @@ use std::process::Command;
 pub(super) const THEME_RUNTIME_OUTPUT: &str =
     "crates/merman-core/src/generated/theme_variables.json";
 pub(super) const THEME_AUDIT_OUTPUT: &str = "fixtures/_verification/theme_variables_oracle.json";
-const THEME_RUNTIME_SCHEMA_VERSION: u32 = 3;
+const THEME_RUNTIME_SCHEMA_VERSION: u32 = 4;
 const THEME_AUDIT_SCHEMA_VERSION: u32 = 2;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
 const THEME_NAMES: &[&str] = &[
@@ -369,10 +368,19 @@ fn build_theme_artifacts(
         "mermaidSourceCommit": runtime.source_commit,
     });
     let dark_mode_true_overrides = theme_overrides(&projection.themes, &projection.dark_mode_true)?;
+    // Keep the upstream projection complete for validation and retain only the constructor
+    // values the evaluator reads in the runtime artifact.
+    let constructors = &projection.prepared_constructors;
     let mut runtime_artifact = json!({
         "schemaVersion": THEME_RUNTIME_SCHEMA_VERSION,
         "provenance": provenance.clone(),
-        "preparedConstructors": projection.prepared_constructors,
+        "preparedConstructors": {
+            "base": constructors["base"],
+            "dark": constructors["dark"],
+            "default": { "xyChart": constructors["default"]["xyChart"] },
+            "forest": constructors["forest"],
+            "neutral": constructors["neutral"],
+        },
         "themes": projection.themes,
         "darkModeTrueOverrides": dark_mode_true_overrides,
         "oracleCaseCount": oracle_case_count,
@@ -586,6 +594,15 @@ fn validate_projection(
                 "runtime projection field `{label}` contains an empty or non-object theme"
             )));
         }
+    }
+
+    let default_palette =
+        projection.prepared_constructors["default"]["xyChart"]["plotColorPalette"].as_str();
+    if default_palette.is_none_or(str::is_empty) {
+        return Err(XtaskError::ThemeSnapshotProjection(
+            "prepared Default constructor requires a nonempty `xyChart.plotColorPalette`"
+                .to_string(),
+        ));
     }
 
     let Some(oracle_cases) = projection.oracle_cases.as_array() else {
@@ -1141,9 +1158,11 @@ mod tests {
                 "stages": stages,
             }));
         }
+        let mut prepared_constructors = JsonValue::Object(themes.clone());
+        prepared_constructors["default"]["xyChart"] = json!({"plotColorPalette": "#fff,#000"});
         RuntimeThemeProjection {
             version: crate::cmd::PINNED_MERMAID_VERSION.to_string(),
-            prepared_constructors: JsonValue::Object(themes.clone()),
+            prepared_constructors,
             themes: JsonValue::Object(themes.clone()),
             dark_mode_true: JsonValue::Object(themes),
             oracle_cases: JsonValue::Array(oracle_cases),
@@ -1153,8 +1172,26 @@ mod tests {
 
     #[test]
     fn projection_requires_every_supported_theme_and_oracle_evidence() {
-        validate_projection(complete_projection(), crate::cmd::PINNED_MERMAID_VERSION)
-            .expect("complete projection is valid");
+        let version = crate::cmd::PINNED_MERMAID_VERSION;
+        validate_projection(complete_projection(), version).expect("complete projection is valid");
+
+        let mut incomplete = complete_projection();
+        incomplete
+            .prepared_constructors
+            .as_object_mut()
+            .unwrap()
+            .remove("neo");
+        let error = validate_projection(incomplete, version).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("`preparedConstructors` has theme keys")
+        );
+
+        let mut missing_palette = complete_projection();
+        missing_palette.prepared_constructors["default"]["xyChart"] = json!({});
+        let error = validate_projection(missing_palette, version).unwrap_err();
+        assert!(error.to_string().contains("`xyChart.plotColorPalette`"));
     }
 
     #[test]
@@ -1203,9 +1240,10 @@ mod tests {
 
     #[test]
     fn generated_artifacts_separate_runtime_data_from_test_oracles() {
+        let projection = complete_projection();
+        let full_constructors = projection.prepared_constructors.clone();
         let (runtime, oracles) =
-            build_theme_artifacts(complete_projection(), &MermaidProjectionRuntime::selected())
-                .unwrap();
+            build_theme_artifacts(projection, &MermaidProjectionRuntime::selected()).unwrap();
 
         assert_eq!(
             runtime
@@ -1241,7 +1279,16 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(runtime["schemaVersion"], 3);
+        assert_eq!(runtime["schemaVersion"], 4);
+        let constructors = runtime["preparedConstructors"].as_object().unwrap();
+        assert_eq!(constructors.len(), 5);
+        for theme in ["base", "dark", "forest", "neutral"] {
+            assert_eq!(constructors[theme], full_constructors[theme]);
+        }
+        assert_eq!(
+            constructors["default"],
+            json!({"xyChart": full_constructors["default"]["xyChart"]})
+        );
         assert_eq!(oracles["schemaVersion"], 2);
         assert_eq!(runtime["provenance"], oracles["provenance"]);
         for theme in THEME_NAMES {

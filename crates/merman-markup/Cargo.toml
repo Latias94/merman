@@ -17,14 +17,17 @@ artifact-profile-required = true
 
 [features]
 default = []
-html = ["dep:html5ever", "dep:htmlize"]
-url = ["dep:url"]
+html = ["dep:html5ever", "dep:htmlize", "dep:merman-model", "dep:serde_json"]
+url = ["dep:merman-model", "dep:url"]
 color = ["dep:ryu-js"]
 
 [dependencies]
-merman-model.workspace = true
-serde_json.workspace = true
 html5ever = { workspace = true, optional = true }
 htmlize = { workspace = true, optional = true }
-url = { workspace = true, optional = true }
+merman-model = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

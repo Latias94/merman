@@ -11,6 +11,7 @@ use merman_analysis::{
 use merman_editor_core::{EditorDiagnostic, analysis_diagnostic_to_editor};
 use sha2::{Digest as _, Sha256};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::mem::size_of;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic, NumberOrString, Uri,
@@ -354,7 +355,12 @@ fn unavailable_uri_digest(uri: &Uri) -> String {
     let mut hasher = Sha256::new();
     hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
     hasher.update(uri.as_str().as_bytes());
-    data_encoding::HEXLOWER.encode(&hasher.finalize())
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 impl UnavailableDiagnosticSource {

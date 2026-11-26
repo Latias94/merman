@@ -38,28 +38,97 @@ pub(super) fn svg_metadata_for_document(
 
 #[cfg(feature = "markdown")]
 pub(super) fn svg_metadata(svg: &str) -> (Option<String>, Option<String>) {
-    let Ok(document) = roxmltree::Document::parse(svg) else {
-        return (None, None);
-    };
-    let root = document.root_element();
-    let element_text = |tag| {
-        let node = root.children().find(|node| {
-            node.is_element()
-                && node.tag_name().name() == tag
-                && node
-                    .tag_name()
-                    .namespace()
-                    .is_none_or(|namespace| namespace == "http://www.w3.org/2000/svg")
-        })?;
-        let text: String = node
-            .descendants()
-            .filter(|child| child.is_text())
-            .filter_map(|child| child.text())
-            .collect();
-        let text = text.trim();
-        (!text.is_empty()).then(|| text.to_owned())
-    };
-    (element_text("title"), element_text("desc"))
+    let [title, desc] = read_svg_metadata(svg).unwrap_or_default();
+    (title, desc)
+}
+
+/// Projects the first root title and description from the completed render pipeline output.
+#[cfg(feature = "markdown")]
+fn read_svg_metadata(svg: &str) -> Option<[Option<String>; 2]> {
+    use quick_xml::events::Event;
+    use quick_xml::name::Namespace;
+
+    let mut reader = quick_xml::NsReader::from_str(svg);
+    reader.config_mut().enable_all_checks(true);
+    let mut metadata = [None, None];
+    let mut active = None;
+    let mut content = String::new();
+    let mut depth = 0usize;
+    let mut root_seen = false;
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().ok()?;
+        let opens = matches!(&event, Event::Start(_));
+        match event {
+            Event::Start(element) | Event::Empty(element) => {
+                let namespace = Option::<Namespace<'_>>::try_from(namespace).ok()?;
+                if depth == 0 && std::mem::replace(&mut root_seen, true) {
+                    return None;
+                }
+                if depth == 1 && namespace.is_none_or(|ns| ns.0 == "http://www.w3.org/2000/svg") {
+                    let slot = match element.local_name().as_ref() {
+                        "title" => Some(0),
+                        "desc" => Some(1),
+                        _ => None,
+                    };
+                    if let Some(slot) = slot.filter(|&slot| metadata[slot].is_none()) {
+                        if opens {
+                            active = Some(slot);
+                        } else {
+                            metadata[slot] = Some(String::new());
+                        }
+                    }
+                }
+                depth += usize::from(opens);
+            }
+            Event::End(_) => {
+                depth = depth.checked_sub(1)?;
+                if depth == 1
+                    && let Some(slot) = active.take()
+                {
+                    metadata[slot] = Some(std::mem::take(&mut content));
+                }
+            }
+            Event::Text(text) if active.is_some() => content.push_str(&text.xml10_content()),
+            Event::CData(text) if active.is_some() => content.push_str(&text.xml10_content()),
+            Event::GeneralRef(reference) if active.is_some() => {
+                if let Some(character) = reference.resolve_char_ref().ok()? {
+                    content.push(character);
+                } else {
+                    content.push_str(quick_xml::escape::resolve_xml_entity(reference.as_ref())?);
+                }
+            }
+            Event::Text(text) if depth == 0 => {
+                if !text
+                    .as_ref()
+                    .as_bytes()
+                    .iter()
+                    .all(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r'))
+                {
+                    return None;
+                }
+            }
+            Event::CData(_) | Event::GeneralRef(_) if depth == 0 => return None,
+            Event::DocType(_) => return None,
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    if !root_seen || depth != 0 {
+        return None;
+    }
+    Some(metadata.map(|text| {
+        let text = text?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else if trimmed.len() == text.len() {
+            Some(text)
+        } else {
+            Some(trimmed.to_owned())
+        }
+    }))
 }
 
 #[cfg(test)]
@@ -170,6 +239,23 @@ mod tests {
         );
 
         assert_eq!(svg_metadata(svg), (None, None));
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn svg_metadata_respects_empty_first_fields_and_complete_xml() {
+        assert_eq!(
+            svg_metadata("<svg><title/><title>Later</title><desc> \r\nOne\rTwo </desc></svg>"),
+            (None, Some("One\nTwo".into()))
+        );
+        for invalid in [
+            "<svg><title>Title</title>",
+            "<svg><title>Title</title><g></svg>",
+            "<svg><title>Title</title></svg><other/>",
+            "<!DOCTYPE svg [<!ENTITY name 'Title'>]><svg><title>&name;</title></svg>",
+        ] {
+            assert_eq!(svg_metadata(invalid), (None, None), "{invalid}");
+        }
     }
 
     #[test]

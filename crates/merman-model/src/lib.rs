@@ -37,3 +37,14 @@ pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata
 
 /// Compatibility ceiling for nested Mermaid diagram structures.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
+
+/// Appends a lowercase hexadecimal representation, preserving leading zeroes.
+#[doc(hidden)]
+pub fn push_hex_lower(output: &mut String, bytes: &[u8]) {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    output.reserve(bytes.len() * 2);
+    for &byte in bytes {
+        output.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        output.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
+    }
+}

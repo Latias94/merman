@@ -289,6 +289,11 @@ class VerificationCaseTests(unittest.TestCase):
                     self.assertTrue(set(SOURCE_INGESTION_PACKAGES) <= set(production_claim.forbidden_packages))
         for profile_id in ["rust-model", "rust-model-all", "rust-ascii"]:
             self.assertEqual(claims[profile_id].forbidden_packages, MODEL_ASCII_FORBIDDEN_PACKAGES)
+        self.assertEqual(claims["rust-markup"].required_packages, ("merman-markup",))
+        self.assertTrue(
+            {"merman-model", "serde_json", "html5ever", "htmlize", "ryu-js", "url"}
+            <= set(claims["rust-markup"].forbidden_packages)
+        )
         for profile_id in ["rust-markup-full", "rust-render-native-svg", "rust-export-png"]:
             self.assertNotIn("html5ever", claims[profile_id].forbidden_packages)
             self.assertNotIn("url", claims[profile_id].forbidden_packages)

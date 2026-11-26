@@ -1,54 +1,46 @@
-use crate::token::next_monotonic_jni_token;
+use merman_bindings_core::transport_handles::OperationControlRegistry;
 use merman_bindings_core::{BindingError, OperationControl};
-use std::{collections::BTreeMap, time::Duration};
+use std::time::Duration;
 
-/// Owns Android operation controls behind monotonically increasing opaque tokens.
-#[derive(Default)]
-pub(crate) struct JniOperationControlRegistry {
-    last_token: u64,
-    controls: BTreeMap<u64, OperationControl>,
-}
+pub(crate) struct JniOperationControlRegistry(OperationControlRegistry);
 
 impl JniOperationControlRegistry {
-    pub(crate) fn issue(&mut self, timeout_ms: Option<u64>) -> Result<u64, BindingError> {
-        let token = next_monotonic_jni_token(
-            self.last_token,
-            "Android operation-control token space is exhausted",
-        )?;
-        let control = timeout_ms.map_or_else(OperationControl::new, |timeout_ms| {
-            OperationControl::new().with_deadline(Duration::from_millis(timeout_ms))
-        });
+    pub(crate) const fn new() -> Self {
+        Self(OperationControlRegistry::new(i64::MAX as u64))
+    }
 
-        self.last_token = token;
-        let previous = self.controls.insert(token, control);
-        debug_assert!(
-            previous.is_none(),
-            "Android operation-control tokens are never reused"
-        );
-        Ok(token)
+    pub(crate) fn issue(&mut self, timeout_ms: Option<u64>) -> Result<u64, BindingError> {
+        let control = OperationControl::new();
+        let control = match timeout_ms {
+            Some(timeout_ms) => control.with_deadline(Duration::from_millis(timeout_ms)),
+            None => control,
+        };
+        self.0.try_insert(control).map_err(|_| {
+            BindingError::internal("Android operation-control token space is exhausted")
+        })
     }
 
     pub(crate) fn acquire(&self, token: u64) -> Result<OperationControl, BindingError> {
-        self.validate_issued_token(token)?;
-        self.controls.get(&token).cloned().ok_or_else(|| {
+        self.validate_issued(token)?;
+        self.0.get(token).cloned().ok_or_else(|| {
             BindingError::invalid_argument(
                 "Android operation-control token is unknown or has already been released",
             )
         })
     }
 
-    pub(crate) fn release(&mut self, token: u64) -> Result<(), BindingError> {
-        self.validate_issued_token(token)?;
-        self.controls.remove(&token);
-        Ok(())
+    pub(crate) fn release(&mut self, token: u64) -> Result<Option<OperationControl>, BindingError> {
+        self.validate_issued(token)?;
+        Ok(self.0.remove(token))
     }
 
-    fn validate_issued_token(&self, token: u64) -> Result<(), BindingError> {
-        if token == 0 || token > self.last_token {
-            return Err(BindingError::invalid_argument(
+    fn validate_issued(&self, token: u64) -> Result<(), BindingError> {
+        if self.0.was_issued(token) {
+            Ok(())
+        } else {
+            Err(BindingError::invalid_argument(
                 "Android operation-control token is zero or was never issued",
-            ));
+            ))
         }
-        Ok(())
     }
 }

@@ -1,15 +1,9 @@
 use super::super::*;
-use super::geometry::{
-    native_pie_slice_path, open_pie_svg, pie_group_offset, pie_slice_class, pie_viewport,
-    write_pie_group_open,
-};
-use crate::pie::{
-    PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX, PIE_TITLE_BASELINE_Y_PX, PIE_TITLE_CLASS,
-    PieConfigView, PieNativeStyle, native_legend_baseline_y, pie_legend_text,
-};
-use crate::theme::{Color, canvas_svg::write_color, pattern_svg::data_pattern};
+use super::geometry::{DEFAULT_PIE_DIAGRAM_ID, open_pie_svg, pie_viewport};
 use merman_model::families::pie::PieDiagramModel;
-use merman_theme_contract::v2::Paint;
+use merman_render_charts::pie::{
+    PieConfigView, PieNativeStyle, PieNativeSvgContext, write_native_svg_body,
+};
 
 pub(crate) fn render_native_pie_svg(
     layout: &PieDiagramLayout,
@@ -18,9 +12,12 @@ pub(crate) fn render_native_pie_svg(
     effective_config: &impl crate::config::ConfigLookup,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = options.project_svg_id(
+        options
+            .validated_diagram_id
+            .unwrap_or(DEFAULT_PIE_DIAGRAM_ID),
+    );
     let settings = PieConfigView::new(effective_config).render_settings();
-    let offset = pie_group_offset(layout, settings.legend_position, style.content_width);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root = open_pie_svg(
         &mut out,
@@ -30,182 +27,100 @@ pub(crate) fn render_native_pie_svg(
         settings.use_max_width,
         options,
     )?;
-    let highlight = crate::config::config_string(effective_config, &["pie", "highlightSlice"])
-        .unwrap_or_default();
-    if !highlight.is_empty() {
-        let id = util::css_selector_diagram_id(diagram_id);
-        let _ = write!(
-            &mut out,
-            "<style>#{id} .pieCircle.highlighted{{scale:1.05;}}#{id} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;}}</style>"
-        );
-        out.checkpoint()?;
-    }
-
-    write_patterns(&mut out, diagram_id, style, layout.legend_items.len())?;
     let session = options.family.session();
-    let background = session.canvas_background();
-
-    write_pie_group_open(&mut out, layout, offset);
-    let inner_radius = settings.donut_hole * layout.radius;
-    for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
-        let d = native_pie_slice_path(slice, layout.radius, inner_radius, style.slice_gap_px);
-        let class = pie_slice_class(&highlight, &slice.label);
-        let _ = write!(&mut out, r#"<path d="{d}" class="{class}" "#);
-        write_data_fill(&mut out, diagram_id, style, ordinal);
-        out.push_str("/>");
-        out.checkpoint()?;
-    }
-
-    let host_canvas = background.map(Paint::Solid);
-    let native = session.native_theme();
-    let export_ink = native.and_then(|theme| {
-        style.data.fill_inks_for_export(
-            host_canvas.as_ref().unwrap_or(&style.canvas),
-            style.slice_opacity,
-            theme.export_backdrop()?,
-        )
-    });
-    for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
-        let _ = write!(
-            &mut out,
-            r#"<text transform="translate({},{})" class="slice" text-anchor="middle""#,
-            fmt(slice.text_x),
-            fmt(slice.text_y)
-        );
-        let ink = match (&export_ink, background, native) {
-            (Some(inks), _, _) => inks[ordinal % inks.len()],
-            (None, Some(canvas), Some(theme)) => style.data.fill_ink_for_canvas(
-                ordinal,
-                canvas,
-                style.slice_opacity,
-                theme.resolved().appearance(),
-            ),
-            _ => style.data.fill_ink(ordinal),
-        };
-        if uses_pattern(style, ordinal) {
-            // Keep a contrasting edge around the glyphs where they cross pattern marks.
-            let black = Color::rgb(0, 0, 0);
-            let white = Color::rgb(255, 255, 255);
-            let outline = if ink.contrast(black) >= ink.contrast(white) {
-                black
-            } else {
-                white
-            };
-            out.push_str(r#" paint-order="stroke" stroke-width="2" stroke-linejoin="round" "#);
-            let _ = write_color(&mut out, "stroke", outline, 1.0);
-        }
-        write_text(&mut out, &style.label, ink, &format!("{}%", slice.percent))?;
-    }
-    out.push_str("</g>");
-
-    if let Some(title) = layout.title.as_deref() {
-        let _ = write!(
-            &mut out,
-            r#"<text x="0" y="{}" class="{PIE_TITLE_CLASS}" text-anchor="middle""#,
-            fmt(PIE_TITLE_BASELINE_Y_PX)
-        );
-        write_text(&mut out, &style.title, style.title_color, title)?;
-    }
-
-    let legend_size = fmt(PIE_LEGEND_RECT_SIZE_PX);
-    let legend_text_x = fmt(PIE_LEGEND_RECT_SIZE_PX + PIE_LEGEND_SPACING_PX);
-    let legend_text_y = fmt(native_legend_baseline_y(&style.label));
-    for (ordinal, item) in layout.legend_items.iter().enumerate() {
-        let _ = write!(
-            &mut out,
-            r#"<g class="legend" transform="translate({},{})"><rect width="{legend_size}" height="{legend_size}" "#,
-            fmt(layout.legend_x),
-            fmt(item.y)
-        );
-        write_data_fill(&mut out, diagram_id, style, ordinal);
-        let _ = write!(
-            &mut out,
-            r#"/><text x="{legend_text_x}" y="{legend_text_y}""#
-        );
-        write_text(
-            &mut out,
-            &style.label,
-            style.legend_color,
-            &pie_legend_text(&item.label, item.value, model.show_data),
-        )?;
-        out.push_str("</g>");
-    }
+    write_native_svg_body(
+        &mut out,
+        layout,
+        model,
+        style,
+        settings,
+        diagram_id,
+        &PieNativeSvgContext {
+            title_vertical_extents: crate::text::svg_title_bbox_vertical_extents_px,
+            canvas_background: session.canvas_background(),
+            appearance_and_backdrop: session
+                .native_theme()
+                .map(|theme| (theme.resolved().appearance(), theme.export_backdrop())),
+        },
+    )?;
     out.push_str("</g></svg>\n");
     root.complete(out.finish()?)
 }
 
-fn uses_pattern(style: &PieNativeStyle, ordinal: usize) -> bool {
-    style.data.pattern_encoding && !ordinal.is_multiple_of(6)
-}
-
-fn write_patterns(
-    out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
-    style: &PieNativeStyle,
-    category_count: usize,
-) -> Result<()> {
-    if !style.data.pattern_encoding || category_count < 2 {
-        return Ok(());
-    }
-
-    out.push_str("<defs>");
-    let mut pattern = String::new();
-    for ordinal in (1..category_count).filter(|ordinal| uses_pattern(style, *ordinal)) {
-        let id = format!("{diagram_id}-pie-data-{ordinal}");
-        out.checkpoint()?;
-        pattern.clear();
-        data_pattern(
-            &mut pattern,
-            &id,
-            ordinal,
-            style.data.fill(ordinal),
-            style.data.ink(ordinal),
-        );
-        out.push_str(&pattern);
-        out.checkpoint()?;
-    }
-    out.push_str("</defs>");
-    out.checkpoint()
-}
-
-fn write_data_fill(
-    out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
-    style: &PieNativeStyle,
-    ordinal: usize,
-) {
-    if uses_pattern(style, ordinal) {
-        let _ = write!(out, r#"fill="url(#{diagram_id}-pie-data-{ordinal})""#);
-        if style.slice_opacity != 1.0 {
-            let _ = write!(out, r#" fill-opacity="{}""#, fmt(style.slice_opacity));
-        }
-    } else {
-        let _ = write_color(out, "fill", style.data.fill(ordinal), style.slice_opacity);
-    }
-}
-
-fn write_text(out: &mut impl SvgOutput, style: &TextStyle, fill: Color, text: &str) -> Result<()> {
-    let _ = write!(
-        out,
-        r#" font-family="{}" font-size="{}" font-weight="{}" "#,
-        escape_attr(style.font_family.as_deref().unwrap_or_default()),
-        fmt(style.font_size),
-        style.font_weight.as_deref().unwrap_or("normal")
-    );
-    let _ = write_color(out, "fill", fill, 1.0);
-    let _ = write!(out, ">{}</text>", escape_xml(text));
-    out.checkpoint()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::native_pie_slice_path;
+    use super::*;
     use crate::environment::RenderEnvironment;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use crate::theme::{Color, NativeTheme, ThemeCompiler};
+    use crate::theme::{BuiltinPreset, Color, NativeTheme, ThemeCompiler};
     use crate::{LayoutOptions, family};
     use merman_core::{MermaidEngine, ParseOptions};
+    use merman_render_charts::pie::native_pie_slice_path;
     use svgtypes::{PathParser, PathSegment};
+
+    #[test]
+    fn native_pie_body_reports_a_rejected_last_legend_close() {
+        let model = PieDiagramModel {
+            sections: vec![merman_model::families::pie::PieSection {
+                label: "A".into(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
+        let config = serde_json::json!({});
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Paper, None)
+            .unwrap();
+        let (layout, style) = crate::pie::prepare_native_pie(
+            theme.family("pie"),
+            &model,
+            None,
+            &config,
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        let settings = PieConfigView::new(&config).render_settings();
+        let context = PieNativeSvgContext {
+            title_vertical_extents: crate::text::svg_title_bbox_vertical_extents_px,
+            canvas_background: None,
+            appearance_and_backdrop: None,
+        };
+        let mut expected = String::new();
+        write_native_svg_body(
+            &mut expected,
+            &layout,
+            &model,
+            &style,
+            settings,
+            DEFAULT_PIE_DIAGRAM_ID,
+            &context,
+        )
+        .unwrap();
+        let prefix = expected.strip_suffix("</g>").unwrap();
+        assert!(prefix.ends_with("</text>"));
+        let meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, prefix.len())
+                .unwrap(),
+        );
+        let mut bounded = BoundedSvgOutput::new(&meter);
+        let error = write_native_svg_body(
+            &mut bounded,
+            &layout,
+            &model,
+            &style,
+            settings,
+            DEFAULT_PIE_DIAGRAM_ID,
+            &context,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(error, Error::ResourceLimitExceeded(details) if details.limit == "max_svg_bytes" && details.actual == expected.len())
+        );
+        assert_eq!(bounded.as_str(), prefix);
+    }
 
     #[test]
     fn native_pie_retains_a_slice_narrower_than_the_gap() {
