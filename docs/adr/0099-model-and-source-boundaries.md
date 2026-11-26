@@ -83,10 +83,11 @@ expansion, and the Railroad lexer, four dialect parsers, and rule recovery. `mer
 the source, builds Ishikawa's semantic tree from the syntax records, and maps each parser's model,
 diagnostics, and optional syntax spans into the public parse result.
 
-`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad. It
-consumes canonical model data and uses the shared CSS and text contracts in `merman-render-core`.
-`merman-render` dispatches to it through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
-It supplies the operation's text measurement to Info and Railroad and applies the root SVG policy.
+`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad,
+and the typed layout and config projection for Ishikawa. It consumes canonical model data and
+uses the shared CSS and text contracts in `merman-render-core`. `merman-render` dispatches through
+the corresponding family features and supplies the operation's text measurement and root SVG
+policy. Ishikawa theme resolution and SVG emission remain in `merman-render`.
 
 ### Graph syntax
 

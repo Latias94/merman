@@ -633,7 +633,7 @@ impl<'a> FlowchartRootEmission<'a> {
 pub(in crate::svg::parity::flowchart) struct FlowchartHierarchyPlan<'a> {
     top_root: FlowchartRootEmission<'a>,
     nested_roots: FxHashMap<&'a str, FlowchartRootEmission<'a>>,
-    ordered_edges: Vec<super::render_input::FlowchartRenderEdgeRef<'a>>,
+    ordered_edges: Option<Vec<super::render_input::FlowchartRenderEdgeRef<'a>>>,
     edge_root_by_key: FxHashMap<crate::flowchart::FlowchartEdgeKey, Option<&'a str>>,
     effective_parents: &'a FlowchartEffectiveParentIndex,
     root_offsets: FxHashMap<&'a str, FlowchartRootOffsets>,
@@ -698,7 +698,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
             ctx.work_meter.charge(retained_refs)?;
             return Ok(Self {
-                ordered_edges: edges.clone(),
+                ordered_edges: None,
                 top_root: FlowchartRootEmission {
                     edges,
                     dom_order,
@@ -751,8 +751,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             .and_then(|count| count.checked_add(top_clusters.len()))
             .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
         ctx.work_meter.charge(top_retained_refs)?;
-        let mut ordered_edges = Vec::with_capacity(ctx.edge_order.len());
-        ordered_edges.extend(top_edges.iter().copied());
         let top_root = FlowchartRootEmission {
             edges: top_edges,
             dom_order: top_dom_order,
@@ -760,6 +758,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         };
 
         let mut nested_roots = FxHashMap::default();
+        let mut ordered_edges = None;
         for (cluster_id, scheduled_order) in node_schedule.nested() {
             let cluster_id = cluster_id.as_str();
             let edges = edges_by_nested_root.remove(cluster_id).unwrap_or_default();
@@ -774,7 +773,14 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .and_then(|count| count.checked_add(clusters.len()))
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
             ctx.work_meter.charge(retained_refs)?;
-            ordered_edges.extend(edges.iter().copied());
+            if !edges.is_empty() {
+                let order = ordered_edges.get_or_insert_with(|| {
+                    let mut order = Vec::with_capacity(ctx.edge_order.len());
+                    order.extend_from_slice(top_root.edges());
+                    order
+                });
+                order.extend_from_slice(&edges);
+            }
             if nested_roots
                 .insert(
                     cluster_id,
@@ -794,7 +800,10 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             }
         }
 
-        if !edges_by_nested_root.is_empty() || ordered_edges.len() != ctx.edge_order.len() {
+        let covered_edges = ordered_edges
+            .as_ref()
+            .map_or(top_root.edges.len(), Vec::len);
+        if !edges_by_nested_root.is_empty() || covered_edges != ctx.edge_order.len() {
             return Err(crate::Error::InvalidModel {
                 message: "Flowchart hierarchy does not cover every prepared render item"
                     .to_string(),
@@ -832,7 +841,9 @@ impl<'a> FlowchartHierarchyPlan<'a> {
     pub(in crate::svg::parity::flowchart) fn ordered_edges(
         &self,
     ) -> &[super::render_input::FlowchartRenderEdgeRef<'a>] {
-        &self.ordered_edges
+        self.ordered_edges
+            .as_deref()
+            .unwrap_or(self.top_root.edges())
     }
 
     pub(in crate::svg::parity::flowchart) fn rendered_node_ids(

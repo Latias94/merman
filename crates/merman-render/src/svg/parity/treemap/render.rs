@@ -2,6 +2,9 @@ use super::super::*;
 use crate::treemap::{
     TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PADDING_PX, TREEMAP_TITLE_CLASS,
 };
+use merman_render_charts::treemap::{
+    TreemapLeafRectPaint, write_treemap_leaf_group_open, write_treemap_leaf_rect_and_clip,
+};
 
 fn treemap_group_decimal(value: &str) -> String {
     let (sign, unsigned) = value
@@ -390,22 +393,6 @@ fn fit_treemap_label_width(
     }
     style.font_size = fitting;
     Ok(fitting)
-}
-
-fn write_treemap_leaf_group_open(
-    out: &mut impl SvgOutput,
-    group_class: &str,
-    x: f64,
-    y: f64,
-) -> Result<()> {
-    let _ = write!(
-        out,
-        r#"<g class="{class}" transform="translate({x},{y})">"#,
-        class = escape_attr(group_class),
-        x = fmt(x),
-        y = fmt(y)
-    );
-    out.checkpoint()
 }
 
 pub(crate) fn render_treemap_diagram_svg(
@@ -906,32 +893,18 @@ pub(crate) fn render_treemap_diagram_svg(
                 (slot % 6 != 0).then(|| format!("url(#{diagram_id}-treemap-pattern-{slot})"))
             });
         let fill = native_fill.as_deref().unwrap_or(fill);
-        let (opacity, radius) = match style.native_radius {
-            Some(radius) => (
-                "1",
-                format!(r#" rx="{}""#, fmt(radius.min(w.min(h) / 2.0).max(0.0))),
-            ),
-            None => ("0.3", String::new()),
-        };
-        let _ = write!(
+        write_treemap_leaf_rect_and_clip(
             &mut out,
-            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="{style}" fill-opacity="{opacity}" stroke="{stroke}" stroke-width="3"{radius}/>"#,
-            w = fmt(w),
-            h = fmt(h),
-            fill = escape_attr(fill),
-            stroke = escape_attr(&visual.stroke),
-            style = escape_attr(leaf_rect_style)
-        );
-        out.checkpoint()?;
-
-        let _ = write!(
-            &mut out,
-            r#"<clipPath id="{id}"><rect width="{w}" height="{h}"/></clipPath>"#,
-            id = leaf_clip_id.as_str(),
-            w = fmt((w - 4.0).max(0.0)),
-            h = fmt((h - 4.0).max(0.0))
-        );
-        out.checkpoint()?;
+            w,
+            h,
+            &leaf_clip_id,
+            TreemapLeafRectPaint {
+                fill,
+                stroke: &visual.stroke,
+                style: leaf_rect_style,
+                native_radius: style.native_radius,
+            },
+        )?;
 
         let available_w = w - 2.0 * label_padding;
         let available_h = h - 2.0 * label_padding;

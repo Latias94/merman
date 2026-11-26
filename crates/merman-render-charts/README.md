@@ -13,8 +13,8 @@ The `diagram-radar` feature provides typed layout and the point and radius codec
 The `diagram-sankey` feature provides typed layout and configuration lookup. `merman-render`
 binds the theme, measures labels, and writes the SVG.
 
-The `diagram-treemap` feature provides hierarchy construction and Treemap layout.
-`merman-render` binds typography and writes the SVG.
+The `diagram-treemap` feature provides hierarchy construction, layout, and leaf rectangle and clip
+emission. `merman-render` binds typography, fits labels, and assembles the SVG document.
 
 The `diagram-venn` feature provides the Venn solver and typed layout. `merman-render` binds the
 theme and supplies the operation's work meter and SVG writer.

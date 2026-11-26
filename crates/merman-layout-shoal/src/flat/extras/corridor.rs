@@ -159,6 +159,33 @@ impl BlockedLinks {
     }
 }
 
+#[repr(u8)]
+enum ParentDirection {
+    Left = 0,
+    Right = 1,
+    Up = 2,
+    Down = 3,
+}
+
+struct Parents(Vec<u8>);
+
+impl Parents {
+    fn set(&mut self, vertex: usize, direction: ParentDirection) {
+        let byte = &mut self.0[vertex / 4];
+        let shift = (vertex % 4) * 2;
+        *byte = (*byte & !(0b11 << shift)) | ((direction as u8) << shift);
+    }
+
+    fn vertex(&self, vertex: usize, width: usize) -> usize {
+        match (self.0[vertex / 4] >> ((vertex % 4) * 2)) & 0b11 {
+            0 => vertex - 1,
+            1 => vertex + 1,
+            2 => vertex - width,
+            _ => vertex + width,
+        }
+    }
+}
+
 const NO_EVENT: usize = usize::MAX;
 const SWEEP_CHECK_INTERVAL: usize = 128;
 
@@ -410,7 +437,7 @@ fn grid(
     }
     let source = index(&ys, a.y) * width + index(&xs, a.x);
     let target = index(&ys, b.y) * width + index(&xs, b.x);
-    let mut parents = filled(cells, usize::MAX)?;
+    let mut parents = Parents(filled(cells.div_ceil(4), 0)?);
     let mut dist = filled(cells, f64::INFINITY)?;
     let mut queue = BinaryHeap::new();
     queue
@@ -428,7 +455,7 @@ fn grid(
         }
         let x = v % width;
         let y = v / width;
-        let mut relax = |next: usize, length: f64| -> LayoutResult<()> {
+        let mut relax = |next: usize, length: f64, parent: ParentDirection| -> LayoutResult<()> {
             let d = finite(dist[v] + length)?;
             if d < dist[next] {
                 work.visit(queue.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
@@ -437,21 +464,21 @@ fn grid(
                     .map_err(|_| LayoutError::AllocationLimit)?;
                 queue.push(Reverse((d.to_bits(), next)));
                 dist[next] = d;
-                parents[next] = v;
+                parents.set(next, parent);
             }
             Ok(())
         };
         if x > 0 && !mask.blocked(v - 1, RIGHT) {
-            relax(v - 1, xs[x] - xs[x - 1])?;
+            relax(v - 1, xs[x] - xs[x - 1], ParentDirection::Right)?;
         }
         if x + 1 < width && !mask.blocked(v, RIGHT) {
-            relax(v + 1, xs[x + 1] - xs[x])?;
+            relax(v + 1, xs[x + 1] - xs[x], ParentDirection::Left)?;
         }
         if y > 0 && !mask.blocked(v - width, DOWN) {
-            relax(v - width, ys[y] - ys[y - 1])?;
+            relax(v - width, ys[y] - ys[y - 1], ParentDirection::Down)?;
         }
         if y + 1 < height && !mask.blocked(v, DOWN) {
-            relax(v + width, ys[y + 1] - ys[y])?;
+            relax(v + width, ys[y + 1] - ys[y], ParentDirection::Up)?;
         }
     }
     if !dist[target].is_finite() {
@@ -471,7 +498,7 @@ fn grid(
         if v == source {
             break;
         }
-        v = parents[v];
+        v = parents.vertex(v, width);
     }
     for p in back.into_iter().rev() {
         work.visit(1)?;

@@ -19,6 +19,28 @@ pub(crate) enum PendingPortRemap {
 }
 
 impl PendingPortRemap {
+    pub(crate) fn reorder_work(
+        &self,
+        owner: usize,
+        context: &ReorderNodePortsWorkContext,
+    ) -> Result<usize, WorkError> {
+        let payload = context.self_loop_payload_by_node[owner];
+        match self {
+            Self::Empty => checked_sum([1, context.deferred_reference_scan_work()?, payload]),
+            Self::Single {
+                owner: first,
+                slots,
+            } if *first == owner => checked_sum([1, slots.len()]),
+            Self::Single { .. } => {
+                let owner_table_work = checked_mul(context.self_loop_payload_by_node.len(), 2)?;
+                checked_sum([2, owner_table_work, payload])
+            }
+            Self::Multiple(owners) => {
+                checked_sum([1, owners[owner].as_ref().map_or(payload, Vec::len)])
+            }
+        }
+    }
+
     pub(crate) fn reorder(&mut self, graph: &mut LGraph, owner: usize, order: Vec<usize>) {
         let Some((old_to_new, true)) = graph.permute_node_ports(owner, order) else {
             return;
