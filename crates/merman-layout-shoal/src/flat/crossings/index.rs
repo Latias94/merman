@@ -1,4 +1,4 @@
-use super::{Bounds, Segment, record_crossings};
+use super::{Bounds, Group, record_crossings};
 use crate::WorkError;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use std::{collections::BTreeSet, ops::Range};
@@ -26,8 +26,7 @@ impl Extrema {
 }
 
 struct Row<'a> {
-    owners: &'a [Segment],
-    bounds: Bounds,
+    group: Group<'a>,
     leaf: usize,
     previous: usize,
     next: usize,
@@ -48,16 +47,14 @@ pub(super) struct ActiveIntervals<'a> {
 
 impl<'a> ActiveIntervals<'a> {
     pub(super) fn new(
-        groups: impl Iterator<Item = &'a [Segment]>,
-        horizontal: bool,
+        groups: impl Iterator<Item = Group<'a>>,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Self>> {
         let mut rows = Vec::new();
-        let mut poll = Poll::default();
         work.check()?;
-        for owners in groups {
-            poll.advance(owners.len(), work)?;
-            let bounds = Bounds::of(&owners[0], horizontal);
+        for group in groups {
+            work.visit(1)?;
+            let bounds = group.bounds;
             // The numeric expiry and overlap comparisons need ordered, finite bounds.
             if ![bounds.start, bounds.end, bounds.low, bounds.high]
                 .into_iter()
@@ -68,8 +65,7 @@ impl<'a> ActiveIntervals<'a> {
             push(
                 &mut rows,
                 Row {
-                    owners,
-                    bounds,
+                    group,
                     leaf: 0,
                     previous: NO_ROW,
                     next: NO_ROW,
@@ -81,20 +77,23 @@ impl<'a> ActiveIntervals<'a> {
             .checked_next_power_of_two()
             .ok_or(WorkError::ArithmeticOverflow)?;
         let tree_len = base.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?;
+        work.charge(rows.len())?;
         let mut by_low = reserved(rows.len())?;
-        for row in 0..rows.len() {
-            by_low.push(row);
-            poll.step(work)?;
-        }
-        work.check()?;
-        by_low.sort_unstable_by(|&a, &b| rows[a].bounds.low.total_cmp(&rows[b].bounds.low));
+        by_low.extend(0..rows.len());
+        work.sort(&mut by_low, |&a, &b| {
+            rows[a]
+                .group
+                .bounds
+                .low
+                .total_cmp(&rows[b].group.bounds.low)
+        })?;
         work.check()?;
         for (slot, &row) in by_low.iter().enumerate() {
-            poll.step(work)?;
+            work.visit(1)?;
             rows[row].leaf = base + slot;
         }
 
-        work.check()?;
+        work.charge(tree_len)?;
         let tree = filled(tree_len, Extrema::EMPTY)?;
         work.check()?;
         Ok(Some(Self {
@@ -111,37 +110,30 @@ impl<'a> ActiveIntervals<'a> {
     pub(super) fn sweep(
         mut self,
         carried: usize,
-        shared: bool,
         pairs: &mut BTreeSet<(u32, u32)>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
-        let mut poll = Poll::default();
         let mut hits = Vec::new();
         let mut misses_before_retry = 0;
+        let height = self.base.ilog2() as usize + 1;
         for row in 0..carried {
-            poll.step(work)?;
+            work.visit(height)?;
             self.insert(row);
         }
         for row in carried..self.rows.len() {
-            let owners = self.rows[row].owners;
-            let bounds = self.rows[row].bounds;
-            // Charge the size before expiry, just as the linear sweep does. The first
-            // row was already admitted by the caller when it switched to the index.
+            let group = self.rows[row].group;
             if row != carried {
-                work.visit(self.len + owners.len())?;
+                work.visit(group.owners.len())?;
             }
-            poll.step(work)?;
-            self.expire(bounds.start, &mut poll, work)?;
+            self.expire(group.bounds.start, height, work)?;
             self.visit_overlaps(
-                bounds,
+                group.bounds,
                 &mut hits,
                 &mut misses_before_retry,
-                &mut poll,
                 work,
-                |other, work| {
-                    record_crossings(owners, self.rows[other].owners, shared, pairs, work)
-                },
+                |other, work| record_crossings(group, self.rows[other].group, pairs, work),
             )?;
+            work.visit(height)?;
             self.insert(row);
         }
         Ok(())
@@ -156,17 +148,18 @@ impl<'a> ActiveIntervals<'a> {
         }
         self.last = row;
         self.len += 1;
-        let Bounds { end, high, .. } = self.rows[row].bounds;
+        let Bounds { end, high, .. } = self.rows[row].group.bounds;
         self.set_leaf(self.rows[row].leaf, Extrema { end, high });
     }
 
-    fn expire(&mut self, start: f64, poll: &mut Poll, work: &mut Work<'_>) -> LayoutResult<()> {
-        while self.tree[1].end < start {
-            poll.step(work)?;
+    fn expire(&mut self, start: f64, height: usize, work: &mut Work<'_>) -> LayoutResult<()> {
+        work.visit(1)?;
+        while self.tree[1].end <= start {
+            work.visit(2 * height)?;
             let mut node = 1;
             while node < self.base {
                 node *= 2;
-                if self.tree[node].end >= start {
+                if self.tree[node].end > start {
                     node += 1;
                 }
             }
@@ -201,7 +194,6 @@ impl<'a> ActiveIntervals<'a> {
         bounds: Bounds,
         hits: &mut Vec<usize>,
         misses_before_retry: &mut usize,
-        poll: &mut Poll,
         work: &mut Work<'_>,
         mut visit: impl FnMut(usize, &mut Work<'_>) -> LayoutResult<()>,
     ) -> LayoutResult<()> {
@@ -211,28 +203,22 @@ impl<'a> ActiveIntervals<'a> {
         let probing = *misses_before_retry == 0;
         if probing {
             hits.clear();
+            work.visit(self.base.ilog2() as usize + 1)?;
             let stop = self
                 .by_low
-                .partition_point(|&row| self.rows[row].bounds.low <= bounds.high);
+                .partition_point(|&row| self.rows[row].group.bounds.low < bounds.high);
             let mut query = Overlaps {
                 low: bounds.low,
                 stop,
                 remaining: self.len,
                 hits,
             };
-            if self.collect(1, 0..self.base, &mut query, poll, work)? {
+            if self.collect(1, 0..self.base, &mut query, work)? {
                 // The charge for a crossing depends on the set size at the attempted
                 // insertion. Report overlaps in exactly the original sweep order.
-                let bulk = order_work(hits.len()) >= 128;
-                if bulk {
-                    work.check()?;
-                }
-                hits.sort_unstable();
-                if bulk {
-                    work.check()?;
-                }
+                work.sort(hits, usize::cmp)?;
                 for &row in hits.iter() {
-                    poll.step(work)?;
+                    work.visit(1)?;
                     visit(row, work)?;
                 }
                 return Ok(());
@@ -242,9 +228,9 @@ impl<'a> ActiveIntervals<'a> {
         let mut misses = 0;
         let mut row = self.first;
         while row != NO_ROW {
-            poll.step(work)?;
+            work.visit(1)?;
             let entry = &self.rows[row];
-            if bounds.overlaps_other_axis(entry.bounds.low, entry.bounds.high) {
+            if bounds.overlaps_other_axis(entry.group.bounds) {
                 visit(row, work)?;
             } else {
                 misses += 1;
@@ -266,15 +252,14 @@ impl<'a> ActiveIntervals<'a> {
         node: usize,
         range: Range<usize>,
         query: &mut Overlaps<'_>,
-        poll: &mut Poll,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         if query.remaining == 0 {
             return Ok(false);
         }
         query.remaining -= 1;
-        poll.step(work)?;
-        if range.start >= query.stop || self.tree[node].high < query.low {
+        work.visit(1)?;
+        if range.start >= query.stop || self.tree[node].high <= query.low {
             return Ok(true);
         }
         if node >= self.base {
@@ -282,8 +267,8 @@ impl<'a> ActiveIntervals<'a> {
             return Ok(order_work(query.hits.len()) <= self.len);
         }
         let mid = range.start + range.len() / 2;
-        Ok(self.collect(node * 2, range.start..mid, query, poll, work)?
-            && self.collect(node * 2 + 1, mid..range.end, query, poll, work)?)
+        Ok(self.collect(node * 2, range.start..mid, query, work)?
+            && self.collect(node * 2 + 1, mid..range.end, query, work)?)
     }
 }
 
@@ -298,36 +283,16 @@ struct Overlaps<'a> {
     hits: &'a mut Vec<usize>,
 }
 
-// Index work uses the already-admitted sort and scan allowances. Keep interruptible
-// walks responsive without changing the crossing charge sequence.
-#[derive(Default)]
-struct Poll(u8);
-
-impl Poll {
-    fn step(&mut self, work: &mut Work<'_>) -> LayoutResult<()> {
-        self.advance(1, work)
-    }
-
-    fn advance(&mut self, units: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-        if units >= usize::from(128 - self.0) {
-            self.0 = 0;
-            work.check()?;
-        } else {
-            self.0 += units as u8;
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::flat::crossings::Segment;
     use crate::{Axis, RoutePoint, WorkControl};
 
     #[test]
-    fn indexed_hits_debit_the_duplicate_before_the_new_pair() {
+    fn sparse_index_visits_only_the_relevant_rows_in_sweep_order() {
         #[derive(Default)]
-        struct Meter(Vec<usize>);
+        struct Meter(usize);
 
         impl WorkControl for Meter {
             fn check(&mut self) -> Result<(), WorkError> {
@@ -335,15 +300,17 @@ mod tests {
             }
 
             fn charge(&mut self, units: usize) -> Result<(), WorkError> {
-                self.0.push(units);
+                self.0 += units;
                 Ok(())
             }
         }
 
-        let segment = |edge, (x1, y1), (x2, y2)| Segment {
-            a: RoutePoint::new(x1, y1, Axis::Vertical),
-            b: RoutePoint::new(x2, y2, Axis::Vertical),
-            edge,
+        let segment = |edge, (x1, y1), (x2, y2)| {
+            Segment::new(
+                RoutePoint::new(x1, y1, Axis::Vertical),
+                RoutePoint::new(x2, y2, Axis::Vertical),
+                edge,
+            )
         };
         let mut rows: Vec<_> = (0..128)
             .map(|i| {
@@ -355,36 +322,35 @@ mod tests {
         rows.push(segment(2, (1., 0.), (10., 0.)));
         let carried = rows.len();
         rows.push(segment(3, (5., 3.), (7., -1.)));
-        let owners = &rows[carried..];
-        let mut control = Meter::default();
-        let mut work = Work::new(&mut control);
-        let mut index = ActiveIntervals::new(rows.chunks(1), true, &mut work)
-            .unwrap()
-            .unwrap();
+        let query = Group::new(&rows[carried..], true, false);
+        let mut index = ActiveIntervals::new(
+            rows.chunks(1).map(|row| Group::new(row, true, false)),
+            &mut Work::new(&mut crate::NoopWorkControl),
+        )
+        .unwrap()
+        .unwrap();
         for row in 0..carried {
             index.insert(row);
         }
 
         let mut pairs = BTreeSet::from([(1, 3), (4, 5), (6, 7)]);
         let mut hits = Vec::new();
+        let mut metered = Meter::default();
+        let mut work = Work::new(&mut metered);
         let mut misses_before_retry = 0;
-        work.visit(carried + owners.len()).unwrap();
         index
             .visit_overlaps(
-                Bounds::of(&owners[0], true),
+                query.bounds,
                 &mut hits,
                 &mut misses_before_retry,
-                &mut Poll::default(),
                 &mut work,
-                |other, work| {
-                    record_crossings(owners, index.rows[other].owners, false, &mut pairs, work)
-                },
+                |other, work| record_crossings(query, index.rows[other].group, &mut pairs, work),
             )
             .unwrap();
         work.finish().unwrap();
         assert_eq!(misses_before_retry, 0);
         assert_eq!(hits, [128, 129]);
         assert_eq!(pairs, BTreeSet::from([(1, 3), (2, 3), (4, 5), (6, 7)]));
-        assert_eq!(control.0, [131, 4]);
+        assert!(metered.0 < carried, "{} visits", metered.0);
     }
 }

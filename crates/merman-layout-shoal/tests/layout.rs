@@ -1007,6 +1007,44 @@ fn geometry_only_omits_flat_crossing_work_and_preserves_preview_geometry() {
 }
 
 #[test]
+fn wide_radial_fan_counts_crossings_with_subquadratic_work() {
+    let crossing_work = |count: usize, direction| {
+        let mut g = graph(
+            vec![size(40.0, 20.0); count + 1],
+            (1..=count)
+                .map(|source| {
+                    let mut edge = edge(source, 0);
+                    edge.end_marker = MarkerMetrics {
+                        length: 8.0,
+                        width: 8.0,
+                    };
+                    edge
+                })
+                .collect(),
+        );
+        g.direction = direction;
+        let options = Options::default();
+        let (full, full_meter) = measured(&g, &options);
+        assert_eq!(full.stats.routed_crossings, 0);
+        let mut geometry_meter = Meter::default();
+        let geometry = layout_geometry_with_control(
+            &g,
+            &options,
+            &mut LayoutScratch::default(),
+            &mut geometry_meter,
+        )
+        .unwrap();
+        assert_eq!(geometry, LayoutGeometry::from(full));
+        full_meter.total - geometry_meter.total
+    };
+    for direction in [Direction::Down, Direction::Right] {
+        let (small, large) = (crossing_work(250, direction), crossing_work(500, direction));
+        assert!(large <= 3 * small, "{direction:?}: {small} to {large}");
+        assert!(large <= 100_000, "{direction:?}: {large}");
+    }
+}
+
+#[test]
 fn two_maximum_spans_keep_sparse_work_storage_and_their_physical_separation() {
     let mut g = graph(vec![size(2.0, 2.0); 3], vec![edge(0, 1), edge(1, 2)]);
     g.edges[0].label = Some(size(10.0, 4.0));

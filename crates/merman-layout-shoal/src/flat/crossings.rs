@@ -6,29 +6,37 @@ use std::collections::BTreeSet;
 mod index;
 
 const MIN_INDEX_FRONT: usize = 128;
+const MIN_FAN_SIZE: usize = 32;
+const NO_FAN: usize = usize::MAX;
 
 struct Segment {
     a: RoutePoint,
     b: RoutePoint,
     edge: u32,
+    fan: usize,
 }
 impl Segment {
+    fn new(a: RoutePoint, b: RoutePoint, edge: u32) -> Self {
+        Self {
+            a,
+            b,
+            edge,
+            fan: NO_FAN,
+        }
+    }
+
     fn interval(&self, horizontal: bool) -> (f64, f64) {
         let (a, b) = if horizontal {
             (self.a.x, self.b.x)
         } else {
             (self.a.y, self.b.y)
         };
-        (a.min(b), a.max(b))
+        (zero(a.min(b)), zero(a.max(b)))
     }
 
-    fn coordinates(&self) -> [u64; 4] {
-        [
-            self.a.x.to_bits(),
-            self.a.y.to_bits(),
-            self.b.x.to_bits(),
-            self.b.y.to_bits(),
-        ]
+    fn coordinates(&self) -> [[u64; 2]; 2] {
+        let (a, b) = (point_key(self.a), point_key(self.b));
+        [a.min(b), a.max(b)]
     }
 
     fn straddles(&self, other: &Segment) -> bool {
@@ -39,6 +47,14 @@ impl Segment {
         let b = cross(other.b);
         (a > 0.0 && b < 0.0) || (a < 0.0 && b > 0.0)
     }
+}
+
+fn zero(value: f64) -> f64 {
+    if value == 0.0 { 0.0 } else { value }
+}
+
+fn point_key(point: RoutePoint) -> [u64; 2] {
+    [zero(point.x).to_bits(), zero(point.y).to_bits()]
 }
 
 #[derive(Clone, Copy)]
@@ -61,8 +77,57 @@ impl Bounds {
         }
     }
 
-    fn overlaps_other_axis(self, low: f64, high: f64) -> bool {
-        low <= self.high && high >= self.low
+    fn union(self, other: Self) -> Self {
+        Self {
+            start: self.start.min(other.start),
+            end: self.end.max(other.end),
+            low: self.low.min(other.low),
+            high: self.high.max(other.high),
+        }
+    }
+
+    fn overlaps_other_axis(self, other: Self) -> bool {
+        // Contact at a projection's end cannot be a proper intersection. This also
+        // discards parallel pairs that both have zero extent on this axis.
+        other.low < self.high && other.high > self.low
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Group<'a> {
+    owners: &'a [Segment],
+    bounds: Bounds,
+    coincident: bool,
+}
+
+impl<'a> Group<'a> {
+    fn new(owners: &'a [Segment], horizontal: bool, compress_shared: bool) -> Self {
+        let first = Bounds::of(&owners[0], horizontal);
+        // With shared compression, the same coordinates at both ends of a sorted
+        // run identify a single shaft even if it also belongs to a large fan.
+        let coincident = owners[0].fan == NO_FAN
+            || compress_shared && owners[0].coordinates() == owners.last().unwrap().coordinates();
+        let bounds = if coincident {
+            first
+        } else {
+            owners[1..].iter().fold(first, |bounds, segment| {
+                bounds.union(Bounds::of(segment, horizontal))
+            })
+        };
+        Self {
+            owners,
+            bounds,
+            coincident,
+        }
+    }
+
+    fn runs(self) -> impl Iterator<Item = &'a [Segment]> {
+        let size = if self.coincident {
+            self.owners.len()
+        } else {
+            1
+        };
+        self.owners.chunks(size)
     }
 }
 
@@ -93,11 +158,7 @@ fn edge_pairs(
     for (id, edge) in edges {
         for p in edge.points.windows(2) {
             if p[0].x != p[1].x || p[0].y != p[1].y {
-                segments.push(Segment {
-                    a: p[0],
-                    b: p[1],
-                    edge: *id,
-                });
+                segments.push(Segment::new(p[0], p[1], *id));
             }
         }
     }
@@ -120,61 +181,115 @@ fn edge_pairs(
         }
     };
     let horizontal = crowding(true) < crowding(false);
+    let fans = assign_fans(&mut segments, work)?;
     validate::charge_sort(segments.len(), work)?;
-    if compress_shared {
-        segments.sort_unstable_by(|a, b| {
-            a.interval(horizontal)
-                .0
-                .total_cmp(&b.interval(horizontal).0)
-                .then_with(|| a.coordinates().cmp(&b.coordinates()))
-                .then(a.edge.cmp(&b.edge))
-        });
-        work.charge(segments.len())?;
-        segments.dedup_by(|a, b| a.edge == b.edge && a.coordinates() == b.coordinates());
-        return sweep(
-            segments.chunk_by(|a, b| a.coordinates() == b.coordinates()),
-            segments.len(),
-            horizontal,
-            true,
-            work,
-        );
-    }
-
     segments.sort_unstable_by(|a, b| {
-        a.interval(horizontal)
-            .0
-            .total_cmp(&b.interval(horizontal).0)
+        a.fan
+            .cmp(&b.fan)
+            .then_with(|| {
+                a.interval(horizontal)
+                    .0
+                    .total_cmp(&b.interval(horizontal).0)
+            })
+            .then_with(|| {
+                if compress_shared {
+                    a.coordinates().cmp(&b.coordinates())
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
             .then(a.edge.cmp(&b.edge))
     });
-    sweep(segments.chunks(1), segments.len(), horizontal, false, work)
+    if compress_shared {
+        work.charge(segments.len())?;
+        segments.dedup_by(|a, b| a.edge == b.edge && a.coordinates() == b.coordinates());
+    }
+    let groups = segments
+        .chunk_by(|a, b| {
+            a.fan == b.fan
+                && (a.fan != NO_FAN || compress_shared && a.coordinates() == b.coordinates())
+        })
+        .map(|owners| Group::new(owners, horizontal, compress_shared));
+    if fans {
+        work.charge(segments.len())?;
+        let mut ordered = crate::work::reserved(segments.len())?;
+        ordered.extend(groups);
+        validate::charge_sort(ordered.len(), work)?;
+        ordered.sort_unstable_by(|a, b| {
+            a.bounds
+                .start
+                .total_cmp(&b.bounds.start)
+                .then(a.owners[0].edge.cmp(&b.owners[0].edge))
+        });
+        let len = ordered.len();
+        sweep(ordered.into_iter(), len, work)
+    } else {
+        sweep(groups, segments.len(), work)
+    }
+}
+
+/// All members of a fan share an exact endpoint, so its internal pairs cannot cross.
+/// Compare the fan's envelope to other groups and expand it only for potential foreign hits.
+fn assign_fans(segments: &mut [Segment], work: &mut Work<'_>) -> LayoutResult<bool> {
+    if segments.len() < MIN_INDEX_FRONT {
+        return Ok(false);
+    }
+    let count = segments
+        .len()
+        .checked_mul(2)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    work.charge(count)?;
+    let mut ends = crate::work::reserved(count)?;
+    for (index, segment) in segments.iter().enumerate() {
+        ends.push((point_key(segment.a), index));
+        ends.push((point_key(segment.b), index));
+    }
+    validate::charge_sort(ends.len(), work)?;
+    ends.sort_unstable();
+
+    let mut degrees = crate::work::reserved(ends.len() / MIN_FAN_SIZE)?;
+    for cohort in ends.chunk_by(|a, b| a.0 == b.0) {
+        work.visit(cohort.len())?;
+        let degree = cohort.len();
+        if degree < MIN_FAN_SIZE {
+            continue;
+        }
+        let fan = degrees.len();
+        degrees.push(degree);
+        work.visit(degree)?;
+        for &(_, index) in cohort {
+            let owner = &mut segments[index].fan;
+            if *owner == NO_FAN || degrees[*owner] < degree {
+                *owner = fan;
+            }
+        }
+    }
+    Ok(!degrees.is_empty())
 }
 
 fn sweep<'a>(
-    mut groups: impl Iterator<Item = &'a [Segment]> + Clone,
-    segment_count: usize,
-    horizontal: bool,
-    shared: bool,
+    mut groups: impl Iterator<Item = Group<'a>> + Clone,
+    group_count: usize,
     work: &mut Work<'_>,
 ) -> LayoutResult<BTreeSet<(u32, u32)>> {
     let mut pairs = BTreeSet::new();
-    let mut active: Vec<&[Segment]> = Vec::new();
+    let mut active: Vec<Group<'_>> = Vec::new();
     let mut previous_start = None;
     // Build only at a separately admitted work batch and after enough second-axis
     // rejections to cover ordering, tree setup, and maintenance. Narrow or mostly
     // overlapping fronts keep scanning.
-    let setup_bound = segment_count
-        .saturating_mul(segment_count.checked_ilog2().unwrap_or(0) as usize + 1)
+    let setup_bound = group_count
+        .saturating_mul(group_count.checked_ilog2().unwrap_or(0) as usize + 1)
         .saturating_mul(2);
     let mut misses = 0usize;
     let mut index_allowed = true;
-    let end = |neighbors: &[Segment]| neighbors[0].interval(horizontal).1;
-    while let Some(owners) = groups.next() {
-        work.visit(active.len() + owners.len())?;
-        let bounds = Bounds::of(&owners[0], horizontal);
+    let end = |group: Group<'_>| group.bounds.end;
+    while let Some(group) = groups.next() {
+        work.visit(group.owners.len())?;
+        let bounds = group.bounds;
         if index_allowed && misses >= setup_bound && active.len() >= MIN_INDEX_FRONT {
-            // Admission uses the old width. Decide whether to build using the rows
-            // that can actually meet this segment after expiry.
             if previous_start != Some(bounds.start) {
+                work.visit(active.len())?;
                 visit_active(&mut active, &mut previous_start, bounds.start, end, |_| {
                     Ok(())
                 })?;
@@ -185,58 +300,65 @@ fn sweep<'a>(
                 let tail = groups
                     .size_hint()
                     .1
-                    .unwrap_or(segment_count)
+                    .unwrap_or(group_count)
                     .saturating_add(1);
                 let possible_scans = tail.saturating_mul(active.len().saturating_add(tail / 2));
                 if possible_scans >= setup_bound.saturating_mul(2) {
                     let remaining = active
                         .iter()
                         .copied()
-                        .chain(std::iter::once(owners))
+                        .chain(std::iter::once(group))
                         .chain(groups.clone());
-                    if let Some(index) = index::ActiveIntervals::new(remaining, horizontal, work)? {
-                        index.sweep(active.len(), shared, &mut pairs, work)?;
+                    if let Some(index) = index::ActiveIntervals::new(remaining, work)? {
+                        index.sweep(active.len(), &mut pairs, work)?;
                         break;
                     }
                 }
             }
         }
+        work.visit(active.len())?;
         visit_active(
             &mut active,
             &mut previous_start,
             bounds.start,
             end,
             |neighbors| {
-                let (low, high) = neighbors[0].interval(!horizontal);
-                if bounds.overlaps_other_axis(low, high) {
-                    record_crossings(owners, neighbors, shared, &mut pairs, work)?;
+                if bounds.overlaps_other_axis(neighbors.bounds) {
+                    record_crossings(group, neighbors, &mut pairs, work)?;
                 } else {
                     misses = misses.saturating_add(1);
                 }
                 Ok(())
             },
         )?;
-        crate::work::push(&mut active, owners)?;
+        crate::work::push(&mut active, group)?;
     }
     Ok(pairs)
 }
 
 fn record_crossings(
-    owners: &[Segment],
-    neighbors: &[Segment],
-    shared: bool,
+    group: Group<'_>,
+    other: Group<'_>,
     pairs: &mut BTreeSet<(u32, u32)>,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let (s, t) = (&owners[0], &neighbors[0]);
-    if (!shared && s.edge == t.edge) || !s.straddles(t) || !t.straddles(s) {
-        return Ok(());
-    }
-    for first in owners {
-        for second in neighbors {
-            work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
-            if first.edge != second.edge {
-                pairs.insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+    for owners in group.runs() {
+        for neighbors in other.runs() {
+            work.visit(1)?;
+            let (s, t) = (&owners[0], &neighbors[0]);
+            if (owners.len() == 1 && neighbors.len() == 1 && s.edge == t.edge)
+                || !s.straddles(t)
+                || !t.straddles(s)
+            {
+                continue;
+            }
+            for first in owners {
+                for second in neighbors {
+                    work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
+                    if first.edge != second.edge {
+                        pairs.insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+                    }
+                }
             }
         }
     }
@@ -251,8 +373,8 @@ fn visit_active<T: Copy>(
     end: impl Fn(T) -> f64,
     mut visit: impl FnMut(T) -> LayoutResult<()>,
 ) -> LayoutResult<()> {
-    // Retained entries already passed this start. The newly appended entry ends at
-    // or after its own start. Numeric equality matches the inclusive expiry test.
+    // Retained entries already passed this start. An entry appended at this start can
+    // only end here if it has no extent on the sweep axis. The exact test rejects it.
     if previous_start.replace(start) == Some(start) {
         return active.iter().copied().try_for_each(visit);
     }
@@ -260,7 +382,7 @@ fn visit_active<T: Copy>(
     let mut kept = 0;
     for index in 0..active.len() {
         let entry = active[index];
-        if end(entry) >= start {
+        if end(entry) > start {
             visit(entry)?;
             if kept != index {
                 active[kept] = entry;
@@ -328,6 +450,15 @@ mod tests {
     }
 
     #[test]
+    fn shared_segment_keys_ignore_direction_and_signed_zero() {
+        let a = RoutePoint::new(-0.0, 0.0, Axis::Horizontal);
+        let b = RoutePoint::new(10.0, 2.0, Axis::Horizontal);
+        let forward = Segment::new(a, b, 0);
+        let reverse = Segment::new(b, RoutePoint::new(0.0, -0.0, Axis::Vertical), 1);
+        assert_eq!(forward.coordinates(), reverse.coordinates());
+    }
+
+    #[test]
     fn shared_trunk_avoids_pairwise_work_and_still_crosses_a_foreign_edge() {
         #[derive(Default)]
         struct Meter(usize);
@@ -345,20 +476,69 @@ mod tests {
 
         let count = 512;
         let mut edges: Vec<_> = (0..count)
-            .map(|edge| (edge, route(&[(0., 0.), (0., 10.)])))
+            .map(|edge| {
+                let ends = if edge % 2 == 0 {
+                    [(0., 0.), (0., 10.)]
+                } else {
+                    [(0., 10.), (0., 0.)]
+                };
+                (edge, route(&ends))
+            })
             .collect();
         edges.push((count, route(&[(-10., 5.), (10., 5.)])));
-        let mut legacy = Meter::default();
-        let mut shared = Meter::default();
-        for (compress_shared, meter) in [(false, &mut legacy), (true, &mut shared)] {
-            let mut work = Work::new(meter);
+        for compress_shared in [false, true] {
+            let mut meter = Meter::default();
+            let mut work = Work::new(&mut meter);
             assert_eq!(
                 pairs(&edges, compress_shared, &mut work),
                 Ok(u64::from(count))
             );
             work.finish().unwrap();
+            assert!(meter.0 <= 32_000, "{}", meter.0);
         }
-        assert!(shared.0 * 4 < legacy.0, "{}/{}", shared.0, legacy.0);
+    }
+
+    #[test]
+    fn radial_groups_match_pairwise_crossings_with_foreign_edges() {
+        let mut edges: Vec<_> = (0..500)
+            .map(|id| {
+                let leaf = (2.0 * f64::from(id), 4.0);
+                let center = (500.0, 20.0);
+                let points = if id % 2 == 0 {
+                    [leaf, center]
+                } else {
+                    [center, leaf]
+                };
+                (id, route(&points))
+            })
+            .collect();
+        edges.extend([
+            (500, route(&[(0., 12.), (500., 12.)])),
+            (501, route(&[(750., 2.), (700., 34.)])),
+            (502, route(&[(500., 20.), (250., 12.)])),
+        ]);
+        let segments: Vec<_> = edges
+            .iter()
+            .map(|(id, edge)| Segment::new(edge.points[0], edge.points[1], *id))
+            .collect();
+        let mut expected = BTreeSet::new();
+        for (i, a) in segments.iter().enumerate() {
+            for b in &segments[i + 1..] {
+                if a.straddles(b) && b.straddles(a) {
+                    expected.insert((a.edge, b.edge));
+                }
+            }
+        }
+        assert!(!expected.is_empty());
+        for compress_shared in [false, true] {
+            let mut control = NoopWorkControl;
+            let mut work = Work::new(&mut control);
+            assert_eq!(
+                edge_pairs(&edges, compress_shared, &mut work).unwrap(),
+                expected
+            );
+            work.finish().unwrap();
+        }
     }
 
     #[test]
