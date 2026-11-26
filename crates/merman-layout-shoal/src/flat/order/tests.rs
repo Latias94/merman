@@ -591,6 +591,27 @@ impl WorkControl for Meter {
 }
 
 #[test]
+fn unchanged_sweeps_age_the_trial_without_recounting_fixed_port_crossings() {
+    let run = |max_sweeps| {
+        let (mut g, nodes) = graph(&[1, 1], &[(0, 1, -5., 5., 1.), (0, 1, 5., -5., 1.)]);
+        let mut options = Options::default();
+        options.caps.max_sweeps = max_sweeps;
+        options.caps.max_transpose_nodes = 0;
+        let mut meter = Meter {
+            remaining: usize::MAX,
+            checks: 0,
+            cancel_at: 0,
+        };
+        let count = reduce(&mut g, &nodes, &options, &mut Work::new(&mut meter)).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(g.layers, [vec![0], vec![1]]);
+        usize::MAX - meter.remaining
+    };
+    // Each of the four stale rounds visits a singleton rank and leaves its score intact.
+    assert_eq!(run(12) - run(0), 4 * (1 + 1));
+}
+
+#[test]
 fn budget_and_mid_search_cancellation_leave_the_input_reusable() {
     let (mut g, nodes) = graph(
         &[2, 2],

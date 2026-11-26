@@ -74,6 +74,29 @@ enum LayoutDetail {
     Geometry,
 }
 
+impl LayoutDetail {
+    fn flat(self, options: &Options) -> Self {
+        if self == Self::Full {
+            return self;
+        }
+        let natural_ranks = options.width_policy == WidthPolicy::Natural
+            && (options.capture_node_ranks
+                || matches!(options.packing, PackingPolicy::FitWidth { .. }));
+        if natural_ranks
+            || options.reuse_unchanged_components
+            || options.global_orthogonal
+            || !matches!(
+                options.routing,
+                RoutingStyle::Curved | RoutingStyle::Polyline
+            )
+        {
+            Self::Full
+        } else {
+            self
+        }
+    }
+}
+
 fn layout_impl(
     graph: &Graph,
     options: &Options,
@@ -95,30 +118,13 @@ fn layout_impl(
     }
     let mut keep_components = reuse_components && options.capture_node_ranks;
     let (output, width_trial) = match options.width_policy {
-        WidthPolicy::Natural
-            if matches!(detail, LayoutDetail::Geometry)
-                && graph.groups.is_empty()
-                && graph.lane_order.is_empty()
-                && !options.capture_node_ranks
-                && !options.reuse_unchanged_components
-                && !options.global_orthogonal
-                && matches!(
-                    options.routing,
-                    RoutingStyle::Curved | RoutingStyle::Polyline
-                )
-                && !matches!(options.packing, PackingPolicy::FitWidth { .. }) =>
-        {
-            (
-                flat::run_geometry(graph, options, frame.expanded, &mut work)?,
-                None,
-            )
-        }
         WidthPolicy::Natural => (
             solve(graph, options, frame.expanded, detail, &mut work)?,
             None,
         ),
         WidthPolicy::FitWidth { .. } => {
-            let (drawing, trial) = adaptive::run(graph, options, frame.expanded, &mut work)?;
+            let (drawing, trial) =
+                adaptive::run(graph, options, frame.expanded, detail, &mut work)?;
             (drawing, Some(trial))
         }
     };
@@ -189,7 +195,7 @@ fn solve(
     work: &mut work::Work<'_>,
 ) -> Result<LayoutOutput, LayoutError> {
     if graph.groups.is_empty() && graph.lane_order.is_empty() {
-        flat::run(graph, options, expanded, work)
+        flat::run_with_detail(graph, options, expanded, detail.flat(options), work)
     } else {
         compound::run(graph, options, expanded, detail, work)
     }

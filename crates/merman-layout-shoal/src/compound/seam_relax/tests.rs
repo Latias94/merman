@@ -1,5 +1,4 @@
 use super::*;
-use crate::compound::hierarchy;
 use crate::{
     EdgeGeometry, EdgeId, EdgeSpec, GroupGeometry, GroupSpec, MarkerMetrics, NodeId, NodeSpec,
     NoopWorkControl, Options, WorkControl, WorkError,
@@ -73,6 +72,112 @@ fn seam(point: usize, group: u32, side: Side) -> BorderStitch {
     }
 }
 
+#[test]
+fn group_endpoint_and_child_stitch_follow_the_same_peer_order() {
+    let mut graph = Graph::default();
+    graph.direction = crate::Direction::Right;
+    for (id, (parent, title_width)) in [
+        (Some(1), 75.74),
+        (Some(3), 73.92),
+        (Some(3), 77.84),
+        (None, 79.94),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut group = GroupSpec::new(7 + id as u32);
+        group.parent = parent.map(GroupId);
+        group.title = Some(Size {
+            width: title_width,
+            height: 21.0,
+        });
+        group.title_position = crate::TitlePosition::TopAuto;
+        group.padding = crate::Insets {
+            left: 8.0,
+            right: 8.0,
+            top: 37.0,
+            bottom: 8.0,
+        };
+        graph.groups.push(group);
+    }
+    for (id, parent) in [Some(0), Some(0), Some(1), Some(2), Some(2), None, None]
+        .into_iter()
+        .enumerate()
+    {
+        let (width, height) = match id {
+            5 => (171.25, 45.0),
+            6 => (65.45, 65.45),
+            _ => (152.0, 45.0),
+        };
+        let mut node = NodeSpec::new(Size { width, height }, id as u32);
+        node.parent = parent.map(GroupId);
+        graph.nodes.push(node);
+    }
+    let node = |id| Endpoint::Node(NodeId(id));
+    let group = |id| Endpoint::Group(GroupId(id));
+    for (from, to, label) in [
+        (node(0), node(1), None),
+        (node(1), node(2), None),
+        (node(3), node(4), None),
+        (group(0), group(2), Some(57.4)),
+        (node(2), node(4), Some(60.62)),
+        (node(5), group(3), None),
+        (group(2), node(6), None),
+    ] {
+        let mut wire = EdgeSpec::new(from, to);
+        wire.end_marker = MarkerMetrics {
+            length: 4.0,
+            width: 8.0,
+        };
+        wire.label = label.map(|width| Size {
+            width,
+            height: 21.0,
+        });
+        graph.edges.push(wire);
+    }
+
+    let solved = crate::layout(&graph, &Options::default()).unwrap();
+    let child = solved
+        .border_stitches
+        .iter()
+        .find(|s| s.edge == EdgeId(1))
+        .unwrap();
+    let transit = &solved.edges[1].points;
+    let direct = &solved.edges[3].points;
+    assert_eq!(direct[0].x, transit[child.point].x);
+    assert!(
+        transit[child.point].y < direct[0].y,
+        "{transit:?}; {direct:?}"
+    );
+    assert_eq!(solved.stats.routed_crossings, 0);
+
+    graph.edges[3].source_port = PortSideHint::Side(Side::Right);
+    let pinned = crate::layout(&graph, &Options::default()).unwrap();
+    assert_eq!(pinned.stats.routed_crossings, 1);
+    assert_eq!(pinned.groups, solved.groups);
+    assert_eq!(pinned.border_stitches, solved.border_stitches);
+    for (index, (a, b)) in pinned.edges.iter().zip(&solved.edges).enumerate() {
+        if index == 3 {
+            assert_eq!(a.ports, b.ports);
+            assert_eq!(a.label_center, b.label_center);
+            assert_eq!(a.points[2..], b.points[2..]);
+        } else {
+            assert_eq!(a, b);
+        }
+    }
+    graph.edges[3].source_port = PortSideHint::FixedOffset {
+        side: Side::Right,
+        offset: -1.5,
+    };
+    let fixed = crate::layout(&graph, &Options::default()).unwrap();
+    assert_eq!(fixed.edges[3].ports.0, Side::Right);
+    assert_eq!(
+        fixed.edges[3].points[0].y,
+        fixed.groups[0].rect.center().y - 1.5
+    );
+    assert_eq!(fixed.stats.routed_crossings, 1);
+}
+
 fn run(
     graph: &Graph,
     options: &Options,
@@ -81,16 +186,7 @@ fn run(
 ) {
     let mut work = Work::new(control);
     work.charge(2_000).unwrap();
-    let hierarchy = hierarchy::build(graph, options, &mut work).unwrap();
-    let pass = Pass {
-        graph,
-        hierarchy: &hierarchy,
-        options,
-        sides: &[],
-        items: &[],
-        ports: &[],
-    };
-    relax(&pass, drawing, &mut work).unwrap();
+    relax(graph, options, drawing, &mut work).unwrap();
 }
 
 fn aligned_ports() -> (Graph, LayoutOutput) {

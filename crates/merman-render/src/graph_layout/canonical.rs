@@ -5,7 +5,7 @@ use super::ir::{
 use super::route_paint::{self, ObstacleOwner, PaintedRoute, RouteStyle};
 use super::{Marker, edge_paint_error};
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
+use crate::model::{LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use kurbo::Vec2;
@@ -34,17 +34,44 @@ pub(crate) struct CanonicalRoutes {
     clearance: AxisClearance,
 }
 
-pub(crate) struct CanonicalPaintedEdge {
+pub(crate) struct CanonicalPaintedEdge<Points = Vec<LayoutPoint>> {
     pub(crate) path: PaintedRoute,
     pub(crate) marker_points: [LayoutPoint; 4],
-    pub(crate) data_points: Vec<LayoutPoint>,
+    pub(crate) data_points: Points,
     pub(crate) markers: (Marker, Marker),
+}
+
+impl CanonicalPaintedEdge<()> {
+    fn with_data_points<Points>(self, data_points: Points) -> CanonicalPaintedEdge<Points> {
+        CanonicalPaintedEdge {
+            path: self.path,
+            marker_points: self.marker_points,
+            data_points,
+            markers: self.markers,
+        }
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct CanonicalPaintScratch {
     points: Vec<RoutePoint>,
     pub(crate) route: route_paint::RoutePaintScratch,
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-er",
+        feature = "diagram-state"
+    ))]
+    data_points: Vec<LayoutPoint>,
+}
+
+fn layout_points(points: &[RoutePoint]) -> impl ExactSizeIterator<Item = LayoutPoint> + '_ {
+    points.iter().map(|p| LayoutPoint { x: p.x, y: p.y })
+}
+
+fn missing_paint_geometry(edge_id: &str) -> Error {
+    Error::InvalidModel {
+        message: format!("Edge `{edge_id}` has no canonical paint geometry"),
+    }
 }
 
 #[cfg(any(
@@ -181,9 +208,10 @@ impl CanonicalRoutes {
         })
     }
 
+    #[cfg(any(feature = "diagram-requirement", feature = "diagram-usecase"))]
     pub(crate) fn paint(
         &self,
-        edge: &LayoutEdge,
+        edge: &crate::model::LayoutEdge,
         translation: Vec2,
         stroke_outset: f64,
         style: RouteStyle,
@@ -199,45 +227,149 @@ impl CanonicalRoutes {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-requirement",
+        feature = "diagram-usecase"
+    ))]
     pub(crate) fn paint_with_scratch(
         &self,
-        edge: &LayoutEdge,
+        edge: &crate::model::LayoutEdge,
         translation: Vec2,
         stroke_outset: f64,
         style: RouteStyle,
         work: &OperationWorkMeter,
         scratch: &mut CanonicalPaintScratch,
     ) -> Result<CanonicalPaintedEdge> {
-        let missing = || Error::InvalidModel {
-            message: format!("Edge `{}` has no canonical paint geometry", edge.id),
-        };
+        self.paint_points_with_scratch(
+            &edge.id,
+            edge.points.iter().map(|p| (p.x, p.y)),
+            translation,
+            stroke_outset,
+            style,
+            work,
+            scratch,
+        )
+    }
+
+    #[cfg(any(
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-requirement",
+        feature = "diagram-usecase"
+    ))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Route identity and coordinates can come from different layout representations."
+    )]
+    pub(crate) fn paint_points_with_scratch(
+        &self,
+        edge_id: &str,
+        coordinates: impl ExactSizeIterator<Item = (f64, f64)>,
+        translation: Vec2,
+        stroke_outset: f64,
+        style: RouteStyle,
+        work: &OperationWorkMeter,
+        scratch: &mut CanonicalPaintScratch,
+    ) -> Result<CanonicalPaintedEdge> {
+        let route =
+            self.fill_paint_points(edge_id, coordinates, translation, &mut scratch.points)?;
+        let painted = self.paint_geometry(
+            edge_id,
+            route,
+            translation,
+            stroke_outset,
+            style,
+            work,
+            scratch,
+        )?;
+        Ok(painted.with_data_points(layout_points(&scratch.points).collect()))
+    }
+
+    /// Paints an edge whose data points are consumed before the next edge is painted.
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-er",
+        feature = "diagram-state"
+    ))]
+    pub(crate) fn paint_with_borrowed_points<'points>(
+        &self,
+        edge: &crate::model::LayoutEdge,
+        translation: Vec2,
+        stroke_outset: f64,
+        style: RouteStyle,
+        work: &OperationWorkMeter,
+        scratch: &'points mut CanonicalPaintScratch,
+    ) -> Result<CanonicalPaintedEdge<&'points [LayoutPoint]>> {
+        let route = self.fill_paint_points(
+            &edge.id,
+            edge.points.iter().map(|p| (p.x, p.y)),
+            translation,
+            &mut scratch.points,
+        )?;
+        let painted = self.paint_geometry(
+            &edge.id,
+            route,
+            translation,
+            stroke_outset,
+            style,
+            work,
+            scratch,
+        )?;
+        scratch.data_points.clear();
+        scratch.data_points.extend(layout_points(&scratch.points));
+        Ok(painted.with_data_points(scratch.data_points.as_slice()))
+    }
+
+    // Specialize only point preparation for each source iterator.
+    fn fill_paint_points(
+        &self,
+        edge_id: &str,
+        coordinates: impl ExactSizeIterator<Item = (f64, f64)>,
+        translation: Vec2,
+        points: &mut Vec<RoutePoint>,
+    ) -> Result<&AxisPath> {
         let route = self
             .paths
-            .get(&edge.id)
-            .filter(|route| route.knots.len() == edge.points.len())
-            .ok_or_else(missing)?;
+            .get(edge_id)
+            .filter(|route| route.knots.len() == coordinates.len())
+            .ok_or_else(|| missing_paint_geometry(edge_id))?;
+        points.clear();
+        points.extend(
+            coordinates
+                .zip(&route.knots)
+                .map(|((x, y), &(axis, kind))| RoutePoint {
+                    x: x + translation.x,
+                    y: y + translation.y,
+                    axis,
+                    kind,
+                }),
+        );
+        Ok(route)
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The shared painter takes route identity and prepared metadata separately."
+    )]
+    fn paint_geometry(
+        &self,
+        edge_id: &str,
+        route: &AxisPath,
+        translation: Vec2,
+        stroke_outset: f64,
+        style: RouteStyle,
+        work: &OperationWorkMeter,
+        scratch: &mut CanonicalPaintScratch,
+    ) -> Result<CanonicalPaintedEdge<()>> {
         let translated = |p: RoutePoint| RoutePoint {
             x: p.x + translation.x,
             y: p.y + translation.y,
             ..p
         };
         let points = &mut scratch.points;
-        points.clear();
-        points.extend(
-            edge.points
-                .iter()
-                .zip(&route.knots)
-                .map(|(p, &(axis, kind))| {
-                    translated(RoutePoint {
-                        x: p.x,
-                        y: p.y,
-                        axis,
-                        kind,
-                    })
-                }),
-        );
         let [start, .., end] = points.as_mut_slice() else {
-            return Err(missing());
+            return Err(missing_paint_geometry(edge_id));
         };
         let contacts = (translated(route.contacts.0), translated(route.contacts.1));
         (*start, *end) = contacts;
@@ -276,14 +408,11 @@ impl CanonicalRoutes {
             clearance,
             &mut scratch.route,
         )
-        .map_err(|error| edge_paint_error(&edge.id, error))?;
+        .map_err(|error| edge_paint_error(edge_id, error))?;
         Ok(CanonicalPaintedEdge {
             path,
             marker_points: [start_ref, start_lead, end_lead, end_ref],
-            data_points: points
-                .iter()
-                .map(|p| LayoutPoint { x: p.x, y: p.y })
-                .collect(),
+            data_points: (),
             markers: route.markers,
         })
     }

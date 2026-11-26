@@ -561,13 +561,17 @@ impl ArchitectureShaft<'_> {
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         ordinal: usize,
+        #[cfg(feature = "layout-shoal")] points_json: &mut Vec<u8>,
+        #[cfg(feature = "layout-shoal")] points_base64: &mut String,
     ) -> crate::Result<()> {
         match self {
             Self::Legacy(points, edge, route) => {
                 write_architecture_edge_path(out, diagram_id, edge, *points, *route)
             }
             #[cfg(feature = "layout-shoal")]
-            Self::Shoal(shaft) => shaft.write(out, diagram_id, ordinal)?,
+            Self::Shoal(shaft) => {
+                shaft.write(out, diagram_id, ordinal, points_json, points_base64)?
+            }
         }
         #[cfg(not(feature = "layout-shoal"))]
         let _ = ordinal;
@@ -735,6 +739,10 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             .map_or(MarkerStyle::Classic, |native| native.marker_style);
         let arrow_points = ArchitectureArrowPoints::new(arrow_size, marker_style);
         let edge_style = ctx.native.map(|native| native.edge_style);
+        #[cfg(feature = "layout-shoal")]
+        let mut paint_scratch = crate::graph_layout::canonical::CanonicalPaintScratch::default();
+        #[cfg(feature = "layout-shoal")]
+        let (mut points_json, mut points_base64) = (Vec::new(), String::new());
         for (edge_idx, edge) in model.edges.iter().enumerate() {
             let legacy = || {
                 let points = edge_points(edge_idx, edge);
@@ -778,6 +786,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     edge_idx,
                     edge_style,
                     checkpoints.work_meter,
+                    &mut paint_scratch,
                 )?;
                 let (lhs, rhs) = shaft.arrows(&arrow_points);
                 let label = shaft.label(geometry.edge_labels[edge_idx].as_ref());
@@ -803,7 +812,15 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             }
 
             out.push_str("<g>");
-            shaft.write(out, diagram_id, edge_idx)?;
+            shaft.write(
+                out,
+                diagram_id,
+                edge_idx,
+                #[cfg(feature = "layout-shoal")]
+                &mut points_json,
+                #[cfg(feature = "layout-shoal")]
+                &mut points_base64,
+            )?;
             checkpoints.checkpoint()?;
 
             if let Some(arrow) = lhs_arrow.as_ref() {

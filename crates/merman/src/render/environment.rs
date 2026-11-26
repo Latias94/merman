@@ -237,7 +237,7 @@ impl SvgEnvironment {
         self.with_resource_policy(policy)
     }
 
-    /// Reuses bounded row storage across independent, flat, natural-width Shoal layouts.
+    /// Reuses bounded row storage across independent Shoal layered layouts, including width fitting.
     /// Keep this environment alive and clone it into each request that should reuse storage.
     #[cfg(feature = "layout-shoal")]
     pub fn with_shoal_scratch_reuse(mut self) -> Self {

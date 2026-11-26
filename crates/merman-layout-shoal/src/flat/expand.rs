@@ -94,6 +94,7 @@ fn sublayers(
         }
     }
     g.inline_labels.clear();
+    g.has_parallel_links = false;
     let mut pairs = HashSet::new();
     pairs
         .try_reserve(arcs.len())
@@ -110,11 +111,14 @@ fn sublayers(
         }
         let adjacent = b - a == 1;
         let gap = (a + (b - a - 1) / 2) as usize;
+        let ends = (edge.from, edge.to);
+        let repeated = !pairs.insert(ends);
+        g.has_parallel_links |= repeated;
         if let Some(size) = spec.label {
             if split[gap]
-                || !inline
-                    .as_ref()
-                    .is_some_and(|policy| policy.admits(size, spec, graph.direction))
+                || !inline.as_ref().is_some_and(|policy| {
+                    policy.admits(size, spec, graph.direction, index, edge.from)
+                })
                 || occupied[gap + 1] - occupied[gap] != 1
                 || g.inline_labels.len() == label_place::MAX_LABELS
             {
@@ -140,8 +144,7 @@ fn sublayers(
             )?;
         }
         if adjacent && !split[gap] {
-            let ends = (edge.from, edge.to);
-            split[gap] = !pairs.insert(ends) && !g.separate_ports(ends, work)?;
+            split[gap] = repeated && !g.separate_ports(ends, work)?;
         }
     }
     if !g.inline_labels.is_empty() {
@@ -375,6 +378,9 @@ pub(super) fn build(
         inline.then_some(label_place::GapPolicy {
             spacing: options.spacing,
             restored: restored_labels,
+            nodes,
+            reversed: &orientation.reversed,
+            routing: options.routing,
         }),
         g,
         work,
@@ -664,6 +670,35 @@ mod tests {
             let label = g.label_vertex[edge].unwrap();
             assert_eq!(g.rank[label as usize], expected);
             assert_eq!(g.chains[edge][expected as usize], label);
+        }
+    }
+
+    #[test]
+    fn labeled_long_links_set_and_reset_parallel_detection() {
+        let (mut graph, links, mut order) =
+            input(4, &[(0, 1, 1), (1, 2, 1), (2, 3, 1), (0, 3, 1), (3, 0, 1)]);
+        for spec in &mut graph.edges[3..] {
+            spec.label = Some(shape(8.0, 4.0));
+        }
+        let options = Options {
+            inline_labels: false,
+            ..Options::default()
+        };
+        let mut g = Expanded::default();
+        for (links, expected) in [(links.as_slice(), true), (&links[..4], false)] {
+            order.reversed.truncate(links.len());
+            build(
+                &graph.nodes,
+                links,
+                &order,
+                &graph,
+                &options,
+                &mut Work::new(&mut NoopWorkControl),
+                &mut g,
+            )
+            .unwrap();
+            assert_eq!(g.has_parallel_links, expected);
+            assert_eq!(g.logical_rank, [0, 1, 2, 3]);
         }
     }
 

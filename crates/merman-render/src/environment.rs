@@ -1728,7 +1728,7 @@ impl RenderEnvironment {
         &self.resource_policy
     }
 
-    /// Reuses row storage on independent, flat, natural-width Shoal layouts.
+    /// Reuses row storage on independent Shoal layered layouts, including width fitting.
     ///
     /// This environment and its clones share one idle slot with at most 64 KiB of row storage.
     /// Keep an environment alive across operations to reuse it. Each operation still owns its

@@ -567,8 +567,9 @@ impl Sweep {
         (down, right): (bool, bool),
         rules: &mut Rules<'_>,
         work: &mut Work<'_>,
-    ) -> LayoutResult<()> {
+    ) -> LayoutResult<bool> {
         let face = if down { &ports.target } else { &ports.source };
+        let mut changed = false;
         for step in 1..order.ranks() {
             let rank = if down { step } else { order.ranks() - 1 - step };
             let row = order.range(rank);
@@ -593,8 +594,10 @@ impl Sweep {
                 for &e in edges {
                     let u = face.peer[e] as usize;
                     let mut x = order.place[u].pos as f64;
-                    if g.width[u] > 0.0 {
-                        x += face.peer_offset[e] / g.width[u];
+                    let offset = face.peer_offset[e];
+                    // A nonnegative position is unchanged by either sign of zero.
+                    if offset != 0.0 && g.width[u] > 0.0 {
+                        x += offset / g.width[u];
                     }
                     let weight = f64::from(g.weight[e]);
                     sum += weight * x;
@@ -608,8 +611,10 @@ impl Sweep {
                 self.moving.push(v as usize);
             }
             if LIMITED && let Some(groups) = &mut rules.groups {
-                groups.arrange(&mut order.ids[row], &order.place, |v| self.mean[v], work)?;
-                order.reindex(rank, ports, work)?;
+                if groups.arrange(&mut order.ids[row], &order.place, |v| self.mean[v], work)? {
+                    order.reindex(rank, ports, work)?;
+                    changed = true;
+                }
                 continue;
             }
             if self.moving.len() < 2 {
@@ -631,12 +636,17 @@ impl Sweep {
             let slots = order.ids[row]
                 .iter_mut()
                 .filter(|v| !face.at(**v).is_empty());
+            let mut row_changed = false;
             for (at, &v) in slots.zip(&self.moving) {
+                row_changed |= *at != v as u32;
                 *at = v as u32;
             }
-            order.reindex(rank, ports, work)?;
+            if row_changed {
+                order.reindex(rank, ports, work)?;
+                changed = true;
+            }
         }
-        Ok(())
+        Ok(changed)
     }
 }
 
@@ -925,15 +935,19 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
             best.copy_from_slice(initial);
         }
         let mut best_score = initial_score;
+        let mut count = initial_score.0;
         let mut stale = 0;
         for i in 0..options.caps.max_sweeps {
             let down = (i % 2) == attempt;
-            sweep.run::<LIMITED>(g, order, ports, (down, i % 4 >= 2), rules, work)?;
-            let c = crossings(order, ports, tree, work)?;
-            stale = if c < best_score.0 { 0 } else { stale + 1 };
-            if c <= best_score.0 {
+            let changed = sweep.run::<LIMITED>(g, order, ports, (down, i % 4 >= 2), rules, work)?;
+            if changed {
+                count = crossings(order, ports, tree, work)?;
+            }
+            stale = if count < best_score.0 { 0 } else { stale + 1 };
+            // An unchanged order keeps its last count and cannot improve the best score again.
+            if changed && count <= best_score.0 {
                 let score = (
-                    c,
+                    count,
                     inversions::<EDITOR>(&order.ids, &order.start, preference, tree, work)?,
                 );
                 if score < best_score {
@@ -942,7 +956,7 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
                     best.copy_from_slice(&order.ids);
                 }
             }
-            if c == 0 && (!EDITOR || best_score.1 == 0) || stale == 4 {
+            if count == 0 && (!EDITOR || best_score.1 == 0) || stale == 4 {
                 break;
             }
         }

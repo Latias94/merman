@@ -1,8 +1,8 @@
 //! Remove free elbows around opposing sibling ports after the final routing pass.
 
+mod face_order;
 mod projection;
 
-use super::Pass;
 use super::solve::TITLE_CLEAR;
 #[cfg(test)]
 use crate::Rect;
@@ -15,6 +15,11 @@ use crate::{
 use projection::Lane;
 
 const MAX_LANE_SHIFT: f64 = 12.0;
+
+struct Scene<'a> {
+    graph: &'a Graph,
+    options: &'a Options,
+}
 
 #[derive(Clone, Copy)]
 struct Travel {
@@ -259,7 +264,7 @@ struct SiblingRoute<'a> {
 }
 
 fn between_siblings<'a>(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &'a LayoutOutput,
     [first, last]: [BorderStitch; 2],
     work: &mut Work<'_>,
@@ -309,7 +314,7 @@ fn between_siblings<'a>(
 }
 
 fn fixed_seams(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     route: SiblingRoute<'_>,
     work: &mut Work<'_>,
@@ -410,7 +415,7 @@ fn restrict_lane(limits: &mut (f64, f64), lane: f64, neighbor: f64, current: f64
 }
 
 fn lane_limits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     slide: Slide<'_>,
     faces: &FaceLanes,
@@ -487,7 +492,7 @@ fn keeps_anchor(
 }
 
 fn prepare_slide<'a>(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     pair: SiblingRoute<'a>,
     stitch: usize,
     work: &mut Work<'_>,
@@ -691,7 +696,7 @@ fn seam_paths(output: &LayoutOutput) -> impl Iterator<Item = (usize, &[BorderSti
 }
 
 fn fixed_edits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Edit>> {
@@ -728,7 +733,7 @@ fn fixed_edits(
 }
 
 fn slide_edits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     fixed: &[Edit],
     work: &mut Work<'_>,
@@ -847,19 +852,22 @@ pub(super) fn eligible(options: &Options, output: &LayoutOutput) -> bool {
 }
 
 pub(super) fn relax(
-    ctx: &Pass<'_>,
+    graph: &Graph,
+    options: &Options,
     output: &mut LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    if !eligible(ctx.options, output) {
+    if !eligible(options, output) {
         return Ok(());
     }
-    let fixed = match work.compare(|trial| fixed_edits(ctx, output, trial)) {
+    let scene = Scene { graph, options };
+    face_order::relax(&scene, output, work)?;
+    let fixed = match work.compare(|trial| fixed_edits(&scene, output, trial)) {
         Ok(Some(edits)) => edits,
         Ok(None) | Err(LayoutError::AllocationLimit) => return Ok(()),
         Err(error) => return Err(error),
     };
-    let slid = match work.compare(|trial| slide_edits(ctx, output, &fixed, trial)) {
+    let slid = match work.compare(|trial| slide_edits(&scene, output, &fixed, trial)) {
         Ok(Some(edits)) => edits,
         Ok(None) | Err(LayoutError::AllocationLimit) => Vec::new(),
         Err(error) => return Err(error),

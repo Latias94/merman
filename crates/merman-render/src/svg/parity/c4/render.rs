@@ -288,19 +288,36 @@ fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) ->
     out.checkpoint()
 }
 
-fn write_c4_relation_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) -> Result<()> {
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
-        escape_attr_display(scoped_svg_id(diagram_id, "arrowhead"))
-    );
-    out.checkpoint()?;
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
-        escape_attr_display(scoped_svg_id(diagram_id, "arrowend"))
-    );
-    out.checkpoint()?;
+fn write_c4_relation_arrows(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    [head, end]: [&str; 2],
+    fill: Option<&str>,
+) -> Result<()> {
+    for (id, ref_x, path) in [
+        (head, 9, "M 0 0 L 10 5 L 0 10 z"),
+        (end, 1, "M 10 0 L 0 5 L 10 10 z"),
+    ] {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}" refX="{ref_x}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="{path}""#,
+            escape_attr_display(scoped_svg_id(diagram_id, id))
+        );
+        if let Some(fill) = fill {
+            let _ = write!(out, r#" fill="{}""#, escape_attr_display(fill));
+        }
+        out.push_str("/></marker></defs>");
+        out.checkpoint()?;
+    }
+    Ok(())
+}
+
+fn write_c4_relation_defs(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    fill: Option<&str>,
+) -> Result<()> {
+    write_c4_relation_arrows(out, diagram_id, ["arrowhead", "arrowend"], fill)?;
     let _ = write!(
         out,
         r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
@@ -1231,33 +1248,34 @@ pub(crate) fn render_c4_diagram_svg_typed(
             }
         }
     }
-    write_c4_relation_defs(&mut out, diagram_id)?;
+    let classic_shoal = is_shoal && native.is_none();
+    let relationship_line = text_paint.relationship_line();
+    write_c4_relation_defs(
+        &mut out,
+        diagram_id,
+        classic_shoal.then_some(relationship_line),
+    )?;
 
     out.push_str("<g>");
     out.checkpoint()?;
     #[cfg(feature = "layout-shoal")]
     let mut relation_points = Vec::new();
     for (idx, rel) in layout.rels.iter().enumerate() {
-        let paint = text_paint
-            .relation_paint(idx)
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!(
-                    "c4: missing prepared relation paint {} -> {}",
-                    rel.from, rel.to
-                ),
-            })?;
-        let text_color = paint.text.as_str();
-        let stroke_color = paint.line.as_str();
-        let arrowhead = if native.is_some() {
-            format!("arrowhead-{idx}")
-        } else {
-            "arrowhead".to_owned()
-        };
-        let arrowend = if native.is_some() {
-            format!("arrowend-{idx}")
-        } else {
-            "arrowend".to_owned()
-        };
+        let (text_color, stroke_color) =
+            text_paint
+                .relation_paint(idx)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!(
+                        "c4: missing prepared relation paint {} -> {}",
+                        rel.from, rel.to
+                    ),
+                })?;
+        let custom_classic_color = classic_shoal && stroke_color != relationship_line;
+        let indexed = (native.is_some() || custom_classic_color)
+            .then(|| [format!("arrowhead-{idx}"), format!("arrowend-{idx}")]);
+        let [arrowhead, arrowend] = indexed.as_ref().map_or(["arrowhead", "arrowend"], |ids| {
+            ids.each_ref().map(String::as_str)
+        });
         if let Some(native) = native {
             let (head, end, fill) = match native.marker_style {
                 MarkerStyle::Stealth => (
@@ -1290,17 +1308,24 @@ pub(crate) fn render_c4_diagram_svg_typed(
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="{end_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{head}" fill="{}" stroke="{}"{stroke_geometry}/></marker><marker id="{}" refX="{start_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="{end}" fill="{}" stroke="{}"{stroke_geometry}/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
+                escape_attr_display(scoped_svg_id(diagram_id, arrowhead)),
                 escape_attr(fill),
                 escape_attr(stroke_color),
-                escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
+                escape_attr_display(scoped_svg_id(diagram_id, arrowend)),
                 escape_attr(fill),
                 escape_attr(stroke_color)
             );
             out.checkpoint()?;
+        } else if custom_classic_color {
+            write_c4_relation_arrows(
+                &mut out,
+                diagram_id,
+                [arrowhead, arrowend],
+                Some(stroke_color),
+            )?;
         }
-        let arrowhead_url = scoped_svg_url(diagram_id, &arrowhead);
-        let arrowend_url = scoped_svg_url(diagram_id, &arrowend);
+        let arrowhead_url = scoped_svg_url(diagram_id, arrowhead);
+        let arrowend_url = scoped_svg_url(diagram_id, arrowend);
         let offset_x = c4_relation_offset(rel.offset_x.as_ref());
         let offset_y = c4_relation_offset(rel.offset_y.as_ref());
         let connector_width = native.map_or(1.0, |theme| theme.connector_width);

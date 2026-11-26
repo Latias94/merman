@@ -15,7 +15,7 @@ use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, C4DiagramLayout, LayoutEdge, LayoutPoint};
+use crate::model::{Bounds, C4DiagramLayout, LayoutPoint};
 use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
 use merman_layout_shoal::{WidthPolicy, card_grid};
@@ -390,28 +390,9 @@ pub(crate) fn layout_c4_shoal(
         .zip(solved.edges.into_iter().zip(labels))
     {
         work.charge_adapter(edge.points.len())?;
-        let edge = LayoutEdge {
-            id,
-            from: rel.from.clone(),
-            to: rel.to.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points: edge
-                .points
-                .into_iter()
-                .map(|p| LayoutPoint { x: p.x, y: p.y })
-                .collect(),
-            label: edge.label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        };
-        let painted = routes.paint_with_scratch(
-            &edge,
+        let painted = routes.paint_points_with_scratch(
+            &id,
+            edge.points.into_iter().map(|p| (p.x, p.y)),
             Vec2::ZERO,
             stroke_outset,
             route_style,
@@ -430,7 +411,7 @@ pub(crate) fn layout_c4_shoal(
             .map(|(label, placed)| label.place(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
         geometry.push(C4ShoalRelation {
-            id: edge.id,
+            id,
             path: painted.path.d,
             points: painted.data_points,
             label,

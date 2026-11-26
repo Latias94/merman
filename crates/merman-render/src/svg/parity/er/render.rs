@@ -943,6 +943,10 @@ pub(crate) fn render_er_diagram_svg_model(
     };
     out.checkpoint()?;
     if options.debug.include_edges {
+        #[cfg(feature = "layout-shoal")]
+        let mut paint_scratch = crate::graph_layout::canonical::CanonicalPaintScratch::default();
+        let mut points_json = Vec::new();
+        let mut points_base64 = String::new();
         for e in &edges {
             let missing_section = missing_sections.contains(&e.id);
             if !uses_canonical_routes
@@ -960,6 +964,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 "edge-pattern-solid"
             };
             let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
+            let legacy_points;
             let (original_d, shifted) = 'path: {
                 #[cfg(feature = "layout-shoal")]
                 if let Some(routes) = canonical_routes {
@@ -970,6 +975,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         binding,
                         options.work_meter(),
                         &hand_drawn_seed,
+                        &mut paint_scratch,
                     )?;
                     content_bounds.min_x = content_bounds.min_x.min(painted.bounds.x0);
                     content_bounds.min_y = content_bounds.min_y.min(painted.bounds.y0);
@@ -977,19 +983,25 @@ pub(crate) fn render_er_diagram_svg_model(
                     content_bounds.max_y = content_bounds.max_y.max(painted.bounds.y1);
                     break 'path (painted.d, painted.points);
                 }
-                let shifted: Vec<_> = e
+                legacy_points = e
                     .points
                     .iter()
                     .map(|p| crate::model::LayoutPoint {
                         x: p.x + translate_x,
                         y: p.y + translate_y,
                     })
-                    .collect();
-                let d = er_edge_path_d(&shifted, rounded_layout, missing_section, native);
-                break 'path (d, shifted);
+                    .collect::<Vec<_>>();
+                let d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                break 'path (d, legacy_points.as_slice());
             };
-            let data_points = base64::engine::general_purpose::STANDARD
-                .encode(serde_json::to_vec(&shifted).unwrap_or_default());
+            points_json.clear();
+            points_json.reserve(128);
+            if serde_json::to_writer(&mut points_json, shifted).is_err() {
+                points_json.clear();
+            }
+            points_base64.clear();
+            base64::engine::general_purpose::STANDARD
+                .encode_string(&points_json, &mut points_base64);
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
 
@@ -1021,6 +1033,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
 
+            // The standard Base64 alphabet is safe in a quoted XML attribute.
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
@@ -1029,7 +1042,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 escape_xml(&line_classes),
                 escape_attr(&edge_style),
                 escape_xml(&edge_dom_id),
-                escape_xml(&data_points),
+                points_base64,
                 escape_xml(data_look)
             );
             let start_marker_id = e

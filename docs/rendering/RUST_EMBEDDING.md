@@ -257,11 +257,11 @@ A widened core dependency can have more parsers than a locally selected SVG or A
 
 For ordinary graph diagrams, a missing ELK loader falls back to Dagre when `layout-dagre` is compiled. If neither is available, an ELK request reports missing `layout-elk`. Mindmap uses its own registered fallback chain through Cytoscape and Dagre. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. The SVG and layout JSON operations report a typed missing-capability error for an unavailable or denied backend before measuring labels. Inspect the SVG render plan for the required and missing IDs.
 
-With `layout-shoal`, a Rust host that repeatedly lays out ungrouped graphs at natural width can
-clone an environment created with `SvgEnvironment::with_shoal_scratch_reuse`. The environment and
-its clones share one idle slot for up to 64 KiB of empty row storage. Output geometry,
-cancellation, and resource accounting still belong to each operation. Preview frames keep their
-own storage. Scratch reuse is off by default.
+With `layout-shoal`, a Rust host that repeatedly lays out flat or compound layered graphs can
+clone an environment created with `SvgEnvironment::with_shoal_scratch_reuse`. This applies to
+natural-width and `FitWidth` layouts. The environment and its clones share one idle slot for up
+to 64 KiB of empty row storage. Output geometry, cancellation, and resource accounting belong to
+each operation. Preview frames keep their own storage. Scratch reuse is off by default.
 
 ## Review presentation and host services
 

@@ -5,7 +5,7 @@ use super::{
     write_architecture_edge_id_attr,
 };
 use crate::architecture::{ArchitectureShoalGeometry, ArchitectureShoalText};
-use crate::graph_layout::canonical::CanonicalPaintedEdge;
+use crate::graph_layout::canonical::{CanonicalPaintScratch, CanonicalPaintedEdge};
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
 use crate::{Error, Result};
@@ -15,7 +15,7 @@ use std::borrow::Cow;
 
 pub(super) struct Shaft<'a> {
     pub(super) edge: &'a LayoutEdge,
-    pub(super) painted: CanonicalPaintedEdge,
+    pub(super) painted: CanonicalPaintedEdge<&'a [LayoutPoint]>,
 }
 
 impl<'a> Shaft<'a> {
@@ -25,6 +25,7 @@ impl<'a> Shaft<'a> {
         ordinal: usize,
         edge_style: Option<EdgeStyle>,
         work_meter: &crate::resources::OperationWorkMeter,
+        scratch: &'a mut CanonicalPaintScratch,
     ) -> Result<Self> {
         let edge = layout
             .edges
@@ -40,12 +41,13 @@ impl<'a> Shaft<'a> {
             Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
         };
         let stroke_outset = edge_style.map_or(0.0, |_| geometry.edge_stroke_outset);
-        let painted = geometry.routes.paint(
+        let painted = geometry.routes.paint_with_borrowed_points(
             edge,
             kurbo::Vec2::ZERO,
             stroke_outset,
             route_style,
             work_meter,
+            scratch,
         )?;
         Ok(Self { edge, painted })
     }
@@ -55,12 +57,18 @@ impl<'a> Shaft<'a> {
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         ordinal: usize,
+        points_json: &mut Vec<u8>,
+        points_base64: &mut String,
     ) -> Result<()> {
-        let points =
-            serde_json::to_vec(&self.painted.data_points).map_err(|error| Error::InvalidModel {
+        points_json.clear();
+        points_json.reserve(128);
+        serde_json::to_writer(&mut *points_json, self.painted.data_points).map_err(|error| {
+            Error::InvalidModel {
                 message: format!("Could not encode Architecture route: {error}"),
-            })?;
-        let points = base64::engine::general_purpose::STANDARD.encode(points);
+            }
+        })?;
+        points_base64.clear();
+        base64::engine::general_purpose::STANDARD.encode_string(points_json, points_base64);
         out.push_str(r#"<path d=""#);
         escape_attr_into(out, &self.painted.path.d);
         out.push_str(r#"" class="edge" id=""#);
@@ -74,7 +82,7 @@ impl<'a> Shaft<'a> {
         );
         out.push('"');
         super::super::write_geometry_attrs(out, "edge", &self.edge.id);
-        let _ = write!(out, r#" data-points="{points}""#);
+        let _ = write!(out, r#" data-points="{points_base64}""#);
         out.push_str("/>");
         Ok(())
     }

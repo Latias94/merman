@@ -292,6 +292,9 @@ pub struct NodeSpec {
     pub perpendicular_port_span: Option<f64>,
     /// Position of a left/right anchor measured from the top of the box.
     pub anchor_y: Option<f64>,
+    /// Allows automatic incoming ports on a compact circular terminal to use the top and
+    /// bottom faces in horizontal layouts.
+    pub split_incoming_ports: bool,
     /// Flow axis for which this rotatable box and its centered faces were measured.
     /// Responsive trials can transpose the box and its face spans for another local axis.
     pub flow_relative_axis: Option<Axis>,
@@ -317,6 +320,7 @@ impl NodeSpec {
             port_span: None,
             perpendicular_port_span: None,
             anchor_y: None,
+            split_incoming_ports: false,
             flow_relative_axis: None,
             seq,
             order_hint: None,

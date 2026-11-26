@@ -14,6 +14,8 @@ use crate::{
     TruncatedRoute,
 };
 
+const SNAP_EPS: f64 = 1e-9;
+
 #[derive(Clone, Copy)]
 struct Site {
     owner: usize,
@@ -27,6 +29,7 @@ struct Site {
     at: Point,
     lane: FaceLane,
     aligned_dist: Option<f64>,
+    straight: bool,
     scope: usize,
 }
 
@@ -219,6 +222,7 @@ impl Plan {
                     at: Point::default(),
                     lane: FaceLane::default(),
                     aligned_dist,
+                    straight: false,
                     scope: if inner { scope } else { h.parent[item] },
                 },
                 inner,
@@ -255,6 +259,7 @@ impl Plan {
                         at: Point::default(),
                         lane: FaceLane::default(),
                         aligned_dist: None,
+                        straight: false,
                         scope: h.parent[group],
                     },
                     true,
@@ -294,6 +299,142 @@ impl Plan {
         steps[incoming..].reverse();
         self.paths.push(steps);
         Ok(())
+    }
+
+    fn mark_straight_entries(
+        &mut self,
+        node_count: usize,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        let part = |slot: &Slot| self.scopes[slot.scope][slot.index];
+        let direction = |site: Site, end: End| normal(site.side).1 * if end.inner { -1 } else { 1 };
+        'paths: for path in &self.paths {
+            work.visit(1)?;
+            if path.len() < 2 {
+                continue;
+            }
+            let from = self.sites[part(&path[0]).from.site];
+            let to = self.sites[part(path.last().unwrap()).to.site];
+            let sign = normal(from.side).1;
+            if from.owner >= node_count
+                || to.owner >= node_count
+                || from.side.axis() != Axis::Vertical
+                || to.side != opposite(from.side)
+                || (from.at.x - to.at.x).abs() > SNAP_EPS
+                || (to.at.y - from.at.y) * sign as f64 <= 0.0
+            {
+                continue;
+            }
+            // The measured terminal slots and every intermediate contact must already
+            // admit the same column before a title can get credit for preserving it.
+            for slot in path {
+                work.visit(1)?;
+                let Part {
+                    from: start,
+                    to: end,
+                    ..
+                } = part(slot);
+                for (end, sign) in [(start, sign), (end, -sign)] {
+                    let site = self.sites[end.site];
+                    if site.side.axis() != Axis::Vertical
+                        || direction(site, end) != sign
+                        || (site.owner >= node_count
+                            && (site.preferred - from.at.x).abs() > SNAP_EPS)
+                    {
+                        continue 'paths;
+                    }
+                }
+            }
+            for slot in path {
+                work.visit(1)?;
+                let Part { from, to, .. } = part(slot);
+                for end in [from, to] {
+                    let site = &mut self.sites[end.site];
+                    if site.owner >= node_count && site.side == Side::Top {
+                        site.straight = true;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn site_order(sites: &[Site], work: &mut Work<'_>) -> LayoutResult<Vec<usize>> {
+    let mut indices = reserved(sites.len())?;
+    work.charge(sites.len())?;
+    indices.extend(0..sites.len());
+    work.sort(&mut indices, |&a, &b| {
+        let u = &sites[a];
+        let v = &sites[b];
+        (u.owner, u.side as u8)
+            .cmp(&(v.owner, v.side as u8))
+            .then_with(|| u.preferred.total_cmp(&v.preferred))
+            .then_with(|| u.tie_preferred.total_cmp(&v.tie_preferred))
+            .then(a.cmp(&b))
+    })?;
+    Ok(indices)
+}
+
+#[derive(Clone, Copy)]
+struct GroupSlots {
+    range: [f64; 2],
+    count: usize,
+    pitch: f64,
+    split: Option<(usize, f64, f64)>,
+}
+
+impl GroupSlots {
+    fn beside(self, gap: (f64, f64), preferred: impl Iterator<Item = f64>) -> Self {
+        let [lo, hi] = self.range;
+        let left_hi = gap.0.min(hi);
+        let right_lo = gap.1.max(lo);
+        let capacity = |available: f64| {
+            if available < 0.0 {
+                0
+            } else if self.pitch > 0.0 {
+                ((available / self.pitch).floor() as usize)
+                    .saturating_add(1)
+                    .min(self.count)
+            } else {
+                self.count
+            }
+        };
+        let left = capacity(left_hi - lo);
+        let right = capacity(hi - right_lo);
+        let middle = gap.0.midpoint(gap.1);
+        let want = preferred.filter(|&x| x < middle).count();
+        let split = if left == 0 && right == 0 {
+            if left_hi - lo >= hi - right_lo {
+                self.count
+            } else {
+                0
+            }
+        } else {
+            want.max(self.count.saturating_sub(right)).min(left)
+        };
+        Self {
+            split: Some((split, left_hi.max(lo), right_lo.min(hi))),
+            ..self
+        }
+    }
+
+    fn at(self, preferred: f64, rank: usize, last: f64) -> f64 {
+        let [lo, hi] = self.range;
+        let (lo, hi, count, rank) = match self.split {
+            Some((split, left_hi, _)) if rank < split => (lo, left_hi, split, rank),
+            Some((split, _, right_lo)) => (right_lo, hi, self.count - split, rank - split),
+            None => (lo, hi, self.count, rank),
+        };
+        let span = count.saturating_sub(1) as f64;
+        let pitch = self.pitch.min((hi - lo).max(0.0) / span.max(1.0));
+        let high = hi - (span - rank as f64) * pitch;
+        let low = if rank == 0 {
+            lo
+        } else {
+            (last + pitch).max(lo)
+        };
+        preferred.clamp(low.min(high), high)
     }
 }
 
@@ -387,20 +528,12 @@ impl Routing<'_> {
         Some((title.x - clear, title.x + title.width + clear))
     }
 
-    fn ports(&self, sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult<()> {
-        let mut indices = reserved(sites.len())?;
-        work.charge(sites.len())?;
-        indices.extend(0..sites.len());
-        work.charge_sort(indices.len())?;
-        indices.sort_unstable_by(|&a, &b| {
-            let u = &sites[a];
-            let v = &sites[b];
-            (u.owner, u.side as u8)
-                .cmp(&(v.owner, v.side as u8))
-                .then_with(|| u.preferred.total_cmp(&v.preferred))
-                .then_with(|| u.tie_preferred.total_cmp(&v.tie_preferred))
-                .then(a.cmp(&b))
-        });
+    fn ports(
+        &self,
+        indices: &mut [usize],
+        sites: &mut [Site],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
         let mut cursor = 0;
         while cursor < indices.len() {
             let first = sites[indices[cursor]];
@@ -499,46 +632,23 @@ impl Routing<'_> {
             let start = anchored_start.unwrap_or_else(|| {
                 (center - span * pitch / 2.0).clamp(lo, (hi - span * pitch).max(lo))
             });
-            let border_split = self.border_title_gap(first.owner, first.side, inner).map(
-                |(gap_left, gap_right)| {
-                    let left_hi = gap_left.min(hi);
-                    let right_lo = gap_right.max(lo);
-                    let port_pitch = self.options.spacing.port_pitch;
-                    let capacity = |available: f64| -> usize {
-                        if available < 0.0 {
-                            0
-                        } else if port_pitch > 0.0 {
-                            ((available / port_pitch).floor() as usize)
-                                .saturating_add(1)
-                                .min(count)
-                        } else {
-                            count
-                        }
-                    };
-                    let left_cap = capacity(left_hi - lo);
-                    let right_cap = capacity(hi - right_lo);
-                    let middle = gap_left.midpoint(gap_right);
-                    let mut left_want = 0usize;
-                    for &i in &indices[cursor..next] {
-                        if sites[i].offset.is_none() && sites[i].preferred < middle {
-                            left_want += 1;
-                        }
-                    }
-                    let split = if left_cap == 0 && right_cap == 0 {
-                        // Fallback when title spans the full face: pack onto the wider side.
-                        if left_hi - lo >= hi - right_lo {
-                            count
-                        } else {
-                            0
-                        }
-                    } else {
-                        left_want.max(count.saturating_sub(right_cap)).min(left_cap)
-                    };
-                    (split, left_hi, right_lo)
-                },
-            );
+            let mut group_slots = GroupSlots {
+                range: [lo, hi],
+                count,
+                pitch: self.options.spacing.port_pitch,
+                split: None,
+            };
+            if let Some(gap) = self.border_title_gap(first.owner, first.side, inner) {
+                work.visit(next - cursor)?;
+                group_slots = group_slots.beside(
+                    gap,
+                    indices[cursor..next].iter().filter_map(|&i| {
+                        let site = sites[i];
+                        site.offset.is_none().then_some(site.preferred)
+                    }),
+                );
+            }
             let mut rank = 0usize;
-            let mut batch_rank = 0.0;
             let mut last = lo - pitch;
             for (ordinal, &i) in indices[cursor..next].iter().enumerate() {
                 work.visit(1)?;
@@ -553,37 +663,11 @@ impl Routing<'_> {
                     at
                 } else {
                     let at = if first.owner >= self.hierarchy.node_count {
-                        let (batch_lo, batch_hi, batch_len, local_rank) =
-                            if let Some((split, left_hi, right_lo)) = border_split {
-                                if rank < split {
-                                    (lo, left_hi.max(lo), split, rank)
-                                } else {
-                                    if rank == split {
-                                        last = right_lo.min(hi) - self.options.spacing.port_pitch;
-                                    }
-                                    (right_lo.min(hi), hi, count - split, rank - split)
-                                }
-                            } else {
-                                (lo, hi, count, rank)
-                            };
-                        let batch_span = batch_len.saturating_sub(1) as f64;
-                        let batch_pitch = self
-                            .options
-                            .spacing
-                            .port_pitch
-                            .min((batch_hi - batch_lo).max(0.0) / batch_span.max(1.0));
-                        let high = batch_hi - (batch_span - local_rank as f64) * batch_pitch;
-                        let low = if local_rank == 0 {
-                            batch_lo
-                        } else {
-                            (last + batch_pitch).max(batch_lo)
-                        };
-                        site.preferred.clamp(low.min(high), high)
+                        group_slots.at(site.preferred, rank, last)
                     } else {
-                        start + batch_rank * pitch
+                        start + rank as f64 * pitch
                     };
                     rank += 1;
-                    batch_rank += 1.0;
                     last = at;
                     at
                 };
@@ -827,7 +911,6 @@ fn add_point(points: &mut Vec<RoutePoint>, mut next: RoutePoint) {
 /// Align transverse site coordinates that differ only by floating-point ULP noise
 /// (e.g., two nodes of different widths centered on the same grid track).
 fn snap_collinear_sites(sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult<()> {
-    const SNAP_EPS: f64 = 1e-9;
     for axis in [Axis::Vertical, Axis::Horizontal] {
         let mut indices = reserved(sites.len())?;
         work.charge(sites.len())?;
@@ -880,20 +963,26 @@ impl Gutters<'_> {
 
 fn adapt_auto_titles(
     graph: &Graph,
-    hierarchy: &Hierarchy,
     sites: &[Site],
+    indices: &[usize],
     metrics: Metrics,
     options: &Options,
     drawing: &mut LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    if !options.group_policy.adaptive_title_clearance {
-        return Ok(());
-    }
     let margin = metrics.margin();
     let clear = metrics.separation;
+    work.visit(indices.len())?;
+    let mut top_faces = indices
+        .chunk_by(|&a, &b| (sites[a].owner, sites[a].side) == (sites[b].owner, sites[b].side))
+        .filter(|face| sites[face[0]].side == Side::Top)
+        .peekable();
     for (group_id, (spec, geom)) in graph.groups.iter().zip(&mut drawing.groups).enumerate() {
         work.visit(1)?;
+        let owner = graph.nodes.len() + group_id;
+        let face = top_faces
+            .next_if(|face| sites[face[0]].owner == owner)
+            .unwrap_or_default();
         if spec.title_position != TitlePosition::TopAuto {
             continue;
         }
@@ -905,51 +994,77 @@ fn adapt_auto_titles(
         let right = (geom.rect.x + geom.rect.width - margin - title.width / 2.0).max(left);
         let center = geom.rect.center().x.clamp(left, right);
         let candidates = [left, right, center];
-        let mut scores = [(0usize, 0.0_f64); 3];
-        let owner = hierarchy.node_count + group_id;
-        let mut top_prefs = Vec::new();
-        for site in sites {
-            work.visit(1)?;
-            if site.owner != owner || site.side != Side::Top {
-                continue;
+        let mut scores = [(0usize, 0usize, 0.0_f64); 3];
+        let x0 = geom.rect.x;
+        let x1 = geom.rect.x + geom.rect.width;
+        let inset = options
+            .spacing
+            .corner_clearance
+            .max(clear)
+            .min((x1 - x0) / 2.0);
+        let slots = GroupSlots {
+            range: [x0 + inset, x1 - inset],
+            count: face.len(),
+            pitch: options.spacing.port_pitch,
+            split: None,
+        };
+        work.visit(face.len())?;
+        let seats = if face.iter().any(|&i| sites[i].straight) {
+            let preferred = || {
+                face.iter().filter_map(|&i| {
+                    let site = sites[i];
+                    site.offset.is_none().then_some(site.preferred)
+                })
+            };
+            for _ in 0..=candidates.len() {
+                work.visit(face.len())?;
             }
-            push(&mut top_prefs, (site.preferred, site.tie_preferred))?;
-        }
-        // Account for port_pitch spreading when multiple edges share the same preferred x
-        // (e.g., two parallel entries to the same service), so a title candidate does not pick
-        // a corner that squeezes the spread port into a border S-jog.
-        if !top_prefs.is_empty() {
-            work.charge_sort(top_prefs.len())?;
-            top_prefs
-                .sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
-            let border = options.spacing.corner_clearance.max(clear);
-            let lo = geom.rect.x + border.min(geom.rect.width / 2.0);
-            let hi = geom.rect.x + geom.rect.width - border.min(geom.rect.width / 2.0);
-            let span = top_prefs.len().saturating_sub(1) as f64;
-            let pitch = options
-                .spacing
-                .port_pitch
-                .min((hi - lo).max(0.0) / span.max(1.0));
-            let mut last = lo - pitch;
-            let half = title.width / 2.0 + clear;
-            for (rank, &(pref, _)) in top_prefs.iter().enumerate() {
-                work.visit(1)?;
-                let high = hi - (span - rank as f64) * pitch;
-                let at = pref.clamp((last + pitch).min(high), high);
-                last = at;
-                for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
-                    let shortfall = half - (at - candidate).abs();
-                    if shortfall > 0.0 {
-                        *hits += 1;
-                        *shift += shortfall;
-                    }
+            let movable = GroupSlots {
+                count: preferred().count(),
+                ..slots
+            };
+            Some(candidates.map(|x| {
+                let start = x - title.width / 2.0;
+                movable.beside((start - clear, start + title.width + clear), preferred())
+            }))
+        } else {
+            None
+        };
+        let mut natural = slots.range[0];
+        let mut last = [natural; 3];
+        let mut rank = 0;
+        let half = title.width / 2.0 + clear;
+        for (ordinal, &i) in face.iter().enumerate() {
+            work.visit(1)?;
+            let site = sites[i];
+            natural = slots.at(site.preferred, ordinal, natural);
+            for (index, (detours, hits, shift)) in scores.iter_mut().enumerate() {
+                if let Some(seats) = seats
+                    && site.offset.is_none()
+                {
+                    last[index] = seats[index].at(site.preferred, rank, last[index]);
+                    let lane_blocked = (site.preferred - candidates[index]).abs() + SNAP_EPS < half;
+                    *detours += usize::from(
+                        site.straight
+                            && (lane_blocked || (last[index] - site.preferred).abs() > SNAP_EPS),
+                    );
+                }
+                let shortfall = half - (natural - candidates[index]).abs();
+                if shortfall > 0.0 {
+                    *hits += 1;
+                    *shift += shortfall;
                 }
             }
+            rank += usize::from(site.offset.is_none());
         }
         let best = candidates
             .into_iter()
             .zip(scores)
-            .min_by(|(_, a), (_, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+            .min_by(|(_, a), (_, b)| {
+                a.0.cmp(&b.0)
+                    .then(a.1.cmp(&b.1))
+                    .then_with(|| a.2.total_cmp(&b.2))
+            })
             .expect("three title anchors")
             .0;
         geom.title_center = Some(Point { x: best, ..current });
@@ -984,15 +1099,37 @@ pub(crate) fn draw(
         }
         plan
     };
-    adapt_auto_titles(
-        graph,
-        hierarchy,
-        &plan.sites,
-        metrics,
-        options,
-        drawing,
-        work,
-    )?;
+    let mut indices = site_order(&plan.sites, work)?;
+    let mut group_start = 0;
+    if options.group_policy.adaptive_title_clearance {
+        work.visit(graph.groups.len())?;
+        if graph
+            .groups
+            .iter()
+            .any(|group| group.title_position == TitlePosition::TopAuto && group.title.is_some())
+        {
+            work.visit(indices.len().max(1).ilog2() as usize + 1)?;
+            group_start = indices.partition_point(|&i| plan.sites[i].owner < hierarchy.node_count);
+            Routing {
+                graph,
+                hierarchy,
+                drawing,
+                metrics,
+                options,
+            }
+            .ports(&mut indices[..group_start], &mut plan.sites, work)?;
+            plan.mark_straight_entries(hierarchy.node_count, work)?;
+            adapt_auto_titles(
+                graph,
+                &plan.sites,
+                &indices[group_start..],
+                metrics,
+                options,
+                drawing,
+                work,
+            )?;
+        }
+    }
     let context = Routing {
         graph,
         hierarchy,
@@ -1000,7 +1137,7 @@ pub(crate) fn draw(
         metrics,
         options,
     };
-    context.ports(&mut plan.sites, work)?;
+    context.ports(&mut indices[group_start..], &mut plan.sites, work)?;
     snap_collinear_sites(&mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
     let mut has_captions = false;

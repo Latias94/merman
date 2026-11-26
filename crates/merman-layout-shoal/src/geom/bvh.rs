@@ -1,9 +1,26 @@
 use super::Bounds;
 use crate::work::{LayoutResult, Work, push};
-use crate::{LayoutError, NoopWorkControl};
+use crate::{LayoutError, NoopWorkControl, WorkError};
 use std::ops::{ControlFlow, Range};
 
 const LEAF_SIZE: usize = 8;
+
+fn selection_work(len: usize) -> Result<usize, WorkError> {
+    // Above the last level with any splits, each level selects across all items.
+    // On that last level partition sizes differ by at most one; only the larger
+    // partitions split if the smaller ones already fit in a leaf.
+    let levels = (len / LEAF_SIZE).ilog2() as usize;
+    let partitions = 1 << levels;
+    let extra = len - partitions * LEAF_SIZE;
+    let last = if extra < partitions {
+        extra * (LEAF_SIZE + 1)
+    } else {
+        len
+    };
+    len.checked_mul(levels)
+        .and_then(|units| units.checked_add(last))
+        .ok_or(WorkError::ArithmeticOverflow)
+}
 
 /// Read-only index of bounds with inline items and nodes in preorder.
 #[derive(Debug, PartialEq)]
@@ -52,12 +69,15 @@ impl<T> Bvh<T> {
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
         let mut nodes = Vec::new();
-        if !items.is_empty() {
-            let estimate = items
-                .len()
+        let len = items.len();
+        if len > LEAF_SIZE {
+            work.charge(selection_work(len)?)?;
+        }
+        if len != 0 {
+            let estimate = len
                 .div_ceil(LEAF_SIZE)
                 .checked_mul(2)
-                .ok_or(crate::WorkError::ArithmeticOverflow)?;
+                .ok_or(WorkError::ArithmeticOverflow)?;
             nodes
                 .try_reserve(estimate)
                 .map_err(|_| LayoutError::AllocationLimit)?;
@@ -96,7 +116,7 @@ impl<T> Bvh<T> {
                 lo.midpoint(hi)
             };
             let half = items.len() / 2;
-            work.charge(items.len())?;
+            work.check()?;
             items.select_nth_unstable_by(half, |a, b| midpoint(a).total_cmp(&midpoint(b)));
             work.check()?;
             let (left, right) = items.split_at_mut(half);
@@ -142,5 +162,57 @@ impl<T> Bvh<T> {
             at += 1;
         }
         Ok(ControlFlow::Continue(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::WorkControl;
+
+    struct Budget(usize);
+
+    impl WorkControl for Budget {
+        fn check(&mut self) -> Result<(), WorkError> {
+            Ok(())
+        }
+
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.0 = self.0.checked_sub(units).ok_or(WorkError::Interrupted)?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn all_median_work_is_admitted_before_reading_bounds() {
+        let result = Bvh::build_with_work(
+            vec![(); 17],
+            |_| panic!("unadmitted build read its bounds"),
+            &mut Work::new(&mut Budget(17 + 9 - 1)),
+        );
+        assert_eq!(result, Err(WorkError::Interrupted.into()));
+    }
+
+    #[test]
+    fn an_uneven_tree_consumes_the_same_total_scan_and_selection_budget() {
+        fn expected(len: usize) -> usize {
+            if len <= LEAF_SIZE {
+                return len;
+            }
+            2 * len + expected(len / 2) + expected(len - len / 2)
+        }
+
+        let bounds = Bounds {
+            x: [0.0, 1.0],
+            y: [0.0, 1.0],
+        };
+        for len in (0..=2 * LEAF_SIZE * LEAF_SIZE).chain([511, 512, 513, 4097]) {
+            let mut meter = Budget(expected(len));
+            let mut work = Work::new(&mut meter);
+            let tree = Bvh::from_bounds(vec![bounds; len], &mut work).unwrap();
+            assert_eq!(tree.root_bounds(), (len > 0).then_some(bounds));
+            work.finish().unwrap();
+            assert_eq!(meter.0, 0, "item count {len}");
+        }
     }
 }

@@ -1,8 +1,8 @@
 use merman_layout_shoal::{
     Axis, Direction, EdgeSpec, Endpoint, Graph, GroupId, GroupSpec, Insets, LayoutError,
-    LayoutOutput, LayoutScratch, MarkerMetrics, NodeId, NodeSpec, Options, PackingPolicy,
-    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WidthPolicy, WorkControl, WorkError,
-    layout, layout_with_control,
+    LayoutGeometry, LayoutOutput, LayoutScratch, MarkerMetrics, NodeId, NodeSpec, Options,
+    PackingPolicy, PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WidthPolicy,
+    WorkControl, WorkError, layout, layout_geometry_with_control, layout_with_control,
 };
 
 fn size(width: f64, height: f64) -> Size {
@@ -606,6 +606,7 @@ struct Meter {
     used: usize,
     limit: Option<usize>,
     cancel_at: Option<usize>,
+    declined_comparisons: usize,
 }
 
 impl WorkControl for Meter {
@@ -623,6 +624,76 @@ impl WorkControl for Meter {
         }
         Ok(())
     }
+
+    fn try_charge_optional(&mut self, units: usize, _headroom: usize) -> Result<bool, WorkError> {
+        self.check()?;
+        assert_eq!(units, 0);
+        self.declined_comparisons += 1;
+        Ok(false)
+    }
+}
+
+#[test]
+fn width_trials_skip_unused_crossing_counts_without_changing_geometry() {
+    let mut graph = graph(16, size(48.0, 26.0));
+    graph.edges = (0..8)
+        .flat_map(|index| [edge(index, 8 + index), edge(index, 15 - index)])
+        .collect();
+    let mut options = Options::default();
+    options.width_policy = fit(220.0, false, true);
+    options.capture_node_ranks = true;
+    options.caps.max_ordered_compound_ports = 0;
+    let mut scratch = LayoutScratch::default();
+    for compound in [false, true] {
+        if compound {
+            let mut group = GroupSpec::new(0);
+            group.padding = Insets {
+                top: 20.0,
+                right: 20.0,
+                bottom: 20.0,
+                left: 20.0,
+            };
+            graph.groups.push(group);
+            for node in &mut graph.nodes[..8] {
+                node.parent = Some(GroupId(0));
+            }
+        }
+        let mut full_work = Meter::default();
+        let full = layout_with_control(&graph, &options, &mut scratch, &mut full_work).unwrap();
+        assert!(full.stats.routed_crossings > 0);
+        let mut geometry_work = Meter::default();
+        let geometry =
+            layout_geometry_with_control(&graph, &options, &mut scratch, &mut geometry_work)
+                .unwrap();
+        assert_eq!(geometry, LayoutGeometry::from(full));
+        assert!(geometry_work.used < full_work.used);
+    }
+}
+
+#[test]
+fn only_the_selected_compound_width_attempts_seam_relaxation() {
+    let mut graph = graph(4, size(70.0, 40.0));
+    graph.direction = Direction::Right;
+    graph.groups = [0, 1].map(GroupSpec::new).to_vec();
+    for (index, node) in graph.nodes.iter_mut().enumerate() {
+        node.parent = Some(GroupId((index / 2) as u32));
+    }
+    graph.edges = (0..3).map(|index| edge(index, index + 1)).collect();
+    let mut options = Options::default();
+    let mut scratch = LayoutScratch::default();
+    let mut first = Meter::default();
+    options.width_policy = fit(600.0, true, false);
+    let wide = layout_geometry_with_control(&graph, &options, &mut scratch, &mut first).unwrap();
+    assert_eq!(wide.border_stitches.len(), 2);
+    assert_eq!(first.declined_comparisons, 1);
+
+    let mut retry = Meter::default();
+    options.width_policy = fit(1.0, true, false);
+    let narrow = layout_geometry_with_control(&graph, &options, &mut scratch, &mut retry).unwrap();
+    assert_eq!(narrow.border_stitches.len(), 2);
+    assert!(narrow.bounds.width < wide.bounds.width);
+    assert!(retry.used > first.used);
+    assert_eq!(retry.declined_comparisons, 1);
 }
 
 #[test]

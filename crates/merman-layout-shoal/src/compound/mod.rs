@@ -14,7 +14,10 @@ mod tests;
 
 use crate::flat::Expanded;
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{Endpoint, Graph, LayoutDetail, LayoutOutput, Options, RoutingStyle, Side, WorkError};
+use crate::{
+    Endpoint, Graph, LayoutDetail, LayoutOutput, Options, RoutingStyle, Side, WidthPolicy,
+    WorkError,
+};
 use hierarchy::Hierarchy;
 use solve::Frame;
 
@@ -199,8 +202,20 @@ pub(super) fn run(
         }
         first_output
     };
-    if hierarchy.lanes.is_none() {
-        seam_relax::relax(&first, &mut output, work)?;
+    if options.width_policy == WidthPolicy::Natural {
+        relax_seams(graph, options, &mut output, work)?;
     }
     Ok(output)
+}
+
+pub(super) fn relax_seams(
+    graph: &Graph,
+    options: &Options,
+    output: &mut LayoutOutput,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    if graph.lane_order.is_empty() {
+        seam_relax::relax(graph, options, output, work)?;
+    }
+    Ok(())
 }

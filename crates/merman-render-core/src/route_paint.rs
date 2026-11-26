@@ -208,11 +208,13 @@ fn move_step(style: RouteStyle, knots: &mut [RoutePoint], markers: (Marker, Mark
 }
 
 fn steps(
+    out: &mut Vec<RoutePoint>,
     style: RouteStyle,
     route: &[RoutePoint],
     markers: (Option<Marker>, Option<Marker>),
-) -> Vec<RoutePoint> {
-    let mut out = Vec::with_capacity(route.len());
+) {
+    out.clear();
+    out.reserve(route.len());
     out.push(route[0]);
     for (i, pair) in route.windows(2).enumerate() {
         let [a, b] = [pair[0], pair[1]];
@@ -235,12 +237,11 @@ fn steps(
                     (RoutePoint { x, ..a }, RoutePoint { x, ..b })
                 }
             };
-            push_knot(&mut out, p);
-            push_knot(&mut out, q);
+            push_knot(out, p);
+            push_knot(out, q);
         }
-        push_knot(&mut out, b);
+        push_knot(out, b);
     }
-    out
 }
 
 fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64) -> CubicBez {
@@ -279,7 +280,7 @@ struct Pen {
 impl Pen {
     fn new(p: Point, compact_lines: bool, measure_length: bool) -> Self {
         Self {
-            d: format!("M{},{}", p.x, p.y),
+            d: String::new(),
             bounds: Bounds {
                 min_x: p.x,
                 min_y: p.y,
@@ -293,6 +294,25 @@ impl Pen {
             length: measure_length.then_some(0.0),
             detour_budget: clearance::DetourBudget::default(),
         }
+    }
+
+    fn start_path(&mut self, points: usize, style: RouteStyle) {
+        if !self.d.is_empty() {
+            return;
+        }
+        // Size the first allocation from the simplified section, with room for controls on
+        // curves. Later sections and unusually long coordinates can grow it as they are emitted.
+        const MAX_INITIAL_BYTES: usize = 384;
+        let bytes_per_point = match style {
+            RouteStyle::Curved | RouteStyle::Rounded(_) => 48,
+            _ => 24,
+        };
+        let capacity = points
+            .checked_mul(bytes_per_point)
+            .unwrap_or(MAX_INITIAL_BYTES)
+            .min(MAX_INITIAL_BYTES);
+        let _ = self.d.try_reserve_exact(capacity);
+        let _ = write!(self.d, "M{},{}", self.at.x, self.at.y);
     }
 
     fn include(&mut self, p: Point) {
@@ -699,10 +719,6 @@ pub fn build_svg_path_with_scratch(
         measure_length && !matches!(style, RouteStyle::Rounded(_)),
     );
     let RoutePaintScratch { knots, body, .. } = scratch;
-    knots.clear();
-    body.clear();
-    knots.reserve_exact(points.len());
-    body.reserve_exact(points.len());
     let mut begin = 0;
     for finish in stitches
         .iter()
@@ -745,6 +761,7 @@ fn draw_section(
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<(), RoutePaintError> {
     route.clear();
+    route.reserve(points.len());
     for &point in points {
         if !point.x.is_finite() || !point.y.is_finite() {
             return Err(RoutePaintError::InvalidGeometry);
@@ -767,7 +784,8 @@ fn draw_section(
             (markers.0.unwrap_or_default(), markers.1.unwrap_or_default()),
         );
         if has_offset_leg(route) {
-            *route = steps(style, route, markers);
+            steps(body, style, route, markers);
+            std::mem::swap(route, body);
         }
     }
 
@@ -787,12 +805,14 @@ fn draw_section(
             if gap < start.lead().max(end.lead()) {
                 return Err(RoutePaintError::InvalidGeometry);
             }
+            pen.start_path(2, RouteStyle::Linear);
             pen.line(end.shaft_end());
             return Ok(());
         }
     }
 
     body.clear();
+    body.reserve(route.len());
     push_knot(
         body,
         terminals.0.map_or(route[0], |start| RoutePoint {
@@ -814,12 +834,14 @@ fn draw_section(
             .1
             .map_or(route[last], |end| at(end.lead_end(), route[last].axis)),
     );
-    pen.line(position(body[0]));
     // With different endpoint sides, inserting a normal shaft can create an offset leg even
     // on a previously orthogonal route. Step renderers must still emit only axis-aligned legs.
     if style.stepped() && has_offset_leg(body) {
-        *body = steps(style, body, (None, None));
+        steps(route, style, body, (None, None));
+        std::mem::swap(route, body);
     }
+    pen.start_path(body.len(), style);
+    pen.line(position(body[0]));
     draw_body(pen, body, style, terminals, clearance)?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
@@ -1506,6 +1528,59 @@ mod tests {
     }
 
     #[test]
+    fn straight_path_capacity_depends_on_simplified_points() {
+        let paint = |points: &[RoutePoint]| {
+            build_svg_path(
+                points,
+                (Side::Right, Side::Left),
+                RouteStyle::Curved,
+                (Marker::default(), Marker::default()),
+                CurveTerminals::Smooth,
+                &[],
+                None,
+            )
+            .unwrap()
+            .d
+        };
+        let points: Vec<_> = (0..4096).map(|x| h(f64::from(x), 0.0)).collect();
+        let short = paint(&[points[0], points[4095]]);
+        let long = paint(&points);
+        assert_eq!(long, "M0,0L4095,0");
+        assert_eq!(long.capacity(), short.capacity());
+    }
+
+    #[test]
+    fn step_expansion_reuses_the_knot_and_body_buffers() {
+        let points = [h(0.0, 0.0), h(100.0, 80.0)];
+        let paint = |scratch: &mut RoutePaintScratch| {
+            build_svg_path_with_scratch(
+                &points,
+                (Side::Right, Side::Top),
+                RouteStyle::StepBefore,
+                (marker(3.0, 12.0), marker(4.0, 12.0)),
+                CurveTerminals::Fixed,
+                &[],
+                None,
+                scratch,
+            )
+            .unwrap()
+        };
+        let buffers = |scratch: &RoutePaintScratch| {
+            let mut pointers = [scratch.knots.as_ptr(), scratch.body.as_ptr()];
+            pointers.sort_unstable();
+            pointers
+        };
+        let mut scratch = RoutePaintScratch::default();
+        let expected = paint(&mut scratch);
+        paint(&mut scratch);
+        let pointers = buffers(&scratch);
+        let actual = paint(&mut scratch);
+        assert_eq!(actual.d, expected.d);
+        assert_eq!(actual.bounds, expected.bounds);
+        assert_eq!(buffers(&scratch), pointers);
+    }
+
+    #[test]
     fn every_curve_passes_through_the_shared_group_port_in_one_subpath() {
         let route = [
             h(0., 0.),
@@ -1554,6 +1629,7 @@ mod tests {
     #[test]
     fn tight_bounds_use_bezier_extrema_not_control_points() {
         let mut p = Pen::new(Point::new(-1.0, 0.0), false, false);
+        p.start_path(2, RouteStyle::Curved);
         p.cubic(
             Point::new(-1.0, 10.0),
             Point::new(3.0, 10.0),

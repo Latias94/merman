@@ -363,6 +363,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
     let mut effect_outsets = EffectOutsets::default();
+    let mut edge_scratch = StateEdgePathScratch::default();
     // Unthemed/Clear output keeps Mermaid's single hierarchy. Body effects split the entire
     // hierarchy, rather than just each local root, to keep nested depth behind outer labels.
     let passes: &[_] = if ctx.has_node_shadows {
@@ -380,9 +381,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             timing,
             &mut detail,
             &mut effect_outsets,
+            &mut edge_scratch,
             pass,
         )?;
     }
+    drop(edge_scratch);
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
@@ -611,6 +614,7 @@ fn render_state_root(
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
     effect_outsets: &mut EffectOutsets,
+    edge_scratch: &mut StateEdgePathScratch,
     pass: StateRenderPass,
 ) -> Result<()> {
     details.root_calls += 1;
@@ -796,7 +800,7 @@ fn render_state_root(
                     edge,
                     origin_x,
                     origin_y,
-                    options.work_meter(),
+                    edge_scratch,
                     #[cfg(feature = "layout-shoal")]
                     &mut details.canonical_edge_bounds,
                 )?;
@@ -896,6 +900,7 @@ fn render_state_root(
             timing,
             details,
             effect_outsets,
+            edge_scratch,
             pass,
         )?;
         out.checkpoint()?;

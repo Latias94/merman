@@ -1,9 +1,43 @@
 use super::*;
 use crate::{GroupGeometry, Rect, TitlePosition, WidthPolicy};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 const SMALL_BLOCK: i64 = 64;
 const MAX_COORD: i64 = i32::MAX as i64;
+
+type GridMap<K, V> = HashMap<K, V, BuildHasherDefault<GridHasher>>;
+
+#[derive(Default)]
+struct GridHasher(u64);
+
+impl Hasher for GridHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let (words, tail) = bytes.as_chunks::<8>();
+        for &word in words {
+            self.write_u64(u64::from_ne_bytes(word));
+        }
+        for &byte in tail {
+            self.write_u64(u64::from(byte));
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = self
+            .0
+            .wrapping_add(value)
+            .wrapping_mul(0xf135_7aea_2e62_a9c5);
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.write_u64(value as u64);
+    }
+
+    fn finish(&self) -> u64 {
+        // As in FxHash, move high bits into the bucket index after mixing integer keys.
+        self.0.rotate_left(26)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct Block {
@@ -44,10 +78,11 @@ impl Block {
 
 #[derive(Default)]
 struct Occupied {
+    // Vectors retain insertion order for collision scans; the maps are only lookup indexes.
     items: Vec<usize>,
-    cells: HashMap<[i64; 2], usize>,
+    cells: GridMap<[i64; 2], usize>,
     large: Vec<usize>,
-    strides: HashMap<(Block, usize, i64), i64>,
+    strides: GridMap<(Block, usize, i64), i64>,
 }
 
 impl Occupied {
@@ -599,9 +634,9 @@ pub(super) fn place(
             title_center: group.title.map(|title| {
                 let margin = metrics.margin();
                 let x = match group.title_position {
-                    TitlePosition::TopAuto
-                    | TitlePosition::TopLeft
-                    | TitlePosition::BottomLeft => x + margin + title.width / 2.0,
+                    TitlePosition::TopAuto | TitlePosition::TopLeft | TitlePosition::BottomLeft => {
+                        x + margin + title.width / 2.0
+                    }
                     TitlePosition::TopRight | TitlePosition::BottomRight => {
                         right - margin - title.width / 2.0
                     }

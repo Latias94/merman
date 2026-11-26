@@ -83,6 +83,18 @@ fn svg_rect_outline(node: Node<'_, '_>) -> BezPath {
     )
 }
 
+fn resolve_marker<'a, 'input>(edge: Node<'a, 'input>, url: &str) -> Node<'a, 'input> {
+    let id = url
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    edge.document()
+        .descendants()
+        .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id))
+        .unwrap()
+}
+
 fn touches_outline(outline: &BezPath, point: Point) -> bool {
     outline
         .segments()
@@ -108,16 +120,7 @@ fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool)
     };
     assert!(direction.x.abs() < 1e-8 || direction.y.abs() < 1e-8);
     let tip = if let Some(marker) = marker {
-        let id = marker
-            .strip_prefix("url(#")
-            .unwrap()
-            .strip_suffix(')')
-            .unwrap();
-        let marker = edge
-            .document()
-            .descendants()
-            .find(|node| node.attribute("id") == Some(id))
-            .unwrap();
+        let marker = resolve_marker(edge, marker);
         assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
         let stroke_outset = marker
             .first_element_child()
@@ -130,6 +133,57 @@ fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool)
     assert!(
         tip.distance(contact) < 1e-8,
         "{name} tip {tip:?} differs from contact {contact:?}"
+    );
+}
+
+#[test]
+fn c4_shoal_dark_theme_keeps_arrow_fill_in_sync_with_each_relation() {
+    let source = r#"---
+config:
+  layout: shoal
+  theme: dark
+---
+C4Context
+Enterprise_Boundary(group, "Boundary") {
+  System(a, "First")
+  System(b, "Second")
+}
+System(c, "Third")
+BiRel(a, b, "Uses")
+Rel_Back(b, c, "Returns")
+UpdateRelStyle(b, c, $textColor="gold", $lineColor="orange")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    for (idx, stroke, text, markers) in [
+        (0, "lightgrey", "#ccc", &["marker-start", "marker-end"][..]),
+        (1, "orange", "gold", &["marker-start"][..]),
+    ] {
+        let id = format!("c4-rel-{idx}");
+        let edge = element(&doc, "edge", &id);
+        assert_eq!(edge.attribute("stroke"), Some(stroke));
+        for marker in markers {
+            let path = resolve_marker(edge, edge.attribute(*marker).unwrap())
+                .first_element_child()
+                .unwrap();
+            assert_eq!(path.attribute("fill"), Some(stroke));
+        }
+        assert_eq!(
+            relation_label(&doc, &id)
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("fill"),
+            Some(text)
+        );
+    }
+    let title = doc
+        .descendants()
+        .find(|node| node.has_tag_name("tspan") && node.text() == Some("Boundary"))
+        .unwrap();
+    assert_eq!(
+        title.parent_element().unwrap().attribute("fill"),
+        Some("#ccc")
     );
 }
 

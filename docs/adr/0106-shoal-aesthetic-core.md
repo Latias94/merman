@@ -88,9 +88,16 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
 - Compound groups reserve perpendicular wall inset at least equal to `corner_clearance` whenever an unpinned outer corridor hugs a group boundary, eliminating forced border-stitch Z-bends when `cluster_padding < corner_clearance`.
 - Grid Core and Card-Grid align perpendicular group-border crossings to the inner terminal's outward lead corridor (avoiding hook overshoots), respect `node.anchor_y` when preserving straight aligned direct connections against off-axis or occluded peers, and adapt `TitlePosition::TopAuto` across `[TopLeft, TopRight, TopCenter]` before routing.
 
-- Adjacent bands containing only real nodes in an unlabelled flat DAG can certify their gap
-  independently. The Flowchart painter builds the obstacle inventory and index on the first
-  fallback query.
+- Adjacent real-node bands in a flat DAG can certify their gap independently. For an unlabelled
+  edge, the final label boxes can narrow or revoke that certificate after label placement and rank
+  compaction. The Flowchart painter builds the obstacle inventory and index on the first fallback
+  query.
+- Classic Shoal Flowchart and State HTML labels measure the same horizontal padding they paint.
+  Curved diamond departures can try inline placement when the exposed shoulder provides room,
+  subject to the final checks against the contour, adjacent strokes, and marker boxes.
+- Compact State end circles can accept incoming LR and RL routes on their top and bottom faces.
+  Parallel occurrences can share a symmetric slot sequence across the two endpoint faces. Authored
+  port hints and occupied neighboring slots constrain both adjustments.
 - Architecture and C4 share obstacle queries, group stitches, and the gutter fallback. The layered
   and Architecture kernels share the orthogonal comb geometry and its corner guards. After the
   ordinary routes are complete, an Architecture scope with a single unlabelled fan on opposing
@@ -99,13 +106,22 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   marker. It replaces the whole fan together.
 - Grid captions share a drawing-wide obstacle scene. C4 wraps long relationship captions, seats
   technology rows using measured text extents, and clips the relationship shaft behind its caption
-  when they overlap.
+  when they overlap. Classic Shoal relation markers use the resolved shaft ink, including
+  per-relation overrides. Dark Mermaid palettes supply the default relation and boundary-title ink.
 - Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
   Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
   refinement shares projected segments and route bounds, and the visibility router combines
   cached scope events with the current terminal rays.
-- For Neo masking, the canonical Flowchart and Class painters measure lines and cubics in memory as
-  they emit them, with the same integration tolerance and float conversion as SVG path parsing.
+- Width fitting uses the same geometric solve as natural layout and relaxes compound seams on the
+  selected drawing. The opt-in render environment can retain up to 64 KiB of empty rank and
+  edge-chain rows across independent flat and compound solves. Preview frames own their editor
+  state separately.
+- Grid auto titles score corner and center anchors against the actual border slots, favoring a
+  clear column through a group when its terminals are already aligned. Curved compound routes can
+  move automatic group contacts into peer order when the move preserves clearance and reduces
+  crossings.
+- For Neo masking, the canonical Flowchart, Class, and State painters measure lines and cubics in
+  memory as they emit them, with the same integration tolerance and float conversion as SVG path parsing.
   Rounded paths and rewritten paths retain the SVG-based length calculation where needed.
 - The native SVG painter applies fill-aware ink and casings to Flowchart and Agentflow edges when
   it can resolve solid fills and the applicable stroke style. Swimlane compacts complete bands and

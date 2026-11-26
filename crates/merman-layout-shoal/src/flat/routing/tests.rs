@@ -8,6 +8,205 @@ const STYLES: [RoutingStyle; 3] = [
     RoutingStyle::Polyline,
 ];
 
+fn circle_arrivals(direction: Direction) -> Graph {
+    let mut graph = Graph {
+        direction,
+        nodes: (0..4)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 24.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        edges: [(0, 1), (0, 2), (1, 3), (2, 3)]
+            .into_iter()
+            .map(|(from, to)| {
+                let mut edge = EdgeSpec::new(NodeId(from).into(), NodeId(to).into());
+                edge.end_marker = MarkerMetrics {
+                    length: 10.0,
+                    width: 12.0,
+                };
+                edge.set_marker_runways([0.0, 16.0]);
+                edge
+            })
+            .collect(),
+        ..Graph::default()
+    };
+    let circle = &mut graph.nodes[3];
+    circle.size = Size {
+        width: 14.0,
+        height: 14.0,
+    };
+    circle.contour = ShapeContourHint::Ellipse;
+    circle.port_span = Some(14.0 * 0.55);
+    circle.perpendicular_port_span = circle.port_span;
+    graph
+}
+
+#[test]
+fn small_terminal_circle_uses_upper_and_lower_arrivals_with_full_marker_leads() {
+    for direction in [Direction::Right, Direction::Left] {
+        let mut graph = circle_arrivals(direction);
+        graph.nodes[3].split_incoming_ports = true;
+        let drawing = crate::layout(&graph, &Options::default()).unwrap();
+        let circle = drawing.nodes[3];
+        let center = circle.center();
+        for (edge, source) in drawing.edges[2..].iter().zip(&drawing.nodes[1..3]) {
+            let (face, y, sign) = if source.center().y < center.y {
+                (Side::Top, circle.y, -1.0)
+            } else {
+                (Side::Bottom, circle.y + circle.height, 1.0)
+            };
+            assert_eq!(edge.ports.1, face, "{direction:?}: {edge:?}");
+            let [.., lead, target] = edge.points.as_slice() else {
+                panic!("expected a normal marker lead");
+            };
+            assert_eq!((lead.x, target.x, target.y), (center.x, center.x, y));
+            assert!(sign * (lead.y - y) >= 16.0);
+        }
+        assert_ne!(drawing.edges[2].ports.1, drawing.edges[3].ports.1);
+    }
+}
+
+#[test]
+fn terminal_arrival_hint_respects_fixed_ports_and_nonterminal_ellipse_geometry() {
+    let options = Options::default();
+    let mut graph = circle_arrivals(Direction::Right);
+    let ordinary = crate::layout(&graph, &options).unwrap();
+    assert!(
+        ordinary.edges[2..]
+            .iter()
+            .any(|edge| edge.ports.1 == Side::Left)
+    );
+
+    graph.nodes[3].split_incoming_ports = true;
+    graph.edges[2].target_port = PortSideHint::FixedOffset {
+        side: Side::Left,
+        offset: -2.0,
+    };
+    let drawing = crate::layout(&graph, &options).unwrap();
+    let contact = drawing.edges[2].points.last().unwrap();
+    assert_eq!(drawing.edges[2].ports.1, Side::Left);
+    assert_eq!(contact.y, drawing.nodes[3].center().y - 2.0);
+    assert_eq!(drawing.edges[3].ports.1, Side::Bottom);
+
+    for (direction, diameter) in [(Direction::Down, 14.0), (Direction::Right, 40.0)] {
+        let mut graph = circle_arrivals(direction);
+        graph.nodes[3].size = Size {
+            width: diameter,
+            height: diameter,
+        };
+        let before = crate::layout(&graph, &options).unwrap();
+        graph.nodes[3].split_incoming_ports = true;
+        let after = crate::layout(&graph, &options).unwrap();
+        assert_eq!(before.edges, after.edges);
+    }
+}
+
+#[test]
+fn parallel_and_reverse_occurrences_share_symmetric_slots_with_or_without_dummies() {
+    let mut graph = Graph {
+        nodes: (0..2)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 40.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        edges: [(0, 1), (1, 0), (0, 1), (0, 1), (0, 1)]
+            .into_iter()
+            .map(|(a, b)| EdgeSpec::new(NodeId(a).into(), NodeId(b).into()))
+            .collect(),
+        ..Graph::default()
+    };
+    for direction in [Direction::Down, Direction::Right] {
+        graph.direction = direction;
+        for cap in [Options::default().caps.max_dummies, 2, 0] {
+            let mut options = Options::default();
+            options.caps.max_dummies = cap;
+            let drawing = crate::layout(&graph, &options).unwrap();
+            assert_eq!(drawing.stats.reversed_edges, 1);
+            let cross = |x, y| if direction == Direction::Down { x } else { y };
+            let mut slots = Vec::new();
+            for (spec, route) in graph.edges.iter().zip(&drawing.edges) {
+                let [first, .., last] = route.points.as_slice() else {
+                    panic!("missing contacts")
+                };
+                let (a, b) = if spec.source == NodeId(0).into() {
+                    (first, last)
+                } else {
+                    (last, first)
+                };
+                let top = drawing.nodes[0].center();
+                let bottom = drawing.nodes[1].center();
+                let offset = cross(a.x, a.y) - cross(top.x, top.y);
+                assert_eq!(offset, cross(b.x, b.y) - cross(bottom.x, bottom.y));
+                slots.push(offset);
+            }
+            slots.sort_by(f64::total_cmp);
+            assert_eq!(
+                slots,
+                [-8.0, -4.0, 0.0, 4.0, 8.0],
+                "{direction:?}, cap {cap}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_parallel_pair_reuses_its_contiguous_port_run_on_a_shared_face() {
+    let graph = Graph {
+        nodes: (0..3)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 24.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        edges: [(0, 1), (0, 1), (0, 1), (0, 1), (1, 0), (0, 2)]
+            .into_iter()
+            .map(|(a, b)| EdgeSpec::new(NodeId(a).into(), NodeId(b).into()))
+            .collect(),
+        ..Graph::default()
+    };
+    let drawing = crate::layout(&graph, &Options::default()).unwrap();
+    let contact = |route: &EdgeGeometry, rev| {
+        let (a, b) = (
+            route.points.first().unwrap().x,
+            route.points.last().unwrap().x,
+        );
+        if rev { [b, a] } else { [a, b] }
+    };
+    let mut slots: Vec<_> = drawing.edges[..5]
+        .iter()
+        .enumerate()
+        .map(|(edge, route)| contact(route, edge == 4))
+        .collect();
+    slots.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    let other = drawing.edges[5].points[0].x;
+    assert!(
+        slots[4][0] < other,
+        "the neighboring port keeps its own run"
+    );
+    for pair in slots.windows(2) {
+        assert!(pair[1][0] > pair[0][0]);
+        assert!((pair[1][0] - pair[0][0] - 2.0).abs() < 1e-8);
+        assert!((pair[1][1] - pair[0][1] - 2.0).abs() < 1e-8);
+    }
+}
+
 #[test]
 fn a_shared_face_keeps_the_deepest_measured_marker_runway() {
     let mut spec = EdgeSpec::new(NodeId(0).into(), NodeId(1).into());
@@ -809,7 +1008,7 @@ fn a_dummy_band_cannot_certify_routes_through_or_along_its_gap() {
 }
 
 #[test]
-fn labels_placed_after_routing_prevent_clearance_for_other_edges_too() {
+fn labels_in_the_previous_gap_leave_an_unlabelled_sweep_certified() {
     let mut scene = Scene::new(
         &[20.; 3],
         &[&[0], &[1], &[2]],
@@ -824,22 +1023,154 @@ fn labels_placed_after_routing_prevent_clearance_for_other_edges_too() {
     let drawing = crate::layout(&scene.graph, &scene.options).unwrap();
     assert_eq!(drawing.stats.dummy_nodes, 0, "the label must stay inline");
     assert!(drawing.edges[0].label_center.is_some());
-    assert!(
-        drawing
-            .edges
-            .iter()
-            .all(|edge| edge.corridor_clearance == 0.)
-    );
+    assert_eq!(drawing.edges[0].corridor_clearance, 0.0);
+    assert!(drawing.edges[1].corridor_clearance > 2.0);
 
     scene.graph.edges[0].label = None;
     scene.graph.edges[0].end_label = Some(size);
     let drawing = crate::layout(&scene.graph, &scene.options).unwrap();
     assert!(drawing.edges[0].end_label_center.is_some());
+    assert_eq!(drawing.edges[0].corridor_clearance, 0.0);
+    assert!(drawing.edges[1].corridor_clearance > 2.0);
+}
+
+#[test]
+fn a_direct_fallback_box_can_reduce_the_clearance_of_an_earlier_gap() {
+    let mut graph = Graph {
+        nodes: (0..6)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 40.0,
+                        height: 22.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        edges: [(0, 1), (1, 3), (0, 2), (2, 4), (3, 5), (4, 5), (0, 5)]
+            .into_iter()
+            .map(|(a, b)| EdgeSpec::new(NodeId(a).into(), NodeId(b).into()))
+            .collect(),
+        ..Graph::default()
+    };
+    let mut options = Options {
+        compact_ranks: false,
+        ..Options::default()
+    };
+    options.caps.max_dummies = 0;
+    options.spacing.rank = 24.0;
+    options.spacing.node = 30.0;
+    let before = crate::layout(&graph, &options).unwrap();
+    assert!(before.edges[0].corridor_clearance > 2.0);
+    let size = Size {
+        width: 24.0,
+        height: 64.0,
+    };
+    graph.edges[6].label = Some(size);
+    let after = crate::layout(&graph, &options).unwrap();
+    assert_eq!(after.stats.direct_fallback_edges, 1);
+    let route = &after.edges[0];
+    assert_eq!(route.points, before.edges[0].points);
+    let [start, .., end] = route.points.as_slice() else {
+        panic!("missing contacts")
+    };
+    let label = after.edges[6].label_center.unwrap();
+    let margin = label.y - size.height * 0.5 - end.y;
+    assert_eq!(margin, 2.0);
+    assert!(start.x.min(end.x) < label.x + size.width * 0.5);
+    assert!(label.x - size.width * 0.5 < start.x.max(end.x));
+    assert!(route.corridor_clearance > 0.0 && route.corridor_clearance < margin);
+}
+
+#[test]
+fn a_terminal_label_can_limit_a_different_gap_from_its_terminal_rank() {
+    let mut scene = Scene::new(
+        &[20.0; 4],
+        &[&[0], &[1], &[2], &[3]],
+        &[&[0, 1], &[1, 2], &[2, 3], &[0, 3]],
+        &[0.0; 4],
+    );
+    scene.graph.direction = Direction::Right;
+    let physical_size = Size {
+        width: 10.0,
+        height: 24.0,
+    };
+    let fallback = &mut scene.graph.edges[3];
+    fallback.start_label = Some(physical_size);
+    fallback.end_label = Some(physical_size);
+    for kind in 0..2 {
+        let mut drawing = scene.draw();
+        assert_eq!(drawing.edges[3].1.corridor_clearance, 0.0);
+        let route = &drawing.edges[1].1;
+        assert!(route.corridor_clearance > 2.0);
+        let [first, .., last] = route.points.as_slice() else {
+            panic!("missing contacts")
+        };
+        // The physical height is the canonical cross extent. This box's near edge
+        // clears the shaft by half a pixel, inside the original node-only radius.
+        let near = Point {
+            x: first.x + 12.5,
+            y: first.y.midpoint(last.y),
+        };
+        let far = Point { x: 300.0, ..near };
+        let mut centers = [Some(far); 2];
+        centers[kind] = Some(near);
+        let edge = &mut drawing.edges[3].1;
+        [edge.start_label_center, edge.end_label_center] = centers;
+        certify_final_clearance(
+            &mut drawing,
+            &scene.graph,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap();
+        assert!(drawing.edges[0].1.corridor_clearance > 2.0);
+        let narrowed = drawing.edges[1].1.corridor_clearance;
+        assert!(
+            narrowed > 0.0 && narrowed < 0.5,
+            "label kind {kind}: {narrowed}"
+        );
+    }
+}
+
+#[test]
+fn independently_packed_tiles_and_compound_stitches_defer_clearance() {
+    let mut graph = Scene::new(
+        &[20.0; 3],
+        &[&[0], &[1], &[2]],
+        &[&[0, 1], &[1, 2]],
+        &[0.0; 3],
+    )
+    .graph;
+    let options = Options::default();
+    let flat = crate::layout(&graph, &options).unwrap();
+    assert!(flat.edges.iter().all(|edge| edge.corridor_clearance > 2.0));
+
+    graph.nodes.push(NodeSpec::new(graph.nodes[0].size, 3));
+    let packed = crate::layout(&graph, &options).unwrap();
+    assert_eq!(packed.stats.components, 2);
     assert!(
-        drawing
+        packed
             .edges
             .iter()
-            .all(|edge| edge.corridor_clearance == 0.)
+            .all(|edge| edge.corridor_clearance == 0.0)
+    );
+
+    graph.nodes.pop();
+    let mut group = crate::GroupSpec::new(0);
+    group.title = Some(Size {
+        width: 40.0,
+        height: 16.0,
+    });
+    graph.groups.push(group);
+    graph.nodes[0].parent = Some(crate::GroupId(0));
+    let compound = crate::layout(&graph, &options).unwrap();
+    assert!(!compound.border_stitches.is_empty());
+    assert!(
+        compound
+            .edges
+            .iter()
+            .all(|edge| edge.corridor_clearance == 0.0)
     );
 }
 

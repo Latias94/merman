@@ -1,6 +1,9 @@
 use super::*;
 #[cfg(feature = "layout-shoal")]
-use crate::graph_layout::{canonical::CanonicalPaintedEdge, route_paint::RouteStyle};
+use crate::graph_layout::{
+    canonical::{CanonicalPaintScratch, CanonicalPaintedEdge},
+    route_paint::RouteStyle,
+};
 
 #[derive(Debug, Clone, Copy)]
 struct StateEdgeBoundaryNode {
@@ -552,7 +555,7 @@ fn state_edge_stroke_outset(ctx: &StateRenderCtx<'_>) -> f64 {
 
 #[cfg(feature = "layout-shoal")]
 fn state_canonical_edge_bounds(
-    geometry: &CanonicalPaintedEdge,
+    geometry: &CanonicalPaintedEdge<&[crate::model::LayoutPoint]>,
     rough_d: Option<&str>,
     stroke_outset: f64,
 ) -> kurbo::Rect {
@@ -580,6 +583,15 @@ fn state_canonical_edge_bounds(
     bounds
 }
 
+#[derive(Default)]
+pub(super) struct StateEdgePathScratch {
+    #[cfg(feature = "layout-shoal")]
+    canonical: CanonicalPaintScratch,
+    json: Vec<u8>,
+    base64: String,
+    style: String,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn write_state_edge_path(
     out: &mut impl SvgOutput,
@@ -591,20 +603,31 @@ fn write_state_edge_path(
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
-    work_meter: &crate::resources::OperationWorkMeter,
+    scratch: &mut StateEdgePathScratch,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     if !ctx.uses_elk_adapter_dom && !ctx.uses_canonical_routes() && le.points.len() < 2 {
         return Ok(());
     }
 
+    let work_meter = ctx.work_meter;
+    let look = state_data_look(ctx);
     #[cfg(feature = "layout-shoal")]
-    let canonical = ctx
-        .canonical_routes
-        .map(|routes| {
+    let canonical = match ctx.canonical_routes {
+        Some(routes) => {
+            if look == "neo" {
+                scratch.canonical.route.measure_length();
+            }
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx);
-            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved, work_meter)?;
+            let geometry = routes.paint_with_borrowed_points(
+                le,
+                -origin,
+                outset,
+                RouteStyle::Curved,
+                work_meter,
+                &mut scratch.canonical,
+            )?;
             let rough_d = if state_effective_look(ctx) == "handDrawn" {
                 work_meter.charge(geometry.path.d.len().max(1))?;
                 Some(super::super::canonical_rough::constrained_rough_edge_path(
@@ -619,9 +642,10 @@ fn write_state_edge_path(
             let bounds =
                 state_canonical_edge_bounds(&geometry, rough_d.as_deref(), outset) + origin;
             *canonical_bounds = Some(canonical_bounds.map_or(bounds, |cur| cur.union(bounds)));
-            Ok::<_, Error>((geometry, rough_d))
-        })
-        .transpose()?;
+            Some((geometry, rough_d))
+        }
+        None => None,
+    };
 
     let legacy;
     let (base_d, paint_d, points) = 'geometry: {
@@ -631,35 +655,54 @@ fn write_state_edge_path(
             break 'geometry (
                 path_d,
                 rough_d.as_deref().unwrap_or(path_d),
-                &geometry.data_points,
+                geometry.data_points,
             );
         }
         legacy = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
         let path_d = legacy.rendered_d.as_str();
-        break 'geometry (path_d, path_d, &legacy.data_points);
+        break 'geometry (path_d, path_d, legacy.data_points.as_slice());
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
     let rendered_d = hopped_d.unwrap_or(paint_d);
-    let data_points = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(points).unwrap_or_default());
-    let mut original_style = String::new();
-    if state_data_look(ctx) == "neo"
-        && let Some(length) = super::super::svg_path_length_from_d(base_d)
-    {
-        super::super::edge_path::write_neo_edge_mask(
-            &mut original_style,
-            length,
-            None,
-            arrow_type_end,
-            classes
-                .split_whitespace()
-                .any(|class| class == "edge-pattern-dashed"),
-            false,
-        );
+    scratch.json.clear();
+    scratch.json.reserve(128);
+    if serde_json::to_writer(&mut scratch.json, points).is_err() {
+        scratch.json.clear();
+    }
+    scratch.base64.clear();
+    base64::engine::general_purpose::STANDARD.encode_string(&scratch.json, &mut scratch.base64);
+    let original_style = &mut scratch.style;
+    original_style.clear();
+    if look == "neo" {
+        #[cfg(feature = "layout-shoal")]
+        let length = if ctx.canonical_routes.is_some() {
+            scratch
+                .canonical
+                .route
+                .measured_length()
+                .map(|length| f64::from(length as f32))
+                .filter(|length| length.is_finite())
+        } else {
+            None
+        };
+        #[cfg(not(feature = "layout-shoal"))]
+        let length: Option<f64> = None;
+        if let Some(length) = length.or_else(|| super::super::svg_path_length_from_d(base_d)) {
+            super::super::edge_path::write_neo_edge_mask(
+                original_style,
+                length,
+                None,
+                arrow_type_end,
+                classes
+                    .split_whitespace()
+                    .any(|class| class == "edge-pattern-dashed"),
+                false,
+            );
+        }
     }
     original_style.push_str("fill:none;;;fill:none");
     let style = if let Some(path) = hopped_d {
-        super::super::line_hops::rewrite_style_after_line_hop(&original_style, path, work_meter)?
+        super::super::line_hops::rewrite_style_after_line_hop(original_style, path, work_meter)?
     } else {
         std::borrow::Cow::Borrowed(original_style.as_str())
     };
@@ -671,8 +714,8 @@ fn write_state_edge_path(
         escape_xml_display(classes),
         escape_xml_display(&style),
         escape_xml_display(edge_id),
-        data_points,
-        escape_xml_display(state_data_look(ctx))
+        scratch.base64,
+        escape_xml_display(look)
     );
     if let Some(marker_end) = marker_end {
         let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
@@ -688,7 +731,7 @@ pub(super) fn render_state_edge_path(
     edge: &StateSvgEdge,
     origin_x: f64,
     origin_y: f64,
-    work_meter: &crate::resources::OperationWorkMeter,
+    scratch: &mut StateEdgePathScratch,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     let mut classes = if ctx.uses_elk_adapter_dom
@@ -738,7 +781,7 @@ pub(super) fn render_state_edge_path(
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,
-        work_meter,
+        scratch,
         #[cfg(feature = "layout-shoal")]
         canonical_bounds,
     )
@@ -764,23 +807,38 @@ pub(super) fn render_state_edge_label(
         )
     }
 
-    fn edge_label_div_style(label_w: f64, prefix: &str, background: &str) -> String {
+    fn edge_label_div_style(
+        label_w: f64,
+        prefix: &str,
+        inset_backdrop: Option<(f64, &str)>,
+    ) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
         let max_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
-        if label_w >= max_width - 1e-3 {
+        if let Some((inset, background)) = inset_backdrop {
+            let insets = 2.0 * inset;
+            let white_space = if label_w - insets >= max_width - 1e-3 {
+                "break-spaces"
+            } else {
+                "nowrap"
+            };
             format!(
-                "{}{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                "{prefix}background-color: {background}; display: flex; justify-content: center; white-space: {white_space}; line-height: 1.5; max-width: {max_width}px; text-align: center; width: calc(100% - {insets}px); box-sizing: content-box; padding-inline: {inset}px;",
+                max_width = fmt_display(max_width),
+                insets = fmt_display(insets),
+                inset = fmt_display(inset),
+            )
+        } else if label_w >= max_width - 1e-3 {
+            format!(
+                "{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
                 prefix,
-                background,
                 fmt_display(max_width),
                 fmt_display(max_width),
             )
         } else {
             format!(
-                "{}{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                "{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
                 prefix,
-                background,
                 fmt_display(max_width),
             )
         }
@@ -826,7 +884,7 @@ pub(super) fn render_state_edge_label(
         uses_native_background: bool,
         label_style: &str,
         label_div_prefix: &str,
-        html_background_style: &str,
+        html_inset_backdrop: Option<(f64, &str)>,
         fallback_background_fill: Option<&str>,
         svg_background_style: &str,
     ) {
@@ -861,7 +919,7 @@ pub(super) fn render_state_edge_label(
                 escape_attr(&edge_label_div_style(
                     w,
                     label_div_prefix,
-                    html_background_style,
+                    html_inset_backdrop,
                 )),
                 span_style_attr,
                 state_edge_label_html(label_text)
@@ -907,7 +965,6 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    let empty_edge_label_style = edge_label_div_style(0.0, "", "");
     let label_text = if ctx.uses_elk_adapter_dom {
         crate::text::mermaid_html_breaks_to_newlines(&edge.label)
     } else {
@@ -922,7 +979,7 @@ pub(super) fn render_state_edge_label(
             out,
             &edge.id,
             ctx.html_labels,
-            empty_edge_label_style.as_str(),
+            &edge_label_div_style(0.0, "", None),
             "",
         );
         return Ok(());
@@ -958,6 +1015,19 @@ pub(super) fn render_state_edge_label(
     };
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
+    let html_inset_backdrop =
+        if ctx.html_labels && ctx.uses_canonical_routes() && w > 0.0 && h > 0.0 {
+            let inset = ctx.style_plan.shoal_html_edge_label_inset();
+            (inset > 0.0).then_some((
+                inset,
+                ctx.style_plan
+                    .compatibility()
+                    .edge_label_background
+                    .as_str(),
+            ))
+        } else {
+            None
+        };
 
     let _ = write!(
         out,
@@ -1019,7 +1089,7 @@ pub(super) fn render_state_edge_label(
         native_background.is_some(),
         &adaptive_label_style,
         "",
-        "",
+        html_inset_backdrop,
         None,
         "",
     );
@@ -1030,6 +1100,75 @@ pub(super) fn render_state_edge_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn shoal_mermaid_transition_label_inset_matches_layout_and_keeps_empty_container() {
+        for theme in ["default", "dark"] {
+            let source = format!(
+                "---\nconfig:\n  layout: shoal\n  theme: {theme}\n  htmlLabels: true\n---\n\
+                 stateDiagram-v2\n  direction LR\n  A --> B: {}\n\
+                   B --> C: A long explanation with several words that should wrap across multiple lines\n\
+                   C --> D",
+                "i".repeat(42)
+            );
+            let parsed = merman_core::MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let artifact = crate::family::prepare(
+                parsed.presentation(),
+                &crate::LayoutOptions::default(),
+                session,
+            )
+            .unwrap();
+            let layout = artifact.layout_json().unwrap();
+            let svg = artifact
+                .render_svg(&Default::default(), &Default::default())
+                .unwrap();
+            let doc = crate::xml_dom::Document::parse(svg.svg()).unwrap();
+            let labels = layout["layout"]["StateDiagramV2"]["edges"]
+                .as_array()
+                .unwrap();
+            for (id, wrapping) in [
+                ("edge0", "nowrap"),
+                ("edge1", "break-spaces"),
+                ("edge2", ""),
+            ] {
+                let box_node = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("foreignObject")
+                            && node.parent_element().unwrap().attribute("data-id") == Some(id)
+                    })
+                    .unwrap();
+                let style = box_node
+                    .first_element_child()
+                    .unwrap()
+                    .attribute("style")
+                    .unwrap();
+                if wrapping.is_empty() {
+                    assert_eq!(box_node.attribute("width"), Some("0"));
+                    assert_eq!(box_node.attribute("height"), Some("0"));
+                    assert!(!style.contains("padding-inline"));
+                    continue;
+                }
+                let label = labels.iter().find(|edge| edge["id"] == id).unwrap();
+                let width = label["label"]["width"].as_f64().unwrap();
+                assert!(width > 200.0 && width <= 208.0, "{theme} {id} {width}");
+                assert!(
+                    (width - box_node.attribute("width").unwrap().parse::<f64>().unwrap()).abs()
+                        < 1e-9
+                );
+                assert!(style.contains("padding-inline: 4px;"));
+                assert!(style.contains("background-color:"));
+                assert!(style.contains(&format!("white-space: {wrapping};")));
+            }
+        }
+    }
 
     #[test]
     fn state_rounded_end_marker_offset_moves_only_the_terminal_point() {

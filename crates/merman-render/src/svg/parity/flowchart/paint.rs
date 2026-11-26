@@ -242,6 +242,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
         native: prepared_theme.native.as_ref(),
+        container_label_layers: std::cell::OnceCell::new(),
         palette,
         hand_drawn_seed,
         work_meter: options.work_meter(),

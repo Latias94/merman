@@ -5,8 +5,9 @@ mod clearance;
 use super::{Component, Drawing, canonical_size, contour_inset};
 use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{
-    Axis, Direction, EdgeSpec, Graph, KnotKind, Options, Point, RoutePoint, RoutingStyle, Side,
-    Size, Spacing, sweep_handle_fraction,
+    Axis, Direction, EdgeSpec, Graph, KnotKind, MarkerMetrics, NodeSpec, Options, Point,
+    PortSideHint, RoutePoint, RoutingStyle, ShapeContourHint, Side, Size, Spacing,
+    sweep_handle_fraction,
 };
 use clearance::{Bounds, Clearance, Scene};
 
@@ -23,6 +24,9 @@ pub(super) struct InlineLabel {
 pub(super) struct GapPolicy<'a> {
     pub(super) spacing: Spacing,
     pub(super) restored: &'a [u32],
+    pub(super) nodes: &'a [NodeSpec],
+    pub(super) reversed: &'a [bool],
+    pub(super) routing: RoutingStyle,
 }
 
 fn label_padding(spacing: Spacing) -> f64 {
@@ -38,16 +42,38 @@ fn marker_lengths(edge: &EdgeSpec) -> [f64; 2] {
 }
 
 impl GapPolicy<'_> {
-    pub(super) fn admits(&self, size: Size, edge: &EdgeSpec, direction: Direction) -> bool {
+    pub(super) fn admits(
+        &self,
+        size: Size,
+        edge: &EdgeSpec,
+        direction: Direction,
+        edge_index: usize,
+        from: u32,
+    ) -> bool {
         let [start, end] = marker_lengths(edge);
         let depth = canonical_size(direction, size).height;
-        // Use the unexpanded gap and budget for markers on the rank faces. The placed
-        // routes still need clearance checks against actual contacts and neighboring ink.
-        size.width > 0.0
-            && size.height > 0.0
-            && size.width <= 120.0
-            && size.height <= (self.spacing.rank * 0.75).min(30.0)
-            && depth + 2.0 * along_label_padding(self.spacing) + start + end < self.spacing.rank
+        if size.width <= 0.0
+            || size.height <= 0.0
+            || size.width > 120.0
+            || size.height > (self.spacing.rank * 0.75).min(30.0)
+        {
+            return false;
+        }
+        if depth + 2.0 * along_label_padding(self.spacing) + start + end < self.spacing.rank {
+            return true;
+        }
+        // A diamond shoulder can give a curved departure room inside its measured box.
+        // Admit the attempt when the label alone fits the gap. Placement still checks the
+        // actual contour, marker boxes, neighboring ink, and fallback label tier.
+        depth < self.spacing.rank
+            && self.routing == RoutingStyle::Curved
+            && !self.reversed[edge_index]
+            && edge.start_marker == MarkerMetrics::default()
+            && edge.source_port == PortSideHint::Auto
+            && matches!(
+                self.nodes[from as usize].contour,
+                ShapeContourHint::Diamond | ShapeContourHint::OffsetDiamond { .. }
+            )
     }
 }
 

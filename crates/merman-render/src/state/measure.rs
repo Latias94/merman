@@ -6,6 +6,16 @@ use crate::graph_layout::ir::Direction;
 use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 
+impl super::StateStylePlan {
+    pub(crate) fn shoal_html_edge_label_inset(&self) -> f64 {
+        if self.uses_structured_typography() {
+            0.0
+        } else {
+            4.0
+        }
+    }
+}
+
 pub(super) fn edge_label_metrics(
     edge_id: &str,
     label: &str,

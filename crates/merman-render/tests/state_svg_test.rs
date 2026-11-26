@@ -59,6 +59,73 @@ fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge
     assert!((bottom("outer") - bottom("inner")).abs() < 1e-6);
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_horizontal_state_transitions_arrive_on_opposite_faces_of_one_end() {
+    for direction in ["LR", "RL"] {
+        let svg = render_state_svg_from_text(&format!(
+            "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\ndirection {direction}\n\
+             [*] --> A\nA --> B\nA --> C\nB --> [*]\nC --> [*]\n"
+        ));
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let end = doc
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("root_end"))
+            .unwrap();
+        let center: svgtypes::Transform = end.attribute("transform").unwrap().parse().unwrap();
+        let mut contacts = ["edge3", "edge4"].map(|id| {
+            let points = state_edge_data_points(&svg, id);
+            let [.., lead, contact] = points.as_slice() else {
+                panic!("expected a terminal lead for {id}");
+            };
+            assert!((contact.x - center.e).abs() < 1e-6, "{direction} {id}");
+            assert!((lead.x - contact.x).abs() < 1e-6, "{direction} {id}");
+            assert!((lead.y - center.f).abs() > (contact.y - center.f).abs());
+            contact.y - center.f
+        });
+        contacts.sort_by(f64::total_cmp);
+        assert!((contacts[0] + 7.0).abs() < 1e-6, "{direction} {contacts:?}");
+        assert!((contacts[1] - 7.0).abs() < 1e-6, "{direction} {contacts:?}");
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_neo_mask_matches_the_emitted_centerline_length() {
+    use kurbo::{BezPath, PathEl, Shape};
+    use merman_render_core::route_types::SVG_LENGTH_ACCURACY;
+
+    let svg = render_state_svg_from_text(
+        "---\nconfig:\n  layout: shoal\n  look: neo\n---\nstateDiagram-v2\n\
+         direction LR\n[*] --> A\nA --> B\nA --> C\nB --> [*]\nC --> [*]\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let mut curved = false;
+    for edge in doc
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-et") == Some("edge"))
+    {
+        let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+        curved |= path
+            .elements()
+            .iter()
+            .any(|element| matches!(element, PathEl::CurveTo(..)));
+        let length = f64::from(path.perimeter(SVG_LENGTH_ACCURACY) as f32);
+        let mask_length: f64 = edge
+            .attribute("style")
+            .unwrap()
+            .strip_prefix("stroke-dasharray: 0 0 ")
+            .unwrap()
+            .split_once(" 0;")
+            .unwrap()
+            .0
+            .parse()
+            .unwrap();
+        assert_eq!(mask_length, length);
+    }
+    assert!(curved);
+}
+
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
 fn classic_engine() -> MermaidEngine {
     MermaidEngine::new().with_site_config(

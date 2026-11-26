@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 const MAX_IDLE_ROW_BYTES: usize = 64 * 1024;
 
-/// One idle workspace for independent, flat Shoal solves.
+/// One idle workspace for independent Shoal layered solves.
 #[derive(Default)]
 pub(crate) struct ShoalScratchPool {
     idle: Mutex<Option<LayoutScratch>>,
@@ -39,6 +39,56 @@ mod tests {
         EdgeSpec, Graph, LayoutError, NodeId, NodeSpec, NoopWorkControl, Options, Size,
         WorkControl, WorkError, layout_geometry_with_control,
     };
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn compound_fit_width_reuses_rows_and_reports_the_same_adaptation() {
+        use crate::environment::RenderEnvironment;
+        use crate::{LayoutAdaptation, LayoutOptions, family};
+        use merman_core::{MermaidEngine, ParseOptions};
+
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\n\
+            subgraph G[Group]\nA --> B --> C\nend\nC --> D --> E\n";
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let options = LayoutOptions::headless_svg_defaults()
+            .with_adaptation(LayoutAdaptation::FitWidth)
+            .with_container_size(240.0, 600.0);
+        let render = |environment: &RenderEnvironment| {
+            family::prepare(&parsed, &options, environment.begin_session().unwrap())
+                .unwrap()
+                .render_svg(&Default::default(), &Default::default())
+                .unwrap()
+                .into_completion()
+        };
+        let cold = render(&RenderEnvironment::deterministic());
+        let environment = RenderEnvironment::deterministic().with_shoal_scratch_reuse();
+        let first = render(&environment);
+        let pool = environment
+            .begin_session()
+            .unwrap()
+            .shoal_scratch()
+            .unwrap();
+        let retained = || {
+            pool.idle
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map_or(0, LayoutScratch::retained_bytes)
+        };
+        assert!((1..=MAX_IDLE_ROW_BYTES).contains(&retained()));
+        let second = render(&environment);
+        assert!((1..=MAX_IDLE_ROW_BYTES).contains(&retained()));
+        let adaptation = cold.layout_adaptation().unwrap();
+        assert_eq!(adaptation.requested_width(), 240.0);
+        for output in [first, second] {
+            assert_eq!(output.layout_adaptation(), Some(adaptation));
+            assert_eq!(output.output(), cold.output());
+        }
+    }
 
     #[test]
     fn independent_solves_can_overlap_and_cancelled_storage_is_dropped() {

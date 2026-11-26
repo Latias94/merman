@@ -81,6 +81,85 @@ fn four_faces_form_a_grid_and_keep_straight_routes() {
 }
 
 #[test]
+fn automatic_top_title_keeps_the_center_entry_straight_between_two_fans() {
+    let mut title = group(0, None);
+    title.title = Some(Size {
+        width: 40.0,
+        height: 20.0,
+    });
+    title.title_position = crate::TitlePosition::TopAuto;
+    title.padding = crate::Insets {
+        left: 8.0,
+        right: 8.0,
+        top: 22.0,
+        bottom: 8.0,
+    };
+    let mut graph = Graph {
+        direction: Direction::Right,
+        nodes: (0..6)
+            .map(|id| {
+                let mut item = node(id, (id < 3).then_some(0));
+                item.size = Size {
+                    width: 16.0,
+                    height: 36.0,
+                };
+                item
+            })
+            .collect(),
+        groups: vec![title],
+        ..Default::default()
+    };
+    for (from, to) in [(4, 1), (3, 0), (5, 2), (3, 0), (5, 2)] {
+        let mut branch = edge(from, to, Side::Bottom, Side::Top);
+        branch.source_port = PortSideHint::FixedOffset {
+            side: Side::Bottom,
+            offset: 0.0,
+        };
+        graph.edges.push(branch);
+    }
+    let alignments = [
+        (0, 1, Axis::Horizontal),
+        (1, 2, Axis::Horizontal),
+        (3, 4, Axis::Horizontal),
+        (4, 5, Axis::Horizontal),
+        (3, 0, Axis::Vertical),
+        (4, 1, Axis::Vertical),
+        (5, 2, Axis::Vertical),
+    ]
+    .map(|(first, next, axis)| Alignment {
+        first: NodeId(first),
+        next: NodeId(next),
+        axis,
+    });
+    let options = Options {
+        bus_routing: false,
+        ..Default::default()
+    };
+    let solved = layout_with_control(&graph, &alignments, &options, &mut NoopWorkControl).unwrap();
+    let x = solved.nodes[1].center().x;
+    let route = &solved.edges[0].points;
+    assert!(route.iter().all(|knot| knot.x == x), "{route:?}");
+    assert!(route.windows(2).all(|pair| pair[0].y < pair[1].y));
+    let stitch = solved
+        .border_stitches
+        .iter()
+        .find(|stitch| stitch.edge == crate::EdgeId(0))
+        .unwrap();
+    assert_eq!(
+        (stitch.side, route[stitch.point].y),
+        (Side::Top, solved.groups[0].rect.y)
+    );
+    let title_left = solved.groups[0].title_center.unwrap().x - 20.0;
+    assert!(title_left - x >= options.spacing.edge);
+
+    graph.groups[0].title_position = crate::TitlePosition::TopCenter;
+    let centered =
+        layout_with_control(&graph, &alignments, &options, &mut NoopWorkControl).unwrap();
+    assert_eq!(centered.groups[0].title_center.unwrap().x, x);
+    assert!(centered.edges[0].points.iter().any(|knot| knot.x != x));
+}
+
+#[test]
 fn declared_rows_and_columns_take_precedence_over_conflicting_wires() {
     let graph = Graph {
         direction: Direction::Right,

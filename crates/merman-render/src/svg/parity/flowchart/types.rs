@@ -92,6 +92,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         &'a crate::flowchart::FlowchartCompatibilityBinding,
     pub(in crate::svg::parity::flowchart) native:
         Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
+    pub(in crate::svg::parity::flowchart) container_label_layers:
+        std::cell::OnceCell<super::render::edge_label::ContainerLabelLayers>,
     pub(in crate::svg::parity::flowchart) palette: super::agentflow::ContainerPalette<'a>,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,

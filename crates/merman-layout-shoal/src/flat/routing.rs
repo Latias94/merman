@@ -3,10 +3,13 @@
 mod compact;
 pub(super) mod decision;
 mod exterior;
+mod label_clearance;
+mod parallel;
 
 pub(super) use compact::compact_ranks;
 use exterior::SidePort;
 pub(super) use exterior::side_docking_allowed;
+pub(super) use label_clearance::certify_final_clearance;
 
 use super::{
     Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size, contour_inset,
@@ -183,6 +186,7 @@ pub(super) struct RoutingScratch {
     delta: Vec<i64>,
     rooms: Vec<Option<(f64, f64)>>,
     ids: Vec<usize>,
+    pub(super) needs_label_clearance: bool,
 }
 
 impl RoutingScratch {
@@ -222,8 +226,7 @@ fn bands(
             let kind = g.kind[vertex];
             band.has_node |= kind == Kind::Node;
             band.has_compound_seam |= matches!(kind, Kind::StartPort | Kind::EndPort)
-                || (kind == Kind::Node
-                    && c.nodes.get(vertex).is_some_and(|node| node.group_proxy));
+                || (kind == Kind::Node && c.nodes.get(vertex).is_some_and(|node| node.group_proxy));
             retained |= kind != Kind::Dummy || g.keep[vertex];
             band.inserted_label_tier |= inserted_between_nodes && kind == Kind::Label;
         }
@@ -240,6 +243,7 @@ struct RankedComponent<'a> {
     expanded: &'a Expanded,
     orientation: &'a Orientation,
     side_ports: &'a [[Option<SidePort>; 2]],
+    direct_offsets: &'a [[f64; 2]],
 }
 
 fn collect_pieces(
@@ -1338,15 +1342,6 @@ fn face_separation(
     {
         return Ok(false);
     }
-    // Inline and terminal labels may appear after routing, with no final box in a band yet.
-    work.visit(graph.edges.len())?;
-    if graph
-        .edges
-        .iter()
-        .any(|edge| edge.label.is_some() || edge.start_label.is_some() || edge.end_label.is_some())
-    {
-        return Ok(false);
-    }
     for (layer, &row) in g.layers.iter().zip(index) {
         work.visit(1)?;
         let Some(band) = bands.get_mut(row) else {
@@ -1412,13 +1407,13 @@ fn sweep_clearance_margin(
     (runway + (along * 0.25).min(reach)).min(separation * 0.5) * 0.99
 }
 
-fn direct_port(rect: Rect, hint: PortSideHint, dir: Direction, side: Side) -> f64 {
+fn direct_port(rect: Rect, hint: PortSideHint, dir: Direction, side: Side, slot: f64) -> f64 {
     let offset = match super::to_canonical_port(dir, hint) {
         PortSideHint::FixedOffset {
             side: fixed,
             offset,
         } if fixed == side => offset,
-        _ => 0.0,
+        _ => slot,
     };
     (rect.center().x + offset).clamp(rect.x, rect.x + rect.width)
 }
@@ -1438,6 +1433,7 @@ pub(super) fn route(
         expanded: g,
         orientation,
         side_ports: &[],
+        direct_offsets: &[],
     };
     route_ranked(
         ranked,
@@ -1459,7 +1455,7 @@ pub(super) fn route_with_label_gaps(
     x: &[f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
-    let side_ports = exterior::attach_exterior_ports(g, c, orientation, graph, options, x, work)?;
+    let side_ports = exterior::attach_side_ports(g, c, orientation, graph, options, x, work)?;
     g.spine_ports.resolve(
         [&mut g.target_offset, &mut g.source_offset],
         &options.spacing,
@@ -1470,12 +1466,14 @@ pub(super) fn route_with_label_gaps(
         },
         work,
     )?;
+    let direct_offsets = parallel::balance(g, c, graph, options, x, &side_ports, work)?;
     let mut scratch = std::mem::take(&mut g.routing_scratch);
     let ranked = RankedComponent {
         component: c,
         expanded: g,
         orientation,
         side_ports: &side_ports,
+        direct_offsets: &direct_offsets,
     };
     let result = route_ranked(ranked, graph, options, x, &mut scratch, work);
     g.routing_scratch = scratch;
@@ -1542,9 +1540,11 @@ fn route_ranked(
         });
     }
     // An editor cache can replay a component after other components have been added.
-    let prove_gaps = ranked_curves
+    let prove_gaps = options.routing == RoutingStyle::Curved
         && !options.reuse_unchanged_components
         && face_separation(&ranked, graph, &nodes, bands, index, work)?;
+    let mut has_labels = false;
+    let mut has_candidate = false;
     work.charge(c.links.len())?;
     let mut edges = reserved(c.links.len())?;
     if !g.inline_labels.is_empty() {
@@ -1566,6 +1566,9 @@ fn route_ranked(
             label_gaps.push([bands[a].bottom, bands[b].top]);
         }
         let spec = &graph.edges[link.edge as usize];
+        let has_edge_labels = prove_gaps
+            && (spec.label.is_some() || spec.start_label.is_some() || spec.end_label.is_some());
+        has_labels |= has_edge_labels;
         let direct = g.direct[edge];
         let [side_start, side_end] = side_ports.get(edge).copied().unwrap_or_default();
         let mut capacity =
@@ -1601,9 +1604,10 @@ fn route_ranked(
             } else {
                 (spec.source_port, spec.target_port)
             };
+            let [from_slot, to_slot] = ranked.direct_offsets.get(edge).copied().unwrap_or_default();
             (
-                direct_port(nodes[first], s, graph.direction, Side::Bottom),
-                direct_port(nodes[last], t, graph.direction, Side::Top),
+                direct_port(nodes[first], s, graph.direction, Side::Bottom, from_slot),
+                direct_port(nodes[last], t, graph.direction, Side::Top, to_slot),
             )
         } else {
             (
@@ -1760,9 +1764,10 @@ fn route_ranked(
             points[0].kind = KnotKind::ContourDeparture;
         }
         // A dummy-only tier may be omitted from the physical bands. Require adjacency in
-        // both views before trusting the two faces to bound the whole sweep.
+        // both views and check the label boxes separately once they have been placed.
         let corridor_clearance = if prove_gaps
             && !direct
+            && !has_edge_labels
             && !contour_departure
             && !reversed
             && side_start.is_none()
@@ -1798,6 +1803,7 @@ fn route_ranked(
         } else {
             0.0
         };
+        has_candidate |= corridor_clearance > 0.0;
         edges.push((
             link.edge,
             EdgeGeometry {
@@ -1812,6 +1818,7 @@ fn route_ranked(
             },
         ));
     }
+    scratch.needs_label_clearance = has_labels && has_candidate;
     Ok((Drawing { nodes, edges }, label_gaps))
 }
 

@@ -25,6 +25,8 @@ use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
+pub(crate) const HTML_EDGE_LABEL_INSET_PX: f64 = 4.0;
+
 fn admit_paint_clearance(
     nodes: usize,
     clusters: usize,
@@ -288,6 +290,11 @@ fn measure(
         bindings.push_leaf(&mut graph, node, profile, seq, parent);
     }
 
+    let html_label_inset = if measurement.settings.edge_html_labels && native.is_none() {
+        HTML_EDGE_LABEL_INSET_PX
+    } else {
+        0.0
+    };
     for (key, projected) in view.projected_edges() {
         let endpoint = |id: &str| {
             endpoints
@@ -311,7 +318,7 @@ fn measure(
                 .map_err(|_| work.record_arithmetic_overflow())?,
             weight: 1.0,
             label: label.map(|label| Size {
-                width: label.width,
+                width: label.width + 2.0 * html_label_inset,
                 height: label.height,
             }),
             start_label: None,
