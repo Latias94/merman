@@ -326,8 +326,6 @@ mod zenuml;
     )
 )]
 use css::MermaidBaseCss;
-#[cfg(feature = "diagram-pie")]
-use css::write_pie_css;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]
@@ -1344,24 +1342,13 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-pie")]
-        BuiltinFamilyArtifact::Pie(artifact) => match artifact.appearance() {
-            crate::pie::PieAppearance::Mermaid(theme) => {
-                pie::render_pie_diagram_svg_model_with_paint_plan(
-                    artifact.pair().layout(),
-                    artifact.pair().semantic(),
-                    theme,
-                    effective_config,
-                    options,
-                )
-            }
-            crate::pie::PieAppearance::Native(style) => pie::render_native_pie_svg(
-                artifact.pair().layout(),
-                artifact.pair().semantic(),
-                style,
-                effective_config,
-                options,
-            ),
-        },
+        BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_svg_artifact(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.appearance(),
+            effective_config,
+            options,
+        ),
         #[cfg(feature = "diagram-packet")]
         BuiltinFamilyArtifact::Packet(artifact) => {
             let diagram_id = options.diagram_id_or("merman");

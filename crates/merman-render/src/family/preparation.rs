@@ -602,32 +602,16 @@ fn prepare_pie_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::pie::PieAppearance;
-
-    if let Some(theme) = execution.native_family_theme() {
-        let (layout, style) = crate::pie::prepare_native_pie(
-            theme,
-            model,
-            meta.title.as_deref(),
-            &meta.effective_config,
-            execution.text_measurer(),
-        )?;
-        return Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            appearance: PieAppearance::Native(style),
-        })));
-    }
-    let theme = crate::pie::PieThemePlan::baseline(model, &meta.effective_config);
-    let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(
+    let (layout, appearance) = crate::pie::prepare_pie_diagram(
         model,
         meta.title.as_deref(),
         &meta.effective_config,
-        &theme,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        appearance: PieAppearance::Mermaid(theme),
+        appearance,
     })))
 }
 

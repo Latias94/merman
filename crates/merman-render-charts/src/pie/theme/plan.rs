@@ -1,19 +1,25 @@
 use merman_model::families::pie::PieDiagramModel;
-use merman_render_charts::pie::PieMermaidStyle;
+use merman_render_core::{
+    config::{ConfigLookup, config_font_family_css},
+    svg_css::PreparedCommonCss,
+};
 
 #[cfg(test)]
-use crate::Result;
-use crate::config::{ConfigLookup, config_font_family_css};
-use crate::svg::PreparedCommonCss;
+use merman_render_core::Result;
+
+use super::PieMermaidStyle;
 
 #[derive(Debug)]
-pub(crate) struct PieThemePlan {
-    pub(super) style: PieMermaidStyle,
-    pub(super) common: PreparedCommonCss,
+pub struct PieThemePlan {
+    style: PieMermaidStyle,
+    common: PreparedCommonCss,
 }
 
 impl PieThemePlan {
-    pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &impl ConfigLookup) -> Self {
+    pub(in crate::pie) fn baseline(
+        model: &PieDiagramModel,
+        effective_config: &impl ConfigLookup,
+    ) -> Self {
         let style = PieMermaidStyle::baseline(model, effective_config);
         let inherited_font_size = style.css_binding().inherited_font_size_px();
         let common = PreparedCommonCss::with_resolved_typography(
@@ -25,16 +31,16 @@ impl PieThemePlan {
         Self { style, common }
     }
 
-    pub(crate) fn mermaid_style(&self) -> &PieMermaidStyle {
+    pub(in crate::pie) fn mermaid_style(&self) -> &PieMermaidStyle {
         &self.style
     }
 
-    pub(crate) fn common_css(&self) -> &PreparedCommonCss {
+    pub(in crate::pie) fn common_css(&self) -> &PreparedCommonCss {
         &self.common
     }
 
     #[cfg(test)]
-    pub(crate) fn content_width(&self) -> Result<f64> {
+    pub(in crate::pie) fn content_width(&self) -> Result<f64> {
         self.style.content_width()
     }
 }

@@ -1,13 +1,11 @@
-use super::super::*;
 use merman_model::families::pie::PieDiagramModel;
-use merman_render_charts::pie::write_svg_accessibility;
+use merman_render_core::{Bounds, Result, root_svg, svg_css::SvgId, svg_output::SvgOutput};
+
+use super::write_svg_accessibility;
+use crate::pie::PieDiagramLayout;
 
 pub(super) const EMPTY_PIE_WIDTH: f64 = 225.0;
 pub(super) const EMPTY_PIE_HEIGHT: f64 = 450.0;
-pub(super) const DEFAULT_PIE_DIAGRAM_ID: SvgId<'static> = match SvgId::new("merman") {
-    Some(id) => id,
-    None => panic!("invalid fallback Pie ID"),
-};
 
 pub(super) fn empty_pie_root_viewport_fallback(
     model: &PieDiagramModel,
@@ -63,7 +61,7 @@ pub(super) fn open_pie_svg(
     diagram_id: SvgId<'_>,
     (root_bounds, root_max_width): (root_svg::DiagramBounds, root_svg::RootMaxWidth),
     use_max_width: bool,
-    options: &SvgExecution<'_>,
+    viewport: &root_svg::RootViewportContext<'_>,
 ) -> Result<root_svg::RootDocument> {
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
         .with_max_width(root_max_width);
@@ -76,24 +74,22 @@ pub(super) fn open_pie_svg(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::PIE, diagram_id)
-        .write_open(
-            out,
-            root_spec,
-            root_svg::RootChrome {
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                dom: root_svg::RootDomProfile {
-                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
-                },
-                ..root_svg::RootChrome::new(diagram_id, "pie")
+    let root_document = viewport.write_open(
+        out,
+        root_spec,
+        root_svg::RootChrome {
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            dom: root_svg::RootDomProfile {
+                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                trailing_newline: false,
+                ..Default::default()
             },
-        )?;
+            ..root_svg::RootChrome::new(diagram_id, "pie")
+        },
+    )?;
 
     write_svg_accessibility(out, model, diagram_id)?;
 

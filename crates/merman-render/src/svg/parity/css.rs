@@ -118,22 +118,5 @@ where
     Ok(out)
 }
 
-#[cfg(feature = "diagram-pie")]
-pub(super) fn write_pie_css(
-    out: &mut output::XmlTextOutput<'_, impl SvgOutput>,
-    diagram_id: SvgId<'_>,
-    paint_plan: &crate::pie::PieThemePlan,
-) -> Result<()> {
-    let common = paint_plan.common_css();
-    common.write_prefix(out, diagram_id)?;
-    merman_render_charts::pie::write_mermaid_css_rules(
-        out,
-        diagram_id,
-        paint_plan.mermaid_style().css_binding(),
-        common.font_family(),
-    )?;
-    common.write_root(out, diagram_id, diagram_id)
-}
-
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

@@ -122,12 +122,11 @@ follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-cra
 
 ### Chart rendering
 
-`merman-render-charts` owns typed layout, style binding, and SVG content for Pie. It uses the
-shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
-supplies text metrics and assembles the chart into a scoped SVG document under the render
-operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
-bar label placement. For Sankey, it owns the typed layout, configuration lookup, and SVG body.
-`merman-render` supplies text metrics and owns root and output policy for both families.
+`merman-render-charts` owns typed layout, style binding, and complete SVG emission for Pie,
+Sankey, and Treemap. It uses the shared text measurement, CSS, XML escaping, and theme paint
+writers in `merman-render-core`. `merman-render` supplies the operation's measurer and viewport
+context and owns terminal SVG policy. For XY Chart, the chart crate owns typed layout, plot
+geometry, and bar label placement.
 
 The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
 layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and
