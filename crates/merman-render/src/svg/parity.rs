@@ -149,8 +149,6 @@ mod gantt;
 mod gitgraph;
 #[cfg(all(test, feature = "diagram-info"))]
 mod info;
-#[cfg(feature = "diagram-ishikawa")]
-mod ishikawa;
 #[cfg(feature = "diagram-journey")]
 mod journey;
 #[cfg(feature = "diagram-kanban")]
@@ -249,7 +247,6 @@ mod requirement;
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
-    feature = "diagram-ishikawa",
     feature = "diagram-requirement",
     feature = "diagram-state",
     feature = "diagram-swimlane",
@@ -971,7 +968,6 @@ impl<'a> SvgExecution<'a> {
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-ishikawa",
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",
@@ -1511,10 +1507,14 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-ishikawa")]
         BuiltinFamilyArtifact::Ishikawa(artifact) => {
-            ishikawa::render_ishikawa_diagram_svg_with_theme(
+            let diagram_id = options.diagram_id_or("ishikawa");
+            merman_render_structured::ishikawa::render_ishikawa_diagram_svg(
                 artifact.pair().layout(),
                 artifact.text_theme(),
-                options,
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::ISHIKAWA, diagram_id),
+                options.work_meter(),
+                options.family.session().operation_context(),
             )
         }
         #[cfg(feature = "diagram-event-modeling")]
@@ -1635,7 +1635,6 @@ mod operation_time_tests {
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
-        feature = "diagram-ishikawa",
         feature = "diagram-requirement",
         feature = "diagram-state",
         feature = "diagram-swimlane",

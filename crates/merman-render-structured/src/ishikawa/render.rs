@@ -1,45 +1,52 @@
-use super::super::*;
-use crate::ishikawa::{IshikawaCssBinding, IshikawaTextThemePlan};
-use merman_render_structured::ishikawa::{
-    IshikawaRoughPaint, write_classic_svg_body, write_hand_drawn_svg_body,
+use merman_model::{OperationPhase, runtime::OperationContext};
+use merman_render_core::{
+    Result,
+    resources::OperationWorkMeter,
+    root_svg::{DiagramBounds, RootChrome, RootViewportContext, RootViewportSpec, RootedSvg},
+    svg_css::{CssSelectorDiagramId, SvgId},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+};
+use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
+
+use super::{
+    IshikawaDiagramLayout, IshikawaRoughPaint, IshikawaTextThemePlan, theme::IshikawaCssBinding,
+    write_classic_svg_body, write_hand_drawn_svg_body,
 };
 
-pub(crate) fn render_ishikawa_diagram_svg_with_theme(
+/// Emits the complete Ishikawa SVG before shared canvas and terminal admission.
+pub fn render_ishikawa_diagram_svg(
     layout: &IshikawaDiagramLayout,
     text_theme: &IshikawaTextThemePlan,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("ishikawa");
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+    operation: &OperationContext,
+) -> Result<RootedSvg> {
+    let mut out = BoundedSvgOutput::new(work_meter);
     let theme = text_theme.css_binding();
-    let root_bounds = root_svg::DiagramBounds::from_view_box(
+    let root_bounds = DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
         layout.total_width,
         layout.total_height,
     );
-    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
-    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "ishikawa");
+    let root_spec = RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
+    let mut root_chrome = RootChrome::new(diagram_id, "ishikawa");
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::ISHIKAWA, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
-    options.checkpoint_emit()?;
+    let root_document = root_viewport.write_open(&mut out, root_spec, root_chrome)?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
 
     out.push_str("<style>");
     write_ishikawa_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        super::super::util::css_selector_diagram_id(diagram_id),
+        &mut XmlTextOutput::new(&mut out),
+        CssSelectorDiagramId(diagram_id),
         theme,
         text_theme,
     );
     out.push_str(r#"</style><g/><g class="ishikawa">"#);
     out.checkpoint()?;
     if theme.look == "handDrawn" {
-        let randomness = options.rough_randomness(
-            theme.hand_drawn_seed.unwrap_or(options.seed() as f64),
-            "render.ishikawa.roughjs",
-        );
+        let randomness = rough_randomness(theme.hand_drawn_seed, operation);
         write_hand_drawn_svg_body(
             &mut out,
             layout,
@@ -53,16 +60,26 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
                 marker_fill: &theme.marker_fill,
                 solid_head: theme.native.is_some(),
             },
-            options.work_meter(),
+            work_meter,
         )?;
     } else {
         let marker_id = format!("ishikawa-arrow-{diagram_id}");
-        write_classic_svg_body(&mut out, layout, &marker_id, options.work_meter())?;
+        write_classic_svg_body(&mut out, layout, &marker_id, work_meter)?;
     }
 
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
     root_document.complete(out.finish()?)
+}
+
+fn rough_randomness(configured_seed: Option<f64>, operation: &OperationContext) -> RoughRandomness {
+    let seed = configured_seed
+        .filter(|seed| *seed != 0.0)
+        .unwrap_or_else(|| operation.derive_nonzero_u64("render.root", 0).get() as f64);
+    RoughRandomness::new(
+        RoughJsSeed::new(seed),
+        RoughMathRandom::new(operation.derive_u64("render.ishikawa.roughjs", 0)),
+    )
 }
 
 fn write_ishikawa_css(
@@ -100,4 +117,30 @@ fn write_ishikawa_css(
 #{diagram_id} .ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
 #{diagram_id} .ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use merman_model::runtime::RuntimePolicy;
+
+    use super::*;
+
+    #[test]
+    fn rough_seeds_preserve_the_operation_fallback_and_javascript_number() {
+        let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+        let fallback = operation.derive_nonzero_u64("render.root", 0).get() as f64;
+        let stream = operation.derive_u64("render.ishikawa.roughjs", 0);
+        for (configured, expected) in [
+            (None, fallback),
+            (Some(0.0), fallback),
+            (Some(-0.0), fallback),
+            (Some(-1.0), -1.0),
+            (Some(1.75), 1.75),
+            (Some(4_294_967_297.0), 4_294_967_297.0),
+        ] {
+            let randomness = rough_randomness(configured, &operation);
+            assert_eq!(randomness.seed().number(), expected);
+            assert_eq!(randomness.math_random().initial_seed(), stream);
+        }
+    }
 }

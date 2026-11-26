@@ -2812,6 +2812,7 @@ dependencies = [
 name = "merman-render-structured"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
  "merman-markup",
  "merman-model",
  "merman-render-core",

@@ -1,36 +1,41 @@
 use merman_model::presentation::PresentationConfig;
-
-use crate::mermaid_style::{CssFontSizeOwnership, css_font_size_value_override};
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::{
+    config::{config_css_number_or_string, config_font_family_css, normalized_config_font_family},
+    mermaid_style::{
+        CssFontSizeOwnership, css_font_size_is_zero, css_font_size_value_override, font_family_css,
+        resolve_mermaid_absolute_font_size_px, strip_css_important,
+    },
+    text::TextStyle,
+};
+use merman_theme_contract::v2::FamilyTheme;
 
 mod css_binding;
-pub(crate) use css_binding::IshikawaCssBinding;
+pub(super) use css_binding::IshikawaCssBinding;
 
 /// Final typography prepared before measuring any Ishikawa text.
 /// Root `fontSize` separately owns Mermaid's bone spacing, wrapping, and tspan line step.
 #[derive(Debug)]
-pub(crate) struct IshikawaTypographyPlan {
+pub(super) struct IshikawaTypographyPlan {
     font_size_css: Box<str>,
-    text_style: crate::text::TextStyle,
-    head_style: crate::text::TextStyle,
+    text_style: TextStyle,
+    head_style: TextStyle,
     head_uses_base_size: bool,
 }
 
 impl IshikawaTypographyPlan {
-    pub(crate) fn resolve(config: &PresentationConfig, spacing_font_size: f64) -> Self {
-        let font_size_css =
-            crate::config::config_css_number_or_string(config, &["themeVariables", "fontSize"])
-                .or_else(|| crate::config::config_css_number_or_string(config, &["fontSize"]))
-                .unwrap_or_else(|| format!("{spacing_font_size}px"));
+    pub(super) fn resolve(config: &PresentationConfig, spacing_font_size: f64) -> Self {
+        let font_size_css = config_css_number_or_string(config, &["themeVariables", "fontSize"])
+            .or_else(|| config_css_number_or_string(config, &["fontSize"]))
+            .unwrap_or_else(|| format!("{spacing_font_size}px"));
         let (resolved_size, important) = resolve_text_size(&font_size_css);
         let font_size = resolved_size.unwrap_or(16.0);
-        let text_style = crate::text::TextStyle {
-            font_family: Some(crate::config::config_font_family_css(config)),
+        let text_style = TextStyle {
+            font_family: Some(config_font_family_css(config)),
             font_size,
             ..Default::default()
         };
         // A source !important on the shared rule outranks the normal head-size rule.
-        let head_style = crate::text::TextStyle {
+        let head_style = TextStyle {
             font_size: if important { font_size } else { 14.0 },
             font_weight: Some("600".to_string()),
             ..text_style.clone()
@@ -43,7 +48,7 @@ impl IshikawaTypographyPlan {
         }
     }
 
-    pub(crate) fn apply_native(
+    pub(super) fn apply_native(
         &mut self,
         theme: &FamilyTheme,
         config: &PresentationConfig,
@@ -53,11 +58,7 @@ impl IshikawaTypographyPlan {
         let authored_font = ["themeVariables.fontFamily", "fontFamily"]
             .into_iter()
             .filter(|path| config.explicit_config_owns_path(path))
-            .find_map(|path| {
-                config
-                    .get_str(path)
-                    .and_then(crate::config::normalized_config_font_family)
-            });
+            .find_map(|path| config.get_str(path).and_then(normalized_config_font_family));
         self.text_style.font_family = Some(
             authored_font
                 .clone()
@@ -79,7 +80,7 @@ impl IshikawaTypographyPlan {
         .into_iter()
         .filter(|(path, _)| config.explicit_config_owns_path(path))
         .find_map(|(_, path)| {
-            crate::config::config_css_number_or_string(config, path)
+            config_css_number_or_string(config, path)
                 .filter(|size| css_font_size_value_override(size).is_some())
         });
         if let Some(size_css) = authored_size {
@@ -102,7 +103,7 @@ impl IshikawaTypographyPlan {
         }
     }
 
-    pub(crate) fn text_style(&self, class_name: &str) -> &crate::text::TextStyle {
+    pub(super) fn text_style(&self, class_name: &str) -> &TextStyle {
         if class_name == "ishikawa-head-label" {
             &self.head_style
         } else {
@@ -117,8 +118,8 @@ fn resolve_text_size(css: &str) -> (Option<f64>, bool) {
         // With no root typography rule, inheritance uses the browser's medium size.
         None => Some(16.0),
         Some(size) if size.ownership() == CssFontSizeOwnership::Inherited => Some(16.0),
-        Some(_) => crate::mermaid_style::resolve_mermaid_absolute_font_size_px(css)
-            .or_else(|| crate::mermaid_style::css_font_size_is_zero(css).then_some(0.0))
+        Some(_) => resolve_mermaid_absolute_font_size_px(css)
+            .or_else(|| css_font_size_is_zero(css).then_some(0.0))
             .and_then(|size| admit_painter_font_size_px(css, size)),
     };
     (size, size_override.is_some_and(|size| size.important()))
@@ -134,7 +135,7 @@ fn admit_painter_font_size_px(css: &str, size: f64) -> Option<f64> {
     if size <= 0.0 || !(size as f32).is_normal() {
         return None;
     }
-    let mut parser = cssparser::Parser::new(crate::mermaid_style::strip_css_important(css));
+    let mut parser = cssparser::Parser::new(strip_css_important(css));
     matches!(parser.next(), Ok(cssparser::Token::Dimension { value, .. })
         if *value > 0.0 && value.is_normal())
     .then_some(size)
@@ -142,13 +143,13 @@ fn admit_painter_font_size_px(css: &str, size: f64) -> Option<f64> {
 
 /// Styles shared by the classic and hand-drawn Ishikawa SVG writers.
 #[derive(Debug)]
-pub(crate) struct IshikawaTextThemePlan {
+pub struct IshikawaTextThemePlan {
     css_binding: IshikawaCssBinding,
     typography: IshikawaTypographyPlan,
 }
 
 impl IshikawaTextThemePlan {
-    pub(crate) fn resolve(
+    pub(super) fn resolve(
         native: Option<&FamilyTheme>,
         config: &PresentationConfig,
         typography: IshikawaTypographyPlan,
@@ -163,7 +164,7 @@ impl IshikawaTextThemePlan {
         }
     }
 
-    pub(crate) fn write_text_rules(
+    pub(super) fn write_text_rules(
         &self,
         css: &mut impl std::fmt::Write,
         diagram_id: impl Copy + std::fmt::Display,
@@ -202,15 +203,34 @@ impl IshikawaTextThemePlan {
         let _ = css.write_str(" }");
     }
 
-    pub(crate) fn css_binding(&self) -> &IshikawaCssBinding {
+    pub(super) fn css_binding(&self) -> &IshikawaCssBinding {
         &self.css_binding
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::presentation_config;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn text_measurement_uses_the_render_theme_family_and_head_weight() {
+        let config = presentation_config(json!({
+            "fontFamily": "Cousine, sans-serif",
+            "themeVariables": {"fontFamily": "Different, sans-serif", "fontSize": "18px"}
+        }));
+        let typography = IshikawaTypographyPlan::resolve(&config, 16.0);
+        let head = typography.text_style("ishikawa-head-label");
+        assert_eq!(head.font_family.as_deref(), Some("Different,sans-serif"));
+        assert_eq!(head.font_size, 14.0);
+        assert_eq!(head.font_weight.as_deref(), Some("600"));
+
+        let cause = typography.text_style("ishikawa-label cause");
+        assert_eq!(cause.font_family.as_deref(), Some("Different,sans-serif"));
+        assert_eq!(cause.font_size, 18.0);
+        assert_eq!(cause.font_weight, None);
+    }
 
     #[test]
     fn prepared_typography_preserves_source_units_and_head_priority() {
@@ -228,7 +248,7 @@ mod tests {
                 14.0,
             ),
         ] {
-            let config = crate::test_support::presentation_config(config);
+            let config = presentation_config(config);
             let typography = IshikawaTypographyPlan::resolve(&config, 16.0);
             assert_eq!(typography.font_size_css.as_ref(), css);
             assert_eq!(

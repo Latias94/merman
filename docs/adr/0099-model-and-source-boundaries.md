@@ -91,8 +91,8 @@ construction, using the shared line cursor in `merman-core-preprocess`. `merman-
 the source, builds Ishikawa's semantic tree, supplies config-dependent sanitization, and maps
 models and syntax diagnostics into public parse results with optional editor facts.
 
-`merman-render-structured` owns the typed layout and complete SVG emission for Info and Packet,
-and typed layout and SVG contents for Railroad and Ishikawa. It uses the shared root SVG, CSS,
+`merman-render-structured` owns the typed layout and complete SVG emission for Info, Ishikawa,
+and Packet, and typed layout and SVG contents for Railroad. It uses the shared root SVG, CSS,
 `TextMeasurer`, and controlled Rough SVG contracts in `merman-render-core`. `merman-render`
 dispatches through the family features, selects the operation's measurement and viewport
 policies, and owns final canvas and SVG admission.
