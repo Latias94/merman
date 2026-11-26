@@ -458,6 +458,10 @@ and strict index updates stop on download failures. Containers use the pinned ba
 | Dependency policy | `cargo deny`, RustSec governance, and release closure reports |
 | Published bytes | Release package, checksum, provenance, and install smoke |
 
+The locked `cargo deny` graph explicitly includes `xtask/render-parity`, preserving its native
+render and math coverage when default contract tooling does not link those features. Artifact
+closure checks still resolve each target's own features separately.
+
 ## Digest Policy
 
 Use a digest when it identifies an external immutable input or a released artifact: upstream
