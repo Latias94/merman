@@ -1254,7 +1254,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             artifact.style(),
             artifact.task_source_indices(),
-            effective_config.as_value(),
+            effective_config,
             options,
         ),
         #[cfg(feature = "diagram-pie")]
