@@ -64,8 +64,9 @@ pub enum RendererBuilderError {
 /// Configures site defaults and the zero-configuration methods on [`Renderer`].
 ///
 /// Site configuration and the default layout apply to the renderer's parser and presentation
-/// engine. Target defaults and input limits set here apply only to the one-argument typed
-/// methods. `*_with` and [`Renderer::render`] still take their target settings from the request.
+/// engine. One-argument typed methods use the configured target and input defaults. To keep the
+/// target defaults when supplying an explicit request, start from the renderer's default request
+/// for that target. `*_with` and [`Renderer::render`] take their target settings from the request.
 #[derive(Debug, Default)]
 #[must_use]
 pub struct RendererBuilder {
@@ -321,8 +322,11 @@ impl Renderer {
         self.render_typed_target(request)
     }
 
+    /// Copies the SVG target used by [`Self::render_svg`], including the configured theme and
+    /// environment. Change only the fields you want to override before calling
+    /// [`Self::render_svg_with`]. The copy also supplies the SVG settings for raster and PDF requests.
     #[cfg(feature = "svg")]
-    fn default_svg_request(&self) -> SvgRequest {
+    pub fn default_svg_request(&self) -> SvgRequest {
         self.ergonomic_defaults
             .as_deref()
             .and_then(|defaults| defaults.svg.as_deref())
@@ -338,6 +342,7 @@ impl Renderer {
     }
 
     /// Renders SVG using the supplied target request and operation control.
+    /// Use [`Self::default_svg_request`] to keep the builder's target defaults.
     #[cfg(feature = "svg")]
     pub fn render_svg_with(
         &self,
@@ -352,15 +357,21 @@ impl Renderer {
         )
     }
 
-    /// Renders terminal text and its report with bounded defaults.
+    /// Copies the ASCII target used by [`Self::render_ascii`], including the configured terminal
+    /// options and theme. For explicit operation-level input budgets, use [`RenderRequest`].
     #[cfg(feature = "ascii")]
-    pub fn render_ascii(&self, source: &str) -> Result<AsciiOutput, RenderError> {
-        let request = self
-            .ergonomic_defaults
+    pub fn default_ascii_request(&self) -> AsciiRequest {
+        self.ergonomic_defaults
             .as_deref()
             .and_then(|defaults| defaults.ascii.as_deref())
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_default()
+    }
+
+    /// Renders terminal text and its report with bounded defaults.
+    #[cfg(feature = "ascii")]
+    pub fn render_ascii(&self, source: &str) -> Result<AsciiOutput, RenderError> {
+        let request = self.default_ascii_request();
         require_output!(
             self.render_default_target(source, RenderTarget::Ascii(request)),
             Ascii,
@@ -369,6 +380,7 @@ impl Renderer {
     }
 
     /// Renders terminal text using the supplied target request and operation control.
+    /// Use [`Self::default_ascii_request`] to keep the builder's target defaults.
     #[cfg(feature = "ascii")]
     pub fn render_ascii_with(
         &self,
