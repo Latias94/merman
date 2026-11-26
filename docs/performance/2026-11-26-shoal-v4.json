@@ -1922,5 +1922,814 @@
   "shoal_source_lines": {
     "base": 36145,
     "final": 42798
+  },
+  "compiled_routing_followup": {
+    "revision": "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5",
+    "svg_reference_revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+    "wasm": {
+      "stripped_bytes": 8185936,
+      "gzip_bytes": 2624282,
+      "stripped_sha256": "dd9b2b8ccc6fb600797d7270aeb0a7e2e822c8616d18a9f9c093b55e5405883a"
+    },
+    "shoal_source_lines": 42804,
+    "svg_equivalence": {
+      "workloads": 11,
+      "harness_sha256": "7779d3ce0c14170604f6c87022c96ee2d5a443b501dbde203724bbaa866e0b91",
+      "flowchart_plan_sha256": "01bd5018ebaf80a123e87a5e55ba12b8cabea670db91bda2b0fe4407d2c90fad",
+      "family_plan_sha256": "5411cbea6c8b9676eaf627014c06cfa878da50ee790f67f3cca393577cba8182",
+      "equal_svg_and_work": {
+        "small-svg": {
+          "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+          "svg_bytes": 32423,
+          "layout_work_units": 474
+        },
+        "flowchart-nested-layout": {
+          "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+          "svg_bytes": 68254,
+          "layout_work_units": 37897
+        },
+        "chain-500": {
+          "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+          "svg_bytes": 747350,
+          "layout_work_units": 149503
+        },
+        "scc-75": {
+          "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+          "svg_bytes": 239339,
+          "layout_work_units": 106719
+        },
+        "scc-100": {
+          "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+          "svg_bytes": 315414,
+          "layout_work_units": 143286
+        },
+        "scc-100-edges-reverse": {
+          "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+          "svg_bytes": 326264,
+          "layout_work_units": 144452
+        },
+        "fan-in-500": {
+          "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+          "svg_bytes": 833110,
+          "layout_work_units": 170948
+        },
+        "fan-out-500": {
+          "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+          "svg_bytes": 835391,
+          "layout_work_units": 175438
+        },
+        "family-architecture": {
+          "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+          "svg_bytes": 13750,
+          "layout_work_units": 836
+        },
+        "family-c4": {
+          "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+          "svg_bytes": 24290,
+          "layout_work_units": 336
+        },
+        "family-swimlane": {
+          "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+          "svg_bytes": 43769,
+          "layout_work_units": 4571
+        }
+      },
+      "topologies": {
+        "plan_sha256": "810c6f81516f24ebc31e6709232634f1f2270be3786e8c3830433e427d73dccb",
+        "rows": 32,
+        "identical_draws": 31,
+        "identical_max_edges_refusals": 1
+      }
+    },
+    "kernel_equivalence": {
+      "reference_revision": "01e47fcd76a4604335aeed0e2ee0a858df331ff8",
+      "cases": 432,
+      "geometry_errors_and_work_sha256": "1cd895916ccf78fe205a1e51889f629856e5df1dc91515bddfaa1beee83c9828"
+    },
+    "native_diagnostic": {
+      "warmups_per_process": 2,
+      "samples_per_round": 6,
+      "rounds": [
+        {
+          "revision": "48a3961cf",
+          "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+          "samples_ns": {
+            "fan-in-500": [
+              3583500,
+              3662375,
+              3925208,
+              3622667,
+              3651500,
+              3620000
+            ],
+            "fan-out-500": [
+              3699250,
+              3935750,
+              3879417,
+              3596000,
+              3454167,
+              3530708
+            ]
+          }
+        },
+        {
+          "revision": "ec23edf1a",
+          "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+          "samples_ns": {
+            "fan-in-500": [
+              3726792,
+              3613083,
+              3800292,
+              3641084,
+              3569292,
+              3757583
+            ],
+            "fan-out-500": [
+              3610000,
+              3743000,
+              3640208,
+              3717792,
+              3568625,
+              3968334
+            ]
+          }
+        },
+        {
+          "revision": "ec23edf1a",
+          "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+          "samples_ns": {
+            "fan-in-500": [
+              3522375,
+              3804000,
+              3605333,
+              3584458,
+              3767542,
+              3794375
+            ],
+            "fan-out-500": [
+              3562375,
+              3621583,
+              4130250,
+              3838333,
+              3688792,
+              3856125
+            ]
+          }
+        },
+        {
+          "revision": "48a3961cf",
+          "runner_sha256": "cd33a51d78a9b9c8f960a6573069fb3acdf132ddeacc00634bb6f4f9ddaea7cf",
+          "samples_ns": {
+            "fan-in-500": [
+              3482709,
+              3651792,
+              3679333,
+              3633084,
+              3677625,
+              3989125
+            ],
+            "fan-out-500": [
+              3670791,
+              3784625,
+              3615458,
+              3636583,
+              3642750,
+              3720375
+            ]
+          }
+        }
+      ],
+      "median_ns": {
+        "48a3961cf6fe93018a08065c1effd14f3adfca8f": {
+          "fan-in-500": 3651646.0,
+          "fan-out-500": 3656770.5
+        },
+        "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5": {
+          "fan-in-500": 3683938.0,
+          "fan-out-500": 3703292.0
+        }
+      }
+    },
+    "isolated_neo_marker_probe": {
+      "svg_revision": "48a3961cf6fe93018a08065c1effd14f3adfca8f",
+      "fixture_job_sha256": "aebd1295a5a8d0e72b0a1071b622d036365a9205ece6c579f4d9d2b6bb0a6467",
+      "samples": {
+        "fan-in-500": {
+          "strict_cubics": 498,
+          "with_reuse": 249,
+          "median_uncached_us": 337.38,
+          "median_candidate_us": 178.1
+        },
+        "fan-out-500": {
+          "strict_cubics": 498,
+          "with_reuse": 249,
+          "median_uncached_us": 340.3,
+          "median_candidate_us": 180.14
+        }
+      }
+    }
+  },
+  "review_followup": {
+    "reference_revision": "ec23edf1ac0a44702937bbcbaf3a6c68b24b6df5",
+    "revision": "5f4de6f744659108bb66cc735e8685913fc41f61",
+    "shoal_source_lines": 43926,
+    "wasm": {
+      "stripped_bytes": 8205391,
+      "gzip_bytes": 2631715,
+      "stripped_sha256": "97996c87c5f559dbad7f1f01474f3907944e63a3f02213b5b39193ce4a316e19"
+    },
+    "native": {
+      "warmups_per_process": 2,
+      "samples_per_round": 6,
+      "suites": {
+        "plan": {
+          "plan_sha256": "01bd5018ebaf80a123e87a5e55ba12b8cabea670db91bda2b0fe4407d2c90fad",
+          "rounds": [
+            {
+              "name": "prior-a",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "small-svg": [
+                  90542,
+                  79209,
+                  87333,
+                  77208,
+                  77042,
+                  88417
+                ],
+                "flowchart-nested-layout": [
+                  438000,
+                  401167,
+                  402792,
+                  412334,
+                  388000,
+                  403791
+                ],
+                "chain-500": [
+                  3163833,
+                  3094375,
+                  3367042,
+                  3250625,
+                  3105958,
+                  3179500
+                ],
+                "scc-75": [
+                  1113417,
+                  1104375,
+                  1167958,
+                  1119459,
+                  1110083,
+                  1344875
+                ],
+                "scc-100": [
+                  1563167,
+                  1446709,
+                  1443416,
+                  1415167,
+                  1457459,
+                  1590459
+                ],
+                "scc-100-edges-reverse": [
+                  1454125,
+                  1572208,
+                  1575625,
+                  1715208,
+                  1612583,
+                  1561000
+                ],
+                "fan-in-500": [
+                  3924167,
+                  3776709,
+                  3769459,
+                  3790542,
+                  4251958,
+                  3828625
+                ],
+                "fan-out-500": [
+                  3945417,
+                  3990166,
+                  3795041,
+                  3904041,
+                  3920625,
+                  4377917
+                ]
+              }
+            },
+            {
+              "name": "candidate-a",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "small-svg": [
+                  79958,
+                  89750,
+                  79084,
+                  82792,
+                  85666,
+                  167875
+                ],
+                "flowchart-nested-layout": [
+                  394000,
+                  406208,
+                  404917,
+                  389250,
+                  400417,
+                  415708
+                ],
+                "chain-500": [
+                  3175791,
+                  3092625,
+                  3117625,
+                  3069750,
+                  3278834,
+                  3394875
+                ],
+                "scc-75": [
+                  1072125,
+                  1075584,
+                  1067167,
+                  1064916,
+                  1097458,
+                  1062375
+                ],
+                "scc-100": [
+                  1392459,
+                  1383209,
+                  1418875,
+                  1589916,
+                  1368334,
+                  1400333
+                ],
+                "scc-100-edges-reverse": [
+                  1540208,
+                  1374709,
+                  1388375,
+                  1539292,
+                  1553167,
+                  1617167
+                ],
+                "fan-in-500": [
+                  3666375,
+                  3799292,
+                  3707166,
+                  3703416,
+                  3650167,
+                  3778000
+                ],
+                "fan-out-500": [
+                  3824416,
+                  3705708,
+                  3782167,
+                  3813416,
+                  3674375,
+                  3814375
+                ]
+              }
+            },
+            {
+              "name": "candidate-b",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "small-svg": [
+                  81875,
+                  78333,
+                  77667,
+                  79541,
+                  91208,
+                  83041
+                ],
+                "flowchart-nested-layout": [
+                  406500,
+                  427250,
+                  413000,
+                  393125,
+                  390334,
+                  401542
+                ],
+                "chain-500": [
+                  3042833,
+                  3035708,
+                  3331666,
+                  3489667,
+                  3071416,
+                  3094833
+                ],
+                "scc-75": [
+                  1055834,
+                  1028958,
+                  1184125,
+                  1059959,
+                  1048375,
+                  1250250
+                ],
+                "scc-100": [
+                  1440042,
+                  1368708,
+                  1523250,
+                  1374125,
+                  1357083,
+                  1503208
+                ],
+                "scc-100-edges-reverse": [
+                  1523667,
+                  1411416,
+                  1371500,
+                  1408583,
+                  1524209,
+                  1482875
+                ],
+                "fan-in-500": [
+                  3655708,
+                  3827167,
+                  3689417,
+                  3867375,
+                  3600292,
+                  3634125
+                ],
+                "fan-out-500": [
+                  3698000,
+                  3804125,
+                  3720042,
+                  3968375,
+                  3649333,
+                  3644083
+                ]
+              }
+            },
+            {
+              "name": "prior-b",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "small-svg": [
+                  88417,
+                  93917,
+                  88459,
+                  88625,
+                  90667,
+                  90542
+                ],
+                "flowchart-nested-layout": [
+                  416833,
+                  419750,
+                  386334,
+                  377708,
+                  475875,
+                  407375
+                ],
+                "chain-500": [
+                  3200959,
+                  3090584,
+                  3256042,
+                  3220500,
+                  3226500,
+                  3124750
+                ],
+                "scc-75": [
+                  1098958,
+                  1204000,
+                  1120333,
+                  1084541,
+                  1116375,
+                  1080666
+                ],
+                "scc-100": [
+                  1455458,
+                  1575917,
+                  1453042,
+                  1390958,
+                  1453167,
+                  1468875
+                ],
+                "scc-100-edges-reverse": [
+                  1481667,
+                  1483292,
+                  1432125,
+                  1457125,
+                  1501708,
+                  1417584
+                ],
+                "fan-in-500": [
+                  4010542,
+                  3704875,
+                  3728292,
+                  3745209,
+                  3950041,
+                  3844625
+                ],
+                "fan-out-500": [
+                  3823500,
+                  4188209,
+                  3862167,
+                  3754125,
+                  3698750,
+                  3837500
+                ]
+              }
+            }
+          ],
+          "summary": {
+            "small-svg": {
+              "prior": {
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "layout_work_units": 474,
+                "median_ns": 88438.0
+              },
+              "candidate": {
+                "svg_sha256": "f3634410afb726d6db9095aff10e785d6fbc1f1bf58a0bbd3a2ed6b9f5e96024",
+                "svg_bytes": 32423,
+                "layout_work_units": 476,
+                "median_ns": 82333.5
+              },
+              "svg_unchanged": true
+            },
+            "flowchart-nested-layout": {
+              "prior": {
+                "svg_sha256": "2ecc09ecd6abe53b587278f2e52f379baec61aecd6d7677288ff648ea1517e55",
+                "svg_bytes": 68254,
+                "layout_work_units": 37897,
+                "median_ns": 405583.0
+              },
+              "candidate": {
+                "svg_sha256": "d8318e8c43095b79942613aac010cec2cdb19e54de9050c3820375aa6f2e0d3e",
+                "svg_bytes": 68151,
+                "layout_work_units": 37953,
+                "median_ns": 403229.5
+              },
+              "svg_unchanged": false
+            },
+            "chain-500": {
+              "prior": {
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "layout_work_units": 149503,
+                "median_ns": 3190229.5
+              },
+              "candidate": {
+                "svg_sha256": "ff3d6ecee0d41cf5692c747f8ad7e79bb0872c47dfe24008fa429b3e094c9615",
+                "svg_bytes": 747350,
+                "layout_work_units": 151002,
+                "median_ns": 3106229.0
+              },
+              "svg_unchanged": true
+            },
+            "scc-75": {
+              "prior": {
+                "svg_sha256": "904f5fdaeb857f9fc704cccfd32ca89a38821e36419156be90a43401fe5edafb",
+                "svg_bytes": 239339,
+                "layout_work_units": 106719,
+                "median_ns": 1114896.0
+              },
+              "candidate": {
+                "svg_sha256": "f4722da8996ef19c1d5139381c4a55af6d2626ffc4b540d897d28f1d6fb9e993",
+                "svg_bytes": 239258,
+                "layout_work_units": 106108,
+                "median_ns": 1066041.5
+              },
+              "svg_unchanged": false
+            },
+            "scc-100": {
+              "prior": {
+                "svg_sha256": "49d4a912860ee66c6b24e3c0e529173268163047f7f116944a83c253c5176457",
+                "svg_bytes": 315414,
+                "layout_work_units": 143286,
+                "median_ns": 1454312.5
+              },
+              "candidate": {
+                "svg_sha256": "041b0f1ae9d3834de67918a665ed6ffa791ea7fdf8e12dd2cd7461c8a594cd97",
+                "svg_bytes": 315872,
+                "layout_work_units": 141627,
+                "median_ns": 1396396.0
+              },
+              "svg_unchanged": false
+            },
+            "scc-100-edges-reverse": {
+              "prior": {
+                "svg_sha256": "673d25644787c338659b7feb9dc5b9711b7fbba4c67145174bf8ccdc4aa773ca",
+                "svg_bytes": 326264,
+                "layout_work_units": 144452,
+                "median_ns": 1492500.0
+              },
+              "candidate": {
+                "svg_sha256": "1e30ce4f5a2a0bc6b8dc4d618e345cc1e20fd7a03594791b4f1809e8dd15e50e",
+                "svg_bytes": 326722,
+                "layout_work_units": 142831,
+                "median_ns": 1503271.0
+              },
+              "svg_unchanged": false
+            },
+            "fan-in-500": {
+              "prior": {
+                "svg_sha256": "18ee87fd600e8ae6390340d45faf406681037c5e11ff9fd89d2079ef7e8fd14f",
+                "svg_bytes": 833110,
+                "layout_work_units": 170948,
+                "median_ns": 3809583.5
+              },
+              "candidate": {
+                "svg_sha256": "54d0a4cd1033facca5bb3a1d20eb89e7a47a859ed387257bf74a68a7b8aa9837",
+                "svg_bytes": 833006,
+                "layout_work_units": 170950,
+                "median_ns": 3696416.5
+              },
+              "svg_unchanged": false
+            },
+            "fan-out-500": {
+              "prior": {
+                "svg_sha256": "a9441c0cdf32f0aa183cadb08b93b8a15e1695aee9edfabd61080f6cb5839ccf",
+                "svg_bytes": 835391,
+                "layout_work_units": 175438,
+                "median_ns": 3883104.0
+              },
+              "candidate": {
+                "svg_sha256": "32a3ea07bcc7061def3cff5937f9ac21451f456faf7f33b07e6ce3a7b56d2b4d",
+                "svg_bytes": 835287,
+                "layout_work_units": 175440,
+                "median_ns": 3751104.5
+              },
+              "svg_unchanged": false
+            }
+          }
+        },
+        "family-plan": {
+          "plan_sha256": "5411cbea6c8b9676eaf627014c06cfa878da50ee790f67f3cca393577cba8182",
+          "rounds": [
+            {
+              "name": "prior-a",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "family-architecture": [
+                  68666,
+                  75500,
+                  62625,
+                  61208,
+                  66292,
+                  63875
+                ],
+                "family-c4": [
+                  102250,
+                  108667,
+                  103000,
+                  99125,
+                  107250,
+                  99000
+                ],
+                "family-swimlane": [
+                  219750,
+                  219667,
+                  211583,
+                  212875,
+                  236083,
+                  233708
+                ]
+              }
+            },
+            {
+              "name": "candidate-a",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "family-architecture": [
+                  67041,
+                  69916,
+                  74584,
+                  64292,
+                  60000,
+                  62625
+                ],
+                "family-c4": [
+                  96542,
+                  99166,
+                  91791,
+                  99416,
+                  93542,
+                  99500
+                ],
+                "family-swimlane": [
+                  233458,
+                  206750,
+                  208625,
+                  216958,
+                  199125,
+                  218791
+                ]
+              }
+            },
+            {
+              "name": "candidate-b",
+              "revision": "5f4de6f74",
+              "runner_sha256": "fe4b8f72dda2ba7dfff10f18a89c274a3f657315ddc16e58d805ba9d408843a5",
+              "samples_ns": {
+                "family-architecture": [
+                  65417,
+                  65000,
+                  68459,
+                  71250,
+                  70750,
+                  67958
+                ],
+                "family-c4": [
+                  97334,
+                  93250,
+                  112750,
+                  105209,
+                  95625,
+                  261083
+                ],
+                "family-swimlane": [
+                  222125,
+                  218500,
+                  228792,
+                  435334,
+                  199958,
+                  205291
+                ]
+              }
+            },
+            {
+              "name": "prior-b",
+              "revision": "ec23edf1a",
+              "runner_sha256": "a10a60b9f81a44ca0b9e1dcd12f9be35963427d60b761c15d542933d14938e25",
+              "samples_ns": {
+                "family-architecture": [
+                  76916,
+                  56958,
+                  80000,
+                  65209,
+                  61167,
+                  69333
+                ],
+                "family-c4": [
+                  97750,
+                  114083,
+                  146042,
+                  101083,
+                  119458,
+                  101833
+                ],
+                "family-swimlane": [
+                  218209,
+                  209666,
+                  233458,
+                  228625,
+                  221875,
+                  203125
+                ]
+              }
+            }
+          ],
+          "summary": {
+            "family-architecture": {
+              "prior": {
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "layout_work_units": 836,
+                "median_ns": 65750.5
+              },
+              "candidate": {
+                "svg_sha256": "307249874c0bc797b195e305c7e49a0cff92c0ee72f71604f1fd3adb2fdeea01",
+                "svg_bytes": 13750,
+                "layout_work_units": 836,
+                "median_ns": 67499.5
+              },
+              "svg_unchanged": true
+            },
+            "family-c4": {
+              "prior": {
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "layout_work_units": 336,
+                "median_ns": 102625.0
+              },
+              "candidate": {
+                "svg_sha256": "621606e253207d0ad44cad5e94394e4070ad6f7f20099870e8dd2aea80e1eadb",
+                "svg_bytes": 24290,
+                "layout_work_units": 336,
+                "median_ns": 98250.0
+              },
+              "svg_unchanged": true
+            },
+            "family-swimlane": {
+              "prior": {
+                "svg_sha256": "61c0bfac6ca1933e2f73fde360c441eb34f412996353e270fa6838058afa34f9",
+                "svg_bytes": 43769,
+                "layout_work_units": 4571,
+                "median_ns": 219708.5
+              },
+              "candidate": {
+                "svg_sha256": "b46c1adbbfe1bf3acda7a8e102434b8f5be47222ea17287092490372464340c0",
+                "svg_bytes": 43767,
+                "layout_work_units": 4571,
+                "median_ns": 217729.0
+              },
+              "svg_unchanged": false
+            }
+          }
+        }
+      }
+    }
   }
 }

@@ -38,10 +38,15 @@ All layout and routing conflicts resolve strictly in top-down priority order (hi
 Eliminate solver-painter guesswork across crate boundaries:
 
 - **Lightweight Contour Hints**: extend `NodeSpec` with an optional zero-dependency analytical contour hint (`ShapeContourHint`: rectangle, rounded box, stadium, diamond aspect/slope, ellipse) so the solver accounts for real port inset and visible shaft length during routing and label placement.
-- **Honest Markers and Unified `face_reach`**: unmarked endpoints report `MarkerMetrics { length: 0.0, width: 0.0 }`. The solver computes per-face `face_reach` (matching the deepest marker on that face, or `0.0` when unmarked) and emits final turn-start points directly. Remove speculative `expand_terminal_sweeps` guard stripping from `route_paint`.
+- **Marker Footprint and Turn Distance**. Unmarked endpoints have zero marker footprint and zero
+  marker turn distance. Render adapters pass the painter's contact-to-turn distance alongside the
+  footprint. A direct layout caller can specify these distances with `EdgeSpec::set_marker_runways`.
+  The solver sizes a shared face against its longest runway and emits the turn-start points.
 - **Non-Inverting Curve Tension**: replace `sweep_handle_fraction` with a monotone function bounded in `[0.25, 0.48]` (stable near `0.46–0.48` on ordinary spans, relaxing toward `0.25` on wide fan-outs; never exceeding `0.50`).
 - **Sibling Departure Symmetry**: remove the `KnotKind::Free` vs. `GapBoundary` tangent split for shared-face sibling branches, and prevent `super_gap` from stretching one twin branch past a sibling's landing horizon when both leave the same face into adjacent corridors.
-- **Corridor Safety Proof**: attach a `corridor_proven_clear` bit to solved edge segments generated within unobstructed inter-rank corridors without contour-deflection or direct-degradation overrides. `route_paint` bypasses BVH cubic subdivision for proven-clear segments and reserves BVH checks for cross-cluster, deflected, or direct-fallback edges.
+- **Corridor Safety Proof**. Record a proved clearance radius in `corridor_clearance`, in drawing
+  units. The canonical painter can use it for a curved edge when the stroke outset is known and
+  smaller than the radius, the box and contour contacts coincide, and the edge has no stitches.
 
 ### 3. Single Evolving Native Default and Print-Grade Polish
 
@@ -66,8 +71,31 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
 - **Correctness and Crossings Edge Cases**: preserve dense layer sentinel semantics (`u32::MAX`) in `prepare_layers` so dropped label sublayers never corrupt `g.inserted_ranks` monotonicity; canonicalize undirected segment endpoints `(a, b)` / `(b, a)` in `flat/crossings.rs` so reverse-collinear segments deduplicate under `compress_shared`; prevent `O(E^2)` degradation on unbundled high-fan edges under `SolveMode::Full`.
 - **Proportional `WorkControl` Accounting**: index-accelerated sweeps and queries (`ActiveIntervals::sweep` in `flat/crossings/index.rs`, `hub::Clearance::allows`, and shared BVH traversals) charge `WorkControl` proportional to actual tree nodes visited and hits reported rather than legacy linear/quadratic full-scan counts, so large sparse graphs retain the full benefit of indexing under bounded budgets.
 - **High-Fan Routing by Grammar**: when `RoutingStyle::Curved` encounters `ids.len() > max_weighed_gap_pieces`, skip `greedy_tracks` and emit single-cubic radial S-curves. For `RoutingStyle::Orthogonal` / `Rounded` unlabelled high-degree fans (degree >= 6), refactor `flat/bus.rs` onto shared `geom::Bvh<T>` and `face_reach` and enable it by default as the orthogonal comb-bus path (also serving Grid Core architecture buses).
-- **Single Workspace Read-Only BVH, Adapter Hygiene, and Pooling**: consolidate all four static BVH implementations (`label_place/clearance.rs`, `ortho/visibility.rs`, `hub.rs`, and `route_paint/clearance.rs`) onto one generic `merman_layout_shoal::geom::Bvh<T>` (`route_paint` reuses it under `layout-shoal` and keeps only a minimal linear fallback when compiled standalone without `layout-shoal`, while bypassing clearance construction entirely when all edges are `corridor_proven_clear`); switch Shoal adapter endpoint maps to `FxHashMap` and eliminate redundant per-edge string cloning on SVG-only paths; pool `refine`, `routing`, and `hub` scratch buffers in `LayoutScratch`; tighten default `max_transpose_nodes` from `1500` to `600`.
+- **Shared Read-Only BVH and Scratch Buffers**. Consolidate the four static obstacle indexes in
+  `label_place/clearance.rs`, `ortho/visibility.rs`, `hub.rs`, and `route_paint/clearance.rs` onto
+  `merman_layout_shoal::geom::Bvh<T>`. The standalone `route-paint` feature uses a linear scan.
+  Use `FxHashMap` for adapter endpoint lookup and defer edge identity materialization on the SVG
+  path. Pool `refine`, `routing`, and `hub` scratch buffers in `LayoutScratch` and set the default
+  `max_transpose_nodes` to `600`.
 - **DDLT v3 Aesthetic Gates**: extend aesthetic validation with quantitative geometry gates for `label_optical_balance_ratio`, `max_s_curve_handle_ratio <= 0.50`, `face_turn_coherence`, `sibling_departure_symmetry`, and `large_fan_cubic_ratio <= 1.05`.
+
+## Implementation notes
+
+- Adjacent bands containing only real nodes in an unlabelled flat DAG can certify their gap
+  independently. The Flowchart painter builds the obstacle inventory and index on the first
+  fallback query.
+- Architecture and C4 share obstacle queries, group stitches, and the gutter fallback. The layered
+  and Architecture kernels share the orthogonal comb geometry and its corner guards. After the
+  ordinary routes are complete, an Architecture scope with a single unlabelled fan on opposing
+  faces can adopt a shared crossbar using surplus work. The grid router requires an unmarked hub,
+  compatible hub offsets, distinct leaf tracks, and clearance for every span, corner, and leaf
+  marker. It replaces the whole fan together.
+- For Neo masking, the canonical Flowchart painter measures lines and cubics in memory as it emits
+  them, with the same integration tolerance and float conversion as SVG path parsing.
+  Rounded paths and rewritten paths retain the SVG-based length calculation where needed.
+- The native SVG painter applies fill-aware ink and casings to Flowchart and Agentflow edges when
+  it can resolve solid fills and the applicable stroke style. Swimlane compacts complete bands and
+  checks specialized handoffs and returns against occupied geometry before committing them.
 
 ## Consequences
 
