@@ -16,6 +16,14 @@ pub mod packet;
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
 
+#[cfg(feature = "diagram-sankey")]
+#[doc(hidden)]
+pub mod sankey;
+
 #[cfg(feature = "diagram-timeline")]
 #[doc(hidden)]
 pub mod timeline;
+
+#[cfg(feature = "diagram-treemap")]
+#[doc(hidden)]
+pub mod treemap;

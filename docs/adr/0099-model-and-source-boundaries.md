@@ -79,9 +79,10 @@ measurement, asset policy, layout output projection, and SVG emission.
 ### Structured diagrams
 
 `merman-core-structured` owns Info and Ishikawa syntax, Packet field scanning and bounded row
-expansion, and the Railroad lexer, four dialect parsers, and rule recovery. `merman-core` prepares
-the source, builds Ishikawa's semantic tree from the syntax records, and maps each parser's model,
-diagnostics, and optional syntax spans into the public parse result.
+expansion, Railroad dialect parsing and recovery, Sankey CSV parsing and graph construction, and
+Treemap row parsing and hierarchy construction. `merman-core` prepares the source, builds
+Ishikawa's semantic tree, supplies config-dependent sanitization, and maps models and syntax
+diagnostics into public parse results with optional editor facts.
 
 `merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad,
 and the typed layout and config projection for Ishikawa. It consumes canonical model data and

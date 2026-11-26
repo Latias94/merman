@@ -1,7 +1,5 @@
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
-use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
-use crate::diagrams::scan::{leading_whitespace_len, physical_line_at, split_ascii_indent};
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::family;
 #[cfg(feature = "editor-facts")]
@@ -14,11 +12,24 @@ use crate::{
 use crate::{Error, SourceSpan};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "presentation")]
+use merman_core_structured::treemap::TreemapParsedInput;
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::treemap::{
+    ItemType, SpannedText, TreemapRow, TreemapSyntaxEvent, TreemapSyntaxObserver,
+};
+use merman_core_structured::treemap::{
+    TreemapSemanticSource, TreemapSyntax, scan_treemap_controlled,
+    treemap_semantic_source_from_parsed_controlled,
+};
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
-pub(crate) use merman_model::families::treemap::{
-    TreemapClassDef, TreemapDiagramModel, TreemapNode,
-};
+#[cfg(all(test, feature = "compat-json"))]
+use merman_model::families::treemap::TreemapClassDef;
+pub(crate) use merman_model::families::treemap::TreemapDiagramModel;
+#[cfg(test)]
+pub(crate) use merman_model::families::treemap::TreemapNode;
 #[cfg(feature = "presentation")]
 pub(crate) use merman_model::families::treemap::{
     TreemapDiagramRenderModel, TreemapOutputPresence, TreemapVisuals,
@@ -33,103 +44,21 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ItemType {
-    Section,
-    Leaf,
-}
-
-#[derive(Debug, Clone)]
-struct ClassDefStatement {
-    class_name: SpannedText,
-    style_text: Option<SpannedText>,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-struct ItemRow {
-    indent: usize,
-    name: SpannedText,
-    item_type: ItemType,
-    value: Option<SpannedValue>,
-    class_selector: Option<SpannedText>,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-enum TreemapRow {
-    Item(ItemRow),
-    ClassDef(ClassDefStatement),
-}
-
-type StyleClassDef = TreemapClassDef;
-
 #[cfg(all(test, feature = "compat-json"))]
 use merman_model::families::treemap::compat::TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES;
 
-#[derive(Debug, Clone)]
-struct Arena {
-    nodes: Vec<TreemapNode>,
-}
-
-impl Arena {
-    fn push(&mut self, node: TreemapNode) -> usize {
-        let idx = self.nodes.len();
-        self.nodes.push(node);
-        idx
-    }
-}
-
-struct TreemapParsedInput {
-    present: bool,
-    title: Option<String>,
-    acc_title: Option<String>,
-    acc_descr: Option<String>,
-    rows: Vec<TreemapRow>,
+struct TreemapParseOutcome {
+    syntax: TreemapSyntax,
     #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
 }
 
-#[derive(Debug, Clone)]
-struct TreemapParseIssue {
-    message: String,
-    span: Option<SourceSpan>,
-}
-
-struct TreemapParseOutcome {
-    #[cfg(feature = "editor-facts")]
-    editor_demand: EditorFactsDemand,
-    parsed: TreemapParsedInput,
-    first_issue: Option<TreemapParseIssue>,
-    #[cfg(test)]
-    string2_scanned_bytes: usize,
-}
-
+#[cfg(feature = "presentation")]
 impl TreemapParseOutcome {
-    fn record_issue(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
-        let issue = TreemapParseIssue {
-            message: message.into(),
-            span,
-        };
-        #[cfg(feature = "editor-facts")]
-        if self.editor_demand.needs_recovery() {
-            self.parsed
-                .editor_facts
-                .mark_recovered_from_parse_error(issue.message.clone(), issue.span);
-        }
-        if self.first_issue.is_none() {
-            self.first_issue = Some(issue);
-        }
-    }
-
-    #[cfg(feature = "presentation")]
     fn into_strict(self, diagram_type: &str) -> Result<TreemapParsedInput> {
-        match self.first_issue {
-            Some(issue) => Err(treemap_error(diagram_type, issue.message, issue.span)),
-            None => Ok(self.parsed),
-        }
+        self.syntax
+            .into_strict()
+            .map_err(|issue| treemap_error(diagram_type, issue.message, issue.span))
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -139,21 +68,19 @@ impl TreemapParseOutcome {
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
         let Self {
-            parsed,
-            first_issue,
-            ..
+            syntax,
+            editor_facts,
         } = self;
         let model;
         let projection_meta = meta.compat_json_metadata();
-        let construction = match first_issue {
-            Some(issue) => Err(family::CombinedSemanticFailure::new(
+        let construction = match syntax.into_strict() {
+            Err(issue) => Err(family::CombinedSemanticFailure::new(
                 treemap_error(&meta.diagram_type, issue.message, issue.span),
-                Some(parsed.editor_facts),
+                Some(editor_facts),
             )),
-            None => {
-                let mut source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
-                let editor_facts = std::mem::take(&mut source.editor_facts);
-                model = source.into_render_model_controlled(control)?;
+            Ok(parsed) => {
+                let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+                model = into_render_model_controlled(source, control)?;
                 match merman_model::families::treemap::compat::PreparedProjection::new_controlled(
                     &model,
                     &projection_meta,
@@ -180,32 +107,6 @@ impl TreemapParseOutcome {
         control.checkpoint()?;
         Ok(combined)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SpannedText {
-    text: String,
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-struct SpannedValue {
-    value: Value,
-    #[cfg(feature = "editor-facts")]
-    source: SpannedText,
-}
-
-struct TreemapSemanticSource {
-    #[cfg(feature = "presentation")]
-    present: bool,
-    title: Option<String>,
-    acc_title: Option<String>,
-    acc_descr: Option<String>,
-    class_defs: std::collections::HashMap<String, StyleClassDef>,
-    arena: Arena,
-    roots: Vec<usize>,
-    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    editor_facts: EditorSemanticFacts,
 }
 
 #[cfg(feature = "editor-facts")]
@@ -301,10 +202,49 @@ fn push_treemap_row_editor_facts(facts: &mut EditorSemanticFacts, row: &TreemapR
     }
 }
 
+fn parse_treemap_outcome_controlled(
+    code: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<TreemapParseOutcome> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("treemap");
+
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut observe = |event: TreemapSyntaxEvent<'_>| match event {
+        TreemapSyntaxEvent::Common(fact) => {
+            push_langium_common_editor_fact(&mut editor_facts, fact, "treemap");
+        }
+        TreemapSyntaxEvent::Row(row) => push_treemap_row_editor_facts(&mut editor_facts, row),
+        TreemapSyntaxEvent::Issue(issue) => {
+            editor_facts.mark_recovered_from_parse_error(issue.message.clone(), issue.span);
+        }
+    };
+    let syntax = scan_treemap_controlled(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand
+            .needs_recovery()
+            .then_some(TreemapSyntaxObserver {
+                captures_rich: editor_demand.captures_rich(),
+                observe: &mut observe,
+            }),
+        control,
+    )?;
+    Ok(TreemapParseOutcome {
+        syntax,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    })
+}
+
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_treemap(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    let model = parse_treemap_semantic_source(code, meta)?
-        .into_render_model_controlled(&crate::OperationControl::new())
+    let source = parse_treemap_semantic_source(code, meta)?;
+    let model = into_render_model_controlled(source, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled");
     render_model_to_compat_json(&model, meta)
 }
@@ -332,9 +272,11 @@ pub(crate) fn parse_treemap_model_for_render(
     code: &str,
     meta: &SourcePresentationMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
-    Ok(parse_treemap_semantic_source(code, meta)?
-        .into_render_model_controlled(&crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled"))
+    let source = parse_treemap_semantic_source(code, meta)?;
+    Ok(
+        into_render_model_controlled(source, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled"),
+    )
 }
 
 #[cfg(feature = "presentation")]
@@ -355,7 +297,7 @@ pub(crate) fn parse_treemap_model_for_render_controlled(
     };
     let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
     control.checkpoint()?;
-    Ok(Ok(source.into_render_model_controlled(control)?))
+    Ok(Ok(into_render_model_controlled(source, control)?))
 }
 
 #[cfg(feature = "compat-json")]
@@ -381,47 +323,22 @@ fn render_model_to_compat_json_controlled(
     .map_err(Into::into))
 }
 
-impl TreemapSemanticSource {
-    fn into_semantic_model_controlled(
-        self,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<TreemapDiagramModel> {
-        let mut classes = std::collections::BTreeMap::new();
-        for (id, class) in self.class_defs {
-            control.checkpoint()?;
-            classes.insert(id, class);
-        }
-        control.checkpoint()?;
-        Ok(TreemapDiagramModel {
-            title: self.title,
-            acc_title: self.acc_title,
-            acc_descr: self.acc_descr,
-            root: TreemapNode {
-                children: Some(self.roots),
-                ..Default::default()
-            },
-            nodes: self.arena.nodes,
-            classes,
-        })
-    }
-
-    #[cfg(feature = "presentation")]
-    fn into_render_model_controlled(
-        self,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
-        let output_presence = if self.present {
-            TreemapOutputPresence::Model
-        } else {
-            TreemapOutputPresence::Empty
-        };
-        let semantic = self.into_semantic_model_controlled(control)?;
-        Ok(TreemapDiagramRenderModel::from_parts(
-            semantic,
-            TreemapVisuals::default(),
-            output_presence,
-        ))
-    }
+#[cfg(feature = "presentation")]
+fn into_render_model_controlled(
+    source: TreemapSemanticSource,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
+    let output_presence = if source.is_present() {
+        TreemapOutputPresence::Model
+    } else {
+        TreemapOutputPresence::Empty
+    };
+    let semantic = source.into_semantic_model_controlled(control)?;
+    Ok(TreemapDiagramRenderModel::from_parts(
+        semantic,
+        TreemapVisuals::default(),
+        output_presence,
+    ))
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -458,25 +375,19 @@ pub(crate) fn parse_treemap_semantic_model_controlled(
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::SemanticConstruction<TreemapDiagramModel>> {
-    let TreemapParseOutcome {
-        parsed,
-        first_issue,
-        ..
-    } = parse_treemap_outcome_controlled(
+    let parsed = parse_treemap_outcome_controlled(
         code,
         #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
     )?;
     #[cfg(feature = "editor-facts")]
-    let mut parsed = parsed;
-    #[cfg(feature = "editor-facts")]
     let editor_facts = editor_demand
         .needs_recovery()
-        .then(|| std::mem::take(&mut parsed.editor_facts));
-    let model = match first_issue {
-        Some(issue) => Err(treemap_error(&meta.diagram_type, issue.message, issue.span)),
-        None => {
+        .then_some(parsed.editor_facts);
+    let model = match parsed.syntax.into_strict() {
+        Err(issue) => Err(treemap_error(&meta.diagram_type, issue.message, issue.span)),
+        Ok(parsed) => {
             let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
             let mut model = source.into_semantic_model_controlled(control)?;
             sanitize_common_db_fields(&mut model, &meta.semantic_config);
@@ -491,243 +402,6 @@ pub(crate) fn parse_treemap_semantic_model_controlled(
     })
 }
 
-fn treemap_semantic_source_from_parsed_controlled(
-    parsed: TreemapParsedInput,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<TreemapSemanticSource> {
-    let class_defs = class_defs_from_rows_controlled(&parsed.rows, control)?;
-    let flat_items = flat_items_from_rows_controlled(&parsed.rows, control)?;
-    let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
-    control.checkpoint()?;
-    Ok(TreemapSemanticSource {
-        #[cfg(feature = "presentation")]
-        present: parsed.present,
-        title: parsed.title,
-        acc_title: parsed.acc_title,
-        acc_descr: parsed.acc_descr,
-        class_defs,
-        arena,
-        roots,
-        #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-        editor_facts: parsed.editor_facts,
-    })
-}
-
-fn parse_treemap_outcome_controlled(
-    code: &str,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<TreemapParseOutcome> {
-    control.checkpoint()?;
-    #[cfg(test)]
-    crate::diagrams::langium_common::record_family_syntax_construction("treemap");
-
-    let mut outcome = TreemapParseOutcome {
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        parsed: TreemapParsedInput {
-            present: false,
-            title: None,
-            acc_title: None,
-            acc_descr: None,
-            rows: Vec::new(),
-            #[cfg(feature = "editor-facts")]
-            editor_facts: EditorSemanticFacts::new(),
-        },
-        first_issue: None,
-        #[cfg(test)]
-        string2_scanned_bytes: 0,
-    };
-    let body = match treemap_body_start_controlled(code, control)? {
-        Ok(Some(body)) => body,
-        Ok(None) => return Ok(outcome),
-        Err(issue) => {
-            outcome.record_issue(issue.message, issue.span);
-            return Ok(outcome);
-        }
-    };
-    outcome.parsed.present = true;
-
-    let mut offset = body.offset;
-    let mut saw_statement = false;
-    let mut trailing_whitespace_span = None;
-
-    while offset < code.len() {
-        control.checkpoint()?;
-        if let Some(parsed) = parse_langium_common(code, offset) {
-            saw_statement = true;
-            trailing_whitespace_span = parsed.trailing_whitespace_span;
-            let field = parsed.fact.field;
-            let value = parsed.fact.value.clone();
-            #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
-                push_langium_common_editor_fact(
-                    &mut outcome.parsed.editor_facts,
-                    &parsed.fact,
-                    "treemap",
-                );
-            }
-            match field {
-                LangiumCommonField::Title => outcome.parsed.title = Some(value),
-                LangiumCommonField::AccTitle => outcome.parsed.acc_title = Some(value),
-                LangiumCommonField::AccDescr => outcome.parsed.acc_descr = Some(value),
-            }
-            if let Some(diagnostic) = parsed.diagnostic {
-                outcome.record_issue(diagnostic.message, Some(diagnostic.span));
-            }
-            offset += parsed.consumed;
-            continue;
-        }
-
-        let (line, next_offset) = physical_line_at(code, offset);
-        if line.trim_start().starts_with("%%") {
-            offset = next_offset;
-            continue;
-        }
-        let visible = strip_inline_comment_aware(line);
-        if visible.trim().is_empty() {
-            if saw_statement && !visible.is_empty() {
-                trailing_whitespace_span = Some(SourceSpan::new(offset, offset + line.len()));
-            }
-            offset = next_offset;
-            continue;
-        }
-        saw_statement = true;
-        trailing_whitespace_span = None;
-
-        let (indent, rest_with_trailing) = split_ascii_indent(visible);
-        let statement_start = offset + visible.len().saturating_sub(rest_with_trailing.len());
-        let (statement, statement_next_offset) = treemap_item_statement_controlled(
-            code,
-            statement_start,
-            rest_with_trailing,
-            next_offset,
-            control,
-            #[cfg(test)]
-            &mut outcome.string2_scanned_bytes,
-        )?;
-        let rest = strip_inline_comment_aware(statement).trim_end();
-        let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
-        let mut parsed_next_offset = next_offset;
-
-        match parse_class_def(rest, statement_start) {
-            Ok(Some(class_def)) => {
-                let style_issue = class_def.style_text.as_ref().and_then(|style| {
-                    validate_class_def_style(&style.text)
-                        .err()
-                        .map(|message| (message, style.span))
-                });
-                let row = TreemapRow::ClassDef(class_def);
-                #[cfg(feature = "editor-facts")]
-                if editor_demand == EditorFactsDemand::Capture {
-                    push_treemap_row_editor_facts(&mut outcome.parsed.editor_facts, &row);
-                }
-                outcome.parsed.rows.push(row);
-                if let Some((message, span)) = style_issue {
-                    outcome.record_issue(message, Some(span));
-                }
-            }
-            Ok(None) => match parse_item_row(indent, rest, statement_start) {
-                Ok(item) => {
-                    let row = TreemapRow::Item(item);
-                    #[cfg(feature = "editor-facts")]
-                    if editor_demand == EditorFactsDemand::Capture {
-                        push_treemap_row_editor_facts(&mut outcome.parsed.editor_facts, &row);
-                    }
-                    outcome.parsed.rows.push(row);
-                    parsed_next_offset = statement_next_offset;
-                }
-                Err(message) => {
-                    outcome.record_issue(message, Some(statement_span));
-                }
-            },
-            Err(message) => {
-                outcome.record_issue(message, Some(statement_span));
-            }
-        }
-        offset = parsed_next_offset;
-    }
-
-    if let Some(span) = trailing_whitespace_span {
-        outcome.record_issue("unexpected trailing whitespace-only line", Some(span));
-    }
-
-    control.checkpoint()?;
-    Ok(outcome)
-}
-
-fn treemap_item_statement_controlled<'a>(
-    source: &'a str,
-    statement_start: usize,
-    first_line: &'a str,
-    next_offset: usize,
-    control: &crate::OperationControl,
-    #[cfg(test)] scanned_bytes: &mut usize,
-) -> crate::OperationControlResult<(&'a str, usize)> {
-    let name = first_line.trim_start();
-    let Some(quote @ (b'\'' | b'"')) = name.as_bytes().first().copied() else {
-        return Ok((first_line, next_offset));
-    };
-    let content_start = statement_start + first_line.len() - name.len() + 1;
-    const SCAN_CHUNK_BYTES: usize = 4096;
-    for (chunk_index, chunk) in source.as_bytes()[content_start..]
-        .chunks(SCAN_CHUNK_BYTES)
-        .enumerate()
-    {
-        control.checkpoint()?;
-        let relative_close = chunk.iter().position(|&byte| byte == quote);
-        #[cfg(test)]
-        {
-            *scanned_bytes += relative_close.map_or(chunk.len(), |index| index + 1);
-        }
-        if let Some(relative_close) = relative_close {
-            let close_end = content_start + chunk_index * SCAN_CHUNK_BYTES + relative_close + 1;
-            let (tail, next_offset) = physical_line_at(source, close_end);
-            return Ok((
-                &source[statement_start..close_end + tail.len()],
-                next_offset,
-            ));
-        }
-    }
-
-    Ok((first_line, next_offset))
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TreemapBodyStart {
-    offset: usize,
-}
-
-fn treemap_body_start_controlled(
-    code: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<std::result::Result<Option<TreemapBodyStart>, TreemapParseIssue>>
-{
-    let mut offset = 0usize;
-    while offset < code.len() {
-        control.checkpoint()?;
-        let (line, next_offset) = physical_line_at(code, offset);
-        let visible = strip_inline_comment_aware(line);
-        let trimmed = visible.trim();
-        if trimmed.is_empty() {
-            offset = next_offset;
-            continue;
-        }
-        let leading = visible.len().saturating_sub(visible.trim_start().len());
-        let span = SourceSpan::new(offset + leading, offset + leading + trimmed.len());
-        if !is_treemap_header(trimmed) {
-            return Ok(Err(TreemapParseIssue {
-                message: "expected treemap".to_string(),
-                span: Some(span),
-            }));
-        }
-        return Ok(Ok(Some(TreemapBodyStart {
-            offset: next_offset,
-        })));
-    }
-    Ok(Ok(None))
-}
-
 fn treemap_error(
     diagram_type: &str,
     message: impl Into<String>,
@@ -737,555 +411,6 @@ fn treemap_error(
     match span {
         Some(span) => Error::diagram_parse_exact(diagram_type, &message, span),
         None => Error::diagram_parse_fallback(diagram_type, &message),
-    }
-}
-
-fn class_defs_from_rows_controlled(
-    rows: &[TreemapRow],
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<std::collections::HashMap<String, StyleClassDef>> {
-    let mut class_defs: std::collections::HashMap<String, StyleClassDef> =
-        std::collections::HashMap::new();
-    for (index, row) in rows.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let TreemapRow::ClassDef(c) = row else {
-            continue;
-        };
-        add_class(
-            &mut class_defs,
-            &c.class_name.text,
-            c.style_text
-                .as_ref()
-                .map(|style| style.text.as_str())
-                .unwrap_or(""),
-        );
-    }
-
-    control.checkpoint()?;
-    Ok(class_defs)
-}
-
-fn flat_items_from_rows_controlled(
-    rows: &[TreemapRow],
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Vec<FlatItem>> {
-    let mut flat_items: Vec<FlatItem> = Vec::new();
-    for (index, row) in rows.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let TreemapRow::Item(item) = row else {
-            continue;
-        };
-
-        flat_items.push(FlatItem {
-            level: item.indent,
-            name: item.name.text.clone(),
-            item_type: item.item_type,
-            value: item.value.as_ref().map(|value| value.value.clone()),
-            class_selector: item
-                .class_selector
-                .as_ref()
-                .map(|selector| selector.text.clone()),
-        });
-    }
-
-    control.checkpoint()?;
-    Ok(flat_items)
-}
-
-#[derive(Debug, Clone)]
-struct FlatItem {
-    level: usize,
-    name: String,
-    item_type: ItemType,
-    value: Option<Value>,
-    class_selector: Option<String>,
-}
-
-#[cfg(test)]
-fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
-    build_hierarchy_controlled(items, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-}
-
-fn build_hierarchy_controlled(
-    items: &[FlatItem],
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<(Arena, Vec<usize>)> {
-    if items.is_empty() {
-        return Ok((Arena { nodes: Vec::new() }, Vec::new()));
-    }
-
-    let mut arena = Arena { nodes: Vec::new() };
-    let mut roots: Vec<usize> = Vec::new();
-    let mut stack: Vec<(usize, usize)> = Vec::new(); // (node_idx, item.level)
-
-    for (index, item) in items.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let mut node = TreemapNode {
-            name: item.name.clone(),
-            value: None,
-            class_selector: item.class_selector.clone(),
-            children: match item.item_type {
-                ItemType::Leaf => None,
-                ItemType::Section => Some(Vec::new()),
-            },
-        };
-        if item.item_type == ItemType::Leaf {
-            node.value = item
-                .value
-                .as_ref()
-                .map(crate::json_value::ManagedJson::from);
-        }
-
-        let idx = arena.push(node);
-
-        while stack.last().is_some_and(|(_, lvl)| *lvl >= item.level) {
-            control.checkpoint()?;
-            stack.pop();
-        }
-
-        if stack.is_empty() {
-            roots.push(idx);
-        } else {
-            let parent_idx = stack[stack.len() - 1].0;
-            let parent = &mut arena.nodes[parent_idx];
-            if let Some(children) = parent.children.as_mut() {
-                children.push(idx);
-            } else {
-                parent.children = Some(vec![idx]);
-            }
-        }
-
-        if item.item_type != ItemType::Leaf {
-            stack.push((idx, item.level));
-        }
-    }
-
-    control.checkpoint()?;
-    Ok((arena, roots))
-}
-
-fn add_class(
-    classes: &mut std::collections::HashMap<String, StyleClassDef>,
-    id: &str,
-    style: &str,
-) {
-    let style_class = classes
-        .entry(id.to_string())
-        .or_insert_with(|| StyleClassDef {
-            id: id.to_string(),
-            styles: Vec::new(),
-            text_styles: Vec::new(),
-        });
-
-    const PLACEHOLDER: &str = "ก์ก์ก์";
-    let replaced = style.replace("\\,", PLACEHOLDER);
-    let replaced = replaced.replace(',', ";");
-    let replaced = replaced.replace(PLACEHOLDER, ",");
-
-    for s in replaced.split(';') {
-        if is_label_style_bug_compatible(s) {
-            style_class.text_styles.push(s.to_string());
-        }
-        style_class.styles.push(s.to_string());
-    }
-}
-
-fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
-    let style = style.trim().trim_end_matches(';').trim();
-    if style.is_empty() {
-        return Ok(());
-    }
-
-    const PLACEHOLDER: &str = "ก์ก์ก์";
-    let replaced = style.replace("\\,", PLACEHOLDER);
-    let replaced = replaced.replace(',', ";");
-    let replaced = replaced.replace(PLACEHOLDER, ",");
-
-    for raw in replaced.split(';') {
-        let s = raw.trim();
-        if s.is_empty() {
-            continue;
-        }
-        let Some((k, v)) = s.split_once(':') else {
-            return Err(format!("invalid classDef style token `{s}`"));
-        };
-        if k.trim().is_empty() || v.trim().is_empty() {
-            return Err(format!("invalid classDef style token `{s}`"));
-        }
-    }
-
-    Ok(())
-}
-
-fn is_label_style_bug_compatible(s: &str) -> bool {
-    matches!(
-        s.trim(),
-        "color"
-            | "font-size"
-            | "font-family"
-            | "font-weight"
-            | "font-style"
-            | "text-decoration"
-            | "text-align"
-            | "text-transform"
-            | "line-height"
-            | "letter-spacing"
-            | "word-spacing"
-            | "text-shadow"
-            | "text-overflow"
-            | "white-space"
-            | "word-wrap"
-            | "word-break"
-            | "overflow-wrap"
-            | "hyphens"
-    )
-}
-
-fn strip_inline_comment_aware(line: &str) -> &str {
-    let mut in_quote: Option<char> = None;
-
-    let mut it = line.char_indices().peekable();
-    while let Some((idx, ch)) = it.next() {
-        if let Some(q) = in_quote {
-            if ch == q {
-                in_quote = None;
-            }
-            continue;
-        }
-
-        if ch == '"' || ch == '\'' {
-            in_quote = Some(ch);
-            continue;
-        }
-
-        if ch == '%' && it.peek().is_some_and(|(_, next)| *next == '%') {
-            return &line[..idx];
-        }
-    }
-
-    line
-}
-
-fn is_treemap_header(line: &str) -> bool {
-    let t = line.trim_start();
-    t == "treemap" || t == "treemap-beta"
-}
-
-fn parse_class_def(
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<Option<ClassDefStatement>, String> {
-    let Some(after_keyword) = line.strip_prefix("classDef") else {
-        return Ok(None);
-    };
-    if after_keyword
-        .chars()
-        .next()
-        .is_some_and(|character| !character.is_whitespace())
-    {
-        return Ok(None);
-    }
-    if after_keyword.is_empty() {
-        return Err("expected class name".to_string());
-    }
-
-    let class_input = after_keyword.trim_start();
-    let class_start = line.len().saturating_sub(class_input.len());
-    let (class_name, tail) =
-        parse_id2(class_input).ok_or_else(|| "expected class name".to_string())?;
-    let class_name_span = SourceSpan::new(
-        line_start + class_start,
-        line_start + class_start + class_name.len(),
-    );
-
-    let style_input = tail.trim_start();
-    let style_input_start = line.len().saturating_sub(style_input.len());
-    let semicolon = style_input.find(';');
-    let (style_raw, trailing) = match semicolon {
-        Some(semi) => (&style_input[..semi], &style_input[semi + 1..]),
-        None => (style_input, ""),
-    };
-    let style = style_raw.trim();
-    let style_text = if style.is_empty() {
-        None
-    } else {
-        let leading = leading_whitespace_len(style_raw);
-        let start = line_start + style_input_start + leading;
-        Some(SpannedText {
-            text: style.to_string(),
-            span: SourceSpan::new(start, start + style.len()),
-        })
-    };
-    if !trailing.trim().is_empty() {
-        return Err("unexpected tokens after classDef".to_string());
-    }
-
-    Ok(Some(ClassDefStatement {
-        class_name: SpannedText {
-            text: class_name,
-            span: class_name_span,
-        },
-        style_text,
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(line_start, line_start + line.len()),
-    }))
-}
-
-fn parse_item_row(
-    indent: usize,
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<ItemRow, String> {
-    let mut p = Parser::new(line);
-    p.skip_ws();
-    let name_token_start = p.pos;
-    let name_text = p
-        .parse_string2()
-        .ok_or_else(|| "expected quoted string".to_string())?;
-    let name_token_end = p.pos;
-    let quote_len = line[name_token_start..]
-        .chars()
-        .next()
-        .map(char::len_utf8)
-        .unwrap_or_default();
-    let name = SpannedText {
-        text: name_text,
-        span: SourceSpan::new(
-            line_start + name_token_start + quote_len,
-            line_start + name_token_end.saturating_sub(quote_len),
-        ),
-    };
-    p.skip_ws();
-
-    // Section: "Name" (:::class)?
-    if p.try_consume_str(":::") {
-        p.skip_ws();
-        let selector_start = p.pos;
-        let (cls, _) = parse_id2(p.rest()).ok_or_else(|| "expected class selector".to_string())?;
-        p.pos += cls.len();
-        let selector_span = SourceSpan::new(
-            line_start + selector_start,
-            line_start + selector_start + cls.len(),
-        );
-        p.skip_ws();
-        if !p.eof() {
-            return Err("unexpected tokens after section".to_string());
-        }
-        return Ok(ItemRow {
-            indent,
-            name,
-            item_type: ItemType::Section,
-            value: None,
-            class_selector: Some(SpannedText {
-                span: selector_span,
-                text: cls,
-            }),
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(line_start, line_start + line.len()),
-        });
-    }
-
-    // Leaf: "Name" : 10 (:::class)?
-    if p.try_consume(':') || p.try_consume(',') {
-        p.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let value_start = p.pos;
-        let token = p
-            .parse_number2_token()
-            .ok_or_else(|| "expected number".to_string())?;
-        #[cfg(feature = "editor-facts")]
-        let value_span = SourceSpan::new(
-            line_start + value_start,
-            line_start + value_start + token.len(),
-        );
-        let Some(value) = parse_number2_value(&token) else {
-            return Err("expected number".to_string());
-        };
-        p.skip_ws();
-        let mut class_selector = None;
-        if p.try_consume_str(":::") {
-            p.skip_ws();
-            let selector_start = p.pos;
-            let (cls, _) =
-                parse_id2(p.rest()).ok_or_else(|| "expected class selector".to_string())?;
-            p.pos += cls.len();
-            let selector_span = SourceSpan::new(
-                line_start + selector_start,
-                line_start + selector_start + cls.len(),
-            );
-            class_selector = Some(SpannedText {
-                span: selector_span,
-                text: cls,
-            });
-            p.skip_ws();
-        }
-        if !p.eof() {
-            return Err("unexpected tokens after leaf".to_string());
-        }
-        return Ok(ItemRow {
-            indent,
-            name,
-            item_type: ItemType::Leaf,
-            value: Some(SpannedValue {
-                value,
-                #[cfg(feature = "editor-facts")]
-                source: SpannedText {
-                    text: token.clone(),
-                    span: value_span,
-                },
-            }),
-            class_selector,
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(line_start, line_start + line.len()),
-        });
-    }
-
-    if p.eof() {
-        return Ok(ItemRow {
-            indent,
-            name,
-            item_type: ItemType::Section,
-            value: None,
-            class_selector: None,
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(line_start, line_start + line.len()),
-        });
-    }
-
-    Err("expected ':' or ':::' or end of line".to_string())
-}
-
-fn parse_id2(input: &str) -> Option<(String, &str)> {
-    let mut chars = input.chars();
-    let first = chars.next()?;
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return None;
-    }
-    let mut idx = first.len_utf8();
-    for ch in chars {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            idx += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    Some((input[..idx].to_string(), &input[idx..]))
-}
-
-fn parse_number2_value(token: &str) -> Option<Value> {
-    let no_commas: String = token.chars().filter(|c| *c != ',').collect();
-    let mut saw_dot = false;
-    let mut cut = 0usize;
-    for ch in no_commas.chars() {
-        if ch.is_ascii_digit() {
-            cut += ch.len_utf8();
-            continue;
-        }
-        if ch == '.' && !saw_dot {
-            saw_dot = true;
-            cut += 1;
-            continue;
-        }
-        break;
-    }
-    if cut == 0 {
-        return None;
-    }
-    let prefix = &no_commas[..cut];
-    let value: f64 = prefix.parse().ok()?;
-    let number = serde_json::Number::from_f64(value)?;
-    if value.fract() == 0.0 && value < i64::MAX as f64 {
-        return Some(Value::Number((value as i64).into()));
-    }
-    Some(Value::Number(number))
-}
-
-struct Parser<'a> {
-    input: &'a str,
-    pos: usize,
-}
-
-impl<'a> Parser<'a> {
-    fn new(input: &'a str) -> Self {
-        Self { input, pos: 0 }
-    }
-
-    fn eof(&self) -> bool {
-        self.pos >= self.input.len()
-    }
-
-    fn rest(&self) -> &'a str {
-        &self.input[self.pos..]
-    }
-
-    fn skip_ws(&mut self) {
-        while let Some(ch) = self.rest().chars().next() {
-            if ch.is_whitespace() {
-                self.pos += ch.len_utf8();
-                continue;
-            }
-            break;
-        }
-    }
-
-    fn try_consume(&mut self, ch: char) -> bool {
-        if self.rest().starts_with(ch) {
-            self.pos += ch.len_utf8();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn try_consume_str(&mut self, s: &str) -> bool {
-        if self.rest().starts_with(s) {
-            self.pos += s.len();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn parse_string2(&mut self) -> Option<String> {
-        let rest = self.rest();
-        let quote = rest.chars().next()?;
-        if quote != '"' && quote != '\'' {
-            return None;
-        }
-        let mut idx = 1usize;
-        for ch in rest[1..].chars() {
-            idx += ch.len_utf8();
-            if ch == quote {
-                let inner = &rest[1..idx - 1];
-                self.pos += idx;
-                return Some(inner.to_string());
-            }
-        }
-        None
-    }
-
-    fn parse_number2_token(&mut self) -> Option<String> {
-        let mut idx = 0usize;
-        for ch in self.rest().chars() {
-            if ch.is_ascii_digit() || ch == '_' || ch == '.' || ch == ',' {
-                idx += ch.len_utf8();
-                continue;
-            }
-            break;
-        }
-        if idx == 0 {
-            return None;
-        }
-        let token = &self.rest()[..idx];
-        self.pos += idx;
-        Some(token.to_string())
     }
 }
 
@@ -1813,75 +938,17 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 
     #[test]
     fn treemap_build_hierarchy_matches_upstream_utils_test() {
-        let items = vec![
-            FlatItem {
-                level: 0,
-                name: "Root".to_string(),
-                item_type: ItemType::Section,
-                value: None,
-                class_selector: None,
-            },
-            FlatItem {
-                level: 4,
-                name: "Branch 1".to_string(),
-                item_type: ItemType::Section,
-                value: None,
-                class_selector: None,
-            },
-            FlatItem {
-                level: 8,
-                name: "Leaf 1.1".to_string(),
-                item_type: ItemType::Leaf,
-                value: Some(json!(10)),
-                class_selector: None,
-            },
-            FlatItem {
-                level: 8,
-                name: "Leaf 1.2".to_string(),
-                item_type: ItemType::Leaf,
-                value: Some(json!(15)),
-                class_selector: None,
-            },
-            FlatItem {
-                level: 4,
-                name: "Branch 2".to_string(),
-                item_type: ItemType::Section,
-                value: None,
-                class_selector: None,
-            },
-            FlatItem {
-                level: 8,
-                name: "Leaf 2.1".to_string(),
-                item_type: ItemType::Leaf,
-                value: Some(json!(20)),
-                class_selector: None,
-            },
-            FlatItem {
-                level: 8,
-                name: "Leaf 2.2".to_string(),
-                item_type: ItemType::Leaf,
-                value: Some(json!(25)),
-                class_selector: None,
-            },
-            FlatItem {
-                level: 8,
-                name: "Leaf 2.3".to_string(),
-                item_type: ItemType::Leaf,
-                value: Some(json!(30)),
-                class_selector: None,
-            },
-        ];
-
-        let (arena, roots) = build_hierarchy(&items);
-        let model = TreemapDiagramRenderModel::from_semantic_model(TreemapDiagramModel {
-            root: TreemapNode {
-                children: Some(roots),
-                ..Default::default()
-            },
-            nodes: arena.nodes,
-            ..Default::default()
-        });
-        let projected = render_model_to_compat_json(&model, &meta()).unwrap();
+        let source = r#"treemap
+"Root"
+    "Branch 1"
+        "Leaf 1.1": 10
+        "Leaf 1.2": 15
+    "Branch 2"
+        "Leaf 2.1": 20
+        "Leaf 2.2": 25
+        "Leaf 2.3": 30
+"#;
+        let projected = parse_treemap(source, &meta()).unwrap();
         let root_value = projected["root"]["children"].as_array().unwrap();
         assert_eq!(
             root_value,
@@ -2539,8 +1606,9 @@ mod semantic_tests {
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
-    fn treemap_malformed_multiline_string2_keeps_following_safe_rows() {
+    fn treemap_malformed_multiline_string2_keeps_following_editor_facts() {
         for eol in ["\n", "\r\n"] {
             for quote in ['"', '\''] {
                 let broken = format!("{quote}Broken{eol}  suffix{quote}: _");
@@ -2549,47 +1617,34 @@ mod semantic_tests {
                 );
                 let outcome = parse_treemap_outcome_controlled(
                     &source,
-                    #[cfg(feature = "editor-facts")]
                     EditorFactsDemand::Capture,
                     &crate::OperationControl::new(),
                 )
                 .unwrap();
-                let issue = outcome.first_issue.as_ref().unwrap();
+                let issue = outcome.syntax.into_strict().err().unwrap();
                 assert_eq!(issue.message, "expected number");
                 let start = source.find(&broken).unwrap();
                 assert_eq!(
                     issue.span,
                     Some(SourceSpan::new(start, start + broken.len()))
                 );
-                let names = outcome
-                    .parsed
-                    .rows
-                    .iter()
-                    .filter_map(|row| match row {
-                        TreemapRow::Item(item) => Some(item.name.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                assert_eq!(names, ["Before", "After"]);
-                #[cfg(feature = "editor-facts")]
-                {
-                    let facts = &outcome.parsed.editor_facts;
-                    assert_eq!(
-                        facts.completeness,
-                        crate::EditorSemanticCompleteness::Recovered
-                    );
-                    let start = source.find("After").unwrap();
-                    assert!(facts.symbols.iter().any(|symbol| {
-                        symbol.name == "After"
-                            && symbol.selection == SourceSpan::new(start, start + "After".len())
-                    }));
-                }
+                let facts = outcome.editor_facts;
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                let start = source.find("After").unwrap();
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "After"
+                        && symbol.selection == SourceSpan::new(start, start + "After".len())
+                }));
             }
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
-    fn treemap_failed_string2_candidates_keep_nodes_with_linear_scan_work() {
+    fn treemap_failed_string2_candidates_keep_later_editor_facts() {
         const ROWS: usize = 128;
         for quote in ['"', '\''] {
             let mut source = String::from("treemap\n");
@@ -2608,46 +1663,48 @@ mod semantic_tests {
             source.push_str("title Recovered title\n");
             let outcome = parse_treemap_outcome_controlled(
                 &source,
-                #[cfg(feature = "editor-facts")]
                 EditorFactsDemand::Capture,
                 &crate::OperationControl::new(),
             )
             .unwrap();
-            assert!(outcome.first_issue.is_some());
-            let names = outcome
-                .parsed
-                .rows
-                .iter()
-                .filter_map(|row| match row {
-                    TreemapRow::Item(item) => Some(item.name.text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(names.len(), ROWS + 1);
-            for (index, name) in names[..ROWS].iter().enumerate() {
-                assert_eq!(*name, format!("After{index}"));
-            }
-            assert_eq!(names[ROWS], "SafeSuffix");
-            assert_eq!(outcome.parsed.rows.len(), ROWS * 2 + 1);
-            assert_eq!(outcome.parsed.title.as_deref(), Some("Recovered title"));
-            assert!(
-                outcome.string2_scanned_bytes <= source.len() * 2,
-                "two quote kinds must inspect at most twice the source bytes: {} > {}",
-                outcome.string2_scanned_bytes,
-                source.len() * 2
+            assert!(outcome.syntax.into_strict().is_err());
+            let facts = outcome.editor_facts;
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
             );
-            #[cfg(feature = "editor-facts")]
-            {
-                let facts = &outcome.parsed.editor_facts;
-                for name in ["After0", "After127", "SafeSuffix", "hot127"] {
-                    let start = source.find(name).unwrap();
-                    assert!(facts.symbols.iter().any(|symbol| {
-                        symbol.name == name
-                            && symbol.selection == SourceSpan::new(start, start + name.len())
-                    }));
-                }
+            for name in ["After0", "After127", "SafeSuffix", "hot127"] {
+                let start = source.find(name).unwrap();
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.selection == SourceSpan::new(start, start + name.len())
+                }));
             }
         }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn treemap_recovery_only_demand_does_not_build_rich_facts() {
+        let source = "treemap\ntitle Inventory\n\"Before\": 1\n\"Broken\":\n\"After\": 2\n";
+        let outcome = parse_treemap_outcome_controlled(
+            source,
+            EditorFactsDemand::Recovery,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        let issue = outcome.syntax.into_strict().err().unwrap();
+        let facts = outcome.editor_facts;
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.is_empty());
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.expected_syntax.is_empty());
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(facts.diagnostics[0].message, issue.message);
+        assert_eq!(facts.diagnostics[0].span, issue.span);
     }
 
     #[test]

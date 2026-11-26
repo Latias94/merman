@@ -2473,6 +2473,7 @@ version = "0.11.0"
 dependencies = [
  "merman-core-preprocess",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]
