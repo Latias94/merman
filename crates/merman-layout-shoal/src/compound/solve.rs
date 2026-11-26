@@ -435,7 +435,16 @@ pub(super) fn level(
     {
         return lanes::root(ctx, membership, &graph, frames, wires, expanded, work);
     }
-    let drawing = flat::run(&graph, ctx.options, expanded, work)?;
+    // Compound assembly discards per-level `routed_crossings` and scores the stitched drawing
+    // once at the compound level, so sublevels only need geometry (while still honoring any
+    // editor hints inside `flat::run_packed`).
+    let drawing = flat::run_with_detail(
+        &graph,
+        ctx.options,
+        expanded,
+        crate::LayoutDetail::Geometry,
+        work,
+    )?;
     let mut edges = drawing.edges.into_iter();
     for wire in &mut wires {
         work.visit(1)?;

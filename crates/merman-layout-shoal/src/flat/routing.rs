@@ -166,6 +166,8 @@ struct Gap {
     marker_half_width: f64,
     has_end_labels: bool,
     allow_local_sweeps: bool,
+    upper_free_band: bool,
+    lower_free_band: bool,
     minimum: f64,
     height: f64,
     tracks: usize,
@@ -303,6 +305,8 @@ fn collect_pieces(
             allow_local_sweeps: can_local_sweep
                 && !pair[0].has_compound_seam
                 && !pair[1].has_compound_seam,
+            upper_free_band: can_local_sweep && !pair[0].has_compound_seam && !pair[0].has_node,
+            lower_free_band: can_local_sweep && !pair[1].has_compound_seam && !pair[1].has_node,
             ..Gap::default()
         });
     }
@@ -404,6 +408,17 @@ fn collect_pieces(
             segment += chain.len() - 1;
         }
     }
+    // Match `Rect::center().x` (`(x - w/2) + w/2`) so downstream fixed-offset checks in
+    // `extras::finish` see the exact same bit-for-bit contact coordinates without 1-ULP drift.
+    let node_center = |v: usize| -> LayoutResult<f64> {
+        if v < node_count {
+            let half = g.width[v] * 0.5;
+            let left = finite(x[v] - half)?;
+            finite(left + half)
+        } else {
+            Ok(x[v])
+        }
+    };
     segment = 0;
     for (edge, chain) in g.chains.iter().enumerate() {
         work.visit(1)?;
@@ -419,8 +434,11 @@ fn collect_pieces(
         } else {
             0.0
         };
-        let mut from =
-            finite(side_start.map_or(x[first] + g.source_offset[segment], |port| port.rail))?;
+        let mut from = finite(
+            side_start.map_or(node_center(first)? + g.source_offset[segment], |port| {
+                port.rail
+            }),
+        )?;
         for &lower in &chain[1..] {
             work.visit(1)?;
             let lower = lower as usize;
@@ -431,7 +449,7 @@ fn collect_pieces(
                 {
                     port.rail
                 } else {
-                    finite(x[lower] + g.target_offset[segment])?
+                    finite(node_center(lower)? + g.target_offset[segment])?
                 };
                 let span = Span { from, to };
                 finite(span.width())?;
@@ -920,8 +938,12 @@ impl Gap {
         let isolated_curve = curved && self.pieces.len() == 1 && ids.len() == 1;
         if !ids.is_empty() && (!curved || !self.allow_local_sweeps && !isolated_curve) {
             let lead = LEAD.max(options.spacing.edge * 0.5);
-            self.upper_guard = advance(self.upper_guard, lead)?;
-            self.lower_guard = advance(self.lower_guard, lead)?;
+            if !curved || !self.upper_free_band {
+                self.upper_guard = advance(self.upper_guard, lead)?;
+            }
+            if !curved || !self.lower_free_band {
+                self.lower_guard = advance(self.lower_guard, lead)?;
+            }
         } else if dense_curves {
             // On a shallow, wide fan the sweep otherwise reaches neighboring boxes
             // while its stroke is still inside a rank's outline. Start it beyond the rank.

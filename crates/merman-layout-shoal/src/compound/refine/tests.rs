@@ -835,4 +835,35 @@ fn monotone_sweep_matches_bands_across_star_fans_tricky_crossings_and_limits() {
     let tricky_total = assert_equivalent(&graph2, &out2, RoutingStyle::Curved, u64::MAX);
     assert!(tricky_total > 10);
     assert_equivalent(&graph2, &out2, RoutingStyle::Polyline, u64::MAX);
+
+    // 3. Horizontal segments touching exact chain starts, ends, interior cubic vertices,
+    // and triple intersections must match `Bands` bit-for-bit via `EV_HORIZ`.
+    let mut horiz_case = Vec::new();
+    for i in 0..40 {
+        let x0 = 40.0 + (i as f64) * 14.0;
+        let x1 = 600.0 - ((i * 13) % 40) as f64 * 13.0;
+        let mut r = route(&[(x0, 0.0), (x1, 400.0)], Axis::Vertical);
+        if i % 2 == 1 {
+            r.points.reverse();
+        }
+        horiz_case.push(r);
+    }
+    // Horizontal lines at exact y_top (0.0), y_bot (400.0), exact midpoint (200.0), and
+    // multiple interior heights including overlapping horizontal-vs-horizontal segments.
+    for (y, x0, x1) in [
+        (0.0, 20.0, 620.0),
+        (0.0, 100.0, 500.0),
+        (200.0, 20.0, 620.0),
+        (200.0, 200.0, 420.0),
+        (400.0, 20.0, 620.0),
+        (125.0, 150.0, 480.0),
+        (275.0, 80.0, 540.0),
+    ] {
+        horiz_case.push(route(&[(x0, y), (x1, y)], Axis::Horizontal));
+    }
+    let (graph3, out3) = drawing(horiz_case);
+    let h_total = assert_equivalent(&graph3, &out3, RoutingStyle::Curved, u64::MAX);
+    assert!(h_total > 30);
+    assert_equivalent(&graph3, &out3, RoutingStyle::Curved, 7);
+    assert_equivalent(&graph3, &out3, RoutingStyle::Polyline, u64::MAX);
 }

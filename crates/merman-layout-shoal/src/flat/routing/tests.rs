@@ -1389,3 +1389,102 @@ fn sparse_logical_distances_survive_without_dense_storage_and_interrupted_routes
         assert_eq!(scene.draw().edges, expected.edges);
     }
 }
+
+#[test]
+fn fixed_offset_ports_match_rect_center_without_ulp_drift_in_extras() {
+    // Choose x and width such that `(x - w/2) + w/2 != x` by 1 ULP, and an offset where
+    // `x + offset != ((x - w/2) + w/2) + offset`. `routing` must anchor on `Rect::center().x`
+    // so `extras::finish` keeps the curved route instead of triggering an orthogonal redraw.
+    let x_b = 36.04_f64;
+    let w_b = 369.5_f64;
+    let off_b = -45.25_f64;
+    assert_ne!(
+        x_b + off_b,
+        ((x_b - w_b * 0.5) + w_b * 0.5) + off_b,
+        "test coordinates must exhibit the 1-ULP center round-trip discrepancy"
+    );
+
+    let mut scene = Scene::new(
+        &[100., 100.],
+        &[&[0], &[2], &[1]],
+        &[&[0, 2, 1]],
+        &[0., x_b, 0.],
+    );
+    scene.g.width[0] = 377.5;
+    scene.g.width[1] = w_b;
+    scene.label(0, 2, 65.54, 21.0);
+    scene.g.inserted_ranks.push(1);
+    scene.g.source_offset[0] = 19.25;
+    scene.g.target_offset[1] = off_b;
+    scene.graph.edges[0].source_port = crate::PortSideHint::FixedOffset {
+        side: Side::Bottom,
+        offset: 19.25,
+    };
+    scene.graph.edges[0].target_port = crate::PortSideHint::FixedOffset {
+        side: Side::Top,
+        offset: off_b,
+    };
+    scene.c.nodes[0].group_proxy = true;
+    scene.c.nodes[1].group_proxy = true;
+
+    let mut drawing = scene.draw();
+    let before = drawing.edges[0].1.points.clone();
+    super::super::extras::finish(
+        &mut drawing,
+        &scene.g,
+        &scene.c,
+        &scene.graph,
+        &scene.options,
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert_eq!(
+        drawing.edges[0].1.points, before,
+        "1-ULP center round-trip must not trigger an orthogonal redraw in extras::finish"
+    );
+}
+
+#[test]
+fn compound_proxy_gap_does_not_charge_shared_runway_on_adjacent_label_band() {
+    let mut scene = Scene::new(
+        &[40., 40.],
+        &[&[0], &[2, 3], &[1]],
+        &[&[0, 2, 1], &[0, 3, 1]],
+        &[100., 100., 60., 140.],
+    );
+    scene.label(0, 2, 30., 20.);
+    scene.label(1, 3, 30., 20.);
+    scene.g.inserted_ranks.push(1);
+    scene.g.source_offset[0] = -40.;
+    scene.g.target_offset[1] = -20.;
+    scene.g.source_offset[2] = 40.;
+    scene.g.target_offset[3] = 20.;
+    scene.c.nodes[0].group_proxy = true;
+    scene.c.nodes[1].group_proxy = true;
+
+    let drawing = scene.draw();
+    let label_bottom = drawing.edges[0].1.label_center.unwrap().y + 10.0;
+    let proxy_top = drawing.nodes[1].y;
+    let lead = LEAD.max(scene.options.spacing.edge * 0.5);
+    // In the lower gap (label -> proxy), the sweep starts right at `label_bottom`
+    // (0 guard on the pure label band) and keeps `lead` only at `proxy_top`.
+    let pts = &drawing.edges[0].1.points;
+    let start_y = pts
+        .iter()
+        .find(|p| p.x == 60.0 && p.y >= label_bottom - 1e-6)
+        .unwrap()
+        .y;
+    let end_y = pts
+        .iter()
+        .find(|p| p.x == 80.0 && p.y < proxy_top)
+        .unwrap()
+        .y;
+    assert!(
+        (start_y - label_bottom).abs() < 1e-6,
+        "start_y={start_y} label_bottom={label_bottom}"
+    );
+    assert!(
+        (proxy_top - end_y - lead).abs() < 1e-6,
+        "proxy_top={proxy_top} end_y={end_y} lead={lead}"
+    );
+}

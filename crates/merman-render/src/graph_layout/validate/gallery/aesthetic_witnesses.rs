@@ -313,7 +313,7 @@ fn studio_nested_clusters_and_compound_fill_avoid_wiggles_bananas_and_crushed_sw
         "studio-nested-clusters",
         nested,
         3.5,
-        Some(13),
+        Some(11),
         Some(3.05),
     );
 

@@ -517,6 +517,7 @@ fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn run(
     graph: &Graph,
     options: &Options,
@@ -526,7 +527,7 @@ pub(crate) fn run(
     run_with_detail(graph, options, g, crate::LayoutDetail::Full, work)
 }
 
-pub(super) fn run_with_detail(
+pub(crate) fn run_with_detail(
     graph: &Graph,
     options: &Options,
     g: &mut Expanded,

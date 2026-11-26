@@ -583,13 +583,75 @@ fn state_canonical_edge_bounds(
     bounds
 }
 
-#[derive(Default)]
 pub(super) struct StateEdgePathScratch {
     #[cfg(feature = "layout-shoal")]
     canonical: CanonicalPaintScratch,
     json: Vec<u8>,
     base64: String,
     style: String,
+    classes: String,
+    marker_end: String,
+    ryu: ryu_js::Buffer,
+}
+
+impl Default for StateEdgePathScratch {
+    fn default() -> Self {
+        Self {
+            #[cfg(feature = "layout-shoal")]
+            canonical: CanonicalPaintScratch::default(),
+            json: Vec::new(),
+            base64: String::new(),
+            style: String::new(),
+            classes: String::new(),
+            marker_end: String::new(),
+            ryu: ryu_js::Buffer::new(),
+        }
+    }
+}
+
+/// Formats `&[LayoutPoint]` into `out` byte-for-byte identically to `serde_json::to_writer`,
+/// avoiding per-coordinate `serde` dispatch overhead on the common finite decimal range.
+#[inline]
+fn write_serde_f64_json(out: &mut Vec<u8>, value: f64, ryu: &mut ryu_js::Buffer) {
+    if value == 0.0 {
+        if value.is_sign_negative() {
+            out.extend_from_slice(b"-0.0");
+        } else {
+            out.extend_from_slice(b"0.0");
+        }
+        return;
+    }
+    let abs = value.abs();
+    if value.is_finite() && (1e-4..1e15).contains(&abs) {
+        let formatted = ryu.format_finite(value);
+        out.extend_from_slice(formatted.as_bytes());
+        if !formatted.as_bytes().contains(&b'.') {
+            out.extend_from_slice(b".0");
+        }
+    } else if serde_json::to_writer(&mut *out, &value).is_err() {
+        out.extend_from_slice(b"null");
+    }
+}
+
+fn write_serde_points_json(
+    out: &mut Vec<u8>,
+    points: &[crate::model::LayoutPoint],
+    ryu: &mut ryu_js::Buffer,
+) {
+    out.clear();
+    out.reserve(points.len().saturating_mul(28).max(128));
+    out.push(b'[');
+    for (index, point) in points.iter().enumerate() {
+        if index > 0 {
+            out.push(b',');
+        }
+        out.extend_from_slice(br#"{"x":"#);
+        write_serde_f64_json(out, point.x, ryu);
+        out.extend_from_slice(br#","y":"#);
+        write_serde_f64_json(out, point.y, ryu);
+        out.push(b'}');
+    }
+    out.push(b']');
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -664,11 +726,7 @@ fn write_state_edge_path(
     };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
     let rendered_d = hopped_d.unwrap_or(paint_d);
-    scratch.json.clear();
-    scratch.json.reserve(128);
-    if serde_json::to_writer(&mut scratch.json, points).is_err() {
-        scratch.json.clear();
-    }
+    write_serde_points_json(&mut scratch.json, points, &mut scratch.ryu);
     scratch.base64.clear();
     base64::engine::general_purpose::STANDARD.encode_string(&scratch.json, &mut scratch.base64);
     let original_style = &mut scratch.style;
@@ -706,19 +764,25 @@ fn write_state_edge_path(
     } else {
         std::borrow::Cow::Borrowed(original_style.as_str())
     };
-    let _ = write!(
-        out,
-        r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-        rendered_d,
-        state_scoped_dom_id(ctx, edge_id).attr(),
-        escape_xml_display(classes),
-        escape_xml_display(&style),
-        escape_xml_display(edge_id),
-        scratch.base64,
-        escape_xml_display(look)
-    );
+    out.push_str(r#"<path d=""#);
+    out.push_str(rendered_d);
+    out.push_str(r#"" id=""#);
+    let _ = write!(out, "{}", state_scoped_dom_id(ctx, edge_id).attr());
+    out.push_str(r#"" class=""#);
+    escape_xml_into(out, classes);
+    out.push_str(r#"" style=""#);
+    escape_xml_into(out, &style);
+    out.push_str(r#"" data-edge="true" data-et="edge" data-id=""#);
+    escape_xml_into(out, edge_id);
+    out.push_str(r#"" data-points=""#);
+    out.push_str(&scratch.base64);
+    out.push_str(r#"" data-look=""#);
+    escape_xml_into(out, look);
+    out.push('"');
     if let Some(marker_end) = marker_end {
-        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
+        out.push_str(r#" marker-end=""#);
+        escape_xml_into(out, marker_end);
+        out.push('"');
     }
     out.push_str("/>");
     out.checkpoint()?;
@@ -734,25 +798,33 @@ pub(super) fn render_state_edge_path(
     scratch: &mut StateEdgePathScratch,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
-    let mut classes = if ctx.uses_elk_adapter_dom
+    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+        return Ok(());
+    };
+    let mut classes = std::mem::take(&mut scratch.classes);
+    classes.clear();
+    if ctx.uses_elk_adapter_dom
         && edge
             .classes
             .split_whitespace()
             .any(|class| class == "note-edge")
     {
-        "edge-thickness-normal edge-pattern-dashed".to_string()
+        classes.push_str("edge-thickness-normal edge-pattern-dashed");
     } else {
-        "edge-thickness-normal edge-pattern-solid".to_string()
-    };
+        classes.push_str("edge-thickness-normal edge-pattern-solid");
+    }
     for c in edge.classes.split_whitespace() {
-        if c.trim().is_empty() {
+        let trimmed = c.trim();
+        if trimmed.is_empty() {
             continue;
         }
         classes.push(' ');
-        classes.push_str(c.trim());
+        classes.push_str(trimmed);
     }
 
-    let marker_end = match edge.arrow_type_end.trim() {
+    let mut marker_end_buf = std::mem::take(&mut scratch.marker_end);
+    marker_end_buf.clear();
+    let has_marker_end = match edge.arrow_type_end.trim() {
         "arrow_barb" | "arrow_barb_neo" => {
             let neo = if ctx.uses_canonical_routes() {
                 ctx.style_plan.compatibility().is_neo()
@@ -760,31 +832,33 @@ pub(super) fn render_state_edge_path(
                 state_data_look(ctx) == "neo"
             };
             let suffix = if neo { "-margin" } else { "" };
-            Some(format!(
+            let _ = write!(
+                marker_end_buf,
                 "url(#{}_stateDiagram-barbEnd{suffix})",
                 ctx.diagram_id
-            ))
+            );
+            true
         }
-        _ => None,
+        _ => false,
     };
 
-    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
-        return Ok(());
-    };
-    write_state_edge_path(
+    let result = write_state_edge_path(
         out,
         ctx,
         le,
         edge.id.as_str(),
         &classes,
-        marker_end.as_deref(),
+        has_marker_end.then_some(marker_end_buf.as_str()),
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,
         scratch,
         #[cfg(feature = "layout-shoal")]
         canonical_bounds,
-    )
+    );
+    scratch.classes = classes;
+    scratch.marker_end = marker_end_buf;
+    result
 }
 
 pub(super) fn render_state_edge_label(

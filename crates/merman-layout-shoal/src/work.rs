@@ -236,13 +236,27 @@ impl<'a> Work<'a> {
         values: &mut [usize],
         cmp: impl Fn(&usize, &usize) -> Ordering,
     ) -> LayoutResult<()> {
+        self.sort_dyn(values, &cmp)
+    }
+
+    fn sort_dyn(
+        &mut self,
+        values: &mut [usize],
+        cmp: &dyn Fn(&usize, &usize) -> Ordering,
+    ) -> LayoutResult<()> {
         if values.len() > 1 {
             self.charge_sort(values.len())?;
-            values.sort_unstable_by(cmp);
+            sort_indices(values, cmp);
             self.check()?;
         }
         Ok(())
     }
+}
+
+/// Single compiled `usize` unstable sort shared across all `Work::sort` and index-sort callers
+/// so `core::slice::sort::unstable` is not monomorphized per comparator closure.
+pub(crate) fn sort_indices(values: &mut [usize], cmp: &dyn Fn(&usize, &usize) -> Ordering) {
+    values.sort_unstable_by(|a, b| cmp(a, b));
 }
 
 #[cfg(test)]

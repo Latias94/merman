@@ -456,13 +456,66 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) ->
     format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
 }
 
-#[derive(Default)]
 struct RoughRectBorderPath {
     path: String,
+    fill_path: String,
     coordinates: [String; 4],
+    ryu: ryu_js::Buffer,
+}
+
+impl Default for RoughRectBorderPath {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            fill_path: String::new(),
+            coordinates: Default::default(),
+            ryu: ryu_js::Buffer::new(),
+        }
+    }
+}
+
+#[inline]
+fn push_rough_f64(out: &mut String, ryu: &mut ryu_js::Buffer, value: f64) {
+    if value == 0.0 {
+        if value.is_sign_negative() {
+            out.push_str("-0");
+        } else {
+            out.push('0');
+        }
+    } else if value.is_finite() {
+        let abs = value.abs();
+        if (1e-6..1e15).contains(&abs) {
+            out.push_str(ryu.format_finite(value));
+        } else {
+            let _ = write!(out, "{value}");
+        }
+    } else {
+        let _ = write!(out, "{value}");
+    }
 }
 
 impl RoughRectBorderPath {
+    fn fill_path_d(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) -> &str {
+        self.fill_path.clear();
+        self.fill_path.push('M');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x0);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y0);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x1);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y0);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x1);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y1);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x0);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y1);
+        &self.fill_path
+    }
+
     fn path_d(
         &mut self,
         randomness: &roughr::core::RoughRandomness,
@@ -483,7 +536,7 @@ impl RoughRectBorderPath {
         self.path.clear();
         for (text, value) in self.coordinates.iter_mut().zip([x0, y0, x2, y2]) {
             text.clear();
-            let _ = write!(text, "{value}");
+            push_rough_f64(text, &mut self.ryu, value);
         }
         let [left, top, right, bottom] = self.coordinates.each_ref().map(String::as_str);
 
@@ -515,15 +568,41 @@ impl RoughRectBorderPath {
                 let c1 = start + delta * d;
                 let c2 = start + delta * 2.0 * d;
                 if horizontal {
-                    let _ = write!(
-                        self.path,
-                        "M{start_text} {fixed_text} C{c1} {fixed_control}, {c2} {fixed_control}, {end_text} {fixed_text} "
-                    );
+                    self.path.push('M');
+                    self.path.push_str(start_text);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_text);
+                    self.path.push_str(" C");
+                    push_rough_f64(&mut self.path, &mut self.ryu, c1);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_control);
+                    self.path.push_str(", ");
+                    push_rough_f64(&mut self.path, &mut self.ryu, c2);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_control);
+                    self.path.push_str(", ");
+                    self.path.push_str(end_text);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
                 } else {
-                    let _ = write!(
-                        self.path,
-                        "M{fixed_text} {start_text} C{fixed_control} {c1}, {fixed_control} {c2}, {fixed_text} {end_text} "
-                    );
+                    self.path.push('M');
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
+                    self.path.push_str(start_text);
+                    self.path.push_str(" C");
+                    self.path.push_str(fixed_control);
+                    self.path.push(' ');
+                    push_rough_f64(&mut self.path, &mut self.ryu, c1);
+                    self.path.push_str(", ");
+                    self.path.push_str(fixed_control);
+                    self.path.push(' ');
+                    push_rough_f64(&mut self.path, &mut self.ryu, c2);
+                    self.path.push_str(", ");
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
+                    self.path.push_str(end_text);
+                    self.path.push(' ');
                 }
             }
         }
@@ -1500,13 +1579,6 @@ pub(crate) fn render_er_diagram_svg_model(
                 .then_some(ox + type_col_w + name_col_w + key_col_w),
         ];
 
-        fn roughjs46_rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            format!(
-                "M{} {} L{} {} L{} {} L{} {}",
-                x0, y0, x1, y0, x1, y1, x0, y1
-            )
-        }
-
         fn thin_divider_rect_bounds(x0: f64, y0: f64, x1: f64, y1: f64) -> (f64, f64, f64, f64) {
             let half = 0.00005;
             if (y1 - y0).abs() <= (x1 - x0).abs() {
@@ -1601,7 +1673,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                roughjs46_rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
+                rough_border.fill_path_d(box_x0, box_y0, box_x1, box_y1),
                 escape_attr(box_fill),
                 base_fill_style_attr
             );
@@ -1616,6 +1688,7 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             // Row rectangles
+            let escaped_node_border = escape_xml(node_border);
             let mut y = sep_y;
             for (idx, row) in measure.rows.iter().enumerate() {
                 let row_h = row.height.max(1.0);
@@ -1644,7 +1717,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     let _ = write!(
                         &mut out,
                         r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                        roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
+                        rough_border.fill_path_d(box_x0, y0, box_x1, y1),
                         escape_xml(fill),
                         row_fill_style_attr
                     );
@@ -1653,7 +1726,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     &mut out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
                     rough_border.path_d(&hand_drawn_seed, box_x0, y0, box_x1, y1),
-                    escape_xml(node_border),
+                    escaped_node_border,
                     stroke_width_attr,
                     row_override_style_attr
                 );
@@ -1865,24 +1938,27 @@ pub(crate) fn render_er_diagram_svg_model(
             y0: f64,
             x1: f64,
             y1: f64,
-            fill: &str,
+            escaped_fill: &str,
             fill_style_attr: &str,
             divider_path_attrs: &str,
         ) -> Result<()> {
             let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
-            let _ = write!(
-                out,
-                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{}/><path d="{}"{} /></g>"#,
-                roughjs46_rect_fill_path_d(rx0, ry0, rx1, ry1),
-                escape_xml(fill),
-                fill_style_attr,
-                rough_border.path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
-                divider_path_attrs
-            );
+            out.push_str(r#"<g class="divider"><path d=""#);
+            out.push_str(rough_border.fill_path_d(rx0, ry0, rx1, ry1));
+            out.push_str(r#"" stroke="none" stroke-width="0" fill=""#);
+            out.push_str(escaped_fill);
+            out.push_str(r#"" fill-rule="evenodd""#);
+            out.push_str(fill_style_attr);
+            out.push_str(r#"/><path d=""#);
+            out.push_str(rough_border.path_d(hand_drawn_seed, rx0, ry0, rx1, ry1));
+            out.push('"');
+            out.push_str(divider_path_attrs);
+            out.push_str(" /></g>");
             out.checkpoint()
         }
 
         if native.is_none() {
+            let escaped_box_fill = escape_xml(box_fill);
             let divider_path_attrs = format!(
                 r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
                 escape_xml(box_stroke),
@@ -1897,7 +1973,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 sep_y,
                 box_x1,
                 sep_y,
-                box_fill,
+                &escaped_box_fill,
                 base_fill_style_attr,
                 &divider_path_attrs,
             )?;
@@ -1910,7 +1986,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     sep_y,
                     x,
                     box_y1,
-                    box_fill,
+                    &escaped_box_fill,
                     base_fill_style_attr,
                     &divider_path_attrs,
                 )?;
@@ -1923,7 +1999,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 sep_y,
                 box_x1,
                 sep_y,
-                box_fill,
+                &escaped_box_fill,
                 base_fill_style_attr,
                 &divider_path_attrs,
             )?;

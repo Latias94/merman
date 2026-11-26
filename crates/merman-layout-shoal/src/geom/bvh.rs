@@ -1,9 +1,74 @@
 use super::Bounds;
-use crate::work::{LayoutResult, Work, push};
+use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{LayoutError, NoopWorkControl, WorkError};
 use std::ops::{ControlFlow, Range};
 
 const LEAF_SIZE: usize = 8;
+
+/// Non-generic BVH partitioner over `(Bounds, original_index)` pairs so `select_nth_unstable_by`
+/// is monomorphized once across the crate instead of once per `Bvh<T>` element type.
+fn partition_indexed(
+    entries: &mut [(Bounds, usize)],
+    first: usize,
+    nodes: &mut Vec<Node>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    work.visit(1)?;
+    let mut bounds = entries[0].0;
+    for &(entry_bounds, _) in &entries[1..] {
+        work.visit(1)?;
+        bounds = bounds.union(entry_bounds);
+    }
+    let index = nodes.len();
+    push(
+        nodes,
+        Node {
+            bounds,
+            end: index + 1,
+            items: first..first + entries.len(),
+        },
+    )?;
+    if entries.len() > LEAF_SIZE {
+        let horizontal = bounds.x[1] - bounds.x[0] >= bounds.y[1] - bounds.y[0];
+        let midpoint = |bounds: Bounds| {
+            let [lo, hi] = if horizontal { bounds.x } else { bounds.y };
+            lo.midpoint(hi)
+        };
+        let half = entries.len() / 2;
+        work.check()?;
+        entries.select_nth_unstable_by(half, |a, b| midpoint(a.0).total_cmp(&midpoint(b.0)));
+        work.check()?;
+        let (left, right) = entries.split_at_mut(half);
+        // Halving the item count bounds the build's recursion by usize::BITS.
+        partition_indexed(left, first, nodes, work)?;
+        partition_indexed(right, first + half, nodes, work)?;
+        nodes[index].items = first..first;
+        nodes[index].end = nodes.len();
+    }
+    Ok(())
+}
+
+/// Applies the permutation `new_items[i] = old_items[entries[i].1]` in place in `O(N)` swaps
+/// without allocating a second `Vec<T>`.
+fn permute_in_place<T>(items: &mut [T], entries: &mut [(Bounds, usize)]) {
+    for start in 0..items.len() {
+        let first_src = entries[start].1;
+        if first_src == usize::MAX || first_src == start {
+            entries[start].1 = usize::MAX;
+            continue;
+        }
+        let mut cur = start;
+        loop {
+            let src = entries[cur].1;
+            entries[cur].1 = usize::MAX;
+            if src == start {
+                break;
+            }
+            items.swap(cur, src);
+            cur = src;
+        }
+    }
+}
 
 fn selection_work(len: usize) -> Result<usize, WorkError> {
     // Above the last level with any splits, each level selects across all items.
@@ -81,52 +146,31 @@ impl<T> Bvh<T> {
             nodes
                 .try_reserve(estimate)
                 .map_err(|_| LayoutError::AllocationLimit)?;
-            Self::partition(&mut items, 0, &mut nodes, &bounds, work)?;
+            if len <= LEAF_SIZE {
+                work.visit(1)?;
+                let mut union = bounds(&items[0]);
+                for item in &items[1..] {
+                    work.visit(1)?;
+                    union = union.union(bounds(item));
+                }
+                push(
+                    &mut nodes,
+                    Node {
+                        bounds: union,
+                        end: 1,
+                        items: 0..len,
+                    },
+                )?;
+            } else {
+                let mut entries: Vec<(Bounds, usize)> = reserved(len)?;
+                for (index, item) in items.iter().enumerate() {
+                    entries.push((bounds(item), index));
+                }
+                partition_indexed(&mut entries, 0, &mut nodes, work)?;
+                permute_in_place(&mut items, &mut entries);
+            }
         }
         Ok(Self { items, nodes })
-    }
-
-    fn partition(
-        items: &mut [T],
-        first: usize,
-        nodes: &mut Vec<Node>,
-        bounds_of: &impl Fn(&T) -> Bounds,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<()> {
-        work.visit(1)?;
-        let mut bounds = bounds_of(&items[0]);
-        for item in &items[1..] {
-            work.visit(1)?;
-            bounds = bounds.union(bounds_of(item));
-        }
-        let index = nodes.len();
-        push(
-            nodes,
-            Node {
-                bounds,
-                end: index + 1,
-                items: first..first + items.len(),
-            },
-        )?;
-        if items.len() > LEAF_SIZE {
-            let horizontal = bounds.x[1] - bounds.x[0] >= bounds.y[1] - bounds.y[0];
-            let midpoint = |item: &T| {
-                let bounds = bounds_of(item);
-                let [lo, hi] = if horizontal { bounds.x } else { bounds.y };
-                lo.midpoint(hi)
-            };
-            let half = items.len() / 2;
-            work.check()?;
-            items.select_nth_unstable_by(half, |a, b| midpoint(a).total_cmp(&midpoint(b)));
-            work.check()?;
-            let (left, right) = items.split_at_mut(half);
-            // Halving the item count bounds the build's recursion by usize::BITS.
-            Self::partition(left, first, nodes, bounds_of, work)?;
-            Self::partition(right, first + half, nodes, bounds_of, work)?;
-            nodes[index].items = first..first;
-            nodes[index].end = nodes.len();
-        }
-        Ok(())
     }
 
     pub(crate) fn root_bounds(&self) -> Option<Bounds> {
@@ -213,6 +257,79 @@ mod tests {
             assert_eq!(tree.root_bounds(), (len > 0).then_some(bounds));
             work.finish().unwrap();
             assert_eq!(meter.0, 0, "item count {len}");
+        }
+    }
+
+    #[test]
+    fn non_generic_partition_and_in_place_permutation_preserve_items_and_enclosing_bounds() {
+        #[derive(Debug, PartialEq)]
+        struct Tagged {
+            id: usize,
+            bounds: Bounds,
+        }
+        for len in [0, 1, 7, 8, 9, 17, 33, 129] {
+            let items: Vec<Tagged> = (0..len)
+                .map(|i| {
+                    let x = ((i * 37) % 101) as f64;
+                    let y = ((i * 53) % 89) as f64;
+                    Tagged {
+                        id: i,
+                        bounds: Bounds {
+                            x: [x, x + 5.0],
+                            y: [y, y + 3.0],
+                        },
+                    }
+                })
+                .collect();
+            let tree = Bvh::build(items, |item| item.bounds).unwrap();
+            assert_eq!(tree.items().len(), len);
+            let mut seen = vec![false; len];
+            let mut leaf_items = 0usize;
+            let _ = tree
+                .visit(|entry| -> Result<ControlFlow<(), bool>, ()> {
+                    match entry {
+                        BvhEntry::Node(_) => Ok(ControlFlow::Continue(true)),
+                        BvhEntry::Item(item) => {
+                            assert!(!seen[item.id], "duplicate item {}", item.id);
+                            seen[item.id] = true;
+                            leaf_items += 1;
+                            Ok(ControlFlow::Continue(true))
+                        }
+                    }
+                })
+                .unwrap();
+            assert_eq!(leaf_items, len);
+            assert!(seen.into_iter().all(|v| v));
+            // Verify every query point finds all overlapping items.
+            if len > 0 {
+                let query = Bounds {
+                    x: [20.0, 45.0],
+                    y: [15.0, 40.0],
+                };
+                let mut found = Vec::new();
+                let _ = tree
+                    .visit(|entry| -> Result<ControlFlow<(), bool>, ()> {
+                        Ok(match entry {
+                            BvhEntry::Node(b) => ControlFlow::Continue(b.overlaps(query)),
+                            BvhEntry::Item(item) => {
+                                if item.bounds.overlaps(query) {
+                                    found.push(item.id);
+                                }
+                                ControlFlow::Continue(true)
+                            }
+                        })
+                    })
+                    .unwrap();
+                let mut expected: Vec<usize> = tree
+                    .items()
+                    .iter()
+                    .filter(|item| item.bounds.overlaps(query))
+                    .map(|item| item.id)
+                    .collect();
+                found.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(found, expected, "mismatch for len={len}");
+            }
         }
     }
 }

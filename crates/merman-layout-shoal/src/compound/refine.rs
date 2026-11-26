@@ -148,6 +148,7 @@ impl Centerlines {
         Ok(())
     }
 
+    #[inline]
     fn points(&self, index: usize) -> &[Point] {
         let primitive = &self.primitives[index];
         primitive
@@ -708,7 +709,7 @@ impl FineRun<'_> {
 }
 
 impl Centerlines {
-    fn chord(&self, primitive: usize, index: usize) -> Chord {
+    pub(super) fn chord(&self, primitive: usize, index: usize) -> Chord {
         let points = self.points(primitive);
         Chord {
             primitive,
@@ -805,7 +806,7 @@ impl Centerlines {
         &self,
         a: Chord,
         b: Chord,
-        in_shared_fan: &impl Fn(Point) -> bool,
+        in_shared_fan: &dyn Fn(Point) -> bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let [a_from, a_to] = a.ends;
@@ -879,7 +880,7 @@ impl Centerlines {
         &mut self,
         first: usize,
         second: usize,
-        in_shared_fan: impl Fn(Point) -> bool,
+        in_shared_fan: &dyn Fn(Point) -> bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let (a, b) = (&self.primitives[first], &self.primitives[second]);
@@ -887,7 +888,7 @@ impl Centerlines {
             return self.crossing(
                 self.chord(first, 0),
                 self.chord(second, 0),
-                &in_shared_fan,
+                in_shared_fan,
                 work,
             );
         }
@@ -896,11 +897,12 @@ impl Centerlines {
         self.crosses_expanded(first, second, in_shared_fan, work)
     }
 
+    #[inline(never)]
     pub(super) fn crosses_expanded(
         &self,
         first: usize,
         second: usize,
-        in_shared_fan: impl Fn(Point) -> bool,
+        in_shared_fan: &dyn Fn(Point) -> bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let (a, b) = (&self.primitives[first], &self.primitives[second]);
@@ -908,7 +910,7 @@ impl Centerlines {
             return self.crossing(
                 self.chord(first, 0),
                 self.chord(second, 0),
-                &in_shared_fan,
+                in_shared_fan,
                 work,
             );
         }
@@ -930,7 +932,7 @@ impl Centerlines {
             primitive: second,
         };
         if a.indices.len() == 1 && b.indices.len() == 1 {
-            return self.test_chords(a.chord(0, false), b.chord(0, false), &in_shared_fan, work);
+            return self.test_chords(a.chord(0, false), b.chord(0, false), in_shared_fan, work);
         }
         let (first, second) = (&self.primitives[first], &self.primitives[second]);
         let ordered = |axis| first.ordered(axis) && second.ordered(axis);
@@ -962,9 +964,9 @@ impl Centerlines {
             (false, false) => None,
         };
         match axis {
-            Some(Axis::Vertical) => self.scan::<true, true>(&a, &b, &in_shared_fan, work),
-            Some(Axis::Horizontal) => self.scan::<false, true>(&a, &b, &in_shared_fan, work),
-            None => self.scan::<true, false>(&a, &b, &in_shared_fan, work),
+            Some(Axis::Vertical) => self.scan::<true, true>(&a, &b, in_shared_fan, work),
+            Some(Axis::Horizontal) => self.scan::<false, true>(&a, &b, in_shared_fan, work),
+            None => self.scan::<true, false>(&a, &b, in_shared_fan, work),
         }
     }
 
@@ -972,7 +974,7 @@ impl Centerlines {
         &self,
         a: Chord,
         b: Chord,
-        fan: &impl Fn(Point) -> bool,
+        fan: &dyn Fn(Point) -> bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         work.visit(1)?;
@@ -983,7 +985,7 @@ impl Centerlines {
         &self,
         a: &FineRun<'_>,
         b: &FineRun<'_>,
-        fan: &impl Fn(Point) -> bool,
+        fan: &dyn Fn(Point) -> bool,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let along = |p: Point| if VERTICAL { p.y } else { p.x };
@@ -1196,8 +1198,8 @@ fn count_crossings_impl(
                         work,
                         &mut |candidate, work| {
                             let other = candidate.edge;
-                            let other_monotone = partition.is_monotone[candidate.primitive];
-                            if !other_monotone && other >= edge {
+                            let other_in_sweep = partition.in_sweep[candidate.primitive];
+                            if !other_in_sweep && other >= edge {
                                 return Ok(ControlFlow::Continue(()));
                             }
                             if band != first.max(bands.spans[candidate.primitive].0) {
@@ -1208,7 +1210,7 @@ fn count_crossings_impl(
                             } else {
                                 (other as u32, edge as u32)
                             };
-                            if !crossed.contains(&pair)
+                            if !crossed.contains(pair)
                                 && !bounds_in_shared_fan(
                                     bounds,
                                     candidate.bounds,
@@ -1219,11 +1221,11 @@ fn count_crossings_impl(
                                 && centerlines.crosses(
                                     index,
                                     candidate.primitive,
-                                    |at| shared_fan(at, ends[edge], ends[other], out),
+                                    &|at| shared_fan(at, ends[edge], ends[other], out),
                                     work,
                                 )?
                             {
-                                crossed.insert(pair);
+                                crossed.insert(pair, work)?;
                                 count =
                                     count.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
                                 if count >= limit {
@@ -1272,7 +1274,7 @@ fn count_crossings_impl(
                         && centerlines.crosses(
                             index,
                             candidate.primitive,
-                            |at| shared_fan(at, ends[edge], ends[other], out),
+                            &|at| shared_fan(at, ends[edge], ends[other], out),
                             work,
                         )?
                     {
