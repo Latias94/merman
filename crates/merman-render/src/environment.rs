@@ -1632,6 +1632,12 @@ impl RenderEnvironment {
         self
     }
 
+    /// Returns the configured routes without creating an operation session.
+    #[doc(hidden)]
+    pub fn text_measurement_routes(&self) -> [TextMeasurementRoute; 4] {
+        self.text_measurement.routes()
+    }
+
     /// Restricts optional renderer capabilities for every operation begun by this environment.
     ///
     /// This is primarily useful to artifact owners whose public feature contract can be narrower

@@ -77,13 +77,11 @@ pub struct SvgEnvironment {
         any(feature = "png", feature = "jpeg", feature = "pdf")
     ))]
     pub(super) text_measurement_is_default: bool,
-    text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
 }
 
 impl SvgEnvironment {
     /// Creates the deterministic default SVG service set.
     pub fn deterministic() -> Self {
-        let text_measurement = TextMeasurementPolicy::deterministic();
         Self {
             native_theme: None,
             background: None,
@@ -100,9 +98,7 @@ impl SvgEnvironment {
                 any(feature = "png", feature = "jpeg", feature = "pdf")
             ))]
             text_measurement_is_default: true,
-            backend: BackendRenderEnvironment::deterministic()
-                .with_text_measurement_policy(text_measurement.clone()),
-            text_measurement_routes: text_measurement.routes(),
+            backend: BackendRenderEnvironment::deterministic(),
         }
         .with_capability_policy(RenderCapabilityPolicy::unrestricted())
     }
@@ -136,7 +132,6 @@ impl SvgEnvironment {
                 self.text_measurement_is_default = false;
             }
         }
-        self.text_measurement_routes = policy.routes();
         self.backend = self.backend.with_text_measurement_policy(policy);
         self
     }
@@ -271,7 +266,7 @@ impl SvgEnvironment {
 
     /// Returns the configured text-measurement routes without creating an operation session.
     pub fn text_measurement_routes(&self) -> [merman_render::environment::TextMeasurementRoute; 4] {
-        self.text_measurement_routes.clone()
+        self.backend.text_measurement_routes()
     }
 
     pub(super) fn begin_session_in_context(

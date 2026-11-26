@@ -148,12 +148,14 @@ fn render_host_measured_document_with_profile(
         Arc::new(FixedHostTextMeasurer),
         merman::svg::TextMeasurementPhase::ALL,
     );
+    let routes = measurement.routes();
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic()
             .with_text_measurement_policy(measurement)
             .with_theme_portability_requirement(portability),
         ..merman::SvgRequest::default()
     };
+    assert_eq!(request.environment.text_measurement_routes(), routes);
     let output = Renderer::new()
         .render(
             RenderRequest::document(
