@@ -596,6 +596,7 @@ impl RenderOperationConfig {
             options: self.svg,
             debug: Default::default(),
             pipeline: Some(self.pipeline),
+            output_profile: Default::default(),
         };
         if let Some(theme) = self.theme {
             svg = svg.with_native_theme(theme);

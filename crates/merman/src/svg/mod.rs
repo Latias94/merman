@@ -30,10 +30,10 @@ pub use merman_render::svg::{
     IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId, ResvgCompatibleSvg,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
     ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions,
-    SvgFinalizationReport, SvgGeneration, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset,
-    SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
-    SvgResourceClosure, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
-    icon_registry_resource_limit_descriptors,
+    SvgFinalizationReport, SvgGeneration, SvgOutputPolicy, SvgOutputProfile, SvgPipeline,
+    SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor,
+    SvgRenderOptions, SvgResourceClosure, finalize_resvg_svg,
+    foreign_object_label_fallback_svg_text, icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy,

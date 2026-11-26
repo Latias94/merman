@@ -4,8 +4,11 @@ mod actor_man_glyphs;
 mod actor_popup;
 mod actor_shapes;
 mod actors;
+mod arrowhead;
 mod block_text;
 mod blocks;
+#[cfg(feature = "native-compact")]
+pub(super) mod compact;
 mod control_paint;
 mod css;
 mod frames;

@@ -73,7 +73,7 @@ impl OperationExecutionPath {
 #[cfg(feature = "svg")]
 use merman_render::{
     LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,
-    svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions},
+    svg::{SvgDebugOptions, SvgOutputProfile, SvgPipeline, SvgRenderOptions},
     theme::ThemePortabilityRequirement,
 };
 #[cfg(feature = "svg")]
@@ -670,6 +670,8 @@ pub struct SvgRequest {
     pub options: SvgRenderOptions,
     pub debug: SvgDebugOptions,
     pub pipeline: Option<SvgPipeline>,
+    /// Selects the standalone SVG producer independently of any postprocessing pipeline.
+    pub output_profile: SvgOutputProfile,
 }
 
 #[cfg(feature = "svg")]
@@ -681,12 +683,22 @@ impl Default for SvgRequest {
             options: SvgRenderOptions::default(),
             debug: SvgDebugOptions::default(),
             pipeline: None,
+            output_profile: SvgOutputProfile::default(),
         }
     }
 }
 
 #[cfg(feature = "svg")]
 impl SvgRequest {
+    /// Selects the producer for standalone SVG. Layout-only targets do not emit SVG.
+    ///
+    /// The native compact profile requires an enabled renderer for the diagram. It does not
+    /// fall back to Mermaid SVG when that renderer or a requested diagram construct is unsupported.
+    pub fn with_output_profile(mut self, profile: SvgOutputProfile) -> Self {
+        self.output_profile = profile;
+        self
+    }
+
     /// Selects a native theme for this graphical target, including prepared-source renders.
     pub fn with_native_theme(mut self, theme: crate::theme::ThemeSelection) -> Self {
         self.environment.native_theme = Some(theme);
@@ -1358,6 +1370,8 @@ impl PresentationArtifact {
     }
 
     fn admit_target(&self, target: RenderTarget) -> Result<RenderTarget, RenderError> {
+        #[cfg(feature = "svg")]
+        self.validate_svg_output_profile(&target)?;
         #[cfg(feature = "native-fonts")]
         let mut target = target
             .normalize_native_font_context()?
@@ -1419,6 +1433,40 @@ impl PresentationArtifact {
             }
         }
         Ok(target)
+    }
+
+    #[cfg(feature = "svg")]
+    fn validate_svg_output_profile(&self, target: &RenderTarget) -> Result<(), RenderError> {
+        let request = match target {
+            RenderTarget::Svg(request) => {
+                if request.output_profile == SvgOutputProfile::NativeCompact {
+                    crate::operation_runner::checkpoint(self.control(), OperationPhase::Layout)?;
+                    merman_render::family::validate_svg_output_profile(
+                        request.output_profile,
+                        self.family_id(),
+                        request.pipeline.as_ref(),
+                    )?;
+                }
+                return Ok(());
+            }
+            RenderTarget::Document(request) => request,
+            #[cfg(feature = "png")]
+            RenderTarget::Png(request) => &request.svg,
+            #[cfg(feature = "jpeg")]
+            RenderTarget::Jpeg(request) => &request.svg,
+            #[cfg(feature = "pdf")]
+            RenderTarget::Pdf(request) => &request.svg,
+            _ => return Ok(()),
+        };
+        if request.output_profile == SvgOutputProfile::NativeCompact {
+            crate::operation_runner::checkpoint(self.control(), OperationPhase::Export)?;
+            return Err(merman_render::Error::UnsupportedSvgOutputProfile {
+                profile: request.output_profile,
+                reason: "the compact profile is available only for standalone SVG",
+            }
+            .into());
+        }
+        Ok(())
     }
 
     /// Consumes this operation-owned presentation artifact into one typed output target.
@@ -1779,6 +1827,7 @@ fn prepare_rendered_family_svg(
             &request.debug,
             request.pipeline.as_ref(),
             default_generation,
+            request.output_profile,
         )
         .map_err(RenderError::from)?;
     Ok((rendered, operation, theme_outcome))

@@ -377,6 +377,7 @@ presentation = ["merman-core/presentation", "dep:merman-markup"]
 compat-json = ["presentation", "merman-core/compat-json"]
 editor-facts = ["merman-core/editor-facts"]
 svg = ["presentation", "dep:merman-render", "dep:merman-theme-contract"]
+native-compact = ["svg", "merman-render/native-compact"]
 native-fonts = ["svg", "dep:merman-export", "merman-export/native-fonts"]
 system-fonts = ["native-fonts", "merman-export/system-fonts"]
 experimental-system-font-query = ["system-fonts", "merman-export/experimental-system-font-query"]
@@ -449,6 +450,10 @@ required-features = ["compat-json"]
 [[test]]
 name = "render_operation"
 required-features = ["svg", "compat-json", "layout-dagre"]
+
+[[test]]
+name = "native_compact_sequence"
+required-features = ["svg", "diagram-sequence"]
 
 [[test]]
 name = "feature_surface_smoke"

@@ -66,11 +66,14 @@ pub use icon_registry::{
     icon_registry_resource_limit_descriptors,
 };
 pub(crate) use merman_render_core::svg_css::escape_css_identifier;
+pub use merman_render_core::svg_output::SvgOutputProfile;
 #[cfg(all(
     feature = "diagram-architecture",
     any(feature = "layout-cytoscape", feature = "layout-shoal")
 ))]
 pub(crate) use parity::render_architecture_family_artifact;
+#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
+pub(crate) use parity::render_native_compact_sequence;
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;
 #[cfg(any(

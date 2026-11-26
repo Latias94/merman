@@ -6,6 +6,31 @@ use crate::resources::{OperationWorkMeter, SvgByteBudget};
 const MAX_HINTED_SVG_CAPACITY: usize = 32 * 1024;
 const XML_TEXT_CHUNK_BYTES: usize = 2_048;
 
+/// Selects a producer for renderer-owned standalone SVG.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SvgOutputProfile {
+    /// Retains the Mermaid v12 DOM and styling contract.
+    #[default]
+    MermaidV12Parity,
+    /// Emits typed SVG primitives for supported diagrams without Mermaid compatibility markup.
+    NativeCompact,
+}
+
+impl SvgOutputProfile {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::MermaidV12Parity => "mermaid-v12-parity",
+            Self::NativeCompact => "native-compact",
+        }
+    }
+}
+
+impl fmt::Display for SvgOutputProfile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
 /// Source-owned text that can be appended as one unchanged XML character-data chunk.
 #[doc(hidden)]
 #[derive(Clone, Copy)]

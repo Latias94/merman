@@ -13,3 +13,6 @@ pub mod frame;
 
 #[doc(hidden)]
 pub mod model;
+
+#[doc(hidden)]
+pub mod rect_paint;

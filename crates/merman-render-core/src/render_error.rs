@@ -134,6 +134,11 @@ pub enum Error {
         family_id: DiagramFamilyId,
         message: &'static str,
     },
+    #[error("SVG output profile `{profile}` is unsupported: {reason}")]
+    UnsupportedSvgOutputProfile {
+        profile: crate::svg_output::SvgOutputProfile,
+        reason: &'static str,
+    },
     #[error(transparent)]
     SemanticProjection(merman_model::presentation::compat::CompatProjectionError),
     #[error(transparent)]

@@ -15,6 +15,17 @@ impl ParsedCssFontStack {
         self.generic_families.get(&index).copied()
     }
 
+    #[cfg(feature = "paint-scene")]
+    #[doc(hidden)]
+    pub fn resolved_families(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&str, Option<GenericFontFamily>)> + '_ {
+        self.families
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.as_str(), self.generic_family(index)))
+    }
+
     pub fn as_css(&self) -> String {
         let mut out = String::new();
         for (index, family) in self.families.iter().enumerate() {

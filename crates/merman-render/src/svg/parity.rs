@@ -1078,6 +1078,31 @@ pub(crate) fn render_builtin_family_artifact(
     finish_family_svg(rooted_svg, &execution, &metadata.effective_config)
 }
 
+#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
+pub(crate) fn render_native_compact_sequence(
+    prepared: &crate::sequence::SequencePreparedArtifact,
+    semantic: &merman_model::families::sequence::SequenceDiagramModel,
+    config: &merman_model::presentation::PresentationConfig,
+    family_execution: FamilyExecutionView<'_>,
+    options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+) -> Result<String> {
+    use sequence::compact::{SequenceCompactError, render_sequence_compact};
+
+    let execution = SvgExecution::new(options, debug, family_execution)?;
+    let svg = render_sequence_compact(prepared, semantic, config, &execution);
+    execution.finish_diagram_id_projection()?;
+    let svg = svg.map_err(|error| match error {
+        SequenceCompactError::Render(error) => error,
+        SequenceCompactError::Unsupported(reason) => Error::UnsupportedSvgOutputProfile {
+            profile: super::SvgOutputProfile::NativeCompact,
+            reason,
+        },
+    })?;
+    super::pipeline::validate_native_compact_svg(&svg, execution.family.session())?;
+    Ok(svg)
+}
+
 #[cfg(all(
     feature = "diagram-architecture",
     any(feature = "layout-cytoscape", feature = "layout-shoal")

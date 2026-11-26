@@ -96,6 +96,7 @@ diagram-xychart = ["merman-model/diagram-xychart", "merman-render-core/theme-ele
 diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "merman-render-core/theme-elevation", "cssparser/fast_match_color", "dep:pulldown-cmark"]
 default = []
 markdown-labels = ["dep:pulldown-cmark"]
+native-compact = ["merman-render-core/paint-scene"]
 system-clock = ["merman-model/system-clock"]
 system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]

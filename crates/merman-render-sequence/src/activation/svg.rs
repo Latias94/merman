@@ -1,5 +1,6 @@
 use super::{SequenceActorPalette, SequencePreparedActivationGeometry};
 use crate::model::SequenceActivationLayout;
+use crate::rect_paint::include_rect_stroke_bounds;
 use merman_render_core::{
     Bounds, Result,
     number_format::canonical_number as fmt,
@@ -49,20 +50,11 @@ impl<'a> SequenceActivationPlan<'a> {
                 work_meter.charge(1)?;
                 let Some(group) = group else { continue };
                 let rect = &layouts[group.layout_index];
-                let painted = Bounds {
-                    min_x: rect.x - width / 2.0,
-                    min_y: rect.y - width / 2.0,
-                    max_x: rect.x + rect.width + width / 2.0,
-                    max_y: rect.y + rect.height + width / 2.0,
-                };
-                if let Some(total) = &mut plan.bounds {
-                    total.min_x = total.min_x.min(painted.min_x);
-                    total.min_y = total.min_y.min(painted.min_y);
-                    total.max_x = total.max_x.max(painted.max_x);
-                    total.max_y = total.max_y.max(painted.max_y);
-                } else {
-                    plan.bounds = Some(painted);
-                }
+                include_rect_stroke_bounds(
+                    &mut plan.bounds,
+                    [rect.x, rect.y, rect.width, rect.height],
+                    width,
+                );
             }
         }
         Ok(plan)

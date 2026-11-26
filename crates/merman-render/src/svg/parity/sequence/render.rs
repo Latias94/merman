@@ -6,6 +6,7 @@ use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
 };
+use super::arrowhead::write_arrowhead_def;
 use super::frames::{SequenceFrameRenderOptions, render_sequence_backgrounds};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
@@ -88,21 +89,7 @@ fn write_native_sequence_defs(
         return write_scoped_sequence_base_defs(out, id);
     };
     write_scoped_sequence_defs_fragment(out, symbols, id)?;
-    let (path, attributes) = match marker {
-        MarkerStyle::Classic => ("M -1 0 L 10 5 L 0 10 z", ""),
-        MarkerStyle::Stealth => ("M -1 0 L 10 5 L -1 10 L 2 5 Z", ""),
-        MarkerStyle::Filled => ("M 0 0 L 10 5 L 0 10 Z", ""),
-        MarkerStyle::Open => (
-            "M 0 0 L 10 5 L 0 10",
-            r#" class="merman-sequence-open-arrow""#,
-        ),
-    };
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}-arrowhead" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="{path}"{attributes}/></marker></defs>"#,
-        escape_attr_display(id)
-    );
-    out.checkpoint()?;
+    write_arrowhead_def(out, id, marker)?;
     write_scoped_sequence_defs_fragment(out, remaining, id)?;
     write_scoped_sequence_defs_fragment(out, MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED, id)
 }

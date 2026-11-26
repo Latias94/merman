@@ -4,7 +4,7 @@ use super::actor_shapes::{
     ActorLabelContext, ActorLifelineIdentity, actor_placement_class, write_collection_actor_shape,
     write_database_actor_shape, write_queue_actor_shape, write_rect_actor_shape,
 };
-use super::geometry::node_left_top;
+use super::geometry::lifeline_endpoints;
 use super::model::SequenceSvgModel;
 use merman_render_sequence::actor::{is_actor_man_variant, write_actor_man_lifeline};
 use rustc_hash::FxHashMap;
@@ -178,14 +178,13 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         let Some(bottom) = ctx.nodes_by_id.get(node_bottom_id.as_str()).copied() else {
             continue;
         };
-        let (_, top_y) = node_left_top(top);
-        let (_, bottom_y) = node_left_top(bottom);
-
-        let (y1, y2) = ctx
-            .edges_by_id
-            .get(format!("lifeline-{actor_id}").as_str())
-            .and_then(|e| Some((e.points.first()?.y, e.points.get(1)?.y)))
-            .unwrap_or((top_y + top.height, bottom_y));
+        let (y1, y2) = lifeline_endpoints(
+            top,
+            bottom,
+            ctx.edges_by_id
+                .get(format!("lifeline-{actor_id}").as_str())
+                .copied(),
+        );
 
         if let Some(bounds) = paint_bounds.as_deref_mut() {
             super::actor_effect::include_lifeline_paint_bounds(
