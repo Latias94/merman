@@ -234,6 +234,7 @@ pub(super) fn render_flowchart_svg_model(
             let mut root_session = FlowchartRootRenderSession {
                 timing: render_timing,
                 details: &mut detail,
+                node_label_div_style: String::new(),
                 edge_cache: &mut edge_path_cache,
                 hierarchy_plan,
                 marker_plan: &marker_plan,

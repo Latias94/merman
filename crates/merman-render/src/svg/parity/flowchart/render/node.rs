@@ -147,6 +147,10 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a>
     pub dy: f64,
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The node renderer borrows the document's label-style buffer separately from timing details."
+)]
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -155,6 +159,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     origin_y: f64,
     timing: RenderTiming,
     details: &mut FlowchartRenderDetails,
+    div_style_scratch: &mut String,
 ) -> crate::Result<()> {
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
         return Ok(());
@@ -300,7 +305,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         // Mermaid appends the separator and ellipsis after the labelHelper output.
         let geometry = shapes::render_collapsed_group_body(out, ctx, &common, &mut label, details);
         out.checkpoint()?;
-        label::render_flowchart_node_label_before_tail(out, ctx, &common, &label, details);
+        label::render_flowchart_node_label_before_tail(
+            out,
+            ctx,
+            &common,
+            &label,
+            details,
+            div_style_scratch,
+        );
         shapes::render_collapsed_group_indicators(out, geometry);
         out.checkpoint()?;
         out.push_str("</g>");
@@ -313,7 +325,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             out.push_str("</a>");
         }
     } else if !shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)? {
-        label::render_flowchart_node_label(out, ctx, &common, &label, details);
+        label::render_flowchart_node_label(out, ctx, &common, &label, details, div_style_scratch);
     }
 
     // HandDrawn RoughJS generation may reject before the bounded SVG sink sees its output. Replay

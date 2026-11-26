@@ -1,5 +1,6 @@
 //! Flowchart node label renderer.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::label::{
@@ -59,12 +60,13 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         )
     }
 
-    fn final_style(&self) -> String {
+    fn final_style(&self) -> Cow<'_, str> {
+        let Some(fill) = self.native_label_color else {
+            return Cow::Borrowed(&self.compiled_styles.label_style);
+        };
         let mut style = self.compiled_styles.label_style.clone();
-        if let Some(fill) = self.native_label_color {
-            append_native_label_color(&mut style, fill);
-        }
-        style
+        append_native_label_color(&mut style, fill);
+        Cow::Owned(style)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -84,7 +86,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
         });
         let final_style = self.final_style();
-        let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
+        let span_style_attr = OptionalStyleXmlAttr(final_style.as_ref());
         let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
@@ -100,7 +102,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                 prepared_label,
             )
         });
-        let mut div_style = final_style.clone();
+        let mut div_style = final_style.as_ref().to_owned();
         if !div_style.is_empty() {
             div_style.push(';');
         }
@@ -128,8 +130,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     common: &super::FlowchartNodeRenderCommon<'_>,
     label: &super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
+    div_style_scratch: &mut String,
 ) {
-    render_flowchart_node_label_with_wrapper(out, ctx, common, label, details, true)
+    render_flowchart_node_label_with_wrapper(
+        out,
+        ctx,
+        common,
+        label,
+        details,
+        div_style_scratch,
+        true,
+    )
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label_before_tail(
@@ -138,8 +149,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     common: &super::FlowchartNodeRenderCommon<'_>,
     label: &super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
+    div_style_scratch: &mut String,
 ) {
-    render_flowchart_node_label_with_wrapper(out, ctx, common, label, details, false)
+    render_flowchart_node_label_with_wrapper(
+        out,
+        ctx,
+        common,
+        label,
+        details,
+        div_style_scratch,
+        false,
+    )
 }
 
 fn render_flowchart_node_label_with_wrapper(
@@ -148,6 +168,7 @@ fn render_flowchart_node_label_with_wrapper(
     common: &super::FlowchartNodeRenderCommon<'_>,
     label: &super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
+    div_style_scratch: &mut String,
     close_node_wrapper: bool,
 ) {
     let node_text_style = common.label_emission.source_text_style;
@@ -300,7 +321,7 @@ fn render_flowchart_node_label_with_wrapper(
             )
         });
         let final_style = common.label_emission.final_style();
-        let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
+        let span_style_attr = OptionalStyleXmlAttr(final_style.as_ref());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")
             && (matches!(
@@ -361,24 +382,31 @@ fn render_flowchart_node_label_with_wrapper(
             false
         };
 
-        let mut div_style =
-            flowchart_label_div_style_prefix(common.label_emission.compiled_styles, true);
+        let compiled_styles = common.label_emission.compiled_styles;
+        let mut authored_div_style;
+        let div_style = if compiled_styles.label_div_decls.is_empty() {
+            div_style_scratch.clear();
+            div_style_scratch
+        } else {
+            authored_div_style = flowchart_label_div_style_prefix(compiled_styles, true);
+            &mut authored_div_style
+        };
         if needs_wrap {
             let _ = write!(
-                &mut div_style,
+                div_style,
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                 mw = fmt_display(wrapping_width)
             );
         } else if label_below_minimum {
             let _ = write!(
-                &mut div_style,
+                div_style,
                 "display: table; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center; width: {min}px;",
                 mw = fmt_display(wrapping_width),
                 min = fmt_display(min_width),
             );
         } else {
             let _ = write!(
-                &mut div_style,
+                div_style,
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
                 mw = fmt_display(wrapping_width)
             );
@@ -401,7 +429,7 @@ fn render_flowchart_node_label_with_wrapper(
             } else {
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
             },
-            escape_xml_display(&div_style),
+            escape_xml_display(div_style),
             super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,
             label_html
