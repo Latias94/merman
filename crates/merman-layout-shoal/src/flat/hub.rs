@@ -1,18 +1,18 @@
 //! Relieve crowded automatic port rows while the drawing is still in canonical coordinates.
 
 use super::{Component, Drawing, canonical_size, validate};
-use crate::geom::Bounds;
+use crate::geom::{Bounds, Bvh, BvhEntry};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
     Axis, EdgeGeometry, EdgeSpec, Graph, KnotKind, MarkerMetrics, Options, Point, PortSideHint,
     Rect, RoutePoint, RoutingStyle, Side, WorkError,
 };
+use std::ops::ControlFlow::{Break, Continue};
 
 const MARKER_PITCH: f64 = 1.15;
 // A component may contain many otherwise independent crowded hubs. Bound the total clearance
 // traversal even when the same walls are in range of all of them.
 const CLEARANCE_PASSES: usize = 64;
-const WALL_BLOCK_SIZE: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum End {
@@ -420,90 +420,8 @@ impl Edit {
     }
 }
 
-#[derive(Default)]
-struct WallIndex {
-    postorder: Vec<Bounds>,
-    indexed_blocks: usize,
-    disabled: bool,
-}
-
-impl WallIndex {
-    fn new(wall_count: usize) -> Self {
-        Self {
-            disabled: wall_count < 2 * WALL_BLOCK_SIZE,
-            ..Self::default()
-        }
-    }
-
-    fn blocks(&mut self, mut walls: &[Bounds], edit: &Edit) -> bool {
-        let mut blocks = self.indexed_blocks;
-        let mut node_end = 0;
-        while blocks != 0 {
-            let complete = 1 << blocks.ilog2();
-            let (tree, tail) = walls.split_at(complete * WALL_BLOCK_SIZE);
-            node_end += 2 * complete - 1;
-            if self.blocks_tree(node_end - 1, tree, edit) {
-                return true;
-            }
-            walls = tail;
-            blocks -= complete;
-        }
-        while !self.disabled && walls.len() >= WALL_BLOCK_SIZE {
-            let (block, tail) = walls.split_at(WALL_BLOCK_SIZE);
-            let mut bounds = block[0];
-            if edit.blocked_by(bounds) {
-                return true;
-            }
-            for &wall in &block[1..] {
-                if edit.blocked_by(wall) {
-                    return true;
-                }
-                bounds = bounds.union(wall);
-            }
-            self.append_block(bounds);
-            walls = tail;
-        }
-        walls.iter().copied().any(|wall| edit.blocked_by(wall))
-    }
-
-    fn blocks_tree(&self, root: usize, walls: &[Bounds], edit: &Edit) -> bool {
-        if !edit.blocked_by(self.postorder[root]) {
-            return false;
-        }
-        let blocks = walls.len() / WALL_BLOCK_SIZE;
-        if blocks == 1 {
-            walls.iter().copied().any(|wall| edit.blocked_by(wall))
-        } else {
-            let (left, right) = walls.split_at(walls.len() / 2);
-            self.blocks_tree(root - blocks, left, edit) || self.blocks_tree(root - 1, right, edit)
-        }
-    }
-
-    fn append_block(&mut self, bounds: Bounds) {
-        let completed = self.indexed_blocks + 1;
-        let joins = completed.trailing_zeros() as usize;
-        if self.postorder.try_reserve(1 + joins).is_err() {
-            *self = Self {
-                disabled: true,
-                ..Self::default()
-            };
-            return;
-        }
-        self.postorder.push(bounds);
-        let mut span = 2;
-        for _ in 0..joins {
-            let root = self.postorder.len();
-            let bounds = self.postorder[root - span].union(self.postorder[root - 1]);
-            self.postorder.push(bounds);
-            span *= 2;
-        }
-        self.indexed_blocks = completed;
-    }
-}
-
 struct Clearance {
-    walls: Vec<Bounds>,
-    wall_index: WallIndex,
+    walls: Bvh<Bounds>,
     strokes: Vec<Bounds>,
     remaining: usize,
 }
@@ -545,13 +463,29 @@ impl Clearance {
             .len()
             .saturating_add(walls.len())
             .saturating_mul(CLEARANCE_PASSES);
-        let wall_index = WallIndex::new(walls.len());
         Ok(Self {
-            walls,
-            wall_index,
+            walls: Bvh::build_with_work(walls, |wall| *wall, work)?,
             strokes,
             remaining,
         })
+    }
+
+    fn allows_walls(&mut self, edit: &Edit, work: &mut Work<'_>) -> LayoutResult<bool> {
+        let remaining = &mut self.remaining;
+        if self.walls.root_bounds().is_none() {
+            return visit_clearance(remaining, 1, work);
+        }
+        let result = self.walls.visit(|entry| -> LayoutResult<_> {
+            if !visit_clearance(remaining, 1, work)? {
+                return Ok(Break(()));
+            }
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(edit.blocked_by(bounds)),
+                BvhEntry::Item(&wall) if edit.blocked_by(wall) => Break(()),
+                BvhEntry::Item(_) => Continue(true),
+            })
+        })?;
+        Ok(result.is_continue())
     }
 
     fn allows(
@@ -563,9 +497,7 @@ impl Clearance {
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         for &(edge, ref edit) in proposed {
-            if !visit_clearance(&mut self.remaining, self.walls.len(), work)?
-                || self.wall_index.blocks(&self.walls, edit)
-            {
+            if !self.allows_walls(edit, work)? {
                 return Ok(false);
             }
             let blocked = |wall| edit.blocked_by(wall);

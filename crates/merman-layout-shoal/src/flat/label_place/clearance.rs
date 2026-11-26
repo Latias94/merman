@@ -1,8 +1,9 @@
 pub(super) use crate::geom::Bounds;
-use crate::work::{LayoutResult, Work, push, reserved};
+use crate::geom::{Bvh, BvhEntry};
+use crate::work::{LayoutResult, Work, push};
 use crate::{MarkerMetrics, Point, RoutePoint, RoutingStyle, Side, Size};
+use std::ops::ControlFlow::{Break, Continue};
 
-const LEAF_SIZE: usize = 8;
 const MAX_WALLS: usize = 16 * 1024;
 const MAX_KNOTS: usize = 2 * MAX_WALLS;
 const MAX_CHECKS: usize = 128 * 1024;
@@ -191,82 +192,15 @@ impl Scene {
     }
 
     pub(super) fn index(self, work: &mut Work<'_>) -> LayoutResult<Clearance> {
-        let mut walls = self.walls;
-        let capacity = walls.len().div_ceil(LEAF_SIZE) * 4;
-        work.charge(capacity)?;
-        let mut branches = reserved(capacity)?;
-        let root = if walls.is_empty() {
-            None
-        } else {
-            Some(Branch::build(&mut walls, 0, &mut branches, work)?)
-        };
         Ok(Clearance {
-            walls,
-            branches,
-            root,
+            walls: Bvh::build_with_work(self.walls, |wall| wall.bounds, work)?,
             remaining: MAX_CHECKS,
         })
     }
 }
 
-#[derive(Clone, Copy)]
-enum Child {
-    Range { start: usize, end: usize },
-    Pair(usize, usize),
-}
-
-#[derive(Clone, Copy)]
-struct Branch {
-    bounds: Bounds,
-    child: Child,
-}
-
-impl Branch {
-    fn build(
-        walls: &mut [Wall],
-        offset: usize,
-        branches: &mut Vec<Self>,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<usize> {
-        work.charge(walls.len())?;
-        let bounds = walls
-            .iter()
-            .skip(1)
-            .fold(walls[0].bounds, |bounds, wall| bounds.union(wall.bounds));
-        let child = if walls.len() <= LEAF_SIZE {
-            Child::Range {
-                start: offset,
-                end: offset + walls.len(),
-            }
-        } else {
-            let horizontal = bounds.x[1] - bounds.x[0] >= bounds.y[1] - bounds.y[0];
-            let center = |wall: &Wall| {
-                let axis = if horizontal {
-                    wall.bounds.x
-                } else {
-                    wall.bounds.y
-                };
-                axis[0].midpoint(axis[1])
-            };
-            let middle = walls.len() / 2;
-            work.charge(walls.len())?;
-            walls.select_nth_unstable_by(middle, |a, b| center(a).total_cmp(&center(b)));
-            let (left, right) = walls.split_at_mut(middle);
-            Child::Pair(
-                Self::build(left, offset, branches, work)?,
-                Self::build(right, offset + middle, branches, work)?,
-            )
-        };
-        let index = branches.len();
-        push(branches, Self { bounds, child })?;
-        Ok(index)
-    }
-}
-
 pub(super) struct Clearance {
-    walls: Vec<Wall>,
-    branches: Vec<Branch>,
-    root: Option<usize>,
+    walls: Bvh<Wall>,
     remaining: usize,
 }
 
@@ -276,12 +210,7 @@ impl Clearance {
     }
 
     pub(super) fn visit(&mut self, work: &mut Work<'_>) -> LayoutResult<bool> {
-        if self.exhausted() {
-            return Ok(false);
-        }
-        self.remaining -= 1;
-        work.visit(1)?;
-        Ok(true)
+        visit_check(&mut self.remaining, work)
     }
 
     pub(super) fn clear(
@@ -290,39 +219,28 @@ impl Clearance {
         own_stroke: usize,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
-        let Some(root) = self.root else {
-            return Ok(true);
-        };
-        self.clear_branch(root, label, own_stroke, work)
-    }
-
-    fn clear_branch(
-        &mut self,
-        index: usize,
-        label: Bounds,
-        own_stroke: usize,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<bool> {
-        if !self.visit(work)? {
-            return Ok(false);
-        }
-        let branch = self.branches[index];
-        if !label.overlaps(branch.bounds) {
-            return Ok(true);
-        }
-        match branch.child {
-            Child::Range { start, end } => {
-                for index in start..end {
-                    if !self.visit(work)? || self.walls[index].blocks(label, own_stroke) {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
+        let remaining = &mut self.remaining;
+        let result = self.walls.visit(|entry| -> LayoutResult<_> {
+            if !visit_check(remaining, work)? {
+                return Ok(Break(()));
             }
-            Child::Pair(left, right) => Ok(self.clear_branch(left, label, own_stroke, work)?
-                && self.clear_branch(right, label, own_stroke, work)?),
-        }
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(label.overlaps(bounds)),
+                BvhEntry::Item(wall) if wall.blocks(label, own_stroke) => Break(()),
+                BvhEntry::Item(_) => Continue(true),
+            })
+        })?;
+        Ok(result.is_continue())
     }
+}
+
+fn visit_check(remaining: &mut usize, work: &mut Work<'_>) -> LayoutResult<bool> {
+    if *remaining == 0 {
+        return Ok(false);
+    }
+    *remaining -= 1;
+    work.visit(1)?;
+    Ok(true)
 }
 
 #[cfg(test)]

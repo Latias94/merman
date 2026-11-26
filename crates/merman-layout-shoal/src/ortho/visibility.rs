@@ -5,8 +5,10 @@ pub(super) use crate::geom::Bounds;
 pub(super) use grid::{Grid, GridQuery, Node};
 
 use super::{OrthoSegment, project, zero};
+use crate::geom::{Bvh, BvhEntry};
 use crate::model::{Axis, Point, Rect};
-use crate::work::{LayoutError, LayoutResult, Work, push, reserved};
+use crate::work::{LayoutError, LayoutResult, Work, reserved};
+use std::ops::ControlFlow::{Break, Continue};
 
 impl Bounds {
     pub(super) fn new(rect: Rect) -> LayoutResult<Self> {
@@ -42,22 +44,9 @@ impl Bounds {
     }
 }
 
-const LEAF_SIZE: usize = 8;
-
-enum TreeKind {
-    Leaf { first: usize, len: usize },
-    Branch([usize; 2]),
-}
-
-struct TreeNode {
-    bounds: Bounds,
-    kind: TreeKind,
-}
-
 /// A static balanced box index for repeated visibility and channel queries.
 pub(super) struct Obstacles {
-    rects: Vec<Bounds>,
-    tree: Vec<TreeNode>,
+    rects: Bvh<Bounds>,
 }
 
 impl Obstacles {
@@ -76,17 +65,15 @@ impl Obstacles {
                 rects.push(r);
             }
         }
-        let mut tree = Vec::new();
-        if !rects.is_empty() {
-            build_tree(&mut rects, 0, &mut tree, work)?;
-        }
-        Ok(Self { rects, tree })
+        Ok(Self {
+            rects: Bvh::build_with_work(rects, |rect| *rect, work)?,
+        })
     }
 
     pub(super) fn window(&self, start: Point, end: Point, margin: f64) -> Option<Bounds> {
         let mut b = Bounds::between(start, end);
-        if let Some(root) = self.tree.last() {
-            b = b.union(root.bounds);
+        if let Some(root) = self.rects.root_bounds() {
+            b = b.union(root);
         }
         let outer = b.pad(margin);
         // Even a margin smaller than an ulp should make room on the outside.
@@ -140,61 +127,38 @@ impl Obstacles {
         axis: Axis,
         at: f64,
         across: [f64; 2],
-        mut span: [f64; 2],
+        span: [f64; 2],
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<[f64; 2]>> {
-        if let Some(root) = self.tree.len().checked_sub(1) {
-            let mut run = FreeSpan {
-                axis,
-                at,
-                across,
-                span,
-            };
-            if !self.cut_span(root, &mut run, work)? {
-                return Ok(None);
-            }
-            span = run.span;
-        }
-        Ok(Some(span))
-    }
-
-    fn cut_span(&self, id: usize, run: &mut FreeSpan, work: &mut Work<'_>) -> LayoutResult<bool> {
-        work.visit(1)?;
-        let node = &self.tree[id];
-        if !run.touches(node.bounds) {
-            return Ok(true);
-        }
-        match node.kind {
-            TreeKind::Branch([left, right]) => {
-                Ok(self.cut_span(left, run, work)? && self.cut_span(right, run, work)?)
-            }
-            TreeKind::Leaf { first, len } => {
-                for &rect in &self.rects[first..first + len] {
-                    work.visit(1)?;
-                    if run.touches(rect) {
-                        let ([lo, hi], _) = rect.project(run.axis);
-                        if hi <= run.at {
-                            run.span[0] = run.span[0].max(hi);
-                        } else if run.at <= lo {
-                            run.span[1] = run.span[1].min(lo);
-                        } else {
-                            return Ok(false);
-                        }
+        let mut run = FreeSpan { axis, across, span };
+        let result = self.rects.visit(|entry| -> LayoutResult<_> {
+            work.visit(1)?;
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(run.touches(bounds)),
+                BvhEntry::Item(&rect) if run.touches(rect) => {
+                    let ([lo, hi], _) = rect.project(axis);
+                    if hi <= at {
+                        run.span[0] = run.span[0].max(hi);
+                    } else if at <= lo {
+                        run.span[1] = run.span[1].min(lo);
+                    } else {
+                        return Ok(Break(()));
                     }
+                    Continue(true)
                 }
-                Ok(true)
-            }
-        }
+                BvhEntry::Item(_) => Continue(true),
+            })
+        })?;
+        Ok(result.is_continue().then_some(run.span))
     }
 
     pub(super) fn corridors(&self, work: &mut Work<'_>) -> LayoutResult<Vec<OrthoSegment>> {
-        sweep::corridors(&self.rects, work)
+        sweep::corridors(self.rects.items(), work)
     }
 }
 
 struct FreeSpan {
     axis: Axis,
-    at: f64,
     across: [f64; 2],
     span: [f64; 2],
 }
@@ -204,45 +168,4 @@ impl FreeSpan {
         let ([lo, hi], [a, b]) = bounds.project(self.axis);
         a < self.across[1] && self.across[0] < b && lo < self.span[1] && self.span[0] < hi
     }
-}
-
-fn build_tree(
-    rects: &mut [Bounds],
-    first: usize,
-    tree: &mut Vec<TreeNode>,
-    work: &mut Work<'_>,
-) -> LayoutResult<usize> {
-    let mut bounds = rects[0];
-    for &r in &rects[1..] {
-        work.visit(1)?;
-        bounds = bounds.union(r);
-    }
-    let kind = if rects.len() <= LEAF_SIZE {
-        TreeKind::Leaf {
-            first,
-            len: rects.len(),
-        }
-    } else {
-        let axis = if bounds.x[1] - bounds.x[0] >= bounds.y[1] - bounds.y[0] {
-            Axis::Horizontal
-        } else {
-            Axis::Vertical
-        };
-        let midpoint = rects.len() / 2;
-        work.charge(rects.len())?;
-        rects.select_nth_unstable_by(midpoint, |a, b| {
-            let (a, _) = a.project(axis);
-            let (b, _) = b.project(axis);
-            a[0].midpoint(a[1]).total_cmp(&b[0].midpoint(b[1]))
-        });
-        work.check()?;
-        let (left, right) = rects.split_at_mut(midpoint);
-        TreeKind::Branch([
-            build_tree(left, first, tree, work)?,
-            build_tree(right, first + midpoint, tree, work)?,
-        ])
-    };
-    let id = tree.len();
-    push(tree, TreeNode { bounds, kind })?;
-    Ok(id)
 }

@@ -230,7 +230,10 @@ fn lead_only_ports_keep_their_existing_routes_even_below_minimum_pitch() {
 }
 
 #[derive(Default)]
-struct Meter(usize);
+struct Meter {
+    total: usize,
+    budget: Option<usize>,
+}
 
 impl WorkControl for Meter {
     fn check(&mut self) -> Result<(), WorkError> {
@@ -238,7 +241,11 @@ impl WorkControl for Meter {
     }
 
     fn charge(&mut self, units: usize) -> Result<(), WorkError> {
-        self.0 += units;
+        let total = self.total + units;
+        if self.budget.is_some_and(|budget| total > budget) {
+            return Err(WorkError::Interrupted);
+        }
+        self.total = total;
         Ok(())
     }
 }
@@ -254,11 +261,38 @@ fn a_250_leaf_fan_without_face_capacity_uses_only_linear_work() {
     spread(&mut drawing, &c, &graph, &options, &mut work).unwrap();
     work.finish().unwrap();
     assert_eq!(drawing.edges, before);
-    assert!(meter.0 <= 2 * c.nodes.len() + c.links.len());
+    assert!(meter.total <= 2 * c.nodes.len() + c.links.len());
 }
 
 #[test]
-fn wall_index_preserves_strict_contact_in_each_ordered_block_and_tail() {
+fn sparse_hubs_spread_within_the_wall_query_budget() {
+    let mut graph = measured_fan(Direction::Down, 16, true, false);
+    let options = Options::default();
+    let mut previous = NodeId(1);
+    for i in 18..500 {
+        graph.nodes.push(NodeSpec::new(graph.nodes[2].size, i));
+        let next = NodeId(i);
+        graph
+            .edges
+            .push(EdgeSpec::new(previous.into(), next.into()));
+        previous = next;
+    }
+    let (c, mut drawing) = initial(&graph, &options);
+    let mut meter = Meter {
+        budget: Some(30_000),
+        ..Meter::default()
+    };
+    let mut work = Work::new(&mut meter);
+    spread(&mut drawing, &c, &graph, &options, &mut work).unwrap();
+    work.finish().unwrap();
+
+    let routes: Vec<_> = drawing.edges[..32].iter().map(|(_, e)| e.clone()).collect();
+    check_hub(&routes[..16], End::Source, Direction::Down);
+    check_hub(&routes[16..], End::Target, Direction::Down);
+}
+
+#[test]
+fn wall_queries_distinguish_strict_overlap_from_contact_at_the_boundary() {
     let walls = (0..113)
         .map(|index| {
             let x = f64::from(index) * 4.0;
@@ -281,19 +315,22 @@ fn wall_index_preserves_strict_contact_in_each_ordered_block_and_tail() {
         envelope: clear,
         mark: Some(point(197.0, 1.0)),
     };
-    let mut index = WallIndex::default();
-    assert!(index.blocks(&walls, &edit));
-    assert_eq!(index.indexed_blocks, 3);
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut clearance = Clearance {
+        walls: Bvh::build_with_work(walls.clone(), |wall| *wall, &mut work).unwrap(),
+        strokes: Vec::new(),
+        remaining: walls.len() * CLEARANCE_PASSES,
+    };
+    assert!(!clearance.allows_walls(&edit, &mut work).unwrap());
 
     edit.mark = None;
-    assert!(!index.blocks(&walls, &edit));
-    assert_eq!(index.indexed_blocks, 7);
-    assert_eq!(index.postorder.len(), 11);
+    assert!(clearance.allows_walls(&edit, &mut work).unwrap());
     for wall in &walls {
         let [left, right] = wall.x;
         edit.body[0] = point(left, 1.0);
-        assert!(!index.blocks(&walls, &edit));
+        assert!(clearance.allows_walls(&edit, &mut work).unwrap());
         edit.body[0] = point(left.midpoint(right), 1.0);
-        assert!(index.blocks(&walls, &edit));
+        assert!(!clearance.allows_walls(&edit, &mut work).unwrap());
     }
 }

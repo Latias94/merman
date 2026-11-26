@@ -5,7 +5,8 @@
 mod adaptive;
 mod compound;
 mod flat;
-mod geom;
+#[doc(hidden)]
+pub mod geom;
 mod model;
 mod options;
 mod ortho;

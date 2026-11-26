@@ -1,7 +1,10 @@
 use super::RoutePaintError;
 use crate::route_types::Endpoint;
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, Rect, Vec2};
+#[cfg(feature = "layout-shoal")]
+use merman_layout_shoal::geom::{Bounds, Bvh, BvhEntry};
 use std::collections::VecDeque;
+use std::ops::ControlFlow::{Break, Continue};
 use std::sync::Arc;
 
 const DETOUR_WORK_LIMIT: usize = 4096;
@@ -31,67 +34,33 @@ pub enum ObstacleOwner {
     EdgeLabel(usize),
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg(feature = "layout-shoal")]
+type Obstacles = Bvh<(Rect, ObstacleOwner)>;
+#[cfg(not(feature = "layout-shoal"))]
+type Obstacles = Vec<(Rect, ObstacleOwner)>;
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Clearance {
-    tree: Arc<Tree>,
+    obstacles: Arc<Obstacles>,
 }
 
-#[derive(Debug, Default, PartialEq)]
-struct Tree {
-    boxes: Vec<(Rect, ObstacleOwner)>,
-    branches: Vec<Branch>,
-}
-
-#[derive(Debug, PartialEq)]
-struct Branch {
-    bounds: Rect,
-    end: usize,
-    boxes: std::ops::Range<usize>,
-}
-
-impl Tree {
-    fn partition(&mut self, first: usize, last: usize) {
-        let entries = &mut self.boxes[first..last];
-        let bounds = entries
-            .iter()
-            .fold(entries[0].0, |bounds, (rect, _)| bounds.union(*rect));
-        let branch = self.branches.len();
-        self.branches.push(Branch {
-            bounds,
-            end: branch + 1,
-            boxes: first..last,
-        });
-        if entries.len() > 8 {
-            let horizontal = bounds.width() >= bounds.height();
-            let half = entries.len() / 2;
-            let key = |rect: Rect| {
-                if horizontal {
-                    rect.x0.midpoint(rect.x1)
-                } else {
-                    rect.y0.midpoint(rect.y1)
-                }
-            };
-            entries.select_nth_unstable_by(half, |a, b| key(a.0).total_cmp(&key(b.0)));
-            self.branches[branch].boxes = first..first;
-            self.partition(first, first + half);
-            self.partition(first + half, last);
-            self.branches[branch].end = self.branches.len();
-        }
+impl Default for Clearance {
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 
 impl Clearance {
     pub fn new(mut boxes: Vec<(Rect, ObstacleOwner)>) -> Self {
         boxes.retain(|(r, _)| r.is_finite() && r.x0 < r.x1 && r.y0 < r.y1);
-        let mut tree = Tree {
-            boxes,
-            branches: Vec::new(),
-        };
-        if !tree.boxes.is_empty() {
-            tree.partition(0, tree.boxes.len());
-        }
+        #[cfg(feature = "layout-shoal")]
+        let boxes = Bvh::build(boxes, |(rect, _)| Bounds {
+            x: [rect.x0, rect.x1],
+            y: [rect.y0, rect.y1],
+        })
+        .expect("could not build the route clearance index");
         Self {
-            tree: Arc::new(tree),
+            obstacles: Arc::new(boxes),
         }
     }
 
@@ -103,7 +72,7 @@ impl Clearance {
         stroke_outset: f64,
     ) -> EdgeClearance<'_> {
         EdgeClearance {
-            tree: &self.tree,
+            obstacles: &self.obstacles,
             edge,
             endpoints,
             paint_to_layout,
@@ -114,7 +83,7 @@ impl Clearance {
 
 #[derive(Clone, Copy)]
 pub struct EdgeClearance<'a> {
-    tree: &'a Tree,
+    obstacles: &'a Obstacles,
     edge: usize,
     endpoints: (Endpoint, Endpoint),
     paint_to_layout: Vec2,
@@ -136,38 +105,47 @@ impl EdgeClearance<'_> {
     ) -> Result<bool, RoutePaintError> {
         let outset = self.stroke_outset;
         let query = (bounds + self.paint_to_layout).inflate(outset, outset);
-        let mut at = 0;
-        while let Some(branch) = self.tree.branches.get(at) {
+        let mut visit = |rect: Rect, owner: Option<ObstacleOwner>| -> Result<_, RoutePaintError> {
             if let Some(budget) = budget.as_deref_mut() {
                 budget.visit()?;
             }
-            if !overlaps(query, branch.bounds) || !near_curve(branch.bounds) {
-                at = branch.end;
-                continue;
-            }
-            for &(rect, owner) in &self.tree.boxes[branch.boxes.clone()] {
-                if let Some(budget) = budget.as_deref_mut() {
-                    budget.visit()?;
+            let own = owner.is_some_and(|owner| match owner {
+                ObstacleOwner::Node(id) => {
+                    self.endpoints.0 == Endpoint::Node(id) || self.endpoints.1 == Endpoint::Node(id)
                 }
-                let own = match owner {
-                    ObstacleOwner::Node(id) => {
-                        self.endpoints.0 == Endpoint::Node(id)
-                            || self.endpoints.1 == Endpoint::Node(id)
-                    }
-                    ObstacleOwner::EdgeLabel(edge) => edge == self.edge,
-                    ObstacleOwner::GroupTitle(_) => false,
-                };
-                if !own
-                    && overlaps(rect, query)
-                    && near_curve(rect)
-                    && enters((rect - self.paint_to_layout).inflate(outset, outset))
-                {
+                ObstacleOwner::EdgeLabel(edge) => edge == self.edge,
+                ObstacleOwner::GroupTitle(_) => false,
+            });
+            if own || !overlaps(rect, query) || !near_curve(rect) {
+                return Ok(Continue(false));
+            }
+            if owner.is_some() && enters((rect - self.paint_to_layout).inflate(outset, outset)) {
+                return Ok(Break(()));
+            }
+            Ok(Continue(true))
+        };
+
+        #[cfg(feature = "layout-shoal")]
+        {
+            let result = self.obstacles.visit(|entry| match entry {
+                BvhEntry::Node(bounds) => {
+                    let [x0, x1] = bounds.x;
+                    let [y0, y1] = bounds.y;
+                    visit(Rect::new(x0, y0, x1, y1), None)
+                }
+                BvhEntry::Item(&(rect, owner)) => visit(rect, Some(owner)),
+            })?;
+            Ok(result.is_break())
+        }
+        #[cfg(not(feature = "layout-shoal"))]
+        {
+            for &(rect, owner) in self.obstacles {
+                if visit(rect, Some(owner))?.is_break() {
                     return Ok(true);
                 }
             }
-            at += 1;
+            Ok(false)
         }
-        Ok(false)
     }
 
     pub(super) fn blocks_cubic(self, curve: CubicBez) -> bool {
@@ -528,6 +506,21 @@ mod tests {
             broad > 200 && narrow < 10,
             "candidate boxes {broad} → {narrow}"
         );
+        #[cfg(feature = "layout-shoal")]
+        {
+            let bounds = control_bounds(curve);
+            let hulls = route.cubic_hulls(curve, bounds);
+            let mut budget = DetourBudget(64);
+            assert_eq!(
+                route.query(
+                    bounds,
+                    Some(&mut budget),
+                    |rect| hulls.iter().any(|&hull| overlaps(hull, rect)),
+                    |_| false,
+                ),
+                Ok(false),
+            );
+        }
 
         for curve in [
             curve,
