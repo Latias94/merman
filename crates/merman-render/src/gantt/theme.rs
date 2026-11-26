@@ -2,6 +2,7 @@ use merman_model::families::gantt::GanttDiagramRenderModel;
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult};
 
+use crate::config::ConfigLookup;
 use crate::theme::FamilyTheme;
 
 use super::GanttNativeStyle;
@@ -20,7 +21,7 @@ pub(crate) fn unsupported_native_font_size(
         return Ok(None);
     }
     // Admission shares both the emitted root size and the exact attribute resolver with layout.
-    let css = GanttCssBinding::new(config.as_value(), "");
+    let css = GanttCssBinding::new(config, "");
     control.checkpoint()?;
     if css.section_font_size.used_px().is_some() {
         return Ok(None);
@@ -79,7 +80,7 @@ impl GanttStyle {
                 }
             }
             None => Self {
-                css: GanttCssBinding::new(config.as_value(), &gantt_config_font_family_css(config)),
+                css: GanttCssBinding::new(config, &gantt_config_font_family_css(config)),
                 native: None,
             },
         }
@@ -102,12 +103,11 @@ impl GanttStyle {
     }
 }
 
-fn gantt_config_font_family_css(config: &PresentationConfig) -> String {
+fn gantt_config_font_family_css(config: &dyn ConfigLookup) -> String {
     let value = config
-        .as_value()
         .get("gantt")
         .and_then(|gantt| gantt.get("fontFamily"))
         .and_then(serde_json::Value::as_str)
         .and_then(crate::config::normalized_config_font_family);
-    value.unwrap_or_else(|| crate::config::config_font_family_css(config.as_value()))
+    value.unwrap_or_else(|| crate::config::config_font_family_css(config))
 }

@@ -250,6 +250,7 @@ impl SemanticParser {
                     },
                 };
                 self.prepare_semantic_source_controlled(
+                    input,
                     diagram_type,
                     pre,
                     Some(&mut source_config),
@@ -443,7 +444,7 @@ impl SemanticParser {
                     Err(error) => return Ok(Err(error)),
                 };
             Ok(self
-                .parse_preprocessed_controlled(diagram_type, pre, options, &control)?
+                .parse_preprocessed_controlled(input, diagram_type, pre, options, &control)?
                 .map(Some))
         });
         timing.log();
@@ -499,6 +500,7 @@ impl SemanticParser {
                 }
             };
             self.parse_preprocessed_controlled(
+                input,
                 diagram_type,
                 pre,
                 crate::ParseOptions::strict(),
@@ -511,12 +513,14 @@ impl SemanticParser {
 
     fn parse_preprocessed_controlled(
         &self,
+        input: &str,
         diagram_type: &str,
         pre: crate::PreprocessResult,
         options: crate::ParseOptions,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
         let (mut metadata, source) = match self.prepare_semantic_source_controlled(
+            input,
             diagram_type,
             pre,
             #[cfg(feature = "editor-facts")]
@@ -566,6 +570,7 @@ impl SemanticParser {
 
     fn prepare_semantic_source_controlled(
         &self,
+        input: &str,
         diagram_type: &str,
         pre: crate::PreprocessResult,
         #[cfg(feature = "editor-facts")] source_config: Option<
@@ -624,6 +629,7 @@ impl SemanticParser {
             title,
         };
         let source = crate::preprocess::select_family_parser_source_controlled(
+            input,
             pre.source,
             pre.with_comments,
             diagram_type,

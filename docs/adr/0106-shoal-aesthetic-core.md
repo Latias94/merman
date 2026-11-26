@@ -1,4 +1,4 @@
-# ADR 0103: Shoal Aesthetic Core and Layout Architecture
+# ADR 0106: Shoal Aesthetic Core and Layout Architecture
 
 - Status: accepted for the main development line on 2026-11-26
 - Relates to: [ADR 0099](0099-model-and-source-boundaries.md), [ADR 0102](0102-native-theme-v2.md)

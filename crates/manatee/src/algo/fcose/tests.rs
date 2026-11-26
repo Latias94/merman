@@ -1724,6 +1724,348 @@ fn indexed_layout_rejects_positive_relative_constraint_cycles() {
 }
 
 #[test]
+fn indexed_layout_preserves_alignment_and_outgoing_gaps_after_zero_gap_cycle() {
+    let graph = IndexedGraph {
+        nodes: (0..5)
+            .map(|index| IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: f64::from(index * 50),
+                y: f64::from(index * 80),
+                bounds_extras: BoundsExtras::default(),
+            })
+            .collect(),
+        edges: Vec::new(),
+        compounds: Vec::new(),
+    };
+    let relative = |left, right, gap| IndexedRelativePlacementConstraint {
+        left: Some(left),
+        right: Some(right),
+        top: None,
+        bottom: None,
+        gap,
+    };
+    let options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        alignment_constraint: Some(IndexedAlignmentConstraint {
+            vertical: vec![vec![0, 1], vec![1, 2]],
+            ..Default::default()
+        }),
+        relative_placement_constraint: vec![
+            relative(2, 3, 0.0),
+            relative(3, 0, 0.0),
+            relative(1, 4, 30.0),
+        ],
+        ..Default::default()
+    };
+
+    let result = layout_indexed(&graph, &options).expect("zero-gap cycle is feasible");
+    let shared_x = result.node_positions[0].x;
+    for point in &result.node_positions[1..4] {
+        assert!((point.x - shared_x).abs() < 1e-9);
+    }
+    assert!(result.node_positions[4].x - shared_x >= 30.0 - 1e-9);
+
+    let mut control = RecordingWorkControl {
+        reject_after: Some(1),
+        ..Default::default()
+    };
+    assert!(matches!(
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(0),
+            &mut control,
+        ),
+        Err(Error::WorkFailure(WorkFailure::Interrupted))
+    ));
+    assert_eq!(control.charges.len(), 1);
+}
+
+#[test]
+fn redundant_zero_gap_edge_preserves_authored_alignment_order_and_other_axis() {
+    let mut constraints = Constraints {
+        align_horizontal: Vec::new(),
+        align_vertical: vec![vec![2, 0, 2], vec![4, 3]],
+        relative: vec![RelConstraint {
+            left: Some(2),
+            right: Some(0),
+            top: Some(1),
+            bottom: Some(3),
+            gap: 0.0,
+        }],
+    };
+    assert!(constraints.normalize(5, &mut NoopWorkControl).unwrap());
+    assert_eq!(constraints.align_vertical, vec![vec![2, 0, 2], vec![4, 3]]);
+    let [remaining] = constraints.relative.as_slice() else {
+        panic!("one relative placement must remain");
+    };
+    assert_eq!((remaining.left, remaining.right), (None, None));
+    assert_eq!((remaining.top, remaining.bottom), (Some(1), Some(3)));
+}
+
+#[test]
+fn zero_gap_cycle_unifies_overlapping_authored_alignment_groups() {
+    let graph = IndexedGraph {
+        nodes: [(0.0, -100.0), (60.0, 0.0), (0.0, 100.0)]
+            .map(|(x, y)| IndexedNode {
+                parent: None,
+                width: 400.0,
+                height: 1.0,
+                x,
+                y,
+                bounds_extras: BoundsExtras::default(),
+            })
+            .to_vec(),
+        edges: Vec::new(),
+        compounds: Vec::new(),
+    };
+    let relative = |left, right| IndexedRelativePlacementConstraint {
+        left: Some(left),
+        right: Some(right),
+        top: None,
+        bottom: None,
+        gap: 0.0,
+    };
+    let options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        default_edge_length: Some(1.0),
+        alignment_constraint: Some(IndexedAlignmentConstraint {
+            vertical: vec![vec![0, 1], vec![1, 2]],
+            ..Default::default()
+        }),
+        relative_placement_constraint: vec![
+            relative(0, 2),
+            relative(2, 0),
+            IndexedRelativePlacementConstraint {
+                left: None,
+                right: None,
+                top: Some(0),
+                bottom: Some(2),
+                gap: 200.0,
+            },
+        ],
+        ..Default::default()
+    };
+    let result = layout_indexed(&graph, &options).expect("overlapping groups can be unified");
+    let positions = &result.node_positions;
+    assert!((positions[0].x - positions[1].x).abs() < 1e-9);
+    assert!((positions[0].x - positions[2].x).abs() < 1e-9);
+    assert!(positions[2].y - positions[0].y >= 200.0 - 1e-9);
+}
+
+#[test]
+fn zero_gap_alignment_does_not_drop_vertical_projection_for_dual_axis_rows() {
+    let mut constraints = Constraints {
+        align_horizontal: Vec::new(),
+        align_vertical: Vec::new(),
+        relative: vec![
+            RelConstraint {
+                left: Some(0),
+                right: Some(1),
+                top: None,
+                bottom: None,
+                gap: 0.0,
+            },
+            RelConstraint {
+                left: Some(1),
+                right: Some(0),
+                top: None,
+                bottom: None,
+                gap: 0.0,
+            },
+            RelConstraint {
+                left: Some(2),
+                right: Some(3),
+                top: Some(2),
+                bottom: Some(3),
+                gap: 75.0,
+            },
+        ],
+    };
+    let mut nodes = [
+        node_at(0.0, 0.0, 10.0, 10.0),
+        node_at(10.0, 0.0, 10.0, 10.0),
+        node_at(20.0, 0.0, 10.0, 10.0),
+        node_at(30.0, 0.0, 10.0, 10.0),
+    ];
+    assert!(constraints.normalize(4, &mut NoopWorkControl).unwrap());
+    super::constraint_projection::handle_constraints_pre_layout(
+        &mut nodes,
+        &constraints,
+        &mut NoopWorkControl,
+    )
+    .unwrap();
+    assert!((nodes[0].center_x() - nodes[1].center_x()).abs() < 1e-9);
+    assert!(nodes[3].center_x() - nodes[2].center_x() >= 75.0 - 1e-9);
+    assert!(nodes[3].center_y() - nodes[2].center_y() >= 75.0 - 1e-9);
+}
+
+#[test]
+fn zero_gap_cycles_only_accept_compounds_that_can_move_independently() {
+    let mut graph = IndexedGraph {
+        nodes: vec![IndexedNode {
+            parent: Some(0),
+            width: 40.0,
+            height: 40.0,
+            x: 100.0,
+            y: 30.0,
+            bounds_extras: BoundsExtras::default(),
+        }],
+        edges: Vec::new(),
+        compounds: vec![IndexedCompound { parent: None }],
+    };
+    let options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        relative_placement_constraint: [(0, 1), (1, 0)]
+            .map(|(left, right)| IndexedRelativePlacementConstraint {
+                left: Some(left),
+                right: Some(right),
+                top: None,
+                bottom: None,
+                gap: 0.0,
+            })
+            .to_vec(),
+        ..Default::default()
+    };
+    assert!(matches!(
+        layout_indexed(&graph, &options),
+        Err(Error::UnsupportedCompoundConstraint { index: 1 })
+    ));
+    graph.nodes[0].parent = None;
+    let result = layout_indexed(&graph, &options).expect("empty compound can move on its own");
+    assert!((result.node_positions[0].x - result.compound_positions[0].x).abs() < 1e-9);
+
+    graph.compounds.push(IndexedCompound { parent: None });
+    let sim = SimGraph::from_indexed(&graph);
+    let mut constraints = Constraints::from_indexed_opts(sim.nodes.len(), &options);
+    constraints
+        .normalize(sim.nodes.len(), &mut NoopWorkControl)
+        .unwrap();
+    assert_eq!(constraints.projection_node_count(&sim).unwrap(), 3);
+}
+
+#[test]
+fn acyclic_zero_gap_preflight_leaves_insufficient_budget_untouched() {
+    let graph = IndexedGraph {
+        nodes: [0.0, 100.0]
+            .map(|x| IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            })
+            .to_vec(),
+        edges: Vec::new(),
+        compounds: Vec::new(),
+    };
+    let options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        relative_placement_constraint: vec![IndexedRelativePlacementConstraint {
+            left: Some(0),
+            right: Some(1),
+            top: None,
+            bottom: None,
+            gap: 0.0,
+        }],
+        ..Default::default()
+    };
+    let mut below = CheckOnlyBudget {
+        max_units: 48,
+        ..Default::default()
+    };
+    assert!(matches!(
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut below,
+        ),
+        Err(Error::WorkFailure(WorkFailure::Interrupted))
+    ));
+    assert_eq!(below.checks.last(), Some(&49));
+    assert!(below.charges.is_empty());
+}
+
+#[test]
+fn zero_gap_budget_is_based_on_retained_constraints() {
+    struct RemainingBudget(usize);
+
+    impl WorkControl for RemainingBudget {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            if units > self.0 {
+                return Err(WorkFailure::Interrupted);
+            }
+            Ok(())
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.check(units)?;
+            self.0 -= units;
+            Ok(())
+        }
+    }
+
+    let graph = IndexedGraph {
+        nodes: vec![IndexedNode {
+            parent: None,
+            width: 40.0,
+            height: 40.0,
+            x: 0.0,
+            y: 0.0,
+            bounds_extras: BoundsExtras::default(),
+        }],
+        edges: Vec::new(),
+        compounds: Vec::new(),
+    };
+    let options = IndexedFcoseOptions {
+        randomize: false,
+        num_iter: Some(1),
+        relative_placement_constraint: vec![
+            IndexedRelativePlacementConstraint {
+                left: Some(0),
+                right: Some(0),
+                top: None,
+                bottom: None,
+                gap: 0.0,
+            };
+            8
+        ],
+        ..Default::default()
+    };
+    let mut recording = RecordingWorkControl::default();
+    let run = |work: &mut dyn WorkControl| {
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            work,
+        )
+    };
+    let baseline = run(&mut recording).unwrap();
+    let required: usize = recording.charges.into_iter().sum();
+    assert!(required <= 40, "normalization used {required} units");
+
+    let mut exact = RemainingBudget(required);
+    assert_point_close(
+        run(&mut exact).unwrap().node_positions[0],
+        baseline.node_positions[0],
+    );
+    assert_eq!(exact.0, 0);
+    assert!(matches!(
+        run(&mut RemainingBudget(required - 1)),
+        Err(Error::WorkFailure(WorkFailure::Interrupted))
+    ));
+}
+
+#[test]
 fn eles_bbox_keeps_edge_label_stages_across_both_relocation_runs() {
     let graph = IndexedGraph {
         nodes: vec![

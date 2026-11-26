@@ -22,7 +22,7 @@ const TEXT_MEASUREMENT_V1_PROTOCOL_SHA256: &str =
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
-        "crates/merman-render/src/generated/text_measurement_abi.rs",
+        "crates/merman-render-core/src/text/measurement/abi.rs",
         ArtifactKind::RenderRust,
     ),
     (

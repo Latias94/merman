@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use krilla::color::rgb;
 use krilla::geom::Point;
@@ -145,7 +144,7 @@ pub(crate) fn render(
 pub(crate) struct Fonts<'a> {
     db: &'a Database,
     fonts: HashMap<ID, HashMap<Vec<FontVariation>, Option<Font>>>,
-    files: HashMap<&'a Path, Option<Data>>,
+    file_data: HashMap<ID, Option<Data>>,
 }
 
 impl<'a> Fonts<'a> {
@@ -153,7 +152,7 @@ impl<'a> Fonts<'a> {
         Self {
             db,
             fonts: HashMap::new(),
-            files: HashMap::new(),
+            file_data: HashMap::new(),
         }
     }
 
@@ -164,14 +163,15 @@ impl<'a> Fonts<'a> {
         }
 
         let font = self.db.face(id).and_then(|face| {
-            let data = match &face.source {
-                Source::Binary(data) | Source::SharedFile(_, data) => data.clone().into(),
-                Source::File(path) => self
-                    .files
-                    .entry(path.as_path())
-                    .or_insert_with(|| std::fs::read(path).ok().map(Data::from))
-                    .clone()?,
-            };
+            let data = shared_binary_data(&face.source).or_else(|| {
+                self.file_data
+                    .entry(id)
+                    .or_insert_with(|| {
+                        self.db
+                            .with_face_data(id, |bytes, _| Data::from(bytes.to_vec()))
+                    })
+                    .clone()
+            })?;
 
             // The layout resolves the design coordinates for the chosen face and size.
             let coords: Vec<_> = variations
@@ -182,5 +182,31 @@ impl<'a> Fonts<'a> {
         });
         instances.insert(variations.to_vec(), font.clone());
         font
+    }
+}
+
+#[allow(
+    unreachable_patterns,
+    reason = "fontdb exposes filesystem sources only when its optional features are enabled"
+)]
+fn shared_binary_data(source: &Source) -> Option<Data> {
+    match source {
+        Source::Binary(data) => Some(data.clone().into()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn binary_font_data_keeps_its_backing_bytes() {
+        let bytes = Arc::new(vec![1_u8, 2, 3]);
+        let source = Source::Binary(bytes.clone());
+        let data = shared_binary_data(&source).expect("share binary font data");
+
+        assert!(std::ptr::eq(data.as_ref(), bytes.as_slice()));
     }
 }

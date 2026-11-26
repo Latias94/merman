@@ -28,6 +28,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     NATIVE_BINDING_FORBIDDEN_PACKAGES,
     NATIVE_BINDING_PROFILE_IDS,
     NORMAL_BUILD_CLAIMS,
+    PDF_BACKEND_PACKAGES,
     MODEL_ASCII_FORBIDDEN_PACKAGES,
     SOURCE_INGESTION_PACKAGES,
     DIAGNOSTICS_ONLY_PROFILE_IDS,
@@ -1015,6 +1016,28 @@ class CargoMetadataParserTests(unittest.TestCase):
 
 
 class ClaimTests(unittest.TestCase):
+    def test_pdf_profiles_isolate_the_usvg_host_font_features(self) -> None:
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        for profile_id in ("rust-export-pdf", "sdk-native-standard", "sdk-native-math", "sdk-native-full"):
+            current = cases[profile_id]
+            explicit_system_fonts = profile_id == "rust-export-pdf"
+            self.assertIn("pdf", current.recipe.features)
+            self.assertEqual("system-fonts" in current.recipe.features, explicit_system_fonts)
+            baseline = dict.fromkeys((*current.claim.required_packages, *PDF_BACKEND_PACKAGES), ())
+            if "layout-dagre" in current.recipe.features:
+                baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
+            allowed = ("system-fonts",) if explicit_system_fonts else ()
+            forbidden = ("memmap-fonts",) if explicit_system_fonts else ("memmap-fonts", "system-fonts")
+            for leak in (None, *forbidden):
+                with self.subTest(profile=profile_id, leak=leak):
+                    features = allowed if leak is None else (*allowed, leak)
+                    closure = parse_fixture_metadata(
+                        metadata_document(current.recipe.package, {**baseline, "merman-usvg": features}),
+                        root_package=current.recipe.package,
+                    )
+                    expected = [] if leak is None else [f"package 'merman-usvg' enables forbidden features: {leak}"]
+                    self.assertEqual(check_case(current, closure)[0], expected)
+
     def test_renderer_packages_follow_the_artifact_recipe(self) -> None:
         raster = {"merman-resvg", "merman-usvg"}
         pdf = raster | {"merman-krilla", "merman-krilla-svg"}

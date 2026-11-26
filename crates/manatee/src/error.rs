@@ -12,6 +12,8 @@ pub enum Error {
     MissingEndpoint { edge_id: String },
     #[error("FCoSE {axis} constraints are infeasible")]
     InfeasibleConstraints { axis: &'static str },
+    #[error("FCoSE cannot constrain compound element {index} because it has children")]
+    UnsupportedCompoundConstraint { index: usize },
     #[error("FCoSE produced non-finite layout geometry: {field}")]
     NonFiniteLayout { field: &'static str },
     #[error(transparent)]

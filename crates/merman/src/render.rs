@@ -28,6 +28,7 @@ use merman_export::ExportError;
 mod document;
 #[cfg(feature = "svg")]
 mod environment;
+mod ergonomic;
 #[cfg(feature = "svg")]
 mod evidence;
 #[cfg(feature = "svg")]
@@ -47,6 +48,7 @@ pub use document::{PdfOutput, PreparedPdfExport};
 pub use document::{RenderedDocument, SvgOutput};
 #[cfg(feature = "svg")]
 pub use environment::SvgEnvironment;
+pub use ergonomic::{LayoutBackend, RendererBuilder, RendererBuilderError};
 #[cfg(feature = "native-fonts")]
 pub use evidence::NativeFontDiagnostics;
 #[cfg(feature = "svg")]
@@ -605,6 +607,9 @@ impl RenderTarget {
 
     #[cfg(feature = "presentation")]
     fn svg_input_resource_policy(&self) -> Option<InputResourcePolicy> {
+        #[cfg(feature = "svg")]
+        let input_policy =
+            |request: &SvgRequest| *request.environment.resource_policy().input_policy();
         match self {
             Self::Semantic => None,
             #[cfg(feature = "presentation")]
@@ -617,13 +622,13 @@ impl RenderTarget {
             | Self::LayoutJson(request)
             | Self::LayoutSnapshot(request)
             | Self::EdgeGeometryJson(request)
-            | Self::SvgPlan(request) => Some(request.environment.input_resources),
+            | Self::SvgPlan(request) => Some(input_policy(request)),
             #[cfg(feature = "png")]
-            Self::Png(request) => Some(request.svg.environment.input_resources),
+            Self::Png(request) => Some(input_policy(&request.svg)),
             #[cfg(feature = "jpeg")]
-            Self::Jpeg(request) => Some(request.svg.environment.input_resources),
+            Self::Jpeg(request) => Some(input_policy(&request.svg)),
             #[cfg(feature = "pdf")]
-            Self::Pdf(request) => Some(request.svg.environment.input_resources),
+            Self::Pdf(request) => Some(input_policy(&request.svg)),
         }
     }
 }
@@ -774,6 +779,7 @@ pub struct RenderRequest<'a> {
     control: OperationControl,
     parse_options: Option<ParseOptions>,
     resources: Option<InputResourcePolicy>,
+    allow_missing_diagram: bool,
 }
 
 impl<'a> RenderRequest<'a> {
@@ -788,6 +794,7 @@ impl<'a> RenderRequest<'a> {
             control,
             parse_options: None,
             resources: None,
+            allow_missing_diagram: false,
         }
     }
 
@@ -930,6 +937,8 @@ pub struct Renderer {
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
     resources_explicit: bool,
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    ergonomic_defaults: Option<std::sync::Arc<ergonomic::ErgonomicDefaults>>,
 }
 
 #[cfg(feature = "presentation")]
@@ -948,6 +957,8 @@ impl Default for Renderer {
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
             resources_explicit: false,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            ergonomic_defaults: None,
         }
     }
 }
@@ -1142,6 +1153,7 @@ impl Renderer {
             control,
             parse_options,
             resources,
+            allow_missing_diagram,
         } = request;
         let resources = resources.unwrap_or_else(|| {
             if self.resources_explicit {
@@ -1161,6 +1173,7 @@ impl Renderer {
             operation_engine,
             source,
             parse_options.unwrap_or(self.parse_options),
+            allow_missing_diagram,
         )?;
         Ok((semantic, target))
     }
@@ -1176,11 +1189,18 @@ impl Renderer {
             request.control,
             resources,
         )?;
-        let artifact = operation.parse_semantic(
+        let artifact = match operation.parse_semantic(
             &self.parser,
             request.source,
             request.parse_options.unwrap_or(self.parse_options),
-        )?;
+        ) {
+            Err(RenderError::Parse(diagnostic))
+                if request.allow_missing_diagram && diagnostic.is_missing_diagram() =>
+            {
+                None
+            }
+            result => result?,
+        };
         Ok((artifact, request.target))
     }
 

@@ -10,6 +10,10 @@ artifacts.
 
 This decision amends the Rust package/API ownership clauses of [ADR-0010](0010-semantic-model-boundary.md), [ADR-0011](0011-semantic-model-versioning.md), [ADR-0073](0073-family-owned-diagram-architecture.md), [ADR-0091](0091-selectable-diagram-families.md) and [ADR-0098](0098-semantic-presentation-capabilities.md). Their single semantic construction, pinned Mermaid behavior, deep lifecycle, source admission, requested projections and operation contracts remain in force.
 
+[ADR 0103](0103-vertical-workspace-crate-boundaries.md) amends the family-crate and
+publication boundaries for the v0.11 vertical extraction. It preserves the model and source
+consumer boundaries in this decision.
+
 ## Context
 
 Independent consumer graphs inspected on 2026-10-30 exposed a remaining ownership problem after

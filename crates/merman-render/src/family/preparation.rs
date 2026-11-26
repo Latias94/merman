@@ -586,7 +586,7 @@ fn prepare_gantt_family<'parsed>(
     let (layout, task_source_indices) = crate::gantt::layout_gantt_diagram_typed(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
+        &meta.effective_config,
         &style,
         execution.text_measurer(),
         execution.container_width,

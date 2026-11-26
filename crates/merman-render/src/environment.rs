@@ -14,6 +14,13 @@ use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_model::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_model::time::LocalTimeZoneProvenance;
 use merman_model::{OperationControl, OperationPhase};
+pub use merman_render_core::text::measurement::{
+    HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
+    HostTextMeasurementRequest, HostTextMeasurer, TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementResultKind,
+    validate_host_text_measurement,
+};
+use merman_render_core::text::measurement::{host_fallback_reason, operation_index, phase_index};
 #[cfg(test)]
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -39,33 +46,6 @@ pub enum RenderEnvironmentError {
     Cancelled(#[from] merman_model::OperationCancelled),
     #[error(transparent)]
     Runtime(#[from] RuntimePolicyError),
-}
-
-/// A render phase that may select a distinct complete text-measurement profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TextMeasurementPhase {
-    Layout,
-    Wrap,
-    SvgBBox,
-    ComputedLength,
-}
-
-impl TextMeasurementPhase {
-    pub const ALL: [Self; 4] = [
-        Self::Layout,
-        Self::Wrap,
-        Self::SvgBBox,
-        Self::ComputedLength,
-    ];
-
-    const fn index(self) -> usize {
-        match self {
-            Self::Layout => 0,
-            Self::Wrap => 1,
-            Self::SvgBBox => 2,
-            Self::ComputedLength => 3,
-        }
-    }
 }
 
 /// Stable name for one complete [`TextMeasurer`] profile.
@@ -618,21 +598,6 @@ fn deterministic_profile() -> TextMeasurementProfile {
     )
 }
 
-/// Why a configured host attempt used its named fallback profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HostFallbackReason {
-    Missing,
-    Invalid,
-    Error,
-}
-
-/// The exact [`TextMeasurer`] operation performed through a phase facade and its required host
-/// result shape. Both types are generated from the independently versioned host
-/// text-measurement protocol shared by every binding.
-pub use crate::generated::text_measurement_abi::{
-    TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation, TextMeasurementResultKind,
-};
-
 /// The concrete backend kind that produced one result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextMeasurementSource {
@@ -728,7 +693,7 @@ impl TextMeasurementRecorder {
         operation: TextMeasurementOperation,
         outcome: TextMeasurementRouteOutcome,
     ) -> usize {
-        (phase.index() * TextMeasurementOperation::ALL.len() + operation.index())
+        (phase_index(phase) * TextMeasurementOperation::ALL.len() + operation_index(operation))
             * TextMeasurementRouteOutcome::ALL.len()
             + outcome.index()
     }
@@ -766,7 +731,7 @@ impl TextMeasurementRecorder {
                         continue;
                     }
 
-                    let provenance = match (&policy.routes[phase.index()], outcome) {
+                    let provenance = match (&policy.routes[phase_index(phase)], outcome) {
                         (
                             TextMeasurementRouteConfig::Profile(profile),
                             TextMeasurementRouteOutcome::Profile,
@@ -806,86 +771,6 @@ impl TextMeasurementRecorder {
             }
         }
         TextMeasurementReport { entries }
-    }
-}
-
-/// A host callback failure or invalid result converted to explicit fallback provenance.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{message}")]
-pub struct HostTextMeasurementError {
-    message: Arc<str>,
-    fallback_reason: HostFallbackReason,
-}
-
-impl HostTextMeasurementError {
-    /// Creates an error reported by the host callback or its transport.
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: Arc::from(message.into()),
-            fallback_reason: HostFallbackReason::Error,
-        }
-    }
-
-    /// Creates an error for a callback value that violates the measurement contract.
-    #[doc(hidden)]
-    pub fn invalid_value(message: impl Into<String>) -> Self {
-        Self {
-            message: Arc::from(message.into()),
-            fallback_reason: HostFallbackReason::Invalid,
-        }
-    }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    fn fallback_reason(&self) -> HostFallbackReason {
-        self.fallback_reason
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HostTextMeasurementRequest<'a> {
-    pub operation: TextMeasurementOperation,
-    pub phase: TextMeasurementPhase,
-    pub text: &'a str,
-    pub style: &'a TextStyle,
-    pub max_width: Option<f64>,
-    pub wrap_mode: WrapMode,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum HostTextMeasurement {
-    Metrics(TextMetrics),
-    Length(f64),
-    HorizontalExtents {
-        left: f64,
-        right: f64,
-    },
-    WrappedWithRawWidth {
-        metrics: TextMetrics,
-        raw_width: Option<f64>,
-    },
-}
-
-pub type HostMeasurementResult = Result<Option<HostTextMeasurement>, HostTextMeasurementError>;
-
-/// Fallible, operation-aware host counterpart of [`TextMeasurer`].
-///
-/// Returning `Ok(None)` declines exactly the requested operation. Returning a result variant that
-/// does not match `request.operation`, or an invalid value, uses the configured fallback and is
-/// recorded as [`HostFallbackReason::Invalid`].
-pub trait HostTextMeasurer: Send + Sync {
-    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult;
-
-    /// Measures within the active render operation. Existing host adapters may ignore control;
-    /// native adapters use it to checkpoint bounded shaping and wrapping work.
-    fn measure_with_control(
-        &self,
-        request: HostTextMeasurementRequest<'_>,
-        _control: &OperationControl,
-    ) -> HostMeasurementResult {
-        self.measure(request)
     }
 }
 
@@ -939,7 +824,7 @@ impl TextMeasurementPolicy {
         phase: TextMeasurementPhase,
         profile: TextMeasurementProfile,
     ) -> Self {
-        self.routes[phase.index()] = TextMeasurementRouteConfig::Profile(profile);
+        self.routes[phase_index(phase)] = TextMeasurementRouteConfig::Profile(profile);
         self
     }
 
@@ -959,7 +844,7 @@ impl TextMeasurementPolicy {
     ) -> Self {
         let mut policy = Self::uniform(fallback.clone());
         for phase in host_phases {
-            policy.routes[phase.index()] = TextMeasurementRouteConfig::Host {
+            policy.routes[phase_index(phase)] = TextMeasurementRouteConfig::Host {
                 identity: identity.clone(),
                 backend: Arc::clone(&host),
                 fallback: fallback.clone(),
@@ -969,7 +854,7 @@ impl TextMeasurementPolicy {
     }
 
     pub fn route(&self, phase: TextMeasurementPhase) -> TextMeasurementRoute {
-        match &self.routes[phase.index()] {
+        match &self.routes[phase_index(phase)] {
             TextMeasurementRouteConfig::Profile(profile) => TextMeasurementRoute {
                 phase,
                 primary_source: TextMeasurementSource::Profile,
@@ -1094,7 +979,7 @@ impl RoutedTextMeasurer<'_> {
         phase: TextMeasurementPhase,
         operation: TextMeasurementOperation,
     ) -> Option<BuiltinTextMeasurementOperationCarrier> {
-        match &self.policy.routes[phase.index()] {
+        match &self.policy.routes[phase_index(phase)] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 profile
                     .builtin
@@ -1125,7 +1010,7 @@ impl RoutedTextMeasurer<'_> {
         if let Some(cancelled) = self.controlled_cancellation_value() {
             return cancelled;
         }
-        match &self.policy.routes[phase.index()] {
+        match &self.policy.routes[phase_index(phase)] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 let value = profile_call(profile.backend.as_ref());
                 self.recorder
@@ -1158,7 +1043,7 @@ impl RoutedTextMeasurer<'_> {
                 let reason = match attempt {
                     Ok(Some(_)) => HostFallbackReason::Invalid,
                     Ok(None) => HostFallbackReason::Missing,
-                    Err(error) => error.fallback_reason(),
+                    Err(error) => host_fallback_reason(&error),
                 };
                 // `TextMeasurer` is intentionally infallible. A controlled route therefore
                 // observes the canonical operation before entering another opaque backend and
@@ -1663,73 +1548,6 @@ fn decode_host_wrapped_with_raw_width(
     }
 }
 
-/// Checks a host callback value against the complete operation request.
-///
-/// The validator is the single authority for result shape and numeric bounds across direct
-/// renderer hosts and every binding transport.
-pub fn validate_host_text_measurement(
-    request: &HostTextMeasurementRequest<'_>,
-    measurement: &HostTextMeasurement,
-) -> Result<(), HostTextMeasurementError> {
-    let result_kind = match measurement {
-        HostTextMeasurement::Metrics(_) => TextMeasurementResultKind::Metrics,
-        HostTextMeasurement::Length(_) => TextMeasurementResultKind::Length,
-        HostTextMeasurement::HorizontalExtents { .. } => {
-            TextMeasurementResultKind::HorizontalExtents
-        }
-        HostTextMeasurement::WrappedWithRawWidth { .. } => {
-            TextMeasurementResultKind::WrappedWithRawWidth
-        }
-    };
-    let required_kind = request.operation.required_result_kind();
-    if result_kind != required_kind {
-        return Err(HostTextMeasurementError::invalid_value(format!(
-            "host text measurement operation `{}` requires `{}` but returned `{}`",
-            request.operation.external_name(),
-            required_kind.external_name(),
-            result_kind.external_name(),
-        )));
-    }
-
-    let valid = match measurement {
-        HostTextMeasurement::Metrics(metrics) => valid_metrics(request, metrics),
-        HostTextMeasurement::Length(value) => {
-            value.is_finite() && (request.operation.accepts_signed_length() || *value >= 0.0)
-        }
-        HostTextMeasurement::HorizontalExtents { left, right } => valid_extents(*left, *right),
-        HostTextMeasurement::WrappedWithRawWidth { metrics, raw_width } => {
-            valid_metrics(request, metrics)
-                && raw_width.is_none_or(|value| value.is_finite() && value >= 0.0)
-        }
-    };
-    if valid {
-        Ok(())
-    } else {
-        Err(HostTextMeasurementError::invalid_value(format!(
-            "host text measurement operation `{}` returned an invalid `{}` value",
-            request.operation.external_name(),
-            result_kind.external_name(),
-        )))
-    }
-}
-
-fn valid_metrics(request: &HostTextMeasurementRequest<'_>, metrics: &TextMetrics) -> bool {
-    metrics.width.is_finite()
-        && metrics.height.is_finite()
-        && metrics.width >= 0.0
-        && metrics.height >= 0.0
-        && metrics.line_count > 0
-        && metrics.line_count <= request.text.len().saturating_add(1)
-}
-
-fn valid_extents(left: f64, right: f64) -> bool {
-    left.is_finite()
-        && right.is_finite()
-        && left >= 0.0
-        && right >= 0.0
-        && (left + right).is_finite()
-}
-
 #[cfg(feature = "math")]
 fn default_math_backend() -> Option<ConfiguredMathBackend> {
     Some(ConfiguredMathBackend::compiled_ratex())
@@ -1814,6 +1632,12 @@ impl RenderEnvironment {
         self
     }
 
+    /// Returns the configured routes without creating an operation session.
+    #[doc(hidden)]
+    pub fn text_measurement_routes(&self) -> [TextMeasurementRoute; 4] {
+        self.text_measurement.routes()
+    }
+
     /// Restricts optional renderer capabilities for every operation begun by this environment.
     ///
     /// This is primarily useful to artifact owners whose public feature contract can be narrower
@@ -1863,6 +1687,12 @@ impl RenderEnvironment {
     pub const fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
         self.resource_policy = policy;
         self
+    }
+
+    /// Borrows the policy that will be captured by the next session.
+    #[doc(hidden)]
+    pub const fn resource_policy(&self) -> &RenderResourcePolicy {
+        &self.resource_policy
     }
 
     /// Reuses row storage on independent, flat, natural-width Shoal layouts.

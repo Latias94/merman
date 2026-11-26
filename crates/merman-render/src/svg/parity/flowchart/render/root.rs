@@ -22,6 +22,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
 > {
     pub(in crate::svg::parity::flowchart) timing: RenderTiming,
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
+    pub(in crate::svg::parity::flowchart) node_label_div_style: String,
     pub(in crate::svg::parity::flowchart) edge_cache:
         &'cache mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
@@ -229,6 +230,7 @@ fn render_flowchart_root_pass<'data, 'plan>(
                     current.content_origin_y,
                     session.timing,
                     &mut *session.details,
+                    &mut session.node_label_div_style,
                 )?;
             }
             ctx.checkpoint_emit()?;
@@ -378,6 +380,7 @@ fn render_flowchart_elk_nodes(
             0.0,
             session.timing,
             &mut *session.details,
+            &mut session.node_label_div_style,
         )?;
         ctx.checkpoint_emit()?;
         out.checkpoint()?;

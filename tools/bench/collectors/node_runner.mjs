@@ -9,7 +9,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 
-const { node_products: products, node_intrinsic_layout_types: intrinsicLayoutTypes } =
+const { node_products: products, node_fixed_layouts: fixedLayouts } =
   JSON.parse(readFileSync(new URL("../workloads.json", import.meta.url), "utf8"));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const errorMessage = (error) => String(error?.message ?? error);
@@ -431,6 +431,12 @@ function noOptionsBridge(engine, variant) {
   return engine === "merman" && variant?.options_json === null && !variant?.direct_id;
 }
 
+function expectedLayoutCapabilities(diagramType, siteLayout) {
+  const fixed = fixedLayouts.find(({ diagram_types, site_layouts }) =>
+    diagram_types.includes(diagramType) && (!site_layouts || site_layouts.includes(siteLayout)));
+  return fixed?.required_capability_ids ?? [`layout-${siteLayout}`];
+}
+
 function fieldValueEnd(text, objectStart, key, expectedToken) {
   // The template is already valid JSON. Locate the field without rewriting the option bytes.
   let depth = 0;
@@ -536,10 +542,10 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     const peakRss = process.resourceUsage().maxRSS;
     const layoutPlans = siteLayout && requests.map(({ source, options, diagram_id }, index) => {
       if (!["ok", "diagram-id-not-applied"].includes(cold_batch.results[index].status)) return null;
-      const { ready, diagram_type, required_capability_ids } = JSON.parse(instance.svgPlanJsonSync(source, options));
+      const planJson = directId ? instance.svgPlanJsonSync(source) : instance.svgPlanJsonSync(source, options);
+      const { ready, diagram_type, required_capability_ids } = JSON.parse(planJson);
       const layouts = required_capability_ids.filter((id) => id.startsWith("layout-"));
-      const expectedLayouts = intrinsicLayoutTypes.includes(diagram_type) ? [] : [`layout-${siteLayout}`];
-      if (!ready || !isDeepStrictEqual(layouts, expectedLayouts)) {
+      if (!ready || !isDeepStrictEqual(layouts, expectedLayoutCapabilities(diagram_type, siteLayout))) {
         const capabilities = required_capability_ids.join(", ") || "no required capabilities";
         throw new Error(`${diagram_id}: requested ${siteLayout}. SVG plan reports ${capabilities}.`);
       }

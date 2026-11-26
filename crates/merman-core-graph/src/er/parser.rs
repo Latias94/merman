@@ -1,11 +1,12 @@
 //! Predictive parser over the ER lexer's spanned events.
 
 use super::{
-    Action, ErActionArena, ErActionList, ErLexicalError, ErLexicalEvent, ErParsedActions, ErToken,
+    Action, ErActionArena, ErActionList, ErFailure, ErLexicalError, ErLexicalEvent,
+    ErParsedActions, ErToken,
 };
 use crate::scan::TokenStream;
 use merman_model::families::er::{ErAttribute, ErRelSpec};
-use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 
 macro_rules! terminals {
     ($($terminal:ident $(($payload:tt))? => $name:literal),+ $(,)?) => {
@@ -133,7 +134,7 @@ const CARDINALITY: ErExpectedTokens =
 const RELATION_KIND: ErExpectedTokens = ErExpectedTokens::new(&[Identifying, NonIdentifying]);
 const ATTRIBUTE_BOUNDARY: ErExpectedTokens = ErExpectedTokens::new(&[BlockStop, AttrWord]);
 
-/// The first lexing or grammar error in ER input byte coordinates.
+/// The first lexing, grammar, or construction error in ER input byte coordinates.
 #[derive(Debug)]
 pub enum ErSyntaxDiagnostic {
     Lexical(ErLexicalError),
@@ -146,21 +147,15 @@ pub enum ErSyntaxDiagnostic {
         offset: usize,
         expected: ErExpectedTokens,
     },
+    StyleExpansionLimit {
+        span: SourceSpan,
+        unit: &'static str,
+        actual: usize,
+        maximum: usize,
+    },
 }
 
-#[derive(Debug)]
-enum Failure {
-    Syntax(ErSyntaxDiagnostic),
-    Cancelled(OperationCancelled),
-}
-
-impl From<OperationCancelled> for Failure {
-    fn from(cancelled: OperationCancelled) -> Self {
-        Self::Cancelled(cancelled)
-    }
-}
-
-type ParseResult<T> = std::result::Result<T, Failure>;
+type ParseResult<T> = std::result::Result<T, ErFailure>;
 
 pub(super) fn parse(
     events: impl Iterator<Item = ErLexicalEvent>,
@@ -171,8 +166,8 @@ pub(super) fn parse(
     control.checkpoint()?;
     match outcome {
         Ok(actions) => Ok(Ok((parser.arena, actions))),
-        Err(Failure::Syntax(error)) => Ok(Err(error)),
-        Err(Failure::Cancelled(error)) => Err(error),
+        Err(ErFailure::Syntax(error)) => Ok(Err(error)),
+        Err(ErFailure::Cancelled(error)) => Err(error),
     }
 }
 
@@ -198,7 +193,9 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     fn peek(&mut self) -> ParseResult<Option<Terminal>> {
         match self.input.peek()? {
             Some(Ok((_, token, _))) => Ok(Some(Terminal::of(token))),
-            Some(Err(error)) => Err(Failure::Syntax(ErSyntaxDiagnostic::Lexical(error.clone()))),
+            Some(Err(error)) => Err(ErFailure::Syntax(ErSyntaxDiagnostic::Lexical(
+                error.clone(),
+            ))),
             None => Ok(None),
         }
     }
@@ -212,8 +209,17 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     }
 
     fn require(&mut self, expected: ErExpectedTokens) -> ParseResult<ErToken> {
+        self.require_spanned(expected).map(|(_, token, _)| token)
+    }
+
+    fn require_spanned(
+        &mut self,
+        expected: ErExpectedTokens,
+    ) -> ParseResult<(usize, ErToken, usize)> {
         match self.input.bump()? {
-            Some(Ok((_, token, _))) if expected.contains(Terminal::of(&token)) => Ok(token),
+            Some(Ok((start, token, end))) if expected.contains(Terminal::of(&token)) => {
+                Ok((start, token, end))
+            }
             event => Err(self.failure(event, expected)),
         }
     }
@@ -223,8 +229,8 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         Err(self.failure(event, expected))
     }
 
-    fn failure(&self, event: Option<ErLexicalEvent>, expected: ErExpectedTokens) -> Failure {
-        Failure::Syntax(match event {
+    fn failure(&self, event: Option<ErLexicalEvent>, expected: ErExpectedTokens) -> ErFailure {
+        ErFailure::Syntax(match event {
             Some(Ok((start, token, end))) => ErSyntaxDiagnostic::UnexpectedToken {
                 token,
                 span: SourceSpan::new(start, end),
@@ -251,15 +257,21 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     }
 
     fn id_list(&mut self) -> ParseResult<Vec<String>> {
-        match self.require(ErExpectedTokens::one(IdList))? {
-            ErToken::IdList(ids) => Ok(ids.into_names()),
+        Ok(self.spanned_id_list()?.0)
+    }
+
+    fn spanned_id_list(&mut self) -> ParseResult<(Vec<String>, SourceSpan)> {
+        match self.require_spanned(ErExpectedTokens::one(IdList))? {
+            (start, ErToken::IdList(ids), end) => {
+                Ok((ids.into_names(), SourceSpan::new(start, end)))
+            }
             _ => unreachable!("ER id list expectation contains only IdList"),
         }
     }
 
-    fn inline_classes(&mut self) -> ParseResult<Option<Vec<String>>> {
+    fn inline_classes(&mut self) -> ParseResult<Option<(Vec<String>, SourceSpan)>> {
         if self.accept(StyleSeparator)? {
-            return self.id_list().map(Some);
+            return self.spanned_id_list().map(Some);
         }
         Ok(None)
     }
@@ -305,7 +317,8 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
             } else {
                 follow
             };
-            match self.require(expected)? {
+            let (start, token, end) = self.require_spanned(expected)?;
+            match token {
                 ErToken::Newline => {
                     skipped_newline = true;
                     continue;
@@ -333,7 +346,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
                     body = self.arena.append(body, statement);
                 }
                 token => {
-                    let statement = self.payload_statement(token)?;
+                    let statement = self.payload_statement(token, SourceSpan::new(start, end))?;
                     let statement = self.arena.push(statement);
                     body = self.arena.append(body, statement);
                 }
@@ -365,7 +378,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         }
     }
 
-    fn payload_statement(&mut self, token: ErToken) -> ParseResult<Action> {
+    fn payload_statement(&mut self, token: ErToken, span: SourceSpan) -> ParseResult<Action> {
         Ok(match token {
             ErToken::AccTitle(title) => Action::SetAccTitle(title),
             ErToken::AccDescr(description) | ErToken::AccDescrMultiline(description) => {
@@ -375,14 +388,17 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
             ErToken::StyleKw => Action::AddCssStyles {
                 entities: self.id_list()?,
                 raw: self.text(ErExpectedTokens::one(RestOfLine))?,
+                span,
             },
             ErToken::ClassDefKw => Action::AddClassDef {
                 classes: self.id_list()?,
                 raw: self.text(ErExpectedTokens::one(RestOfLine))?,
+                span,
             },
             ErToken::ClassKw => Action::SetClass {
                 entities: self.id_list()?,
                 classes: self.id_list()?,
+                span,
             },
             _ => unreachable!("ER statement starts are checked by document"),
         })
@@ -430,9 +446,10 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
             entity: name.clone(),
             attributes,
         });
-        let class_action = classes.map(|classes| Action::SetClass {
+        let class_action = classes.map(|(classes, span)| Action::SetClass {
             entities: vec![name.clone()],
             classes,
+            span,
         });
         let entity = self.arena.push(Action::AddEntity { name, alias });
         Ok(self
@@ -443,7 +460,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     fn relationship(
         &mut self,
         a: String,
-        left_classes: Option<Vec<String>>,
+        left_classes: Option<(Vec<String>, SourceSpan)>,
     ) -> ParseResult<ErActionList> {
         let card_b = self.cardinality()?;
         let rel_type = match self.require(RELATION_KIND)? {
@@ -455,7 +472,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         let b = self.text(ErExpectedTokens::one(Name))?;
         let right_classes = match self.require(ErExpectedTokens::new(&[StyleSeparator, Colon]))? {
             ErToken::StyleSeparator => {
-                let classes = self.id_list()?;
+                let classes = self.spanned_id_list()?;
                 self.require(ErExpectedTokens::one(Colon))?;
                 Some(classes)
             }
@@ -463,13 +480,15 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
             _ => unreachable!("ER right endpoint expects classes or the role separator"),
         };
         let role = self.text(NAME_OR_STR)?;
-        let left_class = left_classes.map(|classes| Action::SetClass {
+        let left_class = left_classes.map(|(classes, span)| Action::SetClass {
             entities: vec![a.clone()],
             classes,
+            span,
         });
-        let right_class = right_classes.map(|classes| Action::SetClass {
+        let right_class = right_classes.map(|(classes, span)| Action::SetClass {
             entities: vec![b.clone()],
             classes,
+            span,
         });
         let relation = self.arena.push(Action::AddRelationship {
             a,

@@ -387,6 +387,9 @@ the package/host boundary and prevents internal bundles from acquiring a hidden 
 
 ## Develop from source
 
+Package assembly uses Python 3.11 or newer to verify the Cargo license inventory. Set
+`MERMAN_PYTHON` if your interpreter is not named `python` on Windows or `python3` elsewhere.
+
 ```sh
 npm ci --prefix platforms/web
 npm run build --prefix platforms/web

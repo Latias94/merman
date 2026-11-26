@@ -11,9 +11,9 @@ from sys import float_info
 
 from .coverage import _schema_v1, _source_digest, summarize_coverage
 from .node import _comparison_file, _process_order
-from .reference import (LAYOUTS, NODE_INTRINSIC_LAYOUT_TYPES, NODE_PRODUCTS, _product as reference_product,
+from .reference import (LAYOUTS, NODE_PRODUCTS, _product as reference_product,
                         _scenario as compare_scenario,
-                        node_worker_failures, product_label, valid_node_variant_label)
+                        node_expected_layout_capabilities, node_worker_failures, product_label, valid_node_variant_label)
 
 
 INCOMPLETE = {"missing-evidence", "evidence-mismatch", "missing-frozen-input", "frozen-input-mismatch",
@@ -334,7 +334,7 @@ def _replay_pair(workers, compared, planned):
                 or not isinstance(plan.get("diagram_type"), str)
                 or any(not isinstance(cap, str) for cap in plan["required_capability_ids"])
                 or [cap for cap in plan["required_capability_ids"] if cap.startswith("layout-")]
-                != ([] if plan["diagram_type"] in NODE_INTRINSIC_LAYOUT_TYPES else [f"layout-{layout}"])
+                != node_expected_layout_capabilities(plan["diagram_type"], layout)
                 for plan in plans
             ):
                 return "evidence-mismatch"

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -20,6 +21,7 @@ const artifactProfilesPath = path.join(
   "artifact-profiles-v2.json",
 );
 const cargoLockPath = path.join(repositoryRoot, "Cargo.lock");
+const cargoLockIdentityScript = path.join(repositoryRoot, "scripts", "cargo_lock_identity.py");
 const cargoAboutConfigurationPath = path.join(repositoryRoot, "about.toml");
 
 export function legalProjectionForArtifactProfile(artifactProfileId) {
@@ -105,8 +107,9 @@ function loadComponentInventory() {
     scopes.set(scope.id, scope);
   }
   const artifactProfiles = loadWebArtifactProfileRecipes();
+  const lockDigest = thirdPartyCargoLockDigest();
   const scopedExternalMaterials = inventory.scoped_external_materials.map((raw) =>
-    parseScopedExternalMaterial(raw, artifactProfiles),
+    parseScopedExternalMaterial(raw, artifactProfiles, lockDigest),
   );
   const mappedScopes = new Set();
   for (const material of scopedExternalMaterials) {
@@ -133,7 +136,7 @@ function loadComponentInventory() {
   return { components, scopedExternalMaterials, scopes };
 }
 
-function parseScopedExternalMaterial(raw, artifactProfiles) {
+function parseScopedExternalMaterial(raw, artifactProfiles, lockDigest) {
   const material = expectRecord(raw, "Scoped externally managed legal material");
   assertExactKeys(
     material,
@@ -178,7 +181,7 @@ function parseScopedExternalMaterial(raw, artifactProfiles) {
   if (!artifactProfile) {
     throw new Error(`Scoped legal material references unknown Web profile ${artifactScope}.`);
   }
-  validateScopedRustReport(readJson(source), artifactProfile, artifactScope);
+  validateScopedRustReport(readJson(source), artifactProfile, artifactScope, lockDigest);
   return {
     artifactScope,
     relative: projectionPath.slice(legalPathPrefix.length),
@@ -313,6 +316,7 @@ export function validateScopedRustReport(
   reportValue,
   artifactProfile,
   artifactScope,
+  lockDigest = thirdPartyCargoLockDigest(),
 ) {
   const report = expectRecord(reportValue, `Rust dependency report ${artifactScope}`);
   assertExactKeys(
@@ -339,7 +343,7 @@ export function validateScopedRustReport(
       "version",
       "command_profile",
       "offline",
-      "cargo_lock_sha256",
+      "third_party_cargo_lock_sha256",
       "configuration_sha256",
       "artifact_profile_sha256",
     ],
@@ -356,7 +360,7 @@ export function validateScopedRustReport(
     );
   }
   const expectedGeneratorInputs = {
-    cargo_lock_sha256: sha256File(cargoLockPath),
+    third_party_cargo_lock_sha256: lockDigest,
     configuration_sha256: sha256File(cargoAboutConfigurationPath),
     artifact_profile_sha256: sha256Text(canonicalJson(artifactProfile)),
   };
@@ -761,6 +765,15 @@ function expectDigest(value, label) {
     throw new Error(`${label} must be a lowercase SHA-256 digest.`);
   }
   return digest;
+}
+
+function thirdPartyCargoLockDigest() {
+  const python = process.env.MERMAN_PYTHON ||
+    (process.platform === "win32" ? "python" : "python3");
+  const output = execFileSync(python, ["-B", cargoLockIdentityScript, cargoLockPath], {
+    encoding: "utf8",
+  });
+  return expectDigest(output.trim(), "Third-party Cargo lock digest");
 }
 
 function sha256File(file) {

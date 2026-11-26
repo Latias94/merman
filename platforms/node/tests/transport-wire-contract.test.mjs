@@ -34,7 +34,9 @@ test("direct JSON string accounting preserves scalar validation and all escape w
   assert.equal(jsonStringFieldBytes(text, "source", bytes), Buffer.byteLength(JSON.stringify(text)) - 2);
   assert.throws(() => jsonStringFieldBytes(text, "source", bytes - 1), /field limit/i);
   for (const surrogate of ["\ud800", "\udc00"]) {
-    assert.throws(() => jsonStringFieldBytes(text + surrogate, "source", 1), /isolated UTF-16 surrogate/i);
+    const invalid = text + surrogate;
+    assert.throws(() => jsonStringFieldBytes(invalid, "source", bytes + 3), /isolated UTF-16 surrogate/i);
+    assert.throws(() => jsonStringFieldBytes(invalid, "source", bytes + 2), /field limit/i);
   }
 });
 

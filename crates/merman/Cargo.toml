@@ -80,6 +80,20 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
+core-diagrams = [
+    "diagram-architecture",
+    "diagram-block",
+    "diagram-c4",
+    "diagram-class",
+    "diagram-er",
+    "diagram-flowchart",
+    "diagram-gantt",
+    "diagram-mindmap",
+    "diagram-pie",
+    "diagram-sequence",
+    "diagram-state",
+    "diagram-xychart",
+]
 diagram-architecture = [
     "merman-model/diagram-architecture",
     "merman-core/diagram-architecture",
@@ -373,6 +387,7 @@ layout-cytoscape = ["svg", "merman-render/layout-cytoscape"]
 layout-dagre = ["svg", "merman-render/layout-dagre"]
 layout-elk = ["svg", "merman-render/layout-elk"]
 layout-shoal = ["svg", "merman-render/layout-shoal"]
+layout-mermaid-legacy = ["layout-cytoscape", "layout-dagre", "layout-elk"]
 math = ["svg", "merman-render/math"]
 # Convenience output/layout bundles; mathematical labels require explicit `math`.
 complete-svg = ["svg", "layout-cytoscape", "layout-dagre"]

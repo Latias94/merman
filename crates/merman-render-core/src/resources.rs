@@ -385,6 +385,7 @@ pub struct ResourcePolicyRestrictionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RenderResourcePolicy {
     input: InputResourcePolicy,
+    render_profile: RenderResourceProfile,
     render_base_values: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
     render_effective_values: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
     render_explicit_overrides: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
@@ -398,7 +399,7 @@ impl Default for RenderResourcePolicy {
 
 impl RenderResourcePolicy {
     pub const fn profile(self) -> RenderResourceProfile {
-        self.input.profile()
+        self.render_profile
     }
 
     pub const fn interactive() -> Self {
@@ -426,6 +427,7 @@ impl RenderResourcePolicy {
         }
         Self {
             input: InputResourcePolicy::for_profile(profile),
+            render_profile: profile,
             render_base_values: render_values,
             render_effective_values: render_values,
             render_explicit_overrides: [None; RENDER_RESOURCE_LIMIT_COUNT],
@@ -434,6 +436,13 @@ impl RenderResourcePolicy {
 
     pub const fn input_policy(&self) -> &InputResourcePolicy {
         &self.input
+    }
+
+    /// Selects input ceilings without changing the profile or ceilings for rendering.
+    #[must_use]
+    pub const fn with_input_policy(mut self, input: InputResourcePolicy) -> Self {
+        self.input = input;
+        self
     }
 
     pub const fn value(self, id: ResourceLimitId) -> Option<usize> {
@@ -563,6 +572,7 @@ impl RenderResourcePolicy {
         }
         Self {
             input,
+            render_profile: self.render_profile,
             render_base_values: self.render_base_values,
             render_effective_values,
             render_explicit_overrides,
