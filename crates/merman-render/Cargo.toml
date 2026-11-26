@@ -106,20 +106,13 @@ layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre", "merman-render-flow?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk"]
 layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-graph?/layout-shoal"]
-math = [
-  "dep:ratex-font",
-  "dep:ratex-layout",
-  "dep:ratex-parser",
-  "dep:ratex-svg",
-  "dep:ratex-types",
-  "ratex-svg/embed-fonts",
-]
+math = ["merman-render-core/math"]
 
 [dependencies]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "root-svg", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "icon-registry", "math-labels", "root-svg", "svg-animation", "svg-identity", "svg-parse", "text-layout", "theme-svg"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }
@@ -138,11 +131,6 @@ merman-layout-elk = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, features = ["presets"] }
 pulldown-cmark = { workspace = true, optional = true }
-ratex-font = { workspace = true, optional = true }
-ratex-layout = { workspace = true, optional = true }
-ratex-parser = { workspace = true, optional = true }
-ratex-svg = { workspace = true, optional = true }
-ratex-types = { workspace = true, optional = true }
 roxmltree.workspace = true
 rustc-hash.workspace = true
 quick-xml.workspace = true

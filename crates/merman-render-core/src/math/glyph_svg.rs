@@ -215,7 +215,7 @@ fn fit_resolved_ink(
     recover_horizontal: bool,
 ) -> Option<RenderedFormula> {
     use kurbo::Shape as _;
-    let document = crate::xml_dom::Document::parse(ink_svg.unwrap_or("<svg/>")).ok()?;
+    let document = roxmltree::Document::parse(ink_svg.unwrap_or("<svg/>")).ok()?;
     let root = document.root_element();
     const UNITS_PER_EM: f64 = 1_000_000.0;
     // Quantize metric bounds like the upstream serializer, then retain integer micro-units.

@@ -2,13 +2,13 @@
 
 use super::{TextMeasurer, TextStyle};
 
-pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
+pub const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct MermaidTextDimensions {
-    pub(crate) width: i64,
-    pub(crate) height: i64,
-    pub(crate) line_height: i64,
+pub struct MermaidTextDimensions {
+    pub width: i64,
+    pub height: i64,
+    pub line_height: i64,
 }
 
 fn try_measure_mermaid_text_dimensions_for_family<E>(
@@ -66,7 +66,7 @@ fn try_measure_mermaid_text_dimensions<E>(
 }
 
 /// Mirrors Mermaid's shared `calculateTextDimensions` utility.
-pub(crate) fn measure_mermaid_text_dimensions(
+pub fn measure_mermaid_text_dimensions(
     measurer: &dyn TextMeasurer,
     text: &str,
     configured_style: &TextStyle,
@@ -78,7 +78,8 @@ pub(crate) fn measure_mermaid_text_dimensions(
     }
 }
 
-pub(crate) fn measure_mermaid_text_dimensions_with_checkpoint(
+#[cfg(feature = "svg-output")]
+pub fn measure_mermaid_text_dimensions_with_checkpoint(
     measurer: &dyn TextMeasurer,
     text: &str,
     configured_style: &TextStyle,

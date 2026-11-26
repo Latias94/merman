@@ -3,6 +3,14 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "text-layout")]
+mod common_dimensions;
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+pub use common_dimensions::measure_mermaid_text_dimensions_with_checkpoint;
+#[cfg(feature = "text-layout")]
+pub use common_dimensions::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidTextDimensions, measure_mermaid_text_dimensions,
+};
+#[cfg(feature = "text-layout")]
 mod create_text;
 mod css_font;
 mod measure;
@@ -29,7 +37,7 @@ pub use deterministic::{
 #[cfg(feature = "text-layout")]
 pub use line_break::split_html_br_lines;
 #[cfg(feature = "text-layout")]
-use line_break::split_mermaid_common_br_lines;
+pub(crate) use line_break::split_mermaid_common_br_lines;
 #[cfg(feature = "text-layout")]
 pub use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
@@ -70,6 +78,14 @@ pub use fonts::{
 #[cfg(feature = "text-layout")]
 pub use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use whitespace::*;
+
+pub fn flowchart_html_line_height_px(font_size_px: f64) -> f64 {
+    font_size_px.max(0.0) * 1.5
+}
+
+pub fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * 1.1875
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum WrapMode {

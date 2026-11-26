@@ -438,7 +438,7 @@ The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are l
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
 - Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
-- Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
+- Local evidence: `Cargo.lock`, `crates/merman-render-core/Cargo.toml`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt`](THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt) (notice, SHA-256 `752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e`)
   - [`THIRD_PARTY_LICENSES/katex-fonts/OFL.txt`](THIRD_PARTY_LICENSES/katex-fonts/OFL.txt) (license, SHA-256 `f19c674290e5dc79f02e8efe16139ab56a06a7128876f5b1579ffd0db5bc897e`)
@@ -635,7 +635,7 @@ Optional math rendering links the RaTeX 0.1.15 crate family; its separately lice
 - Relationship: `linked`
 - License expression: `MIT`
 - Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
-- Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
+- Local evidence: `Cargo.lock`, `crates/merman-render-core/src/math/prepared.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/ratex/LICENSE`](THIRD_PARTY_LICENSES/ratex/LICENSE) (license, SHA-256 `f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0`)
   - [`THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt) (notice, SHA-256 `e3cf753ddd8012543a3297b62b4cf5450db1d5a3ae7ddd7afae593db927c2980`)

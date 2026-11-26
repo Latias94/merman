@@ -7,29 +7,34 @@
 
 #[cfg(feature = "math")]
 use std::borrow::Cow;
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 use std::cell::Cell;
 use std::fmt;
 #[cfg(feature = "math")]
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 use merman_model::OperationPhase;
 use merman_model::presentation::PresentationConfig;
 
 use super::MathRenderer;
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 use crate::html::{HtmlOutputError, HtmlSanitizeSink};
 use crate::resources::{
     OperationWorkError, OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile,
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
-pub(crate) const BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE: &str =
+pub const BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE: &str =
     r#"data-merman-math-native="unavailable""#;
-pub(crate) const PREPARED_MATH_OCCURRENCE_ATTRIBUTE: &str = "data-merman-prepared-math-occurrence";
-pub(crate) const PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE: &str =
+pub const PREPARED_MATH_OCCURRENCE_ATTRIBUTE: &str = "data-merman-prepared-math-occurrence";
+pub const PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE: &str =
     r#"data-merman-prepared-math-switch="v1""#;
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 #[derive(Debug)]
 struct RawPreparedMathLabel {
     html: String,
@@ -39,8 +44,9 @@ struct RawPreparedMathLabel {
     native_projection: Option<Arc<PreparedMathNativeProjection>>,
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 impl RawPreparedMathLabel {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
         let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
         Self::with_max_line_height(html, metrics, max_line_height_px, None)
@@ -61,6 +67,7 @@ impl RawPreparedMathLabel {
         }
     }
 
+    #[cfg(feature = "math")]
     fn with_native_projection(
         html: impl Into<String>,
         metrics: TextMetrics,
@@ -83,7 +90,7 @@ impl RawPreparedMathLabel {
 /// The fragment retains the producer's nested SVG viewports, clipping and paint. Dimensions use
 /// the same serialized precision as the fragment so placement does not reinterpret its markup.
 #[derive(Debug)]
-pub(crate) struct PreparedMathNativeProjection {
+pub struct PreparedMathNativeProjection {
     svg: String,
     width_px: f64,
     height_px: f64,
@@ -91,8 +98,8 @@ pub(crate) struct PreparedMathNativeProjection {
 }
 
 impl PreparedMathNativeProjection {
-    #[cfg(any(feature = "math", test))]
-    pub(crate) fn new(svg: String, width_px: f64, height_px: f64) -> Self {
+    #[cfg(any(test, feature = "test-support", feature = "math"))]
+    pub fn new(svg: String, width_px: f64, height_px: f64) -> Self {
         Self {
             fingerprint: super::PreparedMathProjectionFingerprint::from_projection(&svg),
             svg,
@@ -105,19 +112,19 @@ impl PreparedMathNativeProjection {
         }
     }
 
-    pub(crate) fn svg(&self) -> &str {
+    pub fn svg(&self) -> &str {
         &self.svg
     }
 
-    pub(crate) const fn width_px(&self) -> f64 {
+    pub const fn width_px(&self) -> f64 {
         self.width_px
     }
 
-    pub(crate) const fn height_px(&self) -> f64 {
+    pub const fn height_px(&self) -> f64 {
         self.height_px
     }
 
-    pub(crate) const fn fingerprint(&self) -> super::PreparedMathProjectionFingerprint {
+    pub const fn fingerprint(&self) -> super::PreparedMathProjectionFingerprint {
         self.fingerprint
     }
 
@@ -133,14 +140,18 @@ enum MathLabelShell {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct PrepareMathLabelRequest<'a> {
+#[cfg_attr(
+    not(any(test, feature = "math", feature = "test-support")),
+    allow(dead_code)
+)]
+pub struct PrepareMathLabelRequest<'a> {
     text: &'a str,
     config: &'a PresentationConfig,
     style: &'a TextStyle,
     foreground: &'a str,
     text_measurer: Option<&'a dyn TextMeasurer>,
     max_width_px: Option<f64>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     wrap_mode: WrapMode,
     shell: MathLabelShell,
     occurrence_id: Option<&'a super::PreparedMathOccurrenceId>,
@@ -148,7 +159,7 @@ pub(crate) struct PrepareMathLabelRequest<'a> {
 }
 
 impl<'a> PrepareMathLabelRequest<'a> {
-    pub(crate) const fn flowchart(
+    pub const fn flowchart(
         text: &'a str,
         config: &'a PresentationConfig,
         style: &'a TextStyle,
@@ -163,7 +174,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             wrap_mode: _wrap_mode,
             shell: MathLabelShell::Flowchart,
             occurrence_id: None,
@@ -171,17 +182,17 @@ impl<'a> PrepareMathLabelRequest<'a> {
         }
     }
 
-    pub(crate) const fn with_text_measurer(mut self, text_measurer: &'a dyn TextMeasurer) -> Self {
+    pub const fn with_text_measurer(mut self, text_measurer: &'a dyn TextMeasurer) -> Self {
         self.text_measurer = Some(text_measurer);
         self
     }
 
-    pub(crate) const fn with_owner_retained_bytes(mut self, retained_bytes: usize) -> Self {
+    pub const fn with_owner_retained_bytes(mut self, retained_bytes: usize) -> Self {
         self.owner_retained_bytes = retained_bytes;
         self
     }
 
-    pub(crate) const fn with_occurrence_id(
+    pub const fn with_occurrence_id(
         mut self,
         occurrence_id: &'a super::PreparedMathOccurrenceId,
     ) -> Self {
@@ -189,7 +200,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
         self
     }
 
-    pub(crate) const fn sequence(
+    pub const fn sequence(
         text: &'a str,
         config: &'a PresentationConfig,
         style: &'a TextStyle,
@@ -202,7 +213,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px: None,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             wrap_mode: WrapMode::HtmlLike,
             shell: MathLabelShell::Sequence,
             occurrence_id: None,
@@ -212,7 +223,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct PreparedMathLabel {
+pub struct PreparedMathLabel {
     metrics: TextMetrics,
     max_line_height_px: f64,
     max_math_height_px: Option<f64>,
@@ -222,8 +233,8 @@ pub(crate) struct PreparedMathLabel {
 }
 
 impl PreparedMathLabel {
-    #[cfg(test)]
-    pub(crate) fn for_test(metrics: TextMetrics) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test(metrics: TextMetrics) -> Self {
         Self {
             metrics,
             max_line_height_px: metrics.height,
@@ -234,30 +245,27 @@ impl PreparedMathLabel {
         }
     }
 
-    pub(crate) const fn metrics(&self) -> TextMetrics {
+    pub const fn metrics(&self) -> TextMetrics {
         self.metrics
     }
 
-    pub(crate) const fn max_line_height_px(&self) -> f64 {
+    pub const fn max_line_height_px(&self) -> f64 {
         self.max_line_height_px
     }
 
-    pub(crate) const fn max_math_height_px(&self) -> Option<f64> {
+    pub const fn max_math_height_px(&self) -> Option<f64> {
         self.max_math_height_px
     }
 
-    pub(crate) fn browser_xhtml(&self) -> &str {
+    pub fn browser_xhtml(&self) -> &str {
         &self.browser_xhtml
     }
 
-    pub(crate) fn native_projection(&self) -> Option<&Arc<PreparedMathNativeProjection>> {
+    pub fn native_projection(&self) -> Option<&Arc<PreparedMathNativeProjection>> {
         self.native_projection.as_ref()
     }
 
-    pub(crate) fn expectation(
-        &self,
-        expected_emissions: usize,
-    ) -> Option<super::PreparedMathExpectation> {
+    pub fn expectation(&self, expected_emissions: usize) -> Option<super::PreparedMathExpectation> {
         let occurrence_id = self.occurrence_id.clone()?;
         Some(match &self.native_projection {
             Some(projection) => super::PreparedMathExpectation::available(
@@ -270,7 +278,7 @@ impl PreparedMathLabel {
     }
 
     /// Exact bytes owned by this artifact under the prepared-math accounting contract.
-    pub(crate) fn retained_bytes(&self) -> usize {
+    pub fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             .checked_add(self.browser_xhtml.len())
             .and_then(|bytes| {
@@ -292,7 +300,7 @@ impl PreparedMathLabel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MathPreparationUnavailable {
+pub enum MathPreparationUnavailable {
     BackendUnavailable,
     BackendDeclined,
     MixedContent,
@@ -301,21 +309,21 @@ pub(crate) enum MathPreparationUnavailable {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum MathPreparationOutcome {
+pub enum MathPreparationOutcome {
     Prepared(Arc<PreparedMathLabel>),
     Unavailable(MathPreparationUnavailable),
 }
 
 impl MathPreparationOutcome {
-    pub(crate) fn prepared(&self) -> Option<&PreparedMathLabel> {
+    pub fn prepared(&self) -> Option<&PreparedMathLabel> {
         match self {
             Self::Prepared(prepared) => Some(prepared),
             Self::Unavailable(_) => None,
         }
     }
 
-    #[cfg(test)]
-    pub(crate) const fn unavailable_reason(&self) -> Option<MathPreparationUnavailable> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub const fn unavailable_reason(&self) -> Option<MathPreparationUnavailable> {
         match self {
             Self::Prepared(_) => None,
             Self::Unavailable(reason) => Some(*reason),
@@ -324,21 +332,21 @@ impl MathPreparationOutcome {
 }
 
 #[derive(Clone)]
-pub(crate) enum ConfiguredMathBackend {
+pub enum ConfiguredMathBackend {
     #[cfg(feature = "math")]
     CompiledRatex,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     External(Arc<dyn MathRenderer + Send + Sync>),
 }
 
 impl ConfiguredMathBackend {
     #[cfg(feature = "math")]
-    pub(crate) const fn compiled_ratex() -> Self {
+    pub const fn compiled_ratex() -> Self {
         Self::CompiledRatex
     }
 
-    #[cfg(test)]
-    pub(crate) fn external(renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn external(renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         Self::External(renderer)
     }
 
@@ -349,21 +357,21 @@ impl ConfiguredMathBackend {
     /// in-process memory ceiling for hostile input. The constrained profile therefore rejects math
     /// during capability planning, before a backend or child process is invoked. A future bounded
     /// sink backend can make this decision backend-specific without weakening that boundary.
-    pub(crate) const fn supports_resource_policy(&self, policy: RenderResourcePolicy) -> bool {
+    pub const fn supports_resource_policy(&self, policy: RenderResourcePolicy) -> bool {
         !matches!(policy.profile(), RenderResourceProfile::Constrained)
     }
 
     /// Compatibility view used only by legacy, non-prepared projection paths.
-    pub(crate) fn renderer(&self) -> &(dyn MathRenderer + Send + Sync) {
+    pub fn renderer(&self) -> &(dyn MathRenderer + Send + Sync) {
         match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => &super::RatexMathRenderer,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::External(ref renderer) => renderer.as_ref(),
         }
     }
 
-    pub(crate) fn prepare(
+    pub fn prepare(
         &self,
         request: PrepareMathLabelRequest<'_>,
         work_meter: &Arc<OperationWorkMeter>,
@@ -394,7 +402,7 @@ impl ConfiguredMathBackend {
                 );
                 prepare_compiled_ratex(request, classification, color, work_meter)
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::External(ref renderer) => {
                 if !charge_external_math_source(request.text, work_meter.as_ref())? {
                     return Ok(MathPreparationOutcome::Unavailable(
@@ -417,7 +425,7 @@ impl fmt::Debug for ConfiguredMathBackend {
         match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => _formatter.write_str("ConfiguredMathBackend::CompiledRatex"),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::External(ref renderer) => _formatter
                 .debug_tuple("ConfiguredMathBackend::External")
                 .field(renderer)
@@ -537,7 +545,7 @@ fn classify_math_label(
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn charge_external_math_source(
     text: &str,
     work_meter: &OperationWorkMeter,
@@ -553,7 +561,7 @@ fn charge_external_math_source(
     Ok(saw_math)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn prepare_external(
     renderer: &(dyn MathRenderer + Send + Sync),
     request: PrepareMathLabelRequest<'_>,
@@ -614,6 +622,7 @@ fn prepare_external(
     })
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn finish_external_preparation(
     prepared: RawPreparedMathLabel,
     request: PrepareMathLabelRequest<'_>,
@@ -656,6 +665,7 @@ fn finish_external_preparation(
     Ok(Some(artifact))
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn valid_metrics(metrics: &TextMetrics) -> bool {
     metrics.width.is_finite()
         && metrics.height.is_finite()
@@ -664,6 +674,7 @@ fn valid_metrics(metrics: &TextMetrics) -> bool {
         && metrics.line_count > 0
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn push_bounded(
     output: &mut String,
     value: &str,
@@ -677,6 +688,7 @@ fn push_bounded(
     Ok(())
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn resolve_output_error(
     error: HtmlOutputError,
     retained_prefix: usize,
@@ -695,6 +707,7 @@ fn resolve_output_error(
     }
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn browser_payload(
     rendered: &str,
     native_projection: Option<&PreparedMathNativeProjection>,
@@ -806,6 +819,7 @@ fn browser_payload(
     Ok(Some(payload))
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn prepared_math_retained_prefix(request: PrepareMathLabelRequest<'_>) -> usize {
     request
         .owner_retained_bytes
@@ -820,6 +834,7 @@ fn prepared_math_retained_prefix(request: PrepareMathLabelRequest<'_>) -> usize 
         .unwrap_or(usize::MAX)
 }
 
+#[cfg(feature = "math")]
 fn preflight_raw_math_output(
     request: PrepareMathLabelRequest<'_>,
     work_meter: &OperationWorkMeter,
@@ -830,6 +845,7 @@ fn preflight_raw_math_output(
     )
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn resolved_wrapper_style(
     style: &TextStyle,
     foreground: &str,
@@ -875,6 +891,7 @@ fn resolved_wrapper_style(
     Ok(declarations)
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn escape_xml_attribute(
     value: &str,
     sink: HtmlSanitizeSink<'_>,
@@ -894,6 +911,7 @@ fn escape_xml_attribute(
     Ok(escaped)
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn effective_font_size(requested: f64) -> f64 {
     if requested.is_finite() {
         requested.max(1.0)
@@ -1088,7 +1106,7 @@ fn positioned_ratex_svg(
 ) -> Option<String> {
     let open_end = rendered.svg.find('>')?;
     let body = rendered.svg.get(open_end + 1..)?.strip_suffix("</svg>")?;
-    let document = crate::xml_dom::Document::parse(&rendered.svg).ok()?;
+    let document = roxmltree::Document::parse(&rendered.svg).ok()?;
     let view_box = document.root_element().attribute("viewBox")?;
     Some(format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" x="{}" y="{}" width="{}" height="{}" viewBox="{view_box}">{body}</svg>"#,
@@ -1282,6 +1300,7 @@ pub(super) fn fmt_num(n: f64) -> String {
     format_number(n)
 }
 
+#[cfg(any(test, feature = "math", feature = "test-support"))]
 fn format_number(n: f64) -> String {
     let value = format!("{n:.6}");
     let value = value.trim_end_matches('0').trim_end_matches('.');
@@ -1299,6 +1318,7 @@ mod tests {
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 
     use super::*;
+    use crate::math::test_presentation_config;
 
     fn meter() -> Arc<OperationWorkMeter> {
         Arc::new(OperationWorkMeter::new(
@@ -1312,9 +1332,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = test_presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1342,9 +1360,7 @@ mod tests {
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         );
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = test_presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1405,9 +1421,7 @@ mod tests {
     #[test]
     fn compiled_artifact_carries_browser_and_native_projections_with_terminal_style() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = test_presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle {
             font_size: 24.0,
             ..TextStyle::default()
@@ -1467,7 +1481,7 @@ mod tests {
     #[test]
     fn compiled_css_foregrounds_color_pure_and_mixed_glyphs_without_string_roundtrips() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = test_presentation_config(serde_json::json!({
             "securityLevel": "strict",
             "htmlLabels": true,
         }));
@@ -1501,8 +1515,7 @@ mod tests {
                     let artifact = outcome
                         .prepared()
                         .unwrap_or_else(|| panic!("prepare {foreground} {text} {shell:?}"));
-                    let document =
-                        crate::xml_dom::Document::parse(artifact.browser_xhtml()).unwrap();
+                    let document = roxmltree::Document::parse(artifact.browser_xhtml()).unwrap();
                     let wrapper = document.root_element();
                     assert!(
                         wrapper
@@ -1512,7 +1525,7 @@ mod tests {
                             .any(|declaration| declaration == format!("color:{foreground}"))
                     );
                     let painted_glyphs = |svg: &str| {
-                        let document = crate::xml_dom::Document::parse(svg).unwrap();
+                        let document = roxmltree::Document::parse(svg).unwrap();
                         let mut painted = 0;
                         for glyph in document.descendants().filter(|node| {
                             matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
@@ -1560,9 +1573,7 @@ mod tests {
     #[test]
     fn compiled_mixed_flowchart_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = test_presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 20.0,
@@ -1602,9 +1613,7 @@ mod tests {
     #[test]
     fn compiled_mixed_sequence_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = crate::test_support::presentation_config(
-            serde_json::json!({ "securityLevel": "loose" }),
-        );
+        let config = test_presentation_config(serde_json::json!({ "securityLevel": "loose" }));
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 18.0,

@@ -4,11 +4,10 @@ mod icons;
 mod markdown;
 #[cfg(feature = "markdown-labels")]
 mod markdown_label;
-mod measure;
 mod metrics;
 mod xhtml_label;
 
-pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
+pub use flowchart_parity::flowchart_html_has_inline_style_tags;
 pub use icons::replace_fontawesome_icons;
 pub use line_break::split_html_br_lines;
 pub(crate) use line_break::{
@@ -24,10 +23,7 @@ pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
     mermaid_markdown_to_xhtml_label_fragment, mermaid_markdown_wants_paragraph_wrap,
 };
-pub(crate) use measure::{
-    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
-    measure_mermaid_text_dimensions_with_checkpoint,
-};
+pub use merman_render_core::text::flowchart_html_line_height_px;
 pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
 pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
 pub(crate) use merman_render_core::text::inline_html::{
@@ -35,9 +31,14 @@ pub(crate) use merman_render_core::text::inline_html::{
     measure_html_with_document_root, svg_markdown_word_style,
 };
 use merman_render_core::text::line_break;
+pub(crate) use merman_render_core::text::sequence_text_line_step_px;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
+};
+pub(crate) use merman_render_core::text::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
+    measure_mermaid_text_dimensions_with_checkpoint,
 };
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
@@ -86,10 +87,6 @@ pub(crate) use merman_render_core::text::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
 };
 pub(crate) use xhtml_label::{mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content};
-
-pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) * 1.1875
-}
 
 #[cfg(all(
     test,

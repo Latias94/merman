@@ -20,6 +20,9 @@ validation for postprocessing.
 trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
 line breaking. With `resources`, it also provides host measurement routing and provenance for one
 operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+`math-labels` provides shared label measurement and prepared math projections. The optional `math`
+feature adds the RaTeX backend and embedded math fonts. Family renderers share the bounded HTML
+sink and SVG navigation policy from `html`. The facade owns whole-document math reference checks.
 `theme-elevation` and `theme-label-background` add shadow silhouettes and measured label
 backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer

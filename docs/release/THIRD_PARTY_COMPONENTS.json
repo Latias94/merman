@@ -723,7 +723,7 @@
         "path": "crates/ratex-katex-fonts/fonts"
       },
       "relationships": ["embedded"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "local_paths": ["Cargo.lock", "crates/merman-render-core/Cargo.toml"],
       "license_expression": "OFL-1.1",
       "license_files": [
         {
@@ -1045,7 +1045,7 @@
         "path": "crates"
       },
       "relationships": ["linked"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "local_paths": ["Cargo.lock", "crates/merman-render-core/src/math/prepared.rs"],
       "license_expression": "MIT",
       "license_files": [
         {

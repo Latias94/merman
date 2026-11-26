@@ -238,7 +238,7 @@ pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
-pub mod svg_security;
+pub use merman_render_core::svg_security;
 #[cfg(any(
     feature = "diagram-er",
     feature = "diagram-flowchart",
