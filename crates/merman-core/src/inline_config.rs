@@ -60,19 +60,8 @@ fn inline_yaml(input: &str) -> String {
     }
 }
 
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence"
-))]
-pub(crate) fn value_to_string(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.clone()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
-}
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) use merman_model::config::inline_config_scalar_to_string as value_to_string;
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane",))]
 pub(crate) fn value_to_bool(v: &Value) -> Option<bool> {

@@ -1,5 +1,8 @@
-use super::super::{LINETYPE_CENTRAL_CONNECTION_DUAL, LINETYPE_LOOP_START, LINETYPE_SOLID};
 use super::*;
+use merman_model::{
+    CancelReason,
+    families::sequence::{LINETYPE_CENTRAL_CONNECTION_DUAL, LINETYPE_LOOP_START, LINETYPE_SOLID},
+};
 
 // Independent reference for the historical message recount, including empty IDs and negative sums.
 fn recount_activation(db: &SequenceDb, actor: &str) -> i32 {
@@ -27,7 +30,7 @@ fn apply_checked(db: &mut SequenceDb, action: Action) -> Result<(), String> {
     };
     let before = format!("{db:?}");
     let result = db
-        .apply_controlled(action, &OperationControl::new())
+        .apply_controlled(action, unexpected_inline_config, &OperationControl::new())
         .expect("an active control must not cancel");
     if let Some(expected) = expected_end {
         assert_eq!(result, expected);
@@ -355,9 +358,9 @@ fn activation_actions_preserve_both_checkpoints_and_cancel_before_mutation() {
             let before = format!("{db:?}");
             let control = OperationControl::new();
             control.cancel_after_checkpoints(successful_checkpoints);
-            let result = db.apply_controlled(action, &control);
+            let result = db.apply_controlled(action, unexpected_inline_config, &control);
             if successful_checkpoints < 2 {
-                assert_eq!(result.unwrap_err().reason, crate::CancelReason::Requested);
+                assert_eq!(result.unwrap_err().reason, CancelReason::Requested);
                 assert_eq!(format!("{db:?}"), before);
                 apply_checked(&mut db, Action::ActiveEnd { actor: "A".into() }).unwrap();
             } else {
@@ -368,7 +371,7 @@ fn activation_actions_preserve_both_checkpoints_and_cancel_before_mutation() {
                 );
                 assert_eq!(
                     control.checkpoint().unwrap_err().reason,
-                    crate::CancelReason::Requested
+                    CancelReason::Requested
                 );
             }
         }
@@ -377,8 +380,12 @@ fn activation_actions_preserve_both_checkpoints_and_cancel_before_mutation() {
     let control = OperationControl::new();
     control.cancel();
     let before = format!("{db:?}");
-    let result = db.apply_controlled(Action::ActiveEnd { actor: "".into() }, &control);
-    assert_eq!(result.unwrap_err().reason, crate::CancelReason::Requested);
+    let result = db.apply_controlled(
+        Action::ActiveEnd { actor: "".into() },
+        unexpected_inline_config,
+        &control,
+    );
+    assert_eq!(result.unwrap_err().reason, CancelReason::Requested);
     assert_eq!(format!("{db:?}"), before);
 }
 
@@ -389,6 +396,7 @@ fn activation_depth_covers_counts_beyond_the_old_signed_32_bit_boundary() {
     db.activation_depths.insert("A".into(), i64::from(i32::MAX));
     db.apply_controlled(
         Action::ActiveStart { actor: "A".into() },
+        unexpected_inline_config,
         &OperationControl::new(),
     )
     .unwrap()
@@ -396,6 +404,7 @@ fn activation_depth_covers_counts_beyond_the_old_signed_32_bit_boundary() {
     assert_eq!(db.activation_count("A"), i64::from(i32::MAX) + 1);
     db.apply_controlled(
         Action::ActiveEnd { actor: "A".into() },
+        unexpected_inline_config,
         &OperationControl::new(),
     )
     .unwrap()
@@ -405,6 +414,7 @@ fn activation_depth_covers_counts_beyond_the_old_signed_32_bit_boundary() {
     db.activation_depths.insert("B".into(), i64::from(i32::MIN));
     db.apply_controlled(
         message("B", "A", LINETYPE_ACTIVE_END),
+        unexpected_inline_config,
         &OperationControl::new(),
     )
     .unwrap()
@@ -414,6 +424,7 @@ fn activation_depth_covers_counts_beyond_the_old_signed_32_bit_boundary() {
     let error = db
         .apply_controlled(
             Action::ActiveEnd { actor: "B".into() },
+            unexpected_inline_config,
             &OperationControl::new(),
         )
         .unwrap()

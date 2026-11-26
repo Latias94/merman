@@ -1,4 +1,4 @@
-//! Syntax parsing for Mermaid sequence diagrams.
+//! Syntax and semantic model construction for Mermaid sequence diagrams.
 
 #![forbid(unsafe_code)]
 

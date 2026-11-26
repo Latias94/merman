@@ -990,8 +990,13 @@ dependencies = [
 name = "merman-core-sequence"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "indexmap",
  "merman-core-preprocess",
  "merman-model",
+ "rustc-hash",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 # merman-core-sequence
 
-Tokenization and grammar actions for Mermaid sequence diagrams. The `editor-facts` feature
-exposes the spanned lexical events used during editor projection.
+Tokenization, grammar actions, and semantic model construction for Mermaid sequence diagrams.
+The `editor-facts` feature exposes the same spanned lexical events for editor projection.
 
-Use `merman-core` to build the semantic model and map diagnostics to the original source.
+Use `merman-core` for detection, inline YAML policy, resource admission, source-mapped
+diagnostics, and editor and compatibility projections.

@@ -1,20 +1,15 @@
-use merman_core_sequence::sequence::SequenceAction as Action;
-use merman_model::families::sequence::{
-    LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
-    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE,
-};
 #[cfg(test)]
 use merman_model::families::sequence::{
     LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
-    LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION_DUAL, LINETYPE_CRITICAL_END,
-    LINETYPE_CRITICAL_OPTION, LINETYPE_CRITICAL_START, LINETYPE_LOOP_END, LINETYPE_LOOP_START,
+    LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
+    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION,
+    LINETYPE_CRITICAL_START, LINETYPE_LOOP_END, LINETYPE_LOOP_START, LINETYPE_NOTE,
     LINETYPE_OPT_END, LINETYPE_OPT_START, LINETYPE_PAR_AND, LINETYPE_PAR_END,
     LINETYPE_PAR_OVER_START, LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START,
-    LINETYPE_SOLID, PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF,
+    PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF,
 };
 
 mod compat;
-mod db;
 mod model;
 mod parse;
 #[cfg(feature = "presentation")]
@@ -26,12 +21,12 @@ pub(crate) use compat::parse_sequence;
 pub(crate) use compat::parse_sequence_json_and_editor_facts;
 #[cfg(test)]
 use merman_model::families::sequence::{
-    SequenceCentralDecoration, SequenceControlSemantics, SequenceDiagramModel, SequenceMessage,
-    SequenceMessageKind, SequenceMessagePayload, SequenceNotePlacement,
+    SequenceCentralDecoration, SequenceControlSemantics, SequenceMessage, SequenceMessageKind,
+    SequenceMessagePayload, SequenceNotePlacement,
 };
 #[cfg(all(test, feature = "presentation"))]
 use merman_model::families::sequence::{
-    SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke,
+    SequenceDiagramModel, SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke,
 };
 pub(crate) use model::sanitize_common_db_fields;
 pub(crate) use parse::parse_sequence_semantic_model_controlled;

@@ -36,7 +36,7 @@ pub(crate) fn parse_sequence(code: &str, meta: &SourcePresentationMetadata) -> R
     .expect("a private parse control cannot be cancelled");
     let source =
         construction.map_err(|failure| failure.into_parse_error_for_type(&meta.diagram_type))?;
-    render_model_to_compat_json(&source.db.into_model(), meta)
+    render_model_to_compat_json(&source.model, meta)
 }
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -53,9 +53,12 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
     )?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |SequenceSemanticSource { db, editor_facts }| {
+        |SequenceSemanticSource {
+             model,
+             editor_facts,
+         }| {
             (
-                render_model_to_compat_json(&db.into_model(), meta),
+                render_model_to_compat_json(&model, meta),
                 editor_facts.expect("Sequence combined parse requests editor facts"),
             )
         },

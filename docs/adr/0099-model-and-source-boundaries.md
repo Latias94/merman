@@ -110,8 +110,9 @@ admission, and the editor and compatibility projections.
 
 ### Sequence diagrams
 
-`merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
-facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
+`merman-core-sequence` owns Sequence tokenization, grammar replay, and semantic model construction.
+Core captures editor facts from the same lexical stream before handing ownership to the Sequence
+parser, then maps diagnostics to the original source and applies the shared admission policies.
 
 `merman-render-sequence` owns Sequence preparation, typography, layout, and complete SVG emission
 for both Mermaid parity and the opt-in NativeCompact profile. It uses the shared text, math, and

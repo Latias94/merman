@@ -1,19 +1,22 @@
-use crate::{OperationControl, OperationControlResult, source_json::parse_json_object};
 use indexmap::IndexMap;
-use merman_model::text::is_ecmascript_whitespace;
+use merman_model::{
+    OperationControl, OperationControlResult,
+    config::inline_config_scalar_to_string,
+    families::sequence::{
+        LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER,
+        LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE,
+        SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
+        SequenceDiagramModel, SequenceMessage, SequenceMessagePayload, SequenceNote,
+    },
+    text::is_ecmascript_whitespace,
+};
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-use super::Action;
-use super::model::{
-    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox, SequenceDiagramModel,
-    SequenceMessage, SequenceMessagePayload, SequenceNote,
-};
-use super::{
-    LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
-    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE,
-};
+use super::ast::Action;
+use super::json_object::parse_json_object;
+use super::semantic::SequenceInlineConfigParser;
 
 #[derive(Debug, Clone)]
 struct ParsedText {
@@ -138,16 +141,12 @@ impl SequenceDb {
         let mut config_alias = None;
         if let Some(meta) = participant_meta.as_ref() {
             if let Some(obj) = meta.as_object()
-                && let Some(t) = obj
-                    .get("type")
-                    .and_then(crate::inline_config::value_to_string)
+                && let Some(t) = obj.get("type").and_then(inline_config_scalar_to_string)
             {
                 actor_type = t;
             }
             if let Some(obj) = meta.as_object() {
-                config_alias = obj
-                    .get("alias")
-                    .and_then(crate::inline_config::value_to_string);
+                config_alias = obj.get("alias").and_then(inline_config_scalar_to_string);
             }
         }
 
@@ -342,12 +341,17 @@ impl SequenceDb {
     pub(super) fn apply_controlled(
         &mut self,
         action: Action,
+        parse_inline_config: SequenceInlineConfigParser,
         control: &OperationControl,
     ) -> OperationControlResult<std::result::Result<(), String>> {
         control.checkpoint()?;
         let participant_meta = match &action {
             Action::AddParticipant { config, .. } => {
-                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                match parse_participant_meta_controlled(
+                    config.as_deref(),
+                    parse_inline_config,
+                    control,
+                )? {
                     Ok(meta) => meta,
                     Err(error) => return Ok(Err(error)),
                 }
@@ -356,7 +360,11 @@ impl SequenceDb {
                 if self.actors.contains_key(id) {
                     return Ok(Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string()));
                 }
-                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                match parse_participant_meta_controlled(
+                    config.as_deref(),
+                    parse_inline_config,
+                    control,
+                )? {
                     Ok(meta) => meta,
                     Err(error) => return Ok(Err(error)),
                 }
@@ -715,12 +723,13 @@ impl SequenceDb {
 
 fn parse_participant_meta_controlled(
     input: Option<&str>,
+    parse_inline_config: SequenceInlineConfigParser,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Option<Value>, String>> {
     let Some(input) = input else {
         return Ok(Ok(None));
     };
-    Ok(crate::inline_config::parse_mermaid_inline_object_controlled(input, control)?.map(Some))
+    Ok(parse_inline_config(input, control)?.map(Some))
 }
 
 #[derive(Debug, Clone)]
@@ -734,7 +743,7 @@ fn unescape_entities(input: &str) -> String {
     input.replace("&equals;", "=").replace("&amp;", "&")
 }
 
-pub(super) fn box_color_and_title(input: &str) -> (&str, &str) {
+pub fn box_color_and_title(input: &str) -> (&str, &str) {
     let input = input.trim_matches(is_ecmascript_whitespace);
     let (color, title) = split_box_color_and_title(input);
     if color.is_empty() || is_css_color_value(color) {
@@ -801,6 +810,14 @@ fn is_css_color_value(input: &str) -> bool {
 }
 
 #[cfg(test)]
+pub(super) fn unexpected_inline_config(
+    _input: &str,
+    _control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
+    panic!("unexpected participant configuration")
+}
+
+#[cfg(test)]
 mod activation_tests;
 
 #[cfg(test)]
@@ -818,6 +835,7 @@ mod tests {
                 draw: "participant".to_string(),
                 config: None,
             },
+            unexpected_inline_config,
             &control,
         )
         .unwrap()
@@ -831,11 +849,43 @@ mod tests {
                     draw: "participant".to_string(),
                     config: Some(r#"{ "type" "control" }"#.to_string()),
                 },
+                unexpected_inline_config,
                 &control,
             )
             .unwrap()
             .unwrap_err();
 
         assert!(error.contains("same id"), "{error}");
+    }
+
+    #[test]
+    fn cancellation_after_inline_config_leaves_the_participant_unapplied() {
+        fn parse_and_cancel(
+            input: &str,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<Value, String>> {
+            assert_eq!(input, "alias: Customer");
+            control.cancel();
+            Ok(Ok(json!({"alias": "Customer"})))
+        }
+
+        let control = OperationControl::new();
+        let mut db = SequenceDb::new(None);
+        let error = db
+            .apply_controlled(
+                Action::AddParticipant {
+                    id: "A".to_owned(),
+                    description: None,
+                    draw: "participant".to_owned(),
+                    config: Some("alias: Customer".to_owned()),
+                },
+                parse_and_cancel,
+                &control,
+            )
+            .expect_err("the pre-mutation checkpoint preserves cancellation");
+
+        assert_eq!(error.reason, merman_model::CancelReason::Requested);
+        assert!(db.actors.is_empty());
+        assert!(db.actor_order.is_empty());
     }
 }
