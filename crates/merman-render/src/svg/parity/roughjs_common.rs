@@ -1,6 +1,8 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
-pub(in crate::svg::parity) mod controlled;
+pub(in crate::svg::parity) use merman_render_core::rough_svg::{
+    controlled, ops_to_svg_path_d, parse_hex_color_to_srgba,
+};
 
 #[cfg(any(
     feature = "diagram-c4",
@@ -12,55 +14,6 @@ pub(in crate::svg::parity) mod controlled;
 pub(in crate::svg::parity) mod paths;
 
 use std::fmt::Write as _;
-
-pub(in crate::svg::parity) fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
-    let hex = s.trim().strip_prefix('#')?;
-    // Validate ASCII hex digits before indexing bytes. Theme values are arbitrary CSS strings;
-    // malformed or non-ASCII values must be rejected without slicing at a non-character boundary.
-    if !matches!(hex.len(), 3 | 6) || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    let byte = |pair: &str| u8::from_str_radix(pair, 16).ok();
-    let (r, g, b) = if hex.len() == 6 {
-        (byte(&hex[0..2])?, byte(&hex[2..4])?, byte(&hex[4..6])?)
-    } else {
-        (
-            byte(&hex[0..1].repeat(2))?,
-            byte(&hex[1..2].repeat(2))?,
-            byte(&hex[2..3].repeat(2))?,
-        )
-    };
-    Some(roughr::Srgba::new(
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        1.0,
-    ))
-}
-
-pub(in crate::svg::parity) fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-    let mut out = String::new();
-    for op in &opset.ops {
-        match op.op {
-            roughr::core::OpType::Move => {
-                let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-            }
-            roughr::core::OpType::BCurveTo => {
-                let _ = write!(
-                    &mut out,
-                    "C{} {}, {} {}, {} {} ",
-                    op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                );
-            }
-            roughr::core::OpType::LineTo => {
-                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-            }
-        }
-    }
-    // Each operation appends one trailing ASCII space.
-    out.pop();
-    out
-}
 
 pub(in crate::svg::parity) fn closed_path_d_from_points(points: &[(f64, f64)]) -> String {
     let mut out = String::new();

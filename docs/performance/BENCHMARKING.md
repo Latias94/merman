@@ -227,8 +227,9 @@ The stage matrix includes the quick `fan-in-500` control and records the realize
 successful request. Family-fixed layouts such as Sequence contribute phase observations and are
 ineligible for cross-backend comparisons. An unexpected fallback fails verification. Resource
 rejections appear alongside completed cases without stage samples. The optional Chrome trace adds
-collection overhead. Use `bench.py report --rust-stages` to read phase observations and the ordinary
-clock runners for revision comparisons.
+collection overhead. `bench.py report --rust-stages` accepts one recorded host, revision, runner set
+and sampling recipe across the selected layouts. Do not splice layout observations from different
+collections. Use the ordinary clock runners for revision comparisons.
 
 For allocation call stacks, collect a DHAT heap profile from one post-warmup batch. The runner
 builds the `memory` target with `dhat-heap` and records the output path in the workload receipt.

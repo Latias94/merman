@@ -18,12 +18,15 @@ diagram-info = ["dep:merman-core-preprocess"]
 diagram-ishikawa = []
 diagram-packet = ["merman-model/diagram-packet"]
 diagram-railroad = ["merman-model/diagram-railroad"]
+diagram-sankey = ["merman-model/diagram-sankey", "dep:serde_json"]
 diagram-timeline = ["merman-model/diagram-timeline"]
+diagram-treemap = ["dep:merman-core-preprocess", "dep:serde_json", "merman-model/diagram-treemap"]
 editor-facts = []
 
 [dependencies]
 merman-core-preprocess = { workspace = true, optional = true }
 merman-model.workspace = true
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }

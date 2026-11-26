@@ -553,7 +553,21 @@ mod integration_tests {
             crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 2),
             crate::flowchart::FlowchartEdgeKey::new(1),
         ]);
-        let inputs = prepare_flowchart_render_inputs(&model, &render_context, &owners, false);
+        let layout_edges = [
+            "A-cyclic-special-1",
+            "A-cyclic-special-mid",
+            "A-cyclic-special-2",
+            &model.edges[1].id,
+        ]
+        .map(|id| {
+            serde_json::from_value(serde_json::json!({
+                "id": id, "from": "A", "to": "A", "points": []
+            }))
+            .unwrap()
+        });
+        let coverage = owners.validate(&layout_edges, &model.edges).unwrap();
+        let inputs =
+            prepare_flowchart_render_inputs(&model, &render_context, &owners, coverage, false);
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(&model, &render_context);
         assert_eq!(
             inputs

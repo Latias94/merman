@@ -17,23 +17,6 @@ const TABLEAU10: [&str; 10] = [
     "#9c755f", "#bab0ab",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SankeyLabelSurface {
-    Plain,
-    OutlineBackground,
-    OutlineForeground,
-}
-
-impl SankeyLabelSurface {
-    pub(crate) const fn class_name(self) -> Option<&'static str> {
-        match self {
-            Self::Plain => None,
-            Self::OutlineBackground => Some("sankey-label-bg"),
-            Self::OutlineForeground => Some("sankey-label-fg"),
-        }
-    }
-}
-
 /// Final literal SVG text, independent of the original node and link identities.
 #[derive(Debug)]
 pub(crate) struct SankeyPreparedLabel {

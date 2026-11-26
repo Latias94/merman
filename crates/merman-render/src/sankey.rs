@@ -1,3 +1,3 @@
 mod theme;
 
-pub(crate) use theme::{SankeyLabelSurface, SankeyLinkPaint, SankeyNodePalette, SankeyStyle};
+pub(crate) use theme::{SankeyLinkPaint, SankeyNodePalette, SankeyStyle};

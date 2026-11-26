@@ -29,6 +29,9 @@ pub mod number_format;
 mod render_error;
 #[cfg(feature = "resources")]
 pub mod resources;
+#[cfg(feature = "rough-svg")]
+#[doc(hidden)]
+pub mod rough_svg;
 pub mod route_types;
 
 #[cfg(feature = "route-paint")]

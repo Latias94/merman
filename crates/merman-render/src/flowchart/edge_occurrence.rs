@@ -131,11 +131,15 @@ impl FlowchartEdgeOwners {
         self.0.iter().copied()
     }
 
+    /// Returns `None` for complete, ordered regular ownership. Otherwise the
+    /// validated occurrence map also serves as semantic owner membership.
     pub(crate) fn validate(
         &self,
         layout_edges: &[crate::model::LayoutEdge],
         semantic_edges: &[FlowEdge],
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Option<HashMap<usize, u8>>> {
+        const REGULAR_OCCURRENCE: u8 = 0b1000;
+
         if self.len() != layout_edges.len() {
             return Err(crate::Error::InvalidModel {
                 message: format!(
@@ -146,8 +150,9 @@ impl FlowchartEdgeOwners {
             });
         }
 
-        let mut owner_occurrences = HashMap::<usize, u8>::with_capacity(self.len());
-        for (layout_edge, key) in layout_edges.iter().zip(self.iter()) {
+        let mut owner_occurrences =
+            (self.len() != semantic_edges.len()).then(|| HashMap::with_capacity(self.len()));
+        for (layout_index, (layout_edge, key)) in layout_edges.iter().zip(self.iter()).enumerate() {
             let Some(semantic_edge) = semantic_edges.get(key.semantic_index()) else {
                 return Err(crate::Error::InvalidModel {
                     message: format!(
@@ -160,7 +165,7 @@ impl FlowchartEdgeOwners {
             let (expected_id, occurrence_bit) = match key.self_loop_segment_order() {
                 None => (
                     std::borrow::Cow::Borrowed(semantic_edge.id.as_str()),
-                    1_u8 << 3,
+                    REGULAR_OCCURRENCE,
                 ),
                 Some(order @ 0..=2) if semantic_edge.from == semantic_edge.to => {
                     let suffix = match order {
@@ -194,7 +199,17 @@ impl FlowchartEdgeOwners {
                     ),
                 });
             }
-            let occurrences = owner_occurrences.entry(key.semantic_index()).or_default();
+            if owner_occurrences.is_none() && key == FlowchartEdgeKey::new(layout_index) {
+                continue;
+            }
+            let occurrences = owner_occurrences
+                .get_or_insert_with(|| {
+                    let mut owners = HashMap::with_capacity(self.len());
+                    owners.extend((0..layout_index).map(|index| (index, REGULAR_OCCURRENCE)));
+                    owners
+                })
+                .entry(key.semantic_index())
+                .or_default();
             if *occurrences & occurrence_bit != 0 {
                 return Err(crate::Error::InvalidModel {
                     message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
@@ -202,16 +217,18 @@ impl FlowchartEdgeOwners {
             }
             *occurrences |= occurrence_bit;
         }
-        for (semantic_index, occurrences) in owner_occurrences {
-            if !matches!(occurrences, 0b0111 | 0b1000) {
-                return Err(crate::Error::InvalidModel {
-                    message: format!(
-                        "Flowchart semantic owner {semantic_index} has incomplete or mixed render occurrences"
-                    ),
-                });
+        if let Some(owners) = &owner_occurrences {
+            for (&semantic_index, &occurrences) in owners {
+                if !matches!(occurrences, 0b0111 | REGULAR_OCCURRENCE) {
+                    return Err(crate::Error::InvalidModel {
+                        message: format!(
+                            "Flowchart semantic owner {semantic_index} has incomplete or mixed render occurrences"
+                        ),
+                    });
+                }
             }
         }
-        Ok(())
+        Ok(owner_occurrences)
     }
 }
 
@@ -278,7 +295,16 @@ mod tests {
 
         let duplicate =
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(0)]);
-        assert!(duplicate.validate(&layout, &semantic).is_err());
+        assert!(matches!(
+            duplicate.validate(&layout, &semantic),
+            Err(crate::Error::InvalidModel { message })
+                if message.contains("duplicate edge occurrence")
+        ));
+        assert!(matches!(
+            duplicate.validate(&[layout_edge("same"), layout_edge("other")], &semantic),
+            Err(crate::Error::InvalidModel { message })
+                if message.contains("is not bound to semantic owner 0")
+        ));
 
         let wrong_binding = FlowchartEdgeOwners::from_semantic_indices([0]);
         assert!(
@@ -295,7 +321,22 @@ mod tests {
         let owners =
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(1)]);
 
-        owners.validate(&layout, &semantic).unwrap();
+        assert!(owners.validate(&layout, &semantic).unwrap().is_none());
+    }
+
+    #[test]
+    fn owner_ledger_keeps_membership_for_sparse_and_late_reordered_keys() {
+        let semantic = ["first", "second", "third", "last"].map(semantic_edge);
+        let layout = ["first", "second", "last", "third"].map(layout_edge);
+        let owners = FlowchartEdgeOwners::from_semantic_indices([0, 1, 3, 2]);
+        let coverage = owners.validate(&layout, &semantic).unwrap().unwrap();
+        assert_eq!(coverage.len(), 4);
+        assert!((0..4).all(|index| coverage.contains_key(&index)));
+
+        let owners = FlowchartEdgeOwners::from_semantic_indices([0, 1, 3]);
+        let coverage = owners.validate(&layout[..3], &semantic).unwrap().unwrap();
+        assert_eq!(coverage.len(), 3);
+        assert!([0, 1, 3].iter().all(|index| coverage.contains_key(index)));
     }
 
     fn self_loop_layout() -> (FlowEdge, Vec<LayoutEdge>) {
@@ -324,9 +365,12 @@ mod tests {
         assert_eq!(keys.iter().copied().collect::<HashSet<_>>().len(), 3);
         assert!(keys.iter().all(|key| key.semantic_index() == 0));
         assert!(!keys.contains(&FlowchartEdgeKey::new(0)));
-        FlowchartEdgeOwners::new(keys)
+        let coverage = FlowchartEdgeOwners::new(keys)
             .validate(&layout, &[semantic])
+            .unwrap()
             .unwrap();
+        assert_eq!(coverage.len(), 1);
+        assert!(coverage.contains_key(&0));
     }
 
     #[test]

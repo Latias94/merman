@@ -42,7 +42,7 @@ pub(super) fn with_flowchart_paint_context<T>(
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
     }
-    layout.edge_owners.validate(&layout.edges, &model.edges)?;
+    let owner_occurrences = layout.edge_owners.validate(&layout.edges, &model.edges)?;
 
     let measurer = options.text_measurer();
 
@@ -63,6 +63,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         model,
         render_context,
         &layout.edge_owners,
+        owner_occurrences,
         layout.route_contract.uses_projected_edges(),
     );
     if let Some(swimlane_layout) = swimlane_layout {

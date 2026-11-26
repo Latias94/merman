@@ -1,31 +1,25 @@
 use super::super::*;
 use crate::sankey::{SankeyLinkPaint, SankeyNodePalette};
-use merman_render_charts::sankey::{SankeySvgBody, SankeySvgLink, SankeySvgLinkPaint};
+use merman_render_charts::sankey::{
+    SankeySvgBody, SankeySvgBodyStyle, SankeySvgLink, SankeySvgLinkPaint,
+};
 
-fn write_sankey_links(
-    out: &mut impl SvgOutput,
-    body: &mut SankeySvgBody<'_>,
-    layout: &SankeyDiagramLayout,
-    node_palette: &SankeyNodePalette,
-) -> Result<()> {
-    body.write_links(
-        out,
-        node_palette.link_blend_mode_css(),
-        node_palette.link_stroke_opacity(),
-        |link_index| {
-            let prepared = node_palette.terminal_link(link_index)?;
-            Some(SankeySvgLink {
-                source: &layout.nodes[prepared.source_layout_index],
-                target: &layout.nodes[prepared.target_layout_index],
-                paint: match prepared.paint {
-                    SankeyLinkPaint::Solid(css) => SankeySvgLinkPaint::Solid(css),
-                    SankeyLinkPaint::Gradient { source, target } => {
-                        SankeySvgLinkPaint::Gradient { source, target }
-                    }
-                },
-            })
+fn prepared_svg_link<'a>(
+    layout: &'a SankeyDiagramLayout,
+    node_palette: &'a SankeyNodePalette,
+    link_index: usize,
+) -> Option<SankeySvgLink<'a>> {
+    let prepared = node_palette.terminal_link(link_index)?;
+    Some(SankeySvgLink {
+        source: &layout.nodes[prepared.source_layout_index],
+        target: &layout.nodes[prepared.target_layout_index],
+        paint: match prepared.paint {
+            SankeyLinkPaint::Solid(css) => SankeySvgLinkPaint::Solid(css),
+            SankeyLinkPaint::Gradient { source, target } => {
+                SankeySvgLinkPaint::Gradient { source, target }
+            }
         },
-    )
+    })
 }
 
 pub(crate) fn render_sankey_diagram_svg(
@@ -34,15 +28,12 @@ pub(crate) fn render_sankey_diagram_svg(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let node_palette = &style.palette;
-    let show_values = style.show_values;
     let label_texts = node_palette.labels();
     if label_texts.len() != layout.nodes.len() {
         return Err(Error::InvalidModel {
             message: "Sankey prepared labels do not match the terminal node count".to_string(),
         });
     }
-    let outlined_labels = style.outlined_labels;
-
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id_or("sankey");
@@ -51,8 +42,6 @@ pub(crate) fn render_sankey_diagram_svg(
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
     let label_font_size = style.label_size;
-    let label_gap_x: f64 = 6.0;
-    let label_hide_values_dy_em: f64 = 0.35;
     let measurer = options.text_measurer();
     let label_style = crate::text::TextStyle {
         font_family: Some(style.common_css.font_family().to_string()),
@@ -69,17 +58,15 @@ pub(crate) fn render_sankey_diagram_svg(
             central_node_layer = node.layer;
         }
     }
-    let label_position = |node: &crate::model::SankeyNodeLayout| {
-        let on_right = if outlined_labels {
-            node.layer >= central_node_layer
-        } else {
-            node.x0 < layout_width / 2.0
-        };
-        if on_right {
-            (node.x1 + label_gap_x, "start")
-        } else {
-            (node.x0 - label_gap_x, "end")
-        }
+    let body_style = SankeySvgBodyStyle {
+        links_before_nodes: node_palette.links_before_nodes(),
+        link_blend_mode_css: node_palette.link_blend_mode_css(),
+        link_stroke_opacity: node_palette.link_stroke_opacity(),
+        outlined_labels: style.outlined_labels,
+        show_values: style.show_values,
+        label_font_size,
+        label_weight: style.label_weight,
+        central_node_layer,
     };
 
     let mut min_x: f64 = 0.0;
@@ -94,7 +81,7 @@ pub(crate) fn render_sankey_diagram_svg(
         max_x = max_x.max(n.x1);
         max_y = max_y.max(n.y1);
 
-        let (label_x, anchor) = label_position(n);
+        let (label_x, anchor) = body_style.label_position(n, layout_width);
         let label_width = measurer.measure_svg_raw_text_bbox_width_px(label.text(), &label_style);
         if label_width > 0.0 {
             let label_left = if anchor == "end" {
@@ -106,11 +93,7 @@ pub(crate) fn render_sankey_diagram_svg(
             max_x = max_x.max(label_left + label_width);
         }
 
-        let dy_em = if show_values {
-            0.0
-        } else {
-            label_hide_values_dy_em
-        };
+        let dy_em = body_style.label_dy_em();
         let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * label_font_size;
         let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
             measurer,
@@ -170,69 +153,14 @@ pub(crate) fn render_sankey_diagram_svg(
     out.checkpoint()?;
 
     let mut body = SankeySvgBody::new(layout, scope_generated_ids.then_some(diagram_id));
-    if node_palette.links_before_nodes() {
-        write_sankey_links(&mut out, &mut body, layout, node_palette)?;
-    }
-
-    body.write_nodes(&mut out, |index, id| node_palette.fill_for(index, id))?;
-    let label_weight = style
-        .label_weight
-        .map_or_else(String::new, |weight| format!(r#" font-weight="{weight}""#));
-    let _ = write!(
+    body.write_contents(
         &mut out,
-        r#"<g class="node-labels" font-size="{font_size}"{label_weight}>"#,
-        font_size = fmt(label_font_size)
-    );
-    out.checkpoint()?;
-
-    let append_labels = |out: &mut BoundedSvgOutput<'_>,
-                         surface: crate::sankey::SankeyLabelSurface|
-     -> Result<()> {
-        let class_name = surface.class_name();
-        for (n, label) in layout.nodes.iter().zip(label_texts) {
-            options.checkpoint_emit()?;
-            let y = (n.y0 + n.y1) / 2.0;
-            let (x, anchor) = label_position(n);
-            let dy = if show_values {
-                "0em".to_string()
-            } else {
-                format!("{}em", fmt(label_hide_values_dy_em))
-            };
-            let class_attr = class_name
-                .map(|class_name| format!(r#" class="{}""#, escape_attr(class_name)))
-                .unwrap_or_default();
-            let _ = write!(
-                out,
-                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">"#,
-                class_attr = class_attr,
-                x = fmt(x),
-                y = fmt(y),
-                dy = dy,
-                anchor = anchor,
-            );
-            super::super::util::escape_xml_raw_into(out, label.text());
-            out.push_str("</text>");
-            out.checkpoint()?;
-        }
-        Ok(())
-    };
-    if outlined_labels {
-        append_labels(
-            &mut out,
-            crate::sankey::SankeyLabelSurface::OutlineBackground,
-        )?;
-        append_labels(
-            &mut out,
-            crate::sankey::SankeyLabelSurface::OutlineForeground,
-        )?;
-    } else {
-        append_labels(&mut out, crate::sankey::SankeyLabelSurface::Plain)?;
-    }
-    out.push_str("</g>");
-    out.checkpoint()?;
-    if !node_palette.links_before_nodes() {
-        write_sankey_links(&mut out, &mut body, layout, node_palette)?;
-    }
+        &body_style,
+        label_texts.iter().map(|label| label.text()),
+        |index, id| node_palette.fill_for(index, id),
+        |link_index| prepared_svg_link(layout, node_palette, link_index),
+        options.work_meter(),
+    )?;
     out.push_str("</svg>");
     root_document.complete(out.finish()?)
 }
@@ -301,6 +229,20 @@ mod tests {
             &work_meter,
         )
         .expect("resolve baseline Sankey node palette")
+    }
+
+    fn write_sankey_links(
+        out: &mut impl SvgOutput,
+        body: &mut SankeySvgBody<'_>,
+        layout: &SankeyDiagramLayout,
+        node_palette: &SankeyNodePalette,
+    ) -> Result<()> {
+        body.write_links(
+            out,
+            node_palette.link_blend_mode_css(),
+            node_palette.link_stroke_opacity(),
+            |link_index| prepared_svg_link(layout, node_palette, link_index),
+        )
     }
 
     #[test]

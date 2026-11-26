@@ -2473,6 +2473,7 @@ version = "0.11.0"
 dependencies = [
  "merman-core-preprocess",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]
@@ -2764,6 +2765,7 @@ dependencies = [
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "quick-xml",
+ "roughr-merman",
  "roxmltree 0.21.2",
  "ryu-js",
  "serde",
@@ -2810,6 +2812,7 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "roughr-merman",
  "roxmltree 0.21.2",
  "ryu-js",
  "serde",

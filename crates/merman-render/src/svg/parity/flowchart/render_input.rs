@@ -1,7 +1,7 @@
 //! Flowchart render-time edge and helper-node preparation.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -67,21 +67,22 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
     render_context: &'a crate::flowchart::FlowchartRenderContext,
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
+    owner_occurrences: Option<HashMap<usize, u8>>,
     use_semantic_edges: bool,
 ) -> FlowchartRenderInputs<'a> {
     let merge_self_loops = use_semantic_edges
         || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
-    let renderable_edges: FxHashSet<usize> = layout_edge_owners
-        .iter()
-        .map(crate::flowchart::FlowchartEdgeKey::semantic_index)
-        .collect();
-    let renderable_self_loop_nodes: FxHashSet<&str> = layout_edge_owners
-        .iter()
-        .filter_map(|owner| model.edges.get(owner.semantic_index()))
-        .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
-        .filter(|edge| edge.from == edge.to)
-        .map(|edge| edge.from)
-        .collect();
+    let renderable_self_loop_nodes: FxHashSet<&str> = if merge_self_loops {
+        FxHashSet::default()
+    } else {
+        layout_edge_owners
+            .iter()
+            .filter_map(|owner| model.edges.get(owner.semantic_index()))
+            .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
+            .filter(|edge| edge.from == edge.to)
+            .map(|edge| edge.from)
+            .collect()
+    };
     let semantic_edges = model
         .edges
         .iter()
@@ -90,7 +91,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
             let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
             // Earlier overwritten helper triples still establish Graphlib's insertion slot.
             // Their later surviving owner replaces the complete value at that same slot.
-            if !renderable_edges.contains(&semantic_index)
+            if owner_occurrences
+                .as_ref()
+                .is_some_and(|owners| !owners.contains_key(&semantic_index))
                 && (merge_self_loops
                     || projected.from != projected.to
                     || !renderable_self_loop_nodes.contains(projected.from))
