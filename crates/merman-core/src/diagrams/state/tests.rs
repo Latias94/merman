@@ -5,6 +5,8 @@ use crate::{MermaidConfig, OperationControl};
 #[cfg(feature = "presentation")]
 use crate::{MermaidEngine, ParseOptions, RenderSemanticModel, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
+use merman_model::families::state::{StateRecord, StateStatement};
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 #[cfg(feature = "presentation")]
@@ -50,7 +52,7 @@ fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson 
 
 #[test]
 #[cfg(feature = "compat-json")]
-fn state_semantic_graph_matches_full_model_without_presentation_materialization() {
+fn state_semantic_graph_matches_full_model_without_preparing_editor_facts_or_json() {
     let source = concat!(
         "stateDiagram-v2\ndirection LR\n",
         "state Outer {\ndirection RL\n[*] --> A: ready\n",
@@ -62,7 +64,6 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
     #[cfg(feature = "editor-facts")]
     crate::editor::test_work::reset();
     render_model::reset_projected_document_count();
-    db::reset_dom_id_count();
     let semantic = parse::parse_state_semantic_model_controlled(
         source,
         "stateDiagram-v2",
@@ -78,10 +79,9 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
     #[cfg(feature = "editor-facts")]
     assert_eq!(crate::editor::test_work::read(), Default::default());
     assert_eq!(render_model::projected_document_count(), 0);
-    assert_eq!(db::dom_id_count(), 0);
 
     let render = model(source);
-    assert!(db::dom_id_count() > 0);
+    assert_eq!(render_model::projected_document_count(), 0);
     assert_eq!(semantic.direction, render.direction);
     assert_eq!(semantic.document.root(), render.document.root());
     assert_eq!(semantic.document.len(), render.document.len());
@@ -141,6 +141,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
         "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
         "stateDiagram-v2\nnote right of A : note\nstate \"Collision\" as A----note-0\n",
     ] {
+        parse::reset_state_syntax_construction_count();
         let semantic = parse::parse_state_semantic_model_controlled(
             source,
             "stateDiagram-v2",
@@ -151,6 +152,7 @@ fn state_semantic_graph_preserves_validation_and_cancellation() {
         )
         .unwrap()
         .model;
+        assert_eq!(parse::state_syntax_construction_count(), 1);
         let semantic_error = semantic.expect_err("canonical State validation rejects the input");
         assert!(matches!(semantic_error, crate::Error::DiagramParse { .. }));
         #[cfg(feature = "presentation")]
@@ -489,40 +491,6 @@ fn state_grammar_and_lexical_errors_keep_their_span_kinds() {
 }
 
 #[test]
-fn state_divider_assignment_cancellation_releases_completed_grammar_documents() {
-    let mut source = String::from("stateDiagram-v2\nstate Outer {\n");
-    for index in 0..300 {
-        source.push_str(&format!("S{index}\n--\n"));
-    }
-    source.push_str("}\n");
-    let mut document = parse::parse_state_document_for_test(&source, &OperationControl::new())
-        .unwrap()
-        .unwrap();
-    let control = OperationControl::new();
-    control.cancel_after_checkpoints(1);
-    let mut count = 0;
-    let result = parse::assign_divider_ids(&mut document, &mut count, &control);
-    assert!(result.is_err());
-    assert!(
-        count > 0 && count < 300,
-        "assignment had useful work before cancellation"
-    );
-    drop(document);
-    let model = parse::parse_state_semantic_model_controlled(
-        "stateDiagram-v2\nA\n",
-        "stateDiagram-v2",
-        &MermaidConfig::default(),
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-        &OperationControl::new(),
-    )
-    .unwrap()
-    .model
-    .unwrap();
-    assert_eq!(model.nodes.len(), 1);
-}
-
-#[test]
 #[cfg(feature = "compat-json")]
 fn state_projection_cancellation_releases_completed_inner_documents() {
     let model = model(&chain(1000));
@@ -587,4 +555,109 @@ fn state_semantic_deep_documents_clone_count_and_drop_without_recursion() {
         .unwrap()
         .join()
         .unwrap();
+}
+
+#[test]
+#[cfg(feature = "compat-json")]
+fn state_render_nodes_carry_mermaid12_width_fields() {
+    let config = MermaidConfig::from_value(json!({
+        "state": { "wrappingWidth": 144, "minNodeWidth": 132 }
+    }));
+    let metadata = SourcePresentationMetadata {
+        diagram_type: "stateDiagram".to_string(),
+        effective_config: crate::presentation::SourcePresentationConfig::from_config(
+            config.clone(),
+        ),
+        config,
+        title: None,
+    };
+    let model = parse_state_model_for_render_controlled(
+        "stateDiagram-v2\nIdle --> Active\nnote right of Idle : state note\n",
+        &metadata,
+        &OperationControl::new(),
+    )
+    .expect("state parse control")
+    .expect("state render model");
+    let idle = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "Idle")
+        .expect("Idle node");
+    assert_eq!(idle.wrapping_width, Some(144.0));
+    assert_eq!(idle.min_width, Some(132.0));
+    assert_eq!(idle.color_index, None);
+    let note = model
+        .nodes
+        .iter()
+        .find(|node| node.shape == "note")
+        .expect("generated note node");
+    assert!(!note.is_group);
+    assert_eq!(note.node_type.as_deref(), Some("node"));
+    assert_eq!(note.min_width, Some(132.0));
+
+    let compatibility =
+        render_model_to_compat_json(&model, &metadata).expect("state compatibility projection");
+    assert_eq!(compatibility["nodes"][0]["wrappingWidth"], json!(144));
+    assert_eq!(compatibility["nodes"][0]["minWidth"], json!(132));
+    assert!(compatibility["nodes"][0].get("colorIndex").is_some());
+}
+
+#[test]
+#[cfg(feature = "presentation")]
+fn state_note_generated_id_collision_is_rejected_independent_of_declaration_order() {
+    let engine = MermaidEngine::new();
+    let authored_state = "state \"Authored\" as A----note-0";
+    let positioned_note = "note right of A : Generated note";
+
+    for body in [
+        format!("{authored_state}\n{positioned_note}"),
+        format!("{positioned_note}\n{authored_state}"),
+    ] {
+        let input = format!("stateDiagram-v2\n{body}\n");
+        let error = engine
+            .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+            .expect_err("authored and generated state ids must not silently collide");
+        let message = error.to_string();
+
+        assert!(
+            message.contains(
+                "Authored state id `A----note-0` conflicts with generated note id for state `A`"
+            ),
+            "unexpected collision error: {message}"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "compat-json")]
+fn state_compatibility_projection_keeps_hidden_note_positions_null() {
+    let mut model = model("stateDiagram-v2\nnote right of Legacy : Hidden legacy text\n");
+    model
+        .states
+        .get_mut("Legacy")
+        .unwrap()
+        .note
+        .as_mut()
+        .unwrap()
+        .position = None;
+    for node in &mut model.nodes {
+        if matches!(node.shape.as_str(), "noteGroup" | "note") {
+            node.position = None;
+        }
+    }
+    let wire = render_model_to_compat_json(&model, &meta()).unwrap();
+    assert_eq!(
+        wire["states"]["Legacy"]["note"],
+        json!({
+            "position": null, "text": "Hidden legacy text",
+        })
+    );
+    assert_eq!(wire["nodes"][0]["shape"], "noteGroup");
+    assert_eq!(wire["nodes"][0].get("position"), Some(&Value::Null));
+    assert_eq!(wire["nodes"][1]["label"], "Hidden legacy text");
+    assert_eq!(wire["nodes"][1].get("position"), Some(&Value::Null));
+    assert_eq!(wire["nodes"][1]["parentId"], "Legacy----parent");
+    assert_eq!(wire["edges"][0]["start"], "Legacy");
+    assert_eq!(wire["edges"][0]["end"], "Legacy----note-0");
+    assert_eq!(wire["edges"][0]["arrowhead"], "none");
 }

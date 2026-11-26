@@ -2449,7 +2449,9 @@ version = "0.11.0"
 dependencies = [
  "indexmap",
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]

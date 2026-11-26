@@ -1,25 +1,89 @@
+use super::StateParsedDocument;
+use super::document::{StateDocumentScratch, assign_divider_ids};
 #[cfg(feature = "presentation")]
-use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::is_ecmascript_whitespace;
-use crate::sanitize::{sanitize_text, sanitize_text_or_array};
-use crate::{
-    Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
-};
+use super::render_model::{StateNodePresentation, into_render_model};
 use indexmap::IndexMap;
+use merman_markup::sanitize::{sanitize_text, sanitize_text_or_array};
+#[cfg(feature = "presentation")]
+use merman_model::families::state::StateDiagramRenderModel;
+use merman_model::families::state::{
+    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocumentError, StateDocumentId, StateEdge,
+    StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
+    StateStatementNote, StateStatementState, StateStyleClass,
+};
+use merman_model::text::is_ecmascript_whitespace;
+use merman_model::{MermaidConfig, OperationCancelled, OperationControl, OperationControlResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
-#[cfg(feature = "presentation")]
-use super::StateDiagramRenderModel;
-use super::model::StateModelConstruction;
-#[cfg(feature = "presentation")]
-use super::render_model::StateNodePresentation;
-use super::{
-    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocumentId, StateDocumentScratch, StateEdge,
-    StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
-    StateStatementNote, StateStatementState, StateStyleClass,
-};
+/// Database/model construction failures after State syntax has been accepted.
+#[derive(Debug)]
+pub enum StateModelError {
+    /// The source declares a graph that cannot be constructed.
+    Graph(String),
+    /// The constructed flat document failed an ownership invariant.
+    Document(StateDocumentError),
+}
+
+/// Accepted State syntax with divider numbering and database extraction complete.
+#[derive(Debug)]
+pub struct StateSource(StateDb);
+
+impl StateSource {
+    pub(super) fn from_document(
+        document: StateParsedDocument,
+        control: &OperationControl,
+    ) -> OperationControlResult<Self> {
+        let mut document = StateDocumentScratch::from_parsed_parts(document.builder, document.root);
+        let mut divider_cnt = 0usize;
+        assign_divider_ids(&mut document, &mut divider_cnt, control)?;
+
+        let mut db = StateDb::new();
+        db.set_root_doc(document, control)?;
+        control.checkpoint()?;
+        Ok(Self(db))
+    }
+
+    /// Builds the canonical State graph without collecting render-only fields.
+    pub fn into_semantic_model_controlled(
+        self,
+        config: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateDiagramModel, StateModelError>> {
+        Ok(self
+            .0
+            .into_canonical_model_controlled(
+                config,
+                #[cfg(feature = "presentation")]
+                false,
+                control,
+            )?
+            .map(|construction| construction.model))
+    }
+
+    /// Builds the typed State render model with the effective presentation config.
+    #[cfg(feature = "presentation")]
+    pub fn into_render_model_controlled(
+        self,
+        config: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateDiagramRenderModel, StateModelError>> {
+        match self
+            .0
+            .into_canonical_model_controlled(config, true, control)?
+        {
+            Ok(construction) => Ok(Ok(into_render_model(construction, config, control)?)),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+}
+
+pub(super) struct StateModelConstruction {
+    pub(super) model: StateDiagramModel,
+    #[cfg(feature = "presentation")]
+    pub(super) presentation: Vec<StateNodePresentation>,
+}
 
 #[derive(Debug, Clone, Default)]
 struct StyleClass {
@@ -48,7 +112,7 @@ struct StateDbRecord {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct StateDb {
+struct StateDb {
     document: StateDocumentScratch,
     states: HashMap<String, StateDbRecord>,
     state_order: Vec<String>,
@@ -62,7 +126,7 @@ pub(super) struct StateDb {
 }
 
 impl StateDb {
-    pub(super) fn new() -> Self {
+    fn new() -> Self {
         Self::default()
     }
 
@@ -106,7 +170,7 @@ impl StateDb {
         format!("id-{mid}-{}", self.generated_id_cnt)
     }
 
-    pub(super) fn set_root_doc(
+    fn set_root_doc(
         &mut self,
         mut document: StateDocumentScratch,
         control: &OperationControl,
@@ -430,59 +494,12 @@ impl StateDb {
         }
     }
 
-    #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &SourcePresentationMetadata) -> Result<Value> {
-        let model = self
-            .into_model_controlled(meta, &OperationControl::new())
-            .expect("a private operation control cannot be cancelled")?;
-        super::render_model_to_compat_json(&model, meta)
-    }
-
-    #[cfg(feature = "presentation")]
-    pub(super) fn into_model_controlled(
-        self,
-        meta: &SourcePresentationMetadata,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
-        match self.into_canonical_model_controlled(
-            &meta.diagram_type,
-            meta.effective_config.as_config(),
-            true,
-            control,
-        )? {
-            Ok(construction) => Ok(Ok(super::render_model::into_render_model(
-                construction,
-                meta.effective_config.as_config(),
-                control,
-            )?)),
-            Err(error) => Ok(Err(error)),
-        }
-    }
-
-    pub(super) fn into_semantic_model_controlled(
-        self,
-        diagram_type: &str,
-        config: &MermaidConfig,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<StateDiagramModel>> {
-        Ok(self
-            .into_canonical_model_controlled(
-                diagram_type,
-                config,
-                #[cfg(feature = "presentation")]
-                false,
-                control,
-            )?
-            .map(|construction| construction.model))
-    }
-
     fn into_canonical_model_controlled(
         self,
-        diagram_type: &str,
         config: &MermaidConfig,
         #[cfg(feature = "presentation")] collect_presentation: bool,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<StateModelConstruction>> {
+    ) -> OperationControlResult<Result<StateModelConstruction, StateModelError>> {
         let StateGraphConstruction {
             nodes,
             edges,
@@ -500,10 +517,7 @@ impl StateDb {
             Ok(data) => data,
             Err(StateBuildError::Cancelled(error)) => return Err(error),
             Err(StateBuildError::Semantic(message)) => {
-                return Ok(Err(Error::diagram_parse_fallback(
-                    diagram_type.to_string(),
-                    message,
-                )));
+                return Ok(Err(StateModelError::Graph(message)));
             }
         };
         let Self {
@@ -613,11 +627,7 @@ impl StateDb {
 
         let document = match document.finish_controlled(control)? {
             Ok(document) => document,
-            Err(error) => {
-                return Ok(Err(Error::Internal(crate::InternalFailure::new(format!(
-                    "State document construction invariant failed: {error}"
-                )))));
-            }
+            Err(error) => return Ok(Err(StateModelError::Document(error))),
         };
         control.checkpoint()?;
         Ok(Ok(StateModelConstruction {
@@ -680,12 +690,12 @@ thread_local! {
 }
 
 #[cfg(all(test, feature = "presentation"))]
-pub(super) fn reset_dom_id_count() {
+fn reset_dom_id_count() {
     STATE_DOM_ID_COUNT.set(0);
 }
 
 #[cfg(all(test, feature = "presentation"))]
-pub(super) fn dom_id_count() -> usize {
+fn dom_id_count() -> usize {
     STATE_DOM_ID_COUNT.get()
 }
 
@@ -1412,560 +1422,5 @@ fn build_state_graph(
     })
 }
 
-#[cfg(all(test, feature = "compat-json"))]
-mod tests {
-    use crate::diagrams::state::parse_state_model_for_render_controlled;
-    use crate::{
-        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, SourcePresentationMetadata,
-    };
-    use serde_json::json;
-
-    fn meta(config: serde_json::Value) -> SourcePresentationMetadata {
-        let config = MermaidConfig::from_value(config);
-        SourcePresentationMetadata {
-            diagram_type: "stateDiagram".to_string(),
-            config: config.clone(),
-            effective_config: crate::presentation::SourcePresentationConfig::from_config(config),
-            title: None,
-        }
-    }
-
-    #[test]
-    fn state_consuming_projection_moves_owned_payloads_without_copying() {
-        use super::*;
-        use crate::diagrams::state::{parse::parse_state_document_for_test, render_model};
-
-        let source = concat!(
-            "stateDiagram-v2\ndirection LR\naccTitle: Owned title\naccDescr: Owned description\n",
-            "state \"Ready label\" as Ready\nReady: Owned detail\n",
-            "note right of Ready : Owned note\n",
-            "classDef active fill:red,color:blue\nclassDef other stroke:black\n",
-            "class Ready active\nstyle Ready fill:green,font-weight:bold\n",
-            "Ready --> Done: Owned transition\n[*] --> Ready: Entry\n",
-            "click Ready \"https://example.com/first\" \"First tip\"\n",
-            "click Ready \"https://example.com/second\" \"Second tip\"\n",
-            "click Done \"https://example.com/only\" \"Only tip\"\n",
-        );
-        let control = OperationControl::new();
-        let document = parse_state_document_for_test(source, &control)
-            .unwrap()
-            .expect("real State grammar accepts the ownership fixture");
-        let mut db = StateDb::new();
-        db.set_root_doc(document, &control).unwrap();
-        // This legacy AST slot has no authored grammar production; populate its actual DB owner.
-        db.set_text_style("Ready", "font-size:17px");
-
-        // This proof exercises no-slack Vec storage transfer, including buffer identity.
-        // Compact before pointer capture; the separate slack test covers retained capacity.
-        let compact = |values: Vec<String>| values.into_boxed_slice().into_vec();
-        for state in db.states.values_mut() {
-            for values in [
-                &mut state.descriptions,
-                &mut state.classes,
-                &mut state.styles,
-                &mut state.text_styles,
-            ] {
-                *values = compact(std::mem::take(values));
-                assert_eq!(values.capacity(), values.len());
-            }
-        }
-        for class in db.style_classes.values_mut() {
-            for values in [&mut class.styles, &mut class.text_styles] {
-                *values = compact(std::mem::take(values));
-                assert_eq!(values.capacity(), values.len());
-            }
-        }
-
-        let document_storage = db.document.root_statements().as_ptr();
-        let common = (
-            db.direction.as_ref().unwrap().as_ptr(),
-            db.acc_title.as_ref().unwrap().as_ptr(),
-            db.acc_descr.as_ref().unwrap().as_ptr(),
-        );
-        let state_keys = db
-            .state_order
-            .iter()
-            .map(|key| (key.clone(), key.as_ptr()))
-            .collect::<Vec<_>>();
-        assert_eq!(db.state_order, ["Ready", "Done", "root_start"]);
-        let ready = &db.states["Ready"];
-        assert!(ready.descriptions.iter().all(|value| !value.is_empty()));
-        let record = (
-            ready.id.as_ptr(),
-            ready.ty.as_ptr(),
-            ready.descriptions.as_ptr(),
-            ready.classes.as_ptr(),
-            ready.styles.as_ptr(),
-            ready.text_styles.as_ptr(),
-        );
-        let payloads = ready
-            .descriptions
-            .iter()
-            .chain(&ready.classes)
-            .chain(&ready.styles)
-            .chain(&ready.text_styles)
-            .map(|value| value.as_ptr())
-            .collect::<Vec<_>>();
-        let note = ready.note.as_ref().unwrap();
-        let note_payloads = (note.position.as_ref().unwrap().as_ptr(), note.text.as_ptr());
-        let relation = &db.relations[0];
-        let relation_payloads = (
-            relation.id1.as_ptr(),
-            relation.id2.as_ptr(),
-            relation.relation_title.as_ref().unwrap().as_ptr(),
-        );
-        let class_payloads = db
-            .style_classes
-            .iter()
-            .map(|(key, class)| {
-                (
-                    key.clone(),
-                    key.as_ptr(),
-                    class.id.as_ptr(),
-                    class.styles.as_ptr(),
-                    class.text_styles.as_ptr(),
-                    class
-                        .styles
-                        .iter()
-                        .chain(&class.text_styles)
-                        .map(|value| value.as_ptr())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let link_payloads = db
-            .links
-            .iter()
-            .map(|(key, declarations)| {
-                (
-                    key.clone(),
-                    key.as_ptr(),
-                    declarations
-                        .iter()
-                        .map(|link| (link.url.as_ptr(), link.tooltip.as_ptr()))
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        render_model::reset_projected_document_count();
-
-        let model = db
-            .into_model_controlled(&meta(json!({})), &control)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(render_model::projected_document_count(), 0);
-        assert_eq!(
-            model
-                .document
-                .get(model.document.root().unwrap())
-                .unwrap()
-                .as_ptr(),
-            document_storage
-        );
-        assert_eq!(
-            (
-                model.direction.as_ptr(),
-                model.acc_title.as_ref().unwrap().as_ptr(),
-                model.acc_descr.as_ref().unwrap().as_ptr()
-            ),
-            common
-        );
-        assert_eq!(model.direction, "LR");
-        assert_eq!(model.acc_title.as_deref(), Some("Owned title"));
-        assert_eq!(model.acc_descr.as_deref(), Some("Owned description"));
-        for (id, pointer) in state_keys {
-            assert_eq!(model.states.get_key_value(&id).unwrap().0.as_ptr(), pointer);
-        }
-        let ready = &model.states["Ready"];
-        assert_eq!(
-            (
-                ready.id.as_ptr(),
-                ready.state_type.as_ptr(),
-                ready.descriptions.as_ptr(),
-                ready.classes.as_ptr(),
-                ready.styles.as_ptr(),
-                ready.text_styles.as_ptr()
-            ),
-            record
-        );
-        assert_eq!(
-            ready
-                .descriptions
-                .iter()
-                .chain(&ready.classes)
-                .chain(&ready.styles)
-                .chain(&ready.text_styles)
-                .map(|value| value.as_ptr())
-                .collect::<Vec<_>>(),
-            payloads
-        );
-        assert_eq!(ready.state_type, "default");
-        assert_eq!(model.states["root_start"].start, Some(true));
-        assert!(ready.doc.is_none());
-        assert_eq!(ready.descriptions, ["Ready label", "Owned detail"]);
-        assert_eq!(ready.classes, ["active"]);
-        assert_eq!(ready.styles, ["fill:green", "font-weight:bold"]);
-        assert_eq!(ready.text_styles, ["font-size:17px"]);
-        let note = ready.note.as_ref().unwrap();
-        assert_eq!(
-            (note.position.as_ref().unwrap().as_ptr(), note.text.as_ptr()),
-            note_payloads
-        );
-        assert_eq!(note.position.as_deref(), Some("right of"));
-        assert_eq!(note.text, "Owned note");
-        let relation = &model.relations[0];
-        assert_eq!(
-            (
-                relation.id1.as_ptr(),
-                relation.id2.as_ptr(),
-                relation.relation_title.as_ref().unwrap().as_ptr()
-            ),
-            relation_payloads
-        );
-        assert_eq!(relation.id1, "Ready");
-        assert_eq!(relation.id2, "Done");
-        assert_eq!(relation.relation_title.as_deref(), Some("Owned transition"));
-        assert_eq!(
-            model
-                .relations
-                .iter()
-                .map(|relation| (
-                    relation.id1.as_str(),
-                    relation.id2.as_str(),
-                    relation.relation_title.as_deref()
-                ))
-                .collect::<Vec<_>>(),
-            [
-                ("Ready", "Done", Some("Owned transition")),
-                ("root_start", "Ready", Some("Entry"))
-            ]
-        );
-        assert_eq!(
-            model
-                .style_classes
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
-            ["active", "other"]
-        );
-        for (id, key_pointer, id_pointer, styles_pointer, text_styles_pointer, payloads) in
-            class_payloads
-        {
-            let (key, class) = model.style_classes.get_key_value(&id).unwrap();
-            assert_eq!(
-                (
-                    key.as_ptr(),
-                    class.id.as_ptr(),
-                    class.styles.as_ptr(),
-                    class.text_styles.as_ptr()
-                ),
-                (key_pointer, id_pointer, styles_pointer, text_styles_pointer)
-            );
-            assert_eq!(
-                class
-                    .styles
-                    .iter()
-                    .chain(&class.text_styles)
-                    .map(|value| value.as_ptr())
-                    .collect::<Vec<_>>(),
-                payloads
-            );
-        }
-        assert_eq!(
-            model.style_classes["active"].styles,
-            ["fill:red", "color:blue"]
-        );
-        assert_eq!(model.style_classes["active"].text_styles, ["fill:blue"]);
-        assert_eq!(model.style_classes["other"].styles, ["stroke:black"]);
-        assert!(model.style_classes["other"].text_styles.is_empty());
-        for (id, key_pointer, pointers) in link_payloads {
-            let (key, links) = model.links.get_key_value(&id).unwrap();
-            assert_eq!(key.as_ptr(), key_pointer);
-            let links = match links {
-                StateLinks::One(link) => {
-                    assert_eq!(id, "Done");
-                    std::slice::from_ref(link)
-                }
-                StateLinks::Many(links) => {
-                    assert_eq!(id, "Ready");
-                    links.as_slice()
-                }
-            };
-            assert_eq!(
-                links
-                    .iter()
-                    .map(|link| (link.url.as_ptr(), link.tooltip.as_ptr()))
-                    .collect::<Vec<_>>(),
-                pointers
-            );
-        }
-        let StateLinks::One(link) = &model.links["Done"] else {
-            panic!("one link retains the historical One representation");
-        };
-        assert_eq!(link.url, "https://example.com/only");
-        assert_eq!(link.tooltip, "Only tip");
-        let StateLinks::Many(links) = &model.links["Ready"] else {
-            panic!("repeated links retain their source order");
-        };
-        assert_eq!(
-            links
-                .iter()
-                .map(|link| (link.url.as_str(), link.tooltip.as_str()))
-                .collect::<Vec<_>>(),
-            [
-                ("https://example.com/first", "First tip"),
-                ("https://example.com/second", "Second tip")
-            ]
-        );
-    }
-
-    #[test]
-    fn state_consuming_projection_compacts_vec_slack_without_copying_strings() {
-        use super::*;
-        use crate::diagrams::state::parse::parse_state_document_for_test;
-
-        let source = concat!(
-            "stateDiagram-v2\nstate \"Ready label\" as Ready\nReady: Owned detail\n",
-            "classDef active fill:red,color:blue\nclass Ready active\n",
-            "style Ready fill:green,font-weight:bold\nReady --> Done\n",
-        );
-        let control = OperationControl::new();
-        let document = parse_state_document_for_test(source, &control)
-            .unwrap()
-            .expect("real State grammar accepts the slack fixture");
-        let mut db = StateDb::new();
-        db.set_root_doc(document, &control).unwrap();
-        // This legacy AST slot has no authored grammar production; populate its actual DB owner.
-        db.set_text_style("Ready", "font-size:17px");
-
-        // Keep expected contents independent of both DB and projected model allocations.
-        let expected: [&[&str]; 6] = [
-            &["Ready label", "Owned detail"],
-            &["active"],
-            &["fill:green", "font-weight:bold"],
-            &["font-size:17px"],
-            &["fill:red", "color:blue"],
-            &["fill:blue"],
-        ];
-        let ready = db.states.get_mut("Ready").unwrap();
-        let active = db.style_classes.get_mut("active").unwrap();
-        let fields = [
-            &mut ready.descriptions,
-            &mut ready.classes,
-            &mut ready.styles,
-            &mut ready.text_styles,
-            &mut active.styles,
-            &mut active.text_styles,
-        ];
-        let payloads = fields
-            .into_iter()
-            .zip(expected)
-            .map(|(values, expected)| {
-                assert_eq!(values.as_slice(), expected);
-                assert!(!values.is_empty());
-                assert!(values.iter().all(|value| !value.is_empty()));
-                values.reserve(17);
-                assert!(values.capacity() > values.len());
-                values
-                    .iter()
-                    .map(|value| value.as_ptr())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-
-        let model = db
-            .into_model_controlled(&meta(json!({})), &control)
-            .unwrap()
-            .unwrap();
-
-        let ready = &model.states["Ready"];
-        let active = &model.style_classes["active"];
-        let fields = [
-            &ready.descriptions,
-            &ready.classes,
-            &ready.styles,
-            &ready.text_styles,
-            &active.styles,
-            &active.text_styles,
-        ];
-        for ((values, expected), pointers) in fields.into_iter().zip(expected).zip(payloads) {
-            assert_eq!(values.capacity(), values.len());
-            assert_eq!(values.as_slice(), expected);
-            assert_eq!(
-                values
-                    .iter()
-                    .map(|value| value.as_ptr())
-                    .collect::<Vec<_>>(),
-                pointers
-            );
-        }
-    }
-
-    #[test]
-    fn state_render_nodes_carry_mermaid12_width_fields() {
-        let metadata = meta(json!({
-            "state": { "wrappingWidth": 144, "minNodeWidth": 132 }
-        }));
-        let model = parse_state_model_for_render_controlled(
-            "stateDiagram-v2\nIdle --> Active\nnote right of Idle : state note\n",
-            &metadata,
-            &OperationControl::new(),
-        )
-        .expect("state parse control")
-        .expect("state render model");
-        let idle = model
-            .nodes
-            .iter()
-            .find(|node| node.id == "Idle")
-            .expect("Idle node");
-        assert_eq!(idle.wrapping_width, Some(144.0));
-        assert_eq!(idle.min_width, Some(132.0));
-        assert_eq!(idle.color_index, None);
-        let note = model
-            .nodes
-            .iter()
-            .find(|node| node.shape == "note")
-            .expect("generated note node");
-        assert!(!note.is_group);
-        assert_eq!(note.node_type.as_deref(), Some("node"));
-        assert_eq!(note.min_width, Some(132.0));
-
-        let compatibility = crate::diagrams::state::render_model_to_compat_json(&model, &metadata)
-            .expect("state compatibility projection");
-        assert_eq!(compatibility["nodes"][0]["wrappingWidth"], json!(144));
-        assert_eq!(compatibility["nodes"][0]["minWidth"], json!(132));
-        assert!(compatibility["nodes"][0].get("colorIndex").is_some());
-    }
-
-    #[test]
-    fn state_container_color_slots_follow_mermaid_depth_first_order() {
-        let metadata = meta(json!({}));
-        let model = parse_state_model_for_render_controlled(
-            "stateDiagram-v2\nstate A {\n  [*] --> A1\n}\nstate B {\n  [*] --> B1\n}\n",
-            &metadata,
-            &OperationControl::new(),
-        )
-        .expect("state parse control")
-        .expect("state render model");
-        let a = model
-            .nodes
-            .iter()
-            .find(|node| node.id == "A")
-            .expect("A group");
-        let b = model
-            .nodes
-            .iter()
-            .find(|node| node.id == "B")
-            .expect("B group");
-        assert_eq!(a.color_index, Some(0));
-        assert_eq!(b.color_index, Some(1));
-    }
-
-    #[test]
-    fn state_note_generated_id_collision_is_rejected_independent_of_declaration_order() {
-        let engine = MermaidEngine::new();
-        let authored_state = "state \"Authored\" as A----note-0";
-        let positioned_note = "note right of A : Generated note";
-
-        for body in [
-            format!("{authored_state}\n{positioned_note}"),
-            format!("{positioned_note}\n{authored_state}"),
-        ] {
-            let input = format!("stateDiagram-v2\n{body}\n");
-            let error = engine
-                .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
-                .expect_err("authored and generated state ids must not silently collide");
-            let message = error.to_string();
-
-            assert!(
-                message.contains(
-                    "Authored state id `A----note-0` conflicts with generated note id for state `A`"
-                ),
-                "unexpected collision error: {message}"
-            );
-        }
-    }
-
-    #[test]
-    fn state_consuming_projection_preserves_programmatic_hidden_note_inputs() {
-        use super::*;
-        use crate::diagrams::state::parse::parse_state_document_for_test;
-
-        let control = OperationControl::new();
-        let source = "stateDiagram-v2\nnote right of Legacy : Hidden legacy text\n";
-        let mut document = parse_state_document_for_test(source, &control)
-            .unwrap()
-            .unwrap();
-        let root = document.root.unwrap();
-        // The legacy hidden-note representation is programmatic, not authored grammar syntax.
-        let [StateStatement::State(state)] = document.get_mut(root).as_mut_slice() else {
-            panic!("real grammar produces the positioned-note owner");
-        };
-        state.note.as_mut().unwrap().position = None;
-        let mut db = StateDb::new();
-        db.set_root_doc(document, &control).unwrap();
-        let metadata = meta(json!({}));
-        let model = db
-            .into_model_controlled(&metadata, &control)
-            .unwrap()
-            .unwrap();
-
-        let note = model.states["Legacy"].note.as_ref().unwrap();
-        assert_eq!(note.text, "Hidden legacy text");
-        assert_eq!(note.position, None);
-        assert_eq!(
-            model
-                .nodes
-                .iter()
-                .map(|node| node.id.as_str())
-                .collect::<Vec<_>>(),
-            ["Legacy----parent", "Legacy----note-0", "Legacy"]
-        );
-        let group = &model.nodes[0];
-        let note_node = &model.nodes[1];
-        assert_eq!(
-            (
-                group.shape.as_str(),
-                group.is_group,
-                group.position.as_deref()
-            ),
-            ("noteGroup", true, None)
-        );
-        assert_eq!(note_node.shape, "note");
-        assert_eq!(
-            note_node.label.as_ref().and_then(Value::as_str),
-            Some("Hidden legacy text")
-        );
-        assert_eq!(note_node.position, None);
-        assert_eq!(note_node.parent_id.as_deref(), Some("Legacy----parent"));
-        assert_eq!(group.label, note_node.label);
-        assert_eq!(model.edges.len(), 1);
-        let edge = &model.edges[0];
-        assert_eq!(
-            (
-                edge.start.as_str(),
-                edge.end.as_str(),
-                edge.classes.as_str()
-            ),
-            ("Legacy", "Legacy----note-0", "transition note-edge")
-        );
-        assert!(edge.arrow_type_end.is_empty());
-
-        let wire = super::super::render_model_to_compat_json(&model, &metadata).unwrap();
-        assert_eq!(
-            wire["states"]["Legacy"]["note"],
-            json!({
-                "position": null, "text": "Hidden legacy text",
-            })
-        );
-        assert_eq!(wire["nodes"][0]["shape"], "noteGroup");
-        assert_eq!(wire["nodes"][0].get("position"), Some(&Value::Null));
-        assert_eq!(wire["nodes"][1]["label"], "Hidden legacy text");
-        assert_eq!(wire["nodes"][1].get("position"), Some(&Value::Null));
-        assert_eq!(wire["nodes"][1]["parentId"], "Legacy----parent");
-        assert_eq!(wire["edges"][0]["start"], "Legacy");
-        assert_eq!(wire["edges"][0]["end"], "Legacy----note-0");
-        assert_eq!(wire["edges"][0]["arrowhead"], "none");
-    }
-}
+#[cfg(all(test, feature = "presentation"))]
+mod tests;

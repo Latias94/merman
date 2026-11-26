@@ -16,7 +16,7 @@ categories = ["parser-implementations", "visualization"]
 artifact-profile-required = true
 
 [features]
-presentation = ["merman-markup/color", "merman-model/presentation-data", "serde_json/raw_value"]
+presentation = ["merman-markup/color", "merman-model/presentation-data", "merman-core-graph?/presentation", "serde_json/raw_value"]
 editor-facts = ["granit-parser/comments", "merman-core-flow?/editor-facts", "merman-core-graph?/editor-facts", "merman-core-sequence?/editor-facts", "merman-core-structured?/editor-facts"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
@@ -82,7 +82,7 @@ diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-core-structured
 diagram-requirement = ["merman-model/diagram-requirement"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:merman-core-structured", "merman-core-structured/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "dep:merman-core-sequence"]
-diagram-state = ["merman-model/diagram-state", "dep:indexmap", "dep:merman-core-graph", "merman-core-graph/diagram-state"]
+diagram-state = ["merman-model/diagram-state", "dep:merman-core-graph", "merman-core-graph/diagram-state"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "dep:rustc-hash", "dep:indexmap", "dep:merman-core-flow", "merman-core-flow/diagram-swimlane"]
 diagram-timeline = ["merman-model/diagram-timeline", "dep:merman-core-structured", "merman-core-structured/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
