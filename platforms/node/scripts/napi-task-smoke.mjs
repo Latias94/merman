@@ -205,12 +205,12 @@ try {
         const padding = limit - frame;
         const exact = "\0".repeat(Math.floor(padding / 6)) + "x".repeat(padding % 6);
         assert.throws(() => publicEngine.renderSvgSync(exact, { optionsJson, timeoutMs: 0 }), isDeadline);
-        assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson, timeoutMs: 0 }), /wire limit/i);
+        await assert.rejects(publicEngine.renderSvg(exact + "x", { optionsJson, timeoutMs: 0 }), /wire limit/i);
         const privateOverflow = cold.executeSvgSync(exact + "x", optionsJson, 0);
         assert.match(assertError(privateOverflow.errorJson, "MERMAN_OPTIONS_JSON_ERROR").message, /wire limit/i);
-        assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson: "{", timeoutMs: 0 }), /optionsJson/i);
+        await assert.rejects(publicEngine.renderSvg(exact + "x", { optionsJson: "{", timeoutMs: 0 }), /optionsJson/i);
         const aborted = AbortSignal.abort();
-        assert.throws(() => publicEngine.renderSvg("\ud800", { signal: aborted, optionsJson: "{" }), /isolated UTF-16 surrogate/i);
+        await assert.rejects(publicEngine.renderSvg("\ud800", { signal: aborted, optionsJson: "{" }), /isolated UTF-16 surrogate/i);
         await assert.rejects(publicEngine.renderSvg(publicSource, { signal: aborted, optionsJson: "{" }), { name: "AbortError" });
         const sourceBudget = (max_source_bytes) => JSON.stringify({
           ...JSON.parse(optionsJson), resources: { limits: { max_source_bytes } },

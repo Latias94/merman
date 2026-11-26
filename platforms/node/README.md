@@ -123,6 +123,9 @@ Install `@mermanjs/node` for native execution or `@mermanjs/node-wasm` when a po
 artifact is preferred. The native loader's exact-version optional dependencies keep the selected
 platform package aligned with the loader; it never silently changes transport.
 
+The asynchronous request helpers report admission and validation errors as Promise rejections.
+Their synchronous counterparts throw.
+
 Native cancellation is cooperative after JavaScript queue admission. The bridge does not forcibly
 remove work already submitted to libuv; the Promise settles when that worker observes cancellation
 at transport admission or a later renderer checkpoint, preserving the canonical typed envelope.
