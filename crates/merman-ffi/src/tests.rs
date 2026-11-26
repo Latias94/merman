@@ -2395,7 +2395,7 @@ fn stale_and_random_non_live_tokens_release_nothing_and_tokens_never_reuse() {
 
     for token in [
         u64::MAX,
-        (u64::MAX & !MERMAN_NATIVE_TOKEN_DOMAIN_MASK) | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG,
+        !MERMAN_NATIVE_TOKEN_DOMAIN_MASK | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG,
     ] {
         let mut random = native_result();
         random.allocation_token = token;

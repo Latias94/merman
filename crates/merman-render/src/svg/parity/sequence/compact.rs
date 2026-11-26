@@ -38,7 +38,7 @@ use super::{
 };
 use crate::{
     DiagramFamilyId, Error,
-    model::{Bounds, LayoutEdge, LayoutNode},
+    model::{LayoutEdge, LayoutNode},
     resources::OperationWorkMeter,
     sequence::{
         SequenceDrawnTextNode, SequencePreparedArtifact, SequenceTerminalTextStyle,
