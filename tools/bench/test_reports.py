@@ -1,5 +1,6 @@
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
+from copy import deepcopy
 import io
 import json
 from pathlib import Path
@@ -8,8 +9,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from merman_bench.workloads import main
+from merman_bench.workloads import STAGE_PHASES, main
 from merman_bench.report import FORMAT, add_report_parser, generate_report, render
+from merman_bench.report_surfaces import load_stages
 
 
 REPORTS = Path(__file__).resolve().parents[2] / "docs/performance/reports"
@@ -245,6 +247,59 @@ class ReaderReportsTest(unittest.TestCase):
                              ("matched", "shoal"), ("historical", "shoal")):
             self.assertIn(f"| {name} | {layout} | layout | 1.500 |", page)
         self.assertIn("| unobserved | shoal | unavailable | — |", page)
+
+    def test_native_stage_reader_requires_one_collection_identity(self):
+        clock = {phase: dict(elapsed_ns=0, calls=0) for phase in STAGE_PHASES}
+        clock["end_to_end"] = dict(elapsed_ns=2, calls=1)
+        counters = dict(allocations=0, allocated_bytes=0, peak_growth_bytes=0)
+        memory = {phase: counters for phase in STAGE_PHASES | {"unattributed", "end_to_end"}}
+        row = dict(samples=[dict(elapsed_ns=2, unattributed_ns=2, stages=clock)],
+                   memory_samples=[dict(counters, stages=memory)])
+        options = dict(metric="stages", operation="svg-data", site_layout="dagre",
+                       resource_profile="interactive", samples=1, with_memory=True)
+        dagre = dict(options=options, plan_sha256="a" * 64, runner_sha256="b" * 64,
+                     memory_runner_sha256="c" * 64, harness_sha256="d" * 64,
+                     revision="e" * 40, host=["Windows", "AMD64", "local-host"],
+                     rows={"small-svg": row})
+        elk = dict(dagre, options=dict(options, site_layout="elk"))
+        report = dict(schema_version=1, surface="rust-stages", layouts=dict(dagre=dagre, elk=elk))
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "stages.json"
+
+            def read(payload):
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                return load_stages(path)
+
+            accepted = read(report)
+            self.assertEqual([row["layout"] for row in accepted["rows"]], ["dagre", "elk"])
+            self.assertNotIn("local-host", json.dumps(accepted))
+            clock_only = deepcopy(report)
+            for observation in clock_only["layouts"].values():
+                del observation["options"]["with_memory"]
+                del observation["memory_runner_sha256"]
+                observation["revision"] = None
+                observation["rows"] = {"small-svg": dict(samples=row["samples"])}
+            self.assertEqual(read(clock_only)["runners"], {
+                layout: {"runner_sha256": "b" * 64} for layout in ("dagre", "elk")
+            })
+            for field, value in (
+                ("runner_sha256", "f" * 64),
+                ("memory_runner_sha256", "f" * 64),
+                ("harness_sha256", "f" * 64),
+                ("revision", None),
+                ("host", ["Darwin", "arm64", "another-host"]),
+                ("options", dict(elk["options"], resource_profile="constrained")),
+                ("rows", {"fan-in-500": row}),
+            ):
+                with self.subTest(field=field):
+                    different = deepcopy(report)
+                    different["layouts"]["elk"][field] = value
+                    with self.assertRaisesRegex(ValueError, "one collection identity"):
+                        read(different)
+            incomplete = deepcopy(report)
+            del incomplete["layouts"]["elk"]["memory_runner_sha256"]
+            with self.assertRaisesRegex(ValueError, "clock and allocation runner fingerprints"):
+                read(incomplete)
 
     def test_refuses_to_publish_over_an_existing_dated_pair(self):
         with tempfile.TemporaryDirectory() as tmp:

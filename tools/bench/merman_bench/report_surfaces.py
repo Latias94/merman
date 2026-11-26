@@ -379,13 +379,30 @@ def load_stages(path):
     rows = []
     plans = set()
     runners = {}
+    collection_identity = None
     for layout, observation in layouts.items():
         options = observation["options"]
         if (options["metric"], options["operation"], options["site_layout"]) != ("stages", "svg-data", layout):
             raise ValueError(f"invalid stage observation for {layout}")
         plans.add(_digest(observation["plan_sha256"]))
-        runners[layout] = {key: _digest(observation[key]) for key in
-                           ("runner_sha256", "memory_runner_sha256") if key in observation}
+        fingerprints = {key: _digest(observation[key]) for key in
+                        ("runner_sha256", "memory_runner_sha256") if key in observation}
+        if ("runner_sha256" not in fingerprints
+                or ("memory_runner_sha256" in fingerprints) != options.get("with_memory", False)):
+            raise ValueError(f"stage observation for {layout} has inconsistent clock and allocation runner fingerprints")
+        identity = (
+            fingerprints,
+            _digest(observation["harness_sha256"]),
+            observation["host"],
+            observation.get("revision"),
+            {key: value for key, value in options.items() if key != "site_layout"},
+            observation["rows"].keys(),
+        )
+        if collection_identity is None:
+            collection_identity = identity
+        elif collection_identity != identity:
+            raise ValueError(f"stage observations must share one collection identity ({layout} differs)")
+        runners[layout] = fingerprints
         for scenario, result in observation["rows"].items():
             samples = result["samples"]
             memory = result.get("memory_samples", [])
