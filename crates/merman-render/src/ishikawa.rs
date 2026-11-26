@@ -1,11 +1,9 @@
 use merman_model::families::ishikawa::IshikawaDiagramModel;
-use merman_render_structured::ishikawa::{
-    self as structured, IshikawaTextBaseline, IshikawaTextMeasurer,
-};
+use merman_render_structured::ishikawa as structured;
 
 use crate::Result;
 use crate::model::IshikawaDiagramLayout;
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::TextMeasurer;
 
 mod theme;
 
@@ -21,66 +19,16 @@ pub(crate) fn layout_ishikawa_diagram_typed(
     structured::layout_ishikawa_diagram_typed(
         model,
         cfg,
-        &HostTextMeasurer {
-            typography,
-            measurer,
-        },
+        typography.text_style("ishikawa-head-label"),
+        typography.text_style(""),
+        measurer,
     )
-}
-
-struct HostTextMeasurer<'a> {
-    typography: &'a IshikawaTypographyPlan,
-    measurer: &'a dyn TextMeasurer,
-}
-
-impl IshikawaTextMeasurer for HostTextMeasurer<'_> {
-    fn text_style(&self, class_name: &str) -> &TextStyle {
-        self.typography.text_style(class_name)
-    }
-
-    fn measure_head_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        self.measurer
-            .measure_svg_raw_text_bbox_width_px(text, style)
-    }
-
-    fn measure_label_horizontal_px(&self, text: &str, style: &TextStyle) -> (f64, (f64, f64)) {
-        let advance = self
-            .measurer
-            .measure_svg_text_computed_length_px(text, style);
-        let bbox = self
-            .measurer
-            .measure_svg_text_bbox_x_with_ascii_overhang(text, style);
-        (advance, bbox)
-    }
-
-    fn measure_vertical_bbox_px(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        baseline: IshikawaTextBaseline,
-    ) -> Option<(f64, f64)> {
-        let offset = match baseline {
-            IshikawaTextBaseline::Middle => self
-                .measurer
-                .measure_svg_raw_text_middle_bbox_y_offset_px(text, style),
-            IshikawaTextBaseline::Baseline => self
-                .measurer
-                .measure_svg_raw_text_bbox_y_offset_px(text, style),
-            IshikawaTextBaseline::Hanging => self
-                .measurer
-                .measure_svg_raw_text_hanging_bbox_y_offset_px(text, style),
-        }?;
-        Some((
-            offset,
-            self.measurer
-                .measure_svg_raw_text_bbox_height_px(text, style),
-        ))
-    }
 }
 
 #[cfg(test)]
 mod font_style_tests {
     use super::*;
+    use crate::text::TextStyle;
     use merman_model::families::ishikawa::IshikawaNode;
     use serde_json::json;
 

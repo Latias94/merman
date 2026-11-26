@@ -1189,6 +1189,7 @@ dependencies = [
  "cssparser",
  "indexmap",
  "libm",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
@@ -1231,7 +1232,9 @@ version = "0.11.0"
 dependencies = [
  "dugong",
  "kurbo",
+ "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
  "serde_json",
 ]
 
@@ -1250,6 +1253,7 @@ dependencies = [
  "merman-render-core",
  "rustc-hash",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -30,6 +30,7 @@ use base64::Engine as _;
 )]
 use indexmap::IndexMap;
 use merman_model::OperationPhase;
+use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgDiagramIdValue, SvgId};
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
@@ -59,7 +60,6 @@ pub(crate) use class::class_canonical_marker;
     )
 )]
 mod css;
-pub(crate) use css::PreparedCommonCss;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -147,7 +147,7 @@ pub(crate) use flowchart::{
 mod gantt;
 #[cfg(feature = "diagram-git-graph")]
 mod gitgraph;
-#[cfg(feature = "diagram-info")]
+#[cfg(all(test, feature = "diagram-info"))]
 mod info;
 #[cfg(feature = "diagram-ishikawa")]
 mod ishikawa;
@@ -223,8 +223,6 @@ pub(crate) use markers::BaseEdgeMarkerKind;
 mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
-#[cfg(feature = "diagram-packet")]
-mod packet;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -244,15 +242,20 @@ mod radar;
 mod railroad;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod root_svg;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-block",
+    feature = "diagram-c4",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-ishikawa",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-usecase",
+    feature = "diagram-venn"
+))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -262,8 +265,6 @@ mod root_svg;
     )
 )]
 mod roughjs_common;
-#[cfg(feature = "diagram-sankey")]
-mod sankey;
 #[cfg(feature = "diagram-sequence")]
 mod sequence;
 #[cfg(feature = "diagram-state")]
@@ -301,8 +302,6 @@ mod timeline;
 mod timing;
 #[cfg(feature = "diagram-tree-view")]
 mod tree_view;
-#[cfg(feature = "diagram-treemap")]
-mod treemap;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 #[cfg_attr(
@@ -322,8 +321,6 @@ mod wardley;
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg(feature = "diagram-pie")]
-use css::write_pie_css;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -331,7 +328,9 @@ use css::write_pie_css;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use css::{MermaidBaseCss, write_prepared_info_css};
+use css::MermaidBaseCss;
+#[cfg(feature = "diagram-pie")]
+use css::write_pie_css;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]
@@ -350,13 +349,7 @@ pub use emitted_bounds::{
     )
 )]
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
+#[cfg(feature = "diagram-requirement")]
 use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -374,6 +367,11 @@ use style::is_text_style_key;
     )
 )]
 pub(crate) use util::escape_attr;
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
+use util::escape_attr_into;
 pub(crate) use util::escape_xml;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -383,10 +381,10 @@ pub(crate) use util::escape_xml;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
-    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
-    fmt_string, json_stringify_points, json_stringify_points_into, normalize_css_font_family,
-    scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
+    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_xml_display,
+    escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into, fmt_string,
+    json_stringify_points, json_stringify_points_into, scoped_drop_shadow, scoped_svg_id,
+    scoped_svg_url,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
@@ -966,6 +964,20 @@ impl<'a> SvgExecution<'a> {
         self.family.session().render_seed().get()
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-ishikawa",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase",
+        feature = "diagram-venn"
+    ))]
     pub(crate) fn rough_randomness(
         &self,
         configured_seed: f64,
@@ -1064,6 +1076,31 @@ pub(crate) fn render_builtin_family_artifact(
     finish_family_svg(rooted_svg, &execution, &metadata.effective_config)
 }
 
+#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
+pub(crate) fn render_native_compact_sequence(
+    prepared: &crate::sequence::SequencePreparedArtifact,
+    semantic: &merman_model::families::sequence::SequenceDiagramModel,
+    config: &merman_model::presentation::PresentationConfig,
+    family_execution: FamilyExecutionView<'_>,
+    options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+) -> Result<String> {
+    use sequence::compact::{SequenceCompactError, render_sequence_compact};
+
+    let execution = SvgExecution::new(options, debug, family_execution)?;
+    let svg = render_sequence_compact(prepared, semantic, config, &execution);
+    execution.finish_diagram_id_projection()?;
+    let svg = svg.map_err(|error| match error {
+        SequenceCompactError::Render(error) => error,
+        SequenceCompactError::Unsupported(reason) => Error::UnsupportedSvgOutputProfile {
+            profile: super::SvgOutputProfile::NativeCompact,
+            reason,
+        },
+    })?;
+    super::pipeline::validate_native_compact_svg(&svg, execution.family.session())?;
+    Ok(svg)
+}
+
 #[cfg(all(
     feature = "diagram-architecture",
     any(feature = "layout-cytoscape", feature = "layout-shoal")
@@ -1096,6 +1133,8 @@ fn finish_family_svg(
     execution: &SvgExecution<'_>,
     effective_config: &merman_model::presentation::PresentationConfig,
 ) -> Result<(String, bool)> {
+    use merman_theme_contract::v2::Paint;
+
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let session = execution.family.session();
@@ -1103,15 +1142,50 @@ fn finish_family_svg(
     let background = session.canvas_background();
     let diagram_id = execution.validated_diagram_id;
     let rooted_svg = if let Some(theme) = session.native_theme() {
-        rooted_svg.apply_native_canvas(theme, background, diagram_id, meter)?
+        let resolved = theme.resolved();
+        let roles = &resolved.family(rooted_svg.family().as_str()).roles;
+        let background = background.map(Paint::Solid);
+        let paint = background.as_ref().unwrap_or(&roles.canvas);
+        apply_root_canvas(
+            rooted_svg,
+            paint,
+            &resolved.canvas().textures,
+            &roles.stroke_guide,
+            diagram_id,
+            meter,
+        )?
     } else if let Some(background) = background {
-        let paint = merman_theme_contract::v2::Paint::Solid(background);
-        rooted_svg.apply_canvas(&paint, &[], &paint, diagram_id, meter)?
+        let paint = Paint::Solid(background);
+        apply_root_canvas(rooted_svg, &paint, &[], &paint, diagram_id, meter)?
     } else {
         rooted_svg
     };
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     apply_theme_css(svg, effective_config, session)
+}
+
+fn apply_root_canvas(
+    rooted_svg: root_svg::RootedSvg,
+    paint: &merman_theme_contract::v2::Paint,
+    textures: &[merman_theme_contract::v2::Texture],
+    guide: &merman_theme_contract::v2::Paint,
+    diagram_id: Option<SvgId<'_>>,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> Result<root_svg::RootedSvg> {
+    rooted_svg.prepend_body(work_meter, |mut out, root_id, view_box| {
+        let scope = match diagram_id {
+            Some(id) => id,
+            None => SvgId::new(root_id).ok_or_else(|| Error::InvalidModel {
+                message: "SVG canvas requires a normalized diagram ID".to_owned(),
+            })?,
+        };
+        let viewport =
+            view_box.map(|bounds| [bounds.min_x, bounds.min_y, bounds.width, bounds.height]);
+        let _ = crate::theme::canvas_svg::write_canvas(
+            &mut out, scope, viewport, paint, textures, guide,
+        );
+        Ok(())
+    })
 }
 
 #[allow(
@@ -1278,7 +1352,16 @@ fn render_builtin_family_artifact_raw(
         },
         #[cfg(feature = "diagram-packet")]
         BuiltinFamilyArtifact::Packet(artifact) => {
-            packet::render_packet_family_artifact(artifact, title, options)
+            let diagram_id = options.diagram_id_or("merman");
+            crate::packet::render_packet_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                title,
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::PACKET, diagram_id),
+                options.work_meter(),
+            )
         }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
@@ -1317,7 +1400,16 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-sankey")]
         BuiltinFamilyArtifact::Sankey(artifact) => {
-            sankey::render_sankey_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+            let diagram_id = options.diagram_id_or("sankey");
+            merman_render_charts::sankey::render_sankey_diagram_svg(
+                artifact.pair().layout(),
+                artifact.style(),
+                diagram_id,
+                options.has_explicit_diagram_id(),
+                &options.root_viewport(crate::DiagramFamilyId::SANKEY, diagram_id),
+                options.work_meter(),
+                options.text_measurer(),
+            )
         }
         #[cfg(feature = "diagram-radar")]
         BuiltinFamilyArtifact::Radar(artifact) => {
@@ -1332,17 +1424,29 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-info")]
-        BuiltinFamilyArtifact::Info(artifact) => match artifact.typography_theme() {
-            crate::info::InfoAppearance::Mermaid(style) => {
-                info::render_info_diagram_svg(artifact.pair().layout(), style, options)
-            }
-            crate::info::InfoAppearance::Native(style) => {
-                info::render_native_info_svg(artifact.pair().layout(), style, options)
-            }
-        },
+        BuiltinFamilyArtifact::Info(artifact) => {
+            let diagram_id = options.diagram_id_or("merman");
+            crate::info::render_info_svg(
+                artifact.pair().layout(),
+                artifact.typography_theme(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::INFO, diagram_id),
+                options.work_meter(),
+            )
+        }
         #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => {
-            treemap::render_treemap_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+            let diagram_id = options.diagram_id_or("treemap");
+            let computed_length = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
+            crate::treemap::render_treemap_diagram_svg(
+                artifact.pair().layout(),
+                artifact.style(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::TREEMAP, diagram_id),
+                options.work_meter(),
+                options.text_measurer(),
+                &computed_length,
+            )
         }
         #[cfg(feature = "diagram-venn")]
         BuiltinFamilyArtifact::Venn(artifact) => venn::render_venn_diagram_svg_model(
@@ -1520,6 +1624,27 @@ mod operation_time_tests {
 
         assert_eq!(execution.unix_ms(), session.unix_millis());
     }
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-ishikawa",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase",
+        feature = "diagram-venn"
+    )
+))]
+mod operation_rough_seed_tests {
+    use super::*;
 
     #[test]
     fn svg_execution_preserves_truthy_javascript_number_seeds() {

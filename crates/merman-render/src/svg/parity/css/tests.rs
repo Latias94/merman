@@ -1,4 +1,5 @@
 use super::*;
+use crate::svg::PreparedCommonCss;
 use std::collections::BTreeMap;
 
 fn er_binding(config: &serde_json::Value) -> crate::er::ErCssBinding {
@@ -11,11 +12,7 @@ where
 {
     let mut out = String::new();
     PreparedCommonCss::new(effective_config, None)
-        .write_all(
-            &mut out,
-            CssSelectorDiagramId(diagram_id),
-            FragmentDiagramId(diagram_id),
-        )
+        .write(&mut out, diagram_id)
         .expect("String-backed Mermaid CSS emission cannot fail");
     out
 }
@@ -186,7 +183,7 @@ fn resolved_typography_owns_the_root_variable_and_nested_svg_font() {
     });
     let mut css = String::new();
     let values = PreparedCommonCss::new(&config, Some("serif"));
-    write_prepared_info_css(&mut css, "diag", &values).unwrap();
+    values.write(&mut css, "diag").unwrap();
     assert!(css.ends_with("#diag :root{--mermaid-font-family:serif;}"));
     assert!(css.contains("#diag svg{font-family:serif;"));
 }
@@ -412,7 +409,7 @@ fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
     }));
     let typography = crate::xychart::XyChartTypographyThemePlan::resolve(&config);
     let mut css = String::new();
-    write_prepared_info_css(&mut css, "chart", typography.common_css()).unwrap();
+    typography.common_css().write(&mut css, "chart").unwrap();
     assert_css_properties(
         &css,
         "#chart",

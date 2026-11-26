@@ -190,3 +190,20 @@ panic observed with the default inlining limit in Typst 0.15.0 and 0.15.1.
 Each ceiling keeps the existing 3% margin and rounds upward to 1,000 bytes.
 Typst 0.15.0 and 0.15.1 each compiled 25 fixtures and matched nine expected
 diagnostics with the optimized artifact. [Theme v2 coverage](../rendering/diagram-theme-coverage.md)
+
+## Render foundation refactor, 2026-11-26
+
+[PR 374's Linux Typst job](https://github.com/Latias94/merman/actions/runs/45809427989)
+measured the full `publish` recipe at head `7e2f0c9105241c0e5ae0695efe8fc7270b0eba4e`.
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 21,783,707 | 21,783,000 | 22,000,000 |
+| Stripped | 11,252,837 | 11,453,000 | 11,453,000 |
+| Gzip | 4,303,315 | 4,339,000 | 4,339,000 |
+| Brotli | 3,201,276 | 3,245,000 | 3,245,000 |
+
+The raw artifact exceeded its ceiling by 707 bytes. The new ceiling leaves approximately 1%
+headroom over that measurement while leaving every final-artifact limit unchanged. The job
+stopped at the raw budget check, so these measurements do not establish package smoke or a
+size optimization.

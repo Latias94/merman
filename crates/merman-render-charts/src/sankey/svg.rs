@@ -13,6 +13,10 @@ use merman_render_core::{
 
 use super::{SankeyDiagramLayout, SankeyNodeLayout};
 
+mod render;
+
+pub use render::render_sankey_diagram_svg;
+
 #[derive(Clone, Copy)]
 struct SankeyScopedId<'a> {
     diagram_id: Option<SvgId<'a>>,

@@ -122,8 +122,8 @@ impl<'a> ActorLabelContext<'a> {
             let color = super::super::util::cssom_color_value(color);
             let _ = write!(style, "{property}: {color};");
         };
-        if !self.native && self.compat.actor_palette_mode() {
-            let (stroke, fill) = self.compat.actor_palette(actor_index);
+        if !self.native && self.compat.actor_palette.enabled() {
+            let (stroke, fill) = self.compat.actor_palette.actor_colors(actor_index);
             for (property, color) in [("stroke", stroke), ("fill", fill)] {
                 if let Some(color) = color {
                     declaration(property, color);
@@ -570,15 +570,10 @@ fn write_actor_label_lines<'a>(
     label_class: &str,
     ctx: &ActorLabelContext<'_>,
 ) -> Result<()> {
-    let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
         let decoded = crate::sequence::prepare_sequence_text_line(raw);
-        let dy = if n <= 1.0 {
-            0.0
-        } else {
-            (i as f64 - (n - 1.0) / 2.0) * ctx.style.font_size
-        };
+        let dy = super::geometry::actor_label_dy(i, line_count, ctx.style.font_size);
         let legacy_style = format!(
             "text-anchor: middle; {}",
             super::settings::sequence_text_style_attribute(ctx.style)

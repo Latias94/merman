@@ -101,8 +101,12 @@ fn gitgraph_css(
 ) -> Result<GitGraphCss> {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = super::super::css::FragmentDiagramId(diagram_id);
-    let parts =
-        super::super::css::InfoCssWriter::from_prepared(&binding.common).into_parts(diagram_id);
+    let mut css_prefix = String::new();
+    binding.common.write_prefix(&mut css_prefix, diagram_id)?;
+    let mut root_rule = String::new();
+    binding
+        .common
+        .write_root(&mut root_rule, diagram_id, diagram_id)?;
     let use_redux_geometry = binding.use_redux_geometry;
     let use_color_theme = binding.sources.use_color_theme;
     let use_neo_theme = binding.sources.use_neo_theme;
@@ -136,11 +140,14 @@ fn gitgraph_css(
     });
     let defs = gitgraph_defs(diagram_id, binding, gradient);
     let mut out = BoundedSvgOutput::new(work);
-    out.push_str(&parts.css_prefix);
+    out.push_str(&css_prefix);
     let _ = write!(
         &mut out,
         r#"#{} .commit-id,#{} .commit-msg,#{} .branch-label{{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:{};}}"#,
-        id, id, id, parts.font_family
+        id,
+        id,
+        id,
+        binding.common.font_family()
     );
     out.checkpoint()?;
     for i in 0..theme_color_limit {
@@ -384,7 +391,7 @@ fn gitgraph_css(
         tag_label_bkg_stroke,
         tag_label_bkg_filter,
         id,
-        parts.text_color,
+        binding.common.text_color(),
         id,
         state_fill,
         state_fill,
@@ -398,9 +405,9 @@ fn gitgraph_css(
         state_fill,
         id,
         fmt(typography_theme.title_font_size_px()),
-        parts.text_color
+        binding.common.text_color()
     );
-    out.push_str(&parts.root_rule);
+    out.push_str(&root_rule);
     Ok(GitGraphCss {
         css: out.finish()?,
         defs,

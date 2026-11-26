@@ -1,9 +1,10 @@
-use merman_theme_contract::v2::{DataPalette, Density, EdgeStyle, Elevation, Form};
+pub(crate) use merman_render_flow::layout_config::density_scales;
+use merman_theme_contract::v2::{DataPalette, EdgeStyle, Elevation, Form};
 
 use crate::text::TextStyle;
 use crate::theme::{Color, FamilyTheme, font_family_css};
 
-use super::{FlowchartLayoutSettings, FlowchartShape};
+use super::FlowchartShape;
 
 #[derive(Debug)]
 pub(crate) struct FlowchartNativeStyle {
@@ -116,19 +117,4 @@ pub(crate) fn default_curve(
         EdgeStyle::Orthogonal => "step",
         EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
     })
-}
-
-pub(crate) fn density_scales(density: Density) -> (f64, f64) {
-    match density {
-        Density::Compact => (0.85, 0.85),
-        Density::Balanced => (1.0, 1.0),
-        Density::Airy => (1.25, 1.2),
-    }
-}
-
-pub(crate) fn apply_density(settings: &mut FlowchartLayoutSettings, density: Density) {
-    let (padding, spacing) = density_scales(density);
-    settings.node_padding *= padding;
-    settings.nodesep *= spacing;
-    settings.ranksep *= spacing;
 }

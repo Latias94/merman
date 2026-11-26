@@ -1,3 +1,64 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum FontStyle {
+    Normal,
+    Italic,
+    Oblique,
+}
+
+impl FontStyle {
+    pub const ALL: &'static [Self] = &[Self::Normal, Self::Italic, Self::Oblique];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Italic => "italic",
+            Self::Oblique => "oblique",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum GenericFontFamily {
+    Serif,
+    SansSerif,
+    Monospace,
+    Cursive,
+    Fantasy,
+    SystemUi,
+}
+
+impl GenericFontFamily {
+    pub const ALL: &'static [Self] = &[
+        Self::Serif,
+        Self::SansSerif,
+        Self::Monospace,
+        Self::Cursive,
+        Self::Fantasy,
+        Self::SystemUi,
+    ];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Serif => "serif",
+            Self::SansSerif => "sans-serif",
+            Self::Monospace => "monospace",
+            Self::Cursive => "cursive",
+            Self::Fantasy => "fantasy",
+            Self::SystemUi => "system-ui",
+        }
+    }
+
+    #[cfg(feature = "text-layout")]
+    pub(crate) fn from_css_keyword(value: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|family| family.id().eq_ignore_ascii_case(value))
+    }
+}
+
 pub fn is_css_wide_keyword(value: &str) -> bool {
     matches!(
         value.to_ascii_lowercase().as_str(),

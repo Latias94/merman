@@ -1,4 +1,5 @@
 use crate::config::{config_css_number_or_string, config_string};
+use merman_render_sequence::activation::SequenceActorPalette;
 
 #[derive(Debug)]
 pub(crate) struct SequenceCompatBinding {
@@ -34,17 +35,7 @@ pub(crate) struct SequenceCompatBinding {
     pub(crate) rect_default_fill: String,
     pub(crate) is_neo: bool,
     pub(crate) neo_flood_color: &'static str,
-    redux_palette: bool,
-    actor_borders: Vec<SequencePaletteEntry>,
-    actor_fills: Vec<SequencePaletteEntry>,
-    activation_fill_fallback: Option<String>,
-}
-
-#[derive(Debug)]
-enum SequencePaletteEntry {
-    Null,
-    Token(String),
-    Other,
+    pub(crate) actor_palette: SequenceActorPalette,
 }
 
 impl SequenceCompatBinding {
@@ -102,10 +93,7 @@ impl SequenceCompatBinding {
             rect_default_fill: roles.surface_container.first_color().to_string(),
             is_neo: crate::config::config_diagram_look(config).is_neo(),
             neo_flood_color: "#000000",
-            redux_palette: false,
-            actor_borders: Vec::new(),
-            actor_fills: Vec::new(),
-            activation_fill_fallback: None,
+            actor_palette: SequenceActorPalette::default(),
         }
     }
 
@@ -131,20 +119,6 @@ impl SequenceCompatBinding {
         let drop_shadow = value("dropShadow", "none");
         let is_neo = crate::config::config_diagram_look(config).is_neo();
         let theme_name = config.get("theme").and_then(serde_json::Value::as_str);
-        let palette = |key: &str| {
-            config
-                .get("themeVariables")
-                .and_then(|theme| theme.get(key))
-                .and_then(serde_json::Value::as_array)
-                .into_iter()
-                .flatten()
-                .map(|entry| match entry {
-                    serde_json::Value::Null => SequencePaletteEntry::Null,
-                    serde_json::Value::String(value) => SequencePaletteEntry::Token(value.clone()),
-                    _ => SequencePaletteEntry::Other,
-                })
-                .collect()
-        };
         let rect_default_fill = config_string(config, &["themeVariables", "rectBkgColor"])
             .filter(|fill| !fill.is_empty())
             .or_else(|| {
@@ -194,10 +168,7 @@ impl SequenceCompatBinding {
             } else {
                 "#FFFFFF"
             },
-            redux_palette: matches!(theme_name, Some("redux-color" | "redux-dark-color")),
-            actor_borders: palette("borderColorArray"),
-            actor_fills: palette("bkgColorArray"),
-            activation_fill_fallback: config_string(config, &["themeVariables", "mainBkg"]),
+            actor_palette: SequenceActorPalette::resolve(config),
         }
     }
 
@@ -215,73 +186,12 @@ impl SequenceCompatBinding {
             }
         }
     }
-
-    pub(crate) fn actor_palette_mode(&self) -> bool {
-        self.redux_palette
-    }
-
-    pub(crate) fn actor_palette(&self, index: usize) -> (Option<&str>, Option<&str>) {
-        (
-            palette_token(&self.actor_borders, index),
-            palette_token(&self.actor_fills, index),
-        )
-    }
-
-    pub(crate) fn activation_palette(&self, index: usize) -> (Option<&str>, Option<&str>) {
-        if !self.redux_palette {
-            return (None, None);
-        }
-        let fill = match palette_entry(&self.actor_fills, index) {
-            None | Some(SequencePaletteEntry::Null) => self.activation_fill_fallback.as_deref(),
-            Some(SequencePaletteEntry::Token(value)) => Some(value.as_str()),
-            Some(SequencePaletteEntry::Other) => None,
-        };
-        (palette_token(&self.actor_borders, index), fill)
-    }
-}
-
-fn palette_entry(palette: &[SequencePaletteEntry], index: usize) -> Option<&SequencePaletteEntry> {
-    (!palette.is_empty()).then(|| &palette[index % palette.len()])
-}
-
-fn palette_token(palette: &[SequencePaletteEntry], index: usize) -> Option<&str> {
-    match palette_entry(palette, index) {
-        Some(SequencePaletteEntry::Token(value)) => Some(value),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::SequenceCompatBinding;
     use serde_json::json;
-
-    #[test]
-    fn raw_palette_preserves_slots_and_activation_null_fallback() {
-        let binding = SequenceCompatBinding::resolve(&json!({
-            "theme": "redux-color",
-            "themeVariables": {
-                "borderColorArray": [null, "red", 7],
-                "bkgColorArray": [null, "blue", 7],
-                "mainBkg": "white"
-            }
-        }));
-        assert_eq!(binding.actor_palette(0), (None, None));
-        assert_eq!(binding.activation_palette(0), (None, Some("white")));
-        assert_eq!(binding.actor_palette(1), (Some("red"), Some("blue")));
-        assert_eq!(binding.activation_palette(2), (None, None));
-        assert_eq!(binding.activation_palette(3), (None, Some("white")));
-
-        let missing = SequenceCompatBinding::resolve(&json!({
-            "theme": "redux-dark-color", "themeVariables": {"mainBkg": "white"}
-        }));
-        assert_eq!(missing.activation_palette(42), (None, Some("white")));
-        let ordinary = SequenceCompatBinding::resolve(&json!({
-            "theme": "redux", "themeVariables": {"mainBkg": "white"}
-        }));
-        assert!(!ordinary.actor_palette_mode());
-        assert_eq!(ordinary.activation_palette(42), (None, None));
-    }
 
     #[test]
     fn dependent_raw_colors_share_their_configured_parent() {

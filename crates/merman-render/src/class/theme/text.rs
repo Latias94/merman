@@ -61,7 +61,8 @@ impl ClassTextThemePlan {
             }
             None => (
                 super::ClassCssThemeBinding::resolve(values),
-                crate::svg::PreparedCommonCss::bind_normalized(values, &family, &size, false),
+                crate::svg::PreparedCommonCss::with_resolved_typography(values, family, size)
+                    .with_configured_root_font_family(values),
             ),
         };
         Self {

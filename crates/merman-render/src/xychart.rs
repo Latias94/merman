@@ -1,12 +1,12 @@
 use merman_model::families::xy_chart::XyChartDiagramRenderModel;
-use merman_render_charts::xychart::{XyChartSeriesPaintPlan, XyChartTextMeasurer};
+use merman_render_charts::xychart::XyChartSeriesPaintPlan;
 use serde_json::Value;
 
 use crate::Result;
 use crate::chart_palette::{plot_color_from_palette, resolve_xychart_plot_palette};
 use crate::config::{ConfigLookup, selected_config_string};
 use crate::model::XyChartDiagramLayout;
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::TextMeasurer;
 use crate::theme::FamilyTheme;
 
 mod theme;
@@ -42,19 +42,6 @@ pub(crate) fn resolve_series_paint(
     })
 }
 
-struct HostTextMeasurer<'a>(&'a dyn TextMeasurer);
-
-impl XyChartTextMeasurer for HostTextMeasurer<'_> {
-    fn measure_svg_text_bounding_client_rect_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        self.0
-            .measure_svg_text_bounding_client_rect_width_px(text, style)
-    }
-
-    fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        self.0.measure_svg_raw_text_bbox_height_px(text, style)
-    }
-}
-
 pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     diagram_title: Option<&str>,
@@ -69,7 +56,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         series_paint,
         typography_theme.layout_typography(),
         native,
-        &HostTextMeasurer(text_measurer),
+        text_measurer,
     )
 }
 
@@ -77,7 +64,7 @@ pub(crate) fn layout_xychart_diagram_typed(
 mod tests {
     use super::*;
     use crate::model::{XyChartDrawableElem, XyChartTextData};
-    use crate::text::TextMetrics;
+    use crate::text::{TextMetrics, TextStyle};
     use kurbo::Shape;
     use merman_model::families::xy_chart::{XyChartAxisModel, XyChartPlotModel, XyChartPlotType};
     use serde_json::json;

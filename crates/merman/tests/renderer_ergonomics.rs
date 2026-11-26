@@ -83,6 +83,13 @@ mod graphical {
         assert_eq!(typed.svg(), expert.svg());
         assert_eq!(typed.theme_outcome(), expert.theme_outcome());
         assert_eq!(typed.theme_outcome().preset_id, Some(BuiltinPreset::Studio));
+        let mut request = renderer.default_svg_request();
+        request.options.diagram_id = Some("explicit-diagram".to_owned());
+        let inherited = renderer
+            .render_svg_with(FLOWCHART, request, OperationControl::new())
+            .unwrap();
+        assert!(inherited.svg().contains(r#"id="explicit-diagram""#));
+        assert_eq!(typed.theme_outcome(), inherited.theme_outcome());
         let capability = if cfg!(feature = "layout-dagre") {
             RenderCapability::LayoutDagre
         } else {
@@ -358,21 +365,20 @@ fn renderer_builder_ascii_uses_the_same_request_and_keeps_terminal_color_opt_in(
     let options = AsciiRenderOptions::default().with_color_mode(AsciiColorMode::TrueColor);
     let selection = ThemeSelection::preset(BuiltinPreset::Studio, None);
     let renderer = Renderer::builder()
-        .with_ascii_options(options.clone())
-        .with_native_theme(selection.clone())
+        .with_ascii_options(options)
+        .with_native_theme(selection)
         .build()
         .unwrap();
     let colored = renderer.render_ascii(FLOWCHART).unwrap();
     assert!(colored.text.contains("\x1b["));
-    let request = AsciiRequest {
-        options,
-        native_theme: Some(selection),
-        ..AsciiRequest::default()
-    };
     assert_eq!(
         colored,
         renderer
-            .render_ascii_with(FLOWCHART, request, OperationControl::new())
+            .render_ascii_with(
+                FLOWCHART,
+                renderer.default_ascii_request(),
+                OperationControl::new(),
+            )
             .unwrap()
     );
     let RenderOutput::Ascii(Some(expert)) = renderer

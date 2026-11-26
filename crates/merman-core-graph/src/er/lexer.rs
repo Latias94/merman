@@ -564,7 +564,6 @@ impl<'input> Lexer<'input> {
         // Word cardinalities only match at a word boundary (`/^(?:one or zero\b)/i`,
         // `/^(?:many\b)/i`, `/^(?:to\b)/i`, ...), so entity names such as `tokens`, `oneshot`
         // or `manyToMany` fall through to `lex_name_or_str`.
-        let lower = s.to_ascii_lowercase();
         for (pat, tok) in [
             ("optionally to", ErToken::NonIdentifying),
             ("one or zero", ErToken::ZeroOrOne),
@@ -575,33 +574,33 @@ impl<'input> Lexer<'input> {
             ("zero or many", ErToken::ZeroOrMore),
             ("only one", ErToken::OnlyOne),
         ] {
-            if lower.starts_with(pat) && self.ends_word_at(pat.len()) {
+            if self.starts_with_word_ci(pat) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }
         }
 
-        if lower.starts_with("many(0)") {
+        if self.starts_with_ci("many(0)") {
             self.pos += "many(0)".len();
             return Some((start, ErToken::ZeroOrMore, self.pos));
         }
-        if lower.starts_with("many(1)") {
+        if self.starts_with_ci("many(1)") {
             self.pos += "many(1)".len();
             return Some((start, ErToken::OneOrMore, self.pos));
         }
-        if lower.starts_with("0+") {
+        if s.starts_with("0+") {
             self.pos += "0+".len();
             return Some((start, ErToken::ZeroOrMore, self.pos));
         }
-        if lower.starts_with("1+") {
+        if s.starts_with("1+") {
             self.pos += "1+".len();
             return Some((start, ErToken::OneOrMore, self.pos));
         }
-        if lower.starts_with("many") && self.ends_word_at("many".len()) {
+        if self.starts_with_word_ci("many") {
             self.pos += "many".len();
             return Some((start, ErToken::ZeroOrMore, self.pos));
         }
-        if lower.starts_with("one") && self.ends_word_at("one".len()) {
+        if self.starts_with_word_ci("one") {
             self.pos += "one".len();
             return Some((start, ErToken::OnlyOne, self.pos));
         }
@@ -609,7 +608,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
             return Some((start, ErToken::OnlyOne, self.pos));
         }
-        if lower.starts_with("to") && self.ends_word_at("to".len()) {
+        if self.starts_with_word_ci("to") {
             self.pos += "to".len();
             return Some((start, ErToken::Identifying, self.pos));
         }
@@ -1095,6 +1094,43 @@ mod tests {
                     "{source:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn er_relation_keywords_match_ascii_prefixes_at_the_original_boundaries() {
+        for (source, prefix, expected) in [
+            (
+                "OpTiOnAlLy To注文",
+                "optionally to",
+                ErToken::NonIdentifying,
+            ),
+            ("OnE oR ZeRo ", "one or zero", ErToken::ZeroOrOne),
+            ("MANY(1)tail", "many(1)", ErToken::OneOrMore),
+            ("mAnY-Name", "many", ErToken::ZeroOrMore),
+            ("oNe前", "one", ErToken::OnlyOne),
+            ("TO\u{00a0}B", "to", ErToken::Identifying),
+        ] {
+            let (start, token, end) = Lexer::new(source, None).lex_rel_tokens().unwrap();
+            assert_eq!((start, end), (0, prefix.len()), "{source}");
+            assert_eq!(
+                std::mem::discriminant(&token),
+                std::mem::discriminant(&expected),
+                "{source}"
+            );
+        }
+        for source in [
+            "optionally tokens",
+            "One_Two",
+            "MaNyToMany",
+            "TOKENS",
+            "名",
+            "oné",
+        ] {
+            assert!(
+                Lexer::new(source, None).lex_rel_tokens().is_none(),
+                "{source}"
+            );
         }
     }
 

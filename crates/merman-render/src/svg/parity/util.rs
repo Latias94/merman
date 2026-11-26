@@ -47,10 +47,6 @@ pub(super) fn config_bool(
     crate::config::value_at(cfg, path).and_then(json_bool)
 }
 
-pub(super) fn normalize_css_font_family(font_family: &str) -> String {
-    crate::config::normalize_css_font_family(font_family)
-}
-
 pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
     let color = ThemeColor::parse(color.trim())?;
     let faded = rgba(

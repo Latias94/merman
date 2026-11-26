@@ -4,7 +4,7 @@ mod model;
 mod svg;
 
 pub use config::{IshikawaConfigView, IshikawaLayoutSettings};
-pub use layout::{IshikawaTextBaseline, IshikawaTextMeasurer, layout_ishikawa_diagram_typed};
+pub use layout::{IshikawaTextBaseline, layout_ishikawa_diagram_typed};
 pub use model::{
     IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaDiagramLayout, IshikawaHeadLayout,
     IshikawaLabelBoxLayout, IshikawaLineLayout, IshikawaPairLayout, IshikawaSubGroupLayout,

@@ -6,6 +6,10 @@ use merman_model::{OperationControl, OperationControlResult};
 pub mod controlled;
 #[doc(hidden)]
 pub mod langium;
+mod lines;
+
+#[doc(hidden)]
+pub use lines::{LineCursor, strip_line_ending};
 
 #[cfg(feature = "mermaid-unicode")]
 mod jison_unicode;

@@ -1,6 +1,7 @@
-use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::environment::TextMeasurementOperation;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessage};
+use merman_render_core::text::measurement::{MeasurementReuseKey, measurement_reuse_key};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SequenceMessageBoundMetrics {
@@ -28,7 +29,7 @@ pub(super) struct SequenceMessageMeasurementBinding {
     font_size_bits: u64,
     font_weight: Option<String>,
     font_style: Option<String>,
-    carrier: BuiltinTextMeasurementOperationCarrier,
+    reuse_key: MeasurementReuseKey,
 }
 
 impl SequenceMessageMeasurementBinding {
@@ -38,7 +39,8 @@ impl SequenceMessageMeasurementBinding {
             font_size_bits: style.font_size.to_bits(),
             font_weight: style.font_weight.clone(),
             font_style: style.font_style.clone(),
-            carrier: measurer.builtin_operation_carrier(
+            reuse_key: measurement_reuse_key(
+                measurer,
                 TextMeasurementOperation::MermaidCalculateTextDimensions,
             )?,
         })
@@ -49,9 +51,10 @@ impl SequenceMessageMeasurementBinding {
             && self.font_size_bits == style.font_size.to_bits()
             && self.font_weight == style.font_weight
             && self.font_style == style.font_style
-            && measurer
-                .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
-                == Some(self.carrier)
+            && measurement_reuse_key(
+                measurer,
+                TextMeasurementOperation::MermaidCalculateTextDimensions,
+            ) == Some(self.reuse_key)
     }
 }
 

@@ -176,7 +176,7 @@ mod graph_layout;
 )]
 mod html;
 #[cfg(feature = "diagram-info")]
-pub mod info;
+use merman_render_structured::info;
 #[cfg(feature = "diagram-ishikawa")]
 pub mod ishikawa;
 #[cfg(feature = "diagram-journey")]
@@ -218,7 +218,7 @@ pub mod model;
 #[cfg(feature = "diagram-packet")]
 pub mod packet {
     pub(crate) use merman_render_structured::packet::{
-        PacketStyle, layout_packet_diagram_typed, write_svg_contents,
+        PacketStyle, layout_packet_diagram_typed, render_packet_svg,
     };
 }
 #[cfg(feature = "diagram-pie")]
@@ -233,8 +233,6 @@ mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
-#[cfg(feature = "diagram-sankey")]
-pub mod sankey;
 #[cfg(feature = "diagram-sequence")]
 pub mod sequence;
 #[cfg(feature = "diagram-state")]

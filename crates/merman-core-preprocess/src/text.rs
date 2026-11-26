@@ -1,5 +1,6 @@
 //! Source text rewrites that preserve positions through `MappedSource`.
 
+use merman_model::text::is_ecmascript_whitespace;
 use merman_model::{OperationControl, OperationControlResult};
 
 use super::scan::controlled::{
@@ -48,6 +49,52 @@ impl PreprocessMarkers {
     pub const fn contains(self, markers: Self) -> bool {
         self.0 & markers.0 == markers.0
     }
+}
+
+/// Removes a leading BOM and applies the marked line-ending and HTML rewrites.
+///
+/// Returns whether the leading BOM was removed.
+pub fn cleanup_text_controlled(
+    source: &mut MappedSource,
+    markers: PreprocessMarkers,
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
+    control.checkpoint()?;
+    let removed_bom = source.text().starts_with('\u{feff}');
+    if removed_bom {
+        source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())], control)?;
+    }
+    if markers.contains(PreprocessMarkers::CARRIAGE_RETURN) {
+        normalize_crlf_controlled(source, control)?;
+    }
+
+    // Mermaid performs this HTML attribute rewrite as part of preprocessing.
+    if markers.contains(PreprocessMarkers::TAG_OPEN) {
+        normalize_html_tag_attributes_like_upstream_controlled(source, control)?;
+    }
+    control.checkpoint()?;
+    Ok(removed_bom)
+}
+
+/// Removes leading ECMAScript whitespace while tracking its original byte range.
+pub fn trim_source_start_controlled(
+    source: &mut MappedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut leading_whitespace = 0usize;
+    for ch in source.text().chars() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !is_ecmascript_whitespace(ch) {
+            break;
+        }
+        leading_whitespace += ch.len_utf8();
+    }
+    checkpoints.finish()?;
+    if leading_whitespace > 0 {
+        source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
+    }
+    control.checkpoint()
 }
 
 /// Normalizes CR and CRLF source line endings.

@@ -74,8 +74,10 @@ to icon fragments before they enter a diagram.
 the shared presentation lexer used by Agentflow. Core owns model construction, source mapping,
 diagnostics, and editor recovery.
 
-`merman-render-flow` owns Flowchart, Swimlane, and Agentflow shape geometry. It resolves shape
-aliases and image and icon dimensions, and supplies organic outlines and BPMN connector
+`merman-render-flow` owns the shared layout settings and shape geometry for Flowchart, Swimlane,
+and Agentflow. It resolves family defaults, typography and density overlays, and the Agentflow
+configuration projection before layout. It also resolves shape aliases and image and icon
+dimensions, and supplies organic outlines and BPMN connector
 intersections. Its Dagre adapter owns compound graph assembly, cluster anchor selection and
 extraction, and the associated work accounting. `merman-render` owns diagram traversal, text
 measurement, asset policy, layout output projection, and SVG emission.
@@ -84,14 +86,16 @@ measurement, asset policy, layout output projection, and SVG emission.
 
 `merman-core-structured` owns Info and Ishikawa syntax, Packet field scanning and bounded row
 expansion, Railroad dialect parsing and recovery, Sankey CSV parsing and graph construction, and
-Treemap row parsing and hierarchy construction. `merman-core` prepares the source, builds
-Ishikawa's semantic tree, supplies config-dependent sanitization, and maps models and syntax
-diagnostics into public parse results with optional editor facts.
+Treemap row parsing and hierarchy construction. It also owns Timeline lexing, parsing and model
+construction, using the shared line cursor in `merman-core-preprocess`. `merman-core` prepares
+the source, builds Ishikawa's semantic tree, supplies config-dependent sanitization, and maps
+models and syntax diagnostics into public parse results with optional editor facts.
 
-`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, Railroad, and
-Ishikawa. It consumes canonical model data and uses the shared CSS, text, and controlled Rough SVG
-contracts in `merman-render-core`. `merman-render` dispatches through the family features and owns
-the operation's measurement, Ishikawa theme resolution, and root SVG policy.
+`merman-render-structured` owns the typed layout and complete SVG emission for Info and Packet,
+and typed layout and SVG contents for Railroad and Ishikawa. It uses the shared root SVG, CSS,
+`TextMeasurer`, and controlled Rough SVG contracts in `merman-render-core`. `merman-render`
+dispatches through the family features, selects the operation's measurement and viewport
+policies, and owns final canvas and SVG admission.
 
 ### Graph syntax
 
@@ -109,9 +113,10 @@ admission, and the editor and compatibility projections.
 `merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
 facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
 
-`merman-render-sequence` owns participant geometry, glyphs, lifelines, and prepared control
-frames. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter.
-It owns text and math measurement, label placement, and layout orchestration.
+`merman-render-sequence` owns the Sequence layout types, participant geometry, glyphs, lifelines,
+and prepared control frames. It owns activation state, geometry, palette slots, and balanced SVG
+groups. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter
+and still orchestrates text, math, label placement, and the complete document.
 
 ### Chart rendering
 
@@ -123,9 +128,13 @@ bar label placement. For Sankey, it owns the typed layout, configuration lookup,
 `merman-render` supplies text metrics and owns root and output policy for both families.
 
 The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
-layout and its point and radius codecs, Treemap hierarchy layout, viewport projection, value
-formatting and leaf SVG, Venn layout and its solver, and Wardley layout and annotation boxes.
-`merman-render` supplies theme precedence, the operation work meter, and document assembly.
+layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and
+annotation boxes. `merman-render` supplies theme precedence, the operation work meter, and
+document assembly for those families.
+
+For Treemap, the chart crate owns hierarchy layout, style binding, label fitting, and complete
+SVG emission. The facade supplies theme precedence, the operation's measurement routes and
+viewport context, and applies terminal SVG policy.
 
 ### Frozen presentation is distinct from engine initialization
 

@@ -1,16 +1,17 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
+use super::arrowhead::ARROWHEAD_REF_X;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceDrawnTextNode, SequenceMathHeightMode,
-    measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
-    sequence_drawn_text_style, sequence_drawn_text_y,
+    measure_sequence_drawn_line_height, sequence_drawn_text_style, sequence_drawn_text_y,
 };
 use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessageStroke,
 };
+use merman_render_sequence::activation::sequence_activation_stack_bounds;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
@@ -72,7 +73,7 @@ impl SequenceMessagePaintPlan {
                 let radius = match endpoint_marker_local_id(marker, source) {
                     Some("crosshead") => 11.0_f64.hypot(4.5) * width,
                     Some("filled-head") => 15.5_f64.hypot(21.0) * width,
-                    Some("arrowhead") => 7.9_f64.hypot(7.0),
+                    Some("arrowhead") => ARROWHEAD_REF_X.hypot(7.0),
                     Some("solidTopArrowHead") => 7.9_f64.hypot(7.25),
                     Some("solidBottomArrowHead") => 7.9_f64.hypot(11.25),
                     Some("stickTopArrowHead") => 7.5_f64.hypot(7.0),
@@ -450,12 +451,14 @@ pub(super) fn render_sequence_messages(
         if let Some(lbl) = &edge.label {
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
-            let label_start_x = p0.x.min(p1.x);
-            let (label_x, label_anchor) = match ctx.message_align {
-                "right" => (label_start_x + bounded_width - ctx.wrap_padding, "end"),
-                "left" => (label_start_x + ctx.wrap_padding, "start"),
-                _ => (lbl.x, "middle"),
-            };
+            let (label_x, label_anchor) = super::geometry::message_label_x(
+                lbl.x,
+                p0.x,
+                p1.x,
+                bounded_width,
+                ctx.wrap_padding,
+                ctx.message_align,
+            );
             let prepared_math = ctx.math_sidecar.terminal_for_occurrence(
                 &crate::sequence::SequenceMathOccurrence::Message(message_index),
             );

@@ -151,7 +151,12 @@ impl ErCssBinding {
             native: None,
             render_settings: super::super::ErConfigView::new(config)
                 .render_settings_with_resolved_typography(None, None),
-            common: PreparedCommonCss::bind(config, &font_family, &format!("{font_size}px"), false),
+            common: PreparedCommonCss::with_resolved_typography(
+                config,
+                crate::config::normalize_css_font_family(&font_family),
+                format!("{font_size}px"),
+            )
+            .with_configured_root_font_family(config),
             font_family,
             source_fill_owns_odd_rows: matches!(
                 theme_name.as_str(),

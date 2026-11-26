@@ -1,13 +1,13 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
-use super::geometry::node_left_top;
+use super::geometry::{node_left_top, note_label_position};
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
-    sequence_drawn_text_first_y, sequence_drawn_text_style, sequence_drawn_text_y,
-    sequence_note_final_wrapped_lines,
+    sequence_drawn_text_style, sequence_drawn_text_y, sequence_note_final_wrapped_lines,
 };
 use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
+use merman_render_sequence::rect_paint::include_rect_stroke_bounds;
 use rustc_hash::FxHashMap;
 
 #[derive(Default)]
@@ -44,20 +44,11 @@ impl SequenceNotePaintPlan {
                 continue;
             };
             let (left, top) = node_left_top(node);
-            let bounds = Bounds {
-                min_x: left - width / 2.0,
-                min_y: top - width / 2.0,
-                max_x: left + node.width + width / 2.0,
-                max_y: top + node.height + width / 2.0,
-            };
-            if let Some(total) = &mut plan.bounds {
-                total.min_x = total.min_x.min(bounds.min_x);
-                total.min_y = total.min_y.min(bounds.min_y);
-                total.max_x = total.max_x.max(bounds.max_x);
-                total.max_y = total.max_y.max(bounds.max_y);
-            } else {
-                plan.bounds = Some(bounds);
-            }
+            include_rect_stroke_bounds(
+                &mut plan.bounds,
+                [left, top, node.width, node.height],
+                width,
+            );
         }
         Ok(plan)
     }
@@ -95,12 +86,13 @@ pub(super) fn render_sequence_note(
         return Ok(());
     };
     let (x, y) = node_left_top(n);
-    let (text_x, text_anchor) = match ctx.sanitize_config.get_str("sequence.noteAlign") {
-        Some("left" | "start") => ((x + ctx.note_margin).round(), "start"),
-        Some("right" | "end") => ((x + n.width - ctx.note_margin).round(), "end"),
-        _ => (x + n.width / 2.0, "middle"),
-    };
-    let text_y = sequence_drawn_text_first_y(y, ctx.note_margin);
+    let ([text_x, text_y], text_anchor) = note_label_position(
+        x,
+        y,
+        n.width,
+        ctx.note_margin,
+        ctx.sanitize_config.get_str("sequence.noteAlign"),
+    );
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,

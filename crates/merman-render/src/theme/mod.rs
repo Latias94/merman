@@ -14,7 +14,7 @@ pub(crate) use merman_render_core::theme_svg::canvas as canvas_svg;
     feature = "diagram-state",
     feature = "diagram-swimlane"
 ))]
-pub(crate) mod edge_label_bg;
+pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_label_bg;
 #[cfg(any(
     all(
         feature = "diagram-architecture",
@@ -31,7 +31,7 @@ pub(crate) mod edge_label_bg;
     feature = "diagram-usecase",
     feature = "diagram-state",
 ))]
-pub(crate) mod elevation_svg;
+pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
@@ -39,7 +39,7 @@ pub(crate) mod elevation_svg;
     feature = "diagram-block",
     feature = "diagram-state",
 ))]
-pub(crate) mod marker_svg;
+pub(crate) use merman_render_core::theme_svg::marker as marker_svg;
 #[cfg(any(feature = "diagram-treemap", feature = "diagram-xychart"))]
 pub(crate) use merman_render_core::theme_svg::pattern as pattern_svg;
 

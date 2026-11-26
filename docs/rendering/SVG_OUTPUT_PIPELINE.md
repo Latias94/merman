@@ -81,6 +81,31 @@ acceptance sidecars have been removed. Immutable owned artifacts bind bytes to t
 qualification hashes its actual output in the private runner. The old reserved prepared-text marker
 protocol is retired throughout producer and consumer paths. Its former prefix conveys no authority.
 
+## Native compact SVG
+
+Rust callers can opt in to a separate SVG producer with the `native-compact` feature. It does
+not select any diagram families by itself. Enable `diagram-sequence` for the first supported
+family, then select `SvgOutputProfile::NativeCompact` on a standalone `SvgRequest`.
+
+```rust
+use merman::svg::SvgOutputProfile;
+use merman::{OperationControl, Renderer, SvgRequest};
+
+let request = SvgRequest::default().with_output_profile(SvgOutputProfile::NativeCompact);
+let svg = Renderer::new().render_svg_with(
+    "sequenceDiagram\nAlice->>Bob: Ready",
+    request,
+    OperationControl::new(),
+)?;
+```
+
+The Sequence producer uses the prepared layout for rectangular participants, plain notes,
+activation bars, and supported straight messages. The compact writer emits native SVG without
+Mermaid compatibility styles or `<foreignObject>` labels. Unsupported families, constructs,
+or transforms return an explicit error. The profile is not a native export or browser-embedding
+receipt, and is not enabled in the CLI or bindings. Ordinary requests still use
+`MermaidV12Parity`, including with Theme v2.
+
 ## Artifact Evidence Lanes
 
 Output contracts and evidence contracts are related but not interchangeable:

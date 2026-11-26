@@ -13,8 +13,8 @@ use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     FlowchartEdgeTraceCollector, ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
-    SvgRenderOptions,
+    SvgOutputProfile, SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution,
+    SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::theme::ThemePortabilityRequirement;
 #[cfg(feature = "diagram-wardley")]
@@ -31,6 +31,36 @@ use merman_model::presentation::{
     BuiltinRenderSemantic, PresentationDiagram, PresentationMetadata, RenderSemanticModel,
 };
 use std::sync::Arc;
+
+#[doc(hidden)]
+pub fn validate_svg_output_profile(
+    profile: SvgOutputProfile,
+    family: Option<DiagramFamilyId>,
+    pipeline: Option<&SvgPipeline>,
+) -> Result<()> {
+    if profile == SvgOutputProfile::MermaidV12Parity {
+        return Ok(());
+    }
+    if let Some(pipeline) = pipeline {
+        pipeline.validate_output_profile(profile)?;
+    }
+    if cfg!(all(
+        feature = "native-compact",
+        feature = "diagram-sequence"
+    )) && family == Some(DiagramFamilyId::SEQUENCE)
+    {
+        Ok(())
+    } else {
+        Err(compact_family_unavailable())
+    }
+}
+
+fn compact_family_unavailable() -> Error {
+    Error::UnsupportedSvgOutputProfile {
+        profile: SvgOutputProfile::NativeCompact,
+        reason: "a compact renderer is not enabled for this diagram family",
+    }
+}
 
 /// Stable identity for a built-in typed render family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -543,7 +573,7 @@ pub(crate) struct RadarFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-sankey")]
 pub(crate) struct SankeyFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramModel, SankeyDiagramLayout>,
-    style: crate::sankey::SankeyStyle,
+    style: merman_render_charts::sankey::SankeyStyle,
 }
 
 #[derive(Debug)]
@@ -786,7 +816,7 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn style(&self) -> &crate::sankey::SankeyStyle {
+    pub(crate) const fn style(&self) -> &merman_render_charts::sankey::SankeyStyle {
         &self.style
     }
 }
@@ -1797,6 +1827,7 @@ pub struct RenderedFamilySvg {
     layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     shoal_layout_frame: Option<Arc<crate::ShoalLayoutFrame>>,
     svg: String,
+    output_profile: SvgOutputProfile,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
     family_id: DiagramFamilyId,
@@ -1886,6 +1917,10 @@ impl RenderedFamilySvg {
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
+        pipeline.validate_output_profile(self.output_profile)?;
+        if self.output_profile == SvgOutputProfile::NativeCompact {
+            return Ok(self);
+        }
         let output_metadata = self.output_metadata()?;
         let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
         let preserves_prepared_math = self.prepared_math_evidence_valid
@@ -1916,6 +1951,12 @@ impl RenderedFamilySvg {
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
+        if self.output_profile == SvgOutputProfile::NativeCompact {
+            return Err(Error::UnsupportedSvgOutputProfile {
+                profile: self.output_profile,
+                reason: "the compact profile is available only for standalone SVG",
+            });
+        }
         let output_metadata = self.output_metadata()?;
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
@@ -2343,7 +2384,13 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
-        self.render_svg_for_target(options, debug, None, crate::svg::SvgGeneration::Full)
+        self.render_svg_for_target(
+            options,
+            debug,
+            None,
+            crate::svg::SvgGeneration::Full,
+            SvgOutputProfile::MermaidV12Parity,
+        )
     }
 
     #[doc(hidden)]
@@ -2353,11 +2400,13 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         debug: &SvgDebugOptions,
         pipeline: Option<&SvgPipeline>,
         default_generation: crate::svg::SvgGeneration,
+        output_profile: SvgOutputProfile,
     ) -> Result<RenderedFamilySvg> {
         #[cfg(feature = "benchmark-stages")]
         let _stage =
             merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::SvgEmit);
         self.context.session().checkpoint(OperationPhase::Emit)?;
+        validate_svg_output_profile(output_profile, Some(self.family_id()), pipeline)?;
         let generation = pipeline.map_or(default_generation, |pipeline| {
             pipeline.generation_for(self.family_id(), default_generation)
         });
@@ -2383,7 +2432,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
             });
         }
         let (svg, output_mutated) =
-            render_family_artifact_svg(&self, options, render_debug, generation)?;
+            render_family_artifact_svg(&self, options, render_debug, generation, output_profile)?;
         admit_rendered_svg_output(self.context.session(), &svg)?;
         let layout_adaptation = self.layout_adaptation();
         let shoal_layout_frame = self
@@ -2403,6 +2452,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
             layout_adaptation,
             shoal_layout_frame,
             svg,
+            output_profile,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,
             family_id,
@@ -2431,10 +2481,26 @@ fn render_family_artifact_svg(
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
     generation: crate::svg::SvgGeneration,
+    output_profile: SvgOutputProfile,
 ) -> Result<(String, bool)> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
     let metadata = artifact.paint_metadata();
+    if output_profile == SvgOutputProfile::NativeCompact {
+        #[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
+        if let BuiltinFamilyArtifact::Sequence(pair) = &artifact.family {
+            return crate::svg::render_native_compact_sequence(
+                pair.layout(),
+                pair.semantic(),
+                &metadata.effective_config,
+                execution,
+                &options,
+                debug,
+            )
+            .map(|svg| (svg, false));
+        }
+        return Err(compact_family_unavailable());
+    }
     #[cfg(all(
         feature = "diagram-architecture",
         any(feature = "layout-cytoscape", feature = "layout-shoal")
@@ -2464,75 +2530,13 @@ fn project_agentflow_flowchart_config(
     backend: GraphLayoutBackend,
     control: &merman_model::OperationControl,
 ) -> Result<merman_model::presentation::PresentationConfig> {
-    let mut projected = config.as_config().clone();
-    let root = config.as_value();
-    let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);
-    // Agentflow's renderer owns the root viewport. Defaults here mirror its `??`
-    // expressions; normal MermaidEngine configuration already includes schema defaults.
-    // Overwrite even absent family values so unrelated Flowchart settings cannot leak in.
-    for (key, fallback) in [
-        ("diagramPadding", serde_json::json!(8)),
-        ("useMaxWidth", serde_json::json!(true)),
-        ("titleTopMargin", serde_json::json!(0)),
-    ] {
-        let value = agentflow.get(key).filter(|value| !value.is_null());
-        projected.set_value(
-            &format!("flowchart.{key}"),
-            value
-                .map(merman_model::json::clone_value_nonrecursive)
-                .unwrap_or(fallback),
-        );
-    }
-    // Dagre takes a truthy root override before the renderer's family spacing.
-    // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
-    // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
     let uses_family_spacing = matches!(
         backend,
         GraphLayoutBackend::Dagre | GraphLayoutBackend::Shoal
     );
-    for key in ["nodeSpacing", "rankSpacing"] {
-        let value = uses_family_spacing
-            .then(|| {
-                root.get(key)
-                    .filter(|value| crate::config::json_value_is_truthy(value))
-                    .or_else(|| {
-                        agentflow
-                            .get(key)
-                            .filter(|value| crate::config::json_value_is_truthy(value))
-                    })
-            })
-            .flatten();
-        projected.set_value(
-            &format!("flowchart.{key}"),
-            value
-                .map(merman_model::json::clone_value_nonrecursive)
-                .unwrap_or_else(|| serde_json::json!(50)),
-        );
-    }
-    // AgentflowDB assigns these values to each node before the shared shape helpers
-    // read them. Node-specific values precede Flowchart configuration; only a falsy
-    // wrappingWidth falls through via labelHelper's JavaScript `||` expression.
-    for key in ["minNodeWidth", "wrappingWidth"] {
-        if let Some(value) = agentflow.get(key) {
-            if key == "wrappingWidth" && !crate::config::json_value_is_truthy(value) {
-                continue;
-            }
-            projected.set_value(
-                &format!("flowchart.{key}"),
-                merman_model::json::clone_value_nonrecursive(value),
-            );
-        }
-    }
-    let parts = merman_model::presentation::FrozenPresentationConfigParts::new(projected)
-        .with_explicit_config_paths(Arc::clone(config.shared_explicit_config_paths()));
-    // Existing render admission excludes config. This construction policy validates derived data
-    // without recharging the request's model limits or declaring source authority.
-    let construction_policy = merman_model::resources::InputResourcePolicy::for_profile(
-        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
-    );
-    merman_model::presentation::PresentationConfig::try_from_frozen_parts_controlled(
-        parts,
-        &construction_policy,
+    merman_render_flow::layout_config::project_agentflow_flowchart_config(
+        config,
+        uses_family_spacing,
         control,
     )?
     .map_err(Error::from)

@@ -6,6 +6,28 @@ use std::sync::Arc;
 
 #[rustfmt::skip]
 mod abi;
+#[cfg(feature = "resources")]
+mod route;
+#[cfg(all(test, feature = "svg-parse"))]
+pub(super) mod test_support;
+mod trusted;
+
+#[cfg(feature = "resources")]
+pub use route::{
+    InvalidMeasurementProfileIdentity, MeasurementProfileId, RoutedTextMeasurer,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    TextMeasurementProvenance, TextMeasurementReport, TextMeasurementRoute, TextMeasurementSession,
+    TextMeasurementSource, TextMeasurementSummary,
+};
+#[cfg(feature = "svg-output")]
+pub(super) use trusted::BuiltinSvgComputedLength;
+#[cfg(feature = "resources")]
+pub(super) use trusted::BuiltinTextMeasurementOperationCarrier;
+#[cfg(feature = "svg-parse")]
+pub(super) use trusted::InlineHtmlMeasurementCarrier;
+pub(super) use trusted::{BuiltinHtmlLineWidth, TRUSTED_MEASUREMENT, TrustedMeasurementQuery};
+#[cfg(feature = "resources")]
+pub use trusted::{MeasurementReuseKey, measurement_reuse_key};
 
 /// The exact operation requested from a text measurer and its required host result shape.
 /// Both types are generated from the independently versioned host text-measurement protocol.
@@ -31,8 +53,8 @@ impl TextMeasurementPhase {
     ];
 }
 
-#[doc(hidden)]
-pub const fn phase_index(phase: TextMeasurementPhase) -> usize {
+#[cfg(feature = "resources")]
+const fn phase_index(phase: TextMeasurementPhase) -> usize {
     match phase {
         TextMeasurementPhase::Layout => 0,
         TextMeasurementPhase::Wrap => 1,
@@ -83,11 +105,6 @@ impl HostTextMeasurementError {
     pub fn message(&self) -> &str {
         &self.message
     }
-}
-
-#[doc(hidden)]
-pub const fn host_fallback_reason(error: &HostTextMeasurementError) -> HostFallbackReason {
-    error.fallback_reason
 }
 
 #[derive(Debug, Clone, Copy)]

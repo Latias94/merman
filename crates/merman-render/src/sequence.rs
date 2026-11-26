@@ -23,8 +23,6 @@ const SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS: usize = 2;
 const SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS: usize = 2;
 const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
 
-mod activation;
-mod activation_geometry;
 mod actors;
 mod block_steps;
 pub(crate) mod config;
@@ -45,8 +43,6 @@ pub(crate) use native_theme::SequenceNativeStyle;
 pub(crate) use terminal_css::SequencePreparedCss;
 pub(crate) use theme_binding::SequenceCompatBinding;
 
-pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
-pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES};
 pub(crate) use math_artifact::{
@@ -67,6 +63,7 @@ pub(crate) use notes::sequence_note_final_wrapped_lines;
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
+use merman_render_sequence::activation::SequencePreparedActivationGeometry;
 use merman_render_sequence::frame::{
     SEQUENCE_CHECKPOINT_INTERVAL, SequenceFrameGeometry, prepare_sequence_frame_geometry,
 };

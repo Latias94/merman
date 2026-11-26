@@ -2,7 +2,12 @@
 
 use crate::{
     Result,
-    config::{ConfigLookup, config_css_number_or_string, config_string, json_bool, value_at},
+    config::{
+        ConfigLookup, config_css_number_or_string, config_font_family_css,
+        config_root_font_family_css, config_string,
+        config_theme_font_size_css_or_root_number_px_opt, json_bool, value_at,
+    },
+    number_format::canonical_number,
     svg_output::SvgOutput,
 };
 
@@ -220,11 +225,11 @@ fn write_mermaid_common_neo_css_values(
     out.checkpoint()
 }
 
-/// Common stylesheet values after the caller has resolved typography and effective configuration.
-/// The caller supplies the selected `:root` font separately when writing the stylesheet suffix.
+/// Common stylesheet values, including the optional independent Mermaid `:root` font.
 #[derive(Debug, Clone)]
 pub struct PreparedCommonCss {
     font_family: String,
+    root_font_family: Option<String>,
     font_size_css: String,
     normal_edge_stroke_width_css: String,
     text_color: String,
@@ -235,6 +240,20 @@ pub struct PreparedCommonCss {
 }
 
 impl PreparedCommonCss {
+    pub fn new(config: &(impl ConfigLookup + ?Sized), resolved_font_family: Option<&str>) -> Self {
+        let font_family =
+            resolved_font_family.map_or_else(|| config_font_family_css(config), str::to_owned);
+        let font_size_css = config_theme_font_size_css_or_root_number_px_opt(config)
+            .map(|size| format!("{}px", canonical_number(size)))
+            .unwrap_or_else(|| "16px".to_owned());
+        let values = Self::with_resolved_typography(config, font_family, font_size_css);
+        if resolved_font_family.is_some() {
+            values
+        } else {
+            values.with_configured_root_font_family(config)
+        }
+    }
+
     pub fn font_family(&self) -> &str {
         &self.font_family
     }
@@ -256,8 +275,12 @@ impl PreparedCommonCss {
         self
     }
 
-    pub fn into_font_family_and_text_color(self) -> (String, String) {
-        (self.font_family, self.text_color)
+    pub fn with_configured_root_font_family(
+        mut self,
+        config: &(impl ConfigLookup + ?Sized),
+    ) -> Self {
+        self.root_font_family = Some(config_root_font_family_css(config));
+        self
     }
 
     pub fn with_resolved_typography(
@@ -267,6 +290,7 @@ impl PreparedCommonCss {
     ) -> Self {
         Self {
             font_family,
+            root_font_family: None,
             font_size_css,
             normal_edge_stroke_width_css: mermaid_stroke_width_px(effective_config),
             text_color: theme_token(effective_config, "textColor", "#333"),
@@ -275,6 +299,17 @@ impl PreparedCommonCss {
             error_text: theme_token(effective_config, "errorTextColor", "#552222"),
             neo: MermaidCommonNeoCss::new(effective_config),
         }
+    }
+
+    /// Writes logical CSS. Use `XmlTextOutput` when embedding it in a `<style>` element.
+    pub fn write(
+        &self,
+        out: &mut impl SvgOutput,
+        diagram_id: impl SvgDiagramIdValue,
+    ) -> Result<()> {
+        let selector_id = CssSelectorDiagramId(diagram_id);
+        self.write_prefix(out, selector_id)?;
+        self.write_root(out, selector_id, FragmentDiagramId(diagram_id))
     }
 
     /// Writes logical CSS using a selector ID already formatted for CSS.
@@ -297,19 +332,22 @@ impl PreparedCommonCss {
         )
     }
 
-    /// Appends the logical CSS for Neo and the caller-selected `:root` font.
+    /// Appends the logical CSS for Neo and the prepared `:root` font.
     /// Format selector and fragment IDs for their respective CSS contexts before calling.
     pub fn write_root<SelectorId, FragmentId>(
         &self,
         out: &mut impl SvgOutput,
         selector_id: SelectorId,
         fragment_id: FragmentId,
-        root_font_family: &str,
     ) -> Result<()>
     where
         SelectorId: Copy + std::fmt::Display,
         FragmentId: Copy + std::fmt::Display,
     {
+        let root_font_family = self
+            .root_font_family
+            .as_deref()
+            .unwrap_or(&self.font_family);
         emit_prepared_common_root(out, &selector_id, &fragment_id, &self.neo, root_font_family)
     }
 }

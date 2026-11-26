@@ -1,4 +1,4 @@
-use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::environment::TextMeasurementOperation;
 use crate::graph_layout::ir::{Direction, Rect, Size, direction_from_rank};
 use crate::layout_backend::GraphLayoutBackend;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
@@ -15,6 +15,7 @@ use indexmap::{Equivalent, IndexMap, map::Entry};
 use merman_model::families::requirement::{
     RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
 };
+use merman_render_core::text::measurement::{MeasurementReuseKey, measurement_reuse_key};
 #[cfg(test)]
 use serde_json::Value;
 use std::borrow::Cow;
@@ -80,9 +81,9 @@ struct RequirementLabelMeasurementBinding {
     font_size_bits: u64,
     calculation_font_family: String,
     calculation_font_size_bits: u64,
-    dimensions_carrier: BuiltinTextMeasurementOperationCarrier,
-    wrapped_carrier: BuiltinTextMeasurementOperationCarrier,
-    html_terminal_carriers: Option<[BuiltinTextMeasurementOperationCarrier; 2]>,
+    dimensions_key: MeasurementReuseKey,
+    wrapped_key: MeasurementReuseKey,
+    html_terminal_keys: Option<[MeasurementReuseKey; 2]>,
 }
 
 impl RequirementLabelMeasurementBinding {
@@ -91,7 +92,7 @@ impl RequirementLabelMeasurementBinding {
         measurer: &dyn TextMeasurer,
     ) -> Option<Self> {
         // Only the operation-owned built-in route can prove that suppressing the SVG-stage
-        // request is unobservable. Host and custom measurers deliberately return no carrier.
+        // request is unobservable. Host and custom measurers deliberately return no key.
         Some(Self {
             html_labels: settings.html_labels,
             edge_html_labels: settings.edge_html_labels,
@@ -99,16 +100,15 @@ impl RequirementLabelMeasurementBinding {
             font_size_bits: settings.font_size.to_bits(),
             calculation_font_family: settings.calculation_font_family.clone(),
             calculation_font_size_bits: settings.calculation_font_size.to_bits(),
-            dimensions_carrier: measurer.builtin_operation_carrier(
+            dimensions_key: measurement_reuse_key(
+                measurer,
                 TextMeasurementOperation::MermaidCalculateTextDimensions,
             )?,
-            wrapped_carrier: measurer
-                .builtin_operation_carrier(TextMeasurementOperation::Wrapped)?,
-            html_terminal_carriers: if settings.html_labels {
+            wrapped_key: measurement_reuse_key(measurer, TextMeasurementOperation::Wrapped)?,
+            html_terminal_keys: if settings.html_labels {
                 Some([
-                    measurer
-                        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)?,
-                    measurer.builtin_operation_carrier(TextMeasurementOperation::HtmlLineHeight)?,
+                    measurement_reuse_key(measurer, TextMeasurementOperation::WrappedWithRawWidth)?,
+                    measurement_reuse_key(measurer, TextMeasurementOperation::HtmlLineHeight)?,
                 ])
             } else {
                 None

@@ -25,10 +25,9 @@ pub(crate) fn render_error_diagram_svg_model(
         .root_viewport(crate::DiagramFamilyId::ERROR, diagram_id)
         .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str(r#"<style>"#);
-    write_prepared_info_css(
+    typography_theme.css_binding().write(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
-        typography_theme.css_binding(),
     )?;
     out.push_str("</style>");
     out.checkpoint()?;

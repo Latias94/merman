@@ -6,17 +6,22 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Shape vocabulary and geometry for Merman's flow diagram renderers."
+description = "Layout configuration, shape vocabulary, and geometry for Merman's flow diagram renderers."
 readme = "README.md"
 
 [package.metadata.merman-legal]
 third-party-bundle = true
 
 [features]
+diagram-agentflow = ["dep:merman-model", "dep:merman-theme-contract", "dep:serde_json", "merman-model/diagram-agentflow", "merman-render-core/css-style"]
+diagram-flowchart = ["dep:merman-model", "dep:merman-theme-contract", "dep:serde_json", "merman-model/diagram-flowchart", "merman-render-core/css-style"]
+diagram-swimlane = ["dep:merman-model", "dep:merman-theme-contract", "dep:serde_json", "merman-model/diagram-swimlane", "merman-render-core/css-style"]
 layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
 
 [dependencies]
 dugong = { workspace = true, optional = true }
 kurbo.workspace = true
+merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core.workspace = true
+merman-theme-contract = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

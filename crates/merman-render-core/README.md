@@ -9,14 +9,21 @@ feature provides render policies and the operation meter that shares limits and 
 across layout and SVG emission. The renderer supplies that meter to the Dagre, ELK, Shoal, and
 Cytoscape adapters selected by its layout features.
 `svg-output` provides bounded SVG writing, XML text serialization, base styles, and shared render
-errors. `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
+errors. `root-svg` provides viewport planning and emission for family SVG documents.
+`paint-scene` provides an internal typed scene and bounded SVG writer for resolved geometry and
+paint. The writer does not select an output profile or replace terminal SVG admission.
+`svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
-`css-style` provides presentation lookups, Mermaid CSS value parsing, and shared text style and
-measurement types. `text-layout` provides font stacks, text tokenization, line breaking, and width
-estimation. `theme-svg` writes resolved canvas paint and categorical patterns to SVG.
+`css-style` provides presentation lookups, Mermaid CSS value parsing, and the shared `TextMeasurer`
+trait and its value types. `text-layout` provides font stacks, deterministic measurement, and
+line breaking. With `resources`, it also provides host measurement routing and provenance for one
+operation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+`theme-elevation` and `theme-label-background` add shadow silhouettes and measured label
+backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer
 applies its SVG output policy when an icon is placed in a diagram.
 
-Applications use `merman` for source-to-output rendering.
+This crate provides workspace-internal renderer interfaces. Applications use `merman` for the
+public source-to-output API.
