@@ -1,10 +1,9 @@
-mod base_typography;
 pub(crate) use merman_render_flow::bpmn;
+use merman_render_flow::layout_config as config;
 #[cfg(test)]
 mod bpmn_layout_tests;
 mod class_style;
 mod compatibility;
-mod config;
 #[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
 mod edge_occurrence;
@@ -210,14 +209,16 @@ impl Deref for FlowchartRenderModelRef<'_> {
     }
 }
 
-pub(crate) use base_typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
 pub(crate) use config::FlowchartLayoutSettings;
-pub(crate) use config::{FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartConfigView};
+pub(crate) use config::{
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles,
+    FlowchartConfigView,
+};
 pub(crate) use image::{ImageSquareGeometry, ImageSquareSizing};
 #[cfg(not(test))]
 pub(crate) use label::flowchart_non_markdown_svg_source_word_lines;

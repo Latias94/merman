@@ -1,11 +1,13 @@
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::config::ConfigLookup;
+use merman_render_core::mermaid_style::font_family_css;
+use merman_render_core::text::TextStyle;
 
 use super::{FlowchartConfigView, FlowchartLayoutSettings};
-use crate::text::TextStyle;
 
 /// Shared family text defaults for layout, HTML measurement and SVG.
 #[derive(Debug, Clone)]
-pub(crate) struct FlowchartBaseTypographyPlan {
+pub struct FlowchartBaseTypographyPlan {
     font_family_css: String,
     font_size_px: f64,
     html_font_size_px: f64,
@@ -13,15 +15,15 @@ pub(crate) struct FlowchartBaseTypographyPlan {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartBaseTypographyStyles {
-    pub(crate) font_family: String,
-    pub(crate) font_size: f64,
-    pub(crate) text_style: TextStyle,
-    pub(crate) html_label_text_style: TextStyle,
+pub struct FlowchartBaseTypographyStyles {
+    pub font_family: String,
+    pub font_size: f64,
+    pub text_style: TextStyle,
+    pub html_label_text_style: TextStyle,
 }
 
 impl FlowchartBaseTypographyPlan {
-    pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
+    pub fn resolve(effective_config: &PresentationConfig) -> Self {
         let config = FlowchartConfigView::new(effective_config);
         let font_family_css = config
             .font_family_source(Some(effective_config))
@@ -38,20 +40,18 @@ impl FlowchartBaseTypographyPlan {
         }
     }
 
-    pub(crate) fn native(typography: &merman_theme_contract::v2::Typography) -> Self {
+    pub fn native(typography: &merman_theme_contract::v2::Typography) -> Self {
         Self {
-            font_family_css: crate::theme::font_family_css(
-                typography.stack(typography.body_family),
-            ),
+            font_family_css: font_family_css(typography.stack(typography.body_family)),
             font_size_px: typography.base_size_px,
             html_font_size_px: typography.base_size_px,
             native_weight: Some(typography.label_weight),
         }
     }
 
-    pub(crate) fn layout_settings(
+    pub(super) fn layout_settings(
         &self,
-        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
+        effective_config: &(impl ConfigLookup + ?Sized),
     ) -> FlowchartLayoutSettings {
         let config = FlowchartConfigView::new(effective_config);
         let mut settings = config.layout_settings();
@@ -62,9 +62,9 @@ impl FlowchartBaseTypographyPlan {
         settings
     }
 
-    pub(crate) fn render_styles(
+    pub fn render_styles(
         &self,
-        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
+        effective_config: &(impl ConfigLookup + ?Sized),
     ) -> FlowchartBaseTypographyStyles {
         let config = FlowchartConfigView::new(effective_config);
         let mut text_style = config.render_text_style(&self.font_family_css, self.font_size_px);

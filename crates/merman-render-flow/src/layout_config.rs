@@ -1,5 +1,16 @@
-use crate::config::{ConfigLookup, config_bool, config_f64, config_string};
-use crate::text::{TextStyle, WrapMode};
+#[cfg(feature = "diagram-agentflow")]
+mod agentflow;
+mod typography;
+
+#[cfg(feature = "diagram-agentflow")]
+pub use agentflow::project_agentflow_flowchart_config;
+pub use typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
+
+use merman_model::families::flowchart::FlowchartModel;
+use merman_model::presentation::PresentationConfig;
+use merman_render_core::config::{self, ConfigLookup, config_bool, config_f64, config_string};
+use merman_render_core::text::{self, TextStyle, WrapMode};
+use merman_theme_contract::v2::Density;
 use serde_json::Value;
 
 const DEFAULT_FLOWCHART_FONT_FAMILY: &str = r#""trebuchet ms",verdana,arial,sans-serif"#;
@@ -15,9 +26,9 @@ const FIXED_CLUSTER_PADDING: f64 = 8.0;
 
 // Mermaid `createText(...)` defaults its `width` argument to 200. Flowchart edge labels and
 // markdown subgraph titles rely on that default instead of `flowchart.wrappingWidth`.
-pub(crate) const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
+pub const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
 
-pub(crate) struct FlowchartConfigView<'a, C: ConfigLookup + ?Sized> {
+pub struct FlowchartConfigView<'a, C: ConfigLookup + ?Sized> {
     effective_config: &'a C,
     flowchart_config: &'a Value,
     state_config: &'a Value,
@@ -25,7 +36,7 @@ pub(crate) struct FlowchartConfigView<'a, C: ConfigLookup + ?Sized> {
 }
 
 impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
-    pub(crate) fn new(effective_config: &'a C) -> Self {
+    pub fn new(effective_config: &'a C) -> Self {
         Self {
             effective_config,
             flowchart_config: effective_config.get("flowchart").unwrap_or(&Value::Null),
@@ -36,7 +47,7 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> FlowchartLayoutSettings {
+    pub fn layout_settings(&self) -> FlowchartLayoutSettings {
         let node_html_labels = self.node_html_labels();
         let edge_html_labels = self.effective_html_labels();
         let cluster_html_labels = edge_html_labels;
@@ -80,23 +91,23 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn font_family(&self) -> String {
+    pub fn font_family(&self) -> String {
         self.font_family_source(None).map_or_else(
             || DEFAULT_FLOWCHART_FONT_FAMILY.to_owned(),
             |(font, _)| font,
         )
     }
 
-    pub(crate) fn font_family_source(
+    fn font_family_source(
         &self,
-        origins: Option<&merman_model::presentation::PresentationConfig>,
+        origins: Option<&PresentationConfig>,
     ) -> Option<(String, &'static str)> {
         let theme_font_family = self
             .theme_string("fontFamily")
-            .and_then(|s| crate::config::normalized_config_font_family(&s));
+            .and_then(|s| config::normalized_config_font_family(&s));
         let top_font_family = self
             .root_string("fontFamily")
-            .and_then(|s| crate::config::normalized_config_font_family(&s));
+            .and_then(|s| config::normalized_config_font_family(&s));
 
         match (top_font_family, theme_font_family) {
             // Only a generated default mirrors the root font. An authored default
@@ -115,33 +126,33 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn render_font_size(&self) -> f64 {
+    pub fn render_font_size(&self) -> f64 {
         self.theme_font_size_px().unwrap_or(16.0).max(1.0)
     }
 
-    pub(crate) fn render_wrapping_width(&self) -> f64 {
+    pub fn render_wrapping_width(&self) -> f64 {
         self.flowchart_compat_f64("wrappingWidth")
             .unwrap_or(DEFAULT_WRAPPING_WIDTH)
             .max(1.0)
     }
 
-    pub(crate) fn render_diagram_padding(&self) -> f64 {
+    pub fn render_diagram_padding(&self) -> f64 {
         self.flowchart_compat_f64("diagramPadding")
             .unwrap_or(DEFAULT_DIAGRAM_PADDING)
             .max(0.0)
     }
 
-    pub(crate) fn render_use_max_width(&self) -> bool {
+    pub fn render_use_max_width(&self) -> bool {
         self.flowchart_bool("useMaxWidth").unwrap_or(true)
     }
 
-    pub(crate) fn render_title_top_margin(&self) -> f64 {
+    pub fn render_title_top_margin(&self) -> f64 {
         self.flowchart_compat_f64("titleTopMargin")
             .unwrap_or(DEFAULT_TITLE_TOP_MARGIN)
             .max(0.0)
     }
 
-    pub(crate) fn render_node_padding(&self) -> f64 {
+    pub fn render_node_padding(&self) -> f64 {
         self.leaf_node_padding().max(0.0)
     }
 
@@ -158,19 +169,19 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn render_subgraph_title_y_shift(&self) -> f64 {
+    pub fn render_subgraph_title_y_shift(&self) -> f64 {
         let top = self.layout_subgraph_title_margin("top").max(0.0);
         let bottom = self.layout_subgraph_title_margin("bottom").max(0.0);
         (top + bottom) / 2.0
     }
 
-    pub(crate) fn render_curve(&self) -> Option<&'a str> {
+    pub fn render_curve(&self) -> Option<&'a str> {
         self.flowchart_config.get("curve").and_then(Value::as_str)
     }
 
-    pub(crate) fn effective_edge_interpolation<'curve>(
+    pub fn effective_edge_interpolation<'curve>(
         &'curve self,
-        model: &'curve super::FlowchartModel,
+        model: &'curve FlowchartModel,
         is_elk_layout: bool,
     ) -> &'curve str {
         let configured_curve = if is_elk_layout {
@@ -186,7 +197,7 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
             .unwrap_or("basis")
     }
 
-    pub(crate) fn render_text_style(&self, font_family: &str, font_size: f64) -> TextStyle {
+    pub fn render_text_style(&self, font_family: &str, font_size: f64) -> TextStyle {
         TextStyle {
             font_family: Some(font_family.to_string()),
             font_size,
@@ -195,20 +206,20 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn node_html_labels(&self) -> bool {
+    pub fn node_html_labels(&self) -> bool {
         // Mermaid 11.15 node shapes use `evaluate(getConfig()?.htmlLabels)` in labelHelper, while
         // edge and cluster labels use `getEffectiveHtmlLabels(...)` and still honor the deprecated
         // `flowchart.htmlLabels` fallback.
         self.root_bool("htmlLabels").unwrap_or(true)
     }
 
-    pub(crate) fn effective_html_labels(&self) -> bool {
+    pub fn effective_html_labels(&self) -> bool {
         self.root_bool("htmlLabels")
             .or_else(|| self.flowchart_bool("htmlLabels"))
             .unwrap_or(true)
     }
 
-    pub(crate) fn swimlane_title_html_labels(&self) -> bool {
+    pub fn swimlane_title_html_labels(&self) -> bool {
         // Mermaid 11.16's dedicated Swimlane cluster renderer bypasses the root-level setting and
         // calls `evaluate(siteConfig.flowchart.htmlLabels)` directly.
         match self.flowchart_config.get("htmlLabels") {
@@ -223,15 +234,15 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         }
     }
 
-    pub(crate) fn node_wrap_mode(&self) -> WrapMode {
+    pub fn node_wrap_mode(&self) -> WrapMode {
         flowchart_wrap_mode(self.node_html_labels())
     }
 
-    pub(crate) fn edge_wrap_mode(&self) -> WrapMode {
+    pub fn edge_wrap_mode(&self) -> WrapMode {
         flowchart_wrap_mode(self.effective_html_labels())
     }
 
-    pub(crate) fn html_label_measurement_base_style(&self, render_style: &TextStyle) -> TextStyle {
+    pub fn html_label_measurement_base_style(&self, render_style: &TextStyle) -> TextStyle {
         let mut style = render_style.clone();
         // HTML labels inherit the same px value emitted on the SVG root.
         style.font_size = self.render_font_size();
@@ -240,10 +251,7 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
 
     fn root_font_weight(&self) -> Option<String> {
         let raw = self.root_string("fontWeight")?;
-        Some(
-            crate::text::resolve_css_font_weight(&raw, 400)
-                .map_or(raw, |weight| weight.to_string()),
-        )
+        Some(text::resolve_css_font_weight(&raw, 400).map_or(raw, |weight| weight.to_string()))
     }
 
     fn layout_text_style(&self) -> TextStyle {
@@ -282,7 +290,7 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         self.flowchart_config
             .get("subGraphTitleMargin")
             .and_then(|margin| margin.get(key))
-            .and_then(crate::config::json_f64)
+            .and_then(config::json_f64)
             .unwrap_or(0.0)
     }
 
@@ -311,29 +319,61 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
     }
 }
 
-pub(crate) struct FlowchartLayoutSettings {
-    pub(crate) nodesep: f64,
-    pub(crate) ranksep: f64,
-    pub(crate) node_padding: f64,
-    pub(crate) state_padding: f64,
-    pub(crate) wrapping_width: f64,
-    pub(crate) edge_label_wrapping_width: f64,
-    pub(crate) cluster_title_wrapping_width: f64,
-    pub(crate) edge_html_labels: bool,
-    pub(crate) node_wrap_mode: WrapMode,
-    pub(crate) edge_wrap_mode: WrapMode,
-    pub(crate) cluster_wrap_mode: WrapMode,
-    pub(crate) cluster_padding: f64,
-    pub(crate) title_margin_top: f64,
-    pub(crate) title_margin_bottom: f64,
+pub struct FlowchartLayoutSettings {
+    pub nodesep: f64,
+    pub ranksep: f64,
+    pub node_padding: f64,
+    pub state_padding: f64,
+    pub wrapping_width: f64,
+    pub edge_label_wrapping_width: f64,
+    pub cluster_title_wrapping_width: f64,
+    pub edge_html_labels: bool,
+    pub node_wrap_mode: WrapMode,
+    pub edge_wrap_mode: WrapMode,
+    pub cluster_wrap_mode: WrapMode,
+    pub cluster_padding: f64,
+    pub title_margin_top: f64,
+    pub title_margin_bottom: f64,
     #[cfg(feature = "layout-dagre")]
-    pub(crate) title_total_margin: f64,
+    pub title_total_margin: f64,
     #[cfg(feature = "layout-dagre")]
-    pub(crate) y_shift: f64,
+    pub y_shift: f64,
     #[cfg(feature = "layout-dagre")]
-    pub(crate) inherit_dir: bool,
-    pub(crate) text_style: TextStyle,
-    pub(crate) html_label_text_style: TextStyle,
+    pub inherit_dir: bool,
+    pub text_style: TextStyle,
+    pub html_label_text_style: TextStyle,
+}
+
+impl FlowchartLayoutSettings {
+    pub fn resolve(
+        effective_config: &(impl ConfigLookup + ?Sized),
+        typography: Option<&FlowchartBaseTypographyPlan>,
+        density: Option<Density>,
+    ) -> Self {
+        let mut settings = typography.map_or_else(
+            || FlowchartConfigView::new(effective_config).layout_settings(),
+            |plan| plan.layout_settings(effective_config),
+        );
+        if let Some(density) = density {
+            apply_density(&mut settings, density);
+        }
+        settings
+    }
+}
+
+pub fn density_scales(density: Density) -> (f64, f64) {
+    match density {
+        Density::Compact => (0.85, 0.85),
+        Density::Balanced => (1.0, 1.0),
+        Density::Airy => (1.25, 1.2),
+    }
+}
+
+fn apply_density(settings: &mut FlowchartLayoutSettings, density: Density) {
+    let (padding, spacing) = density_scales(density);
+    settings.node_padding *= padding;
+    settings.nodesep *= spacing;
+    settings.ranksep *= spacing;
 }
 
 fn flowchart_wrap_mode(html_labels: bool) -> WrapMode {

@@ -1,5 +1,11 @@
 # merman-render-flow
 
+The `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow` selectors enable the shared
+Flow layout configuration, including Mermaid defaults, label modes, and typography and density
+settings. Agentflow also owns the overlay that projects admitted Agentflow settings into the
+shared layout inputs. `merman-render` selects and admits the layout backend and supplies the
+host-selected theme and measurement services.
+
 Shape names, asset dimension checks, and geometry shared by the Flowchart, Swimlane, and
 AgentFlow renderers. This crate owns Mermaid's Bang and Cloud outlines and BPMN body geometry,
 including connection points. `merman-render` supplies measured labels and owns model admission,

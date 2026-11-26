@@ -779,14 +779,11 @@ impl FlowchartSvgLabelSidecarBuilder {
         &self,
         effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> super::FlowchartLayoutSettings {
-        let mut settings = self.base_typography.as_ref().map_or_else(
-            || super::FlowchartConfigView::new(effective_config).layout_settings(),
-            |plan| plan.layout_settings(effective_config),
-        );
-        if let Some(density) = self.native_density {
-            super::native_theme::apply_density(&mut settings, density);
-        }
-        settings
+        super::FlowchartLayoutSettings::resolve(
+            effective_config,
+            self.base_typography.as_ref(),
+            self.native_density,
+        )
     }
 
     #[cfg(test)]

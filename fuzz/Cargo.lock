@@ -1232,7 +1232,9 @@ version = "0.11.0"
 dependencies = [
  "dugong",
  "kurbo",
+ "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
  "serde_json",
 ]
 
