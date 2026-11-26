@@ -84,11 +84,10 @@ Treemap row parsing and hierarchy construction. `merman-core` prepares the sourc
 Ishikawa's semantic tree, supplies config-dependent sanitization, and maps models and syntax
 diagnostics into public parse results with optional editor facts.
 
-`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, and Railroad,
-and the typed layout and config projection for Ishikawa. It consumes canonical model data and
-uses the shared CSS and text contracts in `merman-render-core`. `merman-render` dispatches through
-the corresponding family features and supplies the operation's text measurement and root SVG
-policy. Ishikawa theme resolution and SVG emission remain in `merman-render`.
+`merman-render-structured` owns the typed layout and SVG contents for Info, Packet, Railroad, and
+Ishikawa. It consumes canonical model data and uses the shared CSS, text, and controlled Rough SVG
+contracts in `merman-render-core`. `merman-render` dispatches through the family features and owns
+the operation's measurement, Ishikawa theme resolution, and root SVG policy.
 
 ### Graph syntax
 

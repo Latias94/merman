@@ -2,7 +2,7 @@ use crate::resources::OperationWorkMeter;
 use merman_model::OperationPhase;
 use roughr::work::{WorkControl, WorkError};
 
-pub(in crate::svg::parity) struct RoughWorkControl<'a> {
+pub struct RoughWorkControl<'a> {
     meter: &'a OperationWorkMeter,
     phase: OperationPhase,
 }
@@ -17,7 +17,7 @@ impl WorkControl for RoughWorkControl<'_> {
     }
 }
 
-pub(in crate::svg::parity) fn generate<T>(
+pub fn generate<T>(
     meter: &OperationWorkMeter,
     phase: OperationPhase,
     generate: impl FnOnce(&mut RoughWorkControl<'_>) -> Result<T, WorkError>,

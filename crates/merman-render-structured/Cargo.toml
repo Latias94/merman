@@ -15,7 +15,7 @@ third-party-bundle = true
 [features]
 default = []
 diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/theme-svg"]
-diagram-ishikawa = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa"]
+diagram-ishikawa = ["dep:merman-model", "dep:merman-render-core", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/rough-svg"]
 diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet"]
 diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad"]
 
@@ -24,6 +24,7 @@ merman-markup = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roughr = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
