@@ -971,6 +971,7 @@ pub(super) fn measure_c4_relation(
     index: usize,
     c4_type: &str,
     ctx: &C4Measurement<'_>,
+    measure_caption_ink_later: bool,
 ) -> Result<C4RelLayout> {
     let rel_font = &ctx.typography.message_font().measurement_style;
     let mut label_text = rel.label.as_str().to_string();
@@ -979,28 +980,36 @@ pub(super) fn measure_c4_relation(
     }
 
     let rel_text_wrap = rel.wrap && ctx.conf.wrap;
+    let prepare = |text: &str, measure_ink_later: bool| {
+        if measure_ink_later && !rel_text_wrap {
+            ctx.work.charge(text.len().saturating_add(1))?;
+            let line_count = if text.contains('<') {
+                crate::text::split_mermaid_common_br_lines(text).len()
+            } else {
+                1
+            };
+            return Ok(C4TextBlockLayout {
+                text: text.to_owned(),
+                line_count,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+                render_plan: None,
+            });
+        }
+        prepare_c4_legacy_text(ctx.measurer, text, rel_font, rel_text_wrap, None, ctx.work)
+    };
 
-    let label = prepare_c4_legacy_text(
-        ctx.measurer,
-        &label_text,
-        rel_font,
-        rel_text_wrap,
-        None,
-        ctx.work,
-    )?;
+    let label = prepare(&label_text, measure_caption_ink_later)?;
 
     let techn = rel
         .techn
         .as_ref()
         .filter(|t| !t.as_str().is_empty())
         .map(|t| {
-            prepare_c4_legacy_text(
-                ctx.measurer,
+            prepare(
                 t.as_str(),
-                rel_font,
-                rel_text_wrap,
-                None,
-                ctx.work,
+                measure_caption_ink_later && !t.as_str().trim().is_empty(),
             )
         })
         .transpose()?;
@@ -1009,16 +1018,7 @@ pub(super) fn measure_c4_relation(
         .descr
         .as_ref()
         .filter(|t| !t.as_str().is_empty())
-        .map(|t| {
-            prepare_c4_legacy_text(
-                ctx.measurer,
-                t.as_str(),
-                rel_font,
-                rel_text_wrap,
-                None,
-                ctx.work,
-            )
-        })
+        .map(|t| prepare(t.as_str(), false))
         .transpose()?;
 
     Ok(C4RelLayout {
@@ -1163,7 +1163,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let mut rels_out: Vec<C4RelLayout> = Vec::new();
     for (i, rel) in model.rels.iter().enumerate() {
-        let mut measured = measure_c4_relation(rel, i, &model.c4_type, &ctx.measure)?;
+        let mut measured = measure_c4_relation(rel, i, &model.c4_type, &ctx.measure, false)?;
         let (from, from_shape) =
             endpoint_rects
                 .get(rel.from_alias.as_str())

@@ -162,9 +162,13 @@ impl Scene {
         markers: [f64; 2],
         size: Size,
         scope: Option<Bounds>,
+        lengths: &mut Vec<f64>,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<Point>> {
-        let mut lengths = reserved(points.len().saturating_sub(1))?;
+        lengths.clear();
+        lengths
+            .try_reserve(points.len().saturating_sub(1))
+            .map_err(|_| LayoutError::AllocationLimit)?;
         let mut total = 0.0;
         for leg in points.windows(2) {
             work.visit(1)?;
@@ -181,7 +185,11 @@ impl Scene {
             size.height / 2.0 + self.clearance,
         ];
         let room = scope.map_or([[0.0, f64::INFINITY]; 2], |bounds| [bounds.x, bounds.y]);
-        let seat = |mut candidate: [f64; 2], sample: [f64; 2], tier, work: &mut Work<'_>| {
+        let seat = |mut candidate: [f64; 2],
+                    sample: [f64; 2],
+                    tier,
+                    best: Option<f64>,
+                    work: &mut Work<'_>| {
             work.visit(1)?;
             let pad = match tier {
                 ClearanceTier::OffAll => self.clearance,
@@ -200,7 +208,10 @@ impl Scene {
             let [x, y] = candidate;
             let at = Point { x, y };
             let distance = (x - sample[0]).hypot(y - sample[1]);
-            if distance > radius || !self.fits(at, size, scope, route_index, tier, work)? {
+            if distance > radius
+                || best.is_some_and(|best| distance >= best)
+                || !self.fits(at, size, scope, route_index, tier, work)?
+            {
                 return Ok(None);
             }
             Ok::<_, LayoutError>(Some((distance, at)))
@@ -214,7 +225,7 @@ impl Scene {
         ];
         let mut samples = [None; 5];
         for (probe, t) in probes.into_iter().enumerate() {
-            let Some((at, cross)) = Self::sample_route(points, &lengths, total, markers, t, work)?
+            let Some((at, cross)) = Self::sample_route(points, lengths, total, markers, t, work)?
             else {
                 continue;
             };
@@ -227,7 +238,9 @@ impl Scene {
                 } else {
                     edge.next_up()
                 };
-                if let Some((_, candidate)) = seat(candidate, at, ClearanceTier::OffAll, work)? {
+                if let Some((_, candidate)) =
+                    seat(candidate, at, ClearanceTier::OffAll, None, work)?
+                {
                     return Ok(Some(candidate));
                 }
             }
@@ -237,7 +250,7 @@ impl Scene {
                 for sign in [0.0, -1.0, 1.0] {
                     let mut shifted = at;
                     shifted[cross] += sign * (size.height.min(size.width) * 0.5 + 4.0);
-                    if let Some((_, shifted)) = seat(shifted, at, tier, work)? {
+                    if let Some((_, shifted)) = seat(shifted, at, tier, None, work)? {
                         return Ok(Some(shifted));
                     }
                 }
@@ -256,10 +269,10 @@ impl Scene {
                             let mut candidate = at;
                             candidate[cross] += sign * across;
                             candidate[1 - cross] += side * along;
-                            if let Some((distance, at)) = seat(candidate, at, tier, work)?
-                                && closest.is_none_or(|(best, _)| distance < best)
+                            if let Some(seat) =
+                                seat(candidate, at, tier, closest.map(|(best, _)| best), work)?
                             {
-                                closest = Some((distance, at));
+                                closest = Some(seat);
                             }
                         }
                     }
@@ -374,6 +387,7 @@ pub(super) fn place(
     if let Some(ink) = scene.obstacles.root_bounds() {
         bottom = bottom.max(ink.y[1]);
     }
+    let mut lengths = Vec::new();
     // Reserve the most constrained captions first. Within a scope, preserve authored order.
     for &scope in context.hierarchy.order.iter().rev() {
         work.visit(1)?;
@@ -398,6 +412,7 @@ pub(super) fn place(
                     markers,
                     size,
                     constraint,
+                    &mut lengths,
                     work,
                 )?;
                 // Placement reserves a caption row in each scope for congested routes.

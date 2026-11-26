@@ -96,7 +96,8 @@ fn scratch_keeps_search_and_coordinate_capacity_after_a_late_failure() {
             layout_with_control(&graph, &options, &mut scratch, &mut retry).unwrap(),
             expected
         );
-        assert_eq!((retry.units, retry.checks), (cold.units, cold.checks));
+        assert_eq!(retry.units, cold.units);
+        assert!((1..=cold.checks).contains(&retry.checks));
         assert!(scratch.retained_bytes() <= limit);
         if let Some(buffers) = retained_buffers {
             assert_eq!(coordinate_buffers(&mut scratch), buffers);

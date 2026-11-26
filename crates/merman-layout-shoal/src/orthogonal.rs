@@ -2,6 +2,7 @@
 
 mod channels;
 
+use crate::geom::Bounds;
 use crate::ortho::{OrthoRequest, OrthoRouter, OrthoSegment};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
@@ -117,7 +118,10 @@ fn route(
         }
     }
 
-    let mut changes = filled(graph.edges.len(), None)?;
+    if scopes.iter().all(Vec::is_empty) {
+        return Ok((filled(graph.edges.len(), None)?, 0));
+    }
+    let mut routes = Routes::new(&drawing.edges, work)?;
     let mut removed_crossings = 0;
     let walls = obstacles(graph, drawing, work)?;
     let root_bounds = root_bounds(drawing);
@@ -154,16 +158,19 @@ fn route(
                 Some(bounds),
                 options.spacing.edge,
                 work,
-            )? && extent_preserved(old, &candidate, root_bounds, work)?
+            )? && !same_route(old, &candidate, work)?
+                && extent_preserved(old, &candidate, root_bounds, work)?
             {
-                let before = quality(edge, old, drawing, &changes, work)?;
-                let after = quality(edge, &candidate, drawing, &changes, work)?;
+                let candidate = Candidate::new(candidate, work)?;
+                let before =
+                    routes.quality(edge, routes.edge_bounds[edge], routes.view(edge), work)?;
+                let after = routes.quality(edge, candidate.bounds, candidate.view(), work)?;
                 if after.overlaps <= before.overlaps && after.better_than(before) {
                     removed_crossings += before.crossings - after.crossings;
-                    changes[edge] = Some(candidate);
+                    routes.replace(edge, candidate);
                 }
             }
-            router.record_route(changes[edge].as_deref().unwrap_or(old), work)?;
+            router.record_route(routes.points(edge), work)?;
         }
         removed_crossings += channels::Scene {
             router: &router,
@@ -172,9 +179,9 @@ fn route(
             bounds,
             spacing: options.spacing.edge,
         }
-        .nudge(edges, &mut changes, work)?;
+        .nudge(edges, &mut routes, work)?;
     }
-    Ok((changes, removed_crossings))
+    Ok((routes.changes, removed_crossings))
 }
 
 fn root_bounds(drawing: &LayoutOutput) -> Rect {
@@ -184,6 +191,14 @@ fn root_bounds(drawing: &LayoutOutput) -> Rect {
         width: drawing.bounds.width,
         height: drawing.bounds.height,
     }
+}
+
+fn same_route(a: &[RoutePoint], b: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<bool> {
+    if a.len() != b.len() {
+        return Ok(false);
+    }
+    work.visit(a.len())?;
+    Ok(a == b)
 }
 
 fn extent_preserved(
@@ -373,15 +388,16 @@ fn propose(
         end_side: Some(end_side),
         bounds,
     };
-    let Some(route) = router.route(request, work)? else {
+    let Some(mut route) = router.route(request, work)? else {
         return Ok(None);
     };
     work.charge(route.len() + 2)?;
-    let mut output = reserved(route.len() + 2)?;
-    output.push(*first);
-    output.extend(route);
-    output.push(*last);
-    Ok(Some(output))
+    route
+        .try_reserve(2)
+        .map_err(|_| LayoutError::AllocationLimit)?;
+    route.insert(0, *first);
+    route.push(*last);
+    Ok(Some(route))
 }
 
 #[derive(Clone, Copy, Default)]
@@ -399,61 +415,225 @@ impl Quality {
     }
 }
 
-fn quality(
-    edge: usize,
-    points: &[RoutePoint],
-    drawing: &LayoutOutput,
-    changes: &[Option<Vec<RoutePoint>>],
-    work: &mut Work<'_>,
-) -> LayoutResult<Quality> {
-    let mut quality = Quality::default();
-    let mut previous = None;
-    for leg in points.windows(2) {
-        work.visit(1)?;
-        let a = leg[0];
-        let b = leg[1];
-        if point(a) == point(b) {
-            continue;
+struct Routes<'a> {
+    original: &'a [EdgeGeometry],
+    changes: Changes,
+    edge_bounds: Vec<Bounds>,
+    projections: Vec<Projection>,
+}
+
+impl<'a> Routes<'a> {
+    fn new(original: &'a [EdgeGeometry], work: &mut Work<'_>) -> LayoutResult<Self> {
+        let mut edge_bounds = reserved(original.len())?;
+        let mut projections = reserved(original.len())?;
+        for edge in original {
+            let (bounds, projection) = Projection::new(&edge.points, work)?;
+            edge_bounds.push(bounds);
+            projections.push(projection);
         }
-        let segment = OrthoSegment::between(a, b);
-        if let Some(segment) = segment {
-            let direction = (segment.axis, a.x < b.x || a.y < b.y);
-            quality.bends += usize::from(previous.is_some_and(|prior| prior != direction));
-            previous = Some(direction);
-            quality.length += segment.max - segment.min;
+        Ok(Self {
+            original,
+            changes: filled(original.len(), None)?,
+            edge_bounds,
+            projections,
+        })
+    }
+
+    fn points(&self, edge: usize) -> &[RoutePoint] {
+        self.changes[edge]
+            .as_deref()
+            .unwrap_or(&self.original[edge].points)
+    }
+
+    fn view(&self, edge: usize) -> RouteView<'_> {
+        RouteView {
+            points: self.points(edge),
+            projection: &self.projections[edge],
+        }
+    }
+
+    fn replace(&mut self, edge: usize, candidate: Candidate) {
+        self.edge_bounds[edge] = candidate.bounds;
+        self.projections[edge] = candidate.projection;
+        self.changes[edge] = Some(candidate.points);
+    }
+
+    fn quality(
+        &self,
+        edge: usize,
+        bounds: Bounds,
+        route: RouteView<'_>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Quality> {
+        let mut quality = route.projection.shape;
+        work.visit(self.edge_bounds.len() - 1)?;
+        for (other, &peer_bounds) in self.edge_bounds.iter().enumerate() {
+            if other != edge && bounds.overlaps(peer_bounds) {
+                let (crossings, overlaps) = intersections(route, self.view(other), work)?;
+                quality.crossings += crossings;
+                quality.overlaps += overlaps;
+            }
+        }
+        Ok(quality)
+    }
+}
+
+struct Candidate {
+    points: Vec<RoutePoint>,
+    bounds: Bounds,
+    projection: Projection,
+}
+
+impl Candidate {
+    fn new(points: Vec<RoutePoint>, work: &mut Work<'_>) -> LayoutResult<Self> {
+        let (bounds, projection) = Projection::new(&points, work)?;
+        Ok(Self {
+            points,
+            bounds,
+            projection,
+        })
+    }
+
+    fn view(&self) -> RouteView<'_> {
+        RouteView {
+            points: &self.points,
+            projection: &self.projection,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RouteView<'a> {
+    points: &'a [RoutePoint],
+    projection: &'a Projection,
+}
+
+#[derive(Clone, Copy)]
+enum ProjectedLeg {
+    Orthogonal(OrthoSegment),
+    Diagonal,
+    Point,
+}
+
+struct Projection {
+    legs: ProjectedLegs,
+    shape: Quality,
+}
+
+const INLINE_LEGS: usize = 8;
+
+enum ProjectedLegs {
+    Inline {
+        data: [ProjectedLeg; INLINE_LEGS],
+        len: usize,
+    },
+    Long(Vec<ProjectedLeg>),
+}
+
+impl ProjectedLegs {
+    fn new(len: usize) -> LayoutResult<Self> {
+        if len <= INLINE_LEGS {
+            Ok(Self::Inline {
+                data: [ProjectedLeg::Point; INLINE_LEGS],
+                len,
+            })
         } else {
-            quality.bends += 2;
-            quality.length += (a.x - b.x).abs() + (a.y - b.y).abs();
-            previous = None;
+            Ok(Self::Long(reserved(len)?))
         }
     }
-    for (other, geometry) in drawing.edges.iter().enumerate().filter(|(i, _)| *i != edge) {
-        let peers = changes[other].as_deref().unwrap_or(&geometry.points);
-        let (crossings, overlaps) = intersections(points, peers, work)?;
-        quality.crossings += crossings;
-        quality.overlaps += overlaps;
+
+    fn store(&mut self, index: usize, leg: ProjectedLeg) {
+        match self {
+            Self::Inline { data, .. } => data[index] = leg,
+            Self::Long(legs) => legs.push(leg),
+        }
     }
-    Ok(quality)
+
+    fn as_slice(&self) -> &[ProjectedLeg] {
+        match self {
+            Self::Inline { data, len } => &data[..*len],
+            Self::Long(legs) => legs,
+        }
+    }
+}
+
+impl Projection {
+    fn new(points: &[RoutePoint], work: &mut Work<'_>) -> LayoutResult<(Bounds, Self)> {
+        let mut bounds = Bounds {
+            x: [f64::INFINITY, f64::NEG_INFINITY],
+            y: [f64::INFINITY, f64::NEG_INFINITY],
+        };
+        let mut legs = ProjectedLegs::new(points.len().saturating_sub(1))?;
+        let mut shape = Quality::default();
+        let mut previous = None;
+        work.visit(1)?;
+        if let Some(&first) = points.first() {
+            bounds.include(point(first));
+        }
+        for (index, pair) in points.windows(2).enumerate() {
+            work.visit(1)?;
+            let [a, b] = [pair[0], pair[1]];
+            bounds.include(point(b));
+            let leg = if point(a) == point(b) {
+                ProjectedLeg::Point
+            } else if let Some(line) = OrthoSegment::between(a, b) {
+                let direction = (line.axis, a.x < b.x || a.y < b.y);
+                shape.bends += usize::from(previous.is_some_and(|prior| prior != direction));
+                previous = Some(direction);
+                shape.length += line.max - line.min;
+                ProjectedLeg::Orthogonal(line)
+            } else {
+                shape.bends += 2;
+                shape.length += (a.x - b.x).abs() + (a.y - b.y).abs();
+                previous = None;
+                ProjectedLeg::Diagonal
+            };
+            legs.store(index, leg);
+        }
+        Ok((bounds, Self { legs, shape }))
+    }
 }
 
 fn intersections(
-    points: &[RoutePoint],
-    peers: &[RoutePoint],
+    a: RouteView<'_>,
+    b: RouteView<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<(u64, usize)> {
+    const BATCH: usize = 128;
+    let peer_legs = b.projection.legs.as_slice();
+    if peer_legs.is_empty() {
+        return Ok((0, 0));
+    }
     let mut crossed = false;
     let mut overlaps = 0;
-    for a in points.windows(2) {
-        let main = OrthoSegment::between(a[0], a[1]);
-        for b in peers.windows(2) {
-            work.visit(1)?;
-            crossed |= crosses(a, b);
-            if let (Some(a), Some(b)) = (main, OrthoSegment::between(b[0], b[1]))
-                && a.axis == b.axis
-                && a.fixed == b.fixed
-                && a.min.max(b.min) < a.max.min(b.max)
-            {
-                overlaps += 1;
+    for (i, &main) in a.projection.legs.as_slice().iter().enumerate() {
+        for (chunk, peers) in peer_legs.chunks(BATCH).enumerate() {
+            work.visit(peers.len())?;
+            for (j, &peer) in peers.iter().enumerate() {
+                let may_cross = match (main, peer) {
+                    (ProjectedLeg::Orthogonal(a), ProjectedLeg::Orthogonal(b))
+                        if a.axis == b.axis =>
+                    {
+                        overlaps +=
+                            usize::from(a.fixed == b.fixed && a.min < b.max && b.min < a.max);
+                        false
+                    }
+                    (ProjectedLeg::Orthogonal(a), ProjectedLeg::Orthogonal(b)) => {
+                        !crossed
+                            && a.min < b.fixed
+                            && b.fixed < a.max
+                            && b.min < a.fixed
+                            && a.fixed < b.max
+                    }
+                    (ProjectedLeg::Point, _) | (_, ProjectedLeg::Point) => false,
+                    _ => !crossed,
+                };
+                if may_cross {
+                    // Keep the orientation test for candidates, including diagonal legs and
+                    // coordinates whose products can underflow.
+                    let j = chunk * BATCH + j;
+                    crossed = crosses(&a.points[i..i + 2], &b.points[j..j + 2]);
+                }
             }
         }
     }

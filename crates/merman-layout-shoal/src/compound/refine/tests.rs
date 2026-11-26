@@ -59,6 +59,18 @@ fn probe_at_cubic_quarter(controls: [(f64, f64); 4]) -> [(f64, f64); 2] {
     [(x - 1., y), (x + 1., y)]
 }
 
+fn curved_chords(out: &LayoutOutput) -> Vec<[Point; 2]> {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut centerlines = trace(out, RoutingStyle::Curved, &mut work).unwrap();
+    let mut chords = Vec::new();
+    for index in 0..centerlines.primitives.len() {
+        centerlines.expand(index, &mut work).unwrap();
+        chords.extend(centerlines.points(index).windows(2).map(|p| [p[0], p[1]]));
+    }
+    chords
+}
+
 #[test]
 fn offset_legs_follow_the_arrival_axis_and_distinguish_all_three_styles() {
     let styles = [
@@ -122,16 +134,11 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
         &[(0., 0.), (0., 360.), (4., 360.), (4., 374.)],
         Axis::Vertical,
     )]);
-    let banana_pieces = flatten(
-        &banana,
-        RoutingStyle::Curved,
-        &mut Work::new(&mut NoopWorkControl),
-    )
-    .unwrap();
+    let banana_pieces = curved_chords(&banana);
     assert!(
         banana_pieces
             .iter()
-            .any(|p| p.from.x == 0. && p.to.x == 0. && p.to.y - p.from.y >= 350.),
+            .any(|[from, to]| from.x == 0. && to.x == 0. && to.y - from.y >= 350.),
         "long straight leg must not bow into a banana arc"
     );
 
@@ -139,18 +146,13 @@ fn curved_corners_share_their_leg_and_ignore_redundant_straight_knots() {
         &[(0., 0.), (0., 100.), (100., 100.), (100., 200.)],
         Axis::Vertical,
     )]);
-    let pieces = flatten(
-        &out,
-        RoutingStyle::Curved,
-        &mut Work::new(&mut NoopWorkControl),
-    )
-    .unwrap();
+    let pieces = curved_chords(&out);
     assert!(pieces.len() <= 2 * MAX_CURVE_CHORDS + 3);
-    assert!(pieces.windows(2).all(|pair| pair[0].to == pair[1].from));
+    assert!(pieces.windows(2).all(|pair| pair[0][1] == pair[1][0]));
     assert!(
         pieces
             .iter()
-            .any(|piece| piece.from.y == 100. && piece.to.y == 100. && piece.from.x < piece.to.x)
+            .any(|[from, to]| from.y == 100. && to.y == 100. && from.x < to.x)
     );
 }
 
@@ -190,6 +192,63 @@ fn a_curved_route_keeps_the_painted_group_border_stitch() {
     ]);
     out.edges[1] = route(&quarter, Axis::Horizontal);
     assert_eq!(count(&graph, &out, RoutingStyle::Curved), 0);
+}
+
+#[test]
+fn curved_crossings_follow_adjacent_chords_at_a_sample_or_stitch() {
+    let probe = route(&[(2048., 2040.), (2048., 2056.)], Axis::Vertical);
+    let (mut graph, mut out) = drawing(vec![
+        route(&[(0., 0.), (4096., 4096.)], Axis::Vertical),
+        probe.clone(),
+    ]);
+    // The middle of this symmetric sweep is a sampled vertex.
+    assert_eq!(count(&graph, &out, RoutingStyle::Curved), 1);
+    graph.edges[1].source = graph.edges[0].source;
+    out.nodes[0].x = 2048.;
+    out.nodes[0].y = 2048.;
+    assert_eq!(count(&graph, &out, RoutingStyle::Curved), 0);
+
+    out.nodes[0] = Rect::default();
+    graph.groups.push(GroupSpec::new(0));
+    out.groups.push(GroupGeometry {
+        parent: None,
+        rect: Rect::default(),
+        title_center: None,
+        title_struck: false,
+        effective_direction: Direction::Down,
+    });
+    out.border_stitches.push(BorderStitch {
+        edge: EdgeId(0),
+        point: 1,
+        group: GroupId(0),
+        side: Side::Bottom,
+    });
+    for (end, expected) in [((4096., 4096.), 1), ((0., 4096.), 0)] {
+        let path = [(0., 0.), (2048., 2048.), end];
+        out.edges[0] = route(&path, Axis::Vertical);
+        assert_eq!(count(&graph, &out, RoutingStyle::Curved), expected);
+        out.edges[0].points.reverse();
+        assert_eq!(count(&graph, &out, RoutingStyle::Curved), expected);
+    }
+}
+
+#[test]
+fn common_sweep_controls_with_different_chord_counts_can_cross() {
+    let threshold = 1600. / 3.;
+    for axis in [Axis::Vertical, Axis::Horizontal] {
+        let edges = [threshold - 0.01, threshold + 0.01].map(|end| {
+            let end = match axis {
+                Axis::Vertical => (end, 40.),
+                Axis::Horizontal => (40., end),
+            };
+            route(&[(0., 0.), end], axis)
+        });
+        for order in [[0, 1], [1, 0]] {
+            let (graph, out) = drawing(order.map(|i| edges[i].clone()).into());
+            // The continuous sweeps are ordered, but their 40- and 41-chord interpolants cross.
+            assert_eq!(count(&graph, &out, RoutingStyle::Curved), 1);
+        }
+    }
 }
 
 #[test]
@@ -298,10 +357,16 @@ fn y_bands_count_different_edge_occurrences_and_bound_long_span_replication() {
     assert_eq!(count(&graph, &out, RoutingStyle::Polyline), 40 * 40);
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
-    let pieces = flatten(&out, RoutingStyle::Polyline, &mut work).unwrap();
-    let bands = Bands::build(&pieces, &mut work).unwrap().unwrap();
+    assert_eq!(
+        count_crossings(&graph, &out, RoutingStyle::Polyline, 2, &mut work),
+        Ok(2)
+    );
+    let centerlines = trace(&out, RoutingStyle::Polyline, &mut work).unwrap();
+    let bands = Bands::build(&centerlines.primitives, &mut work)
+        .unwrap()
+        .unwrap();
     assert!(bands.bins.len() > 1);
-    assert!(bands.bins.iter().map(Vec::len).sum::<usize>() <= 3 * pieces.len());
+    assert!(bands.bins.iter().map(Vec::len).sum::<usize>() <= 3 * centerlines.primitives.len());
 }
 
 #[test]
@@ -351,6 +416,67 @@ impl WorkControl for Budget {
     }
 }
 
+fn count_with_budget(
+    graph: &Graph,
+    out: &LayoutOutput,
+    style: RoutingStyle,
+    remaining: usize,
+) -> LayoutResult<u64> {
+    let mut budget = Budget { remaining };
+    let mut work = Work::new(&mut budget);
+    let count = crossings(graph, out, style, &mut work)?;
+    work.finish()?;
+    Ok(count)
+}
+
+#[test]
+fn disjoint_curve_envelopes_do_not_need_chords() {
+    let edges = 256;
+    let (graph, out) = drawing(
+        (0..edges)
+            .map(|index| {
+                let x = 8192. * index as f64;
+                route(&[(x, 0.), (x + 4096., 4096.)], Axis::Vertical)
+            })
+            .collect(),
+    );
+    assert_eq!(
+        count_with_budget(&graph, &out, RoutingStyle::Curved, edges * 64),
+        Ok(0)
+    );
+}
+
+#[test]
+fn overlapping_curve_envelopes_fit_a_linear_chord_budget_per_pair() {
+    let edges = 32;
+    let (graph, out) = drawing(
+        (0..edges)
+            .map(|index| {
+                let x = 32. * index as f64;
+                let mut edge = route(&[(x, 0.), (x + 4096., 4096.)], Axis::Vertical);
+                if index % 2 == 1 {
+                    edge.points.reverse();
+                }
+                edge
+            })
+            .collect(),
+    );
+    let pairs = edges * (edges - 1) / 2;
+    assert_eq!(
+        count_with_budget(
+            &graph,
+            &out,
+            RoutingStyle::Curved,
+            6 * MAX_CURVE_CHORDS * pairs,
+        ),
+        Ok(0)
+    );
+    assert_eq!(
+        count_with_budget(&graph, &out, RoutingStyle::Curved, edges * 64),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+}
+
 #[test]
 fn disjoint_intervals_have_a_subquadratic_budget_and_dense_queries_can_be_interrupted() {
     let count = 512;
@@ -363,11 +489,7 @@ fn disjoint_intervals_have_a_subquadratic_budget_and_dense_queries_can_be_interr
             .collect(),
     );
     let evaluate = |out: &LayoutOutput, remaining| {
-        let mut budget = Budget { remaining };
-        let mut work = Work::new(&mut budget);
-        let count = crossings(&graph, out, RoutingStyle::Polyline, &mut work)?;
-        work.finish()?;
-        Ok(count)
+        count_with_budget(&graph, out, RoutingStyle::Polyline, remaining)
     };
     assert_eq!(evaluate(&out, count * 64), Ok(0));
     for (index, edge) in out.edges.iter_mut().enumerate() {

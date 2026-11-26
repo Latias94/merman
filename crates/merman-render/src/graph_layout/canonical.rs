@@ -252,9 +252,10 @@ impl CanonicalRoutes {
             route_paint::marker_lead(contacts.0, route.sides.0, route.markers.0);
         let (end_ref, end_lead) =
             route_paint::marker_lead(contacts.1, route.sides.1, route.markers.1);
-        let clearance = if style == RouteStyle::Curved
-            && route.corridor_clearance > stroke_outset
-            && stitches.is_empty()
+        let clearance = if !matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_))
+            || (style == RouteStyle::Curved
+                && route.corridor_clearance > stroke_outset
+                && stitches.is_empty())
         {
             None
         } else {

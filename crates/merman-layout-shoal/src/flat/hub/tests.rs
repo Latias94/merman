@@ -292,6 +292,308 @@ fn sparse_hubs_spread_within_the_wall_query_budget() {
 }
 
 #[test]
+fn interrupted_spread_restores_earlier_runs_before_retrying_with_the_same_scratch() {
+    let graph = measured_fan(Direction::Down, 16, true, false);
+    let options = Options::default();
+    let (c, original) = initial(&graph, &options);
+    let mut drawing = Drawing {
+        nodes: original.nodes.clone(),
+        edges: original.edges.clone(),
+    };
+    let mut scratch = HubScratch::default();
+    let mut meter = Meter::default();
+    spread_with_scratch(
+        &mut drawing,
+        &c,
+        &graph,
+        &options,
+        &mut scratch,
+        &mut Work::new(&mut meter),
+    )
+    .unwrap();
+    let expected = std::mem::replace(&mut drawing.edges, original.edges.clone());
+    assert_ne!(expected[..16], original.edges[..16]);
+    assert_ne!(expected[16..], original.edges[16..]);
+
+    meter.budget = Some(meter.total - 1);
+    meter.total = 0;
+    assert!(matches!(
+        spread_with_scratch(
+            &mut drawing,
+            &c,
+            &graph,
+            &options,
+            &mut scratch,
+            &mut Work::new(&mut meter),
+        ),
+        Err(crate::LayoutError::Work(WorkError::Interrupted))
+    ));
+    assert_eq!(drawing.edges, original.edges);
+
+    spread_with_scratch(
+        &mut drawing,
+        &c,
+        &graph,
+        &options,
+        &mut scratch,
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert_eq!(drawing.edges, expected);
+}
+
+fn separated_routes(count: u32) -> (Graph, Drawing) {
+    let mut graph = Graph::default();
+    let mut drawing = Drawing::default();
+    for i in 0..count {
+        let mut spec = EdgeSpec::new(NodeId(0).into(), NodeId(1).into());
+        spec.start_marker = MarkerMetrics {
+            length: 3.0,
+            width: 2.0,
+        };
+        spec.end_marker = spec.start_marker;
+        graph.edges.push(spec);
+        let x = f64::from(i) * 40.0;
+        drawing.edges.push((
+            i,
+            EdgeGeometry {
+                points: vec![
+                    RoutePoint::new(x, 0.0, Axis::Vertical),
+                    RoutePoint::new(x, 40.0, Axis::Vertical),
+                ],
+                ports: (Side::Bottom, Side::Top),
+                label_center: None,
+                start_label_center: None,
+                end_label_center: None,
+                corridor_clearance: 2.0,
+                shared_bus: false,
+                reversed_for_ranking: false,
+            },
+        ));
+    }
+    (graph, drawing)
+}
+
+fn shifted_contact(graph: &Graph, drawing: &Drawing, edge: usize, end: End, x: f64) -> Edit {
+    let (id, route) = &drawing.edges[edge];
+    let contact = point(end.point(&route.points, 0));
+    let peer = point(end.peer().point(&route.points, 0));
+    let at = Point { x, ..contact };
+    let guard = Point {
+        x,
+        y: at.y + 6.0 * end.outer_y(),
+    };
+    let fixed = Point {
+        y: at.y + 12.0 * end.outer_y(),
+        ..contact
+    };
+    let mut points = [at, guard, fixed, peer]
+        .map(|p| RoutePoint::new(p.x, p.y, Axis::Vertical))
+        .to_vec();
+    if end == End::Target {
+        points.reverse();
+    }
+    Edit {
+        side: end.face(),
+        body: [Bounds::between(at, guard), Bounds::between(guard, fixed)],
+        retained: Bounds::between(fixed, peer),
+        envelope: Bounds::path(&points),
+        mark: marker(at, end.face(), end.marker(&graph.edges[*id as usize])),
+        points,
+    }
+}
+
+fn linear_allows(graph: &Graph, drawing: &Drawing, moved: End, proposed: &[(usize, Edit)]) -> bool {
+    for (edge, edit) in proposed {
+        for (i, (id, route)) in drawing.edges.iter().enumerate() {
+            let patch = proposed.iter().find(|(edge, _)| *edge == i);
+            for end in End::BOTH {
+                if i == *edge && end == moved {
+                    continue;
+                }
+                let bounds = match patch {
+                    Some((_, other)) if end == moved => other.mark,
+                    _ => marker(
+                        point(end.point(&route.points, 0)),
+                        end.side(route),
+                        end.marker(&graph.edges[*id as usize]),
+                    ),
+                };
+                if bounds.is_some_and(|bounds| edit.blocked_by(bounds)) {
+                    return false;
+                }
+            }
+            if i != *edge
+                && let Some(mark) = edit.mark
+                && match patch {
+                    Some((_, other)) => {
+                        other.retained.overlaps_strictly(mark)
+                            || other.body.iter().any(|part| part.overlaps_strictly(mark))
+                    }
+                    None => Bounds::path(&route.points).overlaps_strictly(mark),
+                }
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[test]
+fn proposals_match_linear_clearance_for_replaced_parts_and_strict_marker_contact() {
+    let (graph, drawing) = separated_routes(20);
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut proof = Clearance::new(&drawing, &graph, &mut work).unwrap();
+    proof.remaining = usize::MAX;
+    for end in End::BOTH {
+        for count in [2, 10] {
+            for (x, expected) in [(0.0, true), (4.0, true), (8.0, false), (10.0, true)] {
+                // x=0 uses the old contact. x=4 lies between the first edit's protected
+                // parts. At x=8 the markers overlap, and at x=10 they touch at the edge.
+                let proposed = (0..count)
+                    .map(|i| {
+                        let x = match i {
+                            0 => 8.0,
+                            1 => x,
+                            _ => i as f64 * 40.0 + 4.0,
+                        };
+                        (i, shifted_contact(&graph, &drawing, i, end, x))
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(linear_allows(&graph, &drawing, end, &proposed), expected);
+                assert_eq!(proof.allows(end, &proposed, &mut work), Ok(expected));
+            }
+        }
+    }
+
+    // The unchanged peer marker still protects this edge, even without a moved marker.
+    let mut proposed = [(0, shifted_contact(&graph, &drawing, 0, End::Source, 8.0))];
+    proposed[0].1.mark = None;
+    for (x, expected) in [(1.0, true), (0.5, false)] {
+        let p = Point { x, y: 38.0 };
+        proposed[0].1.body[0] = Bounds::between(p, p);
+        assert_eq!(
+            linear_allows(&graph, &drawing, End::Source, &proposed),
+            expected
+        );
+        assert_eq!(
+            proof.allows(End::Source, &proposed, &mut work),
+            Ok(expected)
+        );
+    }
+}
+
+#[test]
+fn successive_runs_replace_cached_bounds_and_preserve_the_other_end() {
+    let (mut graph, mut drawing) = separated_routes(32);
+    graph.edges[1].start_marker.width = 0.0;
+    graph.edges[1].end_marker.width = 0.0;
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut proof = Clearance::new(&drawing, &graph, &mut work).unwrap();
+    let mut saved = Vec::new();
+    let check =
+        |proof: &mut Clearance, drawing: &Drawing, work: &mut Work<'_>, end, edge, x, expected| {
+            let trial = [(edge, shifted_contact(&graph, drawing, edge, end, x))];
+            assert_eq!(linear_allows(&graph, drawing, end, &trial), expected);
+            assert_eq!(proof.allows(end, &trial, work), Ok(expected));
+        };
+    check(&mut proof, &drawing, &mut work, End::Source, 1, 0.0, false);
+    check(&mut proof, &drawing, &mut work, End::Source, 2, 4.0, true);
+
+    for (end, edges) in [
+        (End::Source, 0..1),
+        (End::Target, 0..1),
+        (End::Source, 4..10),
+    ] {
+        let mut proposed = edges
+            .map(|i| {
+                let x = i as f64 * 40.0 + 8.0;
+                (i, shifted_contact(&graph, &drawing, i, end, x))
+            })
+            .collect::<Vec<_>>();
+        assert!(proof.allows(end, &proposed, &mut work).unwrap());
+        proof
+            .accept(end, &mut proposed, &mut drawing, &mut saved, &mut work)
+            .unwrap();
+
+        check(&mut proof, &drawing, &mut work, End::Source, 1, 0.0, true);
+        check(&mut proof, &drawing, &mut work, End::Source, 1, 8.0, false);
+        check(&mut proof, &drawing, &mut work, End::Source, 2, 4.0, false);
+    }
+    check(&mut proof, &drawing, &mut work, End::Target, 1, 8.0, false);
+    assert!(proof.changed.is_empty());
+}
+
+#[test]
+fn clearance_checks_proposal_indices_and_rejects_an_incomplete_walk() {
+    let (graph, drawing) = separated_routes(16);
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut proof = Clearance::new(&drawing, &graph, &mut work).unwrap();
+    for edges in [[1, 0], [0, 0], [0, drawing.edges.len()]] {
+        let bad = edges.map(|i| (i, shifted_contact(&graph, &drawing, 0, End::Source, 4.0)));
+        assert!(matches!(
+            proof.allows(End::Source, &bad, &mut work),
+            Err(LayoutError::InvalidInput(_))
+        ));
+    }
+    let proposed = [(0, shifted_contact(&graph, &drawing, 0, End::Source, 4.0))];
+    assert!(proof.allows(End::Source, &proposed, &mut work).unwrap());
+    proof.remaining = 3;
+    assert!(!proof.allows(End::Source, &proposed, &mut work).unwrap());
+    assert_eq!(proof.remaining, 0);
+}
+
+#[test]
+fn sparse_clearance_queries_use_subquadratic_work() {
+    let mut previous = None;
+    for count in [128, 512, 2048] {
+        let (graph, drawing) = separated_routes(count);
+        let mut proof =
+            Clearance::new(&drawing, &graph, &mut Work::new(&mut NoopWorkControl)).unwrap();
+        let proposed = (0..count)
+            .step_by(4)
+            .map(|i| {
+                let x = f64::from(i) * 40.0 + 4.0;
+                (
+                    i as usize,
+                    shifted_contact(&graph, &drawing, i as usize, End::Source, x),
+                )
+            })
+            .collect::<Vec<_>>();
+        let remaining = proof.remaining;
+        let mut meter = Meter::default();
+        let mut work = Work::new(&mut meter);
+        assert!(proof.allows(End::Source, &proposed, &mut work).unwrap());
+        work.finish().unwrap();
+        let visits = remaining - proof.remaining;
+        if let Some((old_visits, old_total)) = previous {
+            assert!(
+                visits < old_visits * 8,
+                "{count} routes took {visits} visits"
+            );
+            assert!(
+                meter.total < old_total * 8,
+                "{count} routes took {} units",
+                meter.total
+            );
+        }
+        let linear_visits = drawing.edges.len() * proposed.len();
+        assert!(
+            visits < linear_visits,
+            "{count} routes took {visits} visits"
+        );
+        if count == 2048 {
+            assert!(visits < linear_visits / 8);
+        }
+        previous = Some((visits, meter.total));
+    }
+}
+
+#[test]
 fn wall_queries_distinguish_strict_overlap_from_contact_at_the_boundary() {
     let walls = (0..113)
         .map(|index| {
@@ -319,7 +621,9 @@ fn wall_queries_distinguish_strict_overlap_from_contact_at_the_boundary() {
     let mut work = Work::new(&mut control);
     let mut clearance = Clearance {
         walls: Bvh::from_bounds(walls.clone(), &mut work).unwrap(),
-        strokes: Vec::new(),
+        index: RouteIndex::new(std::iter::empty(), &mut work).unwrap(),
+        routes: Vec::new(),
+        changed: Vec::new(),
         remaining: walls.len() * CLEARANCE_PASSES,
     };
     assert!(!clearance.allows_walls(&edit, &mut work).unwrap());

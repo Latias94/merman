@@ -57,9 +57,8 @@ pub fn layout_with_control(
 
 /// Lays out a graph in input order and returns its geometry without statistics.
 ///
-/// The solver can omit routed crossing counts for flat, natural-width layouts without
-/// editor hints, rank capture, component reuse or orthogonal routing. It still computes
-/// counts when needed to select geometry. Work limits and cancellation apply throughout.
+/// The solver can omit routed crossing counts when no layout decision uses them.
+/// Work limits and cancellation apply throughout.
 pub fn layout_geometry_with_control(
     graph: &Graph,
     options: &Options,
@@ -69,6 +68,7 @@ pub fn layout_geometry_with_control(
     layout_impl(graph, options, scratch, control, LayoutDetail::Geometry).map(LayoutGeometry::from)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum LayoutDetail {
     Full,
     Geometry,
@@ -113,7 +113,10 @@ fn layout_impl(
                 None,
             )
         }
-        WidthPolicy::Natural => (solve(graph, options, frame.expanded, &mut work)?, None),
+        WidthPolicy::Natural => (
+            solve(graph, options, frame.expanded, detail, &mut work)?,
+            None,
+        ),
         WidthPolicy::FitWidth { .. } => {
             let (drawing, trial) = adaptive::run(graph, options, frame.expanded, &mut work)?;
             (drawing, Some(trial))
@@ -135,7 +138,14 @@ fn layout_impl(
             }
             match width_trial {
                 Some(trial) => trial.replay(&mut reference, frame.expanded, work),
-                None => solve(&reference, options, frame.expanded, work).map(Some),
+                None => solve(
+                    &reference,
+                    options,
+                    frame.expanded,
+                    LayoutDetail::Full,
+                    work,
+                )
+                .map(Some),
             }
         });
         match comparison {
@@ -175,11 +185,12 @@ fn solve(
     graph: &Graph,
     options: &Options,
     expanded: &mut flat::Expanded,
+    detail: LayoutDetail,
     work: &mut work::Work<'_>,
 ) -> Result<LayoutOutput, LayoutError> {
     if graph.groups.is_empty() && graph.lane_order.is_empty() {
         flat::run(graph, options, expanded, work)
     } else {
-        compound::run(graph, options, expanded, work)
+        compound::run(graph, options, expanded, detail, work)
     }
 }

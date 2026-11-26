@@ -14,7 +14,7 @@ mod tests;
 
 use crate::flat::Expanded;
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{Endpoint, Graph, LayoutOutput, Options, Side, WorkError};
+use crate::{Endpoint, Graph, LayoutDetail, LayoutOutput, Options, RoutingStyle, Side, WorkError};
 use hierarchy::Hierarchy;
 use solve::Frame;
 
@@ -54,6 +54,7 @@ impl Frames {
         ctx: &Pass<'_>,
         previous: Option<&Pass<'_>>,
         expanded: &mut Expanded,
+        crossing_limit: Option<u64>,
         work: &mut Work<'_>,
     ) -> LayoutResult<LayoutOutput> {
         let mut remaining = ctx.options.caps.max_dummies;
@@ -98,8 +99,16 @@ impl Frames {
                 .ok_or(WorkError::ArithmeticOverflow)?;
         }
         let mut result = assemble::drawing(ctx, &self.levels, work)?;
-        result.stats.routed_crossings =
-            refine::crossings(ctx.graph, &result, ctx.options.routing, work)?;
+        // Optional seam edits borrow their allowance from the work already spent.
+        let crossing_limit = crossing_limit.or_else(|| {
+            (work.editor_choice
+                || (ctx.hierarchy.lanes.is_none() && seam_relax::eligible(ctx.options, &result)))
+            .then_some(u64::MAX)
+        });
+        if let Some(limit) = crossing_limit {
+            result.stats.routed_crossings =
+                refine::count_crossings(ctx.graph, &result, ctx.options.routing, limit, work)?;
+        }
         Ok(result)
     }
 }
@@ -108,11 +117,15 @@ pub(super) fn run(
     graph: &Graph,
     options: &Options,
     expanded: &mut Expanded,
+    detail: LayoutDetail,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
     let hierarchy = hierarchy::build(graph, options, work)?;
     let sides = sides::assign(graph, &hierarchy, options, work)?;
-    let ordered = if hierarchy.lanes.is_none() {
+    let order_ports = hierarchy.lanes.is_none()
+        && (2..=options.caps.max_ordered_compound_ports).contains(&hierarchy.borders.len())
+        && graph.edges.len() <= options.caps.max_ordered_compound_edges;
+    let ordered = if order_ports {
         pre_order::ordered(graph, &hierarchy, options, &sides, expanded, work)?
     } else {
         None
@@ -143,15 +156,19 @@ pub(super) fn run(
         ..independent
     };
     let mut frames = Frames::new(hierarchy.levels.len())?;
+    let measure_crossings = detail == LayoutDetail::Full
+        || order_ports
+        || (options.routing == RoutingStyle::Orthogonal && options.global_orthogonal);
     let mut output = 'selected: {
-        let first_output = frames.draw(&first, None, expanded, work)?;
+        let first_output = frames.draw(
+            &first,
+            None,
+            expanded,
+            measure_crossings.then_some(u64::MAX),
+            work,
+        )?;
         let crossings = first_output.stats.routed_crossings;
-        if hierarchy.lanes.is_some()
-            || crossings == 0
-            || hierarchy.borders.len() < 2
-            || hierarchy.borders.len() > options.caps.max_ordered_compound_ports
-            || graph.edges.len() > options.caps.max_ordered_compound_edges
-        {
+        if !order_ports || crossings == 0 {
             break 'selected first_output;
         }
         let suggestions = refine::port_hints(&first, &first_output, work)?;
@@ -162,7 +179,8 @@ pub(super) fn run(
                     .saturating_add(h.flat_crossings / 2)
                     .saturating_add(4)
         }) {
-            let alternative = frames.draw(&independent, Some(&first), expanded, work)?;
+            let alternative =
+                frames.draw(&independent, Some(&first), expanded, Some(crossings), work)?;
             if alternative.stats.routed_crossings < crossings {
                 break 'selected alternative;
             }
@@ -173,7 +191,8 @@ pub(super) fn run(
                 ports: &ports,
                 ..first
             };
-            let alternative = frames.draw(&adjusted, Some(previous), expanded, work)?;
+            let alternative =
+                frames.draw(&adjusted, Some(previous), expanded, Some(crossings), work)?;
             if alternative.stats.routed_crossings < crossings {
                 break 'selected alternative;
             }

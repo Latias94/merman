@@ -4,8 +4,8 @@ use crate::flat::{self, Expanded};
 use crate::validate;
 use crate::work::{LayoutResult, Work, reserved};
 use crate::{
-    Direction, Graph, GroupSpec, LayoutError, LayoutOutput, Options, PackingPolicy, TitlePosition,
-    WidthPolicy,
+    Direction, Graph, GroupSpec, LayoutDetail, LayoutError, LayoutOutput, Options, PackingPolicy,
+    TitlePosition, WidthPolicy,
 };
 
 #[derive(Clone, Copy)]
@@ -32,7 +32,7 @@ impl WidthTrial {
         if let Some(max_width) = self.fold_at {
             flat::fold(graph, &self.options, expanded, max_width, work)
         } else {
-            crate::solve(graph, &self.options, expanded, work).map(Some)
+            crate::solve(graph, &self.options, expanded, LayoutDetail::Full, work).map(Some)
         }
     }
 }
@@ -63,7 +63,10 @@ pub(crate) fn run(
         tight_groups: false,
         fold_at: None,
     };
-    let mut best = (crate::solve(graph, &wrapped, expanded, work)?, original);
+    let solve = |graph: &Graph, options: &Options, expanded: &mut Expanded, work: &mut Work<'_>| {
+        crate::solve(graph, options, expanded, LayoutDetail::Full, work)
+    };
+    let mut best = (solve(graph, &wrapped, expanded, work)?, original);
     if best.0.bounds.width <= max_width {
         return Ok(best);
     }
@@ -72,11 +75,11 @@ pub(crate) fn run(
     tight.spacing.node *= 0.5;
     tight.spacing.rank *= 0.75;
     let compact = if graph.groups.is_empty() {
-        crate::solve(graph, &tight, expanded, work)
+        solve(graph, &tight, expanded, work)
     } else {
         let mut compact = copy_graph(graph, work)?;
         tighten_groups(&mut compact.groups, work)?;
-        crate::solve(&compact, &tight, expanded, work)
+        solve(&compact, &tight, expanded, work)
     };
     let compact_trial = WidthTrial {
         options: tight,
@@ -103,7 +106,7 @@ pub(crate) fn run(
         };
         let turned_kept = try_narrower(
             &mut best,
-            crate::solve(&turned, &wrapped, expanded, work),
+            solve(&turned, &wrapped, expanded, work),
             turn_trial,
         )?;
         if best.0.bounds.width <= max_width {
@@ -117,7 +120,7 @@ pub(crate) fn run(
         };
         let tight_turn_kept = try_narrower(
             &mut best,
-            crate::solve(&turned, &tight, expanded, work),
+            solve(&turned, &tight, expanded, work),
             tight_turn_trial,
         )?;
         if fold_wide_ranks && best.0.bounds.width > max_width {

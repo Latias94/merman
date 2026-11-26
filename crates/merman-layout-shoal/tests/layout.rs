@@ -1324,9 +1324,10 @@ fn caller_can_interrupt_at_admission_during_work_and_before_delivery() {
     let g = hubs(64);
     let options = Options::default();
     let (accepted, full) = measured(&g, &options);
-    let mut scratch = LayoutScratch::default();
     assert!(full.checks >= 6 && full.total > 0);
+    // Characterize checkpoint positions with the same allocation state as the baseline.
     for reject in [1, full.checks / 3, full.checks / 2, full.checks] {
+        let mut scratch = LayoutScratch::default();
         let mut meter = Meter {
             reject_check: Some(reject),
             ..Meter::default()
@@ -1340,6 +1341,7 @@ fn caller_can_interrupt_at_admission_during_work_and_before_delivery() {
             assert_eq!(meter.total, full.total);
         }
     }
+    let mut scratch = LayoutScratch::default();
     for budget in [
         0,
         full.total / 2,

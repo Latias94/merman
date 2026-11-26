@@ -289,7 +289,11 @@ impl Fenwick {
         let size = slots
             .checked_next_power_of_two()
             .ok_or(WorkError::ArithmeticOverflow)?;
-        work.charge(size)?;
+        if self.tree.capacity() < size {
+            work.charge(size)?;
+        } else {
+            work.visit(size)?;
+        }
         self.tree.clear();
         self.tree
             .try_reserve(size)

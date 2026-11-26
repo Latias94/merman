@@ -5,7 +5,7 @@ use super::layout::{
 };
 use super::{C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4TypographyThemePlan};
 use crate::graph_layout::Marker;
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalPaintScratch, CanonicalRoutes};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
@@ -265,8 +265,15 @@ pub(crate) fn layout_c4_shoal(
     let mut relations = Vec::with_capacity(relation_count);
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
+    let measure_ink_later = measure
+        .measurer
+        .builtin_operation_carrier(
+            crate::environment::TextMeasurementOperation::MermaidCalculateTextDimensions,
+        )
+        .is_some();
     for (ordinal, rel) in model.rels.iter().enumerate() {
-        let mut layout = measure_c4_relation(rel, ordinal, &model.c4_type, &measure)?;
+        let mut layout =
+            measure_c4_relation(rel, ordinal, &model.c4_type, &measure, measure_ink_later)?;
         let label = labels::RelationLabel::prepare(&mut layout, &measure)?;
         let (start, end) = super::c4_relation_markers(&rel.rel_type);
         graph.edges.push(MeasuredEdge {
@@ -376,6 +383,7 @@ pub(crate) fn layout_c4_shoal(
         max_y: solved.bounds.height,
     };
     let mut geometry = Vec::with_capacity(relation_count);
+    let mut paint_scratch = CanonicalPaintScratch::default();
     for ((rel, id), (edge, label)) in relations
         .iter_mut()
         .zip(ids)
@@ -402,12 +410,13 @@ pub(crate) fn layout_c4_shoal(
             end_marker: None,
             stroke_dasharray: None,
         };
-        let painted = routes.paint(
+        let painted = routes.paint_with_scratch(
             &edge,
             Vec2::ZERO,
             stroke_outset,
             route_style,
             execution.work_meter_ref(),
+            &mut paint_scratch,
         )?;
         let [start, .., end] = painted.data_points.as_slice() else {
             return Err(invalid("c4: missing canonical relation contacts"));

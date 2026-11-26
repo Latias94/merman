@@ -100,6 +100,10 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
 - Grid captions share a drawing-wide obstacle scene. C4 wraps long relationship captions, seats
   technology rows using measured text extents, and clips the relationship shaft behind its caption
   when they overlap.
+- Compound crossing comparisons index line and curve bounds before sampling overlapping curves.
+  Geometry-only solves skip the statistic when it cannot affect route selection. Orthogonal
+  refinement shares projected segments and route bounds, and the visibility router combines
+  cached scope events with the current terminal rays.
 - For Neo masking, the canonical Flowchart and Class painters measure lines and cubics in memory as
   they emit them, with the same integration tolerance and float conversion as SVG path parsing.
   Rounded paths and rewritten paths retain the SVG-based length calculation where needed.

@@ -9,8 +9,8 @@ use crate::Rect;
 use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Point,
-    PortSideHint, RoutePoint, RoutingStyle, Side, Size,
+    Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Options,
+    Point, PortSideHint, RoutePoint, RoutingStyle, Side, Size,
 };
 use projection::Lane;
 
@@ -837,19 +837,21 @@ fn slide_edits(
     Ok(edits)
 }
 
+pub(super) fn eligible(options: &Options, output: &LayoutOutput) -> bool {
+    let caps = options.caps;
+    options.routing == RoutingStyle::Curved
+        && output.truncated_routes.is_empty()
+        && output.groups.len() >= 2
+        && (2..=caps.max_ordered_compound_ports).contains(&output.border_stitches.len())
+        && output.edges.len() <= caps.max_ordered_compound_edges
+}
+
 pub(super) fn relax(
     ctx: &Pass<'_>,
     output: &mut LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let caps = ctx.options.caps;
-    if ctx.options.routing != RoutingStyle::Curved
-        || !output.truncated_routes.is_empty()
-        || output.groups.len() < 2
-        || output.border_stitches.len() < 2
-        || output.border_stitches.len() > caps.max_ordered_compound_ports
-        || output.edges.len() > caps.max_ordered_compound_edges
-    {
+    if !eligible(ctx.options, output) {
         return Ok(());
     }
     let fixed = match work.compare(|trial| fixed_edits(ctx, output, trial)) {

@@ -613,11 +613,19 @@ fn budget_and_mid_search_cancellation_leave_the_input_reusable() {
     let used = usize::MAX - meter.remaining;
     let result = g.layers.clone();
     assert_ne!(original, result);
-    for (remaining, cancel_at) in [
-        (used - 1, 0),
-        (used, meter.checks / 2),
-        (used, meter.checks),
-    ] {
+    // Reused Fenwick storage may batch visits without a separate allocation checkpoint.
+    g.layers.clone_from(&original);
+    let mut warm = Meter {
+        remaining: used,
+        checks: 0,
+        cancel_at: 0,
+    };
+    assert_eq!(
+        reduce(&mut g, &nodes, &options, &mut Work::new(&mut warm)),
+        Ok(count)
+    );
+    assert_eq!(warm.remaining, 0);
+    for (remaining, cancel_at) in [(used - 1, 0), (used, warm.checks / 2), (used, warm.checks)] {
         g.layers.clone_from(&original);
         let mut control = Meter {
             remaining,

@@ -160,23 +160,26 @@ fn relation_ink(
     technology: bool,
     ctx: &C4Measurement<'_>,
 ) -> Result<Option<Rect>> {
-    let mut style = font.measurement_style.clone();
     let size = font.css_font_size_px.expect("C4 relationship font size");
-    let mut bracketed = String::new();
-    if technology {
-        style.font_style = Some("italic".into());
+    let mut italic_style;
+    let bracketed;
+    let (text, style) = if technology {
+        italic_style = font.measurement_style.clone();
+        italic_style.font_style = Some("italic".into());
         ctx.work.charge(block.text.len())?;
         bracketed = format!("[{}]", block.text);
-    }
-    let text = if technology { &bracketed } else { &block.text };
-    let mut ink = text_ink(text, 0.0, size, &style, ctx)?;
+        (&bracketed, &italic_style)
+    } else {
+        (&block.text, &font.measurement_style)
+    };
+    let mut ink = text_ink(text, 0.0, size, style, ctx)?;
     if ctx.conf.wrap
         && block.line_count == 1
         && ink.is_some_and(|ink| ink.width() > RELATION_WRAP_WIDTH)
     {
         let wrapped = try_measure_wrapped_text(
             text,
-            &style,
+            style,
             Some(RELATION_WRAP_WIDTH),
             WrapMode::SvgLikeSingleRun,
             size,
@@ -193,7 +196,7 @@ fn relation_ink(
         }
         block.line_count = wrapped.lines.len();
         let wrapped = wrapped.lines.join("<br/>");
-        ink = text_ink(&wrapped, 0.0, size, &style, ctx)?;
+        ink = text_ink(&wrapped, 0.0, size, style, ctx)?;
         block.text = if technology {
             wrapped
                 .strip_prefix('[')
@@ -251,7 +254,13 @@ fn text_ink(
         return Ok(None);
     }
     ctx.work.charge(text.len())?;
-    let rows = split_mermaid_common_br_lines(text);
+    let split;
+    let rows = if text.contains('<') {
+        split = split_mermaid_common_br_lines(text);
+        split.as_slice()
+    } else {
+        std::slice::from_ref(&text)
+    };
     let mut ink = None;
     for (row, content) in rows.iter().enumerate() {
         ctx.work.charge(content.len().saturating_add(1))?;
