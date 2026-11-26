@@ -369,7 +369,9 @@ fn flowchart_neo_edge_path_length(
     }
 }
 
-fn flowchart_neo_marker_mask_offset(arrow_type: Option<&str>) -> f64 {
+pub(in crate::svg::parity::flowchart) fn flowchart_neo_marker_mask_offset(
+    arrow_type: Option<&str>,
+) -> f64 {
     match arrow_type {
         Some("arrow_point" | "arrow_open_head") => 4.0,
         Some("arrow_hollow_circle") => 8.0,

@@ -758,6 +758,45 @@ fn add_point(points: &mut Vec<RoutePoint>, mut next: RoutePoint) {
     points.push(next);
 }
 
+/// Align transverse site coordinates that differ only by floating-point ULP noise
+/// (e.g., two nodes of different widths centered on the same grid track).
+fn snap_collinear_sites(sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult<()> {
+    const SNAP_EPS: f64 = 1e-9;
+    for axis in [Axis::Vertical, Axis::Horizontal] {
+        let mut indices = reserved(sites.len())?;
+        work.charge(sites.len())?;
+        for (i, site) in sites.iter().enumerate() {
+            work.visit(1)?;
+            if site.side.axis() == axis {
+                indices.push(i);
+            }
+        }
+        if indices.len() < 2 {
+            continue;
+        }
+        work.charge_sort(indices.len())?;
+        indices.sort_unstable_by(|&a, &b| {
+            let ca = cross(sites[a].side, sites[a].at);
+            let cb = cross(sites[b].side, sites[b].at);
+            ca.total_cmp(&cb).then(a.cmp(&b))
+        });
+        let mut anchor = cross(sites[indices[0]].side, sites[indices[0]].at);
+        for &i in &indices[1..] {
+            work.visit(1)?;
+            let value = cross(sites[i].side, sites[i].at);
+            if (value - anchor).abs() <= SNAP_EPS {
+                match axis {
+                    Axis::Vertical => sites[i].at.x = anchor,
+                    Axis::Horizontal => sites[i].at.y = anchor,
+                }
+            } else {
+                anchor = value;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) enum Gutters<'a> {
     Architecture(&'a [Vec<f64>; 2]),
     CardGrid(&'a [[Vec<f64>; 2]]),
@@ -863,6 +902,7 @@ pub(crate) fn draw(
         options,
     };
     context.ports(&mut plan.sites, work)?;
+    snap_collinear_sites(&mut plan.sites, work)?;
     let mut routed = reserved(plan.scopes.len())?;
     let mut bounds = drawing.bounds;
     for (scope, parts) in plan.scopes.iter().enumerate() {

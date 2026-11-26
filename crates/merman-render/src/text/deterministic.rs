@@ -5,8 +5,9 @@ use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
 use super::wrap::GraphemeSplitStats as LongWordSplitStats;
 use super::wrap::visit_grapheme_lines_to_width;
 use super::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
-    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, append_monospace_text_width_em,
+    append_text_width_em, is_monospace_font_family, trim_end_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
 };
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -28,8 +29,22 @@ struct LineWidthAccumulator {
 #[derive(Clone, Copy)]
 enum LineWidthSource<'a> {
     Heuristic,
+    MonospaceHeuristic,
     UniformAdvanceEm(f64),
     Callback(&'a TextWidthPxFn),
+}
+
+fn deterministic_line_width_source(
+    char_width_factor: f64,
+    style: &TextStyle,
+) -> LineWidthSource<'static> {
+    if char_width_factor != 0.0 {
+        LineWidthSource::UniformAdvanceEm(char_width_factor)
+    } else if is_monospace_font_family(style.font_family.as_deref()) {
+        LineWidthSource::MonospaceHeuristic
+    } else {
+        LineWidthSource::Heuristic
+    }
 }
 
 struct LongWordSplitResult<'a> {
@@ -75,6 +90,9 @@ impl LineWidthModel<'_> {
     fn append_builtin(self, width: &mut LineWidthAccumulator, text: &str) {
         match self.source {
             LineWidthSource::Heuristic => append_text_width_em(&mut width.heuristic_em, text),
+            LineWidthSource::MonospaceHeuristic => {
+                append_monospace_text_width_em(&mut width.heuristic_em, text);
+            }
             LineWidthSource::UniformAdvanceEm(_) => {
                 width.char_count = width.char_count.saturating_add(
                     text.chars()
@@ -88,7 +106,9 @@ impl LineWidthModel<'_> {
 
     fn finish_builtin(self, width: LineWidthAccumulator) -> f64 {
         match self.source {
-            LineWidthSource::Heuristic => width.heuristic_em * self.font_size,
+            LineWidthSource::Heuristic | LineWidthSource::MonospaceHeuristic => {
+                width.heuristic_em * self.font_size
+            }
             LineWidthSource::UniformAdvanceEm(advance_em) => {
                 width.char_count as f64 * self.font_size * advance_em
             }
@@ -146,7 +166,7 @@ impl LineWidthProvider for LineWidthModel<'_> {
 
     fn begin_html_line_width(&self) -> Option<crate::environment::BuiltinHtmlLineWidth> {
         let factor = match self.source {
-            LineWidthSource::Heuristic => 0.0,
+            LineWidthSource::Heuristic | LineWidthSource::MonospaceHeuristic => 0.0,
             LineWidthSource::UniformAdvanceEm(factor) => factor,
             LineWidthSource::Callback(_) => return None,
         };
@@ -548,11 +568,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         literal_svg_text_width_px(
             text,
             style,
-            if self.char_width_factor == 0.0 {
-                LineWidthSource::Heuristic
-            } else {
-                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-            },
+            deterministic_line_width_source(self.char_width_factor, style),
             false,
         )
     }
@@ -561,11 +577,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         literal_svg_text_width_px(
             text,
             style,
-            if self.char_width_factor == 0.0 {
-                LineWidthSource::Heuristic
-            } else {
-                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-            },
+            deterministic_line_width_source(self.char_width_factor, style),
             true,
         )
     }
@@ -585,11 +597,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-        let source = if self.char_width_factor == 0.0 {
-            LineWidthSource::Heuristic
-        } else {
-            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-        };
+        let source = deterministic_line_width_source(self.char_width_factor, style);
         let model = LineWidthModel {
             font_size: style.font_size.max(0.0),
             source,
@@ -807,11 +815,7 @@ impl DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> (TextMetrics, Option<f64>) {
-        let width_source = if self.char_width_factor == 0.0 {
-            LineWidthSource::Heuristic
-        } else {
-            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
-        };
+        let width_source = deterministic_line_width_source(self.char_width_factor, style);
         Self::measure_wrapped_impl_with_width(
             text,
             style,

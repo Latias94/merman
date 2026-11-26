@@ -117,7 +117,14 @@ fn assert_compound_paint(svg: &str, bidirectional: bool) {
     assert_eq!(path.attribute("d"), cross.attribute("d"));
     assert_eq!(path.attribute("stroke"), Some("#FAF7EC"));
     assert_eq!(path.attribute("stroke-width"), Some("5"));
-    assert_eq!(path.attribute("marker-end"), None);
+    assert_eq!(path.attribute("stroke-linecap"), Some("round"));
+    assert_eq!(path.attribute("stroke-linejoin"), Some("round"));
+    assert_ne!(path.attribute("marker-end"), cross.attribute("marker-end"));
+    let casing_marker = marker_shape(&doc, *path, "marker-end");
+    assert_eq!(casing_marker.attribute("fill"), Some("#FAF7EC"));
+    assert_eq!(casing_marker.attribute("stroke"), Some("#FAF7EC"));
+    assert_eq!(casing_marker.attribute("stroke-linecap"), Some("round"));
+    assert_eq!(casing_marker.attribute("stroke-linejoin"), Some("round"));
     assert_eq!(path.attribute("data-edge"), None);
     assert!(casings.range().end < inside.range().start);
 }

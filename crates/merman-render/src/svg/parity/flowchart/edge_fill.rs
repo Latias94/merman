@@ -1,10 +1,13 @@
 //! Shoal paint derived from the visible cluster surfaces and the final edge geometry.
 
+use super::defs::FlowchartMarkerEmissionPlan;
 use super::render_input::FlowchartRenderEdgeRef;
 use super::*;
 use crate::flowchart::FlowchartEdgeKey;
 use crate::theme::Color;
 use kurbo::Rect;
+
+pub(super) const CASING_WIDTH_ADD: f64 = 3.0;
 
 #[derive(Clone, Copy)]
 #[cfg_attr(
@@ -30,6 +33,13 @@ impl FlowchartEdgeFillPlan {
         }
     }
 
+    pub(super) fn casing_color(&self, key: FlowchartEdgeKey) -> Option<Color> {
+        match self.paint.get(&key) {
+            Some(&EdgeFillPaint::Casing { color, .. }) => Some(color),
+            _ => None,
+        }
+    }
+
     pub(super) fn casing_bounds(&self) -> Option<Rect> {
         self.casing_bounds
     }
@@ -38,6 +48,7 @@ impl FlowchartEdgeFillPlan {
         &self,
         out: &mut impl SvgOutput,
         ctx: &FlowchartRenderCtx<'_>,
+        marker_plan: &FlowchartMarkerEmissionPlan,
         edges: &[FlowchartRenderEdgeRef<'_>],
         cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     ) -> Result<()> {
@@ -56,9 +67,47 @@ impl FlowchartEdgeFillPlan {
             let d = geom.emitted_d_for_label.as_deref().unwrap_or(&geom.d);
             let _ = write!(
                 out,
-                r#"<path d="{d}" fill="none" stroke="{color}" stroke-width="{}" stroke-linejoin="round"/>"#,
+                r#"<path d="{d}" fill="none" stroke="{color}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round""#,
                 fmt_display(width),
             );
+            // Match Neo's arrowhead shaft setback without emitting a zero-length leading dash,
+            // which under `stroke-linecap="round"` would paint an unwanted dot at the start tip.
+            if ctx.compatibility.look.is_neo()
+                && let Some(len) = geom.centerline_length()
+            {
+                let (start_arrow, end_arrow) =
+                    super::edge_geom::arrow_types_for_edge(edge.edge.edge_type.as_deref());
+                let start_offset = super::render::flowchart_neo_marker_mask_offset(start_arrow);
+                let end_offset = super::render::flowchart_neo_marker_mask_offset(end_arrow);
+                let middle = len - start_offset - end_offset;
+                if (start_offset > 0.0 || end_offset > 0.0) && middle > 0.0 {
+                    let gap = len + 16.0;
+                    if start_offset > 0.0 {
+                        let _ = write!(
+                            out,
+                            r#" style="stroke-dasharray: {} {}; stroke-dashoffset: -{};""#,
+                            fmt_display(middle),
+                            fmt_display(gap),
+                            fmt_display(start_offset),
+                        );
+                    } else {
+                        let _ = write!(
+                            out,
+                            r#" style="stroke-dasharray: {} {};""#,
+                            fmt_display(middle),
+                            fmt_display(gap),
+                        );
+                    }
+                }
+            }
+            marker_plan.push_casing_marker_attributes_for(
+                out,
+                ctx.document_ids().marker_scope(),
+                ctx.diagram_type,
+                edge.key,
+                ctx.work_meter,
+            )?;
+            out.push_str("/>");
             out.checkpoint()?;
         }
         out.push_str("</g>");
@@ -93,7 +142,6 @@ mod shoal {
     use merman_theme_contract::v2::{Paint, Texture};
     use std::ops::ControlFlow::{Break, Continue};
 
-    const CASING_WIDTH_ADD: f64 = 3.0;
     // Treat subtle tint changes as one surface for casing purposes.
     const FILL_CONTRAST: f64 = 1.5;
     // WCAG non-text contrast, used to retain the theme's own connector ink when it reads well.
@@ -300,10 +348,25 @@ mod shoal {
                         casing_color(stitches, &surfaces, &cached.geom, shaft_bounds, offset)
                     {
                         let width = 2.0 * half_width + CASING_WIDTH_ADD;
-                        let bounds =
+                        let doc_offset = Vec2::new(cached.origin_x, cached.abs_top_transform);
+                        let doc_shaft =
                             Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)
-                                + Vec2::new(cached.origin_x, cached.abs_top_transform);
-                        let bounds = bounds.inflate(width / 2.0, width / 2.0);
+                                + doc_offset;
+                        let mut bounds = doc_shaft.inflate(width / 2.0, width / 2.0);
+                        let (start_marker, end_marker) = flowchart_marker_metrics(edge.edge);
+                        for (marker, point) in [
+                            (start_marker, cached.geom.data_points.first()),
+                            (end_marker, cached.geom.data_points.last()),
+                        ] {
+                            if marker.depth > 0.0
+                                && let Some(point) = point
+                            {
+                                let tip = Point::new(point.x, point.y) + doc_offset;
+                                let outset = marker.depth + marker.trim + CASING_WIDTH_ADD / 2.0;
+                                bounds =
+                                    bounds.union(Rect::from_points(tip, tip).inflate(outset, outset));
+                            }
+                        }
                         plan.casing_bounds =
                             Some(plan.casing_bounds.map_or(bounds, |old| old.union(bounds)));
                         plan.paint

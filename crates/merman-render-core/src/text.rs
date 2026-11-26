@@ -28,7 +28,10 @@ pub use fonts::{
     FontStack, FontStackError, FontStyle, GenericFontFamily,
 };
 #[cfg(feature = "text-layout")]
-pub use heuristic::{append_text_width_em, estimate_text_width_em};
+pub use heuristic::{
+    append_monospace_text_width_em, append_text_width_em, estimate_monospace_text_width_em,
+    estimate_text_width_em, is_monospace_font_family,
+};
 pub use whitespace::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

@@ -559,6 +559,10 @@ fn architecture_shoal_studio_keeps_aligned_trunks_straight_without_overshoot() {
                 (seg.start().x - start_x).abs() < 1e-6 && (seg.end().x - start_x).abs() < 1e-6,
                 "{edge_id} drifted off x={start_x}: {d}"
             );
+            assert!(
+                (seg.end().y - seg.start().y).abs() > 1e-3,
+                "{edge_id} emitted a degenerate horizontal micro-segment: {d}"
+            );
         }
     }
 

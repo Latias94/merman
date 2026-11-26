@@ -8,7 +8,8 @@ use crate::theme::ThemePortabilityRequirement;
 
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    append_text_width_em, estimate_text_width_em,
+    append_monospace_text_width_em, append_text_width_em, estimate_monospace_text_width_em,
+    estimate_text_width_em, is_monospace_font_family,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_model::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
@@ -272,6 +273,7 @@ impl InlineHtmlMeasurementCarrier {
 #[derive(Debug, Clone)]
 struct BuiltinInlineRawLineWidth {
     font_size: f64,
+    monospace: bool,
     state: RefCell<BuiltinInlineRawLineWidthState>,
 }
 
@@ -513,6 +515,7 @@ impl BuiltinInlineRawLineWidth {
     fn new(style: &TextStyle) -> Self {
         Self {
             font_size: style.font_size.max(0.0),
+            monospace: is_monospace_font_family(style.font_family.as_deref()),
             state: RefCell::new(BuiltinInlineRawLineWidthState::default()),
         }
     }
@@ -526,7 +529,7 @@ impl BuiltinInlineRawLineWidth {
         state.pending_width_dirty = true;
     }
 
-    fn refresh_width(state: &mut BuiltinInlineRawLineWidthState) {
+    fn refresh_width(monospace: bool, state: &mut BuiltinInlineRawLineWidthState) {
         if !state.pending_width_dirty {
             return;
         }
@@ -548,19 +551,30 @@ impl BuiltinInlineRawLineWidth {
             .next_back()
             .map_or(0, |(index, _)| index);
         if last_grapheme_start > 0 {
-            append_text_width_em(
-                &mut state.committed_em,
-                &state.pending_grapheme[..last_grapheme_start],
-            );
+            if monospace {
+                append_monospace_text_width_em(
+                    &mut state.committed_em,
+                    &state.pending_grapheme[..last_grapheme_start],
+                );
+            } else {
+                append_text_width_em(
+                    &mut state.committed_em,
+                    &state.pending_grapheme[..last_grapheme_start],
+                );
+            }
             state.pending_grapheme.drain(..last_grapheme_start);
         }
-        state.pending_em = estimate_text_width_em(&state.pending_grapheme);
+        state.pending_em = if monospace {
+            estimate_monospace_text_width_em(&state.pending_grapheme)
+        } else {
+            estimate_text_width_em(&state.pending_grapheme)
+        };
         state.pending_width_dirty = false;
     }
 
     fn width_px(&self) -> f64 {
         let mut state = self.state.borrow_mut();
-        Self::refresh_width(&mut state);
+        Self::refresh_width(self.monospace, &mut state);
         (state.committed_em + state.pending_em) * self.font_size
     }
 
