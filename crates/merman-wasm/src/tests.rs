@@ -1031,6 +1031,7 @@ fn runtime_catalog_uses_the_wasm_transport_api_and_resource_catalog() {
 #[test]
 fn family_capabilities_expose_the_unique_catalog() {
     let capabilities = merman_bindings_core::diagram_family_capabilities();
+    let expects_editor_parsers = cfg!(any(feature = "analysis", feature = "editor"));
     assert!(capabilities.iter().any(|capability| {
         capability.diagram_type == "flowchart"
             && capability.family_id.as_str() == "flowchart"
@@ -1038,8 +1039,8 @@ fn family_capabilities_expose_the_unique_catalog() {
             && capability.render_model_kind == Some("flowchart")
             && !capability.has_detector
             && capability.has_semantic_parser
-            && capability.has_editor_parser
-            && capability.has_combined_parser
+            && capability.has_editor_parser == expects_editor_parsers
+            && capability.has_combined_parser == expects_editor_parsers
             && capability.has_render_parser
             && !capability.has_header
             && capability.config_namespace == Some("flowchart")
@@ -1063,8 +1064,8 @@ fn family_capabilities_expose_the_unique_catalog() {
                 && capability.render_model_kind == Some(diagram_type)
                 && capability.has_detector
                 && capability.has_semantic_parser
-                && capability.has_editor_parser
-                && capability.has_combined_parser
+                && capability.has_editor_parser == expects_editor_parsers
+                && capability.has_combined_parser == expects_editor_parsers
                 && capability.has_render_parser
                 && capability.has_header
                 && capability.config_namespace == Some(diagram_type)

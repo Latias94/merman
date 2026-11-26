@@ -644,6 +644,7 @@ assert.deepEqual(
   packageDescriptor.artifact_profile.expected.diagram_families,
   "compiled parser families must match the artifact recipe exactly",
 );
+const expectsEditorParsers = hasCapability("analysis") || hasCapability("editor");
 assert.equal(
   familyCapabilities.some(
     (capability) =>
@@ -652,13 +653,14 @@ assert.equal(
       capability.metadata_id === "flowchart" &&
       !capability.has_detector &&
       capability.has_semantic_parser &&
-      capability.has_editor_parser &&
-      capability.has_combined_parser &&
+      capability.has_editor_parser === expectsEditorParsers &&
+      capability.has_combined_parser === expectsEditorParsers &&
       capability.has_render_parser &&
       !capability.has_header &&
       capability.config_namespace === "flowchart"
   ),
-  true
+  true,
+  "Flowchart editor and combined parsers must match the artifact's editor or analysis support",
 );
 
 if (hasCapability("analysis")) {
