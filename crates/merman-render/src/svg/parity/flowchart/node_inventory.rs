@@ -55,6 +55,7 @@ impl<'a> ClusterGeometry<'a> {
 }
 
 pub(super) struct FlowchartNodeInventoryInput<'a> {
+    pub(super) model_nodes: &'a [crate::flowchart::FlowNode],
     pub(super) nodes_by_id: FxHashMap<&'a str, Option<&'a crate::flowchart::FlowNode>>,
     pub(super) subgraphs_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
     pub(super) subgraph_indices_by_id: FxHashMap<&'a str, usize>,
@@ -223,6 +224,7 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
             }
         }
         Self {
+            model_nodes: &model.nodes,
             nodes_by_id,
             subgraphs_by_id,
             subgraph_indices_by_id,

@@ -255,6 +255,59 @@ fn flowchart_sort_node_order_keys<'a>(mut keyed: Vec<FlowchartNodeOrderKey<'a>>)
     keyed.into_iter().map(|entry| entry.id).collect()
 }
 
+enum FlowchartRootNodeOrder<'a> {
+    ModelOrder {
+        ids: Vec<&'a str>,
+        nodes: &'a [crate::flowchart::FlowNode],
+    },
+    SortKeys(Vec<FlowchartNodeOrderKey<'a>>),
+}
+
+impl<'a> FlowchartRootNodeOrder<'a> {
+    fn len(&self) -> usize {
+        match self {
+            Self::ModelOrder { ids, .. } => ids.len(),
+            Self::SortKeys(keys) => keys.len(),
+        }
+    }
+
+    fn into_dom_order(self) -> Vec<&'a str> {
+        match self {
+            Self::ModelOrder { mut ids, nodes } => {
+                for (id, node) in ids.iter_mut().zip(nodes) {
+                    *id = node.id.as_str();
+                }
+                ids
+            }
+            Self::SortKeys(keys) => flowchart_sort_node_order_keys(keys),
+        }
+    }
+}
+
+fn flowchart_has_complete_model_node_order(
+    ctx: &FlowchartNodeInventoryInput<'_>,
+    candidate_count: usize,
+) -> bool {
+    if !ctx.parent.is_empty()
+        || !ctx.subgraphs_by_id.is_empty()
+        || ctx.nodes_by_id.len() != candidate_count
+        || ctx.model_nodes.len() != candidate_count
+    {
+        return false;
+    }
+
+    let mut previous = None;
+    ctx.model_nodes.iter().all(|node| {
+        ctx.node_dom_index
+            .get(node.id.as_str())
+            .is_some_and(|&ordinal| {
+                previous
+                    .replace(ordinal)
+                    .is_none_or(|previous| previous < ordinal)
+            })
+    })
+}
+
 #[derive(Default)]
 pub(super) struct FlowchartDomCandidates<'a> {
     nodes: Vec<&'a str>,
@@ -315,13 +368,23 @@ fn flowchart_prepare_root_children_nodes_metered<'a>(
     ctx: &'a FlowchartNodeInventoryInput<'a>,
     parent_cluster: Option<&str>,
     ids: Vec<&'a str>,
-) -> crate::Result<Vec<FlowchartNodeOrderKey<'a>>> {
+) -> crate::Result<FlowchartRootNodeOrder<'a>> {
     let explicit_dom_order = ctx.dom_node_order_by_root.get(parent_cluster.unwrap_or(""));
     ctx.work_meter
         .charge(explicit_dom_order.map_or(0, |order| order.len()))?;
     let explicit_dom_indices = flowchart_explicit_dom_indices(ctx, parent_cluster);
 
     ctx.work_meter.charge(ids.len())?;
+    if parent_cluster.is_none()
+        && explicit_dom_order.is_none_or(Vec::is_empty)
+        && flowchart_has_complete_model_node_order(ctx, ids.len())
+    {
+        return Ok(FlowchartRootNodeOrder::ModelOrder {
+            ids,
+            nodes: ctx.model_nodes,
+        });
+    }
+
     let mut keyed = Vec::with_capacity(ids.len());
     for id in ids {
         let (nesting_depth, nearest_cluster_id) =
@@ -334,7 +397,7 @@ fn flowchart_prepare_root_children_nodes_metered<'a>(
             nearest_cluster_id,
         ));
     }
-    Ok(keyed)
+    Ok(FlowchartRootNodeOrder::SortKeys(keyed))
 }
 
 fn flowchart_prepare_root_children_clusters_metered<'a>(
@@ -393,12 +456,12 @@ pub(super) fn flowchart_dom_order_for_root<'a>(
     }
 
     if dom_order.is_empty() {
-        let node_keys =
+        let node_order =
             flowchart_prepare_root_children_nodes_metered(ctx, cluster_id, candidates.nodes)?;
         let cluster_keys =
             flowchart_prepare_root_children_clusters_metered(ctx, candidates.clusters)?;
 
-        let sort_work = flowchart_checked_sort_work(node_keys.len(), ctx.work_meter)?
+        let sort_work = flowchart_checked_sort_work(node_order.len(), ctx.work_meter)?
             .checked_add(flowchart_checked_sort_work(
                 cluster_keys.len(),
                 ctx.work_meter,
@@ -406,7 +469,7 @@ pub(super) fn flowchart_dom_order_for_root<'a>(
             .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
         ctx.work_meter.charge(sort_work)?;
 
-        dom_order = flowchart_sort_node_order_keys(node_keys);
+        dom_order = node_order.into_dom_order();
         dom_order.extend(flowchart_sort_cluster_order_keys(cluster_keys));
     }
     Ok(dom_order)
