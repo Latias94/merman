@@ -5,6 +5,9 @@
 #![cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 
 #[cfg(feature = "diagram-agentflow")]
+mod aesthetic_witnesses;
+
+#[cfg(feature = "diagram-agentflow")]
 mod compound;
 
 use super::{
