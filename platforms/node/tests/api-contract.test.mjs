@@ -1094,6 +1094,9 @@ test("operation request fields accept exact UTF-8 ceilings and reject plus one",
     engine.renderSvg(`${exactSource}x`),
     /field limit/i,
   );
+  const exactInvalidSource = `${exactSource.slice(3)}\ud800`;
+  await assert.rejects(engine.renderSvg(exactInvalidSource), /isolated UTF-16 surrogate/i);
+  await assert.rejects(engine.renderSvg(`${exactInvalidSource}x`), /field limit/i);
 
   const exactOptionsJson = "{}" + " ".repeat(
     NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes - 2,

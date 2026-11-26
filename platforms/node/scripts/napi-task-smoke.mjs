@@ -208,6 +208,17 @@ try {
         await assert.rejects(publicEngine.renderSvg(exact + "x", { optionsJson, timeoutMs: 0 }), /wire limit/i);
         const privateOverflow = cold.executeSvgSync(exact + "x", optionsJson, 0);
         assert.match(assertError(privateOverflow.errorJson, "MERMAN_OPTIONS_JSON_ERROR").message, /wire limit/i);
+        const exactInvalidSource = "x".repeat(NODE_WIRE_CONTRACT.fields.source_utf8_bytes - 3) + "\ud800";
+        for (const [source, error] of [
+          [exactInvalidSource, /isolated UTF-16 surrogate/i],
+          [exactInvalidSource + "x", /field limit/i],
+        ]) {
+          assert.throws(() => cold.executeSvgSync(source, optionsJson, 0), (cause) => {
+            assert.match(assertError(cause.message, "MERMAN_OPTIONS_JSON_ERROR").message, error);
+            return true;
+          });
+          assert.throws(() => publicEngine.renderSvgSync(source, { optionsJson, timeoutMs: 0 }), error);
+        }
         await assert.rejects(publicEngine.renderSvg(exact + "x", { optionsJson: "{", timeoutMs: 0 }), /optionsJson/i);
         const aborted = AbortSignal.abort();
         await assert.rejects(publicEngine.renderSvg("\ud800", { signal: aborted, optionsJson: "{" }), /isolated UTF-16 surrogate/i);
