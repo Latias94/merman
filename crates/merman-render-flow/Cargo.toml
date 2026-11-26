@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Layout configuration, shape vocabulary, and geometry for Merman's flow diagram renderers."
+documentation = "https://docs.rs/merman-render-flow"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "layout", "geometry", "flowchart"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

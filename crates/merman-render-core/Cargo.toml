@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Shared geometry and resource contracts for Merman renderers."
+documentation = "https://docs.rs/merman-render-core"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "geometry"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

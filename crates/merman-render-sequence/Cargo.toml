@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Layout geometry and SVG drawing for Merman's Sequence renderer."
+documentation = "https://docs.rs/merman-render-sequence"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "sequence"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

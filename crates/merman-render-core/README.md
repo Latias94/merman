@@ -28,5 +28,7 @@ backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer
 applies its SVG output policy when an icon is placed in a diagram.
 
-This crate provides workspace-internal renderer interfaces. Applications use `merman` for the
-public source-to-output API.
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
+Applications use `merman` for the public source-to-output API.

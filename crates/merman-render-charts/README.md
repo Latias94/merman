@@ -28,4 +28,7 @@ sizing. `merman-render` resolves the theme, measures annotation labels, and writ
 The `diagram-xychart` feature provides typed XY Chart layout, plot geometry, and bar label
 placement. `merman-render` supplies text measurement and writes the SVG.
 
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
 Use `merman` for source-to-output rendering.

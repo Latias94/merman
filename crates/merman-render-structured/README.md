@@ -14,4 +14,7 @@ The `diagram-ishikawa` feature provides typed layout, presentation binding, and 
 and hand-drawn SVG emission. `merman-render` supplies the operation's text measurer, theme
 selection, and root context, then applies canvas and terminal output policies.
 
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
 Use `merman` for source-to-output rendering.
