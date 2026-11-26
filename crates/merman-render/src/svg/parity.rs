@@ -242,6 +242,20 @@ mod radar;
 mod railroad;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-block",
+    feature = "diagram-c4",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-ishikawa",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-usecase",
+    feature = "diagram-venn"
+))]
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -337,13 +351,7 @@ pub use emitted_bounds::{
     )
 )]
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
+#[cfg(feature = "diagram-requirement")]
 use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -958,6 +966,20 @@ impl<'a> SvgExecution<'a> {
         self.family.session().render_seed().get()
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-ishikawa",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase",
+        feature = "diagram-venn"
+    ))]
     pub(crate) fn rough_randomness(
         &self,
         configured_seed: f64,
@@ -1570,6 +1592,27 @@ mod operation_time_tests {
 
         assert_eq!(execution.unix_ms(), session.unix_millis());
     }
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-ishikawa",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase",
+        feature = "diagram-venn"
+    )
+))]
+mod operation_rough_seed_tests {
+    use super::*;
 
     #[test]
     fn svg_execution_preserves_truthy_javascript_number_seeds() {
