@@ -241,12 +241,6 @@ fn execute_version_only(
 }
 
 fn execute_probe() -> Result<ProbeResponse, ProbeError> {
-    if std::env::args_os().nth(1).is_some() {
-        return Err(ProbeError::new(
-            "binding request memory probe accepts no arguments",
-        ));
-    }
-
     let request = read_request()?;
     validate_request(&request)?;
     let executable_sha256 = executable_sha256()?;
@@ -339,8 +333,23 @@ fn fail(message: &str) -> ! {
 
 fn main() {
     std::panic::set_hook(Box::new(|_| {}));
-    match std::panic::catch_unwind(execute_probe) {
-        Ok(Ok(response)) => {
+    let execution = std::panic::catch_unwind(|| {
+        let mut args = std::env::args_os().skip(1);
+        match args.next() {
+            None => {}
+            Some(flag) if flag == "--bench" && args.next().is_none() => return Ok(None),
+            Some(_) => {
+                return Err(ProbeError::new(
+                    "binding request memory probe accepts no arguments",
+                ));
+            }
+        }
+        drop(args);
+        execute_probe().map(Some)
+    });
+    match execution {
+        Ok(Ok(None)) => {}
+        Ok(Ok(Some(response))) => {
             if write_json_line(&response).is_err() {
                 std::process::exit(2);
             }

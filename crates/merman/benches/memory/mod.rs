@@ -390,6 +390,7 @@ fn scale_curve(expected_lane: Option<Lane>) {
 }
 
 enum Command {
+    CargoBench,
     ScaleCurve(Option<Lane>),
     #[cfg(all(
         feature = "diagram-flowchart",
@@ -466,6 +467,7 @@ fn command() -> Result<Command, String> {
         return Ok(Command::ScaleCurve(None));
     };
     match flag.to_str() {
+        Some("--bench") if args.next().is_none() => Ok(Command::CargoBench),
         Some("--workload-stdin") => workload_command(args),
         Some("--help" | "-h") if args.next().is_none() => Ok(Command::Help),
         #[cfg(all(
@@ -481,7 +483,11 @@ fn command() -> Result<Command, String> {
                 feature = "diagram-flowchart",
                 feature = "layout-dagre"
             ))]
-            Some("fonts") if args.next().is_none() => Ok(Command::Fonts),
+            Some("fonts") => match args.next() {
+                None => Ok(Command::Fonts),
+                Some(flag) if flag == "--bench" && args.next().is_none() => Ok(Command::Fonts),
+                _ => Err(USAGE.to_owned()),
+            },
             Some("scale-curve") if args.next().as_deref() == Some(OsStr::new("--lane")) => {
                 let id = args.next().ok_or(USAGE)?;
                 if args.next().is_some() {
@@ -498,6 +504,7 @@ fn command() -> Result<Command, String> {
 
 pub(super) fn run() -> Result<(), String> {
     match command()? {
+        Command::CargoBench => {}
         Command::ScaleCurve(lane) => scale_curve(lane),
         #[cfg(all(
             feature = "diagram-flowchart",

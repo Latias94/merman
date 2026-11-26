@@ -142,4 +142,4 @@ required-features = ["svg"]
 [[bench]]
 name = "bindings_memory"
 harness = false
-required-features = ["analysis", "ascii", "svg"]
+required-features = ["analysis", "ascii", "diagram-info", "svg"]
