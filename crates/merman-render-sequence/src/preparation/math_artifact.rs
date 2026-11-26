@@ -5,18 +5,21 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
-use crate::math::{
-    ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
-    PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
-    PreparedMathOccurrenceId,
+use merman_model::family::DiagramFamilyId;
+use merman_render_core::{
+    math::{
+        ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
+        PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathExpectation,
+        PreparedMathLabel, PreparedMathOccurrenceId,
+    },
+    resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation},
+    text::TextMeasurer,
 };
-use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::text::TextMeasurer;
 
 use super::SequenceTerminalTextStyle;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum SequenceMathOccurrence {
+pub enum SequenceMathOccurrence {
     Actor(usize),
     HiddenActor(usize),
     Message(usize),
@@ -34,31 +37,25 @@ impl SequenceMathOccurrence {
 
     fn prepared_math_occurrence_id(&self) -> PreparedMathOccurrenceId {
         match self {
-            Self::Actor(index) => PreparedMathOccurrenceId::indexed(
-                crate::DiagramFamilyId::SEQUENCE,
-                "actor-label",
-                *index,
-            ),
+            Self::Actor(index) => {
+                PreparedMathOccurrenceId::indexed(DiagramFamilyId::SEQUENCE, "actor-label", *index)
+            }
             Self::HiddenActor(index) => PreparedMathOccurrenceId::indexed(
-                crate::DiagramFamilyId::SEQUENCE,
+                DiagramFamilyId::SEQUENCE,
                 "hidden-actor-label",
                 *index,
             ),
             Self::Message(index) => PreparedMathOccurrenceId::indexed(
-                crate::DiagramFamilyId::SEQUENCE,
+                DiagramFamilyId::SEQUENCE,
                 "message-label",
                 *index,
             ),
-            Self::Note(index) => PreparedMathOccurrenceId::indexed(
-                crate::DiagramFamilyId::SEQUENCE,
-                "note-label",
-                *index,
-            ),
-            Self::BlockLabel(key) => PreparedMathOccurrenceId::keyed(
-                crate::DiagramFamilyId::SEQUENCE,
-                "block-label",
-                key,
-            ),
+            Self::Note(index) => {
+                PreparedMathOccurrenceId::indexed(DiagramFamilyId::SEQUENCE, "note-label", *index)
+            }
+            Self::BlockLabel(key) => {
+                PreparedMathOccurrenceId::keyed(DiagramFamilyId::SEQUENCE, "block-label", key)
+            }
         }
     }
 }
@@ -93,7 +90,7 @@ impl SequencePreparedMathEntry {
         )
     }
 
-    fn terminal_expectation(&self) -> Option<crate::math::PreparedMathExpectation> {
+    fn terminal_expectation(&self) -> Option<PreparedMathExpectation> {
         let expected_emissions = self.expected_terminal_emissions;
         if expected_emissions == 0 {
             return None;
@@ -101,12 +98,10 @@ impl SequencePreparedMathEntry {
         match &self.outcome {
             MathPreparationOutcome::Prepared(prepared) => prepared.expectation(expected_emissions),
             MathPreparationOutcome::Unavailable(MathPreparationUnavailable::NotMath) => None,
-            MathPreparationOutcome::Unavailable(_) => {
-                Some(crate::math::PreparedMathExpectation::unavailable(
-                    self.occurrence_id.clone(),
-                    expected_emissions,
-                ))
-            }
+            MathPreparationOutcome::Unavailable(_) => Some(PreparedMathExpectation::unavailable(
+                self.occurrence_id.clone(),
+                expected_emissions,
+            )),
         }
     }
 
@@ -127,7 +122,7 @@ impl SequencePreparedMathEntry {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct SequenceMathSidecar {
+pub struct SequenceMathSidecar {
     entries: FxHashMap<SequenceMathOccurrence, SequencePreparedMathEntry>,
 }
 
@@ -142,7 +137,7 @@ impl SequenceMathSidecar {
             .and_then(|entry| entry.outcome.prepared())
     }
 
-    pub(crate) fn terminal_for_occurrence(
+    pub fn terminal_for_occurrence(
         &self,
         occurrence: &SequenceMathOccurrence,
     ) -> Option<&PreparedMathLabel> {
@@ -151,7 +146,7 @@ impl SequenceMathSidecar {
         Some(artifact)
     }
 
-    pub(crate) fn terminal(
+    pub fn terminal(
         &self,
         occurrence: &SequenceMathOccurrence,
         source: &str,
@@ -164,7 +159,7 @@ impl SequenceMathSidecar {
         Some(artifact)
     }
 
-    pub(crate) fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
+    pub fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
         let entries = self
             .entries
             .values()
@@ -426,9 +421,11 @@ impl SequenceMathArtifactStore for SequenceMathSidecarBuilder<'_> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::math::MathRenderer;
-    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
-    use crate::text::{DeterministicTextMeasurer, TextMetrics, TextStyle};
+    use merman_render_core::{
+        math::{MathRenderer, NoopMathRenderer},
+        resources::{RenderResourcePolicy, ResourceLimitId},
+        text::{DeterministicTextMeasurer, TextMetrics, TextStyle},
+    };
 
     use super::*;
 
@@ -502,11 +499,11 @@ mod tests {
         assert!(layout.browser_xhtml().contains("font-size:27px"));
         assert!(layout.browser_xhtml().contains("color:#67e8f9"));
         assert_eq!(
-            crate::sequence::measure_prepared_sequence_math_label(
+            crate::preparation::measure_prepared_sequence_math_label(
                 Some(layout.as_ref()),
                 &style,
-                crate::sequence::SequenceMathHeightMode::Draw,
-                crate::sequence::SequenceOperationCheckpoints::for_layout(meter.as_ref()).text(),
+                crate::preparation::SequenceMathHeightMode::Draw,
+                crate::preparation::SequenceOperationCheckpoints::for_layout(meter.as_ref()).text(),
             )
             .expect("prepared multiline math dimensions")
             .expect("prepared multiline math dimensions")
@@ -633,7 +630,7 @@ mod tests {
 
     #[test]
     fn declined_sequence_math_retains_its_reason_without_writer_reentry() {
-        let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
+        let backend = ConfiguredMathBackend::external(Arc::new(NoopMathRenderer));
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
@@ -677,7 +674,7 @@ mod tests {
 
     #[test]
     fn mirrored_actor_expectation_is_owned_by_preparation_not_writer_reentry() {
-        let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
+        let backend = ConfiguredMathBackend::external(Arc::new(NoopMathRenderer));
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));

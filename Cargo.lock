@@ -2802,8 +2802,11 @@ dependencies = [
 name = "merman-render-sequence"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "merman-core",
  "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",

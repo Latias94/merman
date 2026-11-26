@@ -1,51 +1,56 @@
-use crate::config::{config_css_number_or_string, config_string};
-use merman_render_sequence::activation::SequenceActorPalette;
+use crate::activation::SequenceActorPalette;
+use merman_render_core::{
+    config::{
+        config_css_number_or_string, config_diagram_look, config_font_family_css,
+        config_root_font_family_css, config_string,
+    },
+    mermaid_style::font_family_css,
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 #[derive(Debug)]
-pub(crate) struct SequenceCompatBinding {
-    pub(crate) svg_activation_width: f64,
-    pub(crate) font_family: String,
-    pub(crate) root_font_family: String,
-    pub(crate) font_size_css: String,
-    pub(crate) text_color: String,
-    pub(crate) line_color: String,
-    pub(crate) error_bkg: String,
-    pub(crate) error_text: String,
-    pub(crate) actor_border: String,
-    pub(crate) actor_fill: String,
-    pub(crate) stroke_width: String,
-    pub(crate) native_stroke_width: Option<f64>,
-    pub(crate) drop_shadow: String,
-    pub(crate) note_border: String,
-    pub(crate) note_fill: String,
-    pub(crate) actor_text: String,
-    pub(crate) actor_line: String,
-    pub(crate) signal_color: String,
-    pub(crate) sequence_number: String,
-    pub(crate) signal_text: String,
-    pub(crate) label_box_border: String,
-    pub(crate) label_box_fill: String,
-    pub(crate) label_text: String,
-    pub(crate) loop_text: String,
-    pub(crate) note_text: String,
-    pub(crate) activation_fill: String,
-    pub(crate) activation_border: String,
-    pub(crate) node_border: String,
-    pub(crate) label_box_filter: String,
-    pub(crate) rect_default_fill: String,
-    pub(crate) is_neo: bool,
-    pub(crate) neo_flood_color: &'static str,
-    pub(crate) actor_palette: SequenceActorPalette,
+pub struct SequenceCompatBinding {
+    pub svg_activation_width: f64,
+    pub font_family: String,
+    pub root_font_family: String,
+    pub font_size_css: String,
+    pub text_color: String,
+    pub line_color: String,
+    pub error_bkg: String,
+    pub error_text: String,
+    pub actor_border: String,
+    pub actor_fill: String,
+    pub stroke_width: String,
+    pub native_stroke_width: Option<f64>,
+    pub drop_shadow: String,
+    pub note_border: String,
+    pub note_fill: String,
+    pub actor_text: String,
+    pub actor_line: String,
+    pub signal_color: String,
+    pub sequence_number: String,
+    pub signal_text: String,
+    pub label_box_border: String,
+    pub label_box_fill: String,
+    pub label_text: String,
+    pub loop_text: String,
+    pub note_text: String,
+    pub activation_fill: String,
+    pub activation_border: String,
+    pub node_border: String,
+    pub label_box_filter: String,
+    pub rect_default_fill: String,
+    pub is_neo: bool,
+    pub neo_flood_color: &'static str,
+    pub actor_palette: SequenceActorPalette,
 }
 
 impl SequenceCompatBinding {
     pub(super) fn for_native(
         config: &serde_json::Value,
-        theme: &crate::theme::FamilyTheme,
-        background: Option<crate::theme::Color>,
+        theme: &FamilyTheme,
+        background: Option<Color>,
     ) -> Self {
-        use crate::theme::{Color, font_family_css};
-
         let roles = &theme.roles;
         let typography = &theme.typography;
         let font_family = font_family_css(typography.stack(typography.body_family));
@@ -91,7 +96,7 @@ impl SequenceCompatBinding {
             node_border: roles.stroke_border.first_color().to_string(),
             label_box_filter: "none".to_owned(),
             rect_default_fill: roles.surface_container.first_color().to_string(),
-            is_neo: crate::config::config_diagram_look(config).is_neo(),
+            is_neo: config_diagram_look(config).is_neo(),
             neo_flood_color: "#000000",
             actor_palette: SequenceActorPalette::default(),
         }
@@ -117,7 +122,7 @@ impl SequenceCompatBinding {
             .ok()
             .filter(|width| width.is_finite() && *width >= 0.0);
         let drop_shadow = value("dropShadow", "none");
-        let is_neo = crate::config::config_diagram_look(config).is_neo();
+        let is_neo = config_diagram_look(config).is_neo();
         let theme_name = config.get("theme").and_then(serde_json::Value::as_str);
         let rect_default_fill = config_string(config, &["themeVariables", "rectBkgColor"])
             .filter(|fill| !fill.is_empty())
@@ -129,8 +134,8 @@ impl SequenceCompatBinding {
         Self {
             svg_activation_width: super::config::SequenceConfigView::new(config)
                 .sequence_json_number_min("activationWidth", 10.0, 1.0),
-            font_family: crate::config::config_font_family_css(config),
-            root_font_family: crate::config::config_root_font_family_css(config),
+            font_family: config_font_family_css(config),
+            root_font_family: config_root_font_family_css(config),
             font_size_css: value("fontSize", "16px"),
             text_color: color("textColor", "#333"),
             line_color: color("lineColor", "#333333"),

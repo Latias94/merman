@@ -11,13 +11,15 @@ use super::{
     SequenceLayoutCheckpoints, bracketize_sequence_block_label, sequence_block_label_wrap_width,
     wrap_sequence_label_like_mermaid_lines,
 };
-use crate::Result;
-use crate::text::{TextMeasurer, TextStyle};
+use crate::activation::SequenceActivationState;
 use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
 };
 use merman_model::presentation::PresentationConfig;
-use merman_render_sequence::activation::SequenceActivationState;
+use merman_render_core::{
+    Result,
+    text::{TextMeasurer, TextStyle},
+};
 use std::collections::HashMap;
 
 const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
@@ -25,7 +27,7 @@ const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_WIDTH: f64 = 50.0;
 const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT: f64 = 20.0;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SequenceBlockLabelBoxMetrics {
+pub struct SequenceBlockLabelBoxMetrics {
     width: f64,
     layout_height: f64,
     terminal_height: f64,
@@ -103,11 +105,11 @@ impl SequenceBlockLabelBoxMetrics {
         })
     }
 
-    pub(crate) const fn width(self) -> f64 {
+    pub const fn width(self) -> f64 {
         self.width
     }
 
-    pub(crate) fn drawn_width(self) -> f64 {
+    pub fn drawn_width(self) -> f64 {
         self.width.max(LEGACY_SEQUENCE_BLOCK_LABEL_BOX_WIDTH)
     }
 
@@ -115,11 +117,11 @@ impl SequenceBlockLabelBoxMetrics {
         self.layout_height
     }
 
-    pub(crate) const fn terminal_height(self) -> f64 {
+    pub const fn terminal_height(self) -> f64 {
         self.terminal_height
     }
 
-    pub(crate) const fn typography_expanded(self) -> bool {
+    pub const fn typography_expanded(self) -> bool {
         self.typography_expanded
     }
 }
@@ -585,11 +587,13 @@ mod tests {
         BlockBoundsSummary, BlockFrameWidthContext, BlockHorizontalBounds, BlockStepContext,
         SequenceMessageMetricView, block_label_step, calculate_sequence_block_bounds,
     };
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use crate::sequence::SequenceMathSidecar;
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
+    use crate::preparation::SequenceMathSidecar;
     use merman_model::families::sequence::{SequenceMessage, SequenceMessagePayload};
     use merman_model::presentation::PresentationConfig;
+    use merman_render_core::{
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle},
+    };
     use std::collections::HashMap;
 
     struct ExpectedBlockLabelMeasurer;
@@ -636,7 +640,7 @@ mod tests {
         let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
+        let checkpoints = crate::preparation::SequenceLayoutCheckpoints::new(&work_meter);
 
         calculate_sequence_block_bounds(
             messages,
@@ -656,11 +660,11 @@ mod tests {
                 note_text_style: &note_style,
                 loop_text_style: &msg_style,
                 math_config: &math_config,
-                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &msg_style,
                     foreground: "#333",
                 },
-                note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                note_math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
                 },
@@ -814,7 +818,7 @@ mod tests {
         let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
+        let checkpoints = crate::preparation::SequenceLayoutCheckpoints::new(&work_meter);
 
         let block_message = message("title", 10, None, None, "[Action 1]");
         let step = block_label_step(
@@ -836,11 +840,11 @@ mod tests {
                 note_text_style: &text_style,
                 loop_text_style: &text_style,
                 math_config: &math_config,
-                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
                 },
-                note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                note_math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
                 },

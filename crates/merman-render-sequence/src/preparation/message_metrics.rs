@@ -1,7 +1,8 @@
-use crate::environment::TextMeasurementOperation;
-use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessage};
-use merman_render_core::text::measurement::{MeasurementReuseKey, measurement_reuse_key};
+use merman_render_core::text::{
+    TextMeasurer, TextStyle,
+    measurement::{MeasurementReuseKey, TextMeasurementOperation, measurement_reuse_key},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SequenceMessageBoundMetrics {
@@ -167,10 +168,15 @@ impl SequenceMessageMetricView<'_> {
 #[cfg(test)]
 mod tests {
     use super::{SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner};
-    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::text::{DeterministicTextMeasurer, TextStyle};
     use merman_model::families::sequence::{
         SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
+    };
+    use merman_render_core::{
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{
+            DeterministicTextMeasurer, TextStyle,
+            measurement::{TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementSession},
+        },
     };
     use std::collections::BTreeMap;
 
@@ -204,10 +210,9 @@ mod tests {
     fn message_metric_sidecar_requires_exact_model_style_and_builtin_route() {
         let model = metric_test_model("operation-bound");
         let style = TextStyle::default();
-        let session = RenderEnvironment::deterministic()
-            .begin_session()
-            .expect("begin deterministic session");
-        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let session = TextMeasurementSession::new(TextMeasurementPolicy::deterministic());
+        let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        let measurer = session.routed(&work_meter, TextMeasurementPhase::Layout, None);
         let owner = SequenceMessageOwner::from_model_index(0);
         let metrics = SequenceMessageBoundMetrics::new(42.0, 17.0);
         let mut sidecar = SequenceMessageMetricSidecar::new(&model, &style, &measurer);

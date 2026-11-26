@@ -1,5 +1,5 @@
-use crate::text::TextStyle;
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::{config as mermaid_config, text::TextStyle};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,14 +64,14 @@ enum SequenceFontProperty {
     Weight,
 }
 
-pub(crate) struct SequenceConfigView<'a> {
+pub struct SequenceConfigView<'a> {
     effective_config: &'a Value,
     sequence_config: &'a Value,
     config_provenance: Option<&'a PresentationConfig>,
 }
 
 impl<'a> SequenceConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
             sequence_config: effective_config.get("sequence").unwrap_or(&Value::Null),
@@ -95,11 +95,11 @@ impl<'a> SequenceConfigView<'a> {
             .is_some_and(|config| config.explicit_config_owns_path(path))
     }
 
-    pub(crate) fn sequence_bool(&self, key: &str, default: bool) -> bool {
+    pub fn sequence_bool(&self, key: &str, default: bool) -> bool {
         self.sequence_config_bool(key).unwrap_or(default)
     }
 
-    pub(crate) fn sequence_config_bool(&self, key: &str) -> Option<bool> {
+    pub fn sequence_config_bool(&self, key: &str) -> Option<bool> {
         self.sequence_config.get(key).and_then(Value::as_bool)
     }
 
@@ -107,20 +107,20 @@ impl<'a> SequenceConfigView<'a> {
         self.sequence_json_number(key).unwrap_or(default)
     }
 
-    pub(crate) fn sequence_json_number(&self, key: &str) -> Option<f64> {
+    pub fn sequence_json_number(&self, key: &str) -> Option<f64> {
         self.sequence_config.get(key).and_then(Value::as_f64)
     }
 
-    pub(crate) fn sequence_json_number_min(&self, key: &str, default: f64, min: f64) -> f64 {
+    pub fn sequence_json_number_min(&self, key: &str, default: f64, min: f64) -> f64 {
         self.sequence_json_number_or(key, default).max(min)
     }
 
-    pub(crate) fn root_bool(&self, key: &str) -> Option<bool> {
+    pub fn root_bool(&self, key: &str) -> Option<bool> {
         self.effective_config.get(key).and_then(Value::as_bool)
     }
 
-    pub(crate) fn sequence_string(&self, key: &str) -> Option<String> {
-        crate::config::config_string(self.sequence_config, &[key])
+    pub fn sequence_string(&self, key: &str) -> Option<String> {
+        mermaid_config::config_string(self.sequence_config, &[key])
     }
 
     fn parse_font_weight(value: &Value) -> Option<String> {
@@ -160,7 +160,7 @@ impl<'a> SequenceConfigView<'a> {
     }
 
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
-        crate::config::config_f64(self.sequence_config, &[key]).unwrap_or(default)
+        mermaid_config::config_f64(self.sequence_config, &[key]).unwrap_or(default)
     }
 
     fn sequence_compat_f64_min(&self, key: &str, default: f64, min: f64) -> f64 {
@@ -201,13 +201,13 @@ impl<'a> SequenceConfigView<'a> {
         let root_font_family_value = self
             .effective_config
             .get("fontFamily")
-            .filter(|value| crate::config::json_value_is_truthy(value));
+            .filter(|value| mermaid_config::json_value_is_truthy(value));
         let root_font_family = root_font_family_value
             .and_then(Value::as_str)
             .map(str::to_owned);
         let role_font_family = self.sequence_string(family_key);
         let theme_variable_font_family =
-            crate::config::config_string(self.effective_config, &["themeVariables", "fontFamily"]);
+            mermaid_config::config_string(self.effective_config, &["themeVariables", "fontFamily"]);
         let theme_variable_font_family_owns = self
             .explicitly_configured("themeVariables.fontFamily")
             && theme_variable_font_family.is_some();
@@ -234,12 +234,12 @@ impl<'a> SequenceConfigView<'a> {
         let root_font_size_value = self
             .effective_config
             .get("fontSize")
-            .filter(|value| crate::config::json_value_is_truthy(value));
-        let root_font_size = root_font_size_value.and_then(crate::config::json_f64_css_px);
+            .filter(|value| mermaid_config::json_value_is_truthy(value));
+        let root_font_size = root_font_size_value.and_then(mermaid_config::json_f64_css_px);
         let role_font_size = self
             .sequence_config
             .get(size_key)
-            .and_then(crate::config::json_f64_css_px);
+            .and_then(mermaid_config::json_f64_css_px);
         let root_font_size_present = root_font_size_value.is_some();
         let root_font_size_owns = root_font_size_present && self.explicitly_configured("fontSize");
         let role_font_size_owns = role_font_size.is_some() && self.explicitly_configured(size_path);
@@ -260,7 +260,7 @@ impl<'a> SequenceConfigView<'a> {
         let root_font_weight_value = self
             .effective_config
             .get("fontWeight")
-            .filter(|value| crate::config::json_value_is_truthy(value));
+            .filter(|value| mermaid_config::json_value_is_truthy(value));
         let role_font_weight_value = self.sequence_config.get(weight_key);
         let root_font_weight = root_font_weight_value.and_then(Self::parse_font_weight);
         let role_font_weight = role_font_weight_value.and_then(Self::parse_font_weight);
@@ -353,7 +353,7 @@ impl SequenceLayoutSettings {
         let label_box_width = config.sequence_compat_f64("labelBoxWidth", 50.0);
         let mirror_actors = config.sequence_bool("mirrorActors", true);
         let right_angles = config.sequence_bool("rightAngles", false);
-        let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
+        let is_neo = mermaid_config::config_diagram_look(effective_config).is_neo();
         let activation_width = config.sequence_compat_f64_min("activationWidth", 10.0, 1.0);
 
         Self {
@@ -387,7 +387,7 @@ mod tests {
     use serde_json::json;
 
     fn sequence_layout_settings(config: Value) -> SequenceLayoutSettings {
-        let effective_config = crate::test_support::presentation_config(config);
+        let effective_config = crate::preparation::test_support::presentation_config(config);
         let typography =
             super::super::typography::SequenceTypographyPlan::resolve(&effective_config);
         SequenceLayoutSettings::from_effective_config(effective_config.as_value(), &typography)

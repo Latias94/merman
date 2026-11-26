@@ -31,7 +31,6 @@ pub(crate) use merman_render_core::text::inline_html::{
     measure_html_with_document_root, svg_markdown_word_style,
 };
 use merman_render_core::text::line_break;
-pub(crate) use merman_render_core::text::sequence_text_line_step_px;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,

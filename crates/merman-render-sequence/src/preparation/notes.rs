@@ -5,11 +5,12 @@ use super::metrics::{
     measure_sequence_label_for_layout_with_prepared, measure_svg_like_with_html_br,
     wrap_sequence_label_like_mermaid_lines,
 };
-use crate::Result;
-use crate::model::LayoutNode;
-use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::sequence::SequenceMessage;
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    LayoutNode, Result,
+    text::{TextMeasurer, TextStyle},
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -363,7 +364,7 @@ pub(super) fn layout_sequence_note(
     }))
 }
 
-pub(crate) fn sequence_note_final_wrapped_lines(
+pub fn sequence_note_final_wrapped_lines(
     text: &str,
     note_width: f64,
     note_text_pad_total: f64,
@@ -381,10 +382,13 @@ mod tests {
         NoteHorizontalRequest, SequenceNoteHorizontalContext, note_horizontal_model_from_request,
         sequence_note_horizontal_model,
     };
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
     use merman_model::families::sequence::{SequenceMessage, SequenceMessagePayload};
     use merman_model::presentation::PresentationConfig;
+    use merman_render_core::{
+        math::PreparedMathLabel,
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{TextMeasurer, TextMetrics, TextStyle},
+    };
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -460,7 +464,7 @@ mod tests {
             font_size: 90.0,
             ..TextStyle::default()
         };
-        let math_sidecar = crate::sequence::SequenceMathSidecar::default();
+        let math_sidecar = crate::preparation::SequenceMathSidecar::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         let model = sequence_note_horizontal_model(
@@ -476,13 +480,13 @@ mod tests {
                 measurer: &FontSizeMeasurer,
                 note_text_style: &note_style,
                 math_config: &PresentationConfig::default(),
-                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
                 },
                 math_sidecar: &math_sidecar,
                 message_index: 0,
-                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
+                checkpoints: crate::preparation::SequenceLayoutCheckpoints::new(&meter),
             },
         )
         .unwrap()
@@ -497,14 +501,17 @@ mod tests {
         sources: RefCell<Vec<String>>,
     }
 
-    impl crate::sequence::SequenceMathArtifactStore for RecordingMathStore {
+    impl crate::preparation::SequenceMathArtifactStore for RecordingMathStore {
         fn prepare_or_get(
             &self,
-            occurrence: crate::sequence::SequenceMathOccurrence,
+            occurrence: crate::preparation::SequenceMathOccurrence,
             source: &str,
-            _terminal: crate::sequence::SequenceTerminalTextStyle<'_>,
-        ) -> Option<Arc<crate::math::PreparedMathLabel>> {
-            assert_eq!(occurrence, crate::sequence::SequenceMathOccurrence::Note(7));
+            _terminal: crate::preparation::SequenceTerminalTextStyle<'_>,
+        ) -> Option<Arc<PreparedMathLabel>> {
+            assert_eq!(
+                occurrence,
+                crate::preparation::SequenceMathOccurrence::Note(7)
+            );
             self.sources.borrow_mut().push(source.to_string());
             None
         }
@@ -527,17 +534,20 @@ mod tests {
     }
 
     struct FixedMathStore {
-        prepared: Arc<crate::math::PreparedMathLabel>,
+        prepared: Arc<PreparedMathLabel>,
     }
 
-    impl crate::sequence::SequenceMathArtifactStore for FixedMathStore {
+    impl crate::preparation::SequenceMathArtifactStore for FixedMathStore {
         fn prepare_or_get(
             &self,
-            occurrence: crate::sequence::SequenceMathOccurrence,
+            occurrence: crate::preparation::SequenceMathOccurrence,
             _source: &str,
-            _terminal: crate::sequence::SequenceTerminalTextStyle<'_>,
-        ) -> Option<Arc<crate::math::PreparedMathLabel>> {
-            assert_eq!(occurrence, crate::sequence::SequenceMathOccurrence::Note(3));
+            _terminal: crate::preparation::SequenceTerminalTextStyle<'_>,
+        ) -> Option<Arc<PreparedMathLabel>> {
+            assert_eq!(
+                occurrence,
+                crate::preparation::SequenceMathOccurrence::Note(3)
+            );
             Some(Arc::clone(&self.prepared))
         }
     }
@@ -561,7 +571,7 @@ mod tests {
             ..TextStyle::default()
         };
         let store = FixedMathStore {
-            prepared: Arc::new(crate::math::PreparedMathLabel::for_test(TextMetrics {
+            prepared: Arc::new(PreparedMathLabel::for_test(TextMetrics {
                 width: 300.0,
                 height: 24.0,
                 line_count: 1,
@@ -582,13 +592,13 @@ mod tests {
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
                 math_config: &PresentationConfig::default(),
-                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
                 },
                 math_sidecar: &store,
                 message_index: 3,
-                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
+                checkpoints: crate::preparation::SequenceLayoutCheckpoints::new(&meter),
             },
         )
         .expect("self-over math note geometry")
@@ -632,13 +642,13 @@ mod tests {
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
                 math_config: &PresentationConfig::default(),
-                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                math_terminal_style: crate::preparation::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
                 },
                 math_sidecar: &store,
                 message_index: 7,
-                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
+                checkpoints: crate::preparation::SequenceLayoutCheckpoints::new(&meter),
             };
             let model = sequence_note_horizontal_model(&message, context)
                 .expect("wrapped note geometry")

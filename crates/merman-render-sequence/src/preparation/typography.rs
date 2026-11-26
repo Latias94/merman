@@ -1,6 +1,10 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::text::{TextStyle, parse_css_font_stack};
+use merman_render_core::{
+    mermaid_style::{font_family_css, resolve_mermaid_absolute_font_size_px},
+    text::{TextStyle, parse_css_font_stack},
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum SequenceTypographyRole {
@@ -22,7 +26,7 @@ impl SequenceTypographyRole {
 
 /// SVG text surfaces sharing Sequence typography and foreground roles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum SequenceTextSurface {
+pub enum SequenceTextSurface {
     ParticipantLabel,
     BoxTitle,
     MessageLabel,
@@ -55,7 +59,7 @@ impl SequenceTextSurface {
         }
     }
 
-    pub(crate) const fn terminal_selectors(self) -> &'static str {
+    pub const fn terminal_selectors(self) -> &'static str {
         match self {
             Self::ParticipantLabel => "text.actor,text.actor>tspan",
             Self::BoxTitle => "text.text,text.text>tspan",
@@ -69,7 +73,7 @@ impl SequenceTextSurface {
 }
 
 #[derive(Debug)]
-pub(crate) struct SequenceResolvedTypography {
+pub struct SequenceResolvedTypography {
     measurement_style: TextStyle,
     terminal_text_style: TextStyle,
     explicit_style: bool,
@@ -103,11 +107,11 @@ impl SequenceResolvedTypography {
         }
     }
 
-    pub(crate) const fn measurement_style(&self) -> &TextStyle {
+    pub const fn measurement_style(&self) -> &TextStyle {
         &self.measurement_style
     }
 
-    pub(crate) const fn terminal_text_style(&self) -> &TextStyle {
+    pub const fn terminal_text_style(&self) -> &TextStyle {
         &self.terminal_text_style
     }
 
@@ -125,7 +129,7 @@ impl SequenceResolvedTypography {
         style
     }
 
-    pub(crate) fn terminal_style(&self, typed_prefix: &str, legacy: String) -> String {
+    pub fn terminal_style(&self, typed_prefix: &str, legacy: String) -> String {
         if self.explicit_style {
             self.inline_style(typed_prefix)
         } else {
@@ -137,7 +141,7 @@ impl SequenceResolvedTypography {
         self.explicit_style.then(|| self.inline_style(""))
     }
 
-    pub(crate) fn fixed_size_terminal_style(&self) -> Option<String> {
+    pub fn fixed_size_terminal_style(&self) -> Option<String> {
         self.explicit_style.then(|| {
             let mut declarations = String::new();
             append_font_source_declarations(&mut declarations, &self.terminal_text_style);
@@ -148,7 +152,7 @@ impl SequenceResolvedTypography {
 }
 
 #[derive(Debug)]
-pub(crate) struct SequenceTypographyPlan {
+pub struct SequenceTypographyPlan {
     compat: super::SequenceCompatBinding,
     root_font_size_px: f64,
     native_title: Option<TextStyle>,
@@ -159,16 +163,16 @@ pub(crate) struct SequenceTypographyPlan {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SequenceTerminalTextStyle<'a> {
-    pub(crate) text_style: &'a TextStyle,
-    pub(crate) foreground: &'a str,
+pub struct SequenceTerminalTextStyle<'a> {
+    pub text_style: &'a TextStyle,
+    pub foreground: &'a str,
 }
 
 impl SequenceTypographyPlan {
-    pub(crate) fn for_native(
+    pub fn for_native(
         config: &serde_json::Value,
-        theme: &crate::theme::FamilyTheme,
-        background: Option<crate::theme::Color>,
+        theme: &FamilyTheme,
+        background: Option<Color>,
     ) -> Self {
         let compat = super::SequenceCompatBinding::for_native(config, theme, background);
         let typography = &theme.typography;
@@ -180,9 +184,7 @@ impl SequenceTypographyPlan {
             font_style: None,
         };
         let title = TextStyle {
-            font_family: Some(crate::theme::font_family_css(
-                typography.stack(typography.title_family),
-            )),
+            font_family: Some(font_family_css(typography.stack(typography.title_family))),
             font_weight: Some(typography.title_weight.to_string()),
             ..body.clone()
         };
@@ -197,15 +199,14 @@ impl SequenceTypographyPlan {
         }
     }
 
-    pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
+    pub fn resolve(effective_config: &PresentationConfig) -> Self {
         let compat = super::SequenceCompatBinding::resolve(effective_config.as_value());
         let config = super::config::SequenceConfigView::from_mermaid_config(effective_config);
         let role = |role| SequenceResolvedTypography::resolve(&config, role, &compat.font_family);
         // The title inherits root CSS, independently of the message's inline font size.
-        let root_font_size_px =
-            crate::mermaid_style::resolve_mermaid_absolute_font_size_px(&compat.font_size_css)
-                .unwrap_or(16.0)
-                .max(1.0);
+        let root_font_size_px = resolve_mermaid_absolute_font_size_px(&compat.font_size_css)
+            .unwrap_or(16.0)
+            .max(1.0);
         Self {
             root_font_size_px,
             native_title: None,
@@ -217,7 +218,7 @@ impl SequenceTypographyPlan {
         }
     }
 
-    pub(crate) fn compat_binding(&self) -> &super::SequenceCompatBinding {
+    pub fn compat_binding(&self) -> &super::SequenceCompatBinding {
         &self.compat
     }
 
@@ -234,7 +235,7 @@ impl SequenceTypographyPlan {
         }
     }
 
-    pub(crate) fn native_title_css(&self) -> Option<String> {
+    pub fn native_title_css(&self) -> Option<String> {
         self.native_title.as_ref().map(|style| {
             let mut css = String::new();
             append_typography_declarations(&mut css, style);
@@ -251,23 +252,23 @@ impl SequenceTypographyPlan {
         }
     }
 
-    pub(crate) const fn actor(&self) -> &SequenceResolvedTypography {
+    pub const fn actor(&self) -> &SequenceResolvedTypography {
         &self.actor
     }
 
-    pub(crate) const fn message(&self) -> &SequenceResolvedTypography {
+    pub const fn message(&self) -> &SequenceResolvedTypography {
         &self.message
     }
 
-    pub(crate) const fn note(&self) -> &SequenceResolvedTypography {
+    pub const fn note(&self) -> &SequenceResolvedTypography {
         &self.note
     }
 
-    pub(crate) const fn loop_label(&self) -> &SequenceResolvedTypography {
+    pub const fn loop_label(&self) -> &SequenceResolvedTypography {
         &self.loop_label
     }
 
-    pub(crate) fn terminal_text_style(
+    pub fn terminal_text_style(
         &self,
         surface: SequenceTextSurface,
     ) -> SequenceTerminalTextStyle<'_> {

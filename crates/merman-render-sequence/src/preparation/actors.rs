@@ -8,15 +8,16 @@ use super::metrics::{
     measure_typed_actor_label_for_layout,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
-use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle};
-use crate::{Error, Result};
+use crate::actor::{
+    SequenceActorLabelFootprint, SequenceActorLabelKind, sequence_actor_lifeline_start_y,
+    sequence_actor_popup_rect_height, sequence_actor_stack_height, sequence_actor_visual_height,
+};
 use merman_model::families::sequence::SequenceActor;
 use merman_model::families::sequence::SequenceDiagramModel;
 use merman_model::presentation::PresentationConfig;
-use merman_render_sequence::actor::{
-    SequenceActorLabelFootprint, SequenceActorLabelKind, sequence_actor_lifeline_start_y,
-    sequence_actor_popup_rect_height, sequence_actor_stack_height, sequence_actor_visual_height,
+use merman_render_core::{
+    Error, LayoutEdge, LayoutNode, LayoutPoint, Result,
+    text::{TextMeasurer, TextStyle},
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -169,15 +170,15 @@ pub(super) fn plan_sequence_actors<'a>(
 
 /// Popup geometry prepared once with the same effective actor typography as the terminal SVG.
 #[derive(Debug)]
-pub(crate) struct SequenceActorPopupLayout {
-    pub(crate) width: f64,
-    pub(crate) height: f64,
-    pub(crate) origin_y: f64,
+pub struct SequenceActorPopupLayout {
+    pub width: f64,
+    pub height: f64,
+    pub origin_y: f64,
     row_height: f64,
 }
 
 impl SequenceActorPopupLayout {
-    pub(crate) fn text_y_offset(&self, row_index: usize) -> f64 {
+    pub fn text_y_offset(&self, row_index: usize) -> f64 {
         SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
             + (self.row_height - SEQUENCE_ACTOR_POPUP_ROW_HEIGHT) / 2.0
             + row_index as f64 * self.row_height

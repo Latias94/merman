@@ -1,12 +1,11 @@
 use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
-use crate::geom::Box2;
-use crate::model::LayoutNode;
+use merman_render_core::{Bounds, LayoutNode};
 
 #[derive(Debug, Clone)]
 pub(super) struct SequenceRectOpen {
     start_id: String,
     top_y: f64,
-    bounds: Option<Box2>,
+    bounds: Option<Bounds>,
 }
 
 impl SequenceRectOpen {
@@ -19,26 +18,36 @@ impl SequenceRectOpen {
     }
 
     pub(super) fn include_min_max(&mut self, min_x: f64, max_x: f64, max_y: f64) {
-        let r = Box2::from_min_max(min_x, self.top_y, max_x, max_y);
-        if let Some(ref mut cur) = self.bounds {
-            cur.union(r);
+        if let Some(bounds) = &mut self.bounds {
+            bounds.min_x = bounds.min_x.min(min_x);
+            bounds.min_y = bounds.min_y.min(self.top_y);
+            bounds.max_x = bounds.max_x.max(max_x);
+            bounds.max_y = bounds.max_y.max(max_y);
         } else {
-            self.bounds = Some(r);
+            self.bounds = Some(Bounds {
+                min_x,
+                min_y: self.top_y,
+                max_x,
+                max_y,
+            });
         }
     }
 
     pub(super) fn close(self, actor_center_bounds: (f64, f64)) -> ClosedSequenceRect {
         let rect_left = self
             .bounds
-            .map(|b| b.min_x())
+            .as_ref()
+            .map(|bounds| bounds.min_x)
             .unwrap_or(actor_center_bounds.0 - SEQUENCE_FRAME_SIDE_PAD_PX);
         let rect_right = self
             .bounds
-            .map(|b| b.max_x())
+            .as_ref()
+            .map(|bounds| bounds.max_x)
             .unwrap_or(actor_center_bounds.1 + SEQUENCE_FRAME_SIDE_PAD_PX);
         let rect_bottom = self
             .bounds
-            .map(|b| b.max_y() + SEQUENCE_FRAME_GEOM_PAD_PX)
+            .as_ref()
+            .map(|bounds| bounds.max_y + SEQUENCE_FRAME_GEOM_PAD_PX)
             .unwrap_or(self.top_y + SEQUENCE_FRAME_GEOM_PAD_PX);
         let rect_w = (rect_right - rect_left).max(1.0);
         let rect_h = (rect_bottom - self.top_y).max(1.0);

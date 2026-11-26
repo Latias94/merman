@@ -1,8 +1,8 @@
 # merman-render-sequence
 
-Layout types, participant drawing, prepared control frames, and activation rendering for Mermaid
-Sequence diagrams. Activation state, bounds, palette slots, and complete SVG groups belong to this
-crate. `merman-render` orchestrates layout, text and math measurement, and the final SVG document
-using the same operation budget across both crates.
+Sequence preparation and layout for Mermaid diagrams, including typography, text and math
+measurement, participant drawing, control frames, and activation rendering. The facade supplies
+the original operation context and owns the complete SVG and terminal output checks. Preparation
+and emission use the same operation budget. Select `math` to include the shared RaTeX backend.
 
 Use `merman` for source-to-output rendering.

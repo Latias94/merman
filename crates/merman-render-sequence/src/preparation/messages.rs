@@ -6,15 +6,17 @@ use super::metrics::{
     measure_sequence_label_for_layout_with_prepared, measure_svg_like_with_html_br,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, split_mermaid_common_br_lines};
+use crate::activation::SequenceActivationState;
 use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
     SequenceMessageStroke, SequenceSignalSemantics,
 };
 use merman_model::presentation::PresentationConfig;
-use merman_render_sequence::activation::SequenceActivationState;
+use merman_render_core::{
+    LayoutEdge, LayoutLabel, LayoutPoint, Result,
+    math::PreparedMathLabel,
+    text::{TextMeasurer, TextStyle, line_break::split_mermaid_common_br_lines},
+};
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;
@@ -550,7 +552,7 @@ fn message_vertical_geometry(
     is_math_message: bool,
     is_self: bool,
     premeasured_bound: Option<SequenceMessageBoundMetrics>,
-    prepared_math: Option<&crate::math::PreparedMathLabel>,
+    prepared_math: Option<&PreparedMathLabel>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> Result<SequenceMessageVerticalGeometry> {
     let (text_width, text_height) = if effective_text.is_empty() {
@@ -634,7 +636,7 @@ fn message_label(
     x1: f64,
     x2: f64,
     label_y: f64,
-    prepared_math: Option<&crate::math::PreparedMathLabel>,
+    prepared_math: Option<&PreparedMathLabel>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> Result<Option<LayoutLabel>> {
     if effective_text.is_empty() {

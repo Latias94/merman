@@ -14,10 +14,17 @@ third-party-bundle = true
 
 [features]
 benchmark-stages = ["merman-model/benchmark-stages"]
+math = ["merman-render-core/math"]
 
 [dependencies]
-merman-model = { workspace = true, features = ["diagram-sequence"] }
-merman-render-core = { workspace = true, features = ["theme-svg"] }
+cssparser.workspace = true
+merman-model = { workspace = true, features = ["diagram-sequence", "presentation-data"] }
+merman-render-core = { workspace = true, features = ["math-labels", "resources-sequence", "theme-svg"] }
+merman-theme-contract.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+merman-core = { workspace = true, features = ["diagram-sequence", "presentation"] }
+merman-render-core = { workspace = true, features = ["test-support"] }

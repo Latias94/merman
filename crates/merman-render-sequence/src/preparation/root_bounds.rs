@@ -2,11 +2,17 @@ use super::SequenceLayoutCheckpoints;
 use super::actors::SequenceActorPopupLayout;
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
-use crate::Result;
-use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceFrameLayout, SequenceTextLayout};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::frame::SequenceFrameLayout;
+use crate::model::SequenceTextLayout;
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Bounds, Error, LayoutEdge, LayoutNode, Result,
+    config::config_f64,
+    text::{
+        TextMeasurer, TextStyle, svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
+    },
+};
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
@@ -133,11 +139,11 @@ fn prepare_diagram_title_geometry(
         .measure_svg_text_computed_length_px(text, ctx.base_text_style)
         / 2.0;
     ctx.checkpoints.checkpoint()?;
-    let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+    let (ascent, descent) = svg_text_vertical_extents_px(
         ctx.measurer,
         text,
         ctx.base_text_style,
-        crate::text::svg_title_bbox_vertical_extents_px(ctx.base_text_style),
+        svg_title_bbox_vertical_extents_px(ctx.base_text_style),
     );
 
     Ok(Some(SequenceDiagramTitleGeometry {
@@ -203,11 +209,8 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> Result<Conten
                 content.include_y(p.y);
             }
             if let Some(label) = e.label.as_ref() {
-                let margin = crate::config::config_f64(
-                    ctx.math_config.as_value(),
-                    &["sequence", "wrapPadding"],
-                )
-                .unwrap_or(10.0);
+                let margin = config_f64(ctx.math_config.as_value(), &["sequence", "wrapPadding"])
+                    .unwrap_or(10.0);
                 let first_y = super::sequence_drawn_text_y(label.y, margin, 0.0);
                 content.include_y(first_y + label.height / 2.0);
             }
@@ -265,7 +268,7 @@ fn include_actor_popup_bounds(
             continue;
         }
         let Some(popup) = ctx.actor_popup_layouts.get(actor_id) else {
-            return Err(crate::Error::InvalidModel {
+            return Err(Error::InvalidModel {
                 message: format!("missing prepared Sequence popup for {actor_id}"),
             });
         };

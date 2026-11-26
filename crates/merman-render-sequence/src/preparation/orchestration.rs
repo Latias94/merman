@@ -12,18 +12,20 @@ use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
 use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceLayoutCheckpoints};
-use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode, SequenceActivationLayout};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::activation::{
+    SequenceActivationGeometryBuilder, SequenceActivationState, SequencePreparedActivationGeometry,
+};
+use crate::frame::SequenceBlockLayout;
+use crate::model::SequenceActivationLayout;
 use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };
 use merman_model::presentation::PresentationConfig;
-use merman_render_sequence::activation::{
-    SequenceActivationGeometryBuilder, SequenceActivationState, SequencePreparedActivationGeometry,
+use merman_render_core::{
+    LayoutEdge, LayoutNode, Result,
+    text::{TextMeasurer, TextStyle},
 };
-use merman_render_sequence::frame::SequenceBlockLayout;
 use std::collections::HashMap;
 
 pub(super) struct SequenceLayoutGraphContext<'a> {

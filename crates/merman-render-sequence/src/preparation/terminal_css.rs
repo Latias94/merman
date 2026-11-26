@@ -1,21 +1,21 @@
 use super::{SequenceTextSurface, SequenceTypographyPlan};
 
 #[derive(Debug, Clone)]
-pub(crate) struct SequencePreparedTextCssGroup {
-    pub(crate) declarations: String,
-    pub(crate) surfaces: Vec<SequenceTextSurface>,
+pub struct SequencePreparedTextCssGroup {
+    pub declarations: String,
+    pub surfaces: Vec<SequenceTextSurface>,
 }
 
 /// Sequence CSS values that require formatting or grouping during preparation.
 #[derive(Debug, Clone)]
-pub(crate) struct SequencePreparedCss {
-    pub(crate) actor_text_fill: String,
-    pub(crate) message_text_fill: String,
-    pub(crate) note_text_fill: String,
-    pub(crate) label_text_fill: String,
-    pub(crate) loop_text_fill: String,
-    pub(crate) section_title_fill: String,
-    pub(crate) text_groups: Vec<SequencePreparedTextCssGroup>,
+pub struct SequencePreparedCss {
+    pub actor_text_fill: String,
+    pub message_text_fill: String,
+    pub note_text_fill: String,
+    pub label_text_fill: String,
+    pub loop_text_fill: String,
+    pub section_title_fill: String,
+    pub text_groups: Vec<SequencePreparedTextCssGroup>,
 }
 
 impl SequencePreparedCss {
