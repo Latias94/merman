@@ -531,11 +531,11 @@ fn apply_port_order(
                 context.pending = None;
             }
         }
-        let units = context
-            .census
-            .as_ref()
-            .expect("prepared reference context")
-            .reference_work(node)?;
+        let census = context.census.as_ref().expect("prepared reference context");
+        let units = match (&context.pending, check_edge_slots) {
+            (Some(pending), false) => pending.reorder_work(node, census)?,
+            _ => census.reference_work(node)?,
+        };
         work.check(units)?;
         work.charge(units)?;
     }

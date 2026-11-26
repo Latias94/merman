@@ -260,6 +260,98 @@ fn side_range_interruption_keeps_the_admitted_south_permutation() {
 }
 
 #[test]
+fn deferred_repair_prepays_the_exit_walk_and_charges_only_affected_maps() {
+    let mut original = graph();
+    original
+        .layerless_nodes
+        .push(LNode::new("third", 10.0, 10.0, Some(2)));
+    for owner in [1, 2] {
+        let node = &mut original.layerless_nodes[owner];
+        node.ports.push(LPort::new("a", owner, PortType::Input));
+        node.ports.push(LPort::new("b", owner, PortType::Input));
+    }
+    let origin = |graph_id: &str, node| {
+        Some(GraphPortRef {
+            graph_id: graph_id.to_owned(),
+            port: PortRef { node, port: 0 },
+        })
+    };
+    original.layerless_nodes[0].origin_port = origin("root", 2);
+    original.layerless_nodes[1].origin_port = origin("peer", 2);
+    let mut child = LGraph::new("child", LayeredOptions::default());
+    let mut dummy = LNode::new("dummy", 0.0, 0.0, None);
+    dummy.origin_port = origin("root", 1);
+    dummy.nested_graph = Some(Box::new(LGraph::new("empty", LayeredOptions::default())));
+    child.layerless_nodes.push(dummy);
+    original.layerless_nodes[0].nested_graph = Some(Box::new(child));
+
+    for slot in [0, 1] {
+        original.self_loop_holders.push(SelfLoopHolder {
+            node: 1,
+            hyper_loops: vec![SelfHyperLoop {
+                ports: vec![SelfLoopPort {
+                    port: slot,
+                    had_only_self_loops: true,
+                    hidden: false,
+                }],
+                edges: Vec::new(),
+                labels: None,
+                self_loop_type: None,
+                leftmost_port: None,
+                rightmost_port: None,
+                occupied_sides: Vec::new(),
+                routing_slots: [0; 5],
+            }],
+            ports_hidden: false,
+            original_port_constraints: PortConstraints::FixedOrder,
+        });
+    }
+
+    let orders = [
+        (0, [1, 0]),
+        (1, [1, 0]),
+        (1, [1, 0]),
+        (0, [1, 0]),
+        (2, [1, 0]),
+        (0, [1, 0]),
+        (2, [0, 1]),
+    ];
+    let charges = [5, 2, 2, 2, 1, 16, 31, 3, 8, 1, 3];
+    for (available, admitted, debits) in [(58, 1, 6), (59, 2, 7), (73, 5, 10), (74, 7, 11)] {
+        let mut graph = original.clone();
+        let mut work = Budget {
+            remaining: available,
+            charges: Vec::new(),
+        };
+        let result = {
+            let mut pass = PortListSort {
+                graph: &mut graph,
+                context: PortOrderContext {
+                    census: None,
+                    pending: Some(PendingPortRemap::default()),
+                },
+            };
+            orders.into_iter().try_for_each(|(owner, order)| {
+                apply_port_order(
+                    pass.graph,
+                    owner,
+                    order.to_vec(),
+                    &mut work,
+                    &mut pass.context,
+                )
+            })
+        };
+        assert_eq!(work.charges, charges[..debits]);
+        assert_eq!(result.is_ok(), available == 74);
+        let mut expected = original.clone();
+        for (owner, order) in orders.into_iter().take(admitted) {
+            assert!(expected.reorder_node_ports(owner, order));
+        }
+        assert_eq!(graph, expected);
+    }
+}
+
+#[test]
 fn reference_context_reuses_counts_across_owners_with_nested_and_long_edge_refs() {
     let mut graph = graph();
     graph.layerless_nodes[1].ports = vec![

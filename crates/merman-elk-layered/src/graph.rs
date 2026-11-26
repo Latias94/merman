@@ -22,6 +22,7 @@ pub(crate) struct ReorderNodePortsWorkContext {
     shared_reference_work: usize,
     self_loop_holder_scan_work: usize,
     self_loop_payload_by_node: Vec<usize>,
+    deferred_scan_extra: Result<usize, WorkError>,
 }
 
 impl ReorderNodePortsWorkContext {
@@ -38,6 +39,7 @@ impl ReorderNodePortsWorkContext {
         work.check(initial_work)?;
         work.charge(initial_work)?;
         let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
+        let mut holder_hyper_loops = 0;
         for holder in &graph.self_loop_holders {
             let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
                 continue;
@@ -52,6 +54,7 @@ impl ReorderNodePortsWorkContext {
                 work.charge(loop_work)?;
                 *payload = checked_add(*payload, loop_payload)?;
                 if can_defer {
+                    holder_hyper_loops += 1;
                     let port_count = graph.layerless_nodes[holder.node].ports.len();
                     can_defer = hyper_loop.ports.iter().all(|port| port.port < port_count)
                         && hyper_loop.edges.iter().all(|edge| {
@@ -64,12 +67,15 @@ impl ReorderNodePortsWorkContext {
         // Checking slots during the charged census is only a batching eligibility test.
         // An origin outside the local slot range can retain the immediate path even if it
         // belongs to another graph. Leave graph ID comparisons to the remapping walk.
-        let origin_slot_is_valid = |node: &LNode| {
-            node.origin_port
-                .as_ref()
-                .is_none_or(|origin| port_exists(graph, origin.port))
+        let mut same_length_origin_ids = 0usize;
+        let mut origin_slot_is_valid = |node: &LNode| {
+            node.origin_port.as_ref().is_none_or(|origin| {
+                same_length_origin_ids += usize::from(origin.graph_id.len() == graph.id.len());
+                port_exists(graph, origin.port)
+            })
         };
         let mut descendant_nodes = 0usize;
+        let mut descendant_graphs = 0;
         let mut stack = graph
             .layerless_nodes
             .iter()
@@ -91,6 +97,9 @@ impl ReorderNodePortsWorkContext {
             work.check(scan_work)?;
             work.charge(scan_work)?;
             descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
+            if can_defer {
+                descendant_graphs += 1;
+            }
             stack.extend(current.layerless_nodes.iter().filter_map(|node| {
                 if can_defer {
                     can_defer = origin_slot_is_valid(node);
@@ -108,6 +117,13 @@ impl ReorderNodePortsWorkContext {
             ])?,
             self_loop_holder_scan_work: graph.self_loop_holders.len(),
             self_loop_payload_by_node,
+            deferred_scan_extra: if can_defer {
+                checked_mul(same_length_origin_ids.saturating_sub(1), graph.id.len()).and_then(
+                    |id_work| checked_sum([id_work, descendant_graphs, holder_hyper_loops]),
+                )
+            } else {
+                Ok(0)
+            },
         };
         Ok((context, can_defer))
     }
@@ -128,6 +144,14 @@ impl ReorderNodePortsWorkContext {
                 .get(node_index)
                 .copied()
                 .unwrap_or(0),
+        ])
+    }
+
+    fn deferred_reference_scan_work(&self) -> Result<usize, WorkError> {
+        checked_sum([
+            self.shared_reference_work,
+            self.self_loop_holder_scan_work,
+            self.deferred_scan_extra?,
         ])
     }
 }
