@@ -442,11 +442,11 @@ fixtures cover all four directions, cycles, self-loops, parallel labels, and den
 cargo nextest run --locked -p merman-render --features diagram-flowchart,layout-shoal --lib -E 'test(graph_layout::validate::gallery::)' --success-output immediate
 ```
 
-Replay the aesthetic witnesses at intrinsic SVG size to record curve commands, short lateral
-steps, border-seam deviation, and adjacent marker spacing.
+Replay the aesthetic witnesses at intrinsic SVG size to measure the balance of visible label
+shafts, S-curve handle order, sibling turns, border seams, and marker spacing.
 
 ```console
-cargo nextest run --locked -p merman-render --features diagram-flowchart,diagram-agentflow,layout-shoal --lib -E 'test(replay_aesthetic_witnesses)' --success-output immediate
+cargo nextest run --locked -p merman-render --features diagram-flowchart,diagram-agentflow,layout-shoal --lib -E 'test(replay_aesthetic_witnesses) | test(painted_decision_branch_metrics)' --success-output immediate
 ```
 
 The flat replay includes the final painted `fan-in-250` fit-width drawing with a 1,200 px

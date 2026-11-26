@@ -30,7 +30,7 @@ cargo run -p merman-layout-shoal --example measured_dag
 - `NodeId`, `GroupId` and `EdgeId` are dense `u32` indices into `Graph`'s respective arrays. Outputs use the same indices. Each parallel edge keeps its own route and measured label.
 - Node and label sizes use the final drawing axes. Supply finite, nonnegative outer dimensions including padding. `Rect.x` and `Rect.y` give the top-left corner. `Rect::center()` gives the center for renderers that place shapes by their center.
 - The first and last `RoutePoint` are contacts on the source and target box faces named by `EdgeGeometry.ports`. `axis` is the incoming leg's axis in drawing coordinates. At the first point it is the departing axis. A curved leg can change both coordinates while keeping flow-axis tangents. `KnotKind::GapBoundary` limits the extent of rounding into the neighboring rank. `Orthogonal` produces axis-aligned legs.
-- Supply marker and label footprints in drawing units. The renderer moves box contacts onto the actual shape along the indicated side normal and applies the marker setback once. The solver reserves intermediate ranks for labels and parallel lenses where needed.
+- Supply marker and label footprints in drawing units. Use a zero footprint for an unmarked port and set `NodeSpec::contour` for a measured nonrectangular outline. Shoal uses analytical insets to reserve terminal space and place labels. The renderer moves box contacts onto the actual shape along the indicated side normal and applies the marker setback once.
 - `LayoutOutput.bounds` is the size of the normalized drawing. The union of its node boxes, label boxes and routing points begins at `(0, 0)`. Edge occurrences are returned in semantic source-to-target order, including edges reversed internally for ranking.
 
 ## Layout policies
@@ -39,11 +39,11 @@ The default ranks the acyclic condensation of each connected component. `CyclePo
 
 Long edges normally travel along intermediate channels inside the diagram. On small graphs, the hybrid policy can reserve exterior lanes for feedback edges and long edges that bypass another forward path. It accepts a lane when the rank crossing count stays the same or improves. Automatic ports can join the lane on a side face when there is room for the connection and its marker. `BudgetCaps::max_dummies` bounds the number of expanded vertices across the drawing. The solver records each edge downgraded at this cap in `LayoutStats::direct_fallback_edges`. `topological_crossings` counts inversions between consecutive ranks. For a flat graph, `routed_crossings` counts pairs of routing polylines with a proper intersection. For a compound graph it compares the assembled paths in the selected routing style and excludes the fan near a shared endpoint. Both measurements precede final outline clipping and SVG painting.
 
-Set `Options::bus_routing` with `RoutingStyle::Orthogonal` to allow unlabelled, consistently styled fans to share a trunk where there is room. Each edge keeps its own semantic occurrence and terminal marker.
+The default node, rank and edge spacings are 44, 48 and 14 drawing units. With `RoutingStyle::Orthogonal`, `Options::bus_routing` allows unlabelled fans of at least six edges to share a trunk where there is room. Each edge keeps its own semantic occurrence and terminal marker.
 
 Set `Options::global_orthogonal` with `RoutingStyle::Orthogonal` to search for shorter, lower-conflict routes around measured boxes. Shoal can give coincident legs separate tracks where their approach order and available clearance allow it. Port contacts, marker leads, and compound border stitches are kept. `BudgetCaps::max_ortho_grid_nodes` limits the search, which falls back to the layered drawing when a refinement does not fit. Bus routing takes precedence when requested.
 
-`Options::inline_labels` tries to center short middle labels on their edge in an existing rank gap in flat graphs. A gap must have room for the measured label, its padding and both visible markers along the flow axis. A label sublayer reserves space when a longer route shares a rank face with the labelled edge, or when the placed routes leave no clear position on the edge. `Options::compact_ranks` can move a short node up to use space under its immediate parent when their edge is straight and the proposed geometry clears nearby boxes and routes.
+`Options::inline_labels` tries to center short middle labels on their visible shaft in flat graphs. Shoal checks the measured label against neighboring boxes, routes and markers. A blocked label returns to a rank reserved during layout. `Options::compact_ranks` can move a short node up to use space under its immediate parent when their edge is straight and the proposed geometry clears nearby boxes and routes. Both options are enabled by default.
 
 `PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `BalancedAspect` packs disconnected components against a skyline and uses a target physical width-to-height ratio. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually.
 
@@ -63,7 +63,11 @@ Use `Endpoint::Group` to connect a group directly to an outside node, another gr
 
 For curved routes between facing sibling boundaries, Shoal can straighten the corridor between the groups and align both contacts on a shared lane. It preserves the order and spacing of adjacent ports and checks the change against nodes, labels, markers and other routes.
 
-Set `Graph::lane_order` to the root group IDs in physical left-to-right or top-to-bottom order. Shoal arranges lane members on a shared rank grid, aligns the lane borders, and places titles on the starting side of the flow. Use `WidthPolicy::Natural` for these graphs and put loose items into a root lane. For an already placed grid, `route_orthogonal_spans` routes between fixed lead ends around the supplied obstacle rectangles.
+## Placement for grid and lane diagrams
+
+Use `grid::layout_with_control` to place a graph from its four-sided port constraints, as in Architecture. Use `card_grid::layout_with_control` for compact rows of measured cards, as in C4. Both functions return the same occurrence order and border stitches as layered placement. Grid width fitting wraps disconnected root components. Card-grid width fitting wraps rows of cards within the available width.
+
+Set `Graph::lane_order` to the root group IDs in physical left-to-right or top-to-bottom order. Shoal arranges lane members on shared ranks, aligns the lane borders and places titles on the starting side of the flow. Forward handoffs can turn once between lanes. Feedback routes can use reserved side corridors, and empty rank space can contract where routes are straight. Use `WidthPolicy::Natural` and put loose items into a root lane. For an already placed diagram, `route_orthogonal_spans` routes between fixed lead ends around obstacle rectangles.
 
 ## Work control and buffer reuse
 
