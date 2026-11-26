@@ -127,6 +127,8 @@ fn write_marker_shape(
     let _ = out.write_char('"');
 }
 
+const CLASSIC_POINT_END_VIEW_BOX: [f64; 2] = [10.0, 10.0];
+
 const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::PointEnd,
@@ -135,7 +137,7 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         shape: r#" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::StrokeAndFill,
         viewport: FlowchartMarkerViewport {
-            view_box: [10.0, 10.0],
+            view_box: CLASSIC_POINT_END_VIEW_BOX,
             reference: [5.0, 5.0],
             size: [8.0, 8.0],
         },
@@ -334,6 +336,52 @@ fn flowchart_marker_shape_spec(
         .chain(BPMN_MARKER_SHAPE_SPECS.iter())
         .find(|spec| spec.base == base && spec.margin == margin)
         .expect("Flowchart marker shape descriptor")
+}
+
+#[cfg(all(
+    feature = "native-compact",
+    feature = "diagram-flowchart",
+    feature = "layout-dagre"
+))]
+pub(super) fn compact_classic_point_end(
+    color: merman_render_core::paint_scene::SceneColor,
+) -> merman_render_core::paint_scene::SceneMarker<'static> {
+    use merman_render_core::paint_scene::{
+        SceneBox, SceneMarker, SceneMarkerOrient, SceneMarkerUnits, ScenePaint, ScenePathCommand,
+        SceneStroke,
+    };
+
+    const WIDTH: f64 = CLASSIC_POINT_END_VIEW_BOX[0];
+    const HEIGHT: f64 = CLASSIC_POINT_END_VIEW_BOX[1];
+    const COMMANDS: [ScenePathCommand; 4] = [
+        ScenePathCommand::MoveTo([0.0, 0.0]),
+        ScenePathCommand::LineTo([WIDTH, HEIGHT / 2.0]),
+        ScenePathCommand::LineTo([0.0, HEIGHT]),
+        ScenePathCommand::Close,
+    ];
+    let spec = flowchart_marker_shape_spec(FlowchartMarkerBase::PointEnd, false);
+    SceneMarker {
+        view_box: Some(SceneBox {
+            x: 0.0,
+            y: 0.0,
+            width: spec.viewport.view_box[0],
+            height: spec.viewport.view_box[1],
+        }),
+        reference: spec.viewport.reference,
+        width: spec.viewport.size[0],
+        height: spec.viewport.size[1],
+        units: SceneMarkerUnits::UserSpaceOnUse,
+        orient: SceneMarkerOrient::Auto,
+        commands: &COMMANDS,
+        paint: ScenePaint {
+            fill: Some(color),
+            stroke: Some(SceneStroke {
+                color,
+                width: 1.0,
+                dash: None,
+            }),
+        },
+    }
 }
 
 #[cfg(any(feature = "layout-shoal", test))]

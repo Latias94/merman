@@ -103,7 +103,7 @@ pub(super) fn fmt_path_coordinate_into(out: &mut String, v: f64) -> f64 {
     }
 }
 
-fn path_coordinate_thousandths(v: f64) -> i64 {
+pub(super) fn path_coordinate_thousandths(v: f64) -> i64 {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).

@@ -456,6 +456,10 @@ name = "native_compact_sequence"
 required-features = ["svg", "diagram-sequence"]
 
 [[test]]
+name = "native_compact_flowchart"
+required-features = ["diagram-flowchart", "layout-dagre", "native-compact"]
+
+[[test]]
 name = "feature_surface_smoke"
 required-features = ["analysis", "editor"]
 

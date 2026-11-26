@@ -1132,7 +1132,7 @@ impl SvgPipeline {
     }
 }
 
-#[cfg(all(feature = "native-compact", feature = "diagram-sequence"))]
+#[cfg(feature = "native-compact")]
 pub(super) fn validate_native_compact_svg(svg: &str, session: &RenderSession) -> Result<()> {
     final_validation::validate_well_formed_svg_with_execution(
         svg,

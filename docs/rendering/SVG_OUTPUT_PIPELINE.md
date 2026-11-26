@@ -83,9 +83,9 @@ protocol is retired throughout producer and consumer paths. Its former prefix co
 
 ## Native compact SVG
 
-Rust callers can opt in to a separate SVG producer with the `native-compact` feature. It does
-not select any diagram families by itself. Enable `diagram-sequence` for the first supported
-family, then select `SvgOutputProfile::NativeCompact` on a standalone `SvgRequest`.
+Rust callers can opt in to a separate SVG producer with the `native-compact` feature and select
+`SvgOutputProfile::NativeCompact` on a standalone `SvgRequest`. That feature does not select any
+diagram families or layout engines by itself.
 
 ```rust
 use merman::svg::SvgOutputProfile;
@@ -99,12 +99,16 @@ let svg = Renderer::new().render_svg_with(
 )?;
 ```
 
-The Sequence producer uses the prepared layout for rectangular participants, plain notes,
-activation bars, and supported straight messages. The compact writer emits native SVG without
-Mermaid compatibility styles or `<foreignObject>` labels. Unsupported families, constructs,
-or transforms return an explicit error. The profile is not a native export or browser-embedding
-receipt, and is not enabled in the CLI or bindings. Ordinary requests still use
-`MermaidV12Parity`, including with Theme v2.
+- With `diagram-sequence`, the producer uses the prepared layout for classic rectangular
+  participants, plain notes, activation bars, and supported straight messages.
+- With `diagram-flowchart` and `layout-dagre`, the producer reuses clipped linear routes for
+  classic, ungrouped diagrams with plain single-word rectangular nodes and unlabeled edges.
+  Select `layout: dagre`, set `flowchart.curve: linear`, and disable `htmlLabels`.
+
+The compact writer emits native SVG without Mermaid compatibility styles or `<foreignObject>`
+labels. Unsupported families, constructs, or transforms return an explicit error. The profile is
+not a native export or browser-embedding receipt, and is not enabled in the CLI or bindings.
+Ordinary requests still use `MermaidV12Parity`, including with Theme v2.
 
 ## Artifact Evidence Lanes
 
