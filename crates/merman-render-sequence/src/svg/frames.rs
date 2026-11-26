@@ -1,10 +1,11 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use crate::model::SequenceFrameLayout;
-use crate::sequence::SequenceNativeStyle;
+use super::prelude::*;
+use crate::frame::SequenceFrameLayout;
+use crate::preparation::{SequenceCompatBinding, SequenceNativeStyle, prepare_sequence_text_line};
 use merman_model::families::sequence::{SequenceControlKind, SequenceControlRole, SequenceMessage};
+use merman_render_core::text::line_break::split_mermaid_common_br_lines;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -18,7 +19,7 @@ pub(super) struct SequenceFrameRenderOptions<'a> {
 
 pub(super) fn builtin_box_paint_bounds(
     boxes: &[crate::model::SequenceParticipantBoxLayout],
-    theme: &crate::sequence::SequenceCompatBinding,
+    theme: &SequenceCompatBinding,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<Option<Bounds>> {
     if !theme.is_neo || theme.drop_shadow.as_str() != "url(#drop-shadow)" {
@@ -85,11 +86,11 @@ pub(super) fn render_sequence_backgrounds(
         if let Some(title) = box_layout.title.as_ref() {
             let cx = title.x;
             let text_y = title.y;
-            let lines = crate::text::split_mermaid_common_br_lines(&title.text);
+            let lines = split_mermaid_common_br_lines(&title.text);
             let count = lines.len().max(1) as f64;
             for (index, raw) in lines.into_iter().enumerate() {
                 checkpoints.checkpoint_loop(index)?;
-                let decoded = crate::sequence::prepare_sequence_text_line(raw);
+                let decoded = prepare_sequence_text_line(raw);
                 let name = decoded.as_ref();
                 let dy = (index as f64 - (count - 1.0) / 2.0) * options.actor_text_style.font_size;
                 let style = actor_typography.terminal_style(

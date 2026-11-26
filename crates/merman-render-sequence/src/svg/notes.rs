@@ -1,13 +1,16 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::{node_left_top, note_label_position};
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
-use crate::sequence::{
+use super::prelude::*;
+use crate::preparation::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
     sequence_drawn_text_style, sequence_drawn_text_y, sequence_note_final_wrapped_lines,
 };
+use crate::rect_paint::include_rect_stroke_bounds;
 use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
-use merman_render_sequence::rect_paint::include_rect_stroke_bounds;
+use merman_render_core::{
+    resources::OperationWorkMeter, text::line_break::split_mermaid_common_br_lines,
+};
 use rustc_hash::FxHashMap;
 
 #[derive(Default)]
@@ -24,7 +27,7 @@ impl SequenceNotePaintPlan {
         nodes: &FxHashMap<&str, &LayoutNode>,
         stroke_width: Option<f32>,
         radius: Option<f32>,
-        options: &SvgExecution<'_>,
+        work_meter: &OperationWorkMeter,
     ) -> Result<Self> {
         let mut plan = Self {
             stroke_width,
@@ -35,7 +38,7 @@ impl SequenceNotePaintPlan {
             return Ok(plan);
         };
         for message in &model.messages {
-            options.work_meter().charge(1)?;
+            work_meter.charge(1)?;
             if message.semantic_kind() != SequenceMessageKind::Note {
                 continue;
             }
@@ -62,8 +65,8 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) note_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) note_text_style: &'a TextStyle,
-    pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) note_typography: &'a crate::preparation::SequenceResolvedTypography,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -114,11 +117,9 @@ pub(super) fn render_sequence_note(
         let _ = write!(out, r#" rx="{r}" ry="{r}""#, r = fmt(f64::from(radius)));
     }
     out.push_str("/>");
-    let prepared_math =
-        ctx.math_sidecar
-            .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(
-                message_index,
-            ));
+    let prepared_math = ctx.math_sidecar.terminal_for_occurrence(
+        &crate::preparation::SequenceMathOccurrence::Note(message_index),
+    );
     if let Some(katex) = sequence_katex_label(
         prepared_math,
         ctx.note_text_style,
@@ -155,7 +156,7 @@ pub(super) fn render_sequence_note(
     } else {
         render_sequence_note_lines(
             out,
-            crate::text::split_mermaid_common_br_lines(raw),
+            split_mermaid_common_br_lines(raw),
             text_x,
             text_y,
             text_anchor,
@@ -179,7 +180,7 @@ fn render_sequence_note_lines<'a>(
     let mut preceding_height = 0.0;
     for (i, line) in lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
-        let decoded = crate::sequence::prepare_sequence_text_line(line);
+        let decoded = crate::preparation::prepare_sequence_text_line(line);
         let text = if decoded.as_ref().is_empty() {
             "\u{200B}"
         } else {
@@ -211,138 +212,120 @@ fn render_sequence_note_lines<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use super::*;
+    use crate::preparation::{SequenceTypographyPlan, sequence_drawn_text_first_y};
+    use merman_model::presentation::PresentationConfig;
+    use merman_render_core::{
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{DeterministicTextMeasurer, TextMetrics},
+    };
 
     #[test]
     fn empty_note_rows_render_the_upstream_zero_width_space() {
-        crate::svg::parity::with_test_svg_execution(
-            crate::DiagramFamilyId::SEQUENCE,
-            &crate::svg::SvgRenderOptions::default(),
-            |_execution| {
-                let mut out = String::new();
-                let meter =
-                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-                let config = merman_model::presentation::PresentationConfig::default();
-                let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
-                super::render_sequence_note_lines(
-                    &mut out,
-                    ["first", "", "last"],
-                    50.0,
-                    10.0,
-                    "middle",
-                    &super::SequenceNoteRenderContext {
-                        is_neo: typography.compat_binding().is_neo,
-                        paint: &Default::default(),
-                        note_typography: typography.note(),
-                        math_sidecar: &Default::default(),
-                        nodes_by_id: &Default::default(),
-                        measurer: &crate::text::DeterministicTextMeasurer::default(),
-                        note_margin: 10.0,
-                        wrap_padding: 10.0,
-                        note_text_style: &crate::text::TextStyle::default(),
-                        sanitize_config: &merman_model::presentation::PresentationConfig::default(),
-                        checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
-                    },
-                )
-                .unwrap();
-
-                assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
+        let mut out = String::new();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let config = PresentationConfig::default();
+        let typography = SequenceTypographyPlan::resolve(&config);
+        super::render_sequence_note_lines(
+            &mut out,
+            ["first", "", "last"],
+            50.0,
+            10.0,
+            "middle",
+            &super::SequenceNoteRenderContext {
+                is_neo: typography.compat_binding().is_neo,
+                paint: &Default::default(),
+                note_typography: typography.note(),
+                math_sidecar: &Default::default(),
+                nodes_by_id: &Default::default(),
+                measurer: &DeterministicTextMeasurer::default(),
+                note_margin: 10.0,
+                wrap_padding: 10.0,
+                note_text_style: &TextStyle::default(),
+                sanitize_config: &config,
+                checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
             },
-        );
+        )
+        .unwrap();
+
+        assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
     }
     #[test]
     fn note_rows_use_tspan_heights_and_keep_explicit_dy_at_nonpositive_margins() {
-        crate::svg::parity::with_test_svg_execution(
-            crate::DiagramFamilyId::SEQUENCE,
-            &crate::svg::SvgRenderOptions::default(),
-            |_execution| {
-                struct TspanProbe(std::cell::Cell<usize>);
-                impl crate::text::TextMeasurer for TspanProbe {
-                    fn measure(
-                        &self,
-                        _: &str,
-                        _: &crate::text::TextStyle,
-                    ) -> crate::text::TextMetrics {
-                        panic!("notes must use the tspan height operation")
-                    }
-                    fn measure_svg_tspan_text_bbox_height_px(
-                        &self,
-                        text: &str,
-                        style: &crate::text::TextStyle,
-                    ) -> f64 {
-                        assert_eq!(style.font_weight.as_deref(), Some("700"));
-                        self.0.set(self.0.get() + 1);
-                        match text {
-                            "first" => 10.4,
-                            "\u{200b}" => 20.4,
-                            "&" => 8.0,
-                            _ => panic!("unexpected row"),
-                        }
-                    }
+        struct TspanProbe(std::cell::Cell<usize>);
+        impl TextMeasurer for TspanProbe {
+            fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+                panic!("notes must use the tspan height operation")
+            }
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                assert_eq!(style.font_weight.as_deref(), Some("700"));
+                self.0.set(self.0.get() + 1);
+                match text {
+                    "first" => 10.4,
+                    "\u{200b}" => 20.4,
+                    "&" => 8.0,
+                    _ => panic!("unexpected row"),
                 }
-                let meter =
-                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-                let config = merman_model::presentation::PresentationConfig::default();
-                let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
-                let settings =
-                    super::super::settings::SequenceRenderSettings::from_effective_config(
-                        &serde_json::json!({"sequence": {"noteFontWeight": 700}}),
-                    );
-                for margin in [5.0, 0.0, -5.0] {
-                    let probe = TspanProbe(std::cell::Cell::new(0));
-                    let mut out = String::new();
-                    super::render_sequence_note_lines(
-                        &mut out,
-                        ["first", "", "#38;"],
-                        50.0,
-                        crate::sequence::sequence_drawn_text_first_y(10.25, margin),
-                        "middle",
-                        &super::SequenceNoteRenderContext {
-                            is_neo: typography.compat_binding().is_neo,
-                            paint: &Default::default(),
-                            note_typography: typography.note(),
-                            math_sidecar: &Default::default(),
-                            nodes_by_id: &Default::default(),
-                            measurer: &probe,
-                            note_margin: margin,
-                            wrap_padding: 10.0,
-                            note_text_style: &settings.note_text_style,
-                            sanitize_config:
-                                &merman_model::presentation::PresentationConfig::default(),
-                            checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
-                        },
-                    )
-                    .unwrap();
-                    let svg = format!("<svg>{out}</svg>");
-                    let document = crate::xml_dom::Document::parse(&svg).unwrap();
-                    let ys: Vec<_> = document
-                        .descendants()
-                        .filter(|n| n.has_tag_name("text"))
-                        .map(|n| n.attribute("y").unwrap())
-                        .collect();
-                    assert_eq!(
-                        ys,
-                        if margin > 0.0 {
-                            vec!["13", "23", "44"]
-                        } else {
-                            vec!["10.25"; 3]
-                        }
-                    );
-                    for node in document
-                        .descendants()
-                        .filter(|node| node.has_tag_name("text"))
-                    {
-                        assert!(
-                            node.attribute("style")
-                                .unwrap()
-                                .contains("font-weight: 700;")
-                        );
-                    }
-                    assert_eq!(out.matches("dy=\"1em\"").count(), 3);
-                    assert!(out.contains("&amp;</tspan>"));
-                    assert_eq!(probe.0.get(), if margin > 0.0 { 3 } else { 0 });
-                }
-            },
+            }
+        }
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let config = PresentationConfig::default();
+        let typography = SequenceTypographyPlan::resolve(&config);
+        let settings = super::super::settings::SequenceRenderSettings::from_effective_config(
+            &serde_json::json!({"sequence": {"noteFontWeight": 700}}),
         );
+        for margin in [5.0, 0.0, -5.0] {
+            let probe = TspanProbe(std::cell::Cell::new(0));
+            let mut out = String::new();
+            super::render_sequence_note_lines(
+                &mut out,
+                ["first", "", "#38;"],
+                50.0,
+                sequence_drawn_text_first_y(10.25, margin),
+                "middle",
+                &super::SequenceNoteRenderContext {
+                    is_neo: typography.compat_binding().is_neo,
+                    paint: &Default::default(),
+                    note_typography: typography.note(),
+                    math_sidecar: &Default::default(),
+                    nodes_by_id: &Default::default(),
+                    measurer: &probe,
+                    note_margin: margin,
+                    wrap_padding: 10.0,
+                    note_text_style: &settings.note_text_style,
+                    sanitize_config: &config,
+                    checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
+                },
+            )
+            .unwrap();
+            let svg = format!("<svg>{out}</svg>");
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let ys: Vec<_> = document
+                .descendants()
+                .filter(|n| n.has_tag_name("text"))
+                .map(|n| n.attribute("y").unwrap())
+                .collect();
+            assert_eq!(
+                ys,
+                if margin > 0.0 {
+                    vec!["13", "23", "44"]
+                } else {
+                    vec!["10.25"; 3]
+                }
+            );
+            for node in document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+            {
+                assert!(
+                    node.attribute("style")
+                        .unwrap()
+                        .contains("font-weight: 700;")
+                );
+            }
+            assert_eq!(out.matches("dy=\"1em\"").count(), 3);
+            assert!(out.contains("&amp;</tspan>"));
+            assert_eq!(probe.0.get(), if margin > 0.0 { 3 } else { 0 });
+        }
     }
 }

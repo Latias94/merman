@@ -1,11 +1,11 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::block_text::{
     LoopTextPlacement, LoopTextRenderContext, display_block_label, write_loop_text_lines,
     write_section_title_lines,
 };
-use crate::model::SequenceFrameLayout;
-use crate::sequence::{
+use super::prelude::*;
+use crate::frame::SequenceFrameLayout;
+use crate::preparation::{
     sequence_block_label_wrap_width, sequence_drawn_text_first_y, sequence_drawn_text_y,
 };
 use rustc_hash::FxHashMap;
@@ -21,10 +21,10 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
-    pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) loop_typography: &'a crate::preparation::SequenceResolvedTypography,
     pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint,
     pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }

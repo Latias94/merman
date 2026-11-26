@@ -1,8 +1,8 @@
-use super::super::*;
 use super::actor_shapes::ActorLabelContext;
 use super::geometry::node_left_top;
+use super::prelude::*;
+use crate::actor::{ActorManGlyph, write_actor_man_glyph as write_glyph};
 use merman_model::families::sequence::SequenceActor;
-use merman_render_sequence::actor::{ActorManGlyph, write_actor_man_glyph as write_glyph};
 
 pub(super) struct ActorManGlyphPlacement<'a> {
     pub(super) footer: bool,

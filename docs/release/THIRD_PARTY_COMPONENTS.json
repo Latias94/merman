@@ -940,7 +940,7 @@
         "crates/merman-render-charts/src/wardley/layout.rs",
         "crates/merman-render-core/src/step_animation.rs",
         "crates/merman-render-flow/src",
-        "crates/merman-render-sequence/src/frame",
+        "crates/merman-render-sequence/src",
         "crates/merman-render-structured/src/info",
         "fixtures"
       ],

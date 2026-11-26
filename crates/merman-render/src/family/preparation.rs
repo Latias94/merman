@@ -1193,8 +1193,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
         RenderSemanticModel::State(model) => prepare_state_family(model, meta, &execution)?,
         #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => {
+            use merman_render_sequence::preparation::prepare_sequence_diagram_typed_with_title_and_work_meter;
+
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+                prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     &meta.effective_config,

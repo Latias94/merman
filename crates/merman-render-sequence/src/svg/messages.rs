@@ -1,9 +1,10 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::arrowhead::ARROWHEAD_REF_X;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
-use crate::sequence::{
+use super::prelude::*;
+use crate::activation::sequence_activation_stack_bounds;
+use crate::preparation::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceDrawnTextNode, SequenceMathHeightMode,
     measure_sequence_drawn_line_height, sequence_drawn_text_style, sequence_drawn_text_y,
 };
@@ -11,7 +12,7 @@ use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessageStroke,
 };
-use merman_render_sequence::activation::sequence_activation_stack_bounds;
+use merman_render_core::{LayoutEdge, text::line_break::split_mermaid_common_br_lines};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
@@ -28,7 +29,7 @@ impl SequenceMessagePaintPlan {
     pub(super) fn prepare(
         model: &SequenceSvgModel,
         nodes: &FxHashMap<&str, &LayoutNode>,
-        edges: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        edges: &FxHashMap<&str, &LayoutEdge>,
         width: Option<f32>,
         right_angles: bool,
         actor_height: f64,
@@ -100,7 +101,7 @@ impl SequenceMessagePaintPlan {
 
 /// Shared control points keep self-message output and its paint bounds in agreement.
 fn self_message_points(
-    edge: &crate::model::LayoutEdge,
+    edge: &LayoutEdge,
     nodes: &FxHashMap<&str, &LayoutNode>,
     from: &str,
     actor_height: f64,
@@ -133,8 +134,8 @@ fn self_message_points(
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a LayoutEdge>,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
@@ -145,7 +146,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
     pub(super) message_text_style: &'a TextStyle,
-    pub(super) message_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) message_typography: &'a crate::preparation::SequenceResolvedTypography,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -368,7 +369,7 @@ fn write_central_connection_circles(
 pub(super) fn render_sequence_messages(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
-) -> crate::Result<()> {
+) -> Result<()> {
     let show_sequence_numbers = ctx
         .sanitize_config
         .get_bool("sequence.showSequenceNumbers")
@@ -460,7 +461,7 @@ pub(super) fn render_sequence_messages(
                 ctx.message_align,
             );
             let prepared_math = ctx.math_sidecar.terminal_for_occurrence(
-                &crate::sequence::SequenceMathOccurrence::Message(message_index),
+                &crate::preparation::SequenceMathOccurrence::Message(message_index),
             );
             if let Some(katex) = sequence_katex_label(
                 prepared_math,
@@ -481,7 +482,7 @@ pub(super) fn render_sequence_messages(
                     + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
                     .max(ctx.sequence_width)
                     .max(1.0);
-                let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
+                let raw_lines = crate::preparation::wrap_sequence_label_like_mermaid_lines(
                     text,
                     ctx.measurer,
                     ctx.message_text_style,
@@ -506,7 +507,7 @@ pub(super) fn render_sequence_messages(
             } else {
                 render_sequence_message_text_lines(
                     out,
-                    crate::text::split_mermaid_common_br_lines(text),
+                    split_mermaid_common_br_lines(text),
                     SequenceMessageTextLayout {
                         label_y: lbl.y,
                         label_x,
@@ -676,7 +677,7 @@ fn render_sequence_message_text_lines<'a>(
     out: &mut impl SvgOutput,
     raw_lines: impl IntoIterator<Item = &'a str>,
     layout: SequenceMessageTextLayout<'_>,
-    typography: &crate::sequence::SequenceResolvedTypography,
+    typography: &crate::preparation::SequenceResolvedTypography,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     let drawn_style = sequence_drawn_text_style(layout.style, layout.config);
@@ -685,7 +686,7 @@ fn render_sequence_message_text_lines<'a>(
     for (i, raw) in raw_lines.into_iter().enumerate() {
         checkpoints.checkpoint_loop(i)?;
         let y = sequence_drawn_text_y(layout.label_y, layout.margin, preceding_height);
-        let decoded = crate::sequence::prepare_sequence_text_line(raw);
+        let decoded = crate::preparation::prepare_sequence_text_line(raw);
         let line = if decoded.as_ref().is_empty() {
             "\u{200B}"
         } else {
@@ -719,15 +720,19 @@ fn render_sequence_message_text_lines<'a>(
 #[cfg(test)]
 fn default_sequence_typography(
     config: &merman_model::presentation::PresentationConfig,
-) -> crate::sequence::SequenceTypographyPlan {
-    crate::sequence::SequenceTypographyPlan::resolve(config)
+) -> crate::preparation::SequenceTypographyPlan {
+    crate::preparation::SequenceTypographyPlan::resolve(config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{LayoutEdge, LayoutPoint};
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_render_core::{
+        LayoutPoint,
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        svg_css::SvgDiagramIdProjection,
+        text::DeterministicTextMeasurer,
+    };
     use std::fmt;
     use std::ops::Range;
 
@@ -774,14 +779,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -902,9 +907,9 @@ mod tests {
             .map(|edge| (edge.id.as_str(), edge))
             .collect::<FxHashMap<_, _>>();
         let sanitize_config = merman_model::presentation::PresentationConfig::default();
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let message_text_style = TextStyle::default();
-        let math_sidecar = crate::sequence::SequenceMathSidecar::default();
+        let math_sidecar = crate::preparation::SequenceMathSidecar::default();
         let typography = default_sequence_typography(&sanitize_config);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let projection = SvgDiagramIdProjection::new(&meter);
@@ -933,7 +938,7 @@ mod tests {
         let error = render_sequence_messages(&mut out, &ctx)
             .expect_err("the rejecting sink must stop message rendering");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "message rendering must stop at the first failed sink checkpoint"
@@ -944,9 +949,12 @@ mod tests {
 #[cfg(test)]
 mod cancellation_tests {
     use super::{default_sequence_typography, render_sequence_message_text_lines};
-    use crate::Error;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_model::{OperationControl, OperationPhase};
+    use merman_render_core::{
+        Error,
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle},
+    };
 
     struct CancellingLines {
         control: OperationControl,
@@ -993,8 +1001,8 @@ mod cancellation_tests {
                 label_x: 20.0,
                 label_anchor: "middle",
                 margin: 10.0,
-                style: &crate::text::TextStyle::default(),
-                measurer: &crate::text::DeterministicTextMeasurer::default(),
+                style: &TextStyle::default(),
+                measurer: &DeterministicTextMeasurer::default(),
                 config: &merman_model::presentation::PresentationConfig::default(),
             },
             typography.message(),
@@ -1014,16 +1022,12 @@ mod cancellation_tests {
         cancel: Option<OperationControl>,
     }
 
-    impl crate::text::TextMeasurer for RowProbe {
-        fn measure(&self, _: &str, _: &crate::text::TextStyle) -> crate::text::TextMetrics {
+    impl TextMeasurer for RowProbe {
+        fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
             panic!("message rows must use the raw text height operation")
         }
 
-        fn measure_svg_raw_text_bbox_height_px(
-            &self,
-            text: &str,
-            style: &crate::text::TextStyle,
-        ) -> f64 {
+        fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
             assert_eq!(style.font_family.as_deref(), Some("ThemeFont"));
             self.calls.borrow_mut().push(text.to_string());
             if let Some(control) = &self.cancel {
@@ -1041,14 +1045,14 @@ mod cancellation_tests {
     #[test]
     fn message_rows_accumulate_raw_heights_after_decoding_and_preserve_explicit_dy() {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let style = crate::text::TextStyle::default();
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let style = TextStyle::default();
+        let config = super::super::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let typography = default_sequence_typography(&config);
         for margin in [5.0, 0.0, -5.0] {
             let probe = RowProbe::default();
-            let first_y = crate::sequence::sequence_drawn_text_first_y(10.25, margin);
+            let first_y = crate::preparation::sequence_drawn_text_first_y(10.25, margin);
             let mut out = String::new();
             render_sequence_message_text_lines(
                 &mut out,
@@ -1067,7 +1071,7 @@ mod cancellation_tests {
             )
             .unwrap();
             let svg = format!("<svg>{out}</svg>");
-            let document = crate::xml_dom::Document::parse(&svg).unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
             let ys: Vec<_> = document
                 .descendants()
                 .filter(|n| n.has_tag_name("text"))
@@ -1102,7 +1106,7 @@ mod cancellation_tests {
             cancel: Some(control),
             ..Default::default()
         };
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = super::super::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let typography = default_sequence_typography(&config);
@@ -1115,7 +1119,7 @@ mod cancellation_tests {
                 label_x: 20.0,
                 label_anchor: "middle",
                 margin: 5.0,
-                style: &crate::text::TextStyle::default(),
+                style: &TextStyle::default(),
                 measurer: &probe,
                 config: &config,
             },

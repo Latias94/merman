@@ -1,18 +1,21 @@
-use super::super::*;
+use super::prelude::*;
+use merman_render_core::{
+    number_format::canonicalize_number, svg_css::write_mermaid_base_css_root_rule,
+};
 
 const BASELINE_LINE_STROKE_WIDTH_PX: f64 = 2.0;
 
 pub(super) fn lifeline_effective_stroke_width(native_width: Option<f32>) -> f64 {
     // Mermaid's broad line rule overrides the 0.5px presentation attribute.
     native_width
-        .map(|width| crate::number_format::canonicalize_number(f64::from(width)))
+        .map(|width| canonicalize_number(f64::from(width)))
         .unwrap_or(BASELINE_LINE_STROKE_WIDTH_PX)
 }
 
 pub(super) fn write_sequence_css(
     mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
-    prepared: &crate::sequence::SequencePreparedArtifact,
+    prepared: &crate::preparation::SequencePreparedArtifact,
 ) -> Result<()> {
     out.checkpoint()?;
     // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
@@ -251,7 +254,7 @@ pub(super) fn write_sequence_css(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
-    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(out, id, root_font)?;
+    write_mermaid_base_css_root_rule(out, id, root_font)?;
     out.checkpoint()?;
     Ok(())
 }
@@ -260,7 +263,7 @@ fn write_sequence_text_surface_css_group(
     out: &mut impl std::fmt::Write,
     diagram_id: &impl std::fmt::Display,
     declarations: &str,
-    surfaces: &[crate::sequence::SequenceTextSurface],
+    surfaces: &[crate::preparation::SequenceTextSurface],
 ) -> bool {
     let scoped = surfaces
         .iter()
@@ -274,11 +277,15 @@ fn write_sequence_text_surface_css_group(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use merman_render_core::{
+        resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId},
+        svg_css::escape_css_identifier,
+        text::DeterministicTextMeasurer,
+    };
     use serde_json::json;
     use std::cell::Cell;
 
-    fn prepared_css(config: &serde_json::Value) -> crate::sequence::SequencePreparedArtifact {
+    fn prepared_css(config: &serde_json::Value) -> crate::preparation::SequencePreparedArtifact {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nA->>+B: Hello\nnote over B: Note\nloop control\nB-->>A: Reply\nend\nB-->>-A: Done",
             merman_core::ParseOptions::strict(),
@@ -305,12 +312,12 @@ mod tests {
             )
             .expect("frozen CSS config construction should not cancel")
             .expect("unowned CSS defaults should be valid");
-        crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+        crate::preparation::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
             &config,
             None,
-            &crate::text::DeterministicTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
             None,
             meter,
         )
@@ -320,12 +327,7 @@ mod tests {
     fn sequence_css(id: &str, config: &serde_json::Value) -> String {
         let binding = prepared_css(config);
         let mut out = String::new();
-        write_sequence_css(
-            &mut out,
-            crate::svg::escape_css_identifier(id).as_ref(),
-            &binding,
-        )
-        .unwrap();
+        write_sequence_css(&mut out, escape_css_identifier(id).as_ref(), &binding).unwrap();
         out
     }
 
@@ -363,10 +365,7 @@ mod tests {
         let short_meter = OperationWorkMeter::new(short_policy);
         let mut short = BoundedSvgOutput::new(&short_meter);
         let result = write_sequence_css(&mut short, "sequence-budget", &binding);
-        assert!(matches!(
-            result,
-            Err(crate::Error::ResourceLimitExceeded(_))
-        ));
+        assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
         assert!(short.as_str().len() < expected.len());
     }
 
@@ -385,10 +384,7 @@ mod tests {
             &prepared_css(&json!({})),
         );
 
-        assert!(matches!(
-            result,
-            Err(crate::Error::ResourceLimitExceeded(_))
-        ));
+        assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
         assert_eq!(writes.get(), 0);
         assert!(out.as_str().is_empty());
     }

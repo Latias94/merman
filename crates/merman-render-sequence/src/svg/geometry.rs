@@ -1,4 +1,5 @@
-use super::super::*;
+use super::prelude::*;
+use merman_render_core::LayoutEdge;
 
 pub(super) fn node_left_top(n: &LayoutNode) -> (f64, f64) {
     (n.x - n.width / 2.0, n.y - n.height / 2.0)
@@ -7,7 +8,7 @@ pub(super) fn node_left_top(n: &LayoutNode) -> (f64, f64) {
 pub(super) fn lifeline_endpoints(
     top: &LayoutNode,
     bottom: &LayoutNode,
-    edge: Option<&crate::model::LayoutEdge>,
+    edge: Option<&LayoutEdge>,
 ) -> (f64, f64) {
     let (_, top_y) = node_left_top(top);
     let (_, bottom_y) = node_left_top(bottom);
@@ -37,7 +38,10 @@ pub(super) fn note_label_position(
         _ => (left + width / 2.0, "middle"),
     };
     (
-        [x, crate::sequence::sequence_drawn_text_first_y(top, margin)],
+        [
+            x,
+            crate::preparation::sequence_drawn_text_first_y(top, margin),
+        ],
         anchor,
     )
 }

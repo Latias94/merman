@@ -15,16 +15,29 @@ third-party-bundle = true
 [features]
 benchmark-stages = ["merman-model/benchmark-stages"]
 math = ["merman-render-core/math"]
+native-compact = ["svg", "merman-markup/color", "merman-render-core/paint-scene"]
+svg = [
+    "dep:kurbo",
+    "dep:merman-markup",
+    "dep:ryu-js",
+    "merman-render-core/root-svg",
+    "merman-render-core/theme-elevation",
+]
 
 [dependencies]
 cssparser.workspace = true
+kurbo = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["url"], optional = true }
 merman-model = { workspace = true, features = ["diagram-sequence", "presentation-data"] }
 merman-render-core = { workspace = true, features = ["math-labels", "resources-sequence", "theme-svg"] }
 merman-theme-contract.workspace = true
 rustc-hash.workspace = true
+ryu-js = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 merman-core = { workspace = true, features = ["diagram-sequence", "presentation"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
+merman-theme-contract = { workspace = true, features = ["presets"] }
+roxmltree.workspace = true

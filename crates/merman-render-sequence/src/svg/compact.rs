@@ -10,51 +10,57 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{
+    Error, LayoutEdge, LayoutNode,
+    config::config_diagram_look,
+    entities::decode_mermaid_entities_for_render_text,
     paint_scene::{
         self, PaintScene, SceneBox, SceneColor, SceneFontFamily, SceneGroup, SceneItem,
         SceneMarker, SceneMarkerOrient, SceneMarkerRef, SceneMarkerUnits, SceneMetadata,
         ScenePaint, ScenePath, ScenePathCommand, SceneRect, SceneRole, SceneStroke, SceneText,
         SceneTextAnchor, SceneTextBaseline, SceneTextStyle, SceneViewport,
     },
-    resources::{OperationWorkError, PreparedTextRetainedReservation},
+    resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation},
+    root_svg::RootViewportSpec,
     svg_css::SvgId,
-    text::{FontStyle, ParsedCssFontStack, parse_css_font_stack},
+    text::{
+        FontStyle, ParsedCssFontStack, TextMeasurer, line_break::split_mermaid_common_br_lines,
+        parse_css_font_stack,
+    },
 };
-use merman_render_sequence::rect_paint::include_rect_stroke_bounds;
-use merman_theme_contract::v2::{Elevation, MarkerStyle, Paint, Texture};
+use merman_theme_contract::v2::{Color, Elevation, MarkerStyle, Paint, Texture};
 use rustc_hash::FxHashMap;
 
 use super::{
-    SequenceEmitCheckpoints, actor_effect,
+    SequenceEmitCheckpoints, SequenceSvgRequest, actor_effect,
     arrowhead::{ARROWHEAD_REFERENCE, ARROWHEAD_SIZE, sequence_arrowhead},
     css,
     geometry::{
         actor_label_dy, lifeline_endpoints, message_label_x, node_left_top, note_label_position,
     },
     messages::SequenceMessagePaintPlan,
-    model::SequenceSvgModel,
     root::sequence_root_bounds,
     settings::SequenceRenderSettings,
 };
-use crate::{
-    DiagramFamilyId, Error,
-    model::{LayoutEdge, LayoutNode},
-    resources::OperationWorkMeter,
-    sequence::{
-        SequenceDrawnTextNode, SequencePreparedArtifact, SequenceTerminalTextStyle,
-        SequenceTextSurface, measure_sequence_drawn_line_height, prepare_sequence_text_line,
-        sequence_drawn_text_style, sequence_drawn_text_y,
-    },
-    svg::parity::{SvgExecution, root_svg::RootViewportSpec},
-    text::split_mermaid_common_br_lines,
+use crate::preparation::{
+    SequenceDrawnTextNode, SequencePreparedArtifact, SequenceTerminalTextStyle,
+    SequenceTextSurface, measure_sequence_drawn_line_height, prepare_sequence_text_line,
+    sequence_drawn_text_style, sequence_drawn_text_y,
 };
+use crate::rect_paint::include_rect_stroke_bounds;
 
 const MAX_OPAQUE_TOKEN_BYTES: usize = 8 * 1024;
 
 #[derive(Debug)]
-pub(in crate::svg::parity) enum SequenceCompactError {
+pub enum SequenceCompactError {
     Unsupported(&'static str),
     Render(Error),
+}
+
+#[derive(Clone, Copy)]
+pub struct SequenceCompactPolicy<'a> {
+    pub canvas: Option<&'a Paint>,
+    pub textures: &'a [Texture],
+    pub allows_trusted_theme_css: bool,
 }
 
 impl From<Error> for SequenceCompactError {
@@ -371,7 +377,7 @@ fn resolved_color(raw: &str, meter: &OperationWorkMeter) -> Result<SceneColor> {
     Ok(color)
 }
 
-fn solid(color: crate::theme::Color) -> SceneColor {
+fn solid(color: Color) -> SceneColor {
     let [red, green, blue, alpha] = color.channels().map(f64::from);
     SceneColor {
         red,
@@ -381,27 +387,25 @@ fn solid(color: crate::theme::Color) -> SceneColor {
     }
 }
 
-fn compact_canvas(options: &SvgExecution<'_>) -> Result<Option<SceneColor>> {
-    let session = options.family.session();
-    let background = session.canvas_background().map(solid);
-    let Some(theme) = session.native_theme() else {
-        return Ok(background);
-    };
-    if theme
-        .resolved()
-        .canvas()
+fn compact_canvas(
+    background: Option<Color>,
+    policy: SequenceCompactPolicy<'_>,
+    meter: &OperationWorkMeter,
+) -> Result<Option<SceneColor>> {
+    if policy
         .textures
         .iter()
         .any(|texture| !matches!(texture, Texture::None))
     {
-        return Err(unsupported(options.work_meter(), "canvas-texture"));
+        return Err(unsupported(meter, "canvas-texture"));
     }
-    if background.is_some() {
-        return Ok(background);
+    if let Some(background) = background {
+        return Ok(Some(solid(background)));
     }
-    match &theme.resolved().family("sequence").roles.canvas {
-        Paint::Solid(color) => Ok(Some(solid(*color))),
-        _ => Err(unsupported(options.work_meter(), "canvas-paint")),
+    match policy.canvas {
+        None => Ok(None),
+        Some(Paint::Solid(color)) => Ok(Some(solid(*color))),
+        Some(_) => Err(unsupported(meter, "canvas-paint")),
     }
 }
 
@@ -492,7 +496,7 @@ fn drawn_rows<'a>(
     rows: DrawnRows,
     prepared: &SequencePreparedArtifact,
     config: &PresentationConfig,
-    options: &SvgExecution<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> Result<()> {
     let typography = prepared.typography();
     let (role, node) = match rows.role {
@@ -501,7 +505,7 @@ fn drawn_rows<'a>(
     };
     let style = role.measurement_style();
     let drawn = sequence_drawn_text_style(style, config);
-    let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
+    let checkpoints = SequenceEmitCheckpoints::for_emit(projected.meter);
     let mut preceding_height = 0.0;
     for raw_line in hard_breaks(raw, projected.meter)? {
         let mut label = Label::decoded(raw_line, projected.meter)?;
@@ -511,7 +515,7 @@ fn drawn_rows<'a>(
         let y = sequence_drawn_text_y(rows.origin[1], rows.margin, preceding_height);
         if rows.margin > 0.0 {
             preceding_height += measure_sequence_drawn_line_height(
-                options.text_measurer(),
+                measurer,
                 &label.text,
                 &drawn,
                 node,
@@ -562,14 +566,13 @@ fn allow_message(message: &SequenceMessage, meter: &OperationWorkMeter) -> Resul
     }
 }
 
-pub(in crate::svg::parity) fn render_sequence_compact(
-    prepared: &SequencePreparedArtifact,
-    model: &SequenceSvgModel,
-    config: &PresentationConfig,
-    options: &SvgExecution<'_>,
+/// Emits a complete compact Sequence SVG or rejects content outside the pilot.
+pub fn render_compact(
+    request: &SequenceSvgRequest<'_>,
+    policy: SequenceCompactPolicy<'_>,
 ) -> Result<String> {
-    let sidecar = prepare_sequence_compact(prepared, model, config, options)?;
-    sidecar.write_svg(options.diagram_id_or("merman"))
+    let sidecar = prepare_sequence_compact(request, policy)?;
+    sidecar.write_svg(request.diagram_id)
 }
 
 struct SequenceCompactPrepared<'a> {
@@ -613,28 +616,28 @@ impl SequenceCompactPrepared<'_> {
 }
 
 fn prepare_sequence_compact<'a>(
-    prepared: &'a SequencePreparedArtifact,
-    model: &'a SequenceSvgModel,
-    config: &'a PresentationConfig,
-    options: &'a SvgExecution<'_>,
+    request: &SequenceSvgRequest<'a>,
+    policy: SequenceCompactPolicy<'_>,
 ) -> Result<SequenceCompactPrepared<'a>> {
-    let meter = options.family.session().work_meter();
+    let prepared = request.prepared;
+    let config = request.config;
+    let meter = request.work_meter;
     let checks = SequenceEmitCheckpoints::for_emit(meter);
     checks.checkpoint()?;
-    let model = prepared.model_for_render(model);
+    let model = prepared.model_for_render(request.semantic);
     let layout = prepared.layout();
     let compat = prepared.typography().compat_binding();
     let native = prepared.native();
     if let Some(css) = config.get_str("themeCSS")
         && has_authored_css(css, meter)?
     {
-        if !options.family.session().allows_trusted_theme_css() {
+        if !policy.allows_trusted_theme_css {
             return Err(Error::UntrustedThemeCss.into());
         }
         return Err(unsupported(meter, "authored-css"));
     }
     if compat.actor_palette.enabled()
-        || crate::config::config_diagram_look(config.as_value()).as_str() != "classic"
+        || config_diagram_look(config.as_value()).as_str() != "classic"
     {
         return Err(unsupported(meter, "sequence-look-or-palette"));
     }
@@ -669,9 +672,8 @@ fn prepare_sequence_compact<'a>(
         allow_message(message, meter)?;
     }
 
-    let canvas = compact_canvas(options)?;
-    let has_root_canvas =
-        native.is_some() || options.family.session().canvas_background().is_some();
+    let canvas = compact_canvas(request.canvas_background, policy, meter)?;
+    let has_root_canvas = native.is_some() || request.canvas_background.is_some();
     let settings =
         SequenceRenderSettings::from_resolved_typography(config.as_value(), prepared.typography());
     let native_width = native.map(|theme| theme.form.stroke_width as f32);
@@ -861,7 +863,7 @@ fn prepare_sequence_compact<'a>(
                 },
                 prepared,
                 config,
-                options,
+                request.measurer,
             )?;
             projected.group(SceneRole::Note, start)?;
         }
@@ -904,7 +906,7 @@ fn prepare_sequence_compact<'a>(
                 },
                 prepared,
                 config,
-                options,
+                request.measurer,
             )?;
             projected.group(SceneRole::EdgeLabel, start)?;
         }
@@ -943,9 +945,8 @@ fn prepare_sequence_compact<'a>(
             lifeline_bounds.as_ref(),
         ],
     );
-    let diagram_id = options.diagram_id_or("merman");
-    let view_box = options
-        .root_viewport(DiagramFamilyId::SEQUENCE, diagram_id)
+    let view_box = request
+        .viewport
         .plan(RootViewportSpec::responsive(root_bounds))?
         .view_box()
         .ok_or_else(|| invalid("Sequence compact viewport has no viewBox"))?;
@@ -965,13 +966,8 @@ fn prepare_sequence_compact<'a>(
             stroke: Some(stroke(signal_color, 1.0)),
         },
     };
-    let metadata_label = |label| {
-        Label::prepare(
-            label,
-            meter,
-            crate::entities::decode_mermaid_entities_for_render_text,
-        )
-    };
+    let metadata_label =
+        |label| Label::prepare(label, meter, decode_mermaid_entities_for_render_text);
     let title = model.acc_title.as_deref().map(metadata_label).transpose()?;
     let description = model.acc_descr.as_deref().map(metadata_label).transpose()?;
     checks.checkpoint()?;

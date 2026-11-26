@@ -1,5 +1,3 @@
-use super::super::*;
-use super::SequenceEmitCheckpoints;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actors::{
@@ -10,15 +8,21 @@ use super::arrowhead::write_arrowhead_def;
 use super::frames::{SequenceFrameRenderOptions, render_sequence_backgrounds};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
+use super::prelude::*;
 use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
+use super::{SequenceEmitCheckpoints, SequenceSvgRequest};
+use crate::activation::SequenceActivationPlan;
 use kurbo::{Rect, Shape};
-use merman_render_sequence::activation::SequenceActivationPlan;
+use merman_render_core::{
+    LayoutEdge,
+    svg_output::XmlTextOutput,
+    theme_svg::{NEO_SHADOW_OFFSET_PX, elevation as elevation_svg},
+};
 use merman_theme_contract::v2::{Elevation, MarkerStyle};
 use rustc_hash::FxHashMap;
 
 use super::css::write_sequence_css;
-use super::model::*;
 
 const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
 const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
@@ -94,17 +98,21 @@ fn write_native_sequence_defs(
     write_scoped_sequence_defs_fragment(out, MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED, id)
 }
 
-pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
-    prepared: &crate::sequence::SequencePreparedArtifact,
-    model: &SequenceSvgModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let model = prepared.model_for_render(model);
-    let sanitize_config = effective_config;
-    let effective_config = effective_config.as_value();
-    let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
+/// Emits the balanced Sequence document before shared canvas and terminal processing.
+pub fn render_parity(request: SequenceSvgRequest<'_>) -> Result<root_svg::RootedSvg> {
+    let SequenceSvgRequest {
+        prepared,
+        semantic,
+        config: sanitize_config,
+        measurer,
+        diagram_id,
+        viewport: root_viewport,
+        work_meter,
+        canvas_background,
+    } = request;
+    let model = prepared.model_for_render(semantic);
+    let effective_config = sanitize_config.as_value();
+    let checkpoints = SequenceEmitCheckpoints::for_emit(work_meter);
     checkpoints.checkpoint()?;
     let layout = prepared.layout();
     let native = prepared.native();
@@ -119,8 +127,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         radius,
     };
     // An explicit canvas needs the painted lifeline tail beyond Mermaid's layout viewport.
-    let has_root_canvas =
-        native.is_some() || options.family.session().canvas_background().is_some();
+    let has_root_canvas = native.is_some() || canvas_background.is_some();
     let lifeline_stroke_width = super::css::lifeline_effective_stroke_width(stroke_width);
     let mut lifeline_bounds = None;
     let defer_paint_bounds = has_root_canvas;
@@ -132,7 +139,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         nodes_by_id.insert(node.id.as_str(), node);
     }
 
-    let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+    let mut edges_by_id: FxHashMap<&str, &LayoutEdge> =
         FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
     for (edge_index, edge) in layout.edges.iter().enumerate() {
         checkpoints.checkpoint_loop(edge_index)?;
@@ -154,14 +161,14 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         has_root_canvas,
         actor_rect_style,
         compat,
-        options,
+        work_meter,
     )?;
     let note_paint = super::notes::SequenceNotePaintPlan::prepare(
         model,
         &nodes_by_id,
         stroke_width,
         radius,
-        options,
+        work_meter,
     )?;
     let activation_plan = SequenceActivationPlan::prepare(
         &layout.activations,
@@ -170,13 +177,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         radius,
         compat.is_neo,
         &compat.actor_palette,
-        options.work_meter(),
+        work_meter,
     )?;
     let box_paint_bounds =
         super::frames::builtin_box_paint_bounds(&layout.boxes, compat, checkpoints)?;
-    let diagram_id = options.diagram_id_or("merman");
-    let root_viewport = options.root_viewport(crate::DiagramFamilyId::SEQUENCE, diagram_id);
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(work_meter);
     let mut native_actor_depth_bounds = None;
     let root_document = write_sequence_svg_root_open(
         &mut out,
@@ -253,11 +258,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
 
     out.push_str("<style>");
-    write_sequence_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id,
-        prepared,
-    )?;
+    write_sequence_css(&mut XmlTextOutput::new(&mut out), diagram_id, prepared)?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
@@ -268,7 +269,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
     if compat.is_neo {
         let flood_color = compat.neo_flood_color;
-        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
+        let offset = NEO_SHADOW_OFFSET_PX;
         let _ = write!(
             out,
             r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
@@ -289,13 +290,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         actor_index: None,
         checkpoints,
     };
-    let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
+    let block_widths_by_id = crate::preparation::sequence_block_widths_for_render(
         model,
         prepared,
         &nodes_by_id,
         sanitize_config,
         measurer,
-        options.work_meter(),
+        work_meter,
     )?;
 
     let frame_paint = super::control_paint::SequenceControlPaint::new(stroke_width, false);
@@ -433,7 +434,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
 fn write_native_actor_depths(
     out: &mut impl SvgOutput,
-    native: &crate::sequence::SequenceNativeStyle,
+    native: &crate::preparation::SequenceNativeStyle,
     ctx: &SequenceActorRenderContext<'_>,
     mirror: bool,
 ) -> Result<Option<Bounds>> {
@@ -468,7 +469,7 @@ fn write_native_actor_depths(
                 "{}-actor-{index}-{placement}",
                 ctx.diagram_id.semantic_str()
             );
-            let _ = crate::theme::elevation_svg::write_depth(
+            let _ = elevation_svg::write_depth(
                 out,
                 &native.elevation,
                 &scoped,
@@ -476,7 +477,7 @@ fn write_native_actor_depths(
                 (0.0, 0.0),
             );
             out.checkpoint()?;
-            let depth = crate::theme::elevation_svg::bounds(&native.elevation, surface);
+            let depth = elevation_svg::bounds(&native.elevation, surface);
             bounds = Some(bounds.map_or(depth, |bounds| bounds.union(depth)));
         }
     }
@@ -491,7 +492,10 @@ fn write_native_actor_depths(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use merman_render_core::{
+        resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId},
+        svg_css::scoped_svg_id,
+    };
 
     fn reference_scoped_sequence_base_defs(diagram_id: &str) -> String {
         let mut defs = PINNED_MERMAID_SEQUENCE_BASE_DEFS.to_string();
@@ -543,7 +547,7 @@ mod tests {
         let mut short = BoundedSvgOutput::new(&short_meter);
         assert!(matches!(
             write_scoped_sequence_base_defs(&mut short, diagram_id),
-            Err(crate::Error::ResourceLimitExceeded(_))
+            Err(Error::ResourceLimitExceeded(_))
         ));
         assert!(short.as_str().len() < expected.len());
     }

@@ -233,8 +233,6 @@ mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
-#[cfg(feature = "diagram-sequence")]
-pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;

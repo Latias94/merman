@@ -1,10 +1,11 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::blocks::{SequenceBlockRenderContext, render_sequence_block};
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
+use super::prelude::*;
 use super::settings::SequenceRenderSettings;
-use merman_render_sequence::activation::SequenceActivationPlan;
+use crate::activation::SequenceActivationPlan;
+use crate::frame::SequenceFrameLayout;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
@@ -13,15 +14,15 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) note_paint: &'a super::notes::SequenceNotePaintPlan,
     pub(super) model: &'a SequenceSvgModel,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
-    pub(super) frames: &'a [crate::model::SequenceFrameLayout],
+    pub(super) frames: &'a [SequenceFrameLayout],
     pub(super) frame_placements: &'a [Option<usize>],
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
-    pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
+    pub(super) compat: &'a crate::preparation::SequenceCompatBinding,
     pub(super) settings: &'a SequenceRenderSettings,
-    pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,
-    pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
+    pub(super) typography: &'a crate::preparation::SequenceTypographyPlan,
+    pub(super) block_label_box_metrics: crate::preparation::SequenceBlockLabelBoxMetrics,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }

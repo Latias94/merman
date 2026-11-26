@@ -15,6 +15,9 @@ pub mod pattern;
 pub use canvas::{write_canvas, write_color};
 pub use pattern::data_pattern;
 
+/// Mermaid Neo emits a zero-blur shadow translated by this distance on each axis.
+pub const NEO_SHADOW_OFFSET_PX: f64 = 4.0;
+
 pub fn cssom_color_value(value: &str) -> String {
     let value = value.trim();
     let Ok(color) = ThemeColor::parse(value) else {

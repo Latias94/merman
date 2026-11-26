@@ -19,3 +19,7 @@ pub mod preparation;
 
 #[doc(hidden)]
 pub mod rect_paint;
+
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub mod svg;

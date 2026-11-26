@@ -1145,7 +1145,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
         Box<
             FamilyPair<
                 &'parsed diagrams::sequence::SequenceDiagramModel,
-                crate::sequence::SequencePreparedArtifact,
+                merman_render_sequence::preparation::SequencePreparedArtifact,
             >,
         >,
     ),

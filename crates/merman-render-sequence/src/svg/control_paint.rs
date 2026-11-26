@@ -1,4 +1,5 @@
-use super::super::*;
+use super::prelude::*;
+use merman_render_core::number_format::canonicalize_number;
 use std::cell::RefCell;
 
 pub(super) struct SequenceControlPaint {
@@ -24,7 +25,7 @@ impl SequenceControlPaint {
         let Some(width) = self.width else {
             return Ok(());
         };
-        let [x1, y1, x2, y2] = coordinates.map(crate::number_format::canonicalize_number);
+        let [x1, y1, x2, y2] = coordinates.map(canonicalize_number);
         // Keyword polygons can have acute joins. Separate frame lines have only stroke caps.
         let half = f64::from(width) / 2.0 * self.outset_multiplier;
         let bounds = Bounds {

@@ -113,10 +113,11 @@ admission, and the editor and compatibility projections.
 `merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
 facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
 
-`merman-render-sequence` owns the Sequence layout types, participant geometry, glyphs, lifelines,
-and prepared control frames. It owns activation state, geometry, palette slots, and balanced SVG
-groups. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter
-and still orchestrates text, math, label placement, and the complete document.
+`merman-render-sequence` owns Sequence preparation, typography, layout, and complete SVG emission
+for both Mermaid parity and the opt-in NativeCompact profile. It uses the shared text, math, and
+bounded SVG contracts from `merman-render-core`. `merman-render` supplies the paired semantic
+model and operation context, finalizes diagram IDs, and owns terminal output admission. This
+follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-crate-boundaries.md).
 
 ### Chart rendering
 

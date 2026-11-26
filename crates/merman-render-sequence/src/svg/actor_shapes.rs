@@ -1,13 +1,16 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::math_label::sequence_katex_label;
-use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
-use crate::sequence::SequenceMathHeightMode;
-use merman_model::families::sequence::SequenceActor;
-use merman_render_sequence::actor::{
+use super::prelude::*;
+use crate::actor::{
     LIFELINE_STROKE_WIDTH_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, is_actor_man_variant,
     write_neo_actor_shadow_attr,
+};
+use crate::preparation::SequenceMathHeightMode;
+use merman_model::families::sequence::SequenceActor;
+use merman_render_core::{
+    math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE, text::line_break::split_mermaid_common_br_lines,
+    theme_svg::cssom_color_value,
 };
 
 pub(super) struct ActorLifelineIdentity<'a> {
@@ -17,15 +20,15 @@ pub(super) struct ActorLifelineIdentity<'a> {
 
 #[derive(Clone, Copy)]
 pub(super) struct ActorLabelContext<'a> {
-    pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
+    pub(super) compat: &'a crate::preparation::SequenceCompatBinding,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) native: bool,
     pub(super) wrap_width_px: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
-    pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) actor_label_footprints: &'a [Option<crate::sequence::SequenceActorLabelFootprint>],
+    pub(super) typography: &'a crate::preparation::SequenceResolvedTypography,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
+    pub(super) actor_label_footprints: &'a [Option<crate::actor::SequenceActorLabelFootprint>],
     pub(super) actor_index: Option<usize>,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -119,7 +122,7 @@ impl<'a> ActorLabelContext<'a> {
             if !style.is_empty() {
                 style.push(' ');
             }
-            let color = super::super::util::cssom_color_value(color);
+            let color = cssom_color_value(color);
             let _ = write!(style, "{property}: {color};");
         };
         if !self.native && self.compat.actor_palette.enabled() {
@@ -492,7 +495,7 @@ fn write_actor_label(
     ctx.checkpoints.checkpoint()?;
     let wrapped_label = if wrap {
         Some(
-            crate::sequence::wrap_sequence_label_like_mermaid_lines(
+            crate::preparation::wrap_sequence_label_like_mermaid_lines(
                 label,
                 ctx.measurer,
                 ctx.style,
@@ -508,7 +511,7 @@ fn write_actor_label(
 
     let prepared_math = ctx.actor_index.and_then(|actor_index| {
         ctx.math_sidecar.terminal(
-            &crate::sequence::SequenceMathOccurrence::Actor(actor_index),
+            &crate::preparation::SequenceMathOccurrence::Actor(actor_index),
             rendered_label,
         )
     });
@@ -529,7 +532,7 @@ fn write_actor_label(
             h = fmt(katex.height),
             html = katex.html,
         );
-        let raw_lines = crate::text::split_mermaid_common_br_lines(rendered_label);
+        let raw_lines = split_mermaid_common_br_lines(rendered_label);
         let line_count = raw_lines.len();
         write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
         out.push_str("</switch>");
@@ -539,7 +542,7 @@ fn write_actor_label(
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
     if let Some(wrapped_label) = wrapped_label {
-        let raw_lines = crate::text::split_mermaid_common_br_lines(&wrapped_label);
+        let raw_lines = split_mermaid_common_br_lines(&wrapped_label);
         write_actor_label_lines(
             out,
             cx,
@@ -550,7 +553,7 @@ fn write_actor_label(
             ctx,
         )?;
     } else {
-        let raw_lines = crate::text::split_mermaid_common_br_lines(label);
+        let raw_lines = split_mermaid_common_br_lines(label);
         let line_count = raw_lines.len();
         write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
     }
@@ -572,7 +575,7 @@ fn write_actor_label_lines<'a>(
 ) -> Result<()> {
     for (i, raw) in raw_lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
-        let decoded = crate::sequence::prepare_sequence_text_line(raw);
+        let decoded = crate::preparation::prepare_sequence_text_line(raw);
         let dy = super::geometry::actor_label_dy(i, line_count, ctx.style.font_size);
         let legacy_style = format!(
             "text-anchor: middle; {}",

@@ -1,11 +1,11 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use crate::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
+use super::prelude::*;
+use merman_render_core::svg_security::{
+    MermaidNavigationSecurity, prepare_mermaid_navigation_href,
+};
 use rustc_hash::FxHashMap;
-
-use crate::text::TextStyle;
 
 #[derive(Clone, Copy)]
 pub(super) struct SequenceActorPopupOptions<'a> {
@@ -25,7 +25,7 @@ pub(super) fn render_sequence_actor_popup_menus(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     sanitize_config: &merman_model::presentation::PresentationConfig,
     options: SequenceActorPopupOptions,
-    prepared: &crate::sequence::SequencePreparedArtifact,
+    prepared: &crate::preparation::SequencePreparedArtifact,
     label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {

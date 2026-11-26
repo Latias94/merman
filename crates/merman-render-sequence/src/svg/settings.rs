@@ -1,4 +1,4 @@
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 
 pub(super) struct SequenceRenderSettings {
     pub(super) force_menus: bool,
@@ -24,9 +24,9 @@ pub(super) struct SequenceRenderSettings {
 impl SequenceRenderSettings {
     pub(super) fn from_resolved_typography(
         effective_config: &serde_json::Value,
-        typography: &crate::sequence::SequenceTypographyPlan,
+        typography: &crate::preparation::SequenceTypographyPlan,
     ) -> Self {
-        let config = crate::sequence::config::SequenceConfigView::new(effective_config);
+        let config = crate::preparation::SequenceConfigView::new(effective_config);
 
         let force_menus = config
             .sequence_config_bool("forceMenus")
@@ -75,8 +75,8 @@ impl SequenceRenderSettings {
 
     #[cfg(test)]
     pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
-        let config = crate::test_support::presentation_config(effective_config.clone());
-        let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
+        let config = super::presentation_config(effective_config.clone());
+        let typography = crate::preparation::SequenceTypographyPlan::resolve(&config);
         Self::from_resolved_typography(config.as_value(), &typography)
     }
 }
@@ -84,7 +84,7 @@ impl SequenceRenderSettings {
 /// Preserve CSSOM's rejected-family behavior while emitting the same size and weight we measure.
 pub(super) fn sequence_text_style_attribute(style: &TextStyle) -> String {
     let mut css = String::new();
-    if let Some(family) = crate::sequence::sequence_inline_font_family(style) {
+    if let Some(family) = crate::preparation::sequence_inline_font_family(style) {
         css.push_str("font-family: ");
         css.push_str(&family);
         css.push_str("; ");
@@ -105,14 +105,14 @@ mod tests {
 
     #[test]
     fn resolved_theme_typography_is_used_when_constructing_render_settings() {
-        let theme = crate::theme::ThemeCompiler::new()
+        let theme = merman_theme_contract::v2::ThemeCompiler::new()
             .compile_json(br#"{
                 "schema_version": 2, "extends": "paper",
                 "typography": {"base_size_px": 24, "body_family": "mono", "mono": ["Fixture Mono", "monospace"]}
             }"#, None)
             .unwrap();
         let config = merman_model::presentation::PresentationConfig::default();
-        let typography = crate::sequence::SequenceTypographyPlan::for_native(
+        let typography = crate::preparation::SequenceTypographyPlan::for_native(
             config.as_value(),
             theme.family("sequence"),
             None,

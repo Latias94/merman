@@ -1,4 +1,3 @@
-use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
     ActorLabelContext, ActorLifelineIdentity, actor_placement_class, write_collection_actor_shape,
@@ -6,7 +5,9 @@ use super::actor_shapes::{
 };
 use super::geometry::lifeline_endpoints;
 use super::model::SequenceSvgModel;
-use merman_render_sequence::actor::{is_actor_man_variant, write_actor_man_lifeline};
+use super::prelude::*;
+use crate::actor::{is_actor_man_variant, write_actor_man_lifeline};
+use merman_render_core::LayoutEdge;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {
@@ -14,17 +15,17 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) actor_label_footprints: &'a [Option<crate::sequence::SequenceActorLabelFootprint>],
+    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a LayoutEdge>,
+    pub(super) math_sidecar: &'a crate::preparation::SequenceMathSidecar,
+    pub(super) actor_label_footprints: &'a [Option<crate::actor::SequenceActorLabelFootprint>],
     pub(super) actor_wrap_width: f64,
     pub(super) actor_height: f64,
     pub(super) label_box_height: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) actor_text_style: &'a TextStyle,
-    pub(super) actor_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) actor_typography: &'a crate::preparation::SequenceResolvedTypography,
     pub(super) lifeline_effective_stroke_width: f64,
-    pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
+    pub(super) compat: &'a crate::preparation::SequenceCompatBinding,
     pub(super) native: bool,
     pub(super) security_level_loose: bool,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
@@ -155,7 +156,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
     paint_bounds: Option<&mut Option<Bounds>>,
-) -> crate::Result<()> {
+) -> Result<()> {
     let label_ctx = ctx.label_context();
     let mut paint_bounds = paint_bounds;
 

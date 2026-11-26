@@ -1,4 +1,8 @@
-use super::super::*;
+use super::prelude::*;
+use merman_render_core::{
+    number_format::canonicalize_number, resources::OperationWorkMeter,
+    theme_svg::NEO_SHADOW_OFFSET_PX,
+};
 pub(super) fn builtin_neo_rect_paint_bounds(
     rect: [f64; 4],
     stroke_width: f64,
@@ -7,7 +11,7 @@ pub(super) fn builtin_neo_rect_paint_bounds(
     let [x, y, width, height] = rect;
     let half_stroke = stroke_width / 2.0;
     let offset = if has_shadow {
-        super::super::look_defs::NEO_SHADOW_OFFSET_PX
+        NEO_SHADOW_OFFSET_PX
     } else {
         0.0
     };
@@ -25,8 +29,8 @@ pub(super) fn builtin_actor_paint_bounds(
     mirror: bool,
     has_root_canvas: bool,
     style: super::actor_shapes::SequenceActorRectStyle,
-    compat: &crate::sequence::SequenceCompatBinding,
-    options: &SvgExecution<'_>,
+    compat: &crate::preparation::SequenceCompatBinding,
+    work_meter: &OperationWorkMeter,
 ) -> Result<Option<Bounds>> {
     let mut total: Option<Bounds> = None;
     if !has_root_canvas || !compat.is_neo {
@@ -42,7 +46,7 @@ pub(super) fn builtin_actor_paint_bounds(
         return Ok(total);
     };
     for actor_id in &model.actor_order {
-        options.work_meter().charge(1)?;
+        work_meter.charge(1)?;
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
@@ -81,7 +85,7 @@ pub(super) fn include_lifeline_paint_bounds(
     width: f64,
 ) {
     // Use the serialized coordinates, including descending or zero-length lines.
-    let [x, y1, y2] = [x, y1, y2].map(crate::number_format::canonicalize_number);
+    let [x, y1, y2] = [x, y1, y2].map(canonicalize_number);
     let bounds = Bounds {
         min_x: x - width / 2.0,
         max_x: x + width / 2.0,

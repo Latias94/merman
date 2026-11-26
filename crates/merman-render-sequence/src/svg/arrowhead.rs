@@ -1,4 +1,4 @@
-use super::super::{Result, SvgDiagramId, SvgOutput, escape_attr_display};
+use super::prelude::{Result, SvgDiagramId, SvgOutput, escape_attr_display};
 #[cfg(feature = "native-compact")]
 use merman_render_core::paint_scene::ScenePathCommand;
 use merman_theme_contract::v2::MarkerStyle;

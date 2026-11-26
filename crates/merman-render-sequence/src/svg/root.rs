@@ -1,5 +1,5 @@
-use super::super::*;
 use super::model::SequenceSvgModel;
+use super::prelude::*;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_sequence_svg_root_open(

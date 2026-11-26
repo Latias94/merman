@@ -1,5 +1,6 @@
-use super::super::*;
-use crate::sequence::{SequenceMathHeightMode, prepared_sequence_math_terminal_geometry};
+use super::prelude::*;
+use crate::preparation::{SequenceMathHeightMode, prepared_sequence_math_terminal_geometry};
+use merman_render_core::math::PreparedMathLabel;
 
 #[derive(Clone)]
 pub(super) struct SequenceKatexLabel<'a> {
@@ -9,7 +10,7 @@ pub(super) struct SequenceKatexLabel<'a> {
 }
 
 pub(super) fn sequence_katex_label<'a>(
-    prepared: Option<&'a crate::math::PreparedMathLabel>,
+    prepared: Option<&'a PreparedMathLabel>,
     style: &TextStyle,
     height_mode: SequenceMathHeightMode,
 ) -> Option<SequenceKatexLabel<'a>> {
@@ -45,8 +46,14 @@ pub(super) fn write_sequence_katex_foreign_object(
 mod tests {
     use std::sync::Arc;
 
-    use crate::math::{ConfiguredMathBackend, MathRenderer};
-    use crate::text::{TextMetrics, TextStyle};
+    use merman_model::family::DiagramFamilyId;
+    use merman_render_core::{
+        math::{
+            ConfiguredMathBackend, MathRenderer, PrepareMathLabelRequest, PreparedMathOccurrenceId,
+        },
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::TextMetrics,
+    };
 
     use super::*;
 
@@ -92,20 +99,15 @@ mod tests {
             font_size: 29.0,
             ..TextStyle::default()
         };
-        let meter = Arc::new(crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
-            crate::DiagramFamilyId::SEQUENCE,
-            "message-label",
-            0,
-        );
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::SEQUENCE, "message-label", 0);
         let outcome = backend
             .prepare(
-                crate::math::PrepareMathLabelRequest::sequence(
-                    "$$x^2$$", &config, &style, "#e5e7eb",
-                )
-                .with_occurrence_id(&occurrence_id),
+                PrepareMathLabelRequest::sequence("$$x^2$$", &config, &style, "#e5e7eb")
+                    .with_occurrence_id(&occurrence_id),
                 &meter,
             )
             .unwrap();
