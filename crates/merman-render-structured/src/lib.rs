@@ -5,6 +5,9 @@
 #[cfg(feature = "diagram-info")]
 #[doc(hidden)]
 pub mod info;
+#[cfg(feature = "diagram-ishikawa")]
+#[doc(hidden)]
+pub mod ishikawa;
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;

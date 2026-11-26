@@ -1,24 +1,26 @@
-use crate::config::{ConfigLookup, config_bool, config_f64, json_mermaid_font_size_number};
+use merman_render_core::config::{
+    ConfigLookup, config_bool, config_f64, json_mermaid_font_size_number,
+};
 use serde_json::Value;
 
 const DEFAULT_PADDING: f64 = 20.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_FONT_SIZE: f64 = 14.0;
 
-pub(crate) struct IshikawaConfigView<'a> {
+pub struct IshikawaConfigView<'a> {
     font_size: Option<&'a Value>,
     ishikawa_config: &'a Value,
 }
 
 impl<'a> IshikawaConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a impl ConfigLookup) -> Self {
+    pub fn new(effective_config: &'a impl ConfigLookup) -> Self {
         Self {
             font_size: effective_config.get("fontSize"),
             ishikawa_config: effective_config.get("ishikawa").unwrap_or(&Value::Null),
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> IshikawaLayoutSettings {
+    pub fn layout_settings(&self) -> IshikawaLayoutSettings {
         IshikawaLayoutSettings {
             padding: self
                 .ishikawa_f64("diagramPadding")
@@ -45,10 +47,10 @@ impl<'a> IshikawaConfigView<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct IshikawaLayoutSettings {
-    pub(crate) padding: f64,
-    pub(crate) use_max_width: bool,
-    pub(crate) font_size: f64,
+pub struct IshikawaLayoutSettings {
+    pub padding: f64,
+    pub use_max_width: bool,
+    pub font_size: f64,
 }
 
 #[cfg(test)]

@@ -88,7 +88,8 @@ shared presentation lexer. `merman-core-graph` provides Class, ER, and State syn
 syntax parsing and the four Railroad dialects.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
 contracts. `merman-render-structured` provides Info, Packet, and Railroad layout and SVG contents
-through `diagram-info`, `diagram-packet`, and `diagram-railroad`.
+through `diagram-info`, `diagram-packet`, and `diagram-railroad`, and Ishikawa layout through
+`diagram-ishikawa`.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 
 `merman-render-charts` provides Pie layout and SVG content through `diagram-pie`. It provides
