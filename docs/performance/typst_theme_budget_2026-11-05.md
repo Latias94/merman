@@ -207,3 +207,19 @@ The raw artifact exceeded its ceiling by 707 bytes. The new ceiling leaves appro
 headroom over that measurement while leaving every final-artifact limit unchanged. The job
 stopped at the raw budget check, so these measurements do not establish package smoke or a
 size optimization.
+
+## Sequence and Pie crate split, 2026-11-27
+
+[PR 377's Linux Typst job](https://github.com/Latias94/merman/actions/runs/45907472807/job/140207861709)
+measured the same `publish` recipe at head `4ce1199f1181371c799379fce6e919085d25b8d9`.
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 22,006,870 | 22,000,000 | 22,668,000 |
+| Stripped | 11,293,527 | 11,453,000 | 11,453,000 |
+| Gzip | 4,330,863 | 4,339,000 | 4,339,000 |
+| Brotli | 3,214,678 | 3,245,000 | 3,245,000 |
+
+The raw ceiling restores the 3% margin, rounded upward to 1,000 bytes. All three
+published-artifact measurements fit their existing ceilings. The job stopped before
+running the Typst package smoke tests.
