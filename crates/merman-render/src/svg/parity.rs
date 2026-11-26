@@ -234,8 +234,6 @@ mod path_bounds;
 mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]
 mod quadrantchart;
-#[cfg(feature = "diagram-radar")]
-mod radar;
 #[cfg(feature = "diagram-railroad")]
 mod railroad;
 #[cfg(feature = "diagram-requirement")]
@@ -1412,14 +1410,18 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-radar")]
         BuiltinFamilyArtifact::Radar(artifact) => {
-            radar::render_radar_diagram_svg_model_with_theme_plans(
+            let diagram_id = options.diagram_id_or("radar");
+            crate::radar::render_radar_svg(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.series_paint(),
-                artifact.typography_theme(),
+                artifact.style(),
                 effective_config.as_value(),
                 title,
-                options,
+                &crate::radar::RadarSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::RADAR, diagram_id),
+                    work_meter: options.work_meter(),
+                },
             )
         }
         #[cfg(feature = "diagram-info")]

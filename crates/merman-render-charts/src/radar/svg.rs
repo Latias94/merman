@@ -1,21 +1,67 @@
-use super::super::*;
-use crate::svg::parity::css::{write_mermaid_base_css_prefix, write_mermaid_base_css_root_rule};
-use merman_model::families::radar::RadarDiagramModel;
+use std::fmt::Write as _;
 
-// Radar diagram SVG renderer implementation (split from parity.rs).
+use merman_model::families::radar::RadarDiagramModel;
+use merman_render_core::{
+    LayoutPoint, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::{
+        CssSelectorDiagramId, MermaidBaseCss, SvgDiagramIdValue, SvgId,
+        write_mermaid_base_css_prefix, write_mermaid_base_css_root_rule,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::escape_xml,
+};
+
+use super::{
+    RadarAxisLayout, RadarDiagramLayout, RadarStyle,
+    config::use_max_width,
+    theme::{RadarSeriesPaintPlan, RadarTypographyThemePlan},
+};
+
+fn effective_title<'a>(
+    model: &'a RadarDiagramModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
+fn format_points(points: &[LayoutPoint]) -> String {
+    let mut out = String::new();
+    let mut buffer = ryu_js::Buffer::new();
+    for (index, point) in points.iter().enumerate() {
+        if index > 0 {
+            out.push(' ');
+        }
+        out.push_str(buffer.format(point.x));
+        out.push(',');
+        out.push_str(buffer.format(point.y));
+    }
+    out
+}
 
 fn write_radar_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    typography: &crate::radar::RadarTypographyThemePlan,
-    series_paint: &crate::radar::RadarSeriesPaintPlan,
+    typography: &RadarTypographyThemePlan,
+    series_paint: &RadarSeriesPaintPlan,
 ) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
     let theme = typography.css_binding();
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
-    let diagram_id = super::super::util::css_selector_diagram_id(diagram_id);
+    let diagram_id = CssSelectorDiagramId(diagram_id);
     let font_family_css = typography.font_family_css();
     let font_size_css = typography.font_size_css();
     let title_fill_css = &theme.title_color;
@@ -109,10 +155,7 @@ where
     write_mermaid_base_css_root_rule(out, diagram_id, font_family_css)
 }
 
-fn write_radar_axes(
-    out: &mut impl SvgOutput,
-    axes: &[crate::model::RadarAxisLayout],
-) -> Result<()> {
+fn write_radar_axes(out: &mut impl SvgOutput, axes: &[RadarAxisLayout]) -> Result<()> {
     for axis in axes {
         let cos_a = axis.angle.cos();
         let sin_a = axis.angle.sin();
@@ -134,10 +177,10 @@ fn write_radar_axes(
         let _ = write!(
             out,
             r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/><text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="{dominant_baseline}" class="radarAxisLabel">{label}</text>"#,
-            x2 = fmt_display(axis.line_x2),
-            y2 = fmt_display(axis.line_y2),
-            x = fmt_display(axis.label_x + label_padding * cos_a),
-            y = fmt_display(axis.label_y + label_padding * sin_a),
+            x2 = fmt(axis.line_x2),
+            y2 = fmt(axis.line_y2),
+            x = fmt(axis.label_x + label_padding * cos_a),
+            y = fmt(axis.label_y + label_padding * sin_a),
             label = escape_xml(&axis.label)
         );
         out.checkpoint()?;
@@ -145,50 +188,39 @@ fn write_radar_axes(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) fn render_radar_diagram_svg_model(
-    layout: &RadarDiagramLayout,
-    model: &RadarDiagramModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let effective_config = crate::test_support::presentation_config(effective_config.clone());
-    let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
-    let series_paint =
-        crate::radar::RadarSeriesPaintPlan::baseline(effective_config.as_value(), model);
-    render_radar_diagram_svg_model_with_theme_plans(
-        layout,
-        model,
-        &series_paint,
-        &typography,
-        effective_config.as_value(),
-        diagram_title,
-        options,
-    )
+/// Host-owned SVG ID, viewport, and work meter for a Radar render.
+pub struct RadarSvgContext<'a> {
+    /// The projected ID used in the root, ARIA references, and stylesheet.
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
 }
 
-pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
+/// Emits the complete Radar document before shared terminal processing.
+pub fn render_radar_svg(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramModel,
-    series_paint: &crate::radar::RadarSeriesPaintPlan,
-    typography: &crate::radar::RadarTypographyThemePlan,
+    style: &RadarStyle,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
+    context: &RadarSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("radar");
+    let diagram_id = context.diagram_id;
+    let RadarStyle {
+        typography,
+        series_paint,
+    } = style;
 
     let has_acc_title = model.acc_title.as_deref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = model.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
-    let render_settings = crate::radar::RadarConfigView::new(effective_config).render_settings();
+    let use_max_width = use_max_width(effective_config);
 
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let root_extra_attrs: [(&str, &str); 1] = [("overflow", "visible")];
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "radar");
     root_chrome.extra_attrs = &root_extra_attrs;
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -199,22 +231,15 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::RADAR, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(
-                    0.0,
-                    0.0,
-                    layout.svg_width,
-                    layout.svg_height,
-                ),
-                render_settings.use_max_width,
-            )
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
-            root_chrome,
-        )?;
+    let root_document = context.viewport.write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.svg_width, layout.svg_height),
+            use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
+        root_chrome,
+    )?;
 
     if has_acc_title {
         let _ = write!(
@@ -238,7 +263,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     out.push_str("<style>");
     out.checkpoint()?;
     write_radar_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
+        &mut XmlTextOutput::new(&mut out),
         diagram_id,
         typography,
         series_paint,
@@ -249,8 +274,8 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let _ = write!(
         &mut out,
         r#"<g transform="translate({x}, {y})">"#,
-        x = fmt_display(layout.center_x),
-        y = fmt_display(layout.center_y)
+        x = fmt(layout.center_x),
+        y = fmt(layout.center_y)
     );
     out.checkpoint()?;
 
@@ -259,7 +284,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             if graticule.points.is_empty() {
                 out.push_str(r#"<polygon points="" class="radarGraticule"/>"#);
             } else {
-                let points = crate::radar::format_points(&graticule.points);
+                let points = format_points(&graticule.points);
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{points}" class="radarGraticule"/>"#,
@@ -280,7 +305,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let polygon_curves = model.options.graticule.trim() == "polygon";
     for curve in &layout.curves {
         if polygon_curves && !curve.points.is_empty() {
-            let points = crate::radar::format_points(&curve.points);
+            let points = format_points(&curve.points);
             let _ = write!(
                 &mut out,
                 r#"<polygon points="{points}" class="radarCurve-{idx}"/>"#,
@@ -302,14 +327,14 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         let _ = write!(
             &mut out,
             r#"<g transform="translate({x}, {y})">"#,
-            x = fmt_display(item.x),
-            y = fmt_display(item.y)
+            x = fmt(item.x),
+            y = fmt(item.y)
         );
         out.checkpoint()?;
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" class="radarLegendBox-{idx}"/>"#,
-            size = fmt_display(12.0),
+            size = fmt(12.0),
             idx = item.class_index
         );
         out.checkpoint()?;
@@ -321,8 +346,8 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
-            x = fmt_display(16.0),
-            y = fmt_display(0.0),
+            x = fmt(16.0),
+            y = fmt(0.0),
             text = escape_xml(label)
         );
         out.checkpoint()?;
@@ -330,7 +355,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         out.checkpoint()?;
     }
 
-    let title = crate::radar::effective_title(model, diagram_title);
+    let title = effective_title(model, diagram_title);
     match title {
         Some(t) => {
             let _ = write!(
@@ -355,24 +380,57 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::DiagramFamilyId;
-    use crate::model::RadarAxisLayout;
     use std::fmt;
     use std::ops::Range;
 
+    use merman_model::family::DiagramFamilyId;
+    use merman_render_core::{
+        Error, resources::RenderResourcePolicy, svg_css::SvgDiagramIdProjection,
+    };
+
+    use super::super::test_support::{FALLBACK_C_SCALE, presentation_config};
+    use super::*;
+
     fn radar_css_for_test(config: &serde_json::Value) -> String {
-        let effective_config = crate::test_support::presentation_config(config.clone());
-        let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+        let effective_config = presentation_config(config.clone());
+        let typography = RadarTypographyThemePlan::resolve(None, &effective_config);
         let mut css = String::new();
         write_radar_css(
             &mut css,
             "radar",
             &typography,
-            &crate::radar::RadarSeriesPaintPlan::baseline(config, &RadarDiagramModel::default()),
+            &RadarSeriesPaintPlan::baseline(config, &FALLBACK_C_SCALE),
         )
         .expect("String-backed Radar CSS writer");
         css
+    }
+
+    fn render_test_svg(
+        layout: &RadarDiagramLayout,
+        effective_config: serde_json::Value,
+        id: &str,
+    ) -> root_svg::RootedSvg {
+        let config = presentation_config(effective_config);
+        let model = RadarDiagramModel::default();
+        let style = RadarStyle::resolve(None, &config, &model, &FALLBACK_C_SCALE);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        let projection = SvgDiagramIdProjection::new(&meter);
+        let diagram_id = SvgId::new(id).unwrap().with_projection(&projection);
+        let svg = render_radar_svg(
+            layout,
+            &model,
+            &style,
+            config.as_value(),
+            None,
+            &RadarSvgContext {
+                diagram_id,
+                viewport: root_svg::RootViewportContext::new(DiagramFamilyId::RADAR, diagram_id),
+                work_meter: &meter,
+            },
+        )
+        .unwrap();
+        projection.finish().unwrap();
+        svg
     }
 
     #[derive(Default)]
@@ -418,14 +476,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -451,7 +509,7 @@ mod tests {
         let error = write_radar_axes(&mut out, &axes)
             .expect_err("the rejecting sink must stop Radar axis emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "Radar axis emission must stop at the first failed sink checkpoint"
@@ -562,21 +620,7 @@ mod tests {
             curves: Vec::new(),
             legend_items: Vec::new(),
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("radarRoot".to_string()),
-            ..SvgRenderOptions::default()
-        };
-
-        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
-            render_radar_diagram_svg_model(
-                &layout,
-                &RadarDiagramModel::default(),
-                &serde_json::json!({}),
-                None,
-                options,
-            )
-        })
-        .unwrap();
+        let svg = render_test_svg(&layout, serde_json::json!({}), "radarRoot");
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
         assert!(root_open.contains(r#"width="100%""#), "{root_open}");
@@ -606,21 +650,11 @@ mod tests {
             curves: Vec::new(),
             legend_items: Vec::new(),
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("radarFixed".to_string()),
-            ..SvgRenderOptions::default()
-        };
-
-        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
-            render_radar_diagram_svg_model(
-                &layout,
-                &RadarDiagramModel::default(),
-                &serde_json::json!({"radar": {"useMaxWidth": false}}),
-                None,
-                options,
-            )
-        })
-        .unwrap();
+        let svg = render_test_svg(
+            &layout,
+            serde_json::json!({"radar": {"useMaxWidth": false}}),
+            "radarFixed",
+        );
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
         assert!(root_open.contains(r#"width="700""#), "{root_open}");
@@ -666,17 +700,7 @@ mod tests {
             legend_items: Vec::new(),
         };
 
-        let request = SvgRenderOptions::default();
-        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &request, |options| {
-            render_radar_diagram_svg_model(
-                &layout,
-                &RadarDiagramModel::default(),
-                &serde_json::json!({}),
-                None,
-                options,
-            )
-        })
-        .unwrap();
+        let svg = render_test_svg(&layout, serde_json::json!({}), "radar");
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
         assert!(root_open.contains(r#"overflow="visible""#), "{root_open}");

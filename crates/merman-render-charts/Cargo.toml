@@ -23,7 +23,11 @@ diagram-pie = [
     "merman-render-core/text-layout", "merman-render-core/theme-svg",
 ]
 diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
-diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
+diagram-radar = [
+    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar",
+    "merman-render-core/root-svg",
+]
 diagram-sankey = [
     "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
     "dep:serde", "dep:serde_json", "merman-model/diagram-sankey", "merman-render-core/root-svg",
@@ -59,6 +63,7 @@ serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }
 roxmltree.workspace = true
 svgtypes.workspace = true

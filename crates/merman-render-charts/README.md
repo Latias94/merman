@@ -8,8 +8,9 @@ The `diagram-quadrant-chart` feature provides typed geometry, paint binding, and
 for Quadrant Chart. `merman-render` resolves theme precedence and supplies the SVG root,
 accessibility, and stylesheet.
 
-The `diagram-radar` feature provides typed layout and the point and radius codecs for Radar.
-`merman-render` resolves the theme and writes the SVG.
+The `diagram-radar` feature provides preparation, typed layout, theme binding, and complete SVG
+emission for Radar. `merman-render` supplies the selected theme, viewport context, and final SVG
+policies.
 
 The `diagram-sankey` feature provides typed layout, theme binding, label measurement, and complete
 SVG emission. `merman-render` supplies the operation's measurement and viewport context and

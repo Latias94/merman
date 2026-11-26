@@ -564,8 +564,7 @@ pub(crate) struct XyChartFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-radar")]
 pub(crate) struct RadarFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::radar::RadarDiagramModel, RadarDiagramLayout>,
-    series_paint: crate::radar::RadarSeriesPaintPlan,
-    typography_theme: crate::radar::RadarTypographyThemePlan,
+    style: crate::radar::RadarStyle,
 }
 
 #[derive(Debug)]
@@ -916,12 +915,8 @@ impl<'parsed> RadarFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn series_paint(&self) -> &crate::radar::RadarSeriesPaintPlan {
-        &self.series_paint
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::radar::RadarTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::radar::RadarStyle {
+        &self.style
     }
 }
 

@@ -1,4 +1,8 @@
-use crate::config::{config_f64, config_string, value_at};
+use merman_render_core::{
+    config::{config_f64, config_string, json_f64, value_at},
+    mermaid_style::{is_resource_free_css_value, resolve_explicit_css_absolute_font_size_px},
+    number_format::{canonical_number, canonicalize_number},
+};
 
 #[derive(Debug)]
 pub(crate) struct RadarRoleFontSize(String);
@@ -6,11 +10,11 @@ pub(crate) struct RadarRoleFontSize(String);
 impl RadarRoleFontSize {
     pub(super) fn resolve(css_px: f64) -> Self {
         let negative = css_px < 0.0;
-        let css_px = crate::number_format::canonicalize_number(css_px);
+        let css_px = canonicalize_number(css_px);
         Self(if negative && css_px == 0.0 {
             "inherit".to_owned()
         } else {
-            format!("{}px", crate::number_format::canonical_number(css_px))
+            format!("{}px", canonical_number(css_px))
         })
     }
 
@@ -37,7 +41,7 @@ impl RadarRoleFontSize {
                 return Self("inherit".to_owned());
             }
         };
-        if let Some(size) = crate::config::json_f64(scalar).filter(|size| *size < 0.0) {
+        if let Some(size) = json_f64(scalar).filter(|size| *size < 0.0) {
             return Self::resolve(size);
         }
         // These roles append one px unit; general declaration ownership is deliberately
@@ -51,14 +55,12 @@ impl RadarRoleFontSize {
         if !px_dimension {
             return Self("inherit".to_owned());
         }
-        if let Some(size) =
-            crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(&interpolated)
-        {
+        if let Some(size) = resolve_explicit_css_absolute_font_size_px(&interpolated) {
             return Self::resolve(size);
         }
         // A safe but unrepresentable dimension must retain its actual CSS. Substituting
         // inheritance could change browser-zero text into the positive root size.
-        let css = if crate::mermaid_style::is_resource_free_css_value(&interpolated) {
+        let css = if is_resource_free_css_value(&interpolated) {
             interpolated
         } else {
             "inherit".to_owned()

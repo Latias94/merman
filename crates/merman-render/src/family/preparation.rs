@@ -669,21 +669,18 @@ fn prepare_radar_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution.native_family_theme();
-    let typography_theme =
-        crate::radar::RadarTypographyThemePlan::resolve(native, &meta.effective_config);
-    let series_paint =
-        crate::radar::RadarSeriesPaintPlan::resolve(native, &meta.effective_config, model);
-    let layout = crate::radar::layout_radar_diagram_typed_with_work_meter(
+    let fallback_c_scale = std::array::from_fn(crate::svg::render_theme::default_c_scale);
+    let (layout, style) = crate::radar::prepare_radar_diagram(
         model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
+        &meta.effective_config,
+        native,
+        &fallback_c_scale,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Radar(Box::new(
         RadarFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            series_paint,
-            typography_theme,
+            style,
         },
     )))
 }
