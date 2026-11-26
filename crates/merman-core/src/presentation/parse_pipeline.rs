@@ -63,6 +63,7 @@ pub(crate) struct ParsePipeline<'a> {
     text: &'a str,
     options: ParseOptions,
     source: ParseSource<'a>,
+    allow_missing_diagram: bool,
 }
 
 /// Owns the configuration through detection and classic Mermaid appearance selection.
@@ -258,6 +259,7 @@ impl<'a> ParsePipeline<'a> {
             text,
             options,
             source: ParseSource::Detect,
+            allow_missing_diagram: false,
         }
     }
 
@@ -272,7 +274,13 @@ impl<'a> ParsePipeline<'a> {
             text,
             options,
             source: ParseSource::KnownType(diagram_type),
+            allow_missing_diagram: false,
         }
+    }
+
+    pub(crate) fn allow_missing_diagram(mut self) -> Self {
+        self.allow_missing_diagram = true;
+        self
     }
 
     pub(crate) fn metadata(&self) -> Result<PresentationMetadata> {
@@ -1030,7 +1038,11 @@ impl<'a> ParsePipeline<'a> {
         let preprocessed =
             self.preprocess_with_directive_recovery_controlled(directive_recovery, control)?;
         Ok(match preprocessed {
-            Err(Error::DetectType(_)) if self.options.suppress_errors => Ok(None),
+            Err(Error::DetectType(_))
+                if self.allow_missing_diagram || self.options.suppress_errors =>
+            {
+                Ok(None)
+            }
             result => result.map(Some),
         })
     }

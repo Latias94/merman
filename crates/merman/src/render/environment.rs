@@ -78,15 +78,12 @@ pub struct SvgEnvironment {
     ))]
     pub(super) text_measurement_is_default: bool,
     text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
-    // Retain source admission without opening a backend session.
-    pub(super) input_resources: InputResourcePolicy,
 }
 
 impl SvgEnvironment {
     /// Creates the deterministic default SVG service set.
     pub fn deterministic() -> Self {
         let text_measurement = TextMeasurementPolicy::deterministic();
-        let resources = RenderResourcePolicy::default();
         Self {
             native_theme: None,
             background: None,
@@ -104,10 +101,8 @@ impl SvgEnvironment {
             ))]
             text_measurement_is_default: true,
             backend: BackendRenderEnvironment::deterministic()
-                .with_text_measurement_policy(text_measurement.clone())
-                .with_resource_policy(resources),
+                .with_text_measurement_policy(text_measurement.clone()),
             text_measurement_routes: text_measurement.routes(),
-            input_resources: *resources.input_policy(),
         }
         .with_capability_policy(RenderCapabilityPolicy::unrestricted())
     }
@@ -234,9 +229,17 @@ impl SvgEnvironment {
     }
 
     pub fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
-        self.input_resources = *policy.input_policy();
         self.backend = self.backend.with_resource_policy(policy);
         self
+    }
+
+    pub(super) fn resource_policy(&self) -> &RenderResourcePolicy {
+        self.backend.resource_policy()
+    }
+
+    pub(super) fn with_input_resource_policy(self, input: InputResourcePolicy) -> Self {
+        let policy = self.resource_policy().with_input_policy(input);
+        self.with_resource_policy(policy)
     }
 
     /// Reuses bounded row storage across independent, flat, natural-width Shoal layouts.

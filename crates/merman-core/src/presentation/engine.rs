@@ -592,6 +592,21 @@ impl MermaidEngine {
             .parse_render_model_controlled_in_context(operation, operation_context)
     }
 
+    /// Like the in-context render parser, but returns `None` on top-level detection failure
+    /// even in strict mode. Errors from a detected family's parser retain their original type.
+    #[doc(hidden)]
+    pub fn parse_detected_render_model_in_context_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+        operation_context: &merman_model::runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .allow_missing_diagram()
+            .parse_render_model_controlled_in_context(operation, operation_context)
+    }
+
     /// Async facade for [`MermaidEngine::parse_diagram_for_render_model_sync`].
     ///
     /// The work is CPU-bound and executes synchronously.

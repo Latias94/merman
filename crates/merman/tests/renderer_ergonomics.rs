@@ -47,8 +47,8 @@ mod graphical {
     use merman::svg::{RenderCapability, RenderResourcePolicy};
     use merman::theme::{Appearance, BuiltinPreset, ThemeCompiler, ThemeMode, ThemeSelection};
     use merman::{
-        OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest, RendererBuilder,
-        RendererBuilderError, SvgEnvironment, SvgRequest,
+        MermaidEngine, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
+        RendererBuilder, RendererBuilderError, SvgEnvironment, SvgRequest,
     };
 
     fn builder() -> RendererBuilder {
@@ -129,13 +129,17 @@ mod graphical {
 
     #[test]
     fn renderer_builder_limits_only_default_targets_and_explicit_control_keeps_precedence() {
-        let render_policy = RenderResourcePolicy::default()
+        let render_policy = RenderResourcePolicy::constrained()
             .with_override("max_source_bytes", 1)
+            .unwrap()
+            .with_override("max_model_items", 1)
             .unwrap()
             .with_override("max_svg_bytes", 1)
             .unwrap();
         let input = InputResourcePolicy::default()
             .with_limit(InputResourceLimitId::MaxSourceBytes, FLOWCHART.len())
+            .unwrap()
+            .with_limit(InputResourceLimitId::MaxModelItems, 3)
             .unwrap();
         let renderer = builder()
             .with_render_resource_policy(render_policy)
@@ -152,6 +156,8 @@ mod graphical {
             renderer.render_svg(FLOWCHART),
             Err(RenderError::ResourceLimitExceeded(error))
                 if error.id == "max_svg_bytes" && error.maximum == 1
+                    && error.provenance.as_ref().and_then(|receipt| receipt.profile)
+                        == Some(ResourceProfile::Constrained)
         ));
 
         let request = SvgRequest {
@@ -172,6 +178,15 @@ mod graphical {
     }
 
     #[test]
+    fn renderer_can_still_be_borrowed_across_an_unwind_boundary() {
+        let renderer = Renderer::new();
+        assert_eq!(
+            std::panic::catch_unwind(|| *renderer.resource_policy()).unwrap(),
+            InputResourcePolicy::default()
+        );
+    }
+
+    #[test]
     fn renderer_builder_rejects_unbounded_defaults_and_keeps_trusted_expert_policy_explicit() {
         let unbounded = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         assert!(matches!(
@@ -183,6 +198,21 @@ mod graphical {
         assert!(matches!(
             builder().with_svg_environment(environment).build(),
             Err(RendererBuilderError::UnboundedRenderPolicy)
+        ));
+        let unbounded_render = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_input_policy(InputResourcePolicy::default());
+        assert!(matches!(
+            builder()
+                .with_render_resource_policy(unbounded_render)
+                .build(),
+            Err(RendererBuilderError::UnboundedRenderPolicy)
+        ));
+        let unbounded_input = RenderResourcePolicy::default().with_input_policy(unbounded);
+        assert!(matches!(
+            builder()
+                .with_render_resource_policy(unbounded_input)
+                .build(),
+            Err(RendererBuilderError::UnboundedInputPolicy)
         ));
 
         let maximum = InputResourcePolicy::default()
@@ -241,6 +271,30 @@ mod graphical {
             )),
             Ok(RenderOutput::Svg(None))
         ));
+    }
+
+    #[test]
+    fn renderer_builder_preserves_a_detected_family_parsers_detection_error() {
+        let mut engine = MermaidEngine::new();
+        engine
+            .render_diagram_registry_mut()
+            .insert("flowchart-v2", |_, _, _| {
+                Ok(Err(merman_core::detect::DetectTypeError {
+                    text: "unrecognized embedded diagram".to_owned(),
+                }
+                .into()))
+            });
+        let renderer = builder().build().unwrap().with_presentation_engine(engine);
+        for result in [
+            renderer.render_svg(FLOWCHART),
+            renderer.render_svg_with(FLOWCHART, SvgRequest::default(), OperationControl::new()),
+        ] {
+            assert!(matches!(
+                result,
+                Err(RenderError::Parse(error))
+                    if error.terminal_diagnostic_details().code == "merman.parse.no_diagram_detected"
+            ));
+        }
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

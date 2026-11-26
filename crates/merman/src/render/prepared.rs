@@ -116,6 +116,7 @@ impl Renderer {
             control: request.control,
             parse_options: request.parse_options,
             resources: request.resources,
+            allow_missing_diagram: false,
         };
         let (semantic, _) = self.parse_presentation_request(request)?;
         Ok(semantic.map(PresentationArtifact::into_prepared_source))

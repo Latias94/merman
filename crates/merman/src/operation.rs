@@ -106,17 +106,26 @@ impl Operation {
         engine: &MermaidEngine,
         source: &str,
         parse_options: ParseOptions,
+        allow_missing_diagram: bool,
     ) -> Result<Option<PresentationArtifact>, RenderError> {
         checkpoint(&self.control, OperationPhase::Parse)?;
-        let parsed = engine
-            .parse_diagram_for_render_model_controlled_in_context_sync(
+        let parsed = if allow_missing_diagram {
+            engine.parse_detected_render_model_in_context_sync(
                 source,
                 parse_options,
                 &self.control,
                 &self.context,
             )
-            .map_err(RenderError::Cancelled)?
-            .map_err(RenderError::from)?;
+        } else {
+            engine.parse_diagram_for_render_model_controlled_in_context_sync(
+                source,
+                parse_options,
+                &self.control,
+                &self.context,
+            )
+        }
+        .map_err(RenderError::Cancelled)?
+        .map_err(RenderError::from)?;
         let Some(parsed) = parsed else {
             return Ok(None);
         };

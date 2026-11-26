@@ -1683,6 +1683,12 @@ impl RenderEnvironment {
         self
     }
 
+    /// Borrows the policy that will be captured by the next session.
+    #[doc(hidden)]
+    pub const fn resource_policy(&self) -> &RenderResourcePolicy {
+        &self.resource_policy
+    }
+
     /// Reuses row storage on independent, flat, natural-width Shoal layouts.
     ///
     /// This environment and its clones share one idle slot with at most 64 KiB of row storage.

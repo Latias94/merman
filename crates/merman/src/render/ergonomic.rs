@@ -96,6 +96,9 @@ pub(super) struct ErgonomicDefaults {
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
+impl std::panic::RefUnwindSafe for ErgonomicDefaults {}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
 impl ErgonomicDefaults {
     fn into_shared(self) -> Option<Arc<Self>> {
         let configured = self.input_resources.is_some();
@@ -144,6 +147,9 @@ impl RendererBuilder {
     }
 
     /// Supplies reusable host services for the one-argument graphical methods.
+    ///
+    /// Target defaults are cloned into each operation. Hosts remain responsible for the
+    /// panic recovery of their own callbacks and shared state.
     #[cfg(feature = "svg")]
     pub fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg_environment = Some(environment);
@@ -152,7 +158,7 @@ impl RendererBuilder {
 
     /// Overrides the SVG environment's resource profile and limits.
     ///
-    /// The profile also supplies graphical input limits unless a separate input policy was set.
+    /// Its input policy also supplies graphical input limits unless overridden separately.
     #[cfg(feature = "svg")]
     pub fn with_render_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
         self.render_resources = Some(policy);
@@ -191,6 +197,7 @@ impl RendererBuilder {
             || self.render_resources.is_some()
             || self.text_measurement.is_some()
             || self.theme.is_some()
+            || self.input_resources.is_some()
         {
             let mut request = SvgRequest::default();
             if let Some(environment) = self.svg_environment {
@@ -199,10 +206,22 @@ impl RendererBuilder {
             if let Some(policy) = self.render_resources {
                 request.environment = request.environment.with_resource_policy(policy);
             }
-            if request.environment.input_resources.profile()
+            if request.environment.resource_policy().profile()
                 == ResourceProfile::UnboundedForTrustedInput
             {
                 return Err(RendererBuilderError::UnboundedRenderPolicy);
+            }
+            if let Some(policy) = self.input_resources {
+                request.environment = request.environment.with_input_resource_policy(policy);
+            }
+            if request
+                .environment
+                .resource_policy()
+                .input_policy()
+                .profile()
+                == ResourceProfile::UnboundedForTrustedInput
+            {
+                return Err(RendererBuilderError::UnboundedInputPolicy);
             }
             if let Some(policy) = self.text_measurement {
                 request.environment = request.environment.with_text_measurement_policy(policy);
@@ -253,13 +272,9 @@ impl RendererBuilder {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 macro_rules! require_output {
     ($result:expr, $variant:ident, $target:literal) => {
-        match $result {
-            Ok(RenderOutput::$variant(output)) => output.ok_or(RenderError::NoDiagram),
-            Ok(_) => Err(RenderError::UnsupportedTarget($target)),
-            Err(RenderError::Parse(diagnostic)) if diagnostic.is_missing_diagram() => {
-                Err(RenderError::NoDiagram)
-            }
-            Err(error) => Err(error),
+        match $result? {
+            RenderOutput::$variant(output) => output.ok_or(RenderError::NoDiagram),
+            _ => Err(RenderError::UnsupportedTarget($target)),
         }
     };
 }
@@ -268,6 +283,15 @@ impl Renderer {
     /// Starts configuring a renderer. The default policies are bounded.
     pub fn builder() -> RendererBuilder {
         RendererBuilder::default()
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn render_typed_target(
+        &self,
+        mut request: RenderRequest<'_>,
+    ) -> Result<RenderOutput, RenderError> {
+        request.allow_missing_diagram = true;
+        self.render(request)
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -294,7 +318,7 @@ impl Renderer {
         if let Some(policy) = policy {
             request = request.with_resource_policy(policy);
         }
-        self.render(request)
+        self.render_typed_target(request)
     }
 
     #[cfg(feature = "svg")]
@@ -322,7 +346,7 @@ impl Renderer {
         control: OperationControl,
     ) -> Result<SvgOutput, RenderError> {
         require_output!(
-            self.render(RenderRequest::svg(source, control, request)),
+            self.render_typed_target(RenderRequest::svg(source, control, request)),
             Svg,
             "svg"
         )
@@ -353,7 +377,7 @@ impl Renderer {
         control: OperationControl,
     ) -> Result<AsciiOutput, RenderError> {
         require_output!(
-            self.render(RenderRequest::ascii(source, control, request)),
+            self.render_typed_target(RenderRequest::ascii(source, control, request)),
             Ascii,
             "ascii"
         )
@@ -378,7 +402,7 @@ impl Renderer {
         control: OperationControl,
     ) -> Result<RasterOutput, RenderError> {
         require_output!(
-            self.render(RenderRequest::png(source, control, request)),
+            self.render_typed_target(RenderRequest::png(source, control, request)),
             Png,
             "png"
         )
@@ -403,7 +427,7 @@ impl Renderer {
         control: OperationControl,
     ) -> Result<RasterOutput, RenderError> {
         require_output!(
-            self.render(RenderRequest::jpeg(source, control, request)),
+            self.render_typed_target(RenderRequest::jpeg(source, control, request)),
             Jpeg,
             "jpeg"
         )
@@ -428,7 +452,7 @@ impl Renderer {
         control: OperationControl,
     ) -> Result<PdfOutput, RenderError> {
         require_output!(
-            self.render(RenderRequest::pdf(source, control, request)),
+            self.render_typed_target(RenderRequest::pdf(source, control, request)),
             Pdf,
             "pdf"
         )
