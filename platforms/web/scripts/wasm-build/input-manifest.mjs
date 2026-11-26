@@ -150,7 +150,7 @@ export function verifyWasmInputManifest({
   return { ok: reasons.length === 0, reasons };
 }
 
-// Keep host build dependencies in the identity inventory; Cargo tree selects the target closure.
+// The lock inventory includes optional and host dependencies. Cargo tree selects each target closure.
 export function cargoRepositoryMetadata({ repoRoot, capture = runCapture }) {
   return parseCargoMetadata(
     capture(
@@ -160,6 +160,7 @@ export function cargoRepositoryMetadata({ repoRoot, capture = runCapture }) {
         "--format-version",
         "1",
         "--locked",
+        "--all-features",
         "--manifest-path",
         path.join(repoRoot, "Cargo.toml"),
       ],
