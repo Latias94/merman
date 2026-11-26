@@ -925,6 +925,7 @@
       "local_paths": [
         "crates/merman-core/src",
         "crates/merman-core-flow/src",
+        "crates/merman-core-graph/src/state",
         "crates/merman-core-preprocess/src/scan/langium.rs",
         "crates/merman-core-sequence/src",
         "crates/merman-core-structured/src/info.rs",
@@ -936,7 +937,7 @@
         "crates/merman-render-charts/src/pie",
         "crates/merman-render-charts/src/quadrantchart/layout.rs",
         "crates/merman-render-charts/src/quadrantchart/svg.rs",
-        "crates/merman-render-charts/src/radar/layout.rs",
+        "crates/merman-render-charts/src/radar",
         "crates/merman-render-charts/src/treemap/layout.rs",
         "crates/merman-render-charts/src/venn/layout.rs",
         "crates/merman-render-charts/src/wardley/layout.rs",
