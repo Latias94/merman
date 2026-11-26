@@ -31,6 +31,8 @@ const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
+    pub clusters: &'a [crate::model::LayoutCluster],
+    pub native_style: Option<&'a crate::class::ClassNativeStyle>,
     pub missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
@@ -609,7 +611,27 @@ fn render_class_edge_label_group(
     let decoded = decode_entities_minimal_cow(&normalized);
     let trimmed = decoded.trim();
     let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
-    let background_css = ctx.relation_theme.native_edge_label_background();
+    let container_sampled_bg = ctx.native_style.and_then(|native| {
+        if native.edge_label_bg != merman_theme_contract::v2::EdgeLabelBackground::Auto
+            || ctx.clusters.is_empty()
+        {
+            return None;
+        }
+        let lx = center_x - ctx.content_tx;
+        let ly = center_y - ctx.content_ty;
+        let inside_namespace = ctx.clusters.iter().any(|cluster| {
+            let hw = cluster.width * 0.5;
+            let hh = cluster.height * 0.5;
+            lx >= cluster.x - hw
+                && lx <= cluster.x + hw
+                && ly >= cluster.y - hh
+                && ly <= cluster.y + hh
+        });
+        inside_namespace.then(|| native.container.to_string())
+    });
+    let background_css = container_sampled_bg
+        .as_deref()
+        .or_else(|| ctx.relation_theme.native_edge_label_background());
     if use_html_labels {
         let empty_div_style =
             class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);

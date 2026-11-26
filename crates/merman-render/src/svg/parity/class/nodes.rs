@@ -613,6 +613,8 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         uses_elk_adapter_dom: edge_ctx.uses_elk_adapter_dom,
         edge_paths_class: edge_ctx.edge_paths_class,
         relation_theme: edge_ctx.relation_theme,
+        clusters: edge_ctx.clusters,
+        native_style: edge_ctx.native_style,
         emit: edge_ctx.emit,
     };
     render_class_split_edge_groups(

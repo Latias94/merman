@@ -842,9 +842,14 @@ pub(super) fn render_state_edge_label(
         if html_labels {
             let fallback_background_metadata_attr =
                 fallback_background_metadata_attr(id, fallback_background_fill);
+            let span_style_attr = if label_style.trim().is_empty() {
+                String::new()
+            } else {
+                format!(r#" style="{}""#, escape_attr(label_style))
+            };
             let _ = write!(
                 out,
-                r#"<g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                r#"<g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g>"#,
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
@@ -856,6 +861,7 @@ pub(super) fn render_state_edge_label(
                     label_div_prefix,
                     html_background_style,
                 )),
+                span_style_attr,
                 state_edge_label_html(label_text)
             );
         } else {
@@ -958,6 +964,7 @@ pub(super) fn render_state_edge_label(
         fmt_display(label_position.y),
     );
     let native_background = ctx.style_plan.compatibility().native_edge_label_paint;
+    let mut adaptive_label_style = String::new();
     if let Some(paint) = native_background {
         use merman_theme_contract::v2::EdgeLabelBackground;
 
@@ -977,6 +984,16 @@ pub(super) fn render_state_edge_label(
             EdgeLabelBackground::Pill => paint.node,
             EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
         };
+        if let Some(default_ink) = crate::theme::edge_label_bg::literal_fill(
+            &ctx.style_plan.compatibility().transition_label_color,
+        ) && let Some(ink) = crate::theme::edge_label_bg::adaptive_text_ink(fill, default_ink)
+        {
+            adaptive_label_style = if ctx.html_labels {
+                format!("color:{ink} !important;")
+            } else {
+                format!("fill:{ink};")
+            };
+        }
         let bounds = kurbo::Rect::from_center_size((0.0, 0.0), (w, h));
         let _ = crate::theme::edge_label_bg::write_backplate(
             out,
@@ -997,7 +1014,7 @@ pub(super) fn render_state_edge_label(
         h,
         ctx.html_labels,
         native_background.is_some(),
-        "",
+        &adaptive_label_style,
         "",
         "",
         None,

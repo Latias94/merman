@@ -122,15 +122,15 @@ fn render_native_label_background(
     position: crate::model::LayoutPoint,
     (origin_x, origin_y): (f64, f64),
     (width, height): (f64, f64),
-) -> crate::Result<()> {
+) -> crate::Result<Option<crate::theme::Color>> {
     use merman_theme_contract::v2::EdgeLabelBackground;
 
     let Some(native) = ctx.native else {
-        return Ok(());
+        return Ok(None);
     };
     let mode = native.form.edge_label_bg;
     let fill = match mode {
-        EdgeLabelBackground::Transparent => return Ok(()),
+        EdgeLabelBackground::Transparent => return Ok(None),
         EdgeLabelBackground::Pill => native.node,
         EdgeLabelBackground::Canvas => native.canvas,
         EdgeLabelBackground::Auto => container_label_fill(
@@ -144,7 +144,8 @@ fn render_native_label_background(
     };
     let bounds = kurbo::Rect::from_center_size((position.x, position.y), (width, height));
     let _ = crate::theme::edge_label_bg::write_backplate(out, bounds, mode, fill, native.border);
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(Some(fill))
 }
 
 fn container_label_fill(
@@ -227,6 +228,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         .edge_label_for_occurrence(key, edge)
         .unwrap_or_default();
     let source_label_empty = crate::flowchart::flowchart_label_is_empty_for_render(label_text);
+    let mut sampled_backdrop = None;
     if ctx.native.is_some()
         && !source_label_empty
         && let Some(label) = ctx
@@ -240,7 +242,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 x: label.x + ctx.tx - origin_x,
                 y: label.y + ctx.ty - origin_y,
             });
-        render_native_label_background(
+        sampled_backdrop = render_native_label_background(
             out,
             ctx,
             position,
@@ -261,12 +263,28 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     } else {
         ctx.edge_style_plan.terminal_label_text_style(key)?
     };
-    let effective_label_style = compiled_label_styles.label_style.as_str();
+    let base_label_style = compiled_label_styles.label_style.as_str();
+    let adaptive_label_ink = sampled_backdrop
+        .filter(|_| !base_label_style.contains("color:"))
+        .and_then(|backdrop| {
+            let default_ink =
+                crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.text_color)?;
+            crate::theme::edge_label_bg::adaptive_text_ink(backdrop, default_ink)
+        });
+    let effective_label_style: Cow<'_, str> = match adaptive_label_ink {
+        Some(ink) if base_label_style.is_empty() => Cow::Owned(format!("color:{ink} !important;")),
+        Some(ink) => Cow::Owned(format!("{base_label_style};color:{ink} !important;")),
+        None => Cow::Borrowed(base_label_style),
+    };
     let svg_edge_label_text_style: Cow<'_, str> =
         if !source_label_empty && effective_label_style.contains("color:") {
-            Cow::Owned(effective_label_style.replace("color:", "fill:"))
+            Cow::Owned(
+                effective_label_style
+                    .replace(" !important", "")
+                    .replace("color:", "fill:"),
+            )
         } else {
-            Cow::Borrowed(effective_label_style)
+            Cow::Borrowed(effective_label_style.as_ref())
         };
     let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::Edge(
         key.semantic_index(),
@@ -298,7 +316,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         },
         |prepared| Cow::Borrowed(prepared.plain_text()),
     );
-    let span_style_attr = OptionalStyleXmlAttr(effective_label_style);
+    let span_style_attr = OptionalStyleAttr(effective_label_style.as_ref());
     let div_style_prefix = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
         compiled_label_styles,
         false,

@@ -536,7 +536,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         let halo_style = halo.map(|color| {
             format!("{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
         });
-        let span_style_attr = OptionalStyleXmlAttr(halo_style.as_deref().unwrap_or(label_style));
+        // CSS color hex tokens like `#1F2335;` must not run through Mermaid `#entity;` text
+        // decoding (which turns `#1F2335;` into `&amp;1F2335;` and drops the browser halo).
+        let span_style_attr = OptionalStyleAttr(halo_style.as_deref().unwrap_or(label_style));
         // Min-content expansion does not undo the wrap selected by the first measurement.
         let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
         let div_style = if label_type != "markdown" {

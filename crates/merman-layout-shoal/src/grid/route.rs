@@ -19,6 +19,7 @@ struct Site {
     owner: usize,
     side: Side,
     preferred: f64,
+    tie_preferred: f64,
     offset: Option<f64>,
     inner: bool,
     marker: MarkerMetrics,
@@ -216,6 +217,7 @@ impl Plan {
                     owner: item,
                     side,
                     preferred: cross(side, other),
+                    tie_preferred: cross(side, other),
                     offset,
                     inner,
                     marker: markers[end],
@@ -251,6 +253,7 @@ impl Plan {
                         owner: group,
                         side,
                         preferred,
+                        tie_preferred: cross(side, other),
                         offset: None,
                         inner: true,
                         marker: MarkerMetrics::default(),
@@ -356,34 +359,40 @@ impl Routing<'_> {
             .max(self.metrics.separation);
         let inset = border.min((hi - lo) / 2.0);
         let mut range = [lo + inset, hi - inset];
-        if inner && let Some(title) = self.title(owner - self.hierarchy.node_count) {
+        if inner
+            && matches!(side, Side::Left | Side::Right)
+            && let Some(title) = self.title(owner - self.hierarchy.node_count)
+        {
             let group = &self.graph.groups[owner - self.hierarchy.node_count];
             let title_is_top = place::is_top(group.title_position);
             let clear = self.metrics.separation;
-            match side {
-                Side::Top | Side::Bottom if title_is_top == (side == Side::Top) => {
-                    let left = title.x - clear;
-                    let right = title.x + title.width + clear;
-                    if left - range[0] > range[1] - right {
-                        range[1] = range[1].min(left);
-                    } else {
-                        range[0] = range[0].max(right);
-                    }
-                }
-                Side::Left | Side::Right => {
-                    if title_is_top {
-                        range[0] = range[0].max(title.y + title.height + clear);
-                    } else {
-                        range[1] = range[1].min(title.y - clear);
-                    }
-                }
-                _ => {}
+            if title_is_top {
+                range[0] = range[0].max(title.y + title.height + clear);
+            } else {
+                range[1] = range[1].min(title.y - clear);
             }
         }
         if range[0] > range[1] {
             range = [lo.midpoint(hi); 2];
         }
         [range[0], lo.midpoint(hi), range[1]]
+    }
+
+    fn border_title_gap(&self, owner: usize, side: Side, inner: bool) -> Option<(f64, f64)> {
+        if !inner
+            || owner < self.hierarchy.node_count
+            || !matches!(side, Side::Top | Side::Bottom)
+        {
+            return None;
+        }
+        let group_id = owner - self.hierarchy.node_count;
+        let title = self.title(group_id)?;
+        let title_is_top = place::is_top(self.graph.groups[group_id].title_position);
+        if title_is_top != (side == Side::Top) {
+            return None;
+        }
+        let clear = self.metrics.separation;
+        Some((title.x - clear, title.x + title.width + clear))
     }
 
     fn ports(&self, sites: &mut [Site], work: &mut Work<'_>) -> LayoutResult<()> {
@@ -397,6 +406,7 @@ impl Routing<'_> {
             (u.owner, u.side as u8)
                 .cmp(&(v.owner, v.side as u8))
                 .then_with(|| u.preferred.total_cmp(&v.preferred))
+                .then_with(|| u.tie_preferred.total_cmp(&v.tie_preferred))
                 .then(a.cmp(&b))
         });
         let mut cursor = 0;
@@ -497,7 +507,46 @@ impl Routing<'_> {
             let start = anchored_start.unwrap_or_else(|| {
                 (center - span * pitch / 2.0).clamp(lo, (hi - span * pitch).max(lo))
             });
-            let mut rank = 0.0;
+            let border_split = self
+                .border_title_gap(first.owner, first.side, inner)
+                .map(|(gap_left, gap_right)| {
+                    let left_hi = gap_left.min(hi);
+                    let right_lo = gap_right.max(lo);
+                    let port_pitch = self.options.spacing.port_pitch;
+                    let capacity = |available: f64| -> usize {
+                        if available < 0.0 {
+                            0
+                        } else if port_pitch > 0.0 {
+                            ((available / port_pitch).floor() as usize)
+                                .saturating_add(1)
+                                .min(count)
+                        } else {
+                            count
+                        }
+                    };
+                    let left_cap = capacity(left_hi - lo);
+                    let right_cap = capacity(hi - right_lo);
+                    let middle = gap_left.midpoint(gap_right);
+                    let mut left_want = 0usize;
+                    for &i in &indices[cursor..next] {
+                        if sites[i].offset.is_none() && sites[i].preferred < middle {
+                            left_want += 1;
+                        }
+                    }
+                    let split = if left_cap == 0 && right_cap == 0 {
+                        // Fallback when title spans the full face: pack onto the wider side.
+                        if left_hi - lo >= hi - right_lo {
+                            count
+                        } else {
+                            0
+                        }
+                    } else {
+                        left_want.max(count.saturating_sub(right_cap)).min(left_cap)
+                    };
+                    (split, left_hi, right_lo)
+                });
+            let mut rank = 0usize;
+            let mut batch_rank = 0.0;
             let mut last = lo - pitch;
             for (ordinal, &i) in indices[cursor..next].iter().enumerate() {
                 work.visit(1)?;
@@ -512,12 +561,37 @@ impl Routing<'_> {
                     at
                 } else {
                     let at = if first.owner >= self.hierarchy.node_count {
-                        let high = hi - (span - rank) * pitch;
-                        site.preferred.clamp((last + pitch).min(high), high)
+                        let (batch_lo, batch_hi, batch_len, local_rank) =
+                            if let Some((split, left_hi, right_lo)) = border_split {
+                                if rank < split {
+                                    (lo, left_hi.max(lo), split, rank)
+                                } else {
+                                    if rank == split {
+                                        last = right_lo.min(hi) - self.options.spacing.port_pitch;
+                                    }
+                                    (right_lo.min(hi), hi, count - split, rank - split)
+                                }
+                            } else {
+                                (lo, hi, count, rank)
+                            };
+                        let batch_span = batch_len.saturating_sub(1) as f64;
+                        let batch_pitch = self
+                            .options
+                            .spacing
+                            .port_pitch
+                            .min((batch_hi - batch_lo).max(0.0) / batch_span.max(1.0));
+                        let high = batch_hi - (batch_span - local_rank as f64) * batch_pitch;
+                        let low = if local_rank == 0 {
+                            batch_lo
+                        } else {
+                            (last + batch_pitch).max(batch_lo)
+                        };
+                        site.preferred.clamp(low.min(high), high)
                     } else {
-                        start + rank * pitch
+                        start + batch_rank * pitch
                     };
-                    rank += 1.0;
+                    rank += 1;
+                    batch_rank += 1.0;
                     last = at;
                     at
                 };
@@ -841,17 +915,41 @@ fn adapt_auto_titles(
         let candidates = [left, right, center];
         let mut scores = [(0usize, 0.0_f64); 3];
         let owner = hierarchy.node_count + group_id;
+        let mut top_prefs = Vec::new();
         for site in sites {
             work.visit(1)?;
             if site.owner != owner || site.side != Side::Top {
                 continue;
             }
+            push(&mut top_prefs, (site.preferred, site.tie_preferred))?;
+        }
+        // Account for port_pitch spreading when multiple edges share the same preferred x
+        // (e.g., two parallel entries to the same service), so a title candidate does not pick
+        // a corner that squeezes the spread port into a border S-jog.
+        if !top_prefs.is_empty() {
+            work.charge_sort(top_prefs.len())?;
+            top_prefs.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
+            let border = options.spacing.corner_clearance.max(clear);
+            let lo = geom.rect.x + border.min(geom.rect.width / 2.0);
+            let hi = geom.rect.x + geom.rect.width - border.min(geom.rect.width / 2.0);
+            let span = top_prefs.len().saturating_sub(1) as f64;
+            let pitch = options
+                .spacing
+                .port_pitch
+                .min((hi - lo).max(0.0) / span.max(1.0));
+            let mut last = lo - pitch;
             let half = title.width / 2.0 + clear;
-            for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
-                let shortfall = half - (site.preferred - candidate).abs();
-                if shortfall > 0.0 {
-                    *hits += 1;
-                    *shift += shortfall;
+            for (rank, &(pref, _)) in top_prefs.iter().enumerate() {
+                work.visit(1)?;
+                let high = hi - (span - rank as f64) * pitch;
+                let at = pref.clamp((last + pitch).min(high), high);
+                last = at;
+                for (candidate, (hits, shift)) in candidates.into_iter().zip(&mut scores) {
+                    let shortfall = half - (at - candidate).abs();
+                    if shortfall > 0.0 {
+                        *hits += 1;
+                        *shift += shortfall;
+                    }
                 }
             }
         }

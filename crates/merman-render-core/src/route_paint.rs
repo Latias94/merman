@@ -109,8 +109,10 @@ fn at(p: Point, axis: Axis) -> RoutePoint {
     RoutePoint::new(p.x, p.y, axis)
 }
 
+const ALIGN_EPS: f64 = 1e-9;
+
 fn aligned(a: Point, b: Point) -> bool {
-    a.x == b.x || a.y == b.y
+    (a.x - b.x).abs() <= ALIGN_EPS || (a.y - b.y).abs() <= ALIGN_EPS
 }
 
 fn has_offset_leg(route: &[RoutePoint]) -> bool {
@@ -127,7 +129,7 @@ fn push_knot(knots: &mut Vec<RoutePoint>, p: RoutePoint) {
         return;
     };
     let (b, c) = (position(last), position(p));
-    if b == c {
+    if (b - c).hypot() <= ALIGN_EPS {
         if p.kind == KnotKind::GapBoundary {
             knots.last_mut().unwrap().kind = p.kind;
         }
@@ -137,7 +139,10 @@ fn push_knot(knots: &mut Vec<RoutePoint>, p: RoutePoint) {
         && let [.., a, _] = knots.as_slice()
     {
         let a = position(*a);
-        if ((a.x == b.x && b.x == c.x) || (a.y == b.y && b.y == c.y)) && (b - a).dot(c - b) > 0.0 {
+        if (((a.x - b.x).abs() <= ALIGN_EPS && (b.x - c.x).abs() <= ALIGN_EPS)
+            || ((a.y - b.y).abs() <= ALIGN_EPS && (b.y - c.y).abs() <= ALIGN_EPS))
+            && (b - a).dot(c - b) > 0.0
+        {
             knots.pop();
         }
     }
@@ -299,10 +304,11 @@ impl Pen {
     }
 
     fn line(&mut self, p: Point) {
-        if p != self.at {
+        if (p - self.at).hypot() > ALIGN_EPS {
             if let Some(start) = self.line_start {
                 let (previous, next) = (self.at - start, p - self.at);
-                if previous.cross(next) != 0.0 || previous.dot(next) <= 0.0 {
+                let scale = previous.hypot().max(next.hypot());
+                if previous.cross(next).abs() > ALIGN_EPS * scale || previous.dot(next) <= 0.0 {
                     self.flush_line();
                 }
             }
@@ -412,7 +418,11 @@ fn right_angle(route: &[RoutePoint], i: usize) -> bool {
     let a = position(route[i - 1]);
     let b = position(route[i]);
     let c = position(route[i + 1]);
-    (a.x == b.x && b.y == c.y) || (a.y == b.y && b.x == c.x)
+    let ab_vert = (a.x - b.x).abs() <= ALIGN_EPS && (a.y - b.y).abs() > ALIGN_EPS;
+    let ab_horiz = (a.y - b.y).abs() <= ALIGN_EPS && (a.x - b.x).abs() > ALIGN_EPS;
+    let bc_vert = (b.x - c.x).abs() <= ALIGN_EPS && (b.y - c.y).abs() > ALIGN_EPS;
+    let bc_horiz = (b.y - c.y).abs() <= ALIGN_EPS && (b.x - c.x).abs() > ALIGN_EPS;
+    (ab_vert && bc_horiz) || (ab_horiz && bc_vert)
 }
 
 fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
@@ -583,8 +593,8 @@ impl Terminal {
 
     fn covers(&self, knot: RoutePoint) -> bool {
         let delta = position(knot) - self.tip;
-        delta.cross(self.normal) == 0.0
-            && (0.0..=self.marker.trim + self.lead()).contains(&delta.dot(self.normal))
+        delta.cross(self.normal).abs() <= ALIGN_EPS
+            && (0.0..=self.marker.trim + self.lead() + ALIGN_EPS).contains(&delta.dot(self.normal))
     }
 }
 
@@ -1558,5 +1568,88 @@ mod tests {
                 max_y: 7.5
             }
         );
+    }
+
+    #[test]
+    fn self_loop_with_one_ulp_drift_keeps_both_curved_and_rounded_corners() {
+        let base_x = 37.78_f64;
+        let drifted_x = base_x - 7.105_427_357_601_002e-15_f64;
+        let points = [
+            h(70.4, 104.25),
+            h(base_x, 104.25),
+            v(drifted_x, 126.75),
+            h(70.4, 126.75),
+        ];
+        let markers = (Marker::default(), marker(4.0, 12.6194));
+
+        let curved = build_svg_path(
+            &points,
+            (Side::Left, Side::Left),
+            RouteStyle::Curved,
+            markers,
+            CurveTerminals::Smooth,
+            &[],
+            None,
+        )
+        .unwrap();
+        let cubic_count = segments(&curved)
+            .into_iter()
+            .filter(|seg| matches!(seg, PathSeg::Cubic(_)))
+            .count();
+        assert!(
+            cubic_count >= 2,
+            "curved self-loop must curve both corners despite 1-ULP drift: {}",
+            curved.d
+        );
+
+        let rounded = build_svg_path(
+            &points,
+            (Side::Left, Side::Left),
+            RouteStyle::Rounded(6.0),
+            markers,
+            CurveTerminals::Fixed,
+            &[],
+            None,
+        )
+        .unwrap();
+        assert!(
+            rounded.d.matches('A').count() >= 2,
+            "rounded self-loop must emit both corner arcs despite 1-ULP drift: {}",
+            rounded.d
+        );
+    }
+
+    #[test]
+    fn shared_shelf_midpoint_emits_no_sub_epsilon_line_micro_segments() {
+        let points = [
+            v(92.985_f64, 40.0),
+            v(92.985_f64, 89.61942946412395),
+            h(60.419_f64, 89.61942946412395),
+            v(60.419_f64, 166.61942946412395),
+            h(92.985_f64, 166.61942946412395),
+            v(92.985_f64, 210.0),
+        ];
+        for style in [RouteStyle::Curved, RouteStyle::Rounded(10.0)] {
+            let painted = build_svg_path(
+                &points,
+                (Side::Bottom, Side::Top),
+                style,
+                (Marker::default(), marker(4.0, 12.6194)),
+                CurveTerminals::Smooth,
+                &[],
+                None,
+            )
+            .unwrap();
+            for seg in segments(&painted) {
+                if let PathSeg::Line(line) = seg {
+                    let len = (line.p1 - line.p0).hypot();
+                    assert!(
+                        len > 1e-6,
+                        "emitted degenerate {len:.3e} line micro-segment in {style:?}: {}",
+                        painted.d
+                    );
+                }
+            }
+        }
     }
 }

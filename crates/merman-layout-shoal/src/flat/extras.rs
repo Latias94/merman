@@ -232,6 +232,7 @@ fn loop_geometry(
     node: &NodeSpec,
     l: &super::Loop,
     nth: usize,
+    side_total: usize,
     spec: &EdgeSpec,
     dir: Direction,
     options: &Options,
@@ -260,14 +261,22 @@ fn loop_geometry(
     } else {
         rect.height
     };
-    let f = 0.5 - 0.25 / (nth + 1) as f64;
+    let offset = if side_total <= 1 {
+        span * 0.25
+    } else {
+        // Spread multiple same-side self-loops evenly across the usable face span so
+        // adjacent arrowheads keep clear separation instead of piling at `0.5 - 0.25/(n+1)`.
+        let inset = 5.0_f64.min(span * 0.15);
+        let half = (span * 0.5 - inset).max(span * 0.25);
+        half * (2 * nth + 1) as f64 / (2 * side_total - 1) as f64
+    };
     let a = Point {
         x: face,
-        y: finite(center.y - span * f)?,
+        y: finite(center.y - offset)?,
     };
     let b = Point {
         x: face,
-        y: finite(center.y + span * f)?,
+        y: finite(center.y + offset)?,
     };
     let label = spec.label.map(|s| canonical_size(dir, s));
     let width = label.unwrap_or_default().width;
@@ -623,17 +632,24 @@ pub(super) fn finish(
             .edges
             .try_reserve(c.loops.len())
             .map_err(|_| LayoutError::AllocationLimit)?;
+        let mut totals = filled(c.nodes.len(), [0usize; 2])?;
+        for l in &c.loops {
+            work.visit(1)?;
+            totals[l.node as usize][usize::from(l.right)] += 1;
+        }
         let mut counts = filled(c.nodes.len(), [0usize; 2])?;
         for l in &c.loops {
             work.visit(1)?;
             let n = l.node as usize;
-            let count = &mut counts[n][usize::from(l.right)];
+            let side_idx = usize::from(l.right);
+            let count = &mut counts[n][side_idx];
             let spec = &graph.edges[l.edge as usize];
             let edge = loop_geometry(
                 drawing.nodes[n],
                 &c.nodes[n],
                 l,
                 *count,
+                totals[n][side_idx],
                 spec,
                 graph.direction,
                 options,

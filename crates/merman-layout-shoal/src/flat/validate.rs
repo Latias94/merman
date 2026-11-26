@@ -164,11 +164,9 @@ pub(super) fn partition(
             &mut c.margin_left
         };
         let label = canonical_size(graph.direction, spec.label.unwrap_or_default());
-        let depth = s
-            .port_pitch
-            .max(s.edge)
-            .max(spec.start_marker.length)
-            .max(spec.end_marker.length);
+        let runway = spec.start_marker.length.max(spec.end_marker.length);
+        let turn_room = s.port_pitch.max(8.0);
+        let depth = s.port_pitch.max(s.edge).max(runway + turn_room);
         margin[from as usize] += depth + label.width + s.loop_gap;
         let reach = margin[from as usize];
         if !reach.is_finite() {

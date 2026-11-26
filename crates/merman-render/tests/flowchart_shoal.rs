@@ -918,6 +918,20 @@ fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
                     .any(|node| node.has_tag_name("foreignObject")),
                 contains_html,
             );
+            if contains_html {
+                let span = title
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
+                    })
+                    .expect("struck HTML title span");
+                let style = span.attribute("style").unwrap_or_default();
+                assert!(
+                    style.contains("-webkit-text-stroke:3px #7F0080"),
+                    "struck HTML title halo must keep raw hex color instead of entity-decoding `#`: {style}"
+                );
+                assert!(!style.contains("&7F0080"));
+            }
             assert!(title.descendants().any(|node| node.has_tag_name("text")));
         };
         check(rendered.svg(), html_labels);
@@ -1048,5 +1062,174 @@ fn agentflow_shoal_consumes_its_family_spacing() {
     assert!(
         large.0 > small.0 && large.1 > small.1,
         "{small:?} -> {large:?}"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+fn render_studio_shoal(source: &str) -> String {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    let parsed = parse(source);
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_dark_container_adapts_edge_label_ink_and_multi_loops_stay_smooth() {
+    let dark_svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+flowchart TD\n\
+  subgraph DarkBox[Dark Container]\n\
+    A[Step 1] -->|transition| B[Step 2]\n\
+  end\n\
+  style DarkBox fill:#1e293b,stroke:#475569,color:#f8fafc\n",
+    );
+    assert!(
+        dark_svg.contains(r#"<span class="edgeLabel" style="color:#FFFFFF !important;">"#),
+        "edge label inside dark subgraph must switch to white ink: {dark_svg}"
+    );
+
+    let loop_svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+flowchart TD\n\
+  A[Start] --> B[Process]\n\
+  B --> B\n\
+  B -->|retry| B\n\
+  B -->|backoff| B\n\
+  B --> C[Done]\n",
+    );
+    let doc = roxmltree::Document::parse(&loop_svg).unwrap();
+    let mut loop_paths = 0usize;
+    for path in doc.descendants().filter(|n| {
+        n.has_tag_name("path")
+            && n.attribute("data-et") == Some("edge")
+            && n.attribute("data-id")
+                .is_some_and(|id| id.starts_with("L_B_B_"))
+    }) {
+        let d = path.attribute("d").unwrap();
+        assert!(
+            d.matches('C').count() >= 2,
+            "self-loop {} must curve both corners without 1-ULP collapse or sharp return: {d}",
+            path.attribute("data-id").unwrap()
+        );
+        loop_paths += 1;
+    }
+    assert_eq!(loop_paths, 3);
+}
+
+#[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
+#[test]
+fn class_shoal_namespace_edge_labels_use_container_surface_backplate() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+classDiagram\n\
+  namespace Core {\n\
+    class Repository\n\
+    class AbstractRepo\n\
+  }\n\
+  Repository <|.. AbstractRepo : implements\n",
+    );
+    assert!(
+        svg.contains("background-color:#EFF4FA !important;"),
+        "Class edge label inside namespace Core must sample container fill (#EFF4FA) instead of canvas white"
+    );
+}
+
+#[cfg(all(feature = "diagram-c4", feature = "layout-shoal"))]
+#[test]
+fn c4_shoal_wide_edge_labels_stay_near_routes_not_canvas_bottom() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+C4Context\n\
+  title System Context\n\
+  Person(customer, \"Customer\", \"Bank customer\")\n\
+  Enterprise_Boundary(b0, \"Bank\") {\n\
+    System(banking, \"Internet Banking\", \"Core app\")\n\
+    System(mail, \"E-mail\", \"Exchange\")\n\
+  }\n\
+  Rel(customer, banking, \"Views balances using\", \"HTTPS\")\n\
+  Rel(banking, mail, \"Sends mail via\", \"SMTP\")\n\
+  Rel(mail, customer, \"Sends alerts to\", \"SMTP\")\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let label_ys: Vec<f64> = doc
+        .descendants()
+        .filter(|n| {
+            n.has_tag_name("g")
+                && n.attribute("data-id")
+                    .is_some_and(|id| id.starts_with("c4-rel-"))
+        })
+        .map(|n| {
+            let tf = n.attribute("transform").unwrap();
+            let (_, y) = tf
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split_once(',')
+                .unwrap();
+            y.trim().parse::<f64>().unwrap()
+        })
+        .collect();
+    assert_eq!(label_ys.len(), 3);
+    for y in label_ys {
+        assert!(
+            y < 420.0,
+            "C4 edge label detached to bottom of canvas at y={y}"
+        );
+    }
+}
+
+#[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
+#[test]
+fn architecture_shoal_parallel_entries_keep_straight_border_alignment() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+architecture-beta\n\
+  group cloud(cloud)[Production Cloud Platform]\n\
+  group edge(internet)[Edge & Ingress] in cloud\n\
+  group core(server)[Core Services] in cloud\n\
+  group data(database)[Data Tier] in cloud\n\
+  service cdn(internet)[Global CDN Distribution] in edge\n\
+  service waf(server)[Web Application Firewall] in edge\n\
+  service gw(server)[API Gateway] in core\n\
+  service auth(server)[Auth & Identity Service] in core\n\
+  service billing(server)[Billing Microservice] in core\n\
+  service db(database)[Primary PostgreSQL Cluster] in data\n\
+  service cache(disk)[Redis Session Cache] in data\n\
+  junction hub in core\n\
+  cdn:R --> L:waf\n\
+  waf:B --> T:gw\n\
+  gw:R <--> L:hub\n\
+  hub:T --> B:auth\n\
+  hub:R --> L:billing\n\
+  hub:B -- T:db\n\
+  auth:R --> L:cache\n\
+  billing:B --> T:db\n\
+  db:L <--> R:cache\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let hub_db = doc
+        .descendants()
+        .find(|n| {
+            n.has_tag_name("path")
+                && n.attribute("id")
+                    .is_some_and(|id| id.contains("L_hub_db"))
+        })
+        .expect("hub -> db edge path");
+    let d = hub_db.attribute("d").unwrap();
+    assert!(
+        !d.contains('A'),
+        "hub:B -- T:db should drop straight across group borders without an S-jog: {d}"
     );
 }

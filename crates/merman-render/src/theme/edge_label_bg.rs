@@ -27,6 +27,21 @@ pub(crate) fn literal_opacity(value: &str) -> Option<f64> {
     opacity.is_finite().then(|| opacity.clamp(0.0, 1.0))
 }
 
+/// Returns a high-contrast foreground hex color when `default_ink` fails WCAG AA (4.5:1)
+/// against an opaque `backdrop` (for example, a dark or light styled container fill).
+pub(crate) fn adaptive_text_ink(backdrop: Color, default_ink: Color) -> Option<&'static str> {
+    if backdrop.channels()[3] != u8::MAX || default_ink.contrast(backdrop) >= 4.5 {
+        return None;
+    }
+    const LIGHT_INK: Color = Color::rgb(255, 255, 255);
+    const DARK_INK: Color = Color::rgb(15, 23, 42);
+    Some(if LIGHT_INK.contrast(backdrop) >= DARK_INK.contrast(backdrop) {
+        "#FFFFFF"
+    } else {
+        "#0F172A"
+    })
+}
+
 /// Paints a label's measured box in the edge coordinate space.
 pub(crate) fn write_backplate(
     out: &mut impl Write,

@@ -178,6 +178,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     )?;
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &paint_edges,
+        clusters: &layout.clusters,
+        native_style: settings.native_style.as_ref(),
         missing_section_points: &missing_section_points,
         work_meter: options.work_meter(),
         line_hop_paths: &line_hop_paths,

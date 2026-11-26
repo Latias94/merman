@@ -246,3 +246,45 @@ fn state_shoal_backplate_keeps_neo_transition_masks_and_marker_geometry() {
         Some(CANVAS)
     );
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn state_shoal_dark_composite_paints_header_and_adapts_edge_label_ink() {
+    let config = json!({"layout": "shoal", "htmlLabels": true});
+    let source = "stateDiagram-v2\n\
+classDef darkBox fill:#1e293b,stroke:#475569,color:#f8fafc\n\
+state Active {\n\
+  Running --> Paused : pause\n\
+}\n\
+class Active darkBox\n";
+    let svg = render(source, config, Some("auto"));
+    let doc = Document::parse(&svg).unwrap();
+    let outer = doc
+        .descendants()
+        .find(|n| n.has_tag_name("rect") && n.attribute("class") == Some("outer"))
+        .expect("composite outer rect");
+    assert!(
+        outer
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("fill:#1e293b !important;"),
+        "dark composite header should adopt authored dark fill: {:?}",
+        outer.attribute("style")
+    );
+    let edge_label = label(&doc, "pause");
+    assert_eq!(
+        backplate(edge_label).unwrap().attribute("fill"),
+        Some("#1E293B")
+    );
+    let span = edge_label
+        .descendants()
+        .find(|n| n.has_tag_name("span") && n.attribute("class") == Some("edgeLabel"))
+        .expect("HTML edgeLabel span");
+    assert!(
+        span.attribute("style")
+            .unwrap_or_default()
+            .contains("color:#FFFFFF !important;"),
+        "edge label inside dark composite must adapt text ink for contrast: {:?}",
+        span.attribute("style")
+    );
+}

@@ -46,24 +46,35 @@ impl Axes {
 
 struct Shell {
     title: Option<Size>,
+    header: f64,
+    body_pad: f64,
     padding: [f64; 4],
     min: Size,
 }
 
 impl Shell {
     fn new(spec: &GroupSpec, axes: Axes) -> Self {
+        let header = spec
+            .title
+            .map_or(0.0, |title| depth(axes.start, title) + 2.0 * TITLE_CLEAR);
+        let padding = [
+            spec.padding.top,
+            spec.padding.right,
+            spec.padding.bottom,
+            spec.padding.left,
+        ];
+        let body_pad = padding[axes.start as usize].max(TITLE_CLEAR);
         let mut shell = Self {
             title: spec.title,
-            padding: [
-                spec.padding.top,
-                spec.padding.right,
-                spec.padding.bottom,
-                spec.padding.left,
-            ],
+            header,
+            body_pad,
+            padding,
             min: spec.min_size,
         };
-        if let Some(title) = shell.title {
-            shell.reserve(axes.start, depth(axes.start, title) + 2.0 * TITLE_CLEAR);
+        if header > 0.0 {
+            // Reserve the header band PLUS the lane's inner body padding so the first
+            // rank of nodes keeps clear breathing room below the title divider.
+            shell.reserve(axes.start, header + body_pad);
         }
         shell
     }
@@ -131,7 +142,10 @@ fn choose_sides(
                     && let Some(title) = shells[index].title
                 {
                     let after = peer_room.max(room).max(TITLE_CLEAR);
-                    shells[index].reserve(side, finite(depth(side, title) + 2.0 * after)?);
+                    let needed_header = finite(depth(side, title) + 2.0 * after)?;
+                    shells[index].header = shells[index].header.max(needed_header);
+                    let total = finite(needed_header + shells[index].body_pad)?;
+                    shells[index].reserve(side, total);
                 } else {
                     shells[index].reserve(side, finite(room + peer_room)?);
                 }
@@ -164,12 +178,14 @@ fn shell_rects(
     axes: Axes,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<(Rect, Option<Point>)>> {
-    let (mut before, mut after, mut min_depth) = (0.0_f64, 0.0_f64, 1.0_f64);
+    let (mut before, mut after, mut min_depth, mut shared_header) =
+        (0.0_f64, 0.0_f64, 1.0_f64, 0.0_f64);
     for shell in shells {
         work.visit(1)?;
         before = before.max(shell.padding[axes.start as usize]);
         after = after.max(shell.padding[axes.finish as usize]);
         min_depth = min_depth.max(depth(axes.start, shell.min));
+        shared_header = shared_header.max(shell.header);
     }
     let content = depth(axes.start, content);
     let length = finite(content + before + after)?.max(min_depth);
@@ -192,7 +208,14 @@ fn shell_rects(
             height: size.y,
         };
         let title = shell.title.map(|_| {
-            let inset = shell.padding[axes.start as usize] / 2.0;
+            // Center every titled lane inside the shared header band so adjacent lanes
+            // keep a flush divider line while leaving body padding between header and nodes.
+            let header = if shared_header > 0.0 {
+                shared_header
+            } else {
+                shell.padding[axes.start as usize]
+            };
+            let inset = header / 2.0;
             axes.physical(
                 low.midpoint(high),
                 if positive { along + inset } else { end - inset },
