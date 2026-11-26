@@ -1,12 +1,12 @@
 use std::fmt::{self, Write};
 
-use merman_theme_contract::v2::EdgeLabelBackground;
+use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 
-use super::{Color, canvas_svg::write_color};
+use super::canvas::write_color;
 use crate::number_format::canonical_number;
 
 /// Resolves a literal SVG paint to the color visible behind a label.
-pub(crate) fn literal_fill(paint: &str) -> Option<Color> {
+pub fn literal_fill(paint: &str) -> Option<Color> {
     let paint = paint.trim();
     if paint.eq_ignore_ascii_case("none") || paint.eq_ignore_ascii_case("transparent") {
         return Some(Color::TRANSPARENT);
@@ -18,7 +18,7 @@ pub(crate) fn literal_fill(paint: &str) -> Option<Color> {
     ))
 }
 
-pub(crate) fn literal_opacity(value: &str) -> Option<f64> {
+pub fn literal_opacity(value: &str) -> Option<f64> {
     let value = value.trim();
     let (number, scale) = value
         .strip_suffix('%')
@@ -28,7 +28,7 @@ pub(crate) fn literal_opacity(value: &str) -> Option<f64> {
 }
 
 /// Paints a label's measured box in the edge coordinate space.
-pub(crate) fn write_backplate(
+pub fn write_backplate(
     out: &mut impl Write,
     label_bounds: kurbo::Rect,
     mode: EdgeLabelBackground,

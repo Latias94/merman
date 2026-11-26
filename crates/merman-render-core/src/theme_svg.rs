@@ -5,6 +5,11 @@ use merman_markup::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor};
 use crate::number_format::canonical_number;
 
 pub mod canvas;
+#[cfg(feature = "theme-label-background")]
+pub mod edge_label_background;
+#[cfg(feature = "theme-elevation")]
+pub mod elevation;
+pub mod marker;
 pub mod pattern;
 
 pub use canvas::{write_canvas, write_color};

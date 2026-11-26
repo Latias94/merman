@@ -15,8 +15,11 @@ validation for postprocessing.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.
 `css-style` provides presentation lookups, Mermaid CSS value parsing, and shared text style and
 measurement types. `text-layout` provides font stacks, text tokenization, line breaking, and width
-estimation. `theme-svg` writes resolved canvas paint and categorical patterns to SVG.
+estimation. `theme-svg` writes resolved canvas paint, markers, and categorical patterns to SVG.
+`theme-elevation` and `theme-label-background` add shadow silhouettes and measured label
+backplates, respectively, for the families that use them.
 `icon-registry` admits and stores Iconify packs under fixed resource limits. The renderer
 applies its SVG output policy when an icon is placed in a diagram.
 
-Applications use `merman` for source-to-output rendering.
+This crate provides workspace-internal renderer interfaces. Applications use `merman` for the
+public source-to-output API.

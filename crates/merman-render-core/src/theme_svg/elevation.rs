@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use kurbo::{BezPath, Rect, Shape};
 use merman_theme_contract::v2::{Elevation, ShadowLayer};
 
-use super::canvas_svg::write_color;
+use super::canvas::write_color;
 use crate::number_format::canonical_number as number;
 
 fn layers(elevation: &Elevation) -> impl Iterator<Item = ShadowLayer> + '_ {
@@ -31,7 +31,7 @@ fn blur_region(bounds: Rect, blur: f64) -> Rect {
 }
 
 /// Bounds of the depth layer in the surface's position-independent coordinates.
-pub(crate) fn bounds(elevation: &Elevation, surface: Rect) -> Rect {
+pub fn bounds(elevation: &Elevation, surface: Rect) -> Rect {
     layers(elevation)
         .filter(visible)
         .fold(surface, |bounds, layer| {
@@ -40,7 +40,7 @@ pub(crate) fn bounds(elevation: &Elevation, surface: Rect) -> Rect {
 }
 
 /// Emits a label-free copy of a silhouette below the graph's connectors and foreground.
-pub(crate) fn write_depth(
+pub fn write_depth(
     out: &mut impl Write,
     elevation: &Elevation,
     id: &str,
@@ -49,7 +49,7 @@ pub(crate) fn write_depth(
 ) -> fmt::Result {
     let bounds = silhouette.bounding_box();
     let path = silhouette.to_svg();
-    let id = crate::svg::escape_attr(id);
+    let id = crate::xml::escape_attr(id);
     for (index, layer) in layers(elevation).filter(visible).enumerate() {
         let filter = format!("{id}-merman-depth-{index}");
         write!(

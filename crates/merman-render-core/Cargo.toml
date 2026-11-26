@@ -39,6 +39,8 @@ svg-parse = ["svg-output", "dep:quick-xml"]
 svg-identity = ["svg-parse", "dep:cssparser"]
 test-support = []
 text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unicode-width"]
+theme-elevation = ["theme-svg", "dep:kurbo"]
+theme-label-background = ["theme-svg", "dep:kurbo", "dep:svgtypes"]
 theme-svg = ["svg-output", "dep:merman-theme-contract"]
 
 [dependencies]
