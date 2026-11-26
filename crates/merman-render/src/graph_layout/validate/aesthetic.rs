@@ -38,6 +38,8 @@ pub(super) struct Metrics<'a> {
     pub(super) label_optical_balance_ratio: Option<f64>,
     pub(super) label_optical_balance: Vec<LabelBalance<'a>>,
     pub(super) max_s_curve_handle_ratio: Option<f64>,
+    pub(super) max_s_curve_flatness: Option<f64>,
+    pub(super) max_corner_arm_px: Option<f64>,
     pub(super) s_curves: Vec<SCurve<'a>>,
     pub(super) face_turn_coherence: Vec<FaceCoherence<'a>>,
     pub(super) sibling_departure_symmetry: Vec<SiblingSymmetry<'a>>,
@@ -57,6 +59,7 @@ pub(super) struct SCurve<'a> {
     pub(super) edge: &'a str,
     segment: usize,
     pub(super) handle_ratio: f64,
+    pub(super) flatness: f64,
     pub(super) ordered_controls: bool,
 }
 
@@ -155,6 +158,7 @@ pub(super) fn emit<'a>(
     let mut face_samples = BTreeMap::<_, Vec<_>>::new();
     let mut label_optical_balance = Vec::new();
     let mut s_curves = Vec::new();
+    let mut max_corner_arm_px: Option<f64> = None;
     let mut edge_labels = BTreeMap::new();
     for label in &scene.labels {
         if let LabelOwner::Edge(index) = label.owner {
@@ -172,15 +176,18 @@ pub(super) fn emit<'a>(
         for (segment, &(path, _)) in shaft.segments.iter().enumerate() {
             if let PathSeg::Cubic(curve) = path {
                 cubic_count += 1;
-                if let Some((handle_ratio, ordered_controls)) =
+                if let Some((handle_ratio, flatness, ordered_controls)) =
                     s_curve_handles(curve, edge.cross_axis)
                 {
                     s_curves.push(SCurve {
                         edge: name,
                         segment,
                         handle_ratio,
+                        flatness,
                         ordered_controls,
                     });
+                } else if let Some(arm) = right_angle_corner_arm(curve) {
+                    max_corner_arm_px = Some(max_corner_arm_px.map_or(arm, |old| old.max(arm)));
                 }
             }
         }
@@ -270,6 +277,10 @@ pub(super) fn emit<'a>(
         .iter()
         .max_by(|a, b| a.handle_ratio.total_cmp(&b.handle_ratio));
     let max_s_curve_handle_ratio = worst_s_curve.map(|curve| curve.handle_ratio);
+    let max_s_curve_flatness = s_curves
+        .iter()
+        .map(|curve| curve.flatness)
+        .max_by(f64::total_cmp);
     let unordered_s_curves: Vec<_> = s_curves
         .iter()
         .filter(|curve| !curve.ordered_controls)
@@ -290,6 +301,8 @@ pub(super) fn emit<'a>(
         "label_optical_balance_ratio": label_optical_balance_ratio,
         "label_optical_balance": label_optical_balance,
         "max_s_curve_handle_ratio": max_s_curve_handle_ratio,
+        "max_s_curve_flatness": max_s_curve_flatness,
+        "max_corner_arm_px": max_corner_arm_px,
         "s_curve_count": s_curves.len(),
         "worst_s_curve": worst_s_curve,
         "unordered_s_curves": unordered_s_curves,
@@ -308,6 +321,8 @@ pub(super) fn emit<'a>(
         label_optical_balance_ratio,
         label_optical_balance,
         max_s_curve_handle_ratio,
+        max_s_curve_flatness,
+        max_corner_arm_px,
         s_curves,
         face_turn_coherence,
         sibling_departure_symmetry,
@@ -386,16 +401,15 @@ fn label_clear_shafts(shaft: &Shaft, edge: &Edge<'_>, bounds: Rect) -> Option<[f
     })
 }
 
-fn s_curve_handles(curve: CubicBez, axis: CrossAxis) -> Option<(f64, bool)> {
+fn s_curve_handles(curve: CubicBez, axis: CrossAxis) -> Option<(f64, f64, bool)> {
     let chord = curve.p3 - curve.p0;
     let along = |point: Point| match axis {
         CrossAxis::X => point.y,
         CrossAxis::Y => point.x,
     };
     let span = along(curve.p3) - along(curve.p0);
-    if span.abs() <= JOIN_EPSILON
-        || (axis.coordinate(curve.p3) - axis.coordinate(curve.p0)).abs() <= JOIN_EPSILON
-    {
+    let across = axis.coordinate(curve.p3) - axis.coordinate(curve.p0);
+    if span.abs() <= JOIN_EPSILON || across.abs() <= JOIN_EPSILON {
         return None;
     }
     // Offset sweeps straddle their chord. Rounded corners place both controls on one side.
@@ -406,7 +420,29 @@ fn s_curve_handles(curve: CubicBez, axis: CrossAxis) -> Option<(f64, bool)> {
     let [first, second] = [curve.p1, curve.p2].map(|p| (along(p) - along(curve.p0)) / span);
     let ordered =
         first >= -JOIN_EPSILON && first <= second + JOIN_EPSILON && second <= 1. + JOIN_EPSILON;
-    Some((first.abs().max((1. - second).abs()), ordered))
+    Some((
+        first.abs().max((1. - second).abs()),
+        across.abs() / span.abs(),
+        ordered,
+    ))
+}
+
+fn right_angle_corner_arm(curve: CubicBez) -> Option<f64> {
+    let chord = curve.p3 - curve.p0;
+    if chord.x.abs() <= JOIN_EPSILON || chord.y.abs() <= JOIN_EPSILON {
+        return None;
+    }
+    let side = |p: Point| chord.cross(p - curve.p0) / chord.hypot();
+    let (s1, s2) = (side(curve.p1), side(curve.p2));
+    if s1.abs().min(s2.abs()) <= JOIN_EPSILON || s1.signum() != s2.signum() {
+        return None;
+    }
+    let t0 = curve.p1 - curve.p0;
+    let t1 = curve.p3 - curve.p2;
+    let ortho = t0.hypot() > JOIN_EPSILON
+        && t1.hypot() > JOIN_EPSILON
+        && t0.dot(t1).abs() <= 1e-3 * t0.hypot() * t1.hypot();
+    ortho.then(|| chord.x.abs().max(chord.y.abs()))
 }
 
 fn first_turn(shaft: &Shaft, end: End, contact: Point, normal: Vec2) -> Option<Turn> {
@@ -517,19 +553,34 @@ fn sibling_symmetry<'a>(
 fn micro_kinks(shaft: &Shaft, axis: CrossAxis) -> usize {
     let mut kinks = vec![false; shaft.segments.len()];
     let micro_offset = |delta: f64| 0.01 < delta.abs() && delta.abs() < 2.0;
+    let components = |v: Vec2| match axis {
+        CrossAxis::X => (v.x, v.y),
+        CrossAxis::Y => (v.y, v.x),
+    };
     for (index, pair) in shaft.segments.windows(2).enumerate() {
         let (first, second) = (pair[0].0, pair[1].0);
         let (a, b) = (first.end() - first.start(), second.end() - second.start());
-        let (a_cross, a_main, b_cross, b_main) = match axis {
-            CrossAxis::X => (a.x, a.y, b.x, b.y),
-            CrossAxis::Y => (a.y, a.x, b.y, b.x),
-        };
+        let ((a_cross, a_main), (b_cross, b_main)) = (components(a), components(b));
         if a_main * b_main > 0.
             && first.end().distance(second.start()) <= JOIN_EPSILON
             && a.cross(b).abs() > JOIN_EPSILON * a.hypot() * b.hypot()
         {
             kinks[index] |= micro_offset(a_cross);
             kinks[index + 1] |= micro_offset(b_cross);
+        }
+    }
+    for (index, triple) in shaft.segments.windows(3).enumerate() {
+        let (first, middle, third) = (triple[0].0, triple[1].0, triple[2].0);
+        if first.end().distance(middle.start()) > JOIN_EPSILON
+            || middle.end().distance(third.start()) > JOIN_EPSILON
+        {
+            continue;
+        }
+        let (_, a_main) = components(first.end() - first.start());
+        let (m_cross, m_main) = components(middle.end() - middle.start());
+        let (_, c_main) = components(third.end() - third.start());
+        if a_main * c_main > 0. && m_main.abs() <= JOIN_EPSILON && micro_offset(m_cross) {
+            kinks[index + 1] = true;
         }
     }
     kinks.into_iter().filter(|&kink| kink).count()

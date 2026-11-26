@@ -190,7 +190,7 @@ fn a_foreign_marker_restores_its_blocked_gap_and_keeps_a_later_inline_label() {
     );
     let measured = size(36.0, 20.0);
     let marker = MarkerMetrics {
-        length: 22.0,
+        length: 24.0,
         width: 200.0,
     };
     graph.edges[0].label = Some(measured);
@@ -201,6 +201,37 @@ fn a_foreign_marker_restores_its_blocked_gap_and_keeps_a_later_inline_label() {
     let target = drawing.edges[1].points.last().unwrap();
     let recovered_label = drawing.edges[0].label_center.unwrap();
     assert!(recovered_label.y + measured.height * 0.5 < target.y - marker.length);
+    assert!(drawing.edges[2].label_center.is_some());
+}
+
+#[test]
+fn wide_studio_diamond_keeps_short_yes_no_labels_inline() {
+    use merman_layout_shoal::ShapeContourHint;
+    let mut graph = graph(
+        Direction::Down,
+        &[
+            size(152.0, 45.0),
+            size(192.6, 120.375),
+            size(152.0, 45.0),
+            size(152.0, 45.0),
+        ],
+        &[(0, 1), (1, 2), (1, 3), (2, 3)],
+    );
+    graph.nodes[1].contour = ShapeContourHint::Diamond;
+    graph.nodes[1].port_span = Some(192.6 * 0.54);
+    graph.nodes[1].perpendicular_port_span = Some(120.375 * 0.54);
+    for edge in &mut graph.edges {
+        edge.end_marker = MarkerMetrics {
+            length: 14.5,
+            width: 12.782608695652174,
+        };
+        edge.set_marker_runways([0.0, 16.619429464123982]);
+    }
+    graph.edges[1].label = Some(size(20.44, 21.0));
+    graph.edges[2].label = Some(size(14.42, 21.0));
+    let drawing = layout(&graph, &opt_in()).unwrap();
+    assert_eq!(drawing.node_ranks, [0, 1, 2, 3]);
+    assert!(drawing.edges[1].label_center.is_some());
     assert!(drawing.edges[2].label_center.is_some());
 }
 

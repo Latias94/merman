@@ -348,7 +348,17 @@ fn collect_pieces(
                     options.spacing.end_label_along,
                 )?;
                 if face == 0 && !g.direct[edge] {
-                    let horizon = row(last);
+                    // Stop sibling departure sweeps at the first physical barrier (such as an
+                    // inserted label band or kept waypoint), not only the destination node.
+                    let stop = chain[1..]
+                        .iter()
+                        .copied()
+                        .find(|&v| {
+                            let v = v as usize;
+                            row(v) != usize::MAX && (g.kind[v] != Kind::Dummy || g.keep[v])
+                        })
+                        .map_or(last, |v| v as usize);
+                    let horizon = row(stop);
                     room.horizon = Some(room.horizon.map_or(horizon, |old| old.min(horizon)));
                 }
             }
@@ -912,6 +922,17 @@ impl Gap {
         }
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
+        if curved && !ids.is_empty() {
+            let widest = ids
+                .iter()
+                .map(|&i| self.pieces[i].span.width())
+                .fold(0.0, f64::max);
+            // Prevent wide curved sweeps from flattening into shallow inserted-label slits
+            // without inflating ordinary full-rank gaps beyond one rank separation.
+            let sweep_room = (widest * 0.35).min(options.spacing.rank * 0.75);
+            let target = finite(guard + sweep_room)?.min(options.spacing.rank);
+            self.minimum = self.minimum.max(target);
+        }
         self.height = self.height.max(self.minimum);
         if isolated_curve || ids.is_empty() || options.routing == RoutingStyle::Polyline {
             return Ok(());

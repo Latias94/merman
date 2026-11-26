@@ -476,3 +476,48 @@ fn architecture_shoal_honors_row_column_and_declared_order_in_a_wired_group() {
         check_both_arrows(route, points[0], *points.last().unwrap());
     }
 }
+
+#[test]
+fn architecture_shoal_studio_keeps_bounded_rounded_corners() {
+    let source = "architecture-beta\n\
+        group edge(cloud)[Edge]\n\
+        service cdn(internet)[CDN] in edge\n\
+        service gw(server)[API Gateway] in edge\n\
+        group core(cloud)[Core Services]\n\
+        service auth(server)[Auth] in core\n\
+        service orders(server)[Orders] in core\n\
+        group data(database)[Storage]\n\
+        service cache(disk)[Redis] in data\n\
+        service db(database)[Postgres] in data\n\
+        cdn:R --> L:gw\n\
+        gw:B --> T:auth\n\
+        gw:R --> L:orders\n\
+        auth:R --> L:cache\n\
+        orders:B --> T:db\n";
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let (_, svg) = render_with_theme(source, Some(NativeTheme::new(theme)));
+    let doc = Document::parse(&svg).unwrap();
+    let mut corner_count = 0usize;
+    let mut max_arm = 0.0_f64;
+    for node in doc
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("edge"))
+    {
+        let path = kurbo::BezPath::from_svg(node.attribute("d").unwrap()).unwrap();
+        for segment in path.segments() {
+            if let kurbo::PathSeg::Cubic(curve) = segment {
+                let chord = curve.p3 - curve.p0;
+                let arm = chord.x.abs().max(chord.y.abs());
+                corner_count += 1;
+                max_arm = max_arm.max(arm);
+            }
+        }
+    }
+    assert!(corner_count > 0, "expected rounded corners on studio architecture routes");
+    assert!(
+        max_arm <= 16.0,
+        "studio architecture corners must stay bounded, got max arm {max_arm:.2}px"
+    );
+}

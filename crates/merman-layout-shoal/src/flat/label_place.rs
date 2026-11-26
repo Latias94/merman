@@ -29,6 +29,10 @@ fn label_padding(spacing: Spacing) -> f64 {
     (spacing.edge * 0.35).max(2.0)
 }
 
+fn along_label_padding(spacing: Spacing) -> f64 {
+    (spacing.edge * 0.2).clamp(2.0, 3.0)
+}
+
 fn marker_lengths(edge: &EdgeSpec) -> [f64; 2] {
     [edge.start_marker.length, edge.end_marker.length]
 }
@@ -43,19 +47,36 @@ impl GapPolicy<'_> {
             && size.height > 0.0
             && size.width <= 120.0
             && size.height <= (self.spacing.rank * 0.75).min(30.0)
-            && depth + 2.0 * label_padding(self.spacing) + start + end < self.spacing.rank
+            && depth + 2.0 * along_label_padding(self.spacing) + start + end < self.spacing.rank
     }
 }
 
 fn scene(
     drawing: &Drawing,
     graph: &Graph,
+    component: &Component,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Clearance>> {
     let mut scene = Scene::default();
-    for &rect in &drawing.nodes {
-        if !scene.area(Bounds::of(rect), work)? {
+    for (index, &rect) in drawing.nodes.iter().enumerate() {
+        let bounds = Bounds::of(rect);
+        let added = if let Some(offset) =
+            super::diamond_offset(component.nodes[index].contour, graph.direction)
+        {
+            let diamond = Bounds {
+                x: bounds.x.map(|x| x + offset.x),
+                y: bounds.y.map(|y| y + offset.y),
+            };
+            if diamond.finite() && diamond.has_area() {
+                scene.diamond(diamond, work)?
+            } else {
+                scene.area(bounds, work)?
+            }
+        } else {
+            scene.area(bounds, work)?
+        };
+        if !added {
             return Ok(None);
         }
     }
@@ -298,9 +319,11 @@ impl Label<'_> {
         let along_pad = if contour_departure {
             pad.min(0.25)
         } else {
-            pad
+            along_label_padding(options.spacing)
         };
         let half_height = self.size.height * 0.5 + along_pad;
+        let top_limit = self.gap[0].min(self.ends[0].y);
+        let bottom_limit = self.gap[1].max(self.ends[1].y);
         let contour_limits = contour_departure.then_some([
             self.gap[0] + half_height + 0.02,
             self.gap[1] - half_height - 0.02,
@@ -329,8 +352,8 @@ impl Label<'_> {
             let score = (anchor.fraction - 0.5).abs() * 32.0
                 + (along - anchor.bend_room).clamp(0.0, 12.0) / 24.0;
             if !padded.finite()
-                || padded.y[0] < self.gap[0]
-                || padded.y[1] > self.gap[1]
+                || padded.y[0] < top_limit
+                || padded.y[1] > bottom_limit
                 || best.is_some_and(|winner| score >= winner.0)
                 || !clearance.clear(padded, self.edge, work)?
             {
@@ -370,7 +393,7 @@ pub(super) fn place(
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<Placement> {
-    let Some(mut clearance) = scene(drawing, graph, options, work)? else {
+    let Some(mut clearance) = scene(drawing, graph, component, options, work)? else {
         return Ok(Placement::Legacy);
     };
     debug_assert_eq!(labels.len(), gaps.len());

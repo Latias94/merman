@@ -33,7 +33,9 @@ impl<'a> Shaft<'a> {
                 message: format!("Missing Architecture route edge-{ordinal}"),
             })?;
         let route_style = match edge_style {
-            Some(EdgeStyle::Curved) => RouteStyle::Curved,
+            // Grid Core solves orthogonal 90-degree routes without curved gap guards;
+            // bounded rounded corners preserve architectural legs instead of sweeping them.
+            Some(EdgeStyle::Curved) => RouteStyle::Rounded(10.0),
             Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
             Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
         };

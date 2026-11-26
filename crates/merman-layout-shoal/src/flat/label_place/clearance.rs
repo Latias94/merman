@@ -41,6 +41,18 @@ impl Bounds {
         let dy = (corner.y - corner.y.clamp(self.y[0], self.y[1])).abs();
         dx / (bounds.x[1] - bounds.x[0]) + dy / (bounds.y[1] - bounds.y[0]) <= 1.0
     }
+
+    fn hits_diamond(self, diamond: Self) -> bool {
+        let distance = |[a, b]: [f64; 2], [low, high]: [f64; 2]| {
+            let half = (b - a) * 0.5;
+            if half <= 0.0 {
+                return 0.0;
+            }
+            let center = a.midpoint(b);
+            (center - center.clamp(low, high)).abs() / half
+        };
+        distance(diamond.x, self.x) + distance(diamond.y, self.y) <= 1.0
+    }
 }
 
 pub(super) fn point(knot: RoutePoint) -> Point {
@@ -61,6 +73,7 @@ fn between(a: f64, b: f64, c: f64) -> bool {
 #[derive(Clone, Copy)]
 enum Shape {
     Area,
+    Diamond,
     Segment(Point, Point),
     Corner(Point),
 }
@@ -78,6 +91,7 @@ impl Wall {
         }
         match self.shape {
             Shape::Area => true,
+            Shape::Diamond => label.hits_diamond(self.bounds),
             Shape::Segment(from, to) => label.hits_segment(from, to),
             Shape::Corner(at) => label.hits_corner(self.bounds, at),
         }
@@ -116,6 +130,10 @@ impl Scene {
 
     pub(super) fn area(&mut self, bounds: Bounds, work: &mut Work<'_>) -> LayoutResult<bool> {
         self.add(bounds, None, Shape::Area, work)
+    }
+
+    pub(super) fn diamond(&mut self, bounds: Bounds, work: &mut Work<'_>) -> LayoutResult<bool> {
+        self.add(bounds, None, Shape::Diamond, work)
     }
 
     pub(super) fn marker(

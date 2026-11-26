@@ -39,10 +39,20 @@ fn shoal_source(source: &str) -> String {
 }
 
 fn prepare(diagram: &PresentationDiagram) -> Result<Drawing, String> {
+    prepare_with_theme(diagram, None)
+}
+
+fn prepare_with_theme(
+    diagram: &PresentationDiagram,
+    theme: Option<crate::theme::NativeTheme>,
+) -> Result<Drawing, String> {
     let error = |e: crate::Error| e.to_string();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .map_err(|e| e.to_string())?;
+    let env = RenderEnvironment::deterministic();
+    let session = match theme {
+        Some(theme) => env.begin_session_with_native_theme(theme),
+        None => env.begin_session(),
+    }
+    .map_err(|e| e.to_string())?;
     let plan = family::plan_render(diagram, &session).map_err(error)?;
     if !plan
         .required_capabilities()
@@ -353,7 +363,7 @@ impl Capture<'_> {
     }
 }
 
-fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
+fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> Option<BezPath> {
     let container = if group {
         owner
     } else {
@@ -373,7 +383,7 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             && (!n.has_tag_name("rect") || n.has_attribute("width") && n.has_attribute("height"))
     });
     if !container.has_tag_name("g") {
-        return painted_outline(container, frame);
+        return Some(painted_outline(container, frame));
     }
     if owner.attribute("data-look") == Some("handDrawn") {
         let stroke = candidates
@@ -381,11 +391,9 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             .unwrap_or_else(|| {
                 panic!("{}: missing RoughJS outline stroke", attr(owner, "data-id"))
             });
-        return painted_outline(stroke, frame);
+        return Some(painted_outline(stroke, frame));
     }
-    let first = candidates
-        .next()
-        .unwrap_or_else(|| panic!("{}: missing painted outline", attr(owner, "data-id")));
+    let first = candidates.next()?;
     let mut outline = painted_outline(first, frame);
     for candidate in candidates {
         let path = painted_outline(candidate, frame);
@@ -394,7 +402,7 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             outline = path;
         }
     }
-    outline
+    Some(outline)
 }
 
 fn explicit_label_bounds(group: Node<'_, '_>, frame: Affine) -> Option<Rect> {
@@ -594,6 +602,51 @@ fn sibling_crossings_stay_in_their_separate_aligned_lanes_between_faces() {
     assert!(
         (lanes[0] - lanes[1]).abs() > FLATNESS,
         "shared lane: {lanes:?}"
+    );
+}
+
+pub(super) fn assert_studio_compound_fork(source: &str) {
+    use super::super::aesthetic::emit;
+    use merman_core::presentation::SourcePresentationConfig;
+    use serde_json::json;
+
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        json!({"layout": "shoal", "htmlLabels": false}),
+    ));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = crate::theme::ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .expect("studio theme preset");
+    let drawing = prepare_with_theme(&parsed, Some(crate::theme::NativeTheme::new(theme))).unwrap();
+    let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
+    let capture = drawing.capture(&doc);
+    let metrics = emit(
+        "studio-compound-fork",
+        "TD",
+        &capture.scene,
+        &capture.body_names,
+        &capture.edge_names,
+        &[],
+    );
+    assert_eq!(metrics.micro_kink_count, 0);
+    assert!(
+        metrics
+            .max_s_curve_handle_ratio
+            .is_some_and(|value| value <= 0.48),
+        "{:?}",
+        metrics.max_s_curve_handle_ratio
+    );
+    assert!(metrics.s_curves.iter().all(|curve| curve.ordered_controls));
+    assert!(
+        metrics
+            .max_s_curve_flatness
+            .is_some_and(|flatness| flatness <= 3.5),
+        "compound fork sweeps must not pancake into narrow label slits: {:?}",
+        metrics.max_s_curve_flatness
     );
 }
 
@@ -993,7 +1046,28 @@ impl Drawing {
             let id = ids[name];
             let is_group = groups.contains_key(name) && !view.is_subgraph_collapsed(name);
             assert_eq!(kind, if is_group { "cluster" } else { "node" }, "{name}");
-            let outline = shape_outline(owner, frame, is_group);
+            let outline = shape_outline(owner, frame, is_group).unwrap_or_else(|| {
+                if is_group {
+                    let cluster = layout_groups[name];
+                    let expected = graph_frame.transform_rect_bbox(centered(
+                        cluster.x,
+                        cluster.y,
+                        cluster.width,
+                        cluster.height,
+                    ));
+                    // Native Theme v2 hoists container backgrounds into depth layers.
+                    assert!(
+                        doc.descendants().any(|n| {
+                            n.attribute("data-merman-theme-depth") == Some("container")
+                                && has_class(n, "cluster")
+                        }),
+                        "{name}: missing painted outline"
+                    );
+                    expected.to_path(FLATNESS)
+                } else {
+                    panic!("{name}: missing painted outline");
+                }
+            });
             let measured;
             let bounds;
             let label_bounds;

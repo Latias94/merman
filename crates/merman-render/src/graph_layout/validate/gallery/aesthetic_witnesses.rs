@@ -1,7 +1,7 @@
 use super::super::aesthetic::emit;
 use super::{
     Affine, Body, CrossAxis, Document, Edge, Label, LabelOwner, PointMarker, Rect, Scene, Vec2,
-    render, view_box,
+    render, render_studio, view_box,
 };
 use std::fmt::Write as _;
 
@@ -140,7 +140,159 @@ fn offset_s_controls_are_measured_in_path_order() {
     assert_eq!(reverse.edge, "reverse-sweep");
     assert!(reverse.ordered_controls);
     close(reverse.handle_ratio, 0.50);
+    close(reverse.flatness, 1.0 / 3.0);
     close(metrics.max_s_curve_handle_ratio.unwrap(), 0.56);
+    close(metrics.max_corner_arm_px.unwrap(), 14.0);
+}
+
+#[test]
+fn step_micro_jogs_and_wide_corner_arms_are_reported() {
+    let scene = Scene {
+        edges: vec![
+            Edge::new(
+                0,
+                1,
+                "M100,0 L100,40 L100.9,40 L100.9,80",
+                CrossAxis::X,
+            ),
+            Edge::new(
+                0,
+                1,
+                "M0,0 L40,0 C120,0 180,40 180,90 L180,140",
+                CrossAxis::X,
+            ),
+        ],
+        ..Scene::default()
+    };
+    let metrics = emit(
+        "micro-jog-and-corner",
+        "TB",
+        &scene,
+        &[] as &[&str],
+        &["step-jog", "floppy-corner"],
+        &[],
+    );
+    assert_eq!(metrics.micro_kink_count, 1);
+    close(metrics.max_corner_arm_px.unwrap(), 140.0);
+}
+
+#[test]
+fn studio_decision_branches_stay_symmetric_in_curved_and_rounded_modes() {
+    let body = "A[Start] --> B{Condition?}\nB -->|Yes| C[Execute]\nB -->|No| D[End]\nC --> D";
+    for html_labels in [false, true] {
+        let curved_source = format!("flowchart TD\n{body}");
+        let drawing =
+            render_studio(&curved_source, "studio-decision-curved", html_labels).unwrap();
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+        let body_names: Vec<_> = drawing.layout.nodes.iter().map(|n| n.id.as_str()).collect();
+        let edge_names: Vec<_> = drawing.layout.edges.iter().map(|e| e.id.as_str()).collect();
+        let metrics = emit(
+            "studio-decision-curved",
+            "TD",
+            &scene,
+            &body_names,
+            &edge_names,
+            &[],
+        );
+        if metrics.cubic_count > 0 {
+            assert_balanced_branches(&metrics, "B", "studio-decision-curved", "TD");
+            assert!(
+                metrics
+                    .max_s_curve_flatness
+                    .is_some_and(|flatness| flatness <= 3.5),
+                "html={html_labels}: {:?}",
+                metrics.max_s_curve_flatness
+            );
+        } else {
+            assert_label_balance(&metrics, "studio-decision-curved", "TD");
+        }
+        assert_eq!(metrics.micro_kink_count, 0, "html={html_labels}");
+
+        let rounded_source =
+            format!("---\nconfig:\n  flowchart:\n    curve: rounded\n---\nflowchart TD\n{body}");
+        let drawing =
+            render_studio(&rounded_source, "studio-decision-rounded", html_labels).unwrap();
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+        let body_names: Vec<_> = drawing.layout.nodes.iter().map(|n| n.id.as_str()).collect();
+        let edge_names: Vec<_> = drawing.layout.edges.iter().map(|e| e.id.as_str()).collect();
+        let metrics = emit(
+            "studio-decision-rounded",
+            "TD",
+            &scene,
+            &body_names,
+            &edge_names,
+            &[],
+        );
+        assert_eq!(
+            metrics.micro_kink_count, 0,
+            "studio rounded must not emit sub-2px jogs (html={html_labels})"
+        );
+        assert_label_balance(&metrics, "studio-decision-rounded", "TD");
+    }
+}
+
+#[test]
+fn forced_label_subrank_preserves_sibling_departure_symmetry() {
+    let source = "flowchart TD\n\
+        A[Start] --> B{Condition?}\n\
+        B -->|\"Yes, run the full pipeline\"| C[Execute]\n\
+        B -->|No| D[End]\n\
+        C --> D";
+    for (name, drawing) in [
+        ("default-forced-subrank", render(source, "default-forced-subrank").unwrap()),
+        (
+            "studio-forced-subrank",
+            render_studio(source, "studio-forced-subrank", false).unwrap(),
+        ),
+    ] {
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+        let body_names: Vec<_> = drawing.layout.nodes.iter().map(|n| n.id.as_str()).collect();
+        let edge_names: Vec<_> = drawing.layout.edges.iter().map(|e| e.id.as_str()).collect();
+        let metrics = emit(name, "TD", &scene, &body_names, &edge_names, &[]);
+        assert!(
+            metrics
+                .max_s_curve_handle_ratio
+                .is_some_and(|value| value <= 0.48),
+            "{name}: {:?}",
+            metrics.max_s_curve_handle_ratio
+        );
+        assert!(metrics.s_curves.iter().all(|curve| curve.ordered_controls));
+        let symmetry = metrics
+            .sibling_departure_symmetry
+            .iter()
+            .find(|pair| pair.body == "B" && pair.end == "start")
+            .expect("two departures from decision face");
+        assert!(
+            symmetry.turn_start_delta_px <= 0.25
+                && symmetry.landing_horizon_delta_px <= 0.25
+                && symmetry.turn_span_ratio.is_some_and(|ratio| ratio <= 1.01)
+                && symmetry.mirror_tangent_error_deg <= 1.0,
+            "{name}: {symmetry:?}"
+        );
+    }
+}
+
+#[test]
+fn studio_compound_fork_avoids_flat_pancake_sweeps() {
+    let source = "flowchart TD\n\
+        req([Pull Request]) --> gate{CI Gate}\n\
+        subgraph ci[Verification]\n\
+            direction TB\n\
+            unit[Unit Tests]\n\
+            lint[Static Checks]\n\
+        end\n\
+        subgraph prod[Production Deploy]\n\
+            rollout[Canary Rollout]\n\
+        end\n\
+        gate -->|Fast Path| unit\n\
+        gate -->|Policy| lint\n\
+        unit --> rollout\n\
+        lint --> rollout\n\
+        style prod fill:#1e3a5f,stroke:#60a5fa,color:#ffffff";
+    super::compound::assert_studio_compound_fork(source);
 }
 
 #[test]

@@ -1254,3 +1254,44 @@ fn upstream_swimlane_ddlt_corpus_has_finite_orthogonal_layouts() {
         failures.join("\n")
     );
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn swimlane_shoal_studio_has_no_sub_2px_micro_arcs() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n---\n{}",
+        include_str!("../../merman/benches/fixtures/swimlane_medium.mmd")
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let svg = merman_render::family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+    for path in doc.descendants().filter(|n| {
+        n.has_tag_name("path")
+            && n.attribute("class")
+                .is_some_and(|c| c.contains("flowchart-link"))
+    }) {
+        let d = path.attribute("d").unwrap_or_default();
+        for seg in svgtypes::PathParser::from(d) {
+            if let Ok(svgtypes::PathSegment::EllipticalArc { rx, ry, .. }) = seg {
+                assert!(
+                    rx >= 2.0 && ry >= 2.0,
+                    "swimlane edge emitted sub-2px micro-arc ({rx}, {ry}) in {d}"
+                );
+            }
+        }
+    }
+}

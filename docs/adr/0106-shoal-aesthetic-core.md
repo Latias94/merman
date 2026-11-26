@@ -77,7 +77,7 @@ Keep one public Shoal IR, `WorkControl`, DDLT verifier, and `route_paint` contra
   Use `FxHashMap` for adapter endpoint lookup and defer edge identity materialization on the SVG
   path. Pool `refine`, `routing`, and `hub` scratch buffers in `LayoutScratch` and set the default
   `max_transpose_nodes` to `600`.
-- **DDLT v3 Aesthetic Gates**: extend aesthetic validation with quantitative geometry gates for `label_optical_balance_ratio`, `max_s_curve_handle_ratio <= 0.50`, `face_turn_coherence`, `sibling_departure_symmetry`, and `large_fan_cubic_ratio <= 1.05`.
+- **DDLT v3 Aesthetic Gates**: extend aesthetic validation with quantitative geometry gates for `label_optical_balance_ratio`, `max_s_curve_handle_ratio <= 0.50`, `max_s_curve_flatness <= 3.5` (preventing pancake sweeps in shallow inserted-label or boundary slits), `max_corner_arm_px <= 16.0` on bounded orthogonal/grid routes, `micro_kink_count == 0` across curved, rounded, and step routes, `face_turn_coherence`, `sibling_departure_symmetry` (enforced across both inline labels and forced label sub-ranks by anchoring sibling horizon to the first physical stop), and `large_fan_cubic_ratio <= 1.05`. Enforce these gates across the real product matrix (Mermaid default and Native Theme v2 `studio`, `Curved` and `Rounded` grammars, and flat, compound, and Grid Core families).
 
 ## Implementation notes
 

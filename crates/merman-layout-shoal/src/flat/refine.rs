@@ -1147,11 +1147,28 @@ fn de_jitter(
 
             let run = &chain[first..end];
             let (before, after) = chord(s, chain, first - 1, end);
-            let anchor = [(chain[first - 1], before), (chain[end], after)]
+            let fits_port = |vertex: u32, side: usize, x: f64| {
+                let v = vertex as usize;
+                s.data.free[v][side] >= 2 && (x - s.data.x[v]).abs() <= s.data.span[v] * 0.5
+            };
+            let candidates = [
+                (chain[first - 1], before, chain[end], TOP),
+                (chain[end], after, chain[first - 1], BOTTOM),
+            ];
+            let eligible = |(v, x, _, _): (u32, f64, u32, usize)| {
+                !s.free_bend(v as usize)
+                    && room.contains(x)
+                    && high - x <= MICRO_DRIFT
+                    && x - low <= MICRO_DRIFT
+            };
+            // Prefer an anchor that the opposite terminal's port span can also reach so
+            // subsequent port settlement removes the micro-jog on both sides of the run.
+            let anchor = candidates
                 .into_iter()
-                .filter(|&(v, _)| !s.free_bend(v as usize))
-                .map(|(_, x)| x)
-                .find(|&x| room.contains(x) && high - x <= MICRO_DRIFT && x - low <= MICRO_DRIFT);
+                .filter(|&c| eligible(c))
+                .find(|&(_, x, other, side)| fits_port(other, side, x))
+                .or_else(|| candidates.into_iter().find(|&c| eligible(c)))
+                .map(|(_, x, _, _)| x);
             let target = if let Some(anchor) = anchor {
                 Some(anchor)
             } else if run.len() > 1 {
@@ -1183,6 +1200,41 @@ fn de_jitter(
     Ok(())
 }
 
+fn snap_micro_ports(
+    s: &mut Geometry<'_>,
+    ports: &PortRuns,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    for f in &ports.runs {
+        let edges = &ports.edges[f.edges.clone()];
+        let gaps = &ports.gaps[f.edges.clone()];
+        work.visit(edges.len())?;
+        for (i, &e) in edges.iter().enumerate() {
+            let follow = s.data.follow[f.side][e];
+            let want = s.at(follow, 1 - f.side) - s.data.x[f.v];
+            let cur = s.data.dx[f.side][e];
+            let delta = (want - cur).abs();
+            if delta <= COLLINEAR || delta > MICRO_DRIFT {
+                continue;
+            }
+            let lo = if i == 0 {
+                f.bounds.lo
+            } else {
+                s.data.dx[f.side][edges[i - 1]] + gaps[i]
+            };
+            let hi = if i + 1 == edges.len() {
+                f.bounds.hi
+            } else {
+                s.data.dx[f.side][edges[i + 1]] - gaps[i + 1]
+            };
+            if lo <= want && want <= hi {
+                s.data.dx[f.side][e] = want;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn straighten(
     s: &mut Geometry<'_>,
     options: &Options,
@@ -1195,6 +1247,7 @@ fn straighten(
     let PassScratch {
         want,
         indices: twins,
+        ports,
         row: RowScratch {
             values,
             gaps,
@@ -1293,9 +1346,9 @@ fn straighten(
     }
 
     clearance.clear();
-    if curved {
-        de_jitter(s, options, values, work)?;
-    } else {
+    de_jitter(s, options, values, work)?;
+    snap_micro_ports(s, ports, work)?;
+    if !curved {
         fill(clearance, s.data.x.len(), Interval::ALL)?;
         for (r, row) in g.layers.iter().enumerate() {
             if !s.data.labels_only[r] {
