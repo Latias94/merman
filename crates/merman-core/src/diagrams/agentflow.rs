@@ -1,4 +1,4 @@
-//! Core entry points and editor projection for Mermaid's `agentflow-beta` diagram.
+//! Core entry points and editor projection for Mermaid's Agentflow diagram.
 
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -391,6 +391,82 @@ mod semantic_tests {
     );
 
     #[test]
+    fn agentflow_headers_preserve_standalone_nodes_and_semicolon_direction() {
+        let parser = crate::SemanticParser::new();
+        for header in ["agentflow", "agentflow-beta"] {
+            for (suffix, direction, vertices, edges) in [
+                ("", "TB", &[][..], &[][..]),
+                ("\nagentflow", "TB", &["agentflow"][..], &[][..]),
+                ("\n; A", "TB", &["A"][..], &[][..]),
+                (" LR %% comment\nA", "LR", &["A"][..], &[][..]),
+                ("\n  agentflow direction TB\nB", "TB", &["B"][..], &[][..]),
+                (
+                    "\u{feff}LR; agentflow --> B",
+                    "LR",
+                    &["agentflow", "B"][..],
+                    &[("agentflow", "B")][..],
+                ),
+            ] {
+                let source = format!("{header}{suffix}");
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                assert_eq!(parsed.metadata.diagram_type, "agentflow", "{source:?}");
+                let crate::SemanticDiagramModel::Agentflow(model) = parsed.model else {
+                    panic!("expected Agentflow semantics for {source:?}");
+                };
+                assert_eq!(model.direction, direction, "{source:?}");
+                assert_eq!(
+                    model
+                        .vertices
+                        .iter()
+                        .map(|node| node.id.as_str())
+                        .collect::<Vec<_>>(),
+                    vertices,
+                    "{source:?}",
+                );
+                assert_eq!(
+                    model
+                        .edges
+                        .iter()
+                        .map(|edge| (edge.start.as_str(), edge.end.as_str()))
+                        .collect::<Vec<_>>(),
+                    edges,
+                    "{source:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn agentflow_headers_distinguish_detection_errors_from_grammar_errors() {
+        let parser = crate::SemanticParser::new();
+        for header in ["agentflow", "agentflow-beta"] {
+            for suffix in ["-other\nA", ": LR\nA"] {
+                let source = format!("{header}{suffix}");
+                let error = parser.parse_diagram_sync(&source).unwrap_err();
+                assert!(matches!(error, Error::DetectType(_)), "{source:?}: {error}");
+            }
+            for suffix in [
+                "; A",
+                "\u{00a0}; A",
+                " %% comment\nA",
+                " LR extra\nA",
+                " LR; direction TB; A\nB",
+                " LR %% direction TB\nA",
+                "\nagentflow-beta",
+                "\nagentflow direction TB\nB",
+                "\nagentflow; direction TB; A\nB",
+            ] {
+                let source = format!("{header}{suffix}");
+                let error = parser.parse_diagram_sync(&source).unwrap_err();
+                assert!(
+                    matches!(error, Error::DiagramParse { .. }),
+                    "{source:?}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
     #[cfg(feature = "editor-facts")]
     fn canonical_agentflow_capture_retains_success_and_failure_facts() {
         for (source, valid) in [
@@ -567,12 +643,9 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn full_agentflow_serialization_keeps_presentation_shape_and_dom_ordinals() {
+        let source = SOURCE.replacen("agentflow-beta", "agentflow", 1);
         let parsed = crate::MermaidEngine::new()
-            .parse_diagram_for_render_model_with_type_sync(
-                "agentflow",
-                SOURCE,
-                crate::ParseOptions::strict(),
-            )
+            .parse_diagram_for_render_model_sync(&source, crate::ParseOptions::strict())
             .unwrap()
             .unwrap();
         let crate::RenderSemanticModel::Agentflow(model) = parsed.model() else {
@@ -590,6 +663,7 @@ mod semantic_tests {
         let roundtrip: AgentflowDiagramRenderModel = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(&roundtrip).unwrap(), value);
         let (flow, context) = roundtrip.to_flowchart_model();
+        assert_eq!(flow.keyword, "agentflow-beta");
         let node = flow.nodes.iter().find(|node| node.id == "A").unwrap();
         assert_eq!(node.classes, ["af-kind-task", "hot", "clickable"]);
         assert_eq!(node.styles, ["stroke:blue"]);

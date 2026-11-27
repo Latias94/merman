@@ -1899,7 +1899,7 @@ fn completion_offers_agentflow_and_usecase_headers() {
         .expect("empty source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
 
-    for label in ["agentflow-beta", "usecase-beta"] {
+    for label in ["agentflow", "agentflow-beta", "usecase-beta"] {
         let item = list
             .items
             .iter()

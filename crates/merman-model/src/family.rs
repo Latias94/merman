@@ -380,8 +380,10 @@ const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
     &[header(44, "flowchart-elk TD", "elk flowchart header")];
 const USECASE_HEADERS: &[HeaderDefinition] =
     &[header(45, "usecase-beta", "usecase diagram header")];
-const AGENTFLOW_HEADERS: &[HeaderDefinition] =
-    &[header(46, "agentflow-beta", "agentflow diagram header")];
+const AGENTFLOW_HEADERS: &[HeaderDefinition] = &[
+    header(46, "agentflow", "agentflow diagram header"),
+    header(47, "agentflow-beta", "agentflow beta alias"),
+];
 
 define_family_catalog! {
     ERROR => "error" {

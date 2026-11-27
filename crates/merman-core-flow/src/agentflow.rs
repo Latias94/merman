@@ -260,59 +260,77 @@ impl<'a> Parser<'a> {
     fn parse(
         &mut self,
     ) -> OperationControlResult<std::result::Result<AgentflowDiagramModel, ParseFailure>> {
-        let Some((header_start, header)) = first_content_line(self.source) else {
+        let Some((header_statement_start, header_statement)) = first_content_statement(self.source)
+        else {
             return Ok(Err(self.failure(
-                "expected agentflow-beta header",
+                "expected agentflow or agentflow-beta header",
                 SourceSpan::new(0, self.source.len()),
             )));
         };
-        let header_tokens: Vec<&str> = header.split_whitespace().collect();
-        if header_tokens.first().copied() != Some("agentflow-beta") {
+        let header = header_statement.trim_matches(is_ecmascript_whitespace);
+        let header_span = span_of(header_statement_start, header_statement, header);
+        let mut header_tokens = header
+            .split(is_ecmascript_whitespace)
+            .filter(|token| !token.is_empty());
+        if !matches!(header_tokens.next(), Some("agentflow" | "agentflow-beta")) {
             return Ok(Err(self.failure(
-                "expected agentflow-beta header",
-                SourceSpan::new(header_start, header_start + header.len()),
+                "expected agentflow or agentflow-beta header",
+                header_span,
             )));
         }
-        if header_tokens.len() > 2 {
+        let direction = header_tokens.next();
+        if header_tokens.next().is_some() {
             return Ok(Err(self.failure(
                 "unexpected content after agentflow header direction",
-                SourceSpan::new(header_start, header_start + header.len()),
+                header_span,
             )));
         }
-        if let Some(value) = header_tokens.get(1) {
+        let header_tail = &self.source[header_span.end..];
+        if let Some(value) = direction {
             self.direction = match normalize_direction(value) {
                 Some(direction) => direction,
                 None => {
-                    return Ok(Err(self.failure(
-                        "invalid agentflow direction",
-                        SourceSpan::new(header_start, header_start + header.len()),
-                    )));
+                    return Ok(Err(self.failure("invalid agentflow direction", header_span)));
                 }
             };
             if self.direction == "TD" {
                 self.direction = "TB".to_string();
             }
-        } else if self.source[header_start + header.len()..]
-            .trim_start_matches([' ', '\t', '\r'])
-            .starts_with(';')
-        {
-            return Ok(Err(self.failure(
-                "a semicolon after the agentflow header requires a direction",
-                SourceSpan::new(header_start, header_start + header.len()),
-            )));
+            // In INITIAL, the whole-line direction token precedes the separator rules.
+            if statement_direction(header_tail).is_some() {
+                return Ok(Err(self.failure(
+                    "expected a separator after the agentflow header direction",
+                    header_span,
+                )));
+            }
+        } else {
+            let separator =
+                header_tail.trim_start_matches(|ch| ch != '\n' && is_ecmascript_whitespace(ch));
+            if separator.starts_with(';') {
+                return Ok(Err(self.failure(
+                    "a semicolon after the agentflow header requires a direction",
+                    header_span,
+                )));
+            }
+            if separator.starts_with("%%") {
+                return Ok(Err(self.failure(
+                    "an inline comment after the agentflow header requires a direction",
+                    header_span,
+                )));
+            }
         }
         #[cfg(feature = "editor-facts")]
         if let Some(observe) = &mut self.observe {
-            observe(AgentflowObservation::Header(SourceSpan::new(
-                header_start,
-                header_start + header.len(),
-            )));
+            observe(AgentflowObservation::Header(header_span));
         }
 
         for (line_start, line) in split_top_level(self.source, b";\n") {
             self.control.checkpoint()?;
             let trimmed = line.trim().trim_start_matches('\u{feff}');
-            if trimmed.is_empty() || trimmed.starts_with("%%") || trimmed == header {
+            if line_start == header_statement_start
+                || trimmed.is_empty()
+                || trimmed.starts_with("%%")
+            {
                 continue;
             }
             if trimmed == "---" {
@@ -325,7 +343,14 @@ impl<'a> Parser<'a> {
             // Direction precedes whitespace in Jison. Preserve the statement's raw
             // cursor so indentation cannot promote a later keyword ahead of it.
             if let Some(direction) = statement_direction(line) {
-                if !direction_has_prior_token(line) {
+                // The stable keyword emits a node token after the header.
+                let starts_with_agentflow = line.strip_prefix("agentflow").is_some_and(|suffix| {
+                    suffix
+                        .chars()
+                        .next()
+                        .is_none_or(|ch| ch == ';' || is_ecmascript_whitespace(ch))
+                });
+                if !starts_with_agentflow && !direction_has_prior_token(line) {
                     if let Some(context) = self.contexts.last_mut() {
                         context.direction = Some(direction.to_string());
                     }
@@ -1280,16 +1305,16 @@ fn split_top_level<'a>(
     })
 }
 
-fn first_content_line(source: &str) -> Option<(usize, &str)> {
+fn first_content_statement(source: &str) -> Option<(usize, &str)> {
     let mut frontmatter = false;
     for (offset, line) in split_top_level(source, b";\n") {
-        let trimmed = line.trim().trim_start_matches('\u{feff}');
+        let trimmed = line.trim_matches(is_ecmascript_whitespace);
         if trimmed == "---" {
             frontmatter = !frontmatter;
             continue;
         }
         if !frontmatter && !trimmed.is_empty() {
-            return Some((offset + line.find(trimmed).unwrap_or(0), trimmed));
+            return Some((offset, line));
         }
     }
     None

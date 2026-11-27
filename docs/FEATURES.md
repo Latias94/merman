@@ -18,6 +18,8 @@ families preserve the pinned Mermaid semantics; lightweight detection, configura
 and sanitization remain available independently. Output, layout, math, and host-adapter features
 are separate choices.
 
+The Agentflow parser accepts both the `agentflow` header and the earlier `agentflow-beta` spelling.
+
 There are four separate decisions:
 
 1. **Diagram families** select the owning package's data, source parsers, or output handlers. Only source-parser selection admits a language.

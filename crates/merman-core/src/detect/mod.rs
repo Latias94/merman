@@ -6,6 +6,7 @@ pub use full::{ConfigDetectorFn, Detector, DetectorConfig, DetectorFn, DetectorR
 
 use crate::family::DetectorFact;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, Result};
+use merman_model::text::is_ecmascript_whitespace;
 use std::borrow::Cow;
 
 #[derive(Debug, thiserror::Error)]
@@ -240,7 +241,36 @@ pub(crate) fn detector_usecase(txt: &str) -> bool {
 }
 
 pub(crate) fn detector_agentflow(txt: &str) -> bool {
-    starts_with_js_word_boundary(txt.trim_start(), "agentflow-beta")
+    let Some(suffix) = txt
+        .trim_start_matches(is_ecmascript_whitespace)
+        .strip_prefix("agentflow")
+    else {
+        return false;
+    };
+    suffix
+        .strip_prefix("-beta")
+        .unwrap_or(suffix)
+        .chars()
+        .next()
+        .is_none_or(|ch| ch == ';' || is_ecmascript_whitespace(ch))
+}
+
+#[cfg(test)]
+#[test]
+fn agentflow_detector_requires_a_mermaid_12_4_header_boundary() {
+    for header in ["agentflow", "agentflow-beta"] {
+        for suffix in ["", "\r\nA", "\tLR", "; A", "\u{3000}LR", "\u{feff}LR"] {
+            let text = format!(" \u{00a0}\u{feff}{header}{suffix}");
+            assert!(detector_agentflow(&text), "{text:?}");
+        }
+        for suffix in ["-other", "x", "_", ":", "[A]", "\u{0085}LR"] {
+            let text = format!("{header}{suffix}");
+            assert!(!detector_agentflow(&text), "{text:?}");
+        }
+        assert!(!detector_agentflow(&format!("\u{0085}{header}")));
+    }
+    assert!(!detector_agentflow("Agentflow\nA"));
+    assert!(!detector_agentflow("A\nagentflow"));
 }
 
 pub(crate) fn detector_state_v2(txt: &str) -> bool {
