@@ -62,6 +62,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
 pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
+    measure_neo_length: bool,
 ) -> Result<Option<FlowchartEdgePathGeom>> {
     #[cfg(any(feature = "layout-shoal", test))]
     if let crate::graph_layout::RouteContract::CanonicalAxis(axis) =
@@ -87,5 +88,5 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
         .map(Some);
     }
     Ok(prepare_edge_route(request, scratch)
-        .and_then(|route| finish_edge_route(request, route, scratch)))
+        .and_then(|route| finish_edge_route(request, route, scratch, measure_neo_length)))
 }

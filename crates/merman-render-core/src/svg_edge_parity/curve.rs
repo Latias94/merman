@@ -1,4 +1,7 @@
+use kurbo::{CubicBez, Line, ParamCurveArclen, Point, QuadBez};
+
 use crate::LayoutPoint;
+use crate::route_types::SVG_LENGTH_ACCURACY;
 use crate::svg_bounds::{
     CubicBezier, SvgPathBounds, svg_path_bounds_include_cubic, svg_path_bounds_include_quadratic,
 };
@@ -33,6 +36,10 @@ impl PathPoint {
             y: self.x,
         }
     }
+
+    fn into_kurbo(self) -> Point {
+        Point::new(self.x, self.y)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,22 +64,29 @@ impl PathCubic {
 }
 
 #[derive(Debug, Default)]
-struct BoundsBuilder {
+struct CurveMetrics {
     bounds: Option<SvgPathBounds>,
     cur: Option<PathPoint>,
     serialized_coordinates: bool,
+    length: Option<f64>,
 }
 
-impl BoundsBuilder {
+impl CurveMetrics {
     fn include_point(&mut self, point: PathPoint) {
         self.bounds
             .get_or_insert_with(|| SvgPathBounds::at(point.x, point.y))
             .include_point(point.x, point.y);
     }
 
-    fn on_pair(&mut self, point: PathPoint) {
+    fn on_pair(&mut self, command: char, point: PathPoint) {
         self.include_point(point);
-        self.cur = Some(point);
+        let previous = self.cur.replace(point);
+        if command == 'L'
+            && let (Some(length), Some(previous)) = (&mut self.length, previous)
+        {
+            *length +=
+                Line::new(previous.into_kurbo(), point.into_kurbo()).arclen(SVG_LENGTH_ACCURACY);
+        }
     }
 
     fn on_cubic(&mut self, cubic: PathCubic) {
@@ -98,6 +112,15 @@ impl BoundsBuilder {
                 y3: cubic.end.y,
             },
         );
+        if let Some(length) = &mut self.length {
+            *length += CubicBez::new(
+                start.into_kurbo(),
+                cubic.c1.into_kurbo(),
+                cubic.c2.into_kurbo(),
+                cubic.end.into_kurbo(),
+            )
+            .arclen(SVG_LENGTH_ACCURACY);
+        }
     }
 
     fn on_quadratic(&mut self, control: PathPoint, end: PathPoint) {
@@ -111,6 +134,10 @@ impl BoundsBuilder {
         svg_path_bounds_include_quadratic(
             bounds, start.x, start.y, control.x, control.y, end.x, end.y,
         );
+        if let Some(length) = &mut self.length {
+            *length += QuadBez::new(start.into_kurbo(), control.into_kurbo(), end.into_kurbo())
+                .arclen(SVG_LENGTH_ACCURACY);
+        }
     }
 }
 
@@ -131,7 +158,7 @@ fn emit_point(out: &mut String, point: PathPoint, serialized_coordinates: bool) 
 
 fn emit_cmd_pair_impl(
     out: &mut String,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
     cmd: char,
     point: PathPoint,
 ) {
@@ -142,11 +169,11 @@ fn emit_cmd_pair_impl(
         bounds.as_ref().is_some_and(|b| b.serialized_coordinates),
     );
     if let Some(b) = bounds {
-        b.on_pair(point);
+        b.on_pair(cmd, point);
     }
 }
 
-fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cubic: PathCubic) {
+fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut CurveMetrics>, cubic: PathCubic) {
     let serialized = bounds.as_ref().is_some_and(|b| b.serialized_coordinates);
     out.push('C');
     let c1 = emit_point(out, cubic.c1, serialized);
@@ -161,7 +188,7 @@ fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cub
 
 fn emit_cmd_quadratic(
     out: &mut String,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
     control: PathPoint,
     end: PathPoint,
 ) {
@@ -178,21 +205,30 @@ fn emit_cmd_quadratic(
 pub struct CurveGeometry {
     pub d: String,
     pub bounds: Option<SvgPathBounds>,
+    /// Centerline length in the SVG DOM's float precision, when requested.
+    pub centerline_length: Option<f64>,
 }
 
 pub fn curve_geometry(
     points: &[LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
+    measure_length: bool,
 ) -> CurveGeometry {
-    let mut metrics = BoundsBuilder {
+    let mut metrics = CurveMetrics {
         serialized_coordinates: true,
-        ..BoundsBuilder::default()
+        // Match the additive identity for `f64` used by Kurbo's iterator sum.
+        length: measure_length.then_some(-0.0),
+        ..CurveMetrics::default()
     };
     let d = interpolate_path(points, interpolate, rounded_radius, Some(&mut metrics));
     CurveGeometry {
         d,
         bounds: metrics.bounds,
+        centerline_length: metrics
+            .length
+            .map(|length| f64::from(length as f32))
+            .filter(|length| length.is_finite()),
     }
 }
 
@@ -204,7 +240,7 @@ fn interpolate_path(
     points: &[LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     match interpolate {
         "linear" => curve_linear_path_d_impl(points, bounds),
@@ -227,7 +263,7 @@ fn interpolate_path(
 fn curve_monotone_path_d_impl(
     points: &[LayoutPoint],
     swap_xy: bool,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     fn sign(v: f64) -> f64 {
         if v < 0.0 { -1.0 } else { 1.0 }
@@ -243,7 +279,7 @@ fn curve_monotone_path_d_impl(
         cmd: char,
         point: PathPoint,
         swap_xy: bool,
-        bounds: Option<&mut BoundsBuilder>,
+        bounds: Option<&mut CurveMetrics>,
     ) {
         let point = if swap_xy { point.swap_xy() } else { point };
         emit_cmd_pair_impl(out, bounds, cmd, point);
@@ -253,7 +289,7 @@ fn curve_monotone_path_d_impl(
         out: &mut String,
         cubic: PathCubic,
         swap_xy: bool,
-        bounds: Option<&mut BoundsBuilder>,
+        bounds: Option<&mut CurveMetrics>,
     ) {
         let cubic = if swap_xy { cubic.swap_xy() } else { cubic };
         emit_cmd_cubic_impl(out, bounds, cubic);
@@ -304,7 +340,7 @@ fn curve_monotone_path_d_impl(
         out: &mut String,
         segment: HermiteSegment,
         swap_xy: bool,
-        bounds: Option<&mut BoundsBuilder>,
+        bounds: Option<&mut CurveMetrics>,
     ) {
         let HermiteSegment { start, end, t0, t1 } = segment;
         // dx is in the monotone coordinate system; we swap at emit-time if needed.
@@ -413,12 +449,12 @@ pub fn curve_basis_path_d(points: &[LayoutPoint]) -> String {
 }
 
 pub fn curve_basis_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
+    let mut b = CurveMetrics::default();
     let d = curve_basis_path_d_impl(points, Some(&mut b));
     (d, b.bounds)
 }
 
-fn curve_basis_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
+fn curve_basis_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut CurveMetrics>) -> String {
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
@@ -426,7 +462,7 @@ fn curve_basis_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBui
 
     fn basis_point(
         out: &mut String,
-        bounds: Option<&mut BoundsBuilder>,
+        bounds: Option<&mut CurveMetrics>,
         previous: PathPoint,
         current: PathPoint,
         next: PathPoint,
@@ -502,12 +538,12 @@ pub fn curve_linear_path_d(points: &[LayoutPoint]) -> String {
 }
 
 pub fn curve_linear_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
+    let mut b = CurveMetrics::default();
     let d = curve_linear_path_d_impl(points, Some(&mut b));
     (d, b.bounds)
 }
 
-fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
+fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut CurveMetrics>) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
@@ -537,7 +573,7 @@ pub fn curve_rounded_path_d(points: &[LayoutPoint], radius: f64) -> String {
 fn curve_rounded_path_d_impl(
     points: &[LayoutPoint],
     radius: f64,
-    mut bounds: Option<&mut BoundsBuilder>,
+    mut bounds: Option<&mut CurveMetrics>,
 ) -> String {
     if points.len() < 2 {
         return String::new();
@@ -619,7 +655,7 @@ fn curve_rounded_path_d_impl(
 }
 
 // Ported from D3 `curveNatural` (d3-shape v3.x).
-fn curve_natural_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
+fn curve_natural_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut CurveMetrics>) -> String {
     fn compute_control_points(coords: &[f64]) -> (Vec<f64>, Vec<f64>) {
         // `coords` contains the knot coordinates for points[0..=n], where n = segment count.
         let n = coords.len().saturating_sub(1);
@@ -730,7 +766,7 @@ fn curve_natural_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsB
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 fn curve_step_after_path_d_impl(
     points: &[LayoutPoint],
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
@@ -765,7 +801,7 @@ fn curve_step_after_path_d_impl(
 // Ported from D3 `curveStepBefore` (d3-shape v3.x).
 fn curve_step_before_path_d_impl(
     points: &[LayoutPoint],
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
@@ -799,12 +835,12 @@ fn curve_step_before_path_d_impl(
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
 pub fn curve_step_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
+    let mut b = CurveMetrics::default();
     let d = curve_step_path_d_impl(points, Some(&mut b));
     (d, b.bounds)
 }
 
-fn curve_step_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
+fn curve_step_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut CurveMetrics>) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
@@ -846,7 +882,7 @@ fn curve_step_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuil
 fn curve_cardinal_path_d_impl(
     points: &[LayoutPoint],
     tension: f64,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
@@ -868,7 +904,7 @@ fn curve_cardinal_path_d_impl(
     fn cardinal_point(
         out: &mut String,
         segment: CardinalSegment,
-        bounds: Option<&mut BoundsBuilder>,
+        bounds: Option<&mut CurveMetrics>,
     ) {
         let CardinalSegment {
             k,
@@ -966,7 +1002,7 @@ fn curve_cardinal_path_d_impl(
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: bumpY }`).
 fn curve_bump_path_d_impl(
     points: &[LayoutPoint],
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
     vertical: bool,
 ) -> String {
     let mut bounds = bounds;
@@ -1010,7 +1046,7 @@ fn curve_bump_path_d_impl(
 fn curve_catmull_rom_path_d_with_alpha_impl(
     points: &[LayoutPoint],
     alpha: f64,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: Option<&mut CurveMetrics>,
 ) -> String {
     const EPSILON: f64 = 1e-12;
 
@@ -1050,7 +1086,7 @@ fn curve_catmull_rom_path_d_with_alpha_impl(
             &self,
             out: &mut String,
             target: PathPoint,
-            bounds: Option<&mut BoundsBuilder>,
+            bounds: Option<&mut CurveMetrics>,
         ) {
             let mut c1 = self.p1;
             let mut c2 = self.p2;
@@ -1077,12 +1113,7 @@ fn curve_catmull_rom_path_d_with_alpha_impl(
             emit_cmd_cubic_impl(out, bounds, PathCubic::new(c1, c2, self.p2));
         }
 
-        fn point(
-            &mut self,
-            out: &mut String,
-            point: PathPoint,
-            bounds: Option<&mut BoundsBuilder>,
-        ) {
+        fn point(&mut self, out: &mut String, point: PathPoint, bounds: Option<&mut CurveMetrics>) {
             if self.point_state != 0 {
                 let dx = self.p2.x - point.x;
                 let dy = self.p2.y - point.y;
@@ -1117,7 +1148,7 @@ fn curve_catmull_rom_path_d_with_alpha_impl(
             self.p2 = point;
         }
 
-        fn line_end(&mut self, out: &mut String, bounds: Option<&mut BoundsBuilder>) {
+        fn line_end(&mut self, out: &mut String, bounds: Option<&mut CurveMetrics>) {
             match self.point_state {
                 2 => {
                     emit_cmd_pair_impl(out, bounds, 'L', self.p2);

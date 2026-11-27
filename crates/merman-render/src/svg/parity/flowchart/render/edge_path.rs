@@ -59,6 +59,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 trace_enabled,
             },
             scratch,
+            true,
         )?
     } else {
         None

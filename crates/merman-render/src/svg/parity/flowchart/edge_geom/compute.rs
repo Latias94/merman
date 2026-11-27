@@ -359,6 +359,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     request: FlowchartEdgePathGeomRequest<'_>,
     route: ClippedEdgeRoute,
     scratch: &mut FlowchartEdgeDataPointsScratch,
+    measure_neo_length: bool,
 ) -> Option<FlowchartEdgePathGeom> {
     let ctx = request.ctx;
     let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
@@ -371,7 +372,23 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         label,
         is_cluster_edge,
     } = prepare_edge_paint(request, le, route, scratch);
-    let geometry = curve_path_geometry(&line_data, interpolate, ctx.edge_corner_radius);
+    let measure_length = measure_neo_length
+        && ctx.compatibility.look.is_neo()
+        && !request.trace_enabled
+        && matches!(
+            ctx.layout.route_contract,
+            crate::graph_layout::RouteContract::DagreParity
+        )
+        && ctx
+            .edge_style_plan
+            .animation_for(request.key)
+            .is_ok_and(|animation| !animation.is_active());
+    let geometry = curve_path_geometry(
+        &line_data,
+        interpolate,
+        ctx.edge_corner_radius,
+        measure_length,
+    );
     drop(line_data);
 
     let points_for_data_points = &scratch.tmp_points_b;
@@ -392,7 +409,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     Some(FlowchartEdgePathGeom {
         d: geometry.d,
         pb: geometry.bounds,
-        neo_length: None,
+        neo_length: geometry.centerline_length,
         data_points: points_for_data_points.clone(),
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,

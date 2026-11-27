@@ -348,6 +348,7 @@ pub(super) fn prepare_edge_routes(
     ctx: &FlowchartRenderCtx<'_>,
     render_edges: &[FlowchartRenderEdge<'_>],
     hierarchy: &FlowchartHierarchyPlan<'_>,
+    measure_neo_length: bool,
 ) -> Result<FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>> {
     ctx.work_meter.charge(render_edges.len())?;
     let mut cache = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
@@ -362,7 +363,9 @@ pub(super) fn prepare_edge_routes(
                 routes.push(route);
                 routed_edges.push((edge, offsets));
             }
-        } else if let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch)? {
+        } else if let Some(geom) =
+            flowchart_compute_edge_path_geom(request, &mut scratch, measure_neo_length)?
+        {
             cache.insert(
                 edge.key,
                 FlowchartEdgePathCacheEntry {
@@ -409,6 +412,7 @@ pub(super) fn prepare_edge_routes(
                 },
                 route,
                 &mut scratch,
+                false,
             ) {
                 cache.insert(
                     edge.key,
@@ -732,7 +736,7 @@ pub(super) fn edge_geometry(
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     with_flowchart_paint_context(request, options, |ctx, edges, hierarchy| {
-        let mut routes = prepare_edge_routes(ctx, edges, hierarchy)?;
+        let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
         let mut labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
         if prepare_query_rough_paths(ctx, hierarchy, &mut routes, &labels)? {
             labels.update(ctx, hierarchy, &routes, &ctx.edge_order)?;
@@ -901,6 +905,37 @@ mod tests {
     }
 
     #[test]
+    fn dagre_neo_centerline_length_is_precomputed_only_for_svg_paint() {
+        let source = format!(
+            "{}flowchart LR\nA arrow@--> B\narrow@{{ animate: true }}\nB --> C",
+            DAGRE_LINEAR_CONFIG.replace("look: classic", "look: neo"),
+        );
+        with_source(&source, false, |request, execution| {
+            with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
+                assert_eq!(edges.len(), 2);
+                let query = prepare_edge_routes(ctx, edges, hierarchy, false)?;
+                let paint = prepare_edge_routes(ctx, edges, hierarchy, true)?;
+                let mut measured_count = 0;
+                for edge in edges {
+                    let query = &query[&edge.key].geom;
+                    let paint = &paint[&edge.key].geom;
+                    assert_eq!(query.d, paint.d);
+                    assert!(query.neo_length.is_none());
+                    if ctx.edge_style_plan.animation_for(edge.key)?.is_active() {
+                        assert!(paint.neo_length.is_none());
+                    } else {
+                        assert!(paint.neo_length.is_some());
+                        assert_eq!(paint.neo_length, svg_path_length_from_d(&paint.d));
+                        measured_count += 1;
+                    }
+                }
+                assert_eq!(measured_count, 1);
+                Ok(())
+            })
+        });
+    }
+
+    #[test]
     fn dagre_linear_typed_routes_match_parity_shafts_bounds_and_work() {
         let bounds_bits = |bounds: path_bounds::SvgPathBounds| {
             [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
@@ -925,7 +960,7 @@ mod tests {
                                 })
                                 .sum::<usize>();
                         let before_parity = ctx.work_meter.used();
-                        let parity = prepare_edge_routes(ctx, edges, hierarchy)?;
+                        let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
                         assert_eq!(ctx.work_meter.used() - before_parity, expected_work);
 
                         let before_typed = ctx.work_meter.used();
@@ -991,7 +1026,7 @@ mod tests {
             true,
             |request, execution| {
                 with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                    let parity = prepare_edge_routes(ctx, edges, hierarchy)?;
+                    let parity = prepare_edge_routes(ctx, edges, hierarchy, false)?;
                     let edge = edges[0].as_ref();
                     let geom = &parity[&edge.key].geom;
                     let mut scratch = FlowchartEdgeDataPointsScratch::default();
@@ -1031,7 +1066,9 @@ mod tests {
                 with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
                     let edge = edges[0].as_ref();
                     let mut scratch = FlowchartEdgeDataPointsScratch::default();
-                    assert!(prepare_edge_routes(ctx, edges, hierarchy)?.contains_key(&edge.key));
+                    assert!(
+                        prepare_edge_routes(ctx, edges, hierarchy, false)?.contains_key(&edge.key)
+                    );
                     assert!(
                         prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
                             .is_none()
@@ -1073,7 +1110,7 @@ mod tests {
                 .collect();
             with_source(&source, true, |request, execution| {
                 with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                    let mut routes = prepare_edge_routes(ctx, edges, hierarchy)?;
+                    let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
                     let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
                     assert!(prepare_query_rough_paths(
                         ctx,
@@ -1110,7 +1147,7 @@ mod tests {
         let source = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: -1\n---\nflowchart LR\nA --> B";
         with_source(source, true, |request, execution| {
             with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-                let mut routes = prepare_edge_routes(ctx, edges, hierarchy)?;
+                let mut routes = prepare_edge_routes(ctx, edges, hierarchy, false)?;
                 let labels = FlowchartEdgeLabels::prepare(ctx, hierarchy, &routes)?;
                 let before = ctx.work_meter.used();
                 assert!(!prepare_query_rough_paths(

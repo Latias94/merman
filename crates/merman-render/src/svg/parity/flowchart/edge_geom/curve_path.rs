@@ -7,13 +7,15 @@ pub(super) fn curve_path_geometry(
     points: &[crate::model::LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
+    measure_length: bool,
 ) -> CurveGeometry {
-    let mut geometry = curve_geometry(points, interpolate, rounded_radius);
+    let mut geometry = curve_geometry(points, interpolate, rounded_radius, measure_length);
     geometry.d = maybe_close_single_point_path(geometry.d, points);
     if geometry.d == "Z" {
         // The rounded generator has no segments for a singleton and emits a bare close.
         // The bounds reader includes the origin for a bare close.
         geometry.bounds = Some(path_bounds::SvgPathBounds::at(0.0, 0.0));
+        geometry.centerline_length = None;
     }
     geometry
 }
@@ -90,13 +92,19 @@ mod tests {
                 &points[..],
                 &large_coordinates,
             ] {
-                let geometry = curve_path_geometry(route, kind, 5.0);
+                let geometry = curve_path_geometry(route, kind, 5.0, true);
                 let bounds_bits = |bounds: path_bounds::SvgPathBounds| {
                     [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
                 };
                 assert_eq!(
                     geometry.bounds.map(bounds_bits),
                     svg_path_bounds_from_d(&geometry.d).map(bounds_bits),
+                    "{kind}: {}",
+                    geometry.d,
+                );
+                assert_eq!(
+                    geometry.centerline_length.map(f64::to_bits),
+                    svg_path_length_from_d(&geometry.d).map(f64::to_bits),
                     "{kind}: {}",
                     geometry.d,
                 );
@@ -110,7 +118,7 @@ mod tests {
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: 10.0, y: 4.0 },
         ];
-        let geometry = curve_path_geometry(&points, "basis", 5.0);
+        let geometry = curve_path_geometry(&points, "basis", 5.0, false);
         assert_eq!(geometry.d, "M0,0L10,4");
     }
 
@@ -126,7 +134,7 @@ mod tests {
             ("bumpX", "M0,0C10,0,10,10,20,10C30,10,30,0,40,0"),
             ("bumpY", "M0,0C0,5,20,5,20,10C20,5,40,5,40,0"),
         ] {
-            let geometry = curve_path_geometry(&points, curve, 5.0);
+            let geometry = curve_path_geometry(&points, curve, 5.0, false);
             assert_eq!(geometry.d, expected);
             assert!(geometry.bounds.is_some());
         }
@@ -180,7 +188,7 @@ mod tests {
             },
         ];
 
-        let parity = curve_path_geometry(&line_data, "rounded", 12.0).d;
+        let parity = curve_path_geometry(&line_data, "rounded", 12.0, false).d;
         assert!(
             parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
             "expected the Mermaid-compatible half-segment cut: {parity}"

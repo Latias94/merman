@@ -237,7 +237,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     // polyline points). Union a tight bbox over each rendered edge path into the base bbox.
     let edge_path_cache = {
         let _g = timing.section(viewbox_edge_curve_bounds);
-        let edge_path_cache = super::paint::prepare_edge_routes(ctx, render_edges, hierarchy_plan)?;
+        let edge_path_cache =
+            super::paint::prepare_edge_routes(ctx, render_edges, hierarchy_plan, true)?;
         detail.viewbox_edge_curve_geom_calls += edge_path_cache.len() as u32;
         for entry in edge_path_cache.values() {
             if entry.geom.bounds_skipped_for_viewbox {
