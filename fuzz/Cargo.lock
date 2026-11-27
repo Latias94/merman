@@ -1011,6 +1011,7 @@ dependencies = [
 name = "merman-core-structured"
 version = "0.11.0"
 dependencies = [
+ "indexmap",
  "merman-core-preprocess",
  "merman-markup",
  "merman-model",

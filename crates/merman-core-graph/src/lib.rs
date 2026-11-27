@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-architecture")]
+#[doc(hidden)]
+pub mod architecture;
 #[cfg(feature = "diagram-class")]
 pub mod class;
 #[cfg(feature = "diagram-er")]

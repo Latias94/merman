@@ -45,12 +45,7 @@ pub(crate) fn today_local() -> CivilDate {
     active_operation_context().today_local()
 }
 
-#[cfg(any(
-    test,
-    feature = "diagram-block",
-    feature = "diagram-git-graph",
-    feature = "diagram-mindmap"
-))]
+#[cfg(any(test, feature = "diagram-git-graph", feature = "diagram-mindmap"))]
 pub(crate) fn generated_id_hex(domain: &str, counter: u64, len: usize) -> String {
     let context = active_operation_context();
     context.derive_hex(domain, counter, len)

@@ -1,11 +1,7 @@
 use crate::MermaidConfig;
 use crate::diagrams::scan::is_ecmascript_whitespace;
 use crate::sanitize::sanitize_text;
-#[cfg(any(
-    feature = "diagram-event-modeling",
-    feature = "diagram-packet",
-    feature = "diagram-wardley"
-))]
+#[cfg(feature = "diagram-packet")]
 pub(crate) use merman_core_preprocess::scan::langium::LangiumCommonDbFields;
 #[cfg(feature = "presentation")]
 use serde_json::{Map, Value};

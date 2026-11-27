@@ -17,7 +17,9 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-block = ["dep:indexmap", "dep:merman-markup", "merman-markup/html", "dep:ryu-js", "merman-model/diagram-block"]
 diagram-cynefin = ["dep:merman-core-preprocess", "merman-model/diagram-cynefin"]
+diagram-event-modeling = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "merman-model/diagram-event-modeling"]
 diagram-gantt = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/url", "merman-model/diagram-gantt"]
 diagram-info = ["dep:merman-core-preprocess", "merman-model/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa"]
@@ -32,6 +34,7 @@ diagram-timeline = ["dep:merman-core-preprocess", "merman-model/diagram-timeline
 diagram-tree-view = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "merman-model/diagram-tree-view"]
 diagram-treemap = ["dep:merman-core-preprocess", "dep:serde_json", "merman-model/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn"]
+diagram-wardley = ["dep:indexmap", "dep:merman-core-preprocess", "dep:ryu-js", "merman-model/diagram-wardley"]
 diagram-xychart = ["dep:merman-markup", "merman-markup/html", "dep:ryu-js", "merman-model/diagram-xychart"]
 editor-facts = []
 presentation = ["merman-model/presentation-data"]
@@ -39,6 +42,7 @@ system-timezone = ["merman-model/system-timezone"]
 test-support = []
 
 [dependencies]
+indexmap = { workspace = true, optional = true }
 merman-core-preprocess = { workspace = true, optional = true }
 merman-markup = { workspace = true, optional = true }
 merman-model.workspace = true

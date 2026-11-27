@@ -4,11 +4,9 @@
 pub(crate) use merman_markup::url::format_url;
 
 #[cfg(any(
-    feature = "diagram-block",
     feature = "diagram-kanban",
     feature = "diagram-packet",
-    all(feature = "diagram-radar", feature = "editor-facts"),
-    feature = "diagram-wardley"
+    all(feature = "diagram-radar", feature = "editor-facts")
 ))]
 pub(crate) fn format_js_number(value: f64) -> String {
     // Mermaid template strings use Number text, including nonfinite values and unsigned zero.

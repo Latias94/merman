@@ -46,7 +46,8 @@ current corpus. The [input sources](../../fixtures/architecture/) and
 [baseline manifest](../../fixtures/upstream-svgs/architecture/_baseline-manifest.json) own current
 input bytes, inclusion, and provenance; do not recreate an exclusion from the suffix.
 
-Owners: [Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
+Owners: [parser](../../crates/merman-core-graph/src/architecture.rs),
+[Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
 [Shoal layout adapter](../../crates/merman-render/src/architecture/shoal.rs),
 [layout tests](../../crates/merman-render/tests/architecture_layout_test.rs),
 [SVG tests](../../crates/merman-render/tests/architecture_svg_test.rs), and
@@ -250,7 +251,8 @@ independent entity and frame facts available during recovery. Failed block looka
 known unclosed suffix instead of rescanning it for each recovered line. Scalar separators follow
 ECMAScript whitespace, including BOM while retaining NEL as a non-separator.
 
-Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
+Owners: [parser](../../crates/merman-core-structured/src/eventmodeling.rs),
+[semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
 [SVG emitter](../../crates/merman-render-structured/src/eventmodeling/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/eventmodeling_svg_test.rs).
 
@@ -1042,7 +1044,8 @@ become allocation counts, and SVG emits their resulting coordinates with JavaScr
 text instead of replacing nonfinite coordinates with zero. Absent offsets retain strategy and
 anchor defaults; explicit zero remains an authored override.
 
-Owners: [Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs) and
+Owners: [parser](../../crates/merman-core-structured/src/wardley.rs),
+[Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs), and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).
 
 ## XYChart

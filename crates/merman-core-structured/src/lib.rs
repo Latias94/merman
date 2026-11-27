@@ -2,9 +2,17 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-block")]
+#[doc(hidden)]
+pub mod block;
+
 #[cfg(feature = "diagram-cynefin")]
 #[doc(hidden)]
 pub mod cynefin;
+
+#[cfg(feature = "diagram-event-modeling")]
+#[doc(hidden)]
+pub mod eventmodeling;
 
 #[cfg(feature = "diagram-gantt")]
 #[doc(hidden)]
@@ -59,6 +67,10 @@ pub mod treemap;
 #[cfg(feature = "diagram-venn")]
 #[doc(hidden)]
 pub mod venn;
+
+#[cfg(feature = "diagram-wardley")]
+#[doc(hidden)]
+pub mod wardley;
 
 #[cfg(feature = "diagram-xychart")]
 #[doc(hidden)]
