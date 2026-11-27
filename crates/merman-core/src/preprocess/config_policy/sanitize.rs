@@ -80,7 +80,7 @@ fn sanitize_directive_path(
                     .filter(|(key, value)| {
                         is_suspicious_directive_key(key)
                             || (!crate::generated::is_default_config_key(key)
-                                && !is_grid_config_key(&path, key))
+                                && !is_mermaid_12_4_layout_key(&path, key))
                             || value.is_null()
                     })
                     .map(|(key, _)| key)
@@ -144,26 +144,30 @@ fn is_grid_section(path: &[DirectiveValuePathSegment]) -> bool {
     matches!(path, [DirectiveValuePathSegment::Key(key)] if key == "grid")
 }
 
-fn is_grid_config_key(path: &[DirectiveValuePathSegment], key: &str) -> bool {
-    // These keys entered Mermaid with Grid in 12.4. The selected baseline projection
-    // will include them when the renderer and reference graph move together.
-    (path.is_empty() && key == "grid")
-        || (is_grid_section(path)
-            && matches!(
-                key,
-                "cellGap"
-                    | "columnGap"
-                    | "columns"
-                    | "containerPadding"
-                    | "curve"
-                    | "edgeCornerRadius"
-                    | "horizontalAlign"
-                    | "lineHops"
-                    | "placements"
-                    | "rowGap"
-                    | "titleGap"
-                    | "verticalAlign"
-            ))
+fn is_mermaid_12_4_layout_key(path: &[DirectiveValuePathSegment], key: &str) -> bool {
+    // Keep these layout options available until the selected reference's generated config moves.
+    match path {
+        [] => matches!(key, "grid" | "layered"),
+        [DirectiveValuePathSegment::Key(section)] if section == "grid" => matches!(
+            key,
+            "cellGap"
+                | "columnGap"
+                | "columns"
+                | "containerPadding"
+                | "curve"
+                | "edgeCornerRadius"
+                | "horizontalAlign"
+                | "lineHops"
+                | "placements"
+                | "rowGap"
+                | "titleGap"
+                | "verticalAlign"
+        ),
+        [DirectiveValuePathSegment::Key(section)] if section == "layered" => {
+            matches!(key, "edgeRouting" | "lineHops")
+        }
+        _ => false,
+    }
 }
 
 fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {

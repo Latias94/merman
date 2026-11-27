@@ -1202,6 +1202,27 @@ fn sanitize_directive_uses_generated_config_shape_for_all_value_kinds() {
 }
 
 #[test]
+fn sanitize_directive_keeps_mermaid_12_4_layered_options() {
+    let mut value = json!({
+        "layout": "layered",
+        "layered": {
+            "edgeRouting": "curved",
+            "lineHops": false,
+            "__proto__": {"edgeRouting": "linear"},
+            "unknownLayeredKey": 1
+        }
+    });
+    sanitize_directive(&mut value);
+    assert_eq!(
+        value,
+        json!({
+            "layout": "layered",
+            "layered": {"edgeRouting": "curved", "lineHops": false}
+        })
+    );
+}
+
+#[test]
 fn sanitize_directive_preserves_valid_dictionary_entries() {
     let mut value = json!({
         "sankey": {
