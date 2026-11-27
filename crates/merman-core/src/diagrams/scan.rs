@@ -1,8 +1,4 @@
-#[cfg(any(
-    feature = "diagram-c4",
-    feature = "diagram-journey",
-    feature = "diagram-requirement"
-))]
+#[cfg(any(feature = "diagram-c4", feature = "diagram-requirement"))]
 pub(crate) use merman_core_preprocess::scan::LineCursor;
 #[cfg(any(
     test,
@@ -11,11 +7,10 @@ pub(crate) use merman_core_preprocess::scan::LineCursor;
     feature = "diagram-wardley"
 ))]
 pub(crate) use merman_core_preprocess::scan::physical_line_at;
-#[cfg(any(test, feature = "diagram-journey"))]
+#[cfg(test)]
 pub(crate) use merman_core_preprocess::scan::split_statement_suffix_hash_or_semi;
 #[cfg(any(
     test,
-    feature = "diagram-journey",
     feature = "diagram-kanban",
     feature = "diagram-mindmap",
     feature = "diagram-requirement"

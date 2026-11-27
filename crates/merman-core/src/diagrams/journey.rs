@@ -1,7 +1,3 @@
-use crate::diagrams::scan::{
-    LineCursor, is_ecmascript_whitespace, split_statement_suffix_hash_or_semi,
-    starts_with_case_insensitive,
-};
 use crate::family::CombinedSemanticFailure;
 #[cfg(feature = "editor-facts")]
 use crate::{
@@ -15,7 +11,6 @@ use crate::{Result, SourcePresentationMetadata};
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::BTreeSet;
 
 #[cfg(test)]
 thread_local! {
@@ -32,9 +27,14 @@ pub(crate) fn journey_syntax_construction_count() -> usize {
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::journey::{JourneyObservation, JourneyTextKind};
+use merman_core_structured::journey::{JourneySourceIssue, parse_journey_source_controlled};
+use merman_model::families::journey::JourneyDiagramModel;
 #[cfg(feature = "presentation")]
 use merman_model::families::journey::JourneyOutputData;
-use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
+#[cfg(feature = "editor-facts")]
+use merman_model::text::is_ecmascript_whitespace;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut JourneyDiagramModel,
@@ -43,72 +43,6 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_title(&mut model.title, config);
     crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
-
-#[derive(Debug, Default)]
-struct JourneyDb {
-    title: String,
-    acc_title: String,
-    acc_descr: String,
-
-    current_section: String,
-    current_section_index: Option<usize>,
-    sections: Vec<String>,
-    tasks: Vec<JourneyTask>,
-}
-
-impl JourneyDb {
-    fn add_section(&mut self, txt: &str) {
-        self.current_section = txt.to_string();
-        self.current_section_index = Some(self.sections.len());
-        self.sections.push(txt.to_string());
-    }
-
-    fn add_task(&mut self, descr: &str, task_data: &str) {
-        let rest = task_data.strip_prefix(':').unwrap_or(task_data);
-        let mut fields = rest.split(':');
-
-        let score_str = fields.next().unwrap_or("");
-        // Mermaid upstream uses JS `Number(...)` for parsing task scores. This means:
-        // - whitespace-only => 0
-        // - invalid strings => NaN (and Mermaid happily renders an SVG containing `NaN`)
-        //
-        // Retain the legacy `score=0` + `scoreIsNaN=true` state for invalid Number input.
-        // Signed infinities are valid Number results and must retain their score and mouth kind.
-        let (score, score_is_nan) = match crate::utils::parse_js_number(score_str) {
-            Some(value) if !value.is_nan() => (value, false),
-            _ => (0.0, true),
-        };
-
-        let people = fields.next().map_or_else(Vec::new, |people| {
-            people
-                .split(',')
-                .map(|s| s.trim_matches(is_ecmascript_whitespace).to_string())
-                .collect()
-        });
-
-        self.tasks.push(JourneyTask {
-            score,
-            score_is_nan,
-            people,
-            section: self.current_section.clone(),
-            section_index: self.current_section_index,
-            task_type: self.current_section.clone(),
-            task: descr.to_string(),
-        });
-    }
-
-    fn actors_sorted(&self) -> Vec<String> {
-        let mut set = BTreeSet::<String>::new();
-        for t in &self.tasks {
-            for p in &t.people {
-                set.insert(p.clone());
-            }
-        }
-        let mut actors: Vec<_> = set.into_iter().collect();
-        actors.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
-        actors
-    }
 }
 
 struct JourneySemanticSource {
@@ -130,148 +64,6 @@ impl JourneySemanticSource {
         let (model, output_data) = self.into_render_parts();
         render_model_to_compat_json(&model, output_data, meta)
     }
-}
-
-struct JourneyText<'a> {
-    text: &'a str,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-    statement: SourceSpan,
-}
-
-fn scan_journey_while(
-    source: &str,
-    start: usize,
-    mut accepts: impl FnMut(char) -> bool,
-    control: &OperationControl,
-) -> OperationControlResult<usize> {
-    for (count, (relative, ch)) in source[start..].char_indices().enumerate() {
-        if count.is_multiple_of(128) {
-            control.checkpoint()?;
-        }
-        if !accepts(ch) {
-            return Ok(start + relative);
-        }
-    }
-    control.checkpoint()?;
-    Ok(source.len())
-}
-
-fn parse_keyword_arg_one_ws<'a>(
-    source: &'a str,
-    start: usize,
-    keyword: &str,
-    control: &OperationControl,
-) -> OperationControlResult<Option<JourneyText<'a>>> {
-    let rest = &source[start..];
-    if !starts_with_case_insensitive(rest, keyword) {
-        return Ok(None);
-    }
-    let Some(ws) = rest[keyword.len()..].chars().next() else {
-        return Ok(None);
-    };
-    if !is_ecmascript_whitespace(ws) {
-        return Ok(None);
-    }
-    let value_start = start + keyword.len() + ws.len_utf8();
-    let value_end = scan_journey_while(
-        source,
-        value_start,
-        |ch| !matches!(ch, '#' | '\n' | ';') && (keyword != "section" || ch != ':'),
-        control,
-    )?;
-    Ok((value_start < value_end).then(|| JourneyText {
-        text: &source[value_start..value_end],
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(value_start, value_end),
-        statement: SourceSpan::new(start, value_end),
-    }))
-}
-
-fn parse_accessibility_delimiter(
-    source: &str,
-    start: usize,
-    key: &str,
-    delimiter: u8,
-    control: &OperationControl,
-) -> OperationControlResult<Option<usize>> {
-    if !starts_with_case_insensitive(&source[start..], key) {
-        return Ok(None);
-    }
-    let end = scan_journey_while(source, start + key.len(), is_ecmascript_whitespace, control)?;
-    Ok((source.as_bytes().get(end) == Some(&delimiter)).then_some(end))
-}
-
-fn parse_key_colon_value<'a>(
-    source: &'a str,
-    start: usize,
-    key: &str,
-    control: &OperationControl,
-) -> OperationControlResult<Option<JourneyText<'a>>> {
-    let Some(colon) = parse_accessibility_delimiter(source, start, key, b':', control)? else {
-        return Ok(None);
-    };
-    let value_start = scan_journey_while(source, colon + 1, is_ecmascript_whitespace, control)?;
-    let value_end = scan_journey_while(source, value_start, |ch| ch != '\n', control)?;
-    Ok(Some(JourneyText {
-        text: &source[value_start..value_end],
-        #[cfg(feature = "editor-facts")]
-        span: SourceSpan::new(value_start, value_end),
-        statement: SourceSpan::new(start, value_end),
-    }))
-}
-
-struct JourneyBlockText<'a> {
-    text: &'a str,
-    span: SourceSpan,
-    #[cfg(feature = "editor-facts")]
-    opening: SourceSpan,
-    closing: Option<SourceSpan>,
-    #[cfg(feature = "editor-facts")]
-    statement: SourceSpan,
-}
-
-fn parse_acc_descr_block_spanned<'a>(
-    lines: &mut LineCursor<'a>,
-    start: usize,
-    control: &OperationControl,
-) -> OperationControlResult<Option<JourneyBlockText<'a>>> {
-    control.checkpoint()?;
-    let source = lines.source();
-    let Some(open) = parse_accessibility_delimiter(source, start, "accDescr", b'{', control)?
-    else {
-        return Ok(None);
-    };
-    let content_start = open + 1;
-    let content_end = scan_journey_while(source, content_start, |ch| ch != '}', control)?;
-    let closing =
-        (content_end < source.len()).then_some(SourceSpan::new(content_end, content_end + 1));
-    let end = closing.map_or(content_end, |span| span.end);
-    lines.resume_at(end);
-    Ok(Some(JourneyBlockText {
-        text: source[content_start..content_end].trim_matches(is_ecmascript_whitespace),
-        span: SourceSpan::new(content_start, content_end),
-        #[cfg(feature = "editor-facts")]
-        opening: SourceSpan::new(content_start - 1, content_start),
-        closing,
-        #[cfg(feature = "editor-facts")]
-        statement: SourceSpan::new(start, end),
-    }))
-}
-
-fn strip_comment_prefix(line: &str) -> &str {
-    let t = line.trim_start_matches(is_ecmascript_whitespace);
-    if t.starts_with('#') {
-        return "";
-    }
-    let prefixed_comment = t
-        .chars()
-        .next()
-        .is_some_and(|ch| ch != '}' && ch.len_utf16() == 1 && t[ch.len_utf8()..].starts_with("%%"));
-    if (t.starts_with("%%") && !t.starts_with("%%{")) || prefixed_comment {
-        return "";
-    }
-    split_statement_suffix_hash_or_semi(line)
 }
 
 #[cfg(feature = "compat-json")]
@@ -438,417 +230,151 @@ fn construct_journey_semantic_source_controlled(
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_journey_semantic_source(
-        code,
-        diagram_type,
-        #[cfg(feature = "editor-facts")]
-        editor_demand,
-        control,
-    )
-}
-
-fn parse_journey_semantic_source(
-    code: &str,
-    diagram_type: &str,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
-) -> OperationControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
-    control.checkpoint()?;
-    let mut db = JourneyDb::default();
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = editor_demand
         .needs_recovery()
         .then(EditorSemanticFacts::new);
-    let mut lines = LineCursor::new(code);
-    let mut header_seen = false;
-    let mut first_error = None;
-
-    while let Some((line, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        let stripped = strip_comment_prefix(line);
-        let t = stripped.trim_matches(is_ecmascript_whitespace);
-        if t.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if starts_with_case_insensitive(t, "journey") {
-                header_seen = true;
-                let header_start = line_start + line.find(t).unwrap_or(0);
-                let after_header = &t["journey".len()..];
-                let rest = after_header.trim_start_matches(is_ecmascript_whitespace);
-                if !rest.is_empty() {
-                    let start = header_start
-                        + "journey".len()
-                        + after_header.len().saturating_sub(rest.len());
-                    first_error.get_or_insert_with(|| {
-                        Error::diagram_parse_exact(
-                            diagram_type.to_string(),
-                            "unexpected content after journey header",
-                            SourceSpan::new(start, start + rest.len()),
-                        )
-                    });
-                    continue;
-                }
-                continue;
-            }
-            let start =
-                line_start + line.len() - line.trim_start_matches(is_ecmascript_whitespace).len();
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    "expected journey header",
-                    SourceSpan::new(start, line_start + line.len()),
-                )
-            });
-            continue;
-        }
-
-        let token_start =
-            line_start + line.len() - line.trim_start_matches(is_ecmascript_whitespace).len();
-        if let Some(v) = parse_keyword_arg_one_ws(lines.source(), token_start, "title", control)? {
-            lines.resume_at(v.statement.end);
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("title");
-                push_journey_payload_fact(facts, &v, "journey title", EditorSemanticKind::String);
-            }
-            db.title = v.text.to_string();
-            continue;
-        }
-        if let Some(v) = parse_key_colon_value(lines.source(), token_start, "accTitle", control)? {
-            lines.resume_at(v.statement.end);
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accTitle");
-                push_journey_payload_fact(
-                    facts,
-                    &v,
-                    "journey accessibility title",
-                    EditorSemanticKind::String,
-                );
-            }
-            if v.text.is_empty() {
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "expected journey accessibility title value",
-                        v.statement.end,
-                    )
-                });
-                continue;
-            }
-            db.acc_title = v.text.trim_matches(is_ecmascript_whitespace).to_string();
-            continue;
-        }
-        if let Some(v) = parse_key_colon_value(lines.source(), token_start, "accDescr", control)? {
-            lines.resume_at(v.statement.end);
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescr");
-                push_journey_payload_fact(
-                    facts,
-                    &v,
-                    "journey accessibility description",
-                    EditorSemanticKind::String,
-                );
-            }
-            if v.text.is_empty() {
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "expected journey accessibility description value",
-                        v.statement.end,
-                    )
-                });
-                continue;
-            }
-            db.acc_descr = v.text.trim_matches(is_ecmascript_whitespace).to_string();
-            continue;
-        }
-        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, token_start, control)? {
-            if v.text.is_empty() && v.closing.is_some() {
-                continue;
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                facts.push_directive_prefix("accDescr");
-                push_journey_payload_fact_spanned(
-                    facts,
-                    v.text,
-                    v.statement,
-                    v.span,
-                    "journey accessibility description",
-                    EditorSemanticKind::String,
-                );
-            }
-            if v.closing.is_none() {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = &mut editor_facts {
-                    facts.mark_recovered_from_parse_error(
-                        "journey parser recovered from unterminated accDescr block",
-                        Some(SourceSpan::new(v.opening.start, v.span.end)),
-                    );
-                }
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "unterminated accDescr block",
-                        v.span.end,
-                    )
-                });
-            }
-            db.acc_descr = v.text.to_string();
-            continue;
-        }
-        if let Some(v) = parse_keyword_arg_one_ws(lines.source(), token_start, "section", control)?
-        {
-            let end = v.statement.end;
-            lines.resume_at(end);
-            if lines.source().as_bytes().get(end) == Some(&b':') {
-                let line_end = scan_journey_while(lines.source(), end, |ch| ch != '\n', control)?;
-                lines.resume_at(line_end);
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        "unexpected journey task data after section",
-                        SourceSpan::new(end, line_end),
-                    )
-                });
-                continue;
-            }
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                let value = v.text.trim_matches(is_ecmascript_whitespace);
-                if !value.is_empty() {
-                    let start = v.span.start + v.text.len()
-                        - v.text.trim_start_matches(is_ecmascript_whitespace).len();
-                    facts.push_symbol(EditorSemanticSymbol::outline(
-                        value.to_string(),
-                        Some("journey section".to_string()),
-                        EditorSemanticKind::Namespace,
-                        SourceSpan::new(line_start, end),
-                        SourceSpan::new(start, start + value.len()),
-                    ));
-                }
-            }
-            db.add_section(v.text);
-            continue;
-        }
-
-        let colon = stripped.find(':');
-        let task_name_source = colon
-            .map_or(stripped, |colon| &stripped[..colon])
-            .trim_start_matches(is_ecmascript_whitespace);
-        let task_name = task_name_source.trim_matches(is_ecmascript_whitespace);
-        if task_name.is_empty() {
-            let start = line_start + line.find(t).unwrap_or(0);
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    "expected journey task name",
-                    SourceSpan::new(start, start + t.len()),
-                )
-            });
-            continue;
-        }
+    #[cfg(feature = "editor-facts")]
+    let mut observe = editor_facts
+        .as_mut()
+        .map(|facts| move |observation| project_journey_observation(facts, observation));
+    let outcome = parse_journey_source_controlled(
+        code,
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = editor_facts
-            .as_mut()
-            .filter(|_| editor_demand.captures_rich())
-        {
-            let task_relative = task_name.as_ptr() as usize - line.as_ptr() as usize;
-            let task_start = line_start + task_relative;
-            let task_end = task_start + task_name.len();
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                SourceSpan::new(task_start, task_end),
-            ));
-            facts.push_symbol(EditorSemanticSymbol::outline(
-                task_name.to_string(),
-                Some("journey task".to_string()),
-                EditorSemanticKind::Event,
-                SourceSpan::new(line_start, line_start + line.len()),
-                SourceSpan::new(task_start, task_end),
-            ));
-        }
-
-        let Some(colon) = colon else {
-            let insertion = line_start + stripped.trim_end_matches(is_ecmascript_whitespace).len();
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_insertion_point(
-                    diagram_type.to_string(),
-                    "expected journey task data after ':'",
-                    insertion,
-                )
-            });
-            continue;
-        };
-        let task_data = &stripped[colon..];
-        if task_data.len() == ':'.len_utf8() {
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_insertion_point(
-                    diagram_type.to_string(),
-                    "expected journey task data after ':'",
-                    line_start + colon + ':'.len_utf8(),
-                )
-            });
-            continue;
-        }
-
+        editor_demand.captures_rich(),
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = editor_facts
-            .as_mut()
-            .filter(|_| editor_demand.captures_rich())
-        {
-            let rest_source = &stripped[colon + ':'.len_utf8()..];
-            let rest = rest_source.trim_start_matches(is_ecmascript_whitespace);
-            let rest_start =
-                line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
-            let score_end = rest.find(':').unwrap_or(rest.len());
-            let score_text = rest[..score_end].trim_matches(is_ecmascript_whitespace);
-            if !score_text.is_empty() {
-                let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
-                facts.push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::Payload,
-                    SourceSpan::new(score_start, score_start + score_text.len()),
-                ));
-                facts.push_symbol(EditorSemanticSymbol::payload(
-                    score_text.to_string(),
-                    Some("journey score".to_string()),
-                    EditorSemanticKind::String,
-                    SourceSpan::new(score_start, score_start + score_text.len()),
-                    SourceSpan::new(score_start, score_start + score_text.len()),
-                ));
-            }
-
-            if score_end < rest.len() {
-                let people_source = rest[score_end + ':'.len_utf8()..]
-                    .split(':')
-                    .next()
-                    .unwrap_or("");
-                let people = people_source.trim_matches(is_ecmascript_whitespace);
-                if !people.is_empty() {
-                    let people_start = rest_start
-                        + score_end
-                        + ':'.len_utf8()
-                        + people_source.find(people).unwrap_or(0);
-                    facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::Payload,
-                        SourceSpan::new(people_start, people_start + people.len()),
-                    ));
-                    facts.push_symbol(EditorSemanticSymbol::payload(
-                        people.to_string(),
-                        Some("journey people".to_string()),
-                        EditorSemanticKind::String,
-                        SourceSpan::new(people_start, people_start + people.len()),
-                        SourceSpan::new(people_start, people_start + people.len()),
-                    ));
-                }
-            }
-        }
-
-        db.add_task(task_name_source, task_data);
-    }
-
-    if let Some(error) = first_error {
-        return Ok(Err(CombinedSemanticFailure::parser_recovery(
-            #[cfg(feature = "editor-facts")]
-            "journey",
-            error,
+        observe.as_mut().map(|observe| observe as &mut dyn FnMut(_)),
+        control,
+    )?;
+    Ok(match outcome {
+        Ok(source) => Ok(JourneySemanticSource {
+            model: source.model,
+            #[cfg(feature = "presentation")]
+            output_data: if source.header_seen {
+                JourneyOutputData::Model
+            } else {
+                JourneyOutputData::Empty
+            },
             #[cfg(feature = "editor-facts")]
             editor_facts,
-        )));
-    }
+        }),
+        Err(issue) => Err(CombinedSemanticFailure::parser_recovery(
+            #[cfg(feature = "editor-facts")]
+            "journey",
+            journey_source_error(diagram_type, issue),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        )),
+    })
+}
 
-    control.checkpoint()?;
-    let actors = db.actors_sorted();
-    let model = JourneyDiagramModel {
-        title: (!db.title.is_empty()).then_some(db.title),
-        acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
-        acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-        actors,
-        sections: db.sections,
-        tasks: db.tasks,
+fn journey_source_error(diagram_type: &str, issue: JourneySourceIssue) -> Error {
+    let exact = |message: &'static str, span: SourceSpan| {
+        Error::diagram_parse_exact(diagram_type, message, span)
     };
-    Ok(Ok(JourneySemanticSource {
-        model,
-        #[cfg(feature = "presentation")]
-        output_data: if header_seen {
-            JourneyOutputData::Model
-        } else {
-            JourneyOutputData::Empty
-        },
-        #[cfg(feature = "editor-facts")]
-        editor_facts,
-    }))
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_journey_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    value: &JourneyText<'_>,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    let text = value.text.trim_matches(is_ecmascript_whitespace);
-    if text.is_empty() {
-        return;
+    let insertion = |message: &'static str, offset: usize| {
+        Error::diagram_parse_insertion_point(diagram_type, message, offset)
+    };
+    match issue {
+        JourneySourceIssue::UnexpectedHeader(span) => {
+            exact("unexpected content after journey header", span)
+        }
+        JourneySourceIssue::ExpectedHeader(span) => exact("expected journey header", span),
+        JourneySourceIssue::MissingAccTitle(offset) => {
+            insertion("expected journey accessibility title value", offset)
+        }
+        JourneySourceIssue::MissingAccDescr(offset) => {
+            insertion("expected journey accessibility description value", offset)
+        }
+        JourneySourceIssue::UnterminatedAccDescr(offset) => {
+            insertion("unterminated accDescr block", offset)
+        }
+        JourneySourceIssue::TrailingSectionTaskData(span) => {
+            exact("unexpected journey task data after section", span)
+        }
+        JourneySourceIssue::MissingTaskName(span) => exact("expected journey task name", span),
+        JourneySourceIssue::MissingTaskData(offset) => {
+            insertion("expected journey task data after ':'", offset)
+        }
     }
-    let start = value.span.start + value.text.len()
-        - value
-            .text
-            .trim_start_matches(is_ecmascript_whitespace)
-            .len();
-    let selection = SourceSpan::new(start, start + text.len());
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        selection,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        value.statement,
-        selection,
-    ));
 }
 
 #[cfg(feature = "editor-facts")]
-fn push_journey_payload_fact_spanned(
+fn project_journey_observation(
     facts: &mut EditorSemanticFacts,
-    text: &str,
-    statement: SourceSpan,
-    span: SourceSpan,
-    detail: &'static str,
-    kind: EditorSemanticKind,
+    observation: JourneyObservation<'_>,
 ) {
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        span,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        statement,
-        span,
-    ));
+    let (kind, mut text, statement, mut selection) = match observation {
+        JourneyObservation::Text {
+            kind,
+            text,
+            statement,
+            selection,
+        } => (kind, text, statement, selection),
+        JourneyObservation::UnterminatedAccDescr(span) => {
+            facts.mark_recovered_from_parse_error(
+                "journey parser recovered from unterminated accDescr block",
+                Some(span),
+            );
+            return;
+        }
+    };
+    let (prefix, detail) = match kind {
+        JourneyTextKind::Title => (Some("title"), "journey title"),
+        JourneyTextKind::AccTitle => (Some("accTitle"), "journey accessibility title"),
+        JourneyTextKind::AccDescr | JourneyTextKind::AccDescrBlock => {
+            (Some("accDescr"), "journey accessibility description")
+        }
+        JourneyTextKind::Section => (None, "journey section"),
+        JourneyTextKind::Task => (None, "journey task"),
+        JourneyTextKind::Score => (None, "journey score"),
+        JourneyTextKind::People => (None, "journey people"),
+    };
+    if let Some(prefix) = prefix {
+        facts.push_directive_prefix(prefix);
+        if kind != JourneyTextKind::AccDescrBlock {
+            let trimmed = text.trim_matches(is_ecmascript_whitespace);
+            if trimmed.is_empty() {
+                return;
+            }
+            let start = selection.start + text.len()
+                - text.trim_start_matches(is_ecmascript_whitespace).len();
+            selection = SourceSpan::new(start, start + trimmed.len());
+            text = trimmed;
+        }
+    }
+    if kind != JourneyTextKind::Section {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            selection,
+        ));
+    }
+    let name = text.to_string();
+    let detail = Some(detail.to_string());
+    let symbol = match kind {
+        JourneyTextKind::Section => EditorSemanticSymbol::outline(
+            name,
+            detail,
+            EditorSemanticKind::Namespace,
+            statement,
+            selection,
+        ),
+        JourneyTextKind::Task => EditorSemanticSymbol::outline(
+            name,
+            detail,
+            EditorSemanticKind::Event,
+            statement,
+            selection,
+        ),
+        _ => EditorSemanticSymbol::payload(
+            name,
+            detail,
+            EditorSemanticKind::String,
+            statement,
+            selection,
+        ),
+    };
+    facts.push_symbol(symbol);
 }
 
 #[cfg(test)]
@@ -865,81 +391,6 @@ mod tests {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
     use serde_json::json;
-
-    #[test]
-    fn journey_scores_retain_fractions_and_existing_non_finite_state() {
-        let mut db = JourneyDb::default();
-        for (literal, expected, expected_nan) in [
-            ("3.5", 3.5, false),
-            ("3.01", 3.01, false),
-            ("2.75", 2.75, false),
-            ("3", 3.0, false),
-            ("4", 4.0, false),
-            ("0x4", 4.0, false),
-            ("0B11", 3.0, false),
-            ("0o5", 5.0, false),
-            ("0x000000000000000000000000000000004", 4.0, false),
-            (
-                "0o2000000000000000000001",
-                18_446_744_073_709_551_616.0,
-                false,
-            ),
-            (
-                "0b10000000000000000000000000000000000000000000000000000101",
-                36_028_797_018_963_976.0,
-                false,
-            ),
-            ("\u{feff}3.5\u{feff}", 3.5, false),
-            ("\u{0085}3.5\u{0085}", 0.0, true),
-            ("0x", 0.0, true),
-            ("0b2", 0.0, true),
-            ("0o8", 0.0, true),
-            ("+0x4", 0.0, true),
-            ("-0x4", 0.0, true),
-            ("0x10000000000000800", 18_446_744_073_709_551_616.0, false),
-            ("0x10000000000000801", 18_446_744_073_709_555_712.0, false),
-            ("0x10000000000001800", 18_446_744_073_709_559_808.0, false),
-            (" ", 0.0, false),
-            ("bad", 0.0, true),
-            ("NaN", 0.0, true),
-            ("Infinity", f64::INFINITY, false),
-            ("-Infinity", f64::NEG_INFINITY, false),
-            ("1e999", f64::INFINITY, false),
-        ] {
-            db.add_task("Pay", &format!(":{literal}: Customer"));
-            let task = db.tasks.last().unwrap();
-            assert_eq!(task.score, expected, "{literal}");
-            assert_eq!(task.score_is_nan, expected_nan, "{literal}");
-            assert_eq!(task.people, ["Customer"]);
-        }
-    }
-
-    #[test]
-    fn journey_actor_deduplication_uses_ecmascript_utf16_sort_order() {
-        let mut unicode = JourneyDb::default();
-        unicode.add_task("Pay", ":4: 😀, \u{e000}, 😀");
-        assert_eq!(unicode.actors_sorted(), ["😀", "\u{e000}"]);
-        assert_eq!(unicode.tasks[0].people, ["😀", "\u{e000}", "😀"]);
-
-        let mut ascii = JourneyDb::default();
-        ascii.add_task("Pay", ":4: A, Z");
-        assert_eq!(ascii.actors_sorted(), ["A", "Z"]);
-        assert_eq!(ascii.tasks[0].people, ["A", "Z"]);
-    }
-
-    #[test]
-    fn journey_actor_trimming_uses_ecmascript_whitespace() {
-        let mut db = JourneyDb::default();
-        db.add_task(
-            "Pay",
-            ":4: \u{feff}Alice\u{feff}, \u{0085}Bob\u{0085}, Alice",
-        );
-        assert_eq!(
-            db.tasks[0].people,
-            ["Alice", "\u{0085}Bob\u{0085}", "Alice"]
-        );
-        assert_eq!(db.actors_sorted(), ["Alice", "\u{0085}Bob\u{0085}"]);
-    }
 
     #[test]
     fn journey_structural_whitespace_matches_ecmascript() {
@@ -1417,36 +868,6 @@ mod tests {
     }
 
     #[test]
-    fn journey_raw_keyword_scan_distinguishes_crlf_and_preserves_token_priority() {
-        let control = OperationControl::new();
-        let title = parse_keyword_arg_one_ws("title\nValue:4:Actor", 0, "title", &control)
-            .unwrap()
-            .unwrap();
-        assert_eq!(title.text, "Value:4:Actor");
-        assert_eq!(
-            title.statement,
-            SourceSpan::new(0, "title\nValue:4:Actor".len())
-        );
-        for source in ["title\r\nValue", "title \nValue", "title\n\nValue"] {
-            assert!(
-                parse_keyword_arg_one_ws(source, 0, "title", &control)
-                    .unwrap()
-                    .is_none()
-            );
-        }
-        assert!(
-            parse_keyword_arg_one_ws("section :4", 0, "section", &control)
-                .unwrap()
-                .is_none()
-        );
-        let section = parse_keyword_arg_one_ws("section\nValue:4", 0, "section", &control)
-            .unwrap()
-            .unwrap();
-        assert_eq!(section.text, "Value");
-        assert_eq!(section.statement.end, "section\nValue".len());
-    }
-
-    #[test]
     fn journey_multiline_accessibility_prefixes_own_their_scalar_lines() {
         let parser = crate::SemanticParser::new();
         for ending in ["\n", "\r\n"] {
@@ -1661,19 +1082,6 @@ mod tests {
                 .unwrap();
             assert_eq!(&source[task.selection.start..task.selection.end], "Pay");
         }
-    }
-
-    #[test]
-    fn journey_multiline_scans_observe_cancellation_within_large_tokens() {
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(2);
-        let scalar = format!("accTitle{}:Value", "\u{feff}\n".repeat(2048));
-        assert!(parse_key_colon_value(&scalar, 0, "accTitle", &control).is_err());
-
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(3);
-        let block = format!("accDescr{{{}}}", "\u{0085}".repeat(4096));
-        assert!(parse_acc_descr_block_spanned(&mut LineCursor::new(&block), 0, &control).is_err());
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -2301,84 +1709,6 @@ R task: 5:\n",
             .compatibility_json()
             .expect("Journey compatibility projection should serialize");
         assert!(compat["tasks"][0].get("sectionIndex").is_none());
-    }
-
-    #[test]
-    fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
-        let mut db = JourneyDb {
-            acc_title: "Shopping".to_string(),
-            acc_descr: "A user journey for family shopping".to_string(),
-            ..JourneyDb::default()
-        };
-        db.add_section("Journey to the shops");
-        db.add_task("Get car keys", ":5:Dad");
-        db.add_task("Go to car", ":3:Dad, Mum, Child#1, Child#2");
-        db.add_task("Drive to supermarket", ":4:Dad");
-        db.add_section("Do shopping");
-        db.add_task("Go shopping", ":5:Mum");
-
-        let actors = db.actors_sorted();
-        assert_eq!(
-            db.tasks
-                .iter()
-                .map(|t| {
-                    json!({
-                        "score": t.score,
-                        "people": t.people,
-                        "section": t.section,
-                        "task": t.task,
-                        "type": t.task_type,
-                    })
-                })
-                .collect::<Vec<_>>(),
-            vec![
-                json!({
-                    "score": 5.0,
-                    "people": ["Dad"],
-                    "section": "Journey to the shops",
-                    "task": "Get car keys",
-                    "type": "Journey to the shops",
-                }),
-                json!({
-                    "score": 3.0,
-                    "people": ["Dad", "Mum", "Child#1", "Child#2"],
-                    "section": "Journey to the shops",
-                    "task": "Go to car",
-                    "type": "Journey to the shops",
-                }),
-                json!({
-                    "score": 4.0,
-                    "people": ["Dad"],
-                    "section": "Journey to the shops",
-                    "task": "Drive to supermarket",
-                    "type": "Journey to the shops",
-                }),
-                json!({
-                    "score": 5.0,
-                    "people": ["Mum"],
-                    "section": "Do shopping",
-                    "task": "Go shopping",
-                    "type": "Do shopping",
-                }),
-            ]
-        );
-
-        assert_eq!(
-            actors,
-            vec![
-                "Child#1".to_string(),
-                "Child#2".to_string(),
-                "Dad".to_string(),
-                "Mum".to_string()
-            ]
-        );
-        assert_eq!(
-            db.sections,
-            vec![
-                "Journey to the shops".to_string(),
-                "Do shopping".to_string()
-            ]
-        );
     }
 }
 

@@ -2,10 +2,11 @@
 
 Source parsing and semantic construction for structured Mermaid diagrams. The `diagram-gantt`
 feature scans Gantt statements, resolves dates with the supplied operation context, and builds
-typed task models. The `diagram-info` feature scans Info headers
-and statements. The `diagram-packet` feature scans Packet headers and fields and expands them
-into bounded rows. The `diagram-railroad` feature parses Railroad IR, EBNF, ABNF, and PEG into
-`merman-model` values. `diagram-sankey` parses CSV and builds the canonical graph, and
+typed task models. `diagram-info` scans Info headers and statements. `diagram-ishikawa` scans
+effects and causes and builds the flat cause tree. `diagram-journey` parses Journey statements
+and builds the typed task and section model. `diagram-packet` scans Packet headers and fields
+and expands them into bounded rows. `diagram-railroad` parses Railroad IR, EBNF, ABNF, and PEG
+into `merman-model` values. `diagram-sankey` parses CSV and builds the canonical graph, and
 `diagram-treemap` parses rows and builds the Treemap hierarchy. `editor-facts` enables syntax spans
 for editor consumers.
 

@@ -17,7 +17,7 @@ pub(crate) fn format_js_number(value: f64) -> String {
     ryu_js::Buffer::new().format(value).to_owned()
 }
 
-#[cfg(any(feature = "diagram-journey", feature = "diagram-quadrant-chart"))]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub(crate) use merman_model::number::parse_js_number;
 
 pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str> {
