@@ -1,7 +1,7 @@
 //! Mermaid 12 ELK terminal-channel straightening after endpoint clipping.
 //!
 //! Source: packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts,
-//! straightenTerminalJogs, label-aware moved-run projection and pair separation (mermaid@12.2.0).
+//! straightenTerminalJogs, label-aware moved-run projection and pair separation (mermaid@12.4.0).
 
 use crate::{LayoutLabel, LayoutPoint};
 
@@ -174,7 +174,7 @@ pub fn separate_opposite_edge_labels<'a>(
         }
         let b = labels.pop().expect("two-label bucket has a second label");
         let a = labels.pop().expect("two-label bucket has a first label");
-        if (a.y - b.y).abs() > a.height.max(b.height) {
+        if (a.y - b.y).abs() >= (a.height + b.height) / 2.0 {
             continue;
         }
         let required = a.width / 2.0 + b.width / 2.0 + 4.0;
@@ -330,6 +330,23 @@ struct BoxBounds {
     y2: f64,
 }
 
+impl BoxBounds {
+    fn for_label(label: &LayoutLabel, offset: (f64, f64)) -> Self {
+        let x = label.x + offset.0;
+        let y = label.y + offset.1;
+        Self {
+            x1: x - label.width / 2.0,
+            y1: y - label.height / 2.0,
+            x2: x + label.width / 2.0,
+            y2: y + label.height / 2.0,
+        }
+    }
+
+    fn overlaps(&self, other: &Self) -> bool {
+        self.x1 < other.x2 && other.x1 < self.x2 && self.y1 < other.y2 && other.y1 < self.y2
+    }
+}
+
 /// Source's Liang-Barsky clip: a corner or endpoint-only contact does not cover a box.
 fn segment_hits_box(a: &LayoutPoint, b: &LayoutPoint, bounds: &BoxBounds) -> bool {
     let mut t0 = 0.0_f64;
@@ -370,14 +387,13 @@ fn covers_label(
     let Some(label) = label else {
         return false;
     };
-    let x = label.x + (label_origin.0 - point_origin.0);
-    let y = label.y + (label_origin.1 - point_origin.1);
-    let bounds = BoxBounds {
-        x1: x - label.width / 2.0,
-        y1: y - label.height / 2.0,
-        x2: x + label.width / 2.0,
-        y2: y + label.height / 2.0,
-    };
+    let bounds = BoxBounds::for_label(
+        label,
+        (
+            label_origin.0 - point_origin.0,
+            label_origin.1 - point_origin.1,
+        ),
+    );
     points
         .windows(2)
         .any(|segment| segment_hits_box(&segment[0], &segment[1], &bounds))
@@ -410,6 +426,7 @@ pub fn straighten_edge_terminals<R: TerminalRoute>(
         let mut after = 0usize;
         let mut covered_before = 0usize;
         let mut covered_after = 0usize;
+        let mut collides = false;
         // Visiting short or empty routes still costs work even though they have no crossings.
         charge(routes.len())?;
         for (other_index, other) in routes.iter().enumerate() {
@@ -440,7 +457,16 @@ pub fn straighten_edge_terminals<R: TerminalRoute>(
                 .saturating_sub(1)
                 .saturating_add(candidate.len().saturating_sub(1))
                 .saturating_mul(usize::from(other_label.is_some()));
-            charge(label_checks.saturating_add(other_label_checks))?;
+            let competing_labels = if collides {
+                None
+            } else {
+                label.zip(candidate_label.as_ref()).zip(other_label)
+            };
+            charge(
+                label_checks
+                    .saturating_add(other_label_checks)
+                    .saturating_add(2 * usize::from(competing_labels.is_some())),
+            )?;
             covered_before = covered_before.saturating_add(
                 usize::from(covers_label(other.points(), other_origin, label, origin))
                     + usize::from(covers_label(
@@ -458,8 +484,16 @@ pub fn straighten_edge_terminals<R: TerminalRoute>(
                     origin,
                 )) + usize::from(covers_label(&candidate, origin, other_label, other_origin)),
             );
+            if let Some(((original, candidate), other)) = competing_labels {
+                let other_bounds = BoxBounds::for_label(
+                    other,
+                    (other_origin.0 - origin.0, other_origin.1 - origin.1),
+                );
+                collides = BoxBounds::for_label(candidate, (0.0, 0.0)).overlaps(&other_bounds)
+                    && !BoxBounds::for_label(original, (0.0, 0.0)).overlaps(&other_bounds);
+            }
         }
-        if after <= before && covered_after <= covered_before {
+        if after <= before && covered_after <= covered_before && !collides {
             charge(runs.len().saturating_add(1))?;
             routes[index].replace_terminal_points(candidate);
             routes[index].reproject_main_label(&runs);
@@ -858,6 +892,43 @@ mod tests {
     }
 
     #[test]
+    fn straightening_checks_label_boxes_even_when_neither_shaft_covers_a_label() {
+        let jog = points(&[
+            (0.0, 0.0),
+            (20.0, 0.0),
+            (20.0, 5.0),
+            (100.0, 5.0),
+            (100.0, 50.0),
+        ]);
+        for (other_y, keeps_jog) in [(-2.5, true), (-4.0, false)] {
+            let mut edges = [
+                layout_edge(
+                    "jog",
+                    "A",
+                    "B",
+                    jog.clone(),
+                    Some(label(50.0, 5.0, 20.0, 4.0)),
+                ),
+                layout_edge(
+                    "return",
+                    "B",
+                    "A",
+                    points(&[(80.0, other_y), (30.0, other_y)]),
+                    Some(label(50.0, other_y, 20.0, 4.0)),
+                ),
+            ];
+            let work = meter();
+            straighten_edge_terminals(&mut edges, |units| work.charge(units).map_err(Into::into))
+                .unwrap();
+            assert_eq!(coords(&edges[0].points) == coords(&jog), keeps_jog);
+            assert_eq!(
+                edges[0].label.as_ref().unwrap().y,
+                if keeps_jog { 5.0 } else { 0.0 }
+            );
+        }
+    }
+
+    #[test]
     fn liang_barsky_clip_preserves_source_boundary_and_diagonal_cases() {
         let bounds = BoxBounds {
             x1: 0.0,
@@ -1114,6 +1185,10 @@ mod tests {
             vec![
                 label(100.0, 0.0, 80.0, 21.0),
                 label(110.0, 200.0, 80.0, 21.0),
+            ],
+            vec![
+                label(100.0, 0.0, 80.0, 20.0),
+                label(110.0, 30.0, 80.0, 40.0),
             ],
             vec![
                 label(100.0, 0.0, 80.0, 21.0),
