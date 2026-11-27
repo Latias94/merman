@@ -1,4 +1,19 @@
-//! Flowchart-specific HTML label measurement parity helpers.
+//! Layout sizing for sanitized XHTML labels using Mermaid createText rules.
+
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+mod metrics;
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+pub use metrics::{flowchart_label_plain_text_for_layout, measure_flowchart_html_label};
+
+use super::{TextMeasurer, html_label_box::HtmlLabelBox};
+
+pub fn flowchart_html_label_box(measurer: &dyn TextMeasurer, xhtml: &str) -> Option<HtmlLabelBox> {
+    HtmlLabelBox::from_xhtml(xhtml, &mut || {
+        (!measurer.cancellation_requested()).then_some(()).ok_or(())
+    })
+    .ok()
+    .flatten()
+}
 
 pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {
     // Detect Mermaid HTML inline styling tags in a way that avoids false positives like

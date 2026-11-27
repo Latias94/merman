@@ -103,7 +103,7 @@ pub(crate) use style::{
     flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes, flowchart_insert_style_by_spelling,
-    flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
+    flowchart_split_mermaid_style_decls,
 };
 #[cfg(any(
     feature = "layout-dagre",

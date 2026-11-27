@@ -21,7 +21,6 @@ canonical-edge-paint = []
 diagram-agentflow = [
     "dep:base64",
     "dep:cssparser",
-    "dep:imagesize",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -39,10 +38,12 @@ diagram-agentflow = [
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
     "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
     "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
@@ -50,7 +51,6 @@ diagram-agentflow = [
 diagram-flowchart = [
     "dep:base64",
     "dep:cssparser",
-    "dep:imagesize",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -68,10 +68,12 @@ diagram-flowchart = [
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
     "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
     "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
@@ -79,7 +81,6 @@ diagram-flowchart = [
 diagram-swimlane = [
     "dep:base64",
     "dep:cssparser",
-    "dep:imagesize",
     "dep:indexmap",
     "dep:memchr",
     "dep:merman-markup",
@@ -97,10 +98,12 @@ diagram-swimlane = [
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
     "merman-render-core/icon-svg",
+    "merman-render-core/inline-raster-size",
     "merman-render-core/markdown-labels",
     "merman-render-core/math-labels",
     "merman-render-core/root-svg",
     "merman-render-core/rough-svg",
+    "merman-render-core/styled-html-labels",
     "merman-render-core/svg-safety",
     "merman-render-core/theme-label-background",
     "merman-render-core/theme-svg",
@@ -112,7 +115,6 @@ test-support = []
 base64 = { workspace = true, optional = true }
 cssparser = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
-imagesize = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 kurbo.workspace = true
 memchr = { workspace = true, optional = true }

@@ -8,7 +8,6 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
-pub(crate) use merman_render_core::text::styled_html::measure_styled_html_label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -25,8 +24,6 @@ pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
 pub(crate) use parity::class_canonical_marker;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use parity::er_canonical_marker;
-#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
-pub(crate) use parity::escape_xml;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
 pub(crate) use parity::state_canonical_marker;
 #[cfg(any(

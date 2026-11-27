@@ -16,6 +16,7 @@ use merman_render_core::{
         PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathExpectation,
         PreparedMathLabel, PreparedMathOccurrenceId,
     },
+    mermaid_style::HtmlTextGeometryDeclarations,
     resources::{
         OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation,
         RenderResourcePolicy, ResourceLimitExceeded,
@@ -26,6 +27,7 @@ use merman_render_core::{
             FlowchartLabelMetricsRequest, flowchart_label_html_source,
             flowchart_label_sanitize_config,
         },
+        html_label_layout::measure_flowchart_html_label,
         literal_label::{FlowchartSvgLabelSource, FlowchartSvgWidthMode},
     },
 };
@@ -375,6 +377,14 @@ impl PreparedFlowchartHtmlLabel {
             xhtml,
             _retained_reservation: reservation,
         })
+    }
+
+    pub fn layout_metrics(
+        &self,
+        request: FlowchartLabelMetricsRequest<'_>,
+        geometry: HtmlTextGeometryDeclarations,
+    ) -> TextMetrics {
+        measure_flowchart_html_label(request, &self.xhtml, geometry, true)
     }
 
     pub fn xhtml(&self) -> &str {

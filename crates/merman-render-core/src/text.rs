@@ -20,6 +20,9 @@ mod css_font;
 #[cfg(feature = "xhtml-labels")]
 #[doc(hidden)]
 pub mod html_label_box;
+#[cfg(feature = "styled-html-labels")]
+#[doc(hidden)]
+pub mod html_label_layout;
 #[cfg(feature = "text-layout")]
 mod icons;
 #[cfg(all(feature = "text-layout", feature = "svg-parse"))]

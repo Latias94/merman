@@ -1,8 +1,74 @@
 //! Mermaid edge-label layers and complete SVG edge labels for the Flow families.
 
-use merman_render_core::{Result, svg_output::SvgOutput};
+use std::borrow::Cow;
 
+use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Result,
+    math::MathRenderer,
+    svg_output::SvgOutput,
+    text::{TextMeasurer, TextStyle},
+};
+
+use crate::{
+    projection::FlowchartEdgeKey,
+    style::FlowchartEdgeStylePlan,
+    svg_label::{
+        FlowchartSvgLabelOwner, FlowchartSvgLabelSidecar, flowchart_label_html_with_prepared_label,
+    },
+};
+
+mod ordinary;
 pub mod svg;
+mod swimlane;
+
+pub use ordinary::{FlowchartEdgeLabelPlacement, OrdinaryEdgeLabel, write_ordinary_edge_label};
+pub use swimlane::{SwimlaneEdgeLabel, SwimlaneEdgeLabelPaint};
+
+/// Text services and prepared occurrences from the active Flow render operation.
+pub struct FlowchartEdgeLabelText<'a> {
+    pub edge_style_plan: &'a FlowchartEdgeStylePlan,
+    pub svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecar>,
+    pub measurer: &'a dyn TextMeasurer,
+    pub math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub text_style: &'a TextStyle,
+    pub config: &'a PresentationConfig,
+    pub default_text_color: &'a str,
+}
+
+impl<'a> FlowchartEdgeLabelText<'a> {
+    fn metrics_style(
+        &self,
+        key: FlowchartEdgeKey,
+        source_label_empty: bool,
+    ) -> Result<&'a TextStyle> {
+        if source_label_empty {
+            Ok(self.text_style)
+        } else {
+            self.edge_style_plan.terminal_label_text_style(key)
+        }
+    }
+
+    fn label_html(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        label_text: &'a str,
+        label_type: &str,
+    ) -> Cow<'a, str> {
+        let prepared_label = self
+            .svg_label_sidecar
+            .map_or(Default::default(), |sidecar| {
+                sidecar.prepared_label_for_terminal(owner, label_text)
+            });
+        flowchart_label_html_with_prepared_label(
+            label_text,
+            label_type,
+            self.config,
+            self.math_renderer,
+            prepared_label,
+        )
+    }
+}
 
 const EMPTY_BACKGROUND: &str = r#"<g><rect class="background" style="stroke: none"/></g>"#;
 

@@ -26,6 +26,7 @@ html = ["svg-output", "merman-markup/html"]
 icon-registry = ["resources", "dep:quick-xml", "dep:roxmltree", "dep:serde_json"]
 icon-svg = ["icon-registry", "html", "svg-parse"]
 route-paint = ["dep:kurbo"]
+inline-raster-size = ["svg-safety", "dep:imagesize", "dep:kurbo"]
 layout-cytoscape = ["resources", "dep:manatee"]
 layout-dagre = ["resources", "dep:dugong"]
 layout-elk = ["resources", "dep:merman-layout-elk"]
@@ -69,6 +70,7 @@ cssparser = { workspace = true, optional = true }
 data-url = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 euclid = { workspace = true, optional = true }
+imagesize = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 memchr = { workspace = true, optional = true }
 manatee = { workspace = true, optional = true }

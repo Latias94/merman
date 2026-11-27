@@ -9,7 +9,7 @@ pub(crate) use merman_render_flow::svg_label::{
 };
 
 #[cfg(test)]
-use crate::graph_label::{
+use merman_render_core::text::create_text_html::{
     is_single_img_label, normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
 };
 

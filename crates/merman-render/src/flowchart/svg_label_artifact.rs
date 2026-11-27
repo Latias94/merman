@@ -496,11 +496,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                 .get(owner)
                 .filter(|prepared| prepared.matches(request.raw_label, request.label_type))
             {
-                return crate::graph_label::flowchart_html_label_metrics_with_geometry(
-                    request,
-                    prepared.xhtml(),
-                    html_geometry,
-                );
+                return prepared.layout_metrics(request, html_geometry);
             }
         }
         if !self.record_render_id(owner, render_id) {
@@ -514,11 +510,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                 return failed_prepared_metrics();
             }
         };
-        let metrics = crate::graph_label::flowchart_html_label_metrics_with_geometry(
-            request,
-            prepared.xhtml(),
-            html_geometry,
-        );
+        let metrics = prepared.layout_metrics(request, html_geometry);
         self.pending.borrow_mut().html.insert(owner, prepared);
         metrics
     }

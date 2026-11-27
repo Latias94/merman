@@ -8,10 +8,12 @@ use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 use super::SvgOutput;
 
 pub(super) use merman_render_core::html::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
+pub(crate) use merman_render_core::xml::escape_attr;
+#[cfg(test)]
+use merman_render_core::xml::escape_xml;
 pub(super) use merman_render_core::xml::{
     EscapeAttrDisplay, escape_attr_display, escape_xml_display, escape_xml_into,
 };
-pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 
 pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
     fmt(v)
