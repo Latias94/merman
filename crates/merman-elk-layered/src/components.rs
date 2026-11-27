@@ -119,7 +119,7 @@ pub(crate) fn split(
             let mut component = graph.component_shell();
             component.layerless_nodes = original_nodes
                 .iter()
-                .map(|&node| graph.layerless_nodes[node].clone())
+                .map(|&node| graph.layerless_nodes[node].copy_preserving_reference_domains())
                 .collect();
             let priority = component
                 .layerless_nodes
@@ -299,25 +299,28 @@ fn remap_references(
             }
         }
     }
+    let domain = graph.reference_domain().clone();
     let graph_id = graph.id.clone();
     graph.try_for_each_graph_mut(|current| {
         for node in &mut current.layerless_nodes {
             if let Some(origin) = &mut node.origin_port
-                && origin.graph_id == graph_id
+                && origin.in_domain(&domain)
             {
                 map_port(&mut origin.port, nodes)?;
             }
             for port in &mut node.ports {
                 if let Some(dummy) = &mut port.port_dummy
-                    && dummy.graph_id == graph_id
+                    && dummy.in_domain(&domain)
                 {
                     dummy.node = map_index(nodes, dummy.node, "graph port dummy")?;
                 }
             }
         }
-        for edge in &mut current.cross_hierarchy_edges {
-            if edge.graph_id == graph_id {
-                edge.edge = map_index(edges, edge.edge, "hierarchy edge")?;
+        if current.reference_domain().same_arena(&domain) {
+            for edge in &mut current.cross_hierarchy_edges {
+                if edge.graph_id == graph_id {
+                    edge.edge = map_index(edges, edge.edge, "hierarchy edge")?;
+                }
             }
         }
         Ok(())

@@ -296,10 +296,7 @@ fn layer_sweep_type_decider_uses_origin_port_side_for_external_dummy() {
     let mut external = LNode::new("external:parent", 0.0, 0.0, None);
     external.kind = LNodeKind::ExternalPort;
     external.external_port_side = PortSide::West;
-    external.origin_port = Some(crate::graph::GraphPortRef {
-        graph_id: parent_graph.id.clone(),
-        port: origin,
-    });
+    external.origin_port = Some(parent_graph.scoped_port(origin));
     child_graph.layerless_nodes.push(external);
 
     assert_eq!(
@@ -310,7 +307,7 @@ fn layer_sweep_type_decider_uses_origin_port_side_for_external_dummy() {
 
 #[test]
 fn compound_port_sweep_remaps_dummy_origins_in_current_side_order() {
-    use crate::graph::{GraphNodeRef, GraphPortRef, LPort};
+    use crate::graph::LPort;
 
     let mut parent = LGraph::new("root", LayeredOptions::default());
     let mut owner = LNode::new("owner", 10.0, 10.0, None);
@@ -328,31 +325,22 @@ fn compound_port_sweep_remaps_dummy_origins_in_current_side_order() {
         port.side = side;
         port.inside_connections = true;
         if index < 2 {
-            port.port_dummy = Some(GraphNodeRef {
-                graph_id: child.id.clone(),
-                node: index,
-            });
+            port.port_dummy = Some(child.scoped_node(index));
         }
         owner.ports.push(port);
         let mut dummy = LNode::new(format!("dummy-{index}"), 0.0, 0.0, None);
         dummy.kind = LNodeKind::ExternalPort;
-        dummy.origin_port = Some(GraphPortRef {
-            graph_id: parent.id.clone(),
+        dummy.origin_port = Some(parent.scoped_port(PortRef {
             // The parent backlink wins when it disagrees with the numeric origin.
-            port: PortRef {
-                node: 0,
-                port: if index == 0 { 2 } else { index },
-            },
-        });
+            node: 0,
+            port: if index == 0 { 2 } else { index },
+        }));
         child.layerless_nodes.push(dummy);
     }
     let mut grandchild = LGraph::new("grandchild", LayeredOptions::default());
-    for graph_id in [&parent.id, &child.id] {
+    for origin_graph in [&parent, &child] {
         let mut dummy = LNode::new("nested-dummy", 0.0, 0.0, None);
-        dummy.origin_port = Some(GraphPortRef {
-            graph_id: graph_id.clone(),
-            port: PortRef { node: 0, port: 3 },
-        });
+        dummy.origin_port = Some(origin_graph.scoped_port(PortRef { node: 0, port: 3 }));
         grandchild.layerless_nodes.push(dummy);
     }
     child.layerless_nodes[0].nested_graph = Some(Box::new(grandchild));
@@ -962,10 +950,7 @@ fn north_south_hierarchical_ports_use_source_barycenter_keys() {
         (north_output, 2usize),
         (south_both, 3usize),
     ] {
-        graph.layerless_nodes[0].ports[port.port].port_dummy = Some(crate::graph::GraphNodeRef {
-            graph_id: "root".to_string(),
-            node: dummy,
-        });
+        graph.layerless_nodes[0].ports[port.port].port_dummy = Some(graph.scoped_node(dummy));
     }
 
     let in_dummy_port = graph

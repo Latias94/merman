@@ -6,6 +6,8 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
+use std::{fmt, sync::Arc};
+
 use super::options::{
     Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
     PortConstraints,
@@ -15,6 +17,7 @@ use crate::random::{
 };
 use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
+mod clone_tree;
 mod port_remap;
 pub(crate) use port_remap::{FlatPortRemap, PendingPortRemap};
 
@@ -156,7 +159,7 @@ impl ReorderNodePortsWorkContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct LGraph {
     pub id: String,
     pub options: LayeredOptions,
@@ -180,11 +183,50 @@ pub struct LGraph {
     random_seed_context: GraphRandomSeedContext,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 struct GraphRandomSeedContext {
     authority: RandomSeedAuthority,
-    graph_scope: GraphSeedScope,
+    domain: GraphReferenceDomain,
     configuration_invocations: u64,
+}
+
+impl GraphRandomSeedContext {
+    fn seed_scope(&self) -> &GraphSeedScope {
+        self.domain.0.as_ref()
+    }
+}
+
+impl PartialEq for GraphRandomSeedContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.authority == other.authority
+            && self.seed_scope() == other.seed_scope()
+            && self.configuration_invocations == other.configuration_invocations
+    }
+}
+
+impl Eq for GraphRandomSeedContext {}
+
+impl fmt::Debug for GraphRandomSeedContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GraphRandomSeedContext")
+            .field("authority", &self.authority)
+            .field("graph_scope", self.seed_scope())
+            .field("configuration_invocations", &self.configuration_invocations)
+            .finish()
+    }
+}
+
+/// A graph domain is allocated once per graph, independently of its display name or seed.
+/// Structural equality remains value-based, while only internal views of the same graph share
+/// reference identity. Copying a public graph or node rebinds references into its copied tree.
+#[derive(Clone)]
+pub(crate) struct GraphReferenceDomain(Arc<GraphSeedScope>);
+
+impl GraphReferenceDomain {
+    pub(crate) fn same_arena(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl LGraph {
@@ -235,6 +277,20 @@ impl LGraph {
         random_seed_authority: RandomSeedAuthority,
         graph_scope: GraphSeedScope,
     ) -> Self {
+        Self::new_at_reference_domain(
+            id,
+            options,
+            random_seed_authority,
+            GraphReferenceDomain(Arc::new(graph_scope)),
+        )
+    }
+
+    fn new_at_reference_domain(
+        id: impl Into<String>,
+        options: LayeredOptions,
+        random_seed_authority: RandomSeedAuthority,
+        domain: GraphReferenceDomain,
+    ) -> Self {
         let id = id.into();
         Self {
             id,
@@ -260,20 +316,40 @@ impl LGraph {
             in_layer_successor_constraints_between_non_dummies: false,
             random_seed_context: GraphRandomSeedContext {
                 authority: random_seed_authority,
-                graph_scope,
+                domain,
                 configuration_invocations: 0,
             },
+        }
+    }
+
+    pub(crate) fn reference_domain(&self) -> &GraphReferenceDomain {
+        &self.random_seed_context.domain
+    }
+
+    pub(crate) fn scoped_node(&self, node: usize) -> GraphNodeRef {
+        GraphNodeRef {
+            graph_id: self.id.clone(),
+            domain: self.reference_domain().clone(),
+            node,
+        }
+    }
+
+    pub(crate) fn scoped_port(&self, port: PortRef) -> GraphPortRef {
+        GraphPortRef {
+            graph_id: self.id.clone(),
+            domain: self.reference_domain().clone(),
+            port,
         }
     }
 
     /// Copies configured properties without copying the graph's dense arenas.
     /// Components use the already-resolved random stream through their serial executor.
     pub(crate) fn component_shell(&self) -> Self {
-        let mut graph = Self::new_with_random_seed_authority_at_scope(
+        let mut graph = Self::new_at_reference_domain(
             self.id.clone(),
             self.options.clone(),
             self.random_seed_context.authority,
-            self.random_seed_context.graph_scope.clone(),
+            self.reference_domain().clone(),
         );
         graph.options.node_size_minimum = None;
         graph.padding = self.padding;
@@ -291,7 +367,7 @@ impl LGraph {
         let invocation = self.random_seed_context.configuration_invocations;
         let seed = self.random_seed_context.authority.resolve_scope(
             self.options.random_seed,
-            &self.random_seed_context.graph_scope,
+            self.random_seed_context.seed_scope(),
             RandomSeedPhase::GraphConfigurator,
             invocation,
         )?;
@@ -412,7 +488,7 @@ impl Default for Layer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct LNode {
     pub id: String,
     pub kind: LNodeKind,
@@ -645,16 +721,78 @@ pub struct PortRef {
     pub port: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct GraphNodeRef {
     pub graph_id: String,
+    domain: GraphReferenceDomain,
     pub node: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl PartialEq for GraphNodeRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.graph_id == other.graph_id && self.node == other.node
+    }
+}
+
+impl Eq for GraphNodeRef {}
+
+impl fmt::Debug for GraphNodeRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GraphNodeRef")
+            .field("graph_id", &self.graph_id)
+            .field("node", &self.node)
+            .finish()
+    }
+}
+
+impl GraphNodeRef {
+    pub(crate) fn belongs_to(&self, graph: &LGraph) -> bool {
+        self.in_domain(graph.reference_domain())
+    }
+
+    pub(crate) fn in_domain(&self, domain: &GraphReferenceDomain) -> bool {
+        self.domain.same_arena(domain)
+    }
+}
+
+#[derive(Clone)]
 pub struct GraphPortRef {
     pub graph_id: String,
+    domain: GraphReferenceDomain,
     pub port: PortRef,
+}
+
+impl PartialEq for GraphPortRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.graph_id == other.graph_id && self.port == other.port
+    }
+}
+
+impl Eq for GraphPortRef {}
+
+impl fmt::Debug for GraphPortRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GraphPortRef")
+            .field("graph_id", &self.graph_id)
+            .field("port", &self.port)
+            .finish()
+    }
+}
+
+impl GraphPortRef {
+    pub(crate) fn belongs_to(&self, graph: &LGraph) -> bool {
+        self.in_domain(graph.reference_domain())
+    }
+
+    pub(crate) fn in_domain(&self, domain: &GraphReferenceDomain) -> bool {
+        self.domain.same_arena(domain)
+    }
+
+    pub(crate) fn same_target(&self, other: &Self) -> bool {
+        self.port == other.port && self.in_domain(&other.domain)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1362,9 +1500,9 @@ impl LGraph {
             }
         };
 
-        let graph_id = self.id.as_str();
+        let domain = &self.random_seed_context.domain;
         for node in &mut self.layerless_nodes {
-            remap_origin_port(&mut node.origin_port, graph_id, &remap_port);
+            remap_origin_port(&mut node.origin_port, domain, &remap_port);
             if let Some(port) = node.long_edge_source.as_mut() {
                 remap_port(port);
             }
@@ -1372,7 +1510,7 @@ impl LGraph {
                 remap_port(port);
             }
             if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-                remap_descendant_origins(nested_graph, graph_id, &remap_port);
+                remap_descendant_origins(nested_graph, domain, &remap_port);
             }
         }
         can_defer
@@ -1519,21 +1657,25 @@ fn centered_port_position(node_size: LSize, side: PortSide) -> LPoint {
 
 fn remap_origin_port(
     graph_ref: &mut Option<GraphPortRef>,
-    graph_id: &str,
+    domain: &GraphReferenceDomain,
     remap: &impl Fn(&mut PortRef),
 ) {
     if let Some(port_ref) = graph_ref.as_mut()
-        && port_ref.graph_id == graph_id
+        && port_ref.in_domain(domain)
     {
         remap(&mut port_ref.port);
     }
 }
 
-fn remap_descendant_origins(graph: &mut LGraph, graph_id: &str, remap: &impl Fn(&mut PortRef)) {
+fn remap_descendant_origins(
+    graph: &mut LGraph,
+    domain: &GraphReferenceDomain,
+    remap: &impl Fn(&mut PortRef),
+) {
     for node in &mut graph.layerless_nodes {
-        remap_origin_port(&mut node.origin_port, graph_id, remap);
+        remap_origin_port(&mut node.origin_port, domain, remap);
         if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            remap_descendant_origins(nested_graph, graph_id, remap);
+            remap_descendant_origins(nested_graph, domain, remap);
         }
     }
 }
@@ -1756,6 +1898,184 @@ mod tests {
     }
 
     #[test]
+    fn scoped_references_follow_their_arena_not_the_seed_scope_or_display_id() {
+        let seed_scope = GraphSeedScope::root("same");
+        let new_graph = |scope| {
+            let mut graph = LGraph::new_with_random_seed_authority_at_scope(
+                "same",
+                LayeredOptions::default(),
+                RandomSeedAuthority::require_explicit(),
+                scope,
+            );
+            let mut owner = LNode::new("owner", 0.0, 0.0, None);
+            owner.ports.push(LPort::new("out", 0, PortType::Output));
+            graph.layerless_nodes.push(owner);
+            graph
+        };
+        let graph = new_graph(seed_scope.clone());
+        let independent = new_graph(seed_scope);
+        let different_seed = new_graph(GraphSeedScope::root("another-caller"));
+        let copied = graph.clone();
+        let component = graph.component_shell();
+        let node = graph.scoped_node(0);
+        let endpoint = PortRef { node: 0, port: 0 };
+        let port = graph.scoped_port(endpoint);
+
+        assert_eq!(graph, independent);
+        assert_eq!(graph, copied);
+        assert_ne!(graph, different_seed);
+        assert!(!node.belongs_to(&copied));
+        assert!(port.belongs_to(&component));
+        assert!(!node.belongs_to(&independent));
+        assert!(!port.same_target(&independent.scoped_port(endpoint)));
+        assert!(!node.belongs_to(&different_seed));
+        assert!(!port.same_target(&different_seed.scoped_port(endpoint)));
+        let boundary = |target: &LGraph| {
+            let mut dummy = LNode::new("boundary", 0.0, 0.0, None);
+            dummy.origin_port = Some(target.scoped_port(endpoint));
+            let mut own_port = LPort::new("external", 0, PortType::Input);
+            own_port.port_dummy = Some(target.scoped_node(0));
+            dummy.ports.push(own_port);
+            dummy
+        };
+        assert_eq!(boundary(&graph), boundary(&different_seed));
+        assert_eq!(
+            format!("{node:?}"),
+            r#"GraphNodeRef { graph_id: "same", node: 0 }"#
+        );
+        assert_eq!(
+            format!("{port:?}"),
+            r#"GraphPortRef { graph_id: "same", port: PortRef { node: 0, port: 0 } }"#
+        );
+    }
+
+    #[test]
+    fn attaching_renamed_template_clones_does_not_alias_parent_origins() {
+        let mut template = LGraph::new("template", LayeredOptions::default());
+        let mut owner = LNode::new("owner", 0.0, 0.0, None);
+        owner.ports.push(LPort::new("a", 0, PortType::Input));
+        owner.ports.push(LPort::new("b", 0, PortType::Output));
+        template.layerless_nodes.push(owner);
+        let mut local = LNode::new("local-dummy", 0.0, 0.0, None);
+        local.kind = LNodeKind::ExternalPort;
+        local.origin_port = Some(template.scoped_port(PortRef { node: 0, port: 1 }));
+        template.layerless_nodes.push(local);
+
+        let mut parent = template.clone();
+        let mut child = template.clone();
+        parent.id = "parent".into();
+        child.id = "child".into();
+        let mut boundary = LNode::new("parent-dummy", 0.0, 0.0, None);
+        boundary.kind = LNodeKind::ExternalPort;
+        boundary.origin_port = Some(parent.scoped_port(PortRef { node: 0, port: 1 }));
+        child.layerless_nodes.push(boundary);
+        parent.layerless_nodes[0].ports[1].port_dummy = Some(child.scoped_node(2));
+        parent.layerless_nodes[0].nested_graph = Some(Box::new(child));
+        let mut copied_tree = parent.clone();
+        assert_eq!(copied_tree, parent);
+
+        for graph in [&mut parent, &mut copied_tree] {
+            let child = graph.layerless_nodes[0].nested_graph.as_deref().unwrap();
+            let backlink = graph.layerless_nodes[0].ports[1]
+                .port_dummy
+                .as_ref()
+                .unwrap();
+            assert!(backlink.belongs_to(child));
+            let child = graph.layerless_nodes[0]
+                .nested_graph
+                .as_deref_mut()
+                .unwrap();
+            assert!(child.reorder_node_ports(0, [1, 0]));
+            let child = graph.layerless_nodes[0].nested_graph.as_deref().unwrap();
+            let local = child.layerless_nodes[1].origin_port.as_ref().unwrap();
+            assert!(local.belongs_to(child));
+            assert_eq!(local.port.port, 0);
+            let boundary = child.layerless_nodes[2].origin_port.as_ref().unwrap();
+            assert_eq!(boundary.port.port, 1);
+            assert!(!boundary.belongs_to(child));
+            assert!(boundary.belongs_to(graph));
+
+            assert!(graph.reorder_node_ports(0, [1, 0]));
+            let child = graph.layerless_nodes[0].nested_graph.as_deref().unwrap();
+            let boundary = child.layerless_nodes[2].origin_port.as_ref().unwrap();
+            assert_eq!(boundary.port.port, 0);
+        }
+
+        let node_copy = parent.layerless_nodes[0].clone();
+        let child_copy = node_copy.nested_graph.as_deref().unwrap();
+        let backlink = node_copy.ports[0].port_dummy.as_ref().unwrap();
+        assert!(backlink.belongs_to(child_copy));
+        assert!(!backlink.belongs_to(parent.layerless_nodes[0].nested_graph.as_deref().unwrap()));
+        assert!(
+            child_copy.layerless_nodes[2]
+                .origin_port
+                .as_ref()
+                .unwrap()
+                .belongs_to(&parent)
+        );
+    }
+
+    #[test]
+    fn deep_graph_clone_rebinds_external_dummies_on_a_small_stack() {
+        let result = std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                fn attach(graph: &mut LGraph, child: LGraph) {
+                    let mut owner = LNode::new("owner", 0.0, 0.0, None);
+                    let mut port = LPort::new("port", 0, PortType::Output);
+                    port.port_dummy = Some(child.scoped_node(0));
+                    owner.ports.push(port);
+                    owner.nested_graph = Some(Box::new(child));
+                    graph.layerless_nodes.push(owner);
+                }
+
+                fn drop_chain(mut graph: Box<LGraph>) {
+                    while let Some(child) = graph.layerless_nodes[0].nested_graph.take() {
+                        graph = child;
+                    }
+                }
+
+                let depth = 512;
+                let mut root = LGraph::new("same", LayeredOptions::default());
+                let mut child = LGraph::new("same", LayeredOptions::default());
+                let mut dummy = LNode::new("deep-dummy", 0.0, 0.0, None);
+                dummy.kind = LNodeKind::ExternalPort;
+                dummy.origin_port = Some(root.scoped_port(PortRef { node: 0, port: 0 }));
+                child.layerless_nodes.push(dummy);
+                for _ in 1..depth {
+                    let mut graph = LGraph::new("same", LayeredOptions::default());
+                    attach(&mut graph, child);
+                    child = graph;
+                }
+                attach(&mut root, child);
+
+                let copied = root.clone();
+                let mut cursor = &copied;
+                let mut visited = 0;
+                let mut backlinks_match = true;
+                while let Some(child) = cursor.layerless_nodes[0].nested_graph.as_deref() {
+                    backlinks_match &= cursor.layerless_nodes[0].ports[0]
+                        .port_dummy
+                        .as_ref()
+                        .is_some_and(|reference| reference.belongs_to(child));
+                    visited += 1;
+                    cursor = child;
+                }
+                let origin_rebound = cursor.layerless_nodes[0]
+                    .origin_port
+                    .as_ref()
+                    .is_some_and(|origin| origin.belongs_to(&copied) && !origin.belongs_to(&root));
+                drop_chain(Box::new(copied));
+                drop_chain(Box::new(root));
+                (visited == depth, backlinks_match, origin_rebound)
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(result, (true, true, true));
+    }
+
+    #[test]
     fn reorder_node_ports_rewrites_nested_external_dummy_origins() {
         let mut parent = LGraph::new("root", LayeredOptions::default());
         let mut compound = LNode::new("cluster", 10.0, 10.0, Some(0));
@@ -1765,10 +2085,7 @@ mod tests {
         let mut nested = LGraph::new("cluster", LayeredOptions::default());
         let mut dummy = LNode::new("external:cluster", 0.0, 0.0, None);
         dummy.kind = LNodeKind::ExternalPort;
-        dummy.origin_port = Some(GraphPortRef {
-            graph_id: "root".to_string(),
-            port: PortRef { node: 0, port: 1 },
-        });
+        dummy.origin_port = Some(parent.scoped_port(PortRef { node: 0, port: 1 }));
         nested.layerless_nodes.push(dummy);
         compound.nested_graph = Some(Box::new(nested));
         parent.layerless_nodes.push(compound);
@@ -1815,20 +2132,14 @@ mod tests {
         let mut nested = LGraph::new("child", LayeredOptions::default());
         let mut external = LNode::new("external", 0.0, 0.0, None);
         external.kind = LNodeKind::ExternalPort;
-        external.origin_port = Some(GraphPortRef {
-            graph_id: "root".to_string(),
-            port: PortRef { node: 0, port: 2 },
-        });
+        external.origin_port = Some(graph.scoped_port(PortRef { node: 0, port: 2 }));
         nested.layerless_nodes.push(external);
         owner.nested_graph = Some(Box::new(nested));
         graph.layerless_nodes.push(owner);
 
         let mut target = LNode::new("B", 10.0, 10.0, Some(1));
         target.ports.push(LPort::new("in", 1, PortType::Input));
-        target.origin_port = Some(GraphPortRef {
-            graph_id: "root".to_string(),
-            port: PortRef { node: 0, port: 1 },
-        });
+        target.origin_port = Some(graph.scoped_port(PortRef { node: 0, port: 1 }));
         target.long_edge_source = Some(PortRef { node: 0, port: 0 });
         target.long_edge_target = Some(PortRef { node: 0, port: 2 });
         graph.layerless_nodes.push(target);
@@ -1939,7 +2250,8 @@ mod tests {
         let mut child = full.layerless_nodes[0].nested_graph.take().unwrap();
         let external = child.layerless_nodes.pop().unwrap();
         let mut foreign = external.clone();
-        foreign.origin_port.as_mut().unwrap().graph_id = "peer".to_string();
+        let peer = LGraph::new("peer", LayeredOptions::default());
+        foreign.origin_port = Some(peer.scoped_port(external.origin_port.as_ref().unwrap().port));
         full.layerless_nodes.extend([external, foreign]);
         full.layerless_nodes[1]
             .ports

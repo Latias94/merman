@@ -13,7 +13,7 @@
 use std::collections::VecDeque;
 
 use crate::graph::{
-    LGraph, LMargin, LNodeKind, LPoint, LSize, PortRef, PortSide, SelfHyperLoop,
+    GraphNodeRef, LGraph, LMargin, LNodeKind, LPoint, LSize, PortRef, PortSide, SelfHyperLoop,
     SelfHyperLoopLabels, SelfLoopEdge, SelfLoopHolder, SelfLoopLabelAlignment, SelfLoopLabelRef,
     SelfLoopPort, SelfLoopType,
 };
@@ -983,7 +983,7 @@ fn north_south_port_connection_sides(graph: &LGraph, port: &crate::graph::LPort)
     let Some(dummy_ref) = port.port_dummy.as_ref() else {
         return Vec::new();
     };
-    let Some(dummy_graph) = graph_by_id(graph, dummy_ref.graph_id.as_str()) else {
+    let Some(dummy_graph) = graph_for_reference(graph, dummy_ref) else {
         return Vec::new();
     };
     let Some(dummy_node) = dummy_graph.layerless_nodes.get(dummy_ref.node) else {
@@ -995,7 +995,9 @@ fn north_south_port_connection_sides(graph: &LGraph, port: &crate::graph::LPort)
         .iter()
         .filter(|_| {
             dummy_node.origin_port.as_ref().is_some_and(|origin| {
-                origin.port.node == port.node && origin.port.port == port_index(graph, port)
+                origin.belongs_to(graph)
+                    && origin.port.node == port.node
+                    && origin.port.port == port_index(graph, port)
             })
         })
         .filter(|dummy_port| {
@@ -1020,8 +1022,8 @@ fn port_index(graph: &LGraph, port: &crate::graph::LPort) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-fn graph_by_id<'a>(graph: &'a LGraph, id: &str) -> Option<&'a LGraph> {
-    if graph.id == id {
+fn graph_for_reference<'a>(graph: &'a LGraph, reference: &GraphNodeRef) -> Option<&'a LGraph> {
+    if reference.belongs_to(graph) {
         return Some(graph);
     }
 
@@ -1029,7 +1031,7 @@ fn graph_by_id<'a>(graph: &'a LGraph, id: &str) -> Option<&'a LGraph> {
         .layerless_nodes
         .iter()
         .filter_map(|node| node.nested_graph.as_deref())
-        .find_map(|nested| graph_by_id(nested, id))
+        .find_map(|nested| graph_for_reference(nested, reference))
 }
 
 fn remap_holder_ports(holder: &mut SelfLoopHolder, old_to_new: &[usize]) {
