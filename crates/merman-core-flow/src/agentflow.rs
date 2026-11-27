@@ -4,7 +4,9 @@
 //! containers, metadata, and edge operators.
 
 use crate::grid::{InlineGridCoordinates, InlineGridReplay};
-use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_controlled;
+use merman_core_preprocess::yaml::{
+    InlineGridNonfinite, parse_mermaid_inline_yaml_with_root_fields_controlled,
+};
 use merman_model::families::agentflow::{
     ALLOWED_SHAPES, AgentflowAuthoredStyles, AgentflowConnector, AgentflowDiagnostic,
     AgentflowDiagnosticPosition, AgentflowDiagramModel, AgentflowEdge, AgentflowEdgeSemantic,
@@ -174,6 +176,7 @@ struct Context {
     label_type: Option<&'static str>,
     metadata: Map<String, Value>,
     metadata_span: Option<SourceSpan>,
+    grid_nonfinite: InlineGridNonfinite,
     nodes: Vec<String>,
     direction: Option<String>,
     global: bool,
@@ -417,52 +420,40 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("flow")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, title, label_type, metadata, metadata_span) = if rest.trim().is_empty() {
-                    (None, None, Some("markdown"), Map::new(), None)
+                let context = if rest.trim().is_empty() {
+                    Context {
+                        label_type: Some("markdown"),
+                        ..Default::default()
+                    }
                 } else {
-                    match parse_declaration(
+                    let declaration = match parse_declaration(
                         rest,
                         line_start + line.find(trimmed).unwrap_or(0) + "flow".len(),
                         rest,
+                        self.grid_replay.is_some(),
                         self.control,
                     ) {
-                        Ok(Declaration {
-                            id,
-                            #[cfg(feature = "editor-facts")]
-                            id_span,
-                            label: title,
-                            label_type,
-                            metadata,
-                            metadata_span,
-                            ..
-                        }) => {
-                            #[cfg(feature = "editor-facts")]
-                            self.observe_identifier(
-                                &id,
-                                AgentflowIdentifierKind::ContainerDeclaration,
-                                id_span,
-                            );
-                            (
-                                Some(id),
-                                title,
-                                label_type.or(Some("text")),
-                                metadata,
-                                metadata_span,
-                            )
-                        }
+                        Ok(value) => value,
                         Err(error) => return Ok(Err(error)),
+                    };
+                    #[cfg(feature = "editor-facts")]
+                    self.observe_identifier(
+                        &declaration.id,
+                        AgentflowIdentifierKind::ContainerDeclaration,
+                        declaration.id_span,
+                    );
+                    Context {
+                        id: Some(declaration.id),
+                        title: declaration.label,
+                        label_type: declaration.label_type.or(Some("text")),
+                        metadata: declaration.metadata,
+                        metadata_span: declaration.metadata_span,
+                        grid_nonfinite: declaration.grid_nonfinite,
+                        declaration_span: Some(span_of(line_start, line, trimmed)),
+                        ..Default::default()
                     }
                 };
-                let declaration_span = id.as_ref().map(|_| span_of(line_start, line, trimmed));
-                self.contexts.push(Context {
-                    id,
-                    title,
-                    label_type,
-                    metadata,
-                    metadata_span,
-                    declaration_span,
-                    ..Default::default()
-                });
+                self.contexts.push(context);
                 continue;
             }
             if let Some(rest) = trimmed.strip_prefix("connector")
@@ -472,6 +463,7 @@ impl<'a> Parser<'a> {
                     rest,
                     line_start + line.find(trimmed).unwrap_or(0) + "connector".len(),
                     rest,
+                    self.grid_replay.is_some(),
                     self.control,
                 ) {
                     Ok(value) => value,
@@ -505,6 +497,7 @@ impl<'a> Parser<'a> {
                 let title = declaration.label.filter(|title| !title.is_empty());
                 let metadata = declaration.metadata;
                 let metadata_span = declaration.metadata_span;
+                let grid_nonfinite = declaration.grid_nonfinite;
                 self.upsert_connector(id.clone(), title.clone(), Map::new());
                 let node_index = self.upsert_node(Declaration {
                     id: id.clone(),
@@ -514,19 +507,27 @@ impl<'a> Parser<'a> {
                     syntax_shape: None,
                     metadata: Map::new(),
                     metadata_span: None,
+                    grid_nonfinite: InlineGridNonfinite::default(),
                     authored_shape: None,
                     class: None,
                 });
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
                 if let Some(&index) = self.sub_graph_index.get(&id) {
                     if let Some(replay) = &mut self.grid_replay {
-                        replay.subgraphs.update(index, &metadata, metadata_span);
+                        replay
+                            .subgraphs
+                            .update(index, &metadata, metadata_span, grid_nonfinite);
                     }
                     self.sub_graphs[index].metadata.extend(metadata);
                 } else {
                     let index = self.connector_index[&id];
                     if let Some(replay) = &mut self.grid_replay {
-                        replay.vertices.update(node_index, &metadata, metadata_span);
+                        replay.vertices.update(
+                            node_index,
+                            &metadata,
+                            metadata_span,
+                            grid_nonfinite,
+                        );
                     }
                     self.connectors[index].metadata.extend(metadata);
                 }
@@ -677,7 +678,13 @@ impl<'a> Parser<'a> {
         line: &str,
         #[cfg(feature = "editor-facts")] reference: bool,
     ) -> std::result::Result<(String, bool), ParseFailure> {
-        let declaration = parse_declaration(statement, line_start, line, self.control)?;
+        let declaration = parse_declaration(
+            statement,
+            line_start,
+            line,
+            self.grid_replay.is_some(),
+            self.control,
+        )?;
         let id = declaration.id.clone();
         let id_span = declaration.id_span;
         let class = declaration.class.clone();
@@ -718,6 +725,7 @@ impl<'a> Parser<'a> {
                 syntax_shape: declaration.syntax_shape.clone(),
                 metadata: Map::new(),
                 metadata_span: None,
+                grid_nonfinite: InlineGridNonfinite::default(),
                 authored_shape: None,
                 class: None,
             });
@@ -726,9 +734,12 @@ impl<'a> Parser<'a> {
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
             if let Some(replay) = &mut self.grid_replay {
-                replay
-                    .subgraphs
-                    .update(index, &declaration.metadata, declaration.metadata_span);
+                replay.subgraphs.update(
+                    index,
+                    &declaration.metadata,
+                    declaration.metadata_span,
+                    declaration.grid_nonfinite,
+                );
             }
             self.sub_graphs[index].metadata.extend(declaration.metadata);
             #[cfg(feature = "editor-facts")]
@@ -741,6 +752,7 @@ impl<'a> Parser<'a> {
                     self.node_index[&id],
                     &declaration.metadata,
                     declaration.metadata_span,
+                    declaration.grid_nonfinite,
                 );
             }
             self.connectors[index].metadata.extend(declaration.metadata);
@@ -941,6 +953,7 @@ impl<'a> Parser<'a> {
             syntax_shape,
             metadata,
             metadata_span,
+            grid_nonfinite,
             ..
         } = declaration;
         let presentation = self.authored.nodes.entry(id.clone()).or_default();
@@ -975,6 +988,7 @@ impl<'a> Parser<'a> {
                 existing.unwrap_or(self.nodes.len()),
                 &metadata,
                 metadata_span,
+                grid_nonfinite,
             );
         }
         let index = if let Some(index) = existing {
@@ -1068,6 +1082,7 @@ impl<'a> Parser<'a> {
                 existing.unwrap_or(self.sub_graphs.len()),
                 &context.metadata,
                 context.metadata_span,
+                context.grid_nonfinite,
             );
         }
         if let Some(index) = existing {
@@ -1546,6 +1561,7 @@ struct Declaration {
     syntax_shape: Option<String>,
     metadata: Map<String, Value>,
     metadata_span: Option<SourceSpan>,
+    grid_nonfinite: InlineGridNonfinite,
     authored_shape: Option<Value>,
     class: Option<String>,
 }
@@ -1586,6 +1602,7 @@ fn parse_declaration(
     statement: &str,
     line_start: usize,
     line: &str,
+    use_grid: bool,
     control: &OperationControl,
 ) -> std::result::Result<Declaration, ParseFailure> {
     let statement = statement.trim().trim_end_matches(';').trim();
@@ -1598,7 +1615,7 @@ fn parse_declaration(
     let statement_start = line_start + line.find(statement).unwrap_or(0);
     let metadata_start = find_metadata_start(statement);
     let mut metadata_span = None;
-    let (head, mut metadata) = if let Some(start) = metadata_start {
+    let (head, mut metadata, grid_nonfinite) = if let Some(start) = metadata_start {
         let end = matching_brace(statement, start).ok_or_else(|| ParseFailure::Syntax {
             message: "unterminated agentflow metadata".to_string(),
             span: span_of(line_start, line, statement),
@@ -1611,14 +1628,13 @@ fn parse_declaration(
         }
         let span = SourceSpan::new(statement_start + start, statement_start + end);
         metadata_span = Some(span);
-        (
-            &statement[..start],
-            parse_metadata(&statement[start + 2..end - 1], control)
+        let (metadata, grid_nonfinite) =
+            parse_metadata(&statement[start + 2..end - 1], use_grid, control)
                 .map_err(ParseFailure::Cancelled)?
-                .map_err(|message| ParseFailure::Syntax { message, span })?,
-        )
+                .map_err(|message| ParseFailure::Syntax { message, span })?;
+        (&statement[..start], metadata, grid_nonfinite)
     } else {
-        (statement, Map::new())
+        (statement, Map::new(), InlineGridNonfinite::default())
     };
     let head = head.trim();
     let (head, class) = if let Some(start) = find_top_level_marker(head, ":::") {
@@ -1669,6 +1685,7 @@ fn parse_declaration(
         syntax_shape: shape.map(resolve_shape),
         metadata,
         metadata_span,
+        grid_nonfinite,
         authored_shape,
         class,
     })
@@ -1972,27 +1989,39 @@ fn matching_brace(value: &str, start: usize) -> Option<usize> {
 
 fn parse_metadata(
     body: &str,
+    use_grid: bool,
     control: &OperationControl,
-) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
+) -> OperationControlResult<std::result::Result<(Map<String, Value>, InlineGridNonfinite), String>>
+{
     let normalized = normalize_metadata_quoted_newlines(body);
     let body = normalized.as_str();
-    let mut result = parse_mermaid_inline_yaml_controlled(body, control)?;
+    let decode = |input: &str| {
+        let mut grid_nonfinite = InlineGridNonfinite::default();
+        parse_mermaid_inline_yaml_with_root_fields_controlled(
+            input,
+            None,
+            use_grid.then_some(&mut grid_nonfinite),
+            control,
+        )
+        .map(|result| result.map(|value| (value, grid_nonfinite)))
+    };
+    let mut result = decode(body)?;
     if result.is_err() && body.contains('\n') {
         let stripped = strip_line_trailing_commas(body);
         if stripped != body
-            && let Ok(value) = parse_mermaid_inline_yaml_controlled(&stripped, control)?
+            && let Ok(value) = decode(&stripped)?
         {
             result = Ok(value);
         }
     }
-    let mut value = match result {
-        Ok(value) => value,
+    let (mut value, grid_nonfinite) = match result {
+        Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
     crate::metadata::strip_prototype_keys(&mut value, control)?;
     Ok(match value {
-        Value::Null => Ok(Map::new()),
-        Value::Object(object) => Ok(object),
+        Value::Null => Ok((Map::new(), grid_nonfinite)),
+        Value::Object(object) => Ok((object, grid_nonfinite)),
         _ => Err("agentflow metadata must be an object".to_string()),
     })
 }
@@ -2340,6 +2369,64 @@ mod tests {
             .unwrap_err();
         assert_eq!(span.start, source.rfind("@{ row: 0.5 }").unwrap());
         assert_eq!(&source[span.start..span.end], "@{ row: 0.5 }");
+    }
+
+    #[test]
+    fn inline_grid_nonfinite_survives_connector_replacement_and_the_yaml_retry() {
+        use merman_core_preprocess::{MappedSource, text::normalize_crlf_controlled};
+
+        let token = "@{\r\n  label: \"服务\",\r\n  column: -.inf,\r\n}";
+        let source = format!("agentflow LR\r\nDock@{{ row: .nan }}\r\nconnector Dock{token}\r\n");
+        let control = OperationControl::new();
+        let mut mapped = MappedSource::new_controlled(&source, true, &control).unwrap();
+        normalize_crlf_controlled(&mut mapped, &control).unwrap();
+        let parsed = parse_grid(mapped.text(), &control);
+        assert_eq!(parsed.model.connectors[0].metadata["column"], "-.inf");
+        let (error, span) = parsed
+            .grid_coordinates
+            .validate_placements_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.placement_id, "Dock");
+        assert_eq!(error.field, GridCoordinateField::Column);
+        assert_eq!(
+            error.received,
+            GridCoordinateValue::Number(f64::NEG_INFINITY)
+        );
+        let span = mapped.try_map_span(span).unwrap();
+        assert_eq!(span.start, source.find(token).unwrap());
+        assert_eq!(&source[span.start..span.end], token);
+    }
+
+    #[test]
+    fn inline_grid_nonfinite_replays_flow_updates_and_preserves_yaml_failures() {
+        let token = "@{ row: '.nan' }";
+        let source = format!("agentflow LR\nflow G@{{ row: .nan }}\n  A\nend\nG{token}\n");
+        let control = OperationControl::new();
+        let parsed = parse_grid(&source, &control);
+        let (error, span) = parsed
+            .grid_coordinates
+            .validate_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.placement_id, "G");
+        assert_eq!(error.received, GridCoordinateValue::String(".nan"));
+        assert_eq!(&source[span.start..span.end], token);
+
+        let source =
+            "agentflow LR\nconnector Dock@{\n  label: \"Dock\",\n  row: .nan,\n  row: 3,\n}\n";
+        let issue = |layout| match parse_agentflow_source_controlled(
+            source,
+            &MermaidConfig::from_value(json!({"layout": layout})),
+            None,
+            &control,
+        )
+        .unwrap()
+        {
+            Ok(_) => panic!("expected the original YAML failure"),
+            Err(issue) => (issue.message, issue.span),
+        };
+        assert_eq!(issue("grid"), issue("dagre"));
     }
 
     #[test]

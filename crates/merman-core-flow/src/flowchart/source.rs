@@ -189,7 +189,8 @@ fn build_flowchart_source(
     collect_render_context: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
-    let shape_data_documents = prepare_flowchart_shape_data(&ast, control)?;
+    let use_grid = config.get_str("layout") == Some("grid");
+    let shape_data_documents = prepare_flowchart_shape_data(&ast, use_grid, control)?;
     control.checkpoint()?;
     let inherit_dir = config
         .get_path(&["flowchart", "inheritDir"])
@@ -219,8 +220,7 @@ fn build_flowchart_source(
     let mut collapsed_subgraphs = collect_render_context.then(rustc_hash::FxHashSet::default);
     let mut vertex_calls = Vec::new();
     let mut warning_facts = Vec::new();
-    let mut grid_replay = (config.get_str("layout") == Some("grid"))
-        .then(|| InlineGridReplay::new(collect_render_context));
+    let mut grid_replay = use_grid.then(|| InlineGridReplay::new(collect_render_context));
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),

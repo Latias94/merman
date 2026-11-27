@@ -408,7 +408,9 @@ impl<'a> FlowchartSemanticContext<'a> {
             if let Some(replay) = &mut self.grid_replay
                 && let Some(metadata) = value.as_object()
             {
-                replay.subgraphs.update(slot, metadata, Some(data.span));
+                replay
+                    .subgraphs
+                    .update(slot, metadata, Some(data.span), document.grid_nonfinite);
             }
             return Ok(Ok(()));
         }
@@ -426,7 +428,9 @@ impl<'a> FlowchartSemanticContext<'a> {
         if let Some(replay) = &mut self.grid_replay
             && let Some(metadata) = value.as_object()
         {
-            replay.vertices.update(idx, metadata, Some(data.span));
+            replay
+                .vertices
+                .update(idx, metadata, Some(data.span), document.grid_nonfinite);
         }
         Ok(Ok(()))
     }

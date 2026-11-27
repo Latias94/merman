@@ -1,5 +1,7 @@
 use super::{FlowchartAst, Node, StatementEvent, Stmt, TitleKind};
-use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_with_root_order_controlled;
+use merman_core_preprocess::yaml::{
+    InlineGridNonfinite, parse_mermaid_inline_yaml_with_root_fields_controlled,
+};
 pub(super) use merman_model::config::inline_config_scalar_to_string as value_to_string;
 use merman_model::{
     OperationControl, OperationControlResult, families::flowchart::shapes::is_valid_pinned_shape,
@@ -11,6 +13,7 @@ use std::collections::HashMap;
 pub(super) struct ShapeDataDocument {
     pub(super) value: Value,
     pub(super) key_order: Vec<String>,
+    pub(super) grid_nonfinite: InlineGridNonfinite,
 }
 
 pub(super) fn value_to_bool(v: &Value) -> Option<bool> {
@@ -181,6 +184,7 @@ pub(super) fn apply_shape_data_value_to_node(
 
 pub(super) fn prepare_flowchart_shape_data(
     ast: &FlowchartAst,
+    use_grid: bool,
     control: &OperationControl,
 ) -> OperationControlResult<HashMap<String, std::result::Result<ShapeDataDocument, String>>> {
     let mut documents = HashMap::new();
@@ -199,18 +203,33 @@ pub(super) fn prepare_flowchart_shape_data(
                         control.checkpoint()?;
                     }
                     if let Some(data) = &node.shape_data {
-                        prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
+                        prepare_flowchart_shape_data_document(
+                            &data.yaml,
+                            use_grid,
+                            control,
+                            &mut documents,
+                        )?;
                     }
                 }
             }
             Stmt::Node(node) => {
                 if let Some(data) = &node.shape_data {
-                    prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
+                    prepare_flowchart_shape_data_document(
+                        &data.yaml,
+                        use_grid,
+                        control,
+                        &mut documents,
+                    )?;
                 }
             }
             Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
             Stmt::ShapeData { data, .. } => {
-                prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
+                prepare_flowchart_shape_data_document(
+                    &data.yaml,
+                    use_grid,
+                    control,
+                    &mut documents,
+                )?;
             }
             Stmt::Direction(_)
             | Stmt::Style(_)
@@ -227,21 +246,33 @@ pub(super) fn prepare_flowchart_shape_data(
 
 fn prepare_flowchart_shape_data_document(
     source: &str,
+    use_grid: bool,
     control: &OperationControl,
     documents: &mut HashMap<String, std::result::Result<ShapeDataDocument, String>>,
 ) -> OperationControlResult<()> {
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let document = match parse_mermaid_inline_yaml_with_root_order_controlled(source, control)? {
-        Ok((mut value, key_order)) => {
+    let mut key_order = Vec::new();
+    let mut grid_nonfinite = InlineGridNonfinite::default();
+    let document = match parse_mermaid_inline_yaml_with_root_fields_controlled(
+        source,
+        Some(&mut key_order),
+        use_grid.then_some(&mut grid_nonfinite),
+        control,
+    )? {
+        Ok(mut value) => {
             crate::metadata::strip_prototype_keys(&mut value, control)?;
             if let Value::Object(map) = &mut value {
                 for key in ["laneRole", "laneIndex", "drawnExtent"] {
                     map.remove(key);
                 }
             }
-            Ok(ShapeDataDocument { value, key_order })
+            Ok(ShapeDataDocument {
+                value,
+                key_order,
+                grid_nonfinite,
+            })
         }
         Err(error) => Err(error),
     };

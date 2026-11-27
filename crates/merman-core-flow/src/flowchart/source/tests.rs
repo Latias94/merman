@@ -233,6 +233,69 @@ fn inline_grid_waits_for_replay_and_leaves_other_layout_metadata_uninterpreted()
 }
 
 #[test]
+fn inline_grid_nonfinite_preserves_type_and_the_last_token_after_shape_cache_reuse() {
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    for (metadata, received) in [
+        ("row: .nan", "NaN (number)."),
+        ("row: '.nan'", "\".nan\" (string)."),
+        ("row: !!float '.NaN'", "NaN (number)."),
+        ("row: !!str .nan", "\".nan\" (string)."),
+        ("row: +.Inf", "Infinity (number)."),
+        ("row: -1e999", "\"-1e999\" (string)."),
+        ("note: &v .nan, row: *v", "NaN (number)."),
+        ("note: &v '.nan', row: *v", "\".nan\" (string)."),
+    ] {
+        let token = format!("@{{ {metadata} }}");
+        let source = format!("flowchart LR\nA[\"服务\"]\nA{token}\nA@{{ row: 3 }}\nA{token}\n");
+        let (_, grid) = parse_ast(&source)
+            .into_model_with_grid_coordinates("flowchart-v2", &config, None, None, &control)
+            .unwrap()
+            .unwrap();
+        let (error, span) = grid
+            .validate_placements_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.field, GridCoordinateField::Row);
+        assert!(error.to_string().ends_with(received), "{error}");
+        assert_eq!(span.start, source.rfind(&token).unwrap());
+        assert_eq!(&source[span.start..span.end], token);
+    }
+}
+
+#[test]
+fn inline_grid_nonfinite_is_validated_after_duplicate_keys_and_db_replay() {
+    let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+    let control = OperationControl::new();
+    let parse = |source| {
+        parse_ast(source)
+            .into_model_with_grid_coordinates("swimlane", &config, None, None, &control)
+            .unwrap()
+    };
+    let duplicate = parse("swimlane-beta LR\nA@{ row: .nan, 'row': 0 }\n").unwrap_err();
+    assert!(duplicate.contains("duplicated mapping key"), "{duplicate}");
+    let shape = parse("swimlane-beta LR\nA@{ row: .nan }\nB@{ shape: Bad }\n").unwrap_err();
+    assert_eq!(
+        shape,
+        "No such shape: Bad. Shape names should be lowercase."
+    );
+
+    let (_, grid) = parse(concat!(
+        "swimlane-beta LR\nA@{ row: .nan }\nA@{ row: 0 }\n",
+        "A link@--> B\nlink@{ column: -.inf }\n",
+    ))
+    .unwrap();
+    grid.validate_controlled(&control).unwrap().unwrap();
+    let fields: Vec<_> = grid.iter().collect();
+    let [row] = fields.as_slice() else {
+        panic!("expected only the vertex row")
+    };
+    assert_eq!(row.id, "A");
+    assert_eq!(row.field, GridCoordinateField::Row);
+    assert_eq!(row.value, GridCoordinateValue::Number(0.0));
+}
+
+#[test]
 fn semantic_flowchart_source_does_not_collect_render_only_sidecars() {
     let config = MermaidConfig::empty_object();
     let control = OperationControl::new();
@@ -352,7 +415,7 @@ fn single_large_chain_observes_cancellation_in_post_parse_projections() {
     let shape_data_control = OperationControl::new();
     shape_data_control.cancel_after_checkpoints(2);
     assert!(matches!(
-        prepare_flowchart_shape_data(&ast, &shape_data_control),
+        prepare_flowchart_shape_data(&ast, false, &shape_data_control),
         Err(OperationCancelled { .. })
     ));
 

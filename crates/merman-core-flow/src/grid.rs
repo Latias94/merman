@@ -3,6 +3,7 @@
 use merman_core_preprocess::grid_coordinate::{
     GridCoordinateError, GridCoordinateField, GridCoordinateValue, validate_grid_coordinate,
 };
+use merman_core_preprocess::yaml::InlineGridNonfinite;
 use merman_model::grid::{
     GridCoordinate, GridHorizontalAlign, GridInlinePlacement, GridInlinePlacements,
     GridPlacementOwner, GridPlacementSpec, GridVerticalAlign,
@@ -35,12 +36,18 @@ mod tests {
         let span = SourceSpan::new(50, 64);
         for capture in [false, true] {
             let mut replay = InlineGridReplay::new(capture);
-            replay
-                .vertices
-                .update(0, align.as_object().unwrap(), Some(span));
-            replay
-                .vertices
-                .update(256, invalid.as_object().unwrap(), Some(span));
+            replay.vertices.update(
+                0,
+                align.as_object().unwrap(),
+                Some(span),
+                InlineGridNonfinite::default(),
+            );
+            replay.vertices.update(
+                256,
+                invalid.as_object().unwrap(),
+                Some(span),
+                InlineGridNonfinite::default(),
+            );
 
             let finish = OperationControl::new();
             finish.cancel_after_checkpoints(1);
@@ -200,6 +207,7 @@ impl GridAssignment {
 #[derive(Debug, Clone)]
 enum RetainedCoordinateValue {
     Scalar(Value),
+    Nonfinite(f64),
     Array,
     Object,
 }
@@ -216,6 +224,7 @@ impl RetainedCoordinateValue {
     fn as_value(&self) -> GridCoordinateValue<'_> {
         match self {
             Self::Scalar(value) => value.into(),
+            Self::Nonfinite(value) => GridCoordinateValue::Number(*value),
             Self::Array => GridCoordinateValue::Array,
             Self::Object => GridCoordinateValue::Object,
         }
@@ -291,6 +300,7 @@ impl GridMetadata {
         slot: usize,
         metadata: &Map<String, Value>,
         span: Option<SourceSpan>,
+        nonfinite: InlineGridNonfinite,
     ) {
         let Some(span) = span else { return };
         let row = metadata.get("row");
@@ -310,12 +320,16 @@ impl GridMetadata {
             return;
         }
         let fields = self.entries.entry(slot).or_default();
-        for (target, value) in [(&mut fields.row, row), (&mut fields.column, column)] {
+        for (field, target, value) in [
+            (GridCoordinateField::Row, &mut fields.row, row),
+            (GridCoordinateField::Column, &mut fields.column, column),
+        ] {
             if let Some(value) = value {
-                *target = Some(GridAssignment {
-                    value: RetainedCoordinateValue::from_metadata(value),
-                    span,
-                });
+                let value = nonfinite.get(field).map_or_else(
+                    || RetainedCoordinateValue::from_metadata(value),
+                    RetainedCoordinateValue::Nonfinite,
+                );
+                *target = Some(GridAssignment { value, span });
             }
         }
         if let Some(value) = horizontal_align {
