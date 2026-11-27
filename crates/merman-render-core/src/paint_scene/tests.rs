@@ -1,5 +1,6 @@
 use super::*;
 use crate::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
+use crate::svg_css::SvgDiagramIdProjection;
 use merman_model::OperationControl;
 
 const INK: SceneColor = SceneColor {
@@ -215,7 +216,7 @@ fn compact_scene_admits_exact_bytes_and_keeps_the_first_terminal() {
         let mut writer = SceneSvgWriter {
             out: BoundedSvgOutput::new(&short_meter),
             meter: &short_meter,
-            scope: scope().semantic_str(),
+            scope: scope(),
             marker_count: scene.markers.len(),
             elements: 0,
         };
@@ -232,6 +233,32 @@ fn compact_scene_admits_exact_bytes_and_keeps_the_first_terminal() {
             Err(Error::ResourceLimitExceeded(error)) if error == first
         ));
     });
+}
+
+#[test]
+fn compact_scene_honors_cumulative_id_projection() {
+    let scene = scene(&[], &[]);
+    let policy = RenderResourcePolicy::default();
+    let reference = write_svg(&scene, scope(), &OperationWorkMeter::new(policy)).unwrap();
+    let limit = reference.len();
+    let meter = OperationWorkMeter::new(
+        policy
+            .with_limit(ResourceLimitId::MaxSvgBytes, limit)
+            .unwrap(),
+    );
+    let projection = SvgDiagramIdProjection::new(&meter);
+    let id = scope().with_projection(&projection);
+    for _ in 0..limit / id.semantic_str().len() {
+        assert_eq!(id.to_string(), id.semantic_str());
+    }
+
+    assert!(matches!(
+        write_svg(&scene, id, &meter),
+        Err(Error::ResourceLimitExceeded(_))
+    ));
+    assert!(
+        matches!(projection.finish(), Err(Error::ResourceLimitExceeded(error)) if error.limit == "max_svg_bytes")
+    );
 }
 
 #[test]
@@ -284,7 +311,7 @@ fn compact_scene_observes_cancellation_before_validation_and_inside_a_path() {
     let mut writer = SceneSvgWriter {
         out: BoundedSvgOutput::new(&meter),
         meter: &meter,
-        scope: scope().semantic_str(),
+        scope: scope(),
         marker_count: 0,
         elements: 0,
     };
