@@ -43,18 +43,7 @@ impl DerefMut for ValidationGraphCopy {
 
 impl Drop for ValidationGraphCopy {
     fn drop(&mut self) {
-        fn take_children(graph: &mut LGraph) -> impl Iterator<Item = Box<LGraph>> {
-            graph
-                .layerless_nodes
-                .iter_mut()
-                .rev()
-                .filter_map(|node| node.nested_graph.take())
-        }
-
-        let mut pending = take_children(&mut self.0).collect::<Vec<_>>();
-        while let Some(mut child) = pending.pop() {
-            pending.extend(take_children(&mut child));
-        }
+        LNode::drop_nested_graphs(&mut self.0.layerless_nodes);
     }
 }
 
@@ -184,6 +173,21 @@ impl LGraph {
 }
 
 impl LNode {
+    /// Release owned subgraphs without recursing through their nodes on the native stack.
+    pub(crate) fn drop_nested_graphs(nodes: &mut [Self]) {
+        fn take_children(nodes: &mut [LNode]) -> impl Iterator<Item = Box<LGraph>> {
+            nodes
+                .iter_mut()
+                .rev()
+                .filter_map(|node| node.nested_graph.take())
+        }
+
+        let mut pending = take_children(nodes).collect::<Vec<_>>();
+        while let Some(mut child) = pending.pop() {
+            pending.extend(take_children(&mut child.layerless_nodes));
+        }
+    }
+
     pub(crate) fn copy_preserving_reference_domains(&self) -> Self {
         let mut copied = self.copy_without_nested_graph();
         copied.nested_graph = self
