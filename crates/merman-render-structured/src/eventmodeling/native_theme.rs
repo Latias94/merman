@@ -1,7 +1,5 @@
-use merman_theme_contract::v2::{DataPalette, Form};
-
-use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::{mermaid_style::font_family_css, text::TextStyle};
+use merman_theme_contract::v2::{Color, DataPalette, FamilyTheme, Form};
 
 use super::EventModelingCssBinding;
 

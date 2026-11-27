@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64};
+use merman_render_core::config::{config_bool, config_f64};
 use serde_json::Value;
 
 const DEFAULT_PADDING: f64 = 30.0;

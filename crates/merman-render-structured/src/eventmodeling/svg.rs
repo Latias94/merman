@@ -1,16 +1,37 @@
-use super::super::*;
+use std::fmt::Write as _;
+
 use merman_model::families::event_modeling::EventModelingDiagramModel;
+use merman_render_core::{
+    Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext},
+    svg_css::{CssSelectorDiagramId, SvgId},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::{escape_attr_display, escape_xml, escape_xml_into},
+};
 
-const BOX_TEXT_PADDING: f64 = 10.0;
+use super::{
+    BOX_TEXT_PADDING, EventModelingDiagramLayout, EventModelingPrepared,
+    EventModelingPreparedLabels,
+};
 
-pub(crate) fn render_eventmodeling_diagram_svg(
+/// SVG identity, viewport, and work meter supplied by the render operation.
+pub struct EventModelingSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+}
+
+/// Emits the complete bounded Event Modeling SVG document from prepared geometry and labels.
+pub fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
     model: &EventModelingDiagramModel,
-    style: &crate::eventmodeling::EventModelingStyle,
-    prepared_labels: &crate::eventmodeling::EventModelingPreparedLabels,
-    options: &SvgExecution<'_>,
+    prepared: &EventModelingPrepared,
+    context: &EventModelingSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("eventmodeling");
+    let diagram_id = context.diagram_id;
+    let style = &prepared.style;
     let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
     let acc_descr = model
         .acc_descr
@@ -27,7 +48,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let stroke_width = native.map_or_else(String::new, |style| {
         format!(r#" stroke-width="{}""#, fmt(style.form.stroke_width))
     });
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -40,8 +61,8 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::EVENT_MODELING, diagram_id)
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
@@ -62,8 +83,8 @@ pub(crate) fn render_eventmodeling_diagram_svg(
 
     out.push_str("<style>");
     style.write_stylesheet(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        super::super::util::css_selector_diagram_id(diagram_id),
+        &mut XmlTextOutput::new(&mut out),
+        CssSelectorDiagramId(diagram_id),
     );
     out.push_str("</style><g/>");
     out.checkpoint()?;
@@ -118,7 +139,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         }
         out.push_str(r#"">"#);
         out.checkpoint()?;
-        push_box_html_label(&mut out, prepared_labels, box_layout.index)?;
+        push_box_html_label(&mut out, &prepared.labels, box_layout.index)?;
         out.push_str("</span></div></foreignObject></g>");
         out.checkpoint()?;
     }
@@ -150,7 +171,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
 
 fn push_box_html_label(
     out: &mut impl SvgOutput,
-    prepared_labels: &crate::eventmodeling::EventModelingPreparedLabels,
+    prepared_labels: &EventModelingPreparedLabels,
     index: usize,
 ) -> Result<()> {
     out.push_str(prepared_labels.box_xhtml(index)?);
@@ -162,13 +183,13 @@ mod tests {
     #[test]
     fn emission_requires_prepared_xhtml() {
         let mut out = String::new();
-        let error = super::push_box_html_label(
-            &mut out,
-            &crate::eventmodeling::EventModelingPreparedLabels::default(),
-            0,
-        )
-        .expect_err("missing prepared XHTML must fail without rebuilding layout text");
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        let error =
+            super::push_box_html_label(&mut out, &super::EventModelingPreparedLabels::default(), 0)
+                .expect_err("missing prepared XHTML must fail without rebuilding layout text");
+        assert!(matches!(
+            error,
+            merman_render_core::Error::InvalidModel { .. }
+        ));
         assert!(out.is_empty());
     }
 }

@@ -101,8 +101,6 @@ mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use er::er_canonical_marker;
 mod error;
-#[cfg(feature = "diagram-event-modeling")]
-mod eventmodeling;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -1536,12 +1534,19 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-event-modeling")]
         BuiltinFamilyArtifact::EventModeling(artifact) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
+            use crate::eventmodeling::{EventModelingSvgContext, render_eventmodeling_diagram_svg};
+
+            let diagram_id = options.diagram_id_or("eventmodeling");
+            render_eventmodeling_diagram_svg(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.style(),
-                artifact.prepared_labels(),
-                options,
+                artifact.prepared(),
+                &EventModelingSvgContext {
+                    diagram_id,
+                    viewport: options
+                        .root_viewport(crate::DiagramFamilyId::EVENT_MODELING, diagram_id),
+                    work_meter: options.work_meter(),
+                },
             )
         }
         #[cfg(feature = "diagram-c4")]

@@ -1020,22 +1020,17 @@ fn prepare_eventmodeling_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::eventmodeling::EventModelingStyle::resolve(&meta.effective_config, native);
-    let (layout, prepared_labels) =
-        crate::eventmodeling::prepare_eventmodeling_diagram_typed_with_binding(
-            model,
-            style.css_binding(),
-            style.native(),
-            &meta.effective_config,
-            execution.text_measurer(),
-            &execution.work_meter(),
-        )?;
+    let (layout, prepared) = crate::eventmodeling::prepare_eventmodeling_diagram(
+        model,
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.text_measurer(),
+        &execution.work_meter(),
+    )?;
     Ok(BuiltinFamilyArtifact::EventModeling(Box::new(
         EventModelingFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            style,
-            prepared_labels,
+            prepared,
         },
     )))
 }

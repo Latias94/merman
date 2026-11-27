@@ -22,7 +22,7 @@ pub(crate) struct EventModelingCssBinding {
 impl EventModelingCssBinding {
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
         let optional_color =
-            |key: &str| crate::config::config_string(config, &["themeVariables", key]);
+            |key: &str| merman_render_core::config::config_string(config, &["themeVariables", key]);
         let color =
             |key: &str, fallback: &str| optional_color(key).unwrap_or_else(|| fallback.to_string());
         Self {

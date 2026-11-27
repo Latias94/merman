@@ -6,6 +6,10 @@
 #[doc(hidden)]
 pub mod cynefin;
 
+#[cfg(feature = "diagram-event-modeling")]
+#[doc(hidden)]
+pub mod eventmodeling;
+
 #[cfg(feature = "diagram-gantt")]
 #[doc(hidden)]
 pub mod gantt;

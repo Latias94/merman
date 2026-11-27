@@ -612,8 +612,7 @@ pub(crate) struct EventModelingFamilyArtifact<'parsed> {
         &'parsed diagrams::event_modeling::EventModelingDiagramModel,
         EventModelingDiagramLayout,
     >,
-    style: crate::eventmodeling::EventModelingStyle,
-    prepared_labels: crate::eventmodeling::EventModelingPreparedLabels,
+    prepared: crate::eventmodeling::EventModelingPrepared,
 }
 
 #[derive(Debug)]
@@ -647,14 +646,8 @@ impl<'parsed> EventModelingFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn prepared_labels(
-        &self,
-    ) -> &crate::eventmodeling::EventModelingPreparedLabels {
-        &self.prepared_labels
-    }
-
-    pub(crate) const fn style(&self) -> &crate::eventmodeling::EventModelingStyle {
-        &self.style
+    pub(crate) const fn prepared(&self) -> &crate::eventmodeling::EventModelingPrepared {
+        &self.prepared
     }
 }
 

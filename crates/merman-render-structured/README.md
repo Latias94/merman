@@ -32,6 +32,10 @@ The `diagram-tree-view` feature provides tree geometry, native and Mermaid styli
 Tree View SVG emission. The render operation supplies measurement, icon, viewport, and resource
 policies.
 
+The `diagram-event-modeling` feature provides frame and swimlane layout, presentation binding,
+prepared XHTML labels, and complete Event Modeling SVG emission. The rendering operation supplies
+text measurement, the root viewport, and the shared work meter.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

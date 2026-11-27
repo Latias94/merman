@@ -18,6 +18,11 @@ third-party-bundle = true
 [features]
 default = []
 diagram-cynefin = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-cynefin", "merman-render-core/root-svg", "merman-render-core/text-layout"]
+diagram-event-modeling = [
+    "dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-event-modeling", "merman-render-core/html",
+    "merman-render-core/root-svg", "merman-render-core/text-layout",
+]
 diagram-gantt = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-gantt", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/root-svg", "merman-render-core/theme-svg"]
 diagram-ishikawa = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/root-svg", "merman-render-core/rough-svg"]

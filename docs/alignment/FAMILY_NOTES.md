@@ -250,7 +250,7 @@ known unclosed suffix instead of rescanning it for each recovered line. Scalar s
 ECMAScript whitespace, including BOM while retaining NEL as a non-separator.
 
 Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
-[SVG emitter](../../crates/merman-render/src/svg/parity/eventmodeling.rs), and
+[SVG emitter](../../crates/merman-render-structured/src/eventmodeling/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/eventmodeling_svg_test.rs).
 
 ## Flowchart

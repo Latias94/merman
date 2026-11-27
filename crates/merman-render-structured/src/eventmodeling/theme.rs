@@ -1,7 +1,7 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::{config_css_number_or_string, config_font_family_css};
-use crate::theme::FamilyTheme;
+use merman_render_core::config::{config_css_number_or_string, config_font_family_css};
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::{EventModelingCssBinding, EventModelingNativeStyle};
 

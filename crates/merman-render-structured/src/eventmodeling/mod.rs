@@ -1,28 +1,38 @@
-use crate::model::{
-    Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
-    EventModelingSwimlaneLayout,
-};
-use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::text::{
-    TextMeasurer, TextStyle, split_mermaid_common_br_lines,
-    wrap_label_like_mermaid_lines_with_checkpoint,
-};
-use crate::{Error, Result};
+//! Layout, prepared XHTML, and complete SVG emission for Event Modeling diagrams.
+
 use merman_model::families::event_modeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Bounds, Error, Result,
+    html::{HtmlOutputError, HtmlSanitizeSink},
+    layout_work::OperationLayoutWorkControl,
+    resources::{OperationWorkMeter, PreparedTextRetainedReservation},
+    text::{
+        TextMeasurer, TextStyle, line_break::split_mermaid_common_br_lines,
+        wrap_label_like_mermaid_lines_with_checkpoint,
+    },
+};
+use merman_theme_contract::v2::FamilyTheme;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 mod config;
 mod css_binding;
+mod model;
 mod native_theme;
+mod svg;
 mod theme;
 
-pub(crate) use css_binding::EventModelingCssBinding;
-pub(crate) use native_theme::EventModelingNativeStyle;
-pub(crate) use theme::EventModelingStyle;
+use css_binding::EventModelingCssBinding;
+pub use model::{
+    EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
+    EventModelingSwimlaneLayout,
+};
+use native_theme::EventModelingNativeStyle;
+pub use svg::{EventModelingSvgContext, render_eventmodeling_diagram_svg};
+use theme::EventModelingStyle;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;
 const SWIMLANE_PADDING: f64 = 15.0;
@@ -39,9 +49,16 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
+/// Layout-bound presentation and XHTML terminals for the operation's SVG emission.
+#[derive(Debug)]
+pub struct EventModelingPrepared {
+    style: EventModelingStyle,
+    labels: EventModelingPreparedLabels,
+}
+
 /// Final XHTML terminals from the pinned `calculateTextProps` producer, indexed by box index.
 #[derive(Debug, Default)]
-pub(crate) struct EventModelingPreparedLabels {
+struct EventModelingPreparedLabels {
     boxes: Vec<EventModelingPreparedHtmlLabel>,
 }
 
@@ -53,7 +70,7 @@ struct EventModelingPreparedHtmlLabel {
 }
 
 impl EventModelingPreparedLabels {
-    pub(crate) fn box_xhtml(&self, index: usize) -> Result<&str> {
+    fn box_xhtml(&self, index: usize) -> Result<&str> {
         self.boxes
             .get(index)
             .map(|label| label.xhtml.as_str())
@@ -63,14 +80,17 @@ impl EventModelingPreparedLabels {
     }
 }
 
-pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
+/// Resolves presentation and prepares geometry and bounded XHTML using the operation's services.
+pub fn prepare_eventmodeling_diagram(
     model: &EventModelingDiagramModel,
-    theme: &EventModelingCssBinding,
-    native: Option<&EventModelingNativeStyle>,
     effective_config: &PresentationConfig,
+    native: Option<&FamilyTheme>,
     measurer: &dyn TextMeasurer,
     work_meter: &Arc<OperationWorkMeter>,
-) -> Result<(EventModelingDiagramLayout, EventModelingPreparedLabels)> {
+) -> Result<(EventModelingDiagramLayout, EventModelingPrepared)> {
+    let style = EventModelingStyle::resolve(effective_config, native);
+    let theme = style.css_binding();
+    let native = style.native();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let cfg = theme.layout_settings;
     let mut label_config = effective_config.as_config().clone();
@@ -292,7 +312,10 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
             boxes: box_layouts,
             relations: relation_layouts,
         },
-        prepared_labels,
+        EventModelingPrepared {
+            style,
+            labels: prepared_labels,
+        },
     ))
 }
 
@@ -612,8 +635,6 @@ impl EventModelingPreparedHtmlLabel {
         measurer: &dyn TextMeasurer,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        use crate::html::HtmlSanitizeSink;
-
         // Include the vector owner slot, consistently with Block's prepared-label accounting.
         const OWNER_SLOT_BYTES: usize = 192;
         let owner_bytes = std::mem::size_of::<Self>().saturating_add(OWNER_SLOT_BYTES);
@@ -717,8 +738,7 @@ impl EventModelingPreparedHtmlLabel {
             owner_bytes,
             work_meter,
         )?;
-        let work_control =
-            crate::layout_work::OperationLayoutWorkControl::new(Arc::clone(work_meter));
+        let work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
         let reservation = work_control
             .reserve_prepared_text_retained_bytes(owner_bytes.saturating_add(xhtml.capacity()))?;
         Ok(Self {
@@ -730,14 +750,10 @@ impl EventModelingPreparedHtmlLabel {
 }
 
 fn eventmodeling_sanitize_result(
-    result: std::result::Result<
-        String,
-        merman_markup::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
-    >,
+    result: std::result::Result<String, merman_markup::sanitize::SanitizeFailure<HtmlOutputError>>,
     owner_bytes: usize,
     work_meter: &OperationWorkMeter,
 ) -> Result<String> {
-    use crate::html::HtmlOutputError;
     use merman_markup::sanitize::SanitizeFailure;
 
     match result {
