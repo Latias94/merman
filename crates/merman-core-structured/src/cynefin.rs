@@ -71,6 +71,30 @@ pub enum CynefinObservation<'statement> {
 /// Builds the recovered model, retaining the first issue for strict callers.
 pub fn parse_cynefin_controlled(
     code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<(CynefinDiagramModel, Option<CynefinIssue>)> {
+    parse_cynefin(
+        code,
+        #[cfg(feature = "editor-facts")]
+        false,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+#[cfg(feature = "editor-facts")]
+pub fn parse_cynefin_with_observer_controlled(
+    code: &str,
+    capture_facts: bool,
+    observe: Option<&mut dyn FnMut(CynefinObservation<'_>)>,
+    control: &OperationControl,
+) -> OperationControlResult<(CynefinDiagramModel, Option<CynefinIssue>)> {
+    parse_cynefin(code, capture_facts, observe, control)
+}
+
+fn parse_cynefin(
+    code: &str,
     #[cfg(feature = "editor-facts")] capture_facts: bool,
     #[cfg(feature = "editor-facts")] mut observe: Option<&mut dyn FnMut(CynefinObservation<'_>)>,
     control: &OperationControl,

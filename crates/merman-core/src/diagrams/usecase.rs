@@ -12,13 +12,16 @@ use crate::{
 use crate::{Error, OperationControl, OperationControlResult, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+use merman_core_graph::usecase::ParseIssue;
 #[cfg(feature = "editor-facts")]
 pub(crate) use merman_core_graph::usecase::is_valid_editor_identifier;
-use merman_core_graph::usecase::{ParseIssue, parse_usecase_source_controlled};
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_graph::usecase::parse_usecase_source_controlled;
 #[cfg(feature = "editor-facts")]
 use merman_core_graph::usecase::{
     UsecaseBinding, UsecaseBindings, UsecaseEditorObserver, UsecaseOccurrence,
     UsecaseOccurrenceKind, UsecaseOccurrenceRole,
+    parse_usecase_source_observed_controlled as parse_usecase_source_controlled,
 };
 use merman_model::families::usecase::UsecaseDiagramModel;
 #[cfg(test)]

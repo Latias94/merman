@@ -54,6 +54,29 @@ impl PieBody<'_> {
     /// Parses the body and replays slice declarations in source order.
     pub fn parse_controlled(
         self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<PieDiagramModel, PieBodyIssue>> {
+        self.parse(
+            #[cfg(feature = "editor-facts")]
+            false,
+            #[cfg(feature = "editor-facts")]
+            None,
+            control,
+        )
+    }
+
+    #[cfg(feature = "editor-facts")]
+    pub fn parse_with_observer_controlled(
+        self,
+        capture_facts: bool,
+        observe: Option<&mut dyn FnMut(PieObservation<'_>)>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<PieDiagramModel, PieBodyIssue>> {
+        self.parse(capture_facts, observe, control)
+    }
+
+    fn parse(
+        self,
         #[cfg(feature = "editor-facts")] capture_facts: bool,
         #[cfg(feature = "editor-facts")] mut observe: Option<&mut dyn FnMut(PieObservation<'_>)>,
         control: &OperationControl,

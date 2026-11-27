@@ -338,7 +338,8 @@ The pull-request feature matrix validates the complete declared feature graph bu
 set of representative products and transports. It deliberately does not compile every bounded
 pairwise combination and artifact recipe.
 Renderer library and family-admission tests also run with all diagram families selected and either
-no graph engine or only Shoal. The feature-unification checks exercise Rustdoc with graph engines
+no graph engine or only Shoal. The feature-unification checks compile the Core facade without
+`editor-facts` while its parser crates enable it. They also exercise Rustdoc with graph engines
 compiled by a sibling package and verify that the macro requires its own layout features.
 
 ## GitHub Pages and Playground

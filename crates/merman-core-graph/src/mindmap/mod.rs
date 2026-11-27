@@ -7,7 +7,7 @@ mod render_model;
 mod utils;
 
 #[cfg(feature = "editor-facts")]
-pub use parse::MindmapObservation;
+pub use parse::{MindmapObservation, parse_mindmap_syntax_observed_controlled};
 pub use parse::{
     MindmapSource, MindmapSourceIssue, MindmapSyntax, parse_mindmap_syntax_controlled,
 };

@@ -1,3 +1,6 @@
+use crate::Error;
+#[cfg(any(test, feature = "presentation"))]
+use crate::Result;
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
 #[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
@@ -13,10 +16,14 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol,
 };
-use crate::{Error, Result};
-use merman_core_structured::cynefin::{CynefinIssue, parse_cynefin_controlled};
+use merman_core_structured::cynefin::CynefinIssue;
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_structured::cynefin::parse_cynefin_controlled;
 #[cfg(feature = "editor-facts")]
-use merman_core_structured::cynefin::{CynefinObservation, SpannedText};
+use merman_core_structured::cynefin::{
+    CynefinObservation, SpannedText,
+    parse_cynefin_with_observer_controlled as parse_cynefin_controlled,
+};
 pub(crate) use merman_model::families::cynefin::CynefinDiagramModel;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;

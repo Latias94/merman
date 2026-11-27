@@ -395,10 +395,35 @@ fn trim_spanned_value(raw: &str, raw_start: usize) -> Option<SpannedValue<'_>> {
 }
 
 /// Scans one preprocessed source after the caller's entry checkpoint.
+pub fn parse_requirement_source_controlled(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RequirementDiagramModel, RequirementSourceIssue>> {
+    parse_requirement_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        false,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+/// Scans the same source with optional editor observation.
 ///
 /// Spans are relative to `code`. An observer receives incomplete accessibility events even
 /// with rich capture disabled. The draft is retained through reference binding on failure.
-pub fn parse_requirement_source_controlled(
+#[cfg(feature = "editor-facts")]
+pub fn parse_requirement_source_observed_controlled(
+    code: &str,
+    capture_fields: bool,
+    observe: Option<&mut dyn FnMut(RequirementObservation<'_>)>,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RequirementDiagramModel, RequirementSourceIssue>> {
+    parse_requirement_source(code, capture_fields, observe, control)
+}
+
+fn parse_requirement_source(
     code: &str,
     #[cfg(feature = "editor-facts")] capture_fields: bool,
     #[cfg(feature = "editor-facts")] observe: Option<&mut dyn FnMut(RequirementObservation<'_>)>,

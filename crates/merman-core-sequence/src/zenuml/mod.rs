@@ -19,7 +19,28 @@ pub struct ParsedZenuml {
     pub first_diagnostic: Option<SyntaxDiagnostic>,
 }
 
-pub fn parse_source_controlled<'a>(
+pub fn parse_source_controlled(
+    code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<ParsedZenuml> {
+    parse_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+#[cfg(feature = "editor-facts")]
+pub fn parse_source_with_observer_controlled<'a>(
+    code: &str,
+    observer: Option<SourceObserver<'a>>,
+    control: &'a OperationControl,
+) -> OperationControlResult<ParsedZenuml> {
+    parse_source(code, observer, control)
+}
+
+fn parse_source<'a>(
     code: &str,
     #[cfg(feature = "editor-facts")] observer: Option<SourceObserver<'a>>,
     control: &'a OperationControl,

@@ -17,15 +17,7 @@ fn venn_adjacent_recovery_bounds_failed_payload_lookahead() {
                 "payload lookahead rescanned a suffix: {opener:?}, {count}, {} bytes inspected",
                 cursor.inspected_terminal_bytes,
             );
-            let outcome = parse_venn_source_controlled(
-                &source,
-                #[cfg(feature = "editor-facts")]
-                false,
-                #[cfg(feature = "editor-facts")]
-                None,
-                &OperationControl::new(),
-            )
-            .unwrap();
+            let outcome = parse_venn_source_controlled(&source, &OperationControl::new()).unwrap();
             assert!(outcome.first_issue.is_some());
             assert_eq!(outcome.model.subsets.last().unwrap().sets, ["Later"]);
         }

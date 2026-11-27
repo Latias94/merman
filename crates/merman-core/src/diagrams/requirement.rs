@@ -12,12 +12,13 @@ use crate::{
 use crate::{Error, OperationControl, OperationControlResult, family::CombinedSemanticFailure};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+use merman_core_graph::requirement::RequirementIssueLocation;
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_graph::requirement::parse_requirement_source_controlled;
 #[cfg(feature = "editor-facts")]
 use merman_core_graph::requirement::{
     RequirementEntityKind, RequirementFieldKind, RequirementObservation,
-};
-use merman_core_graph::requirement::{
-    RequirementIssueLocation, parse_requirement_source_controlled,
+    parse_requirement_source_observed_controlled as parse_requirement_source_controlled,
 };
 use merman_model::families::requirement::RequirementDiagramModel;
 #[cfg(all(test, feature = "presentation"))]

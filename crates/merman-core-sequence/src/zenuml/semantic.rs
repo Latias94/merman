@@ -827,7 +827,7 @@ mod tests {
                 occurrences.push((text.to_string(), kind, detail.to_string()));
             }
         };
-        let parsed = super::super::parse_source_controlled(
+        let parsed = super::super::parse_source_with_observer_controlled(
             source,
             Some(SourceObserver::new(true, &mut collect)),
             &OperationControl::new(),

@@ -244,15 +244,16 @@ fn construct_pie_semantic_source_controlled(
     let mut observe = editor_facts.as_mut().map(|facts| {
         move |observation: PieObservation<'_>| project_pie_observation(facts, observation)
     });
-    let parsed = body.parse_controlled(
-        #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "editor-facts")]
+    let parsed = body.parse_with_observer_controlled(
         editor_demand.captures_rich(),
-        #[cfg(feature = "editor-facts")]
         observe
             .as_mut()
             .map(|observe| observe as &mut dyn FnMut(PieObservation<'_>)),
         control,
     )?;
+    #[cfg(not(feature = "editor-facts"))]
+    let parsed = body.parse_controlled(control)?;
     Ok(match parsed {
         Ok(model) => Ok(PieSemanticSource {
             model,

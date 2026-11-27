@@ -13,9 +13,14 @@ use crate::{
 use crate::{Error, OperationControl, OperationControlResult, SemanticMetadata};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+use merman_core_sequence::zenuml::SyntaxDiagnostic;
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_sequence::zenuml::parse_source_controlled;
 #[cfg(feature = "editor-facts")]
-use merman_core_sequence::zenuml::{OccurrenceKind, SourceEvent, SourceObserver};
-use merman_core_sequence::zenuml::{SyntaxDiagnostic, parse_source_controlled};
+use merman_core_sequence::zenuml::{
+    OccurrenceKind, SourceEvent, SourceObserver,
+    parse_source_with_observer_controlled as parse_source_controlled,
+};
 pub(crate) use merman_model::families::zenuml::ZenumlDiagramModel;
 #[cfg(test)]
 use merman_model::families::zenuml::ZenumlStatementKind;

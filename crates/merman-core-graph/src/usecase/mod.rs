@@ -71,9 +71,34 @@ impl ParseIssue {
 }
 
 /// Parses one preprocessed source after the caller's entry checkpoint.
+pub fn parse_usecase_source_controlled(
+    code: &str,
+    title: Option<&str>,
+    control: &OperationControl,
+) -> OperationControlResult<Result<UsecaseDiagramModel, ParseIssue>> {
+    parse_usecase_source(
+        code,
+        title,
+        #[cfg(feature = "editor-facts")]
+        None,
+        control,
+    )
+}
+
+/// Parses the same source with optional editor observation.
 ///
 /// Occurrences and issues refer to byte offsets in `code`. Rich observation starts after
 /// lexing and resolves names from the completed portion of the draft before model construction.
+#[cfg(feature = "editor-facts")]
+pub fn parse_usecase_source_observed_controlled<'a>(
+    code: &'a str,
+    title: Option<&str>,
+    observer: Option<&'a mut dyn UsecaseEditorObserver>,
+    control: &'a OperationControl,
+) -> OperationControlResult<Result<UsecaseDiagramModel, ParseIssue>> {
+    parse_usecase_source(code, title, observer, control)
+}
+
 #[cfg_attr(
     not(feature = "editor-facts"),
     allow(
@@ -81,7 +106,7 @@ impl ParseIssue {
         reason = "The editor observer shares the parser borrow when enabled."
     )
 )]
-pub fn parse_usecase_source_controlled<'a>(
+fn parse_usecase_source<'a>(
     code: &'a str,
     title: Option<&str>,
     #[cfg(feature = "editor-facts")] observer: Option<&'a mut dyn UsecaseEditorObserver>,

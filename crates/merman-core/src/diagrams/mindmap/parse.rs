@@ -13,11 +13,13 @@ use crate::{
 use crate::{Error, family::CombinedSemanticFailure};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(not(feature = "editor-facts"))]
+use merman_core_graph::mindmap::parse_mindmap_syntax_controlled;
 #[cfg(feature = "editor-facts")]
-use merman_core_graph::mindmap::MindmapObservation;
 use merman_core_graph::mindmap::{
-    MindmapSource, MindmapSourceIssue, parse_mindmap_syntax_controlled,
+    MindmapObservation, parse_mindmap_syntax_observed_controlled as parse_mindmap_syntax_controlled,
 };
+use merman_core_graph::mindmap::{MindmapSource, MindmapSourceIssue};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]

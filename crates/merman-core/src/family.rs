@@ -890,17 +890,10 @@ pub(crate) type CanonicalSemanticParser =
 
 impl FamilyImplementation {
     fn has_semantic_parser(&self) -> bool {
-        if self.canonical.is_some() {
-            return true;
-        }
+        let available = self.canonical.is_some();
         #[cfg(feature = "compat-json")]
-        {
-            self.semantic.is_some()
-        }
-        #[cfg(not(feature = "compat-json"))]
-        {
-            false
-        }
+        let available = available || self.semantic.is_some();
+        available
     }
     fn has_combined_parser(&self) -> bool {
         #[cfg(all(feature = "compat-json", feature = "editor-facts"))]

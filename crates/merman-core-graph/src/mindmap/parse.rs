@@ -589,6 +589,28 @@ fn process_mindmap_physical_line(
 /// Scans source once, retaining recovered events and the first syntax issue.
 pub fn parse_mindmap_syntax_controlled(
     code: &str,
+    control: &OperationControl,
+) -> OperationControlResult<MindmapSyntax> {
+    scan_mindmap_syntax(
+        code,
+        #[cfg(feature = "editor-facts")]
+        false,
+        control,
+    )
+}
+
+/// Scans the same source and optionally retains editor facts for later replay.
+#[cfg(feature = "editor-facts")]
+pub fn parse_mindmap_syntax_observed_controlled(
+    code: &str,
+    capture_editor: bool,
+    control: &OperationControl,
+) -> OperationControlResult<MindmapSyntax> {
+    scan_mindmap_syntax(code, capture_editor, control)
+}
+
+fn scan_mindmap_syntax(
+    code: &str,
     #[cfg(feature = "editor-facts")] capture_editor: bool,
     control: &OperationControl,
 ) -> OperationControlResult<MindmapSyntax> {
@@ -713,17 +735,12 @@ mod tests {
         ] {
             let input = format!("mindmap\n  {source}\n");
             let control = OperationControl::new();
-            let model = parse_mindmap_syntax_controlled(
-                &input,
-                #[cfg(feature = "editor-facts")]
-                false,
-                &control,
-            )
-            .unwrap()
-            .into_source(&MermaidConfig::empty_object(), &control)
-            .unwrap()
-            .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-            .into_model();
+            let model = parse_mindmap_syntax_controlled(&input, &control)
+                .unwrap()
+                .into_source(&MermaidConfig::empty_object(), &control)
+                .unwrap()
+                .unwrap_or_else(|error| panic!("{source}: {error:?}"))
+                .into_model();
             assert_eq!(model.nodes[0].descr, label, "{source}");
             assert_eq!(model.nodes[0].node_type, node_type, "{source}");
         }

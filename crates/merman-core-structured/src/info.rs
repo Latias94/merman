@@ -134,10 +134,34 @@ pub enum InfoObservation<'statement> {
 
 impl InfoBody<'_> {
     /// Resumes after the Info header and builds the model in the same pass.
+    pub fn parse_controlled(
+        self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<InfoDiagramModel, InfoBodyIssue>> {
+        self.parse_impl(
+            #[cfg(feature = "editor-facts")]
+            false,
+            #[cfg(feature = "editor-facts")]
+            None,
+            control,
+        )
+    }
+
+    /// Resumes after the Info header and observes statements during the parse.
     ///
     /// Recovery retains the first issue. It still reports later issues to an observer,
     /// and a rich observer also receives the surviving statement facts in source order.
-    pub fn parse_controlled(
+    #[cfg(feature = "editor-facts")]
+    pub fn parse_with_observer_controlled(
+        self,
+        capture_facts: bool,
+        observe: &mut dyn FnMut(InfoObservation<'_>),
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<InfoDiagramModel, InfoBodyIssue>> {
+        self.parse_impl(capture_facts, Some(observe), control)
+    }
+
+    fn parse_impl(
         self,
         #[cfg(feature = "editor-facts")] capture_facts: bool,
         #[cfg(feature = "editor-facts")] mut observe: Option<&mut dyn FnMut(InfoObservation<'_>)>,
@@ -272,13 +296,7 @@ mod tests {
             let InfoHeader::Body(body) = info_body_start_controlled(source, &control)? else {
                 panic!("expected an Info body");
             };
-            body.parse_controlled(
-                #[cfg(feature = "editor-facts")]
-                false,
-                #[cfg(feature = "editor-facts")]
-                None,
-                &control,
-            )
+            body.parse_controlled(&control)
         };
 
         assert!(parse("info showInfo", 3).is_err());
@@ -322,7 +340,7 @@ mod tests {
                 observations.push(entry);
             };
             assert_eq!(
-                body.parse_controlled(capture, Some(&mut observe), &control)
+                body.parse_with_observer_controlled(capture, &mut observe, &control)
                     .unwrap()
                     .unwrap_err(),
                 InfoBodyIssue::Unexpected {
