@@ -1,10 +1,12 @@
 //! Owned declarations from the safe Mermaid CSS parser.
 
-use crate::mermaid_style::{CssFontSizeContext, CssValueAnalysis, ParsedStyleDeclaration};
+use merman_render_core::mermaid_style::{
+    self, CssFontSizeContext, CssValueAnalysis, ParsedStyleDeclaration,
+};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct FlowchartStyleDeclaration {
+pub struct FlowchartStyleDeclaration {
     raw: Arc<str>,
     property: Arc<str>,
     property_css: Arc<str>,
@@ -15,8 +17,8 @@ pub(crate) struct FlowchartStyleDeclaration {
 }
 
 impl FlowchartStyleDeclaration {
-    pub(crate) fn parse(raw: &str) -> Option<Self> {
-        let parsed = crate::mermaid_style::parse_style_declaration(raw)?;
+    pub fn parse(raw: &str) -> Option<Self> {
+        let parsed = mermaid_style::parse_style_declaration(raw)?;
         Some(Self::from_parsed(raw, parsed))
     }
 
@@ -32,29 +34,29 @@ impl FlowchartStyleDeclaration {
         }
     }
 
-    pub(crate) fn raw(&self) -> &str {
+    pub fn raw(&self) -> &str {
         &self.raw
     }
 
-    pub(crate) fn property(&self) -> &str {
+    pub fn property(&self) -> &str {
         &self.property
     }
 
     /// Returns the validated source spelling suitable for CSS emission.
-    pub(crate) fn property_css(&self) -> &str {
+    pub fn property_css(&self) -> &str {
         &self.property_css
     }
 
     /// Returns the source value used by Mermaid-compatible CSS emission.
-    pub(crate) fn source_value(&self) -> &str {
+    pub fn source_value(&self) -> &str {
         &self.source_value
     }
 
-    pub(crate) fn value(&self) -> &str {
+    pub fn value(&self) -> &str {
         &self.value
     }
 
-    pub(crate) const fn important(&self) -> bool {
+    pub const fn important(&self) -> bool {
         self.important
     }
 
@@ -67,9 +69,7 @@ impl FlowchartStyleDeclaration {
         feature = "diagram-swimlane",
         feature = "diagram-agentflow"
     ))]
-    pub(crate) fn svg_rect_length_px(
-        &self,
-    ) -> Result<Option<f64>, crate::mermaid_style::InvalidCssLength> {
+    pub fn svg_rect_length_px(&self) -> Result<Option<f64>, mermaid_style::InvalidCssLength> {
         self.analysis.svg_rect_length_px(self.value())
     }
 
@@ -79,14 +79,14 @@ impl FlowchartStyleDeclaration {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlowchartSourceFacetStatus {
+pub enum FlowchartSourceFacetStatus {
     Absent,
     Admitted,
     Unverified,
 }
 
 impl FlowchartSourceFacetStatus {
-    pub(crate) const fn from_parts(declared: bool, admitted: bool) -> Self {
+    pub const fn from_parts(declared: bool, admitted: bool) -> Self {
         if admitted {
             Self::Admitted
         } else if declared {
@@ -96,7 +96,7 @@ impl FlowchartSourceFacetStatus {
         }
     }
 
-    pub(crate) const fn is_absent(self) -> bool {
+    pub const fn is_absent(self) -> bool {
         matches!(self, Self::Absent)
     }
 }

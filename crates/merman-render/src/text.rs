@@ -28,7 +28,7 @@ pub(crate) use merman_render_core::text::{
     MermaidMarkdownAnalysis, analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_is_plain_text,
     mermaid_markdown_to_html_label_fragment, mermaid_markdown_to_lines,
-    mermaid_markdown_to_xhtml_label_fragment, mermaid_markdown_wants_paragraph_wrap,
+    mermaid_markdown_to_xhtml_label_fragment,
 };
 pub(crate) use merman_render_core::text::{
     measure_svg_markdown_word_lines, measure_svg_markdown_word_lines_with_origin,
@@ -50,9 +50,17 @@ pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 ))]
 pub use metrics::unsupported_html_label_style;
 
-pub(crate) use merman_render_core::text::{
-    non_markdown_svg_words, parse_css_font_stack, xhtml_font_default,
-};
+#[cfg(all(
+    test,
+    feature = "layout-elk",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )
+))]
+pub(crate) use merman_render_core::text::parse_css_font_stack;
+pub(crate) use merman_render_core::text::{non_markdown_svg_words, xhtml_font_default};
 
 #[cfg(feature = "diagram-c4")]
 pub(crate) use merman_render_core::text::is_css_wide_keyword;

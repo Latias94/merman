@@ -339,7 +339,7 @@ impl FlowchartPreparedNodes {
             render_config,
             prepared_theme.native.as_ref(),
         );
-        let mut node_classes = super::style::FlowchartNodeClassStyles::new(class_defs.source);
+        let mut node_classes = super::style::FlowchartNodeClassStyles::new(class_defs.source());
         let mut terminals = FxHashMap::default();
         let mut admitted_nodes = FxHashSet::default();
         // Any typography missing from the label sidecar still reserves retained bytes.

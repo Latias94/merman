@@ -1,18 +1,21 @@
-use crate::mermaid_style::{
-    HtmlTextGeometryDeclarations, HtmlTextProperty, InvalidCssLength, ParsedStyleDeclaration,
-};
-use crate::text::{TextMetrics, TextStyle};
 use indexmap::{IndexMap, map::Entry};
+use merman_render_core::{
+    mermaid_style::{
+        self, HtmlTextGeometryDeclarations, HtmlTextProperty, InvalidCssLength,
+        ParsedStyleDeclaration,
+    },
+    text::{self, TextMetrics, TextStyle},
+};
 use rustc_hash::FxBuildHasher;
 use std::borrow::Cow;
 use std::hash::Hash;
 
 fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
-    let parsed = crate::mermaid_style::parse_style_declaration(s)?;
+    let parsed = mermaid_style::parse_style_declaration(s)?;
     Some((parsed.property_source(), parsed.value(), parsed.important()))
 }
 
-pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
+pub fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
     fn looks_like_key_start(s: &str) -> bool {
         let s = s.trim_start();
         let Some((k, _)) = s.split_once(':') else {
@@ -45,7 +48,7 @@ pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item
     parts.into_iter()
 }
 
-pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
+pub fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
     matches!(
         key.trim(),
         "color"
@@ -70,31 +73,31 @@ pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartTextStyleResolution<'a> {
-    pub(crate) style: Cow<'a, TextStyle>,
-    pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
-    pub(crate) html_geometry: HtmlTextGeometryDeclarations,
+pub struct FlowchartTextStyleResolution<'a> {
+    pub style: Cow<'a, TextStyle>,
+    pub terminal_foreground: Option<FlowchartTerminalForeground>,
+    pub html_geometry: HtmlTextGeometryDeclarations,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlowchartTerminalForegroundProvenance {
+pub enum FlowchartTerminalForegroundProvenance {
     ThemeNode,
     ThemeTitle,
     AssignedClass,
     InlineStyle,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "diagram-swimlane"))]
     EdgeLabelStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FlowchartTerminalForeground {
+pub struct FlowchartTerminalForeground {
     value: String,
     provenance: FlowchartTerminalForegroundProvenance,
     important: bool,
 }
 
 impl FlowchartTerminalForeground {
-    pub(crate) fn new(value: &str, provenance: FlowchartTerminalForegroundProvenance) -> Self {
+    pub fn new(value: &str, provenance: FlowchartTerminalForegroundProvenance) -> Self {
         Self {
             value: value.trim().to_string(),
             provenance,
@@ -121,12 +124,11 @@ impl FlowchartTerminalForeground {
         });
     }
 
-    pub(crate) fn value(&self) -> &str {
+    pub fn value(&self) -> &str {
         &self.value
     }
 
-    #[cfg(test)]
-    pub(crate) const fn provenance(&self) -> FlowchartTerminalForegroundProvenance {
+    pub const fn provenance(&self) -> FlowchartTerminalForegroundProvenance {
         self.provenance
     }
 }
@@ -138,7 +140,7 @@ impl AsRef<TextStyle> for FlowchartTextStyleResolution<'_> {
 }
 
 impl<'a> FlowchartTextStyleResolution<'a> {
-    pub(crate) fn borrowed(style: &'a TextStyle) -> Self {
+    pub fn borrowed(style: &'a TextStyle) -> Self {
         Self {
             style: Cow::Borrowed(style),
             terminal_foreground: None,
@@ -146,7 +148,7 @@ impl<'a> FlowchartTextStyleResolution<'a> {
         }
     }
 
-    pub(crate) fn terminal_foreground(&self) -> Option<&FlowchartTerminalForeground> {
+    pub fn terminal_foreground(&self) -> Option<&FlowchartTerminalForeground> {
         self.terminal_foreground.as_ref()
     }
 }
@@ -218,9 +220,9 @@ impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
     }
 
     fn finish(mut self) -> FlowchartTextStyleResolution<'a> {
-        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+        let mut cascade = mermaid_style::TextStyleCascade::new(
             self.base,
-            crate::mermaid_style::CssFontSizeContext::uniform(self.base.font_size),
+            mermaid_style::CssFontSizeContext::uniform(self.base.font_size),
         );
         for (property, winner) in ["font-family", "font-size", "font-weight", "font-style"]
             .into_iter()
@@ -242,7 +244,7 @@ impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
 
 /// Keep the first position of each authored spelling while replacing its winning value.
 /// SVG emission and layout must agree on the order seen by the CSS cascade.
-pub(crate) fn flowchart_insert_style_by_spelling<K: Eq + Hash, V>(
+pub fn flowchart_insert_style_by_spelling<K: Eq + Hash, V>(
     declarations: &mut IndexMap<K, V, FxBuildHasher>,
     spelling: K,
     declaration: V,
@@ -288,8 +290,7 @@ fn flowchart_style_declarations<'b, 's>(
     });
     assigned.chain(inline).flat_map(|(group, provenance)| {
         flowchart_split_mermaid_style_decls(group).filter_map(move |raw| {
-            crate::mermaid_style::parse_style_declaration(raw)
-                .map(|declaration| (declaration, provenance))
+            mermaid_style::parse_style_declaration(raw).map(|declaration| (declaration, provenance))
         })
     })
 }
@@ -315,13 +316,13 @@ fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
 }
 
 #[derive(Default)]
-pub(crate) struct FlowchartRectangleCssSize {
-    pub(crate) size: [Option<f64>; 2],
+pub struct FlowchartRectangleCssSize {
+    pub size: [Option<f64>; 2],
     important: [bool; 2],
 }
 
 impl FlowchartRectangleCssSize {
-    pub(crate) fn observe(
+    pub fn observe(
         &mut self,
         property: &str,
         important: bool,
@@ -336,7 +337,7 @@ impl FlowchartRectangleCssSize {
         }
     }
 
-    pub(crate) fn has_important(&self, property: &str) -> bool {
+    pub fn has_important(&self, property: &str) -> bool {
         rectangle_dimension_index(property).is_some_and(|index| self.important[index])
     }
 }
@@ -374,7 +375,7 @@ impl<'a> RectangleStyleDeclarations<'a> {
 }
 
 #[cfg(feature = "layout-dagre")]
-pub(super) fn flowchart_subgraph_css_size(
+pub fn flowchart_subgraph_css_size(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles: &[String],
@@ -392,7 +393,7 @@ pub(super) fn flowchart_subgraph_css_size(
     dimensions.finish()
 }
 
-pub(crate) fn flowchart_node_layout_style<'a>(
+pub fn flowchart_node_layout_style<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -425,7 +426,7 @@ pub(crate) fn flowchart_node_layout_style<'a>(
 
 const IMPLICIT_NODE_CLASSES: [&str; 2] = ["default", "node"];
 
-pub(crate) fn flowchart_effective_node_class_names<'a>(
+pub fn flowchart_effective_node_class_names<'a>(
     class_defs: &'a IndexMap<String, Vec<String>>,
     classes: &'a [String],
 ) -> impl Iterator<Item = &'a str> + Clone {
@@ -437,7 +438,7 @@ pub(crate) fn flowchart_effective_node_class_names<'a>(
         .chain(classes.iter().map(String::as_str))
 }
 
-pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
+pub fn flowchart_effective_text_style_for_node_classes<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -457,7 +458,7 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     .style
 }
 
-pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
+pub fn flowchart_effective_text_style_for_classes<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -472,7 +473,7 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     .style
 }
 
-pub(crate) fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
+pub fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -495,7 +496,7 @@ pub(crate) fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
 /// and per-edge declarations. The resulting style is applied after SVG line wrapping, but it owns
 /// the final text bbox used by the layout graph.
 #[cfg(test)]
-pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
+fn flowchart_effective_edge_label_text_style<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &'a [String],
@@ -513,7 +514,7 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
 }
 
 #[cfg(test)]
-pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
+fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -549,8 +550,8 @@ pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
 /// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
 /// the first entry from the already-concatenated default/edge `labelStyle` array. Classes and later
 /// style entries remain on the original edge and must not affect the label node's measurement.
-#[cfg(test)]
-pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
+#[cfg(any(test, feature = "diagram-swimlane"))]
+pub fn flowchart_swimlane_label_rect_text_style<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],
     edge_styles: &[String],
@@ -559,8 +560,8 @@ pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
         .style
 }
 
-#[cfg(test)]
-pub(crate) fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
+#[cfg(any(test, feature = "diagram-swimlane"))]
+fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],
     edge_styles: &[String],
@@ -939,7 +940,7 @@ fn flowchart_html_span_box_style(
     style
 }
 
-pub(crate) fn flowchart_apply_html_node_class_box_metrics(
+pub fn flowchart_apply_html_node_class_box_metrics(
     metrics: &mut TextMetrics,
     raw_label: &str,
     label_type: &str,
@@ -952,7 +953,7 @@ pub(crate) fn flowchart_apply_html_node_class_box_metrics(
     }
 
     let has_block_child = if label_type == "markdown" {
-        crate::text::mermaid_markdown_wants_paragraph_wrap(raw_label)
+        text::mermaid_markdown_wants_paragraph_wrap(raw_label)
     } else {
         // Mermaid's `nonMarkdownToHTML()` wraps every non-empty label in `<p>...</p>`.
         true

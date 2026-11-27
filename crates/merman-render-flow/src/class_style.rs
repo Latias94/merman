@@ -1,35 +1,42 @@
 //! The bounded classDef projection shared by source measurement and SVG class selectors.
 
 #[cfg(test)]
-use super::FlowchartSourceFacetStatus;
-use super::FlowchartStyleDeclaration;
-use crate::text::TextStyle;
+use super::source_style::FlowchartSourceFacetStatus;
+use super::source_style::FlowchartStyleDeclaration;
 use indexmap::IndexMap;
+use merman_render_core::{
+    Result, mermaid_style,
+    text::{self, TextStyle},
+};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::cell::{RefCell, RefMut};
 use std::sync::Arc;
 
 /// The authored definitions for one operation and the facets of the fixed DOM shells it visits.
-pub(crate) struct FlowchartClassDefinitions<'a> {
-    pub(crate) source: &'a IndexMap<String, Vec<String>>,
+pub struct FlowchartClassDefinitions<'a> {
+    source: &'a IndexMap<String, Vec<String>>,
     shells: RefCell<FxHashMap<&'static str, FlowchartPreparedClassShell>>,
 }
 
 impl<'a> FlowchartClassDefinitions<'a> {
-    pub(crate) fn new(source: &'a IndexMap<String, Vec<String>>) -> Self {
+    pub fn new(source: &'a IndexMap<String, Vec<String>>) -> Self {
         Self {
             source,
             shells: RefCell::default(),
         }
     }
 
+    pub const fn source(&self) -> &'a IndexMap<String, Vec<String>> {
+        self.source
+    }
+
     /// Charge the original declarations for every occurrence before exposing the shared result.
-    pub(crate) fn prepare_shell(
+    pub fn prepare_shell(
         &self,
         class: &'static str,
-        charge: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<Option<RefMut<'_, FlowchartPreparedClassShell>>> {
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<Option<RefMut<'_, FlowchartPreparedClassShell>>> {
         let Some(declarations) = self.charge_shell(class, charge)? else {
             return Ok(None);
         };
@@ -42,11 +49,11 @@ impl<'a> FlowchartClassDefinitions<'a> {
 
     /// Edge preparation needs the complete CSSOM declarations to replay its emitted CSS checks.
     /// Leave the smaller terminal projection for subsequent consumers of the same class.
-    pub(crate) fn prepare_shell_cssom(
+    pub fn prepare_shell_cssom(
         &self,
         class: &'static str,
-        charge: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<Option<FlowchartClassDefStyles>> {
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<Option<FlowchartClassDefStyles>> {
         let Some(declarations) = self.charge_shell(class, charge)? else {
             return Ok(None);
         };
@@ -61,8 +68,8 @@ impl<'a> FlowchartClassDefinitions<'a> {
     fn charge_shell(
         &self,
         class: &str,
-        mut charge: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<Option<&[String]>> {
+        mut charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<Option<&[String]>> {
         let Some(declarations) = self.source.get(class) else {
             return Ok(None);
         };
@@ -74,10 +81,10 @@ impl<'a> FlowchartClassDefinitions<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartPreparedClassShell {
+pub struct FlowchartPreparedClassShell {
     shape_labels: FlowchartShellLabelStyles,
     text_labels: FlowchartShellLabelStyles,
-    pub(crate) paint: FlowchartShellPaint,
+    pub paint: FlowchartShellPaint,
 }
 
 impl FlowchartPreparedClassShell {
@@ -96,10 +103,10 @@ impl FlowchartPreparedClassShell {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartShellPaint {
-    pub(crate) fill: bool,
-    pub(crate) stroke_width: bool,
-    pub(crate) radius: bool,
+pub struct FlowchartShellPaint {
+    pub fill: bool,
+    pub stroke_width: bool,
+    pub radius: bool,
 }
 
 #[derive(Debug, Default)]
@@ -128,13 +135,11 @@ impl FlowchartShellLabelStyles {
                     let inherits = matches!(declaration.value().trim(), "inherit" | "unset");
                     [
                         inherits
-                            || crate::mermaid_style::css_font_family_declaration_ownership([
-                                raw.as_str()
-                            ]) != crate::mermaid_style::CssFontFamilyOwnership::Inherited,
+                            || mermaid_style::css_font_family_declaration_ownership([raw.as_str()])
+                                != mermaid_style::CssFontFamilyOwnership::Inherited,
                         inherits
-                            || crate::mermaid_style::css_font_size_declaration_ownership([
-                                raw.as_str()
-                            ]) != crate::mermaid_style::CssFontSizeOwnership::Inherited,
+                            || mermaid_style::css_font_size_declaration_ownership([raw.as_str()])
+                                != mermaid_style::CssFontSizeOwnership::Inherited,
                     ]
                 }
                 _ => [false, false],
@@ -152,13 +157,13 @@ impl FlowchartShellLabelStyles {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct FlowchartClassDefStyles {
-    pub(crate) shape: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
-    pub(crate) text: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
+pub struct FlowchartClassDefStyles {
+    pub shape: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
+    pub text: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
 }
 
 impl FlowchartClassDefStyles {
-    pub(crate) fn prepare(declarations: &[String]) -> Self {
+    pub fn prepare(declarations: &[String]) -> Self {
         let mut styles = Self::default();
         for raw in declarations {
             Self::set(&mut styles.shape, raw);
@@ -186,7 +191,7 @@ impl FlowchartClassDefStyles {
 
 /// Fixed label shells emitted by the node and cluster writers, not arbitrary CSS selectors.
 #[derive(Clone, Copy)]
-pub(crate) struct FlowchartLabelDom<'a> {
+pub struct FlowchartLabelDom<'a> {
     node: Option<(&'a str, bool)>,
     label: &'a str,
     label_type: &'a str,
@@ -194,7 +199,7 @@ pub(crate) struct FlowchartLabelDom<'a> {
 }
 
 impl<'a> FlowchartLabelDom<'a> {
-    pub(crate) fn node(
+    pub fn node(
         shape: &'a str,
         label: &'a str,
         label_type: &'a str,
@@ -209,7 +214,7 @@ impl<'a> FlowchartLabelDom<'a> {
         }
     }
 
-    pub(crate) fn cluster(label: &'a str, label_type: &'a str, html: bool) -> Self {
+    pub fn cluster(label: &'a str, label_type: &'a str, html: bool) -> Self {
         Self {
             node: None,
             label,
@@ -220,7 +225,7 @@ impl<'a> FlowchartLabelDom<'a> {
 
     /// The number is the fixed terminal depth, used only to distinguish direct glyph/content
     /// declarations from inherited outer-shell fonts. ClassDef order breaks ties at one depth.
-    pub(crate) fn classes(self) -> Vec<(&'static str, u8)> {
+    pub fn classes(self) -> Vec<(&'static str, u8)> {
         let mut classes = if let Some((shape, hand_drawn)) = self.node {
             let wrapper = if shape == "imageSquare" {
                 "image-shape"
@@ -258,7 +263,7 @@ impl<'a> FlowchartLabelDom<'a> {
         if self.html {
             // The shared paragraph projection proves a real direct child of nodeLabel.
             // Unsupported raw block/Math descendants retain their existing local boundaries.
-            if crate::text::mermaid_markdown_wants_paragraph_wrap(self.label) {
+            if text::mermaid_markdown_wants_paragraph_wrap(self.label) {
                 classes.push(("nodeLabel", 2));
                 if self.node.is_some() && self.label_type == "markdown" {
                     classes.push(("markdown-node-label", 2));
@@ -272,7 +277,7 @@ impl<'a> FlowchartLabelDom<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct FlowchartStructuralFontSource {
+pub struct FlowchartStructuralFontSource {
     pub(crate) declaration: Arc<FlowchartStyleDeclaration>,
     depth: u8,
     content_owned: bool,
@@ -281,7 +286,7 @@ pub(crate) struct FlowchartStructuralFontSource {
 impl FlowchartStructuralFontSource {
     pub(crate) fn measurable(&self) -> bool {
         match self.declaration.property() {
-            "font-family" => crate::text::parse_css_font_stack(self.declaration.value()).is_some(),
+            "font-family" => text::parse_css_font_stack(self.declaration.value()).is_some(),
             // Relative sizes may be applied at several matching spans/ancestors. Admit only
             // absolute values here rather than inventing a CSS inheritance evaluator.
             "font-size" => {
@@ -290,9 +295,7 @@ impl FlowchartStructuralFontSource {
                     .is_some_and(|size| size >= 0.0)
                     && self
                         .declaration
-                        .resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::uniform(
-                            16.0,
-                        ))
+                        .resolve_font_size_px(mermaid_style::CssFontSizeContext::uniform(16.0))
                         .is_some()
             }
             _ => false,
@@ -306,19 +309,19 @@ impl FlowchartStructuralFontSource {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct FlowchartStructuralLabelTypography {
+pub struct FlowchartStructuralLabelTypography {
     pub(crate) font_stack: Option<FlowchartStructuralFontSource>,
     pub(crate) font_size: Option<FlowchartStructuralFontSource>,
-    pub(crate) foreground: Option<FlowchartStructuralFontSource>,
+    pub foreground: Option<FlowchartStructuralFontSource>,
 }
 
 impl FlowchartStructuralLabelTypography {
-    pub(crate) fn prepare(
+    pub fn prepare(
         class_defs: &FlowchartClassDefinitions<'_>,
         css_html_labels: bool,
         dom: FlowchartLabelDom<'_>,
-        mut charge: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<Self> {
+        mut charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<Self> {
         let mut result = Self::default();
         if class_defs.source.is_empty() {
             return Ok(result);
@@ -409,13 +412,13 @@ impl FlowchartStructuralLabelTypography {
             .map_or(FlowchartSourceFacetStatus::Absent, |source| source.status())
     }
 
-    pub(crate) fn apply_to_parent<'a>(&self, parent: Cow<'a, TextStyle>) -> Cow<'a, TextStyle> {
+    pub fn apply_to_parent<'a>(&self, parent: Cow<'a, TextStyle>) -> Cow<'a, TextStyle> {
         if self.font_stack.is_none() && self.font_size.is_none() {
             return parent;
         }
-        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+        let mut cascade = mermaid_style::TextStyleCascade::new(
             &parent,
-            crate::mermaid_style::CssFontSizeContext::uniform(parent.font_size),
+            mermaid_style::CssFontSizeContext::uniform(parent.font_size),
         );
         for source in self.font_stack.iter().chain(&self.font_size) {
             if source.measurable() && !source.content_owned {
@@ -429,7 +432,7 @@ impl FlowchartStructuralLabelTypography {
         Cow::Owned(cascade.finish().into_owned())
     }
 
-    pub(crate) fn apply_to_content(&self, style: &mut Cow<'_, TextStyle>) {
+    pub fn apply_to_content(&self, style: &mut Cow<'_, TextStyle>) {
         if !self
             .font_stack
             .iter()
@@ -438,9 +441,9 @@ impl FlowchartStructuralLabelTypography {
         {
             return;
         }
-        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+        let mut cascade = mermaid_style::TextStyleCascade::new(
             style.as_ref(),
-            crate::mermaid_style::CssFontSizeContext::uniform(style.font_size),
+            mermaid_style::CssFontSizeContext::uniform(style.font_size),
         );
         for source in self.font_stack.iter().chain(&self.font_size) {
             if source.measurable() && source.content_owned {
@@ -511,7 +514,7 @@ mod tests {
         let rejected =
             FlowchartStructuralLabelTypography::prepare(&class_defs, true, dom, |units| {
                 if units == source.len() {
-                    Err(crate::Error::InvalidModel {
+                    Err(merman_render_core::Error::InvalidModel {
                         message: "test work limit".to_owned(),
                     })
                 } else {

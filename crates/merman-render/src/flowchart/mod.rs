@@ -1,8 +1,8 @@
 pub(crate) use merman_render_flow::bpmn;
 use merman_render_flow::layout_config as config;
+use merman_render_flow::{class_style, source_style, style};
 #[cfg(test)]
 mod bpmn_layout_tests;
-mod class_style;
 mod compatibility;
 #[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
@@ -20,8 +20,6 @@ mod self_loop;
 mod shape_validation;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
-mod source_style;
-mod style;
 pub(crate) use source_style::{FlowchartSourceFacetStatus, FlowchartStyleDeclaration};
 mod svg_label_artifact;
 
@@ -99,7 +97,7 @@ pub(crate) use shape_validation::{
 pub(crate) use style::flowchart_apply_html_node_class_box_metrics;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use style::flowchart_node_layout_style;
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
     FlowchartRectangleCssSize, FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,

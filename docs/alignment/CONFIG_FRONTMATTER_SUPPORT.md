@@ -91,7 +91,7 @@ Source style order remains family-specific:
 | ER | Implicit default class, assigned classes, then inline declarations; typography is a measurement input as well as paint. |
 | Sequence | Actor/message/note font configuration and dedicated `rect`/`box` colors are separate channels; generic `classDef`/`class`/`style` syntax is not added. |
 
-The [Flowchart source-style representation](../../crates/merman-render/src/flowchart/source_style.rs)
+The [Flowchart source-style representation](../../crates/merman-render-flow/src/source_style.rs)
 retains the validated source CSS. Family parsers and SVG tests cover observable precedence.
 Raw `themeCSS` follows the CSS cascade under the host trust policy. Layout-affecting typography
 must be resolved before layout, and consumer styles before [fallback measurement](../rendering/SVG_OUTPUT_PIPELINE.md#fallback-typography-boundary).

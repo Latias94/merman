@@ -1245,10 +1245,12 @@ name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
  "dugong",
+ "indexmap",
  "kurbo",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "rustc-hash",
  "serde_json",
 ]
 
