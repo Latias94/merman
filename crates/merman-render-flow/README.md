@@ -5,6 +5,7 @@ Flow layout configuration, including Mermaid defaults, label modes, and typograp
 settings. Agentflow also owns the overlay that projects admitted Agentflow settings into the
 shared layout inputs. `merman-render` selects and admits the layout backend and supplies the
 host-selected theme and measurement services.
+The crate also projects visible endpoints and memberships and builds collision-safe layout edge IDs.
 
 Shape names, asset dimension checks, and geometry shared by the Flowchart, Swimlane, and
 AgentFlow renderers. This crate owns Mermaid's Bang and Cloud outlines and BPMN body geometry,

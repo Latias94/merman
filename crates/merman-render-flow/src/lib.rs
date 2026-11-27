@@ -14,5 +14,12 @@ pub mod dagre;
 ))]
 #[doc(hidden)]
 pub mod layout_config;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod projection;
 #[doc(hidden)]
 pub mod shapes;

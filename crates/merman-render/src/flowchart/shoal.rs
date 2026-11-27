@@ -79,7 +79,7 @@ pub(crate) fn layout(
         bindings
             .groups
             .iter()
-            .map(|&i| view.semantic.subgraphs[i].id.as_str()),
+            .map(|&i| view.semantic().subgraphs[i].id.as_str()),
         Some(execution),
         placement::Constraints {
             flow_relative_nodes: &bindings.flow_relative_nodes,
@@ -504,13 +504,9 @@ pub(crate) fn materialize_edges(
         .zip(geometry)
         .map(|(key, geometry)| {
             let edge = &model.edges[key.semantic_index()];
-            let projected =
-                super::project_flowchart_edge(edge, model.render_context).ok_or_else(|| {
-                    Error::InvalidModel {
-                        message: format!(
-                            "Flowchart layout contains hidden edge occurrence {key:?}"
-                        ),
-                    }
+            let projected = super::project_flowchart_edge(edge, model.render_context())
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("Flowchart layout contains hidden edge occurrence {key:?}"),
                 })?;
             Ok(layout_edge(
                 projected,

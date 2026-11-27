@@ -51,7 +51,7 @@ pub(super) fn measure<'a>(
         .and_then(title_position)
         .filter(|&position| title_position_is_explicit || at_bottom(position))
         .unwrap_or(TitlePosition::TopAuto);
-    for (ordinal, group) in view.semantic.subgraphs.iter().enumerate() {
+    for (ordinal, group) in view.semantic().subgraphs.iter().enumerate() {
         work.charge_adapter(group.id.len())?;
         if view.collapsed_replacement(&group.id).is_some() || !seen.insert(group.id.as_str()) {
             continue;
