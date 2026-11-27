@@ -5,8 +5,10 @@ use merman_theme_contract::v2::{Elevation, ShadowLayer};
 
 use super::canvas::write_color;
 use crate::number_format::canonical_number as number;
+#[cfg(feature = "paint-scene")]
+use crate::paint_scene::{SceneBox, SceneColor, ScenePaint, SceneRect};
 
-fn layers(elevation: &Elevation) -> impl Iterator<Item = ShadowLayer> + '_ {
+fn visible_layers(elevation: &Elevation) -> impl Iterator<Item = ShadowLayer> + '_ {
     let (stack, glow) = match elevation {
         Elevation::Flat => (&[][..], None),
         Elevation::Shadows { layers } => (layers.as_ref(), None),
@@ -19,7 +21,7 @@ fn layers(elevation: &Elevation) -> impl Iterator<Item = ShadowLayer> + '_ {
             Some(ShadowLayer::new(0.0, 0.0, *blur, *color, *opacity)),
         ),
     };
-    stack.iter().copied().chain(glow)
+    stack.iter().copied().chain(glow).filter(visible)
 }
 
 fn visible(layer: &ShadowLayer) -> bool {
@@ -32,11 +34,65 @@ fn blur_region(bounds: Rect, blur: f64) -> Rect {
 
 /// Bounds of the depth layer in the surface's position-independent coordinates.
 pub fn bounds(elevation: &Elevation, surface: Rect) -> Rect {
-    layers(elevation)
-        .filter(visible)
-        .fold(surface, |bounds, layer| {
-            bounds.union(blur_region(surface, layer.blur) + kurbo::Vec2::new(layer.dx, layer.dy))
+    visible_layers(elevation).fold(surface, |bounds, layer| {
+        bounds.union(blur_region(surface, layer.blur) + kurbo::Vec2::new(layer.dx, layer.dy))
+    })
+}
+
+/// A filter-free shadow stack that can be painted with compact scene rectangles.
+#[cfg(feature = "paint-scene")]
+#[derive(Clone, Copy)]
+pub struct HardShadows<'a>(&'a Elevation);
+
+#[cfg(feature = "paint-scene")]
+impl<'a> HardShadows<'a> {
+    pub fn resolve(elevation: &'a Elevation) -> Option<Self> {
+        match elevation {
+            Elevation::Flat => Some(Self(elevation)),
+            Elevation::Shadows { layers } if layers.iter().all(|layer| layer.blur == 0.0) => {
+                Some(Self(elevation))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn layer_count(self) -> usize {
+        visible_layers(self.0).count()
+    }
+
+    pub fn bounds(self, surface: SceneBox) -> Rect {
+        bounds(
+            self.0,
+            Rect::from_origin_size((surface.x, surface.y), (surface.width, surface.height)),
+        )
+    }
+
+    pub fn rectangles(
+        self,
+        surface: SceneBox,
+        radius: f64,
+    ) -> impl Iterator<Item = SceneRect> + 'a {
+        visible_layers(self.0).map(move |layer| {
+            let [red, green, blue, alpha] = layer.color.channels().map(f64::from);
+            SceneRect {
+                bounds: SceneBox {
+                    x: surface.x + layer.dx,
+                    y: surface.y + layer.dy,
+                    ..surface
+                },
+                radius,
+                paint: ScenePaint {
+                    fill: Some(SceneColor {
+                        red,
+                        green,
+                        blue,
+                        alpha: alpha / 255.0 * layer.opacity,
+                    }),
+                    stroke: None,
+                },
+            }
         })
+    }
 }
 
 /// Emits a label-free copy of a silhouette below the graph's connectors and foreground.
@@ -50,7 +106,7 @@ pub fn write_depth(
     let bounds = silhouette.bounding_box();
     let path = silhouette.to_svg();
     let id = crate::xml::escape_attr(id);
-    for (index, layer) in layers(elevation).filter(visible).enumerate() {
+    for (index, layer) in visible_layers(elevation).enumerate() {
         let filter = format!("{id}-merman-depth-{index}");
         write!(
             out,

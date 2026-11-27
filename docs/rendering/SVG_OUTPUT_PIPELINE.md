@@ -104,6 +104,9 @@ let svg = Renderer::new().render_svg_with(
 - With `diagram-flowchart` and `layout-dagre`, the producer reuses clipped linear routes for
   classic, ungrouped diagrams with plain, single-row rectangular node labels and unlabeled edges.
   Select `layout: dagre`, set `flowchart.curve: linear`, and disable `htmlLabels`.
+- Both producers support Theme v2 arrow styles for their admitted edges and hard shadow layers
+  on rectangular nodes. A fully transparent canvas suppresses theme canvas textures. A visible
+  textured canvas or a blurred elevation still requires the parity producer.
 
 The compact writer emits native SVG without Mermaid compatibility styles or `<foreignObject>`
 labels. Unsupported families, constructs, or transforms return an explicit error. The profile is

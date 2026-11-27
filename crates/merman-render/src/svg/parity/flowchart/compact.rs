@@ -14,6 +14,7 @@ use merman_render_core::{
         SceneViewport,
     },
     text::{FontStyle, parse_css_font_stack},
+    theme_svg::elevation::HardShadows,
 };
 use merman_theme_contract::v2::{Elevation, MarkerStyle, Paint, Texture};
 
@@ -21,7 +22,7 @@ use super::{
     FlowchartEdgeDataPointsScratch, FlowchartHierarchyPlan, FlowchartMarkerBase,
     FlowchartRenderCtx,
     css::flowchart_normal_edge_css_width,
-    defs::compact_classic_point_end,
+    defs::compact_point_end,
     flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
     paint::{prepare_dagre_linear_edge_route, with_flowchart_paint_context},
     render_input::{FlowchartRenderEdge, FlowchartRenderEdgeRef},
@@ -94,10 +95,19 @@ fn solid_color(color: crate::theme::Color) -> SceneColor {
     }
 }
 
-fn admit_canvas(options: &SvgExecution<'_>) -> Result<Option<SceneColor>> {
+fn admit_native_paint<'a>(
+    options: &'a SvgExecution<'_>,
+) -> Result<(Option<SceneColor>, HardShadows<'a>)> {
     let meter = options.work_meter();
     let session = options.family.session();
-    if let Some(theme) = session.native_theme()
+    let native = options.native_family_theme();
+    let background = session.canvas_background().map(Paint::Solid);
+    let paint = background
+        .as_ref()
+        .or_else(|| native.map(|theme| &theme.roles.canvas));
+    let transparent = matches!(paint, Some(Paint::Solid(color)) if color.channels()[3] == 0);
+    if !transparent
+        && let Some(theme) = session.native_theme()
         && theme
             .resolved()
             .canvas()
@@ -107,29 +117,26 @@ fn admit_canvas(options: &SvgExecution<'_>) -> Result<Option<SceneColor>> {
     {
         return Err(unsupported(meter, "flowchart-canvas-texture"));
     }
-    let native = options.native_family_theme();
     if let Some(native) = native
-        && (!matches!(native.elevation, Elevation::Flat)
-            || native.form.marker_style != MarkerStyle::Classic
-            || [
-                &native.roles.surface_node,
-                &native.roles.stroke_border,
-                &native.roles.stroke_connector,
-            ]
-            .into_iter()
-            .any(|paint| !matches!(paint, Paint::Solid(_))))
+        && [
+            &native.roles.surface_node,
+            &native.roles.stroke_border,
+            &native.roles.stroke_connector,
+        ]
+        .into_iter()
+        .any(|paint| !matches!(paint, Paint::Solid(_)))
     {
         return Err(unsupported(meter, "flowchart-native-material"));
     }
-    let canvas = match (session.canvas_background(), native) {
-        (Some(color), _) => Some(solid_color(color)),
-        (None, Some(native)) => match &native.roles.canvas {
-            Paint::Solid(color) => Some(solid_color(*color)),
-            _ => return Err(unsupported(meter, "flowchart-canvas-paint")),
-        },
-        (None, None) => None,
+    let elevation = native.map_or(&Elevation::Flat, |theme| &theme.elevation);
+    let shadows = HardShadows::resolve(elevation)
+        .ok_or_else(|| unsupported(meter, "flowchart-native-material"))?;
+    let canvas = match paint {
+        None => None,
+        Some(Paint::Solid(color)) => (!transparent).then(|| solid_color(*color)),
+        Some(_) => return Err(unsupported(meter, "flowchart-canvas-paint")),
     };
-    Ok(canvas.filter(|color| color.alpha != 0.0))
+    Ok((canvas, shadows))
 }
 
 fn admit_request(request: FlowchartSvgModelRequest<'_>, options: &SvgExecution<'_>) -> Result<()> {
@@ -252,12 +259,12 @@ fn admit_edge(
     Ok(end.is_some())
 }
 
-fn plain_node_items<'a>(
+fn plain_node_paint<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     id: &str,
     font: SceneTextStyle<'a>,
     width: f64,
-) -> Result<[SceneItem<'a>; 2]> {
+) -> Result<(SceneRect, SceneText<'a>)> {
     let meter = ctx.work_meter;
     meter.checkpoint(OperationPhase::Emit)?;
     let node = ctx
@@ -373,8 +380,8 @@ fn plain_node_items<'a>(
         Some(color) => resolved_color(color, meter)?,
         None => font.fill,
     };
-    Ok([
-        SceneItem::Rect(SceneRect {
+    Ok((
+        SceneRect {
             bounds: SceneBox {
                 x: x + rect.x0,
                 y: y + rect.y0,
@@ -390,8 +397,8 @@ fn plain_node_items<'a>(
                     dash: None,
                 }),
             },
-        }),
-        SceneItem::Text(SceneText {
+        },
+        SceneText {
             text: label,
             position: [x, y - height / 2.0],
             dy: font.size,
@@ -401,8 +408,8 @@ fn plain_node_items<'a>(
                 fill: text_fill,
                 ..font
             },
-        }),
-    ])
+        },
+    ))
 }
 
 fn reserve(items: &mut Vec<impl Sized>, additional: usize) -> Result<()> {
@@ -417,6 +424,7 @@ fn render_scene(
     edges: &[FlowchartRenderEdge<'_>],
     hierarchy: &FlowchartHierarchyPlan<'_>,
     canvas: Option<SceneColor>,
+    shadows: HardShadows<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<String> {
     let meter = ctx.work_meter;
@@ -434,15 +442,23 @@ fn render_scene(
         }
         marked |= admit_edge(ctx, edge.as_ref())?;
     }
-    let item_count = nodes
+    let foreground_count = nodes
         .len()
         .checked_mul(2)
         .and_then(|count| count.checked_add(edges.len()))
+        .ok_or_else(|| meter.arithmetic_overflow())?;
+    let shadow_count = nodes
+        .len()
+        .checked_mul(shadows.layer_count())
+        .ok_or_else(|| meter.arithmetic_overflow())?;
+    let item_count = foreground_count
+        .checked_add(shadow_count)
         .ok_or_else(|| meter.arithmetic_overflow())?;
     let element_count = item_count
         .checked_add(
             2 + usize::from(!edges.is_empty())
                 + usize::from(canvas.is_some())
+                + usize::from(shadow_count != 0)
                 + 3 * usize::from(marked),
         )
         .ok_or_else(|| meter.arithmetic_overflow())?;
@@ -475,9 +491,19 @@ fn render_scene(
     };
 
     let mut items = Vec::new();
-    reserve(&mut items, item_count)?;
+    reserve(&mut items, foreground_count)?;
+    let mut depth_items = Vec::new();
+    reserve(&mut depth_items, shadow_count)?;
     for id in nodes {
-        items.extend(plain_node_items(ctx, id, text_style, node_width)?);
+        let (rect, label) = plain_node_paint(ctx, id, text_style, node_width)?;
+        if shadow_count != 0 {
+            depth_items.extend(
+                shadows
+                    .rectangles(rect.bounds, rect.radius)
+                    .map(SceneItem::Rect),
+            );
+        }
+        items.extend([SceneItem::Rect(rect), SceneItem::Text(label)]);
     }
     let edge_layer_start = items.len();
     let bounds = prepare_flowchart_rendered_bounds(
@@ -547,6 +573,11 @@ fn render_scene(
     let groups = [
         SceneGroup {
             id: None,
+            role: SceneRole::Depth,
+            items: &depth_items,
+        },
+        SceneGroup {
+            id: None,
             role: SceneRole::Edge,
             items: &items[edge_layer_start..],
         },
@@ -556,7 +587,10 @@ fn render_scene(
             items: &items[..edge_layer_start],
         },
     ];
-    let marker = compact_classic_point_end(line_color);
+    let marker_style = ctx
+        .native
+        .map_or(MarkerStyle::Classic, |native| native.form.marker_style);
+    let marker = compact_point_end(marker_style, line_color);
     let markers = if marked {
         std::slice::from_ref(&marker)
     } else {
@@ -576,7 +610,7 @@ fn render_scene(
         },
         metadata: SceneMetadata::default(),
         markers,
-        groups: &groups,
+        groups: &groups[usize::from(depth_items.is_empty())..],
     };
     paint_scene::write_svg(&scene, ctx.diagram_id, meter)
 }
@@ -588,8 +622,8 @@ pub(in crate::svg::parity) fn render_native_compact_flowchart_artifact(
 ) -> Result<String> {
     let request = flowchart_request(artifact, metadata)?;
     admit_request(request, execution)?;
-    let canvas = admit_canvas(execution)?;
+    let (canvas, shadows) = admit_native_paint(execution)?;
     with_flowchart_paint_context(request, execution, |ctx, edges, hierarchy| {
-        render_scene(request, ctx, edges, hierarchy, canvas, execution)
+        render_scene(request, ctx, edges, hierarchy, canvas, shadows, execution)
     })
 }

@@ -58,6 +58,7 @@ fn with_sequence_paint<T>(run: impl FnOnce(&PaintScene<'_>) -> T) -> T {
         height: 12.0,
         units: SceneMarkerUnits::UserSpaceOnUse,
         orient: SceneMarkerOrient::AutoStartReverse,
+        round_stroke: false,
         commands: &arrow,
         paint: ScenePaint {
             fill: Some(INK),

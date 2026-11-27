@@ -32,25 +32,30 @@ use super::{
     feature = "diagram-flowchart",
     feature = "layout-dagre"
 ))]
-pub(super) fn compact_classic_point_end(
+pub(super) fn compact_point_end(
+    style: MarkerStyle,
     color: merman_render_core::paint_scene::SceneColor,
 ) -> merman_render_core::paint_scene::SceneMarker<'static> {
-    use merman_render_core::paint_scene::{
-        SceneBox, SceneMarker, SceneMarkerOrient, SceneMarkerUnits, ScenePaint, ScenePathCommand,
-        SceneStroke,
+    use merman_render_core::{
+        paint_scene::{
+            SceneBox, SceneMarker, SceneMarkerOrient, SceneMarkerUnits, ScenePaint,
+            ScenePathCommand, SceneStroke,
+        },
+        theme_svg::marker::arrow_commands,
     };
 
     use merman_render_flow::markers::CLASSIC_POINT_END_VIEW_BOX;
 
     const WIDTH: f64 = CLASSIC_POINT_END_VIEW_BOX[0];
     const HEIGHT: f64 = CLASSIC_POINT_END_VIEW_BOX[1];
-    const COMMANDS: [ScenePathCommand; 4] = [
+    const CLASSIC_COMMANDS: [ScenePathCommand; 4] = [
         ScenePathCommand::MoveTo([0.0, 0.0]),
         ScenePathCommand::LineTo([WIDTH, HEIGHT / 2.0]),
         ScenePathCommand::LineTo([0.0, HEIGHT]),
         ScenePathCommand::Close,
     ];
     let spec = flowchart_marker_shape_spec(FlowchartMarkerBase::PointEnd, false);
+    let open = style == MarkerStyle::Open;
     SceneMarker {
         view_box: Some(SceneBox {
             x: 0.0,
@@ -63,9 +68,10 @@ pub(super) fn compact_classic_point_end(
         height: spec.viewport.size[1],
         units: SceneMarkerUnits::UserSpaceOnUse,
         orient: SceneMarkerOrient::Auto,
-        commands: &COMMANDS,
+        round_stroke: open,
+        commands: arrow_commands(style).unwrap_or(&CLASSIC_COMMANDS),
         paint: ScenePaint {
-            fill: Some(color),
+            fill: (!open).then_some(color),
             stroke: Some(SceneStroke {
                 color,
                 width: 1.0,
@@ -1451,7 +1457,7 @@ mod tests {
 
     #[test]
     fn agentflow_hierarchy_definitions_are_included_in_the_svg_budget() {
-        let diagram_id = "diagram<&";
+        let diagram_id = "diagram<&\t#quot;";
         let mut emitted = String::new();
         push_base_markers(
             &mut emitted,
@@ -1459,6 +1465,14 @@ mod tests {
             "agentflow",
             MarkerStyle::Classic,
             false,
+        );
+        let svg = format!("<svg>{emitted}</svg>");
+        let document = crate::xml_dom::Document::parse(&svg).unwrap();
+        let id = format!("{diagram_id}_agentflow-hierarchyEnd");
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(id.as_str()))
         );
         let exact_meter = meter_with_limits(emitted.len(), usize::MAX);
         let mut exact_plan = FlowchartMarkerEmissionPlan::new();
@@ -1665,6 +1679,11 @@ mod paint_security_tests {
             ("rgb(12,34,56)", false, Some("rgb(12,34,56)")),
             ("stroke:DarkGray", true, Some("stroke:DarkGray")),
             ("stroke:#123456", true, Some("stroke:#123456")),
+            (
+                "var(--edge, \"#quot;\")\t",
+                true,
+                Some("var(--edge, \"#quot;\")\t"),
+            ),
         ] {
             let work = crate::resources::OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

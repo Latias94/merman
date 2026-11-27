@@ -271,7 +271,7 @@ pub(crate) use util::escape_xml;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use util::{escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display};
+use util::{escape_attr_display, escape_xml_display, fmt, fmt_display};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
