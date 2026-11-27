@@ -13,13 +13,14 @@ pub(crate) struct ArchitectureGroupThemePlan {
 
 impl ArchitectureGroupThemePlan {
     pub(crate) fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
-        let mut typography = ArchitectureTypographyThemePlan::resolve(config);
-        let native = native.map(|theme| {
-            let native = super::ArchitectureNativeStyle::resolve(theme, config);
-            typography.apply_native(theme, &native, config);
-            Box::new(native)
-        });
-        Self { typography, native }
+        let native_style =
+            native.map(|theme| super::ArchitectureNativeStyle::resolve(theme, config));
+        let typography =
+            ArchitectureTypographyThemePlan::resolve(config, native.zip(native_style.as_ref()));
+        Self {
+            typography,
+            native: native_style.map(Box::new),
+        }
     }
 
     pub(crate) fn native_style(&self) -> Option<&super::ArchitectureNativeStyle> {

@@ -1,7 +1,9 @@
 use merman_model::presentation::PresentationConfig;
 
+use super::super::{ArchitectureCssBinding, ArchitectureNativeStyle, native_theme::authored};
 use crate::config::configured_theme_font_size_css_or_root_number_px;
 use crate::mermaid_style::{css_font_size_value_override, parse_style_declaration};
+use crate::theme::FamilyTheme;
 
 /// Resolves Architecture's inherited SVG typography without taking ownership of Cytoscape text.
 ///
@@ -11,86 +13,59 @@ use crate::mermaid_style::{css_font_size_value_override, parse_style_declaration
 /// Mermaid's layout semantics.
 #[derive(Debug)]
 pub(crate) struct ArchitectureTypographyThemePlan {
-    css_binding: super::super::ArchitectureCssBinding,
+    css_binding: ArchitectureCssBinding,
     font_family_css: String,
-    font_size_css: Box<str>,
     font_size_px: f64,
 }
 
 impl ArchitectureTypographyThemePlan {
-    pub(super) fn apply_native(
-        &mut self,
-        theme: &crate::theme::FamilyTheme,
-        native: &super::super::ArchitectureNativeStyle,
+    pub(crate) fn resolve(
         config: &PresentationConfig,
-    ) {
-        let explicit_size =
-            super::super::native_theme::authored(config, &["themeVariables.fontSize"])
+        native: Option<(&FamilyTheme, &ArchitectureNativeStyle)>,
+    ) -> Self {
+        use crate::number_format::{canonical_number, canonicalize_number};
+
+        let config_value = config.as_value();
+        let configured_size = configured_theme_font_size_css_or_root_number_px(config_value);
+        let native_size = native.and_then(|(theme, _)| {
+            let explicit_size = authored(config, &["themeVariables.fontSize"])
                 .is_some_and(|size| css_font_size_value_override(size).is_some())
-                || configured_theme_font_size_css_or_root_number_px(config.as_value())
-                    .is_some_and(|(_, path)| config.explicit_config_owns_path(path));
-        if !explicit_size {
-            self.font_size_px = theme.typography.base_size_px;
-            self.font_size_css = format!(
-                "{}px",
-                crate::number_format::canonical_number(self.font_size_px)
-            )
-            .into();
-        }
-        let family = native
-            .layout_text
-            .font_family
-            .as_deref()
-            .unwrap_or_default();
-        self.font_family_css = family.to_owned();
-        self.css_binding = super::super::ArchitectureCssBinding::resolve(
-            config.as_value(),
-            family,
-            &self.font_size_css,
-        );
-        self.css_binding.apply_native(theme, native, config);
-    }
-
-    pub(crate) fn resolve(effective_config: &PresentationConfig) -> Self {
-        let configured_size =
-            configured_theme_font_size_css_or_root_number_px(effective_config.as_value());
-        let configured_css = effective_config
-            .get_str("themeVariables.fontSize")
-            .filter(|raw| {
+                || configured_size.is_some_and(|(_, path)| config.explicit_config_owns_path(path));
+            (!explicit_size).then_some(theme.typography.base_size_px)
+        });
+        let (font_size_px, font_size_css) = if let Some(size) = native_size {
+            (size, format!("{}px", canonical_number(size)))
+        } else {
+            let relative_size = config.get_str("themeVariables.fontSize").filter(|raw| {
                 // The root is an ordinary CSS declaration, unlike C4's element CSSOM value.
-                parse_style_declaration(&format!("font-size:{raw}")).is_some_and(|declaration| {
-                    css_font_size_value_override(declaration.source_value()).is_some()
-                })
+                configured_size.is_none_or(|(_, path)| path != "themeVariables.fontSize")
+                    && parse_style_declaration(&format!("font-size:{raw}")).is_some_and(
+                        |declaration| {
+                            css_font_size_value_override(declaration.source_value()).is_some()
+                        },
+                    )
             });
-        let font_size_known = configured_css.is_none()
-            || configured_size.is_some_and(|(_, path)| path == "themeVariables.fontSize");
-        let font_size_px = if font_size_known {
-            configured_size.map_or(16.0, |(size, _)| size)
-        } else {
-            16.0
-        };
-        let font_size_px = crate::number_format::canonicalize_number(font_size_px);
-        let font_size_css: Box<str> = if font_size_known {
-            format!("{}px", crate::number_format::canonical_number(font_size_px)).into_boxed_str()
-        } else {
-            // Root-relative sizes and host expressions retain their CSS owner. The numeric
-            // fallback is used for the layout metrics.
-            configured_css
-                .expect("unknown root size retains its CSS")
-                .trim()
-                .into()
+            if let Some(css) = relative_size {
+                // Root-relative CSS retains its declaration. Layout uses the numeric fallback.
+                (16.0, css.trim().to_owned())
+            } else {
+                let size = canonicalize_number(configured_size.map_or(16.0, |(size, _)| size));
+                (size, format!("{}px", canonical_number(size)))
+            }
         };
 
-        let font_family_css = crate::config::config_font_family_css(effective_config);
-        let css_binding = super::super::ArchitectureCssBinding::resolve(
-            effective_config.as_value(),
-            &font_family_css,
-            &font_size_css,
+        let font_family_css = native.map_or_else(
+            || crate::config::config_font_family_css(config),
+            |(_, style)| style.layout_text.font_family.clone().unwrap_or_default(),
         );
+        let mut css_binding =
+            ArchitectureCssBinding::resolve(config_value, &font_family_css, font_size_css);
+        if let Some((theme, style)) = native {
+            css_binding.apply_native(theme, style, config);
+        }
         Self {
             css_binding,
             font_family_css,
-            font_size_css,
             font_size_px,
         }
     }
@@ -99,7 +74,7 @@ impl ArchitectureTypographyThemePlan {
         &self.font_family_css
     }
 
-    pub(crate) const fn css_binding(&self) -> &super::super::ArchitectureCssBinding {
+    pub(crate) const fn css_binding(&self) -> &ArchitectureCssBinding {
         &self.css_binding
     }
 
