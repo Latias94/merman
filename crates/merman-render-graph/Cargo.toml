@@ -17,6 +17,12 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-architecture = [
+    "dep:base64", "dep:kurbo", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:pulldown-cmark", "dep:rustc-hash", "dep:serde", "dep:serde_json",
+    "merman-model/diagram-architecture", "merman-render-core/icon-svg", "merman-render-core/root-svg",
+    "merman-render-core/svg-bounds", "merman-render-core/text-layout", "merman-render-core/theme-elevation",
+]
 diagram-c4 = [
     "dep:base64", "dep:cssparser", "dep:euclid", "dep:merman-model",
     "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:ryu-js",
@@ -68,6 +74,7 @@ diagram-usecase = [
     "merman-render-core/svg-edge-parity", "merman-render-core/theme-elevation",
 ]
 layout-shoal = ["dep:kurbo", "merman-render-core?/route-paint"]
+layout-cytoscape = ["dep:indexmap", "dep:manatee"]
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
@@ -79,11 +86,13 @@ dugong = { workspace = true, optional = true }
 euclid = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+pulldown-cmark = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
 roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
@@ -93,7 +102,7 @@ serde_json = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
-merman-core = { workspace = true, features = ["diagram-class", "presentation"] }
+merman-core = { workspace = true, features = ["diagram-architecture", "diagram-class", "presentation"] }
 merman-model = { workspace = true, features = ["test-support"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
 merman-theme-contract = { workspace = true, features = ["presets"] }

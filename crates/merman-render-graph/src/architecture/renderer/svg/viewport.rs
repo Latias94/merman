@@ -1,6 +1,7 @@
-use crate::model::Bounds;
+use merman_render_core::Bounds;
 
-use super::super::{SvgOutput, root_svg, svg_emitted_bounds_from_svg};
+use super::SvgOutput;
+use merman_render_core::{root_svg, svg_bounds::svg_emitted_bounds_from_svg};
 
 pub(super) struct ArchitectureRootViewportContext<'out, 'root, 'id, O: SvgOutput> {
     pub(super) out: &'out mut O,
@@ -49,7 +50,7 @@ fn architecture_root_bbox_from_svg(
 
 pub(super) fn finalize_architecture_root_viewport<O: SvgOutput>(
     ctx: ArchitectureRootViewportContext<'_, '_, '_, O>,
-) -> crate::Result<root_svg::RootDocument> {
+) -> merman_render_core::Result<root_svg::RootDocument> {
     let ArchitectureRootViewportContext {
         out,
         root_viewport,
@@ -139,8 +140,10 @@ mod tests {
     #[test]
     fn architecture_root_viewport_preserves_f64_bbox_and_padding() {
         let diagram_id = "architecture-f64-root";
-        let root_viewport =
-            root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
+        let root_viewport = root_svg::RootViewportContext::new(
+            merman_model::family::DiagramFamilyId::ARCHITECTURE,
+            diagram_id,
+        );
         let mut out = String::new();
         let root_document = root_viewport
             .begin_document(
@@ -174,7 +177,7 @@ mod tests {
         let svg = root_document
             .complete(out)
             .unwrap()
-            .into_string_for(crate::DiagramFamilyId::ARCHITECTURE)
+            .into_string_for(merman_model::family::DiagramFamilyId::ARCHITECTURE)
             .unwrap();
         let view_box = svg
             .split_once("viewBox=\"")

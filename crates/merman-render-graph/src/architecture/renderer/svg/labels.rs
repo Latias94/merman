@@ -1,6 +1,6 @@
-use crate::architecture::labels::{SvgLine, SvgWordType, wrap_svg_words_to_lines};
+use super::super::labels::{SvgLine, SvgWordType, wrap_svg_words_to_lines};
 
-use super::super::{SvgOutput, escape_xml_into, fmt};
+use super::{SvgOutput, escape_xml_into, fmt};
 
 pub(super) fn write_svg_text_lines(out: &mut impl SvgOutput, lines: &[SvgLine]) {
     out.push_str(r#"<text y="-10.1" style="">"#);
@@ -48,8 +48,8 @@ pub(super) fn write_architecture_service_title(
     title: &str,
     icon_size_px: f64,
     title_width_px: f64,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) {
     let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
     write_architecture_centered_text(out, &lines, icon_size_px / 2.0, icon_size_px);
@@ -74,10 +74,10 @@ pub(super) fn write_architecture_centered_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::architecture::labels::{
+    use crate::architecture::renderer::labels::{
         svg_line_computed_length_px, svg_line_formatted_bbox_width_px,
     };
-    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+    use merman_render_core::text::{TextMeasurer, TextMetrics, TextStyle};
     use std::cell::RefCell;
 
     type MeasurementCall = (String, Option<String>, Option<String>);
@@ -123,8 +123,8 @@ mod tests {
         }
     }
 
-    fn text_style() -> crate::text::TextStyle {
-        crate::text::TextStyle {
+    fn text_style() -> merman_render_core::text::TextStyle {
+        merman_render_core::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
             font_weight: None,
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn architecture_plain_service_title_matches_create_text_dom() {
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
 
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn architecture_plain_words_match_single_line_create_text_dom() {
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
 

@@ -46,7 +46,8 @@ current corpus. The [input sources](../../fixtures/architecture/) and
 [baseline manifest](../../fixtures/upstream-svgs/architecture/_baseline-manifest.json) own current
 input bytes, inclusion, and provenance; do not recreate an exclusion from the suffix.
 
-Owners: [Architecture layout](../../crates/merman-render/src/architecture.rs),
+Owners: [Architecture layout and SVG](../../crates/merman-render-graph/src/architecture/mod.rs),
+[Shoal layout adapter](../../crates/merman-render/src/architecture/shoal.rs),
 [layout tests](../../crates/merman-render/tests/architecture_layout_test.rs),
 [SVG tests](../../crates/merman-render/tests/architecture_svg_test.rs), and
 [semantic-label admission](SEMANTIC_LABEL_PARITY.md).

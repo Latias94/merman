@@ -1,23 +1,23 @@
 use std::collections::VecDeque;
 
-use crate::architecture_metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, extend_bounds};
-use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::model::Bounds;
+use super::metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, extend_bounds};
+use merman_render_core::Bounds;
+use merman_render_core::entities::decode_mermaid_entities_for_render_text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SvgWordType {
+pub enum SvgWordType {
     Normal,
     Strong,
     Em,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SvgWord {
-    pub(crate) content: String,
+pub struct SvgWord {
+    pub content: String,
     pub(crate) word_type: SvgWordType,
 }
 
-pub(crate) type SvgLine = Vec<SvgWord>;
+pub type SvgLine = Vec<SvgWord>;
 
 pub(crate) fn svg_line_plain_text(line: &[SvgWord]) -> String {
     let mut out = String::new();
@@ -31,9 +31,9 @@ pub(crate) fn svg_line_plain_text(line: &[SvgWord]) -> String {
 }
 
 fn svg_word_style(
-    style: &crate::text::TextStyle,
+    style: &merman_render_core::text::TextStyle,
     word_type: SvgWordType,
-) -> crate::text::TextStyle {
+) -> merman_render_core::text::TextStyle {
     let mut word_style = style.clone();
     let (font_weight, font_style) = match word_type {
         SvgWordType::Normal => ("normal", "normal"),
@@ -55,8 +55,8 @@ fn svg_word_rendered_text(word: &SvgWord, word_index: usize) -> String {
 
 pub(crate) fn svg_line_computed_length_px(
     line: &[SvgWord],
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> f64 {
     if style.font_size == 0.0 {
         return 0.0;
@@ -71,10 +71,10 @@ pub(crate) fn svg_line_computed_length_px(
         .sum()
 }
 
-pub(crate) fn svg_service_title_bounds(
+pub fn svg_service_title_bounds(
     lines: &[SvgLine],
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> Option<Bounds> {
     if !svg_lines_have_visible_text(lines, style.font_size) {
         return None;
@@ -139,8 +139,8 @@ pub(crate) fn svg_service_title_bounds(
 
 fn svg_line_formatted_bbox_x_px(
     line: &[SvgWord],
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> (f64, f64) {
     if line.is_empty() {
         return (0.0, 0.0);
@@ -160,19 +160,19 @@ fn svg_line_formatted_bbox_x_px(
 
 pub(crate) fn svg_line_formatted_bbox_width_px(
     line: &[SvgWord],
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> f64 {
     let (left, right) = svg_line_formatted_bbox_x_px(line, measurer, style);
     (left + right).max(0.0)
 }
 
-pub(crate) fn architecture_svg_text_terminal_bounds(
+pub fn architecture_svg_text_terminal_bounds(
     lines: &[SvgLine],
     anchor_x: f64,
     anchor_y: f64,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> Bounds {
     if !svg_lines_have_visible_text(lines, style.font_size) {
         return Bounds {
@@ -205,11 +205,11 @@ pub(crate) fn architecture_svg_text_terminal_bounds(
     }
 }
 
-pub(crate) fn wrap_svg_words_to_lines(
+pub fn wrap_svg_words_to_lines(
     text: &str,
     max_width_px: f64,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
+    measurer: &dyn merman_render_core::text::TextMeasurer,
+    style: &merman_render_core::text::TextStyle,
 ) -> Vec<SvgLine> {
     // Mirrors Mermaid `createText(..., { useHtmlLabels: false, width })` behavior for SVG text
     // labels:
@@ -231,8 +231,8 @@ pub(crate) fn wrap_svg_words_to_lines(
     };
 
     fn check_fit(
-        measurer: &dyn crate::text::TextMeasurer,
-        style: &crate::text::TextStyle,
+        measurer: &dyn merman_render_core::text::TextMeasurer,
+        style: &merman_render_core::text::TextStyle,
         max_width_px: f64,
         line: &[SvgWord],
     ) -> bool {
@@ -243,8 +243,8 @@ pub(crate) fn wrap_svg_words_to_lines(
     }
 
     fn split_word_to_fit_width(
-        measurer: &dyn crate::text::TextMeasurer,
-        style: &crate::text::TextStyle,
+        measurer: &dyn merman_render_core::text::TextMeasurer,
+        style: &merman_render_core::text::TextStyle,
         max_width_px: f64,
         word: SvgWord,
     ) -> (SvgWord, SvgWord) {
@@ -304,8 +304,8 @@ pub(crate) fn wrap_svg_words_to_lines(
     }
 
     fn split_line_to_fit_width(
-        measurer: &dyn crate::text::TextMeasurer,
-        style: &crate::text::TextStyle,
+        measurer: &dyn merman_render_core::text::TextMeasurer,
+        style: &merman_render_core::text::TextStyle,
         max_width_px: f64,
         line: SvgLine,
     ) -> Vec<SvgLine> {
@@ -376,7 +376,9 @@ fn parse_svg_word_lines(text: &str) -> Vec<SvgLine> {
         // - dedent leading indentation
         //
         // We reuse our `<br>` normalization and trailing-empty trimming for determinism.
-        let joined = crate::text::DeterministicTextMeasurer::normalized_text_lines(text).join("\n");
+        let joined =
+            merman_render_core::text::DeterministicTextMeasurer::normalized_text_lines(text)
+                .join("\n");
 
         // Collapse multiple newlines to one (equivalent to `/\n{2,}/g -> "\n"`).
         let mut collapsed = String::with_capacity(joined.len());
@@ -488,12 +490,11 @@ fn parse_svg_word_lines(text: &str) -> Vec<SvgLine> {
 }
 
 fn svg_lines_have_visible_words(lines: &[SvgLine]) -> bool {
-    lines
-        .iter()
-        .flatten()
-        .any(|word| !crate::text::trim_html_collapsible_ascii_whitespace(&word.content).is_empty())
+    lines.iter().flatten().any(|word| {
+        !merman_render_core::text::trim_html_collapsible_ascii_whitespace(&word.content).is_empty()
+    })
 }
 
-pub(crate) fn svg_lines_have_visible_text(lines: &[SvgLine], font_size_px: f64) -> bool {
+pub fn svg_lines_have_visible_text(lines: &[SvgLine], font_size_px: f64) -> bool {
     font_size_px > 0.0 && svg_lines_have_visible_words(lines)
 }

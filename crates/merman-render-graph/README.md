@@ -1,6 +1,10 @@
 # merman-render-graph
 
-Rendering for Mermaid graph diagrams. The `diagram-er` feature owns ER configuration, theme
+Rendering for Mermaid graph diagrams. The `diagram-architecture` feature owns Architecture
+presentation and complete SVG emission. `layout-cytoscape` adds the fCoSE adapter. The
+facade selects the backend and supplies the operation context and canonical routes.
+
+The `diagram-er` feature owns ER configuration, theme
 binding, label preparation, and complete SVG emission. `merman-render` selects the layout backend,
 supplies canonical routes and the operation context, and applies terminal SVG policies.
 `layout-shoal` adds marker footprints for routing and viewport geometry.

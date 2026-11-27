@@ -1,37 +1,39 @@
-use crate::architecture_metrics::{
+use super::super::metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
     architecture_create_text_middle_bbox_y_range_px,
 };
-use crate::model::Bounds;
-use crate::text::TextMeasurer;
 use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+use merman_render_core::Bounds;
+use merman_render_core::text::TextMeasurer;
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 use std::borrow::Cow;
 
 #[cfg(feature = "layout-shoal")]
-mod shoal;
+mod canonical;
 
-use super::super::{SvgDiagramId, SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
+use super::super::labels::{
+    SvgLine, svg_line_formatted_bbox_width_px, svg_line_plain_text, svg_lines_have_visible_text,
+    wrap_svg_words_to_lines,
+};
+#[cfg(feature = "layout-shoal")]
+use super::ArchitectureCanonicalSvg;
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::write_svg_text_lines;
 use super::settings::ArchitectureRenderSettings;
-use crate::architecture::labels::{
-    SvgLine, svg_line_formatted_bbox_width_px, svg_line_plain_text, svg_lines_have_visible_text,
-    wrap_svg_words_to_lines,
-};
-use crate::model::ArchitectureDiagramLayout;
+use super::{SvgDiagramId, SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
+use crate::architecture::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     #[cfg(feature = "layout-shoal")]
-    pub(super) shoal: Option<&'a crate::architecture::ArchitectureShoalGeometry>,
+    pub(super) shoal: Option<&'a dyn ArchitectureCanonicalSvg>,
     pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
-    pub(super) native: Option<&'a crate::architecture::ArchitectureNativeStyle>,
+    pub(super) native: Option<&'a super::super::ArchitectureNativeStyle>,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
@@ -544,7 +546,7 @@ enum ArchitectureShaft<'a> {
         ArchitectureEdgeRoute,
     ),
     #[cfg(feature = "layout-shoal")]
-    Shoal(shoal::Shaft<'a>),
+    Shoal(canonical::Shaft<'a>),
 }
 
 impl ArchitectureShaft<'_> {
@@ -563,7 +565,7 @@ impl ArchitectureShaft<'_> {
         ordinal: usize,
         #[cfg(feature = "layout-shoal")] points_json: &mut Vec<u8>,
         #[cfg(feature = "layout-shoal")] points_base64: &mut String,
-    ) -> crate::Result<()> {
+    ) -> merman_render_core::Result<()> {
         match self {
             Self::Legacy(points, edge, route) => {
                 write_architecture_edge_path(out, diagram_id, edge, *points, *route)
@@ -581,7 +583,7 @@ impl ArchitectureShaft<'_> {
 
 pub(super) fn push_architecture_edges<O: SvgOutput>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, O>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
@@ -740,7 +742,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
         let arrow_points = ArchitectureArrowPoints::new(arrow_size, marker_style);
         let edge_style = ctx.native.map(|native| native.edge_style);
         #[cfg(feature = "layout-shoal")]
-        let mut paint_scratch = crate::graph_layout::canonical::CanonicalPaintScratch::default();
+        let mut paint_scratch = merman_render_core::route_paint::CanonicalPaintScratch::default();
         #[cfg(feature = "layout-shoal")]
         let (mut points_json, mut points_base64) = (Vec::new(), String::new());
         for (edge_idx, edge) in model.edges.iter().enumerate() {
@@ -780,7 +782,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             };
             #[cfg(feature = "layout-shoal")]
             let (shaft, lhs_arrow, rhs_arrow, label_plan) = if let Some(geometry) = ctx.shoal {
-                let shaft = shoal::Shaft::new(
+                let shaft = canonical::Shaft::new(
                     geometry,
                     layout,
                     edge_idx,
@@ -789,7 +791,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     &mut paint_scratch,
                 )?;
                 let (lhs, rhs) = shaft.arrows(&arrow_points);
-                let label = shaft.label(geometry.edge_labels[edge_idx].as_ref());
+                let label = shaft.label(geometry, edge_idx);
                 (ArchitectureShaft::Shoal(shaft), lhs, rhs, label)
             } else {
                 legacy()
@@ -858,10 +860,10 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
-    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
-    use crate::text::DeterministicTextMeasurer;
+    use crate::architecture::renderer::with_test_svg_id;
     use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+    use merman_render_core::text::DeterministicTextMeasurer;
+    use merman_render_core::{LayoutEdge, LayoutPoint};
     use std::fmt;
     use std::ops::Range;
 
@@ -895,14 +897,18 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(
+            &mut self,
+            range: Range<usize>,
+            replacement: &str,
+        ) -> merman_render_core::Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> merman_render_core::Result<()> {
             self.checkpoint_attempts += 1;
-            Err(crate::Error::InvalidModel {
+            Err(merman_render_core::Error::InvalidModel {
                 message: "test SVG sink rejected the first Architecture edge".to_string(),
             })
         }
@@ -958,16 +964,12 @@ mod tests {
             edges: vec![edge],
             layout_hints: Vec::new(),
         };
-        let request = SvgRenderOptions {
-            diagram_id: Some("architecture".to_string()),
-            ..SvgRenderOptions::default()
-        };
-        with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
-            let diagram_id = options.diagram_id_or("architecture");
-            let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
-                &merman_model::presentation::PresentationConfig::empty_object(),
-                None,
-            );
+        with_test_svg_id("architecture", |diagram_id, work_meter| {
+            let typography =
+                crate::architecture::renderer::ArchitectureTypographyThemePlan::resolve(
+                    &merman_model::presentation::PresentationConfig::empty_object(),
+                    None,
+                );
             let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             settings.icon_size_px = 20.0;
             settings.half_icon = 10.0;
@@ -1018,7 +1020,7 @@ mod tests {
                     text_measurer: &measurer,
                     content_bounds: &mut content_bounds,
                     junction_bounds: &junction_bounds,
-                    checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
+                    checkpoints: ArchitectureEmitCheckpoints::new(work_meter),
                 };
 
                 push_architecture_edges(&mut ctx).unwrap();
@@ -1049,16 +1051,12 @@ mod tests {
             fcose_compound_bounds: Vec::new(),
             bounds: None,
         };
-        let request = SvgRenderOptions {
-            diagram_id: Some("architecture".to_string()),
-            ..SvgRenderOptions::default()
-        };
-        with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
-            let diagram_id = options.diagram_id_or("architecture");
-            let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
-                &merman_model::presentation::PresentationConfig::empty_object(),
-                None,
-            );
+        with_test_svg_id("architecture", |diagram_id, work_meter| {
+            let typography =
+                crate::architecture::renderer::ArchitectureTypographyThemePlan::resolve(
+                    &merman_model::presentation::PresentationConfig::empty_object(),
+                    None,
+                );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();
             node_xy.insert("api", (0.0, 0.0));
@@ -1080,13 +1078,16 @@ mod tests {
                 text_measurer: &measurer,
                 content_bounds: &mut content_bounds,
                 junction_bounds: &junction_bounds,
-                checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
+                checkpoints: ArchitectureEmitCheckpoints::new(work_meter),
             };
 
             let error = push_architecture_edges(&mut ctx)
                 .expect_err("the rejecting sink must stop Architecture edge emission");
 
-            assert!(matches!(error, crate::Error::InvalidModel { .. }));
+            assert!(matches!(
+                error,
+                merman_render_core::Error::InvalidModel { .. }
+            ));
             assert_eq!(out.checkpoint_attempts, 1);
             assert_eq!(
                 out.retained.matches(r#"class="edge""#).count(),

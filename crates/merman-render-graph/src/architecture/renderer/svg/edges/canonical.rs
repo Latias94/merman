@@ -1,30 +1,29 @@
-use super::super::super::escape_attr_into;
+use super::super::{ArchitectureCanonicalEdge, ArchitectureCanonicalSvg};
 use super::{
     ArchitectureArrowGeometry, ArchitectureArrowPoints, ArchitectureArrowTransform,
     ArchitectureEdgeLabelPlan, SvgDiagramId, SvgOutput, bounds_from_rect, fmt,
     write_architecture_edge_id_attr,
 };
-use crate::architecture::{ArchitectureShoalGeometry, ArchitectureShoalText};
-use crate::graph_layout::canonical::{CanonicalPaintScratch, CanonicalPaintedEdge};
-use crate::graph_layout::route_paint::RouteStyle;
-use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
-use crate::{Error, Result};
+use crate::architecture::ArchitectureDiagramLayout;
 use base64::Engine as _;
+use merman_render_core::xml::escape_attr_into;
+use merman_render_core::{Error, Result};
+use merman_render_core::{LayoutEdge, LayoutPoint, route_paint::CanonicalPaintScratch};
 use merman_theme_contract::v2::EdgeStyle;
 use std::borrow::Cow;
 
 pub(super) struct Shaft<'a> {
     pub(super) edge: &'a LayoutEdge,
-    pub(super) painted: CanonicalPaintedEdge<&'a [LayoutPoint]>,
+    pub(super) painted: ArchitectureCanonicalEdge<'a>,
 }
 
 impl<'a> Shaft<'a> {
     pub(super) fn new(
-        geometry: &ArchitectureShoalGeometry,
+        geometry: &dyn ArchitectureCanonicalSvg,
         layout: &'a ArchitectureDiagramLayout,
         ordinal: usize,
         edge_style: Option<EdgeStyle>,
-        work_meter: &crate::resources::OperationWorkMeter,
+        work_meter: &merman_render_core::resources::OperationWorkMeter,
         scratch: &'a mut CanonicalPaintScratch,
     ) -> Result<Self> {
         let edge = layout
@@ -33,22 +32,7 @@ impl<'a> Shaft<'a> {
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("Missing Architecture route edge-{ordinal}"),
             })?;
-        let route_style = match edge_style {
-            // Grid Core solves orthogonal 90-degree routes without curved gap guards;
-            // bounded rounded corners preserve architectural legs instead of sweeping them.
-            Some(EdgeStyle::Curved) => RouteStyle::Rounded(10.0),
-            Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
-            Some(EdgeStyle::Orthogonal) | None => RouteStyle::Step,
-        };
-        let stroke_outset = edge_style.map_or(0.0, |_| geometry.edge_stroke_outset);
-        let painted = geometry.routes.paint_with_borrowed_points(
-            edge,
-            kurbo::Vec2::ZERO,
-            stroke_outset,
-            route_style,
-            work_meter,
-            scratch,
-        )?;
+        let painted = geometry.paint_edge(edge, edge_style, work_meter, scratch)?;
         Ok(Self { edge, painted })
     }
 
@@ -111,13 +95,14 @@ impl<'a> Shaft<'a> {
 
     pub(super) fn label<'text>(
         &self,
-        text: Option<&'text ArchitectureShoalText>,
+        geometry: &'text dyn ArchitectureCanonicalSvg,
+        ordinal: usize,
     ) -> Option<ArchitectureEdgeLabelPlan<'text>> {
-        let (label, text) = self.edge.label.as_ref().zip(text)?;
-        let anchor = text.centered_at(label);
+        let text = geometry.edge_label(ordinal, self.edge.label.as_ref())?;
+        let anchor = text.anchor;
         Some(ArchitectureEdgeLabelPlan {
-            lines: Cow::Borrowed(&text.lines),
-            bounds: text.bounds_at(anchor),
+            lines: Cow::Borrowed(text.lines),
+            bounds: text.bounds,
             dominant_baseline: "middle",
             transform: format!("translate({}, {})", fmt(anchor.x), fmt(anchor.y)),
         })

@@ -1,18 +1,18 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::FamilyTheme;
+use merman_theme_contract::v2::FamilyTheme;
 
 mod typography;
-pub(crate) use typography::ArchitectureTypographyThemePlan;
+pub use typography::ArchitectureTypographyThemePlan;
 
 #[derive(Debug)]
-pub(crate) struct ArchitectureGroupThemePlan {
+pub struct ArchitectureGroupThemePlan {
     typography: ArchitectureTypographyThemePlan,
     native: Option<Box<super::ArchitectureNativeStyle>>,
 }
 
 impl ArchitectureGroupThemePlan {
-    pub(crate) fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
+    pub fn resolve(native: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
         let native_style =
             native.map(|theme| super::ArchitectureNativeStyle::resolve(theme, config));
         let typography =
@@ -23,11 +23,11 @@ impl ArchitectureGroupThemePlan {
         }
     }
 
-    pub(crate) fn native_style(&self) -> Option<&super::ArchitectureNativeStyle> {
+    pub fn native_style(&self) -> Option<&super::ArchitectureNativeStyle> {
         self.native.as_deref()
     }
 
-    pub(crate) const fn typography_theme(&self) -> &ArchitectureTypographyThemePlan {
+    pub const fn typography_theme(&self) -> &ArchitectureTypographyThemePlan {
         &self.typography
     }
 }

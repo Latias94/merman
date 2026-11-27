@@ -1,11 +1,13 @@
-use crate::model::Bounds;
-use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
-use crate::text::TextMeasurer;
 use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
 };
+use merman_render_core::Bounds;
+use merman_render_core::icon_registry::{IconIdScope, IconIdScopePrefix};
+use merman_render_core::text::TextMeasurer;
 
-use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
+use super::super::labels::{architecture_svg_text_terminal_bounds, wrap_svg_words_to_lines};
+#[cfg(feature = "layout-shoal")]
+use super::ArchitectureCanonicalSvg;
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{GroupRect, extend_bounds};
 use super::icons::{
@@ -16,17 +18,17 @@ use super::icons::{
 use super::labels::write_architecture_centered_text;
 use super::labels::{write_architecture_service_title, write_svg_text_lines};
 use super::settings::ArchitectureRenderSettings;
-use crate::architecture::labels::{architecture_svg_text_terminal_bounds, wrap_svg_words_to_lines};
+use super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 
 pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) model: &'a ArchitectureDiagramModel,
     #[cfg(feature = "layout-shoal")]
-    pub(super) shoal: Option<&'a crate::architecture::ArchitectureShoalGeometry>,
+    pub(super) shoal: Option<&'a dyn ArchitectureCanonicalSvg>,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
-    pub(super) native: Option<&'a crate::architecture::ArchitectureNativeStyle>,
+    pub(super) native: Option<&'a super::super::ArchitectureNativeStyle>,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) resources: ArchitectureNodeResources<'a>,
     pub(super) icon_scope_root: Option<IconIdScopePrefix>,
@@ -52,8 +54,8 @@ fn architecture_icon_scope(
     diagram_id: SvgDiagramId<'_>,
     branch_name: &'static str,
     local_id: &str,
-    work_meter: &crate::resources::OperationWorkMeter,
-) -> crate::Result<IconIdScope> {
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
+) -> merman_render_core::Result<IconIdScope> {
     let root_prefix = match *root {
         Some(prefix) => prefix,
         None => {
@@ -93,7 +95,7 @@ fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>,
 
 pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'_, O>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
@@ -139,8 +141,8 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                 let _ = write!(
                     out,
                     r#"<rect class="architecture-native-service-card" width="{size}" height="{size}" rx="{radius}" ry="{radius}" fill="{}" stroke="{}" stroke-width="{}"/>"#,
-                    super::super::escape_attr_display(&native.node_fill),
-                    super::super::escape_attr_display(&native.node_stroke),
+                    merman_render_core::xml::escape_attr_display(&native.node_fill),
+                    merman_render_core::xml::escape_attr_display(&native.node_stroke),
                     fmt(native.stroke_width),
                     size = fmt(settings.icon_size_px),
                     radius = fmt(native.radius),
@@ -169,13 +171,8 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             };
             #[cfg(feature = "layout-shoal")]
             if let Some(geometry) = ctx.shoal {
-                if let Some(title) = &geometry.service_titles[_node_index] {
-                    write_architecture_centered_text(
-                        out,
-                        &title.text.lines,
-                        title.anchor.x - x,
-                        title.anchor.y - y,
-                    );
+                if let Some((lines, anchor)) = geometry.service_title(_node_index) {
+                    write_architecture_centered_text(out, lines, anchor.x - x, anchor.y - y);
                 }
             } else {
                 legacy_title(out);
@@ -238,10 +235,10 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         line_clamp.to_string()
                     };
                     let parse_work = std::cell::Cell::new(0);
-                    let sink = crate::html::HtmlSanitizeSink::new(
+                    let sink = merman_render_core::html::HtmlSanitizeSink::new(
                         work_meter
                             .policy()
-                            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+                            .value(merman_render_core::resources::ResourceLimitId::MaxSvgBytes)
                             .unwrap_or(usize::MAX),
                         work_meter,
                         &parse_work,
@@ -329,7 +326,7 @@ fn push_architecture_group_surface(
     group_inline_style: Option<&str>,
     radius: Option<f64>,
     #[cfg(feature = "layout-shoal")] shoal: bool,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let _ = write!(out, r#"<rect id="{diagram_id}-group-"#);
     escape_xml_into(out, group.id);
     let _ = write!(
@@ -364,7 +361,7 @@ pub(super) fn push_architecture_group_surfaces(
     radius: Option<f64>,
     #[cfg(feature = "layout-shoal")] shoal: bool,
     checkpoints: ArchitectureEmitCheckpoints<'_>,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     checkpoints.checkpoint()?;
     if group_rects.is_empty() {
         return Ok(());
@@ -401,7 +398,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'a, O>,
     group_rects: &[GroupRect<'a>],
     emit_surfaces: bool,
-) -> crate::Result<()> {
+) -> merman_render_core::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
@@ -432,7 +429,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let x1 = x - settings.half_icon;
             let y1 = y - settings.half_icon;
             #[cfg(feature = "layout-shoal")]
-            let canonical = ctx.shoal.map(|geometry| &geometry.groups[group_index]);
+            let canonical = ctx.shoal.map(|geometry| geometry.group(group_index));
 
             if emit_surfaces {
                 push_architecture_group_surface(
@@ -452,8 +449,8 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let icon = grp.icon.map(str::trim).filter(|t| !t.is_empty());
             let legacy_icon_at = (x1 + settings.half_icon + 1.0, y1 + settings.half_icon + 1.0);
             #[cfg(feature = "layout-shoal")]
-            let icon_at = canonical.map_or(Some(legacy_icon_at), |group| {
-                group.icon_origin.map(|p| (p.x, p.y))
+            let icon_at = canonical.as_ref().map_or(Some(legacy_icon_at), |group| {
+                group.icon_origin.as_ref().map(|p| (p.x, p.y))
             });
             #[cfg(not(feature = "layout-shoal"))]
             let icon_at = Some(legacy_icon_at);
@@ -493,15 +490,10 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
 
             let legacy_lines;
             #[cfg(feature = "layout-shoal")]
-            let placed_title = canonical.map(|group| {
-                group.title.as_ref().map(|title| {
-                    (
-                        title.text.lines.as_slice(),
-                        title.anchor.x,
-                        title.anchor.y,
-                        title.text.bounds_at(title.anchor),
-                    )
-                })
+            let placed_title = ctx.shoal.map(|geometry| {
+                geometry
+                    .group_title(group_index)
+                    .map(|title| (title.lines, title.anchor.x, title.anchor.y, title.bounds))
             });
             #[cfg(not(feature = "layout-shoal"))]
             let placed_title = None;
@@ -565,8 +557,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::svg::parity::SvgExecution;
-    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+    use crate::architecture::renderer::with_test_svg_id;
 
     #[test]
     fn architecture_group_surfaces_order_forward_parents_before_descendants() {
@@ -585,30 +576,20 @@ mod tests {
             group("outer", None),
             group("inner", Some("outer")),
         ];
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::unthemed_for_test(
-            &request,
-            &debug,
-            &session,
-            crate::DiagramFamilyId::ARCHITECTURE,
-        )
-        .unwrap();
         let mut svg = String::new();
-        push_architecture_group_surfaces(
-            &mut svg,
-            execution.diagram_id_or("architecture"),
-            &groups,
-            Some("fill:#123456;"),
-            None,
-            #[cfg(feature = "layout-shoal")]
-            false,
-            ArchitectureEmitCheckpoints::new(execution.work_meter()),
-        )
-        .unwrap();
+        with_test_svg_id("architecture", |diagram_id, work_meter| {
+            push_architecture_group_surfaces(
+                &mut svg,
+                diagram_id,
+                &groups,
+                Some("fill:#123456;"),
+                None,
+                #[cfg(feature = "layout-shoal")]
+                false,
+                ArchitectureEmitCheckpoints::new(work_meter),
+            )
+            .unwrap();
+        });
         let document = roxmltree::Document::parse(&svg).unwrap();
         let ids = document
             .root_element()

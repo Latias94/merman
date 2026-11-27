@@ -1,16 +1,16 @@
-use crate::config::{config_css_number_or_string, config_f64};
-use crate::svg::PreparedCommonCss;
+use merman_render_core::config::{config_css_number_or_string, config_f64};
+use merman_render_core::svg_css::PreparedCommonCss;
 
 #[derive(Debug)]
-pub(crate) struct ArchitectureCssBinding {
+pub struct ArchitectureCssBinding {
     pub(crate) common: PreparedCommonCss,
     pub(crate) edge_color: String,
     pub(crate) arrow_color: String,
-    pub(crate) edge_width: String,
+    pub edge_width: String,
     pub(crate) group_border_color: String,
     pub(crate) group_border_width: String,
-    pub(crate) icon_size_px: f64,
-    pub(crate) padding_px: f64,
+    pub icon_size_px: f64,
+    pub padding_px: f64,
     pub(crate) arch_font_size_px: f64,
     pub(crate) use_max_width: bool,
 }
@@ -18,7 +18,7 @@ pub(crate) struct ArchitectureCssBinding {
 impl ArchitectureCssBinding {
     pub(super) fn apply_native(
         &mut self,
-        theme: &crate::theme::FamilyTheme,
+        theme: &merman_theme_contract::v2::FamilyTheme,
         native: &super::ArchitectureNativeStyle,
         config: &merman_model::presentation::PresentationConfig,
     ) {

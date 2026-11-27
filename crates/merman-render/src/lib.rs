@@ -17,11 +17,8 @@
     any(feature = "layout-cytoscape", feature = "layout-shoal")
 ))]
 pub mod architecture;
-#[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
-))]
-pub(crate) mod architecture_metrics;
+#[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
+pub(crate) use merman_render_graph::architecture::metrics as architecture_metrics;
 #[cfg(feature = "diagram-block")]
 pub mod block;
 #[cfg(feature = "diagram-c4")]

@@ -1,21 +1,21 @@
-use crate::architecture_metrics::{
+use super::metrics::{
     architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
     architecture_cytoscape_edge_label_metrics,
     architecture_measure_cytoscape_compound_child_bbox_extras,
     architecture_measure_cytoscape_final_node_bbox_extras,
     architecture_node_bbox_extras_to_manatee,
 };
-use crate::config::{config_f64, json_f64, value_at};
-use crate::model::{
+use crate::architecture::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
-    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
-    LayoutNode, LayoutPoint,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
 };
-use crate::resources::{OperationWorkError, OperationWorkMeter};
-use crate::text::{TextMeasurer, TextStyle};
-use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureLayoutDirection};
+use merman_render_core::config::{config_f64, json_f64, value_at};
+use merman_render_core::resources::{OperationWorkError, OperationWorkMeter};
+use merman_render_core::text::{TextMeasurer, TextStyle};
+use merman_render_core::{Bounds, LayoutEdge, LayoutNode, LayoutPoint};
+use merman_render_core::{Error, Result};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
@@ -1751,7 +1751,7 @@ fn admit_architecture_layout(
     })
 }
 
-pub(crate) fn layout_architecture_diagram_typed(
+pub fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
@@ -1897,14 +1897,18 @@ fn layout_architecture_diagram_model_admitted(
             fcose_random_policy,
         })?;
         let mut work_control = ArchitectureManateeWorkControl::new(work_meter);
-        let result = crate::layout_work::measure_layout_solve!(
+        let result = {
+            #[cfg(feature = "benchmark-stages")]
+            let _stage = merman_model::benchmark_stages::enter(
+                merman_model::benchmark_stages::Stage::LayoutSolve,
+            );
             manatee::algo::fcose::layout_indexed_with_random_policy_and_work_control(
                 &plan.graph,
                 &plan.options,
                 plan.random_policy,
                 &mut work_control,
             )
-        )
+        }
         .map_err(|error| match error {
             manatee::Error::WorkFailure(manatee::WorkFailure::Interrupted) => work_control
                 .take_denied()
@@ -2117,8 +2121,8 @@ fn layout_architecture_diagram_model_admitted(
 
 #[cfg(test)]
 mod tests {
-    fn layout_node(id: &str, width: f64, height: f64) -> crate::model::LayoutNode {
-        crate::model::LayoutNode {
+    fn layout_node(id: &str, width: f64, height: f64) -> merman_render_core::LayoutNode {
+        merman_render_core::LayoutNode {
             id: id.to_string(),
             x: 0.0,
             y: 0.0,
@@ -2141,12 +2145,12 @@ mod tests {
 
     fn build_test_plan<'a>(
         model: &'a super::ArchitectureModelView<'a>,
-        layout_nodes: &[crate::model::LayoutNode],
+        layout_nodes: &[merman_render_core::LayoutNode],
         node_bounds_extras: &rustc_hash::FxHashMap<&'a str, manatee::BoundsExtras>,
     ) -> super::ArchitectureFcoseInputPlan<'a> {
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
+        let work_meter = merman_render_core::resources::OperationWorkMeter::new(
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
             model,
@@ -2367,7 +2371,9 @@ mod tests {
 
     #[test]
     fn flatten_alignment_metadata_and_sort_work_are_preflighted() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let mut numeric_groups = indexmap::IndexMap::new();
         numeric_groups.insert("10".to_string(), vec![0, 1]);
@@ -2395,7 +2401,8 @@ mod tests {
             &metadata_meter,
         )
         .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(metadata_error) = metadata_error else {
+        let merman_render_core::Error::ResourceLimitExceeded(metadata_error) = metadata_error
+        else {
             panic!("expected layout work resource error");
         };
         assert_eq!(metadata_error.actual, 4);
@@ -2415,7 +2422,7 @@ mod tests {
             &linear_meter,
         )
         .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(sort_error) = sort_error else {
+        let merman_render_core::Error::ResourceLimitExceeded(sort_error) = sort_error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(sort_error.actual, work_plan.work_units);
@@ -2424,7 +2431,9 @@ mod tests {
 
     #[test]
     fn flatten_alignment_budget_rejects_before_pair_expansion() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let alignment_obj = flatten_alignment_object(&[2, 3, 4]);
         let original = alignment_obj.clone();
@@ -2446,7 +2455,7 @@ mod tests {
         )
         .unwrap_err();
 
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.actual, work_plan.work_units);
@@ -2457,7 +2466,7 @@ mod tests {
 
     #[test]
     fn flatten_alignments_preserves_javascript_key_order_and_duplicates() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use merman_render_core::resources::{OperationWorkMeter, RenderResourcePolicy};
 
         let mut alignment_obj = indexmap::IndexMap::new();
         let mut negative_groups = indexmap::IndexMap::new();
@@ -2576,11 +2585,13 @@ mod tests {
 
     #[test]
     fn architecture_work_admission_is_exact_and_non_consuming_on_rejection() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let model = single_node_model();
         let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 55)
@@ -2597,7 +2608,7 @@ mod tests {
         let error =
             super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &narrow_meter)
                 .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         // Admission now includes the adapter's source-sized spatial planning pass before any
@@ -2609,11 +2620,11 @@ mod tests {
 
     #[test]
     fn typed_architecture_rejects_before_materializing_the_adapter_projection() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
         use merman_core::{MermaidEngine, ParseOptions};
         use merman_model::presentation::RenderSemanticModel;
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
 
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
@@ -2627,7 +2638,7 @@ mod tests {
             panic!("expected Architecture model");
         };
         let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let adapter_work_plan = super::checked_typed_architecture_adapter_work_plan(model)
             .expect("typed adapter work plan");
         let admission_plan = super::checked_architecture_layout_admission_plan(
@@ -2656,7 +2667,7 @@ mod tests {
             None,
         )
         .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.cause, ResourceLimitCause::Ceiling);
@@ -2712,7 +2723,9 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_preserves_mermaid_duplicate_pop_constraint_order() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let model = architecture_duplicate_pop_counterexample();
         let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
@@ -2767,7 +2780,9 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_exact_admission_matches_layered_diamond_work() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let model = architecture_layered_diamond();
         let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
@@ -2786,7 +2801,7 @@ mod tests {
         let narrow_meter = OperationWorkMeter::new(narrow_policy);
         let error = super::build_architecture_spatial_maps(&model, &node_ids, &narrow_meter)
             .expect_err("the layered diamond must be rejected before queue materialization");
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.actual, 20);
@@ -2796,7 +2811,9 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_keeps_exact_preflight_for_mixed_components() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let mut model = architecture_duplicate_pop_counterexample();
         let diamond = architecture_layered_diamond();
@@ -2810,7 +2827,7 @@ mod tests {
 
         let error = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
             .expect_err("the exact diamond must remain preflighted beside a runtime component");
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.actual, 20);
@@ -2820,7 +2837,7 @@ mod tests {
 
     #[test]
     fn architecture_spatial_maps_follow_javascript_numeric_property_order() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use merman_render_core::resources::{OperationWorkMeter, RenderResourcePolicy};
 
         let model = architecture_numeric_id_collision();
         let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
@@ -2874,7 +2891,7 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_rejects_before_over_budget_enqueue() {
-        use crate::resources::{
+        use merman_render_core::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
         };
 
@@ -2887,7 +2904,7 @@ mod tests {
 
         let error = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
             .expect_err("the first child enqueue must exceed the budget");
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
 
@@ -2899,7 +2916,9 @@ mod tests {
 
     #[test]
     fn architecture_rejects_repeated_constraint_work_before_adapter_materialization() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let model = super::ArchitectureModelView {
             nodes: vec![
@@ -2927,7 +2946,7 @@ mod tests {
                 .collect(),
         };
         let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 100)
             .unwrap();
@@ -2936,13 +2955,16 @@ mod tests {
         let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
             .unwrap_err();
 
-        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert!(matches!(
+            error,
+            merman_render_core::Error::ResourceLimitExceeded(_)
+        ));
         assert_eq!(meter.used(), 0);
     }
 
     #[test]
     fn architecture_rejects_grid_constraint_expansion_before_duplicate_materialization() {
-        use crate::resources::{
+        use merman_render_core::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
         };
 
@@ -2989,7 +3011,7 @@ mod tests {
             layout_hints: Vec::new(),
         };
         let config = serde_json::json!({"architecture": {"numIter": 1, "randomize": false}});
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let policy = RenderResourcePolicy::interactive()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 800_000)
             .unwrap();
@@ -2997,7 +3019,7 @@ mod tests {
 
         let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
             .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
 
@@ -3012,16 +3034,16 @@ mod tests {
 
     #[test]
     fn architecture_num_iter_overflow_fails_under_unlimited_policy() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use merman_render_core::resources::{OperationWorkMeter, RenderResourcePolicy};
 
         let model = single_node_model();
         let config = serde_json::json!({"architecture": {"numIter": f64::MAX}});
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
             .unwrap_err();
-        let crate::Error::ResourceLimitExceeded(error) = error else {
+        let merman_render_core::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.limit, "max_layout_work_units");
@@ -3097,9 +3119,9 @@ mod tests {
             layout_hints: Vec::new(),
         };
         let layout_nodes = vec![layout_node("api", 80.0, 80.0)];
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
+        let work_meter = merman_render_core::resources::OperationWorkMeter::new(
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         let plan =
             super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
@@ -3444,7 +3466,7 @@ mod tests {
             edges: Vec::new(),
             layout_hints: Vec::new(),
         };
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
 
         let node_bounds_extras = super::architecture_fcose_node_bounds_extras(
             super::ArchitectureFcoseNodeBoundsExtrasInput {

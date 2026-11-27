@@ -1,23 +1,13 @@
-#[cfg(any(
-    all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ),
-    all(
-        test,
-        any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        )
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
     )
 ))]
 pub(in crate::svg) use merman_render_core::icon_registry::IconIdScope;
 #[cfg(any(
-    all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ),
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
@@ -39,10 +29,6 @@ pub use merman_render_core::icon_registry::{
 ))]
 pub(in crate::svg) use merman_render_core::icon_registry::mermaid_unknown_icon_svg;
 #[cfg(any(
-    all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ),
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
@@ -86,31 +72,9 @@ pub(in crate::svg) fn bpmn_icon_svg(
     Ok(rendered.unwrap_or_else(|| mermaid_unknown_icon_svg(width, height)))
 }
 
-/// Rewrites IDs in renderer-owned Architecture artwork.
-#[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
-))]
-pub(in crate::svg) fn rewrite_builtin_icon_ids(
-    body: &'static str,
-    scope: IconIdScope,
-) -> crate::Result<merman_render_core::icon_registry::UntrustedIconXml> {
-    use merman_render_core::icon_registry::{IconDefsPlacement, ParsedIconBody};
-
-    let parsed = ParsedIconBody::parse_builtin_fragment(body)
-        .map_err(|_| crate::Error::icon_processing("built-in icon fragment is invalid"))?;
-    parsed
-        .rewrite_ids(scope, IconDefsPlacement::Inline)
-        .map_err(|_| crate::Error::icon_processing("built-in icon ID scoping failed"))
-}
-
 #[cfg(all(
     test,
     any(
-        all(
-            feature = "diagram-architecture",
-            any(feature = "layout-cytoscape", feature = "layout-shoal")
-        ),
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",
         feature = "diagram-agentflow"

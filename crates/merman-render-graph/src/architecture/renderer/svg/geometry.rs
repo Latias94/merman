@@ -1,5 +1,5 @@
-use super::super::Bounds;
-use crate::architecture_metrics::architecture_svg_group_bbox_padding_px;
+use super::super::metrics::architecture_svg_group_bbox_padding_px;
+use merman_render_core::Bounds;
 
 pub(super) fn is_arch_dir_x(dir: char) -> bool {
     matches!(dir, 'L' | 'R')
@@ -18,7 +18,7 @@ pub(super) fn arrow_shift(dir: char, orig: f64, arrow_size: f64) -> f64 {
     }
 }
 
-pub(super) use crate::architecture_metrics::extend_bounds;
+pub(super) use super::super::metrics::extend_bounds;
 
 pub(super) fn bounds_from_rect(x: f64, y: f64, w: f64, h: f64) -> Bounds {
     Bounds {

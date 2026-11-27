@@ -15,10 +15,6 @@ pub(crate) use merman_render_core::theme_svg::canvas as canvas_svg;
 ))]
 pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_label_bg;
 #[cfg(any(
-    all(
-        feature = "diagram-architecture",
-        any(feature = "layout-cytoscape", feature = "layout-shoal")
-    ),
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",

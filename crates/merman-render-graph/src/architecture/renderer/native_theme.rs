@@ -1,23 +1,24 @@
 use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeStyle, Elevation, MarkerStyle};
 
-use crate::text::TextStyle;
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_render_core::text::TextStyle;
+use merman_theme_contract::v2::FamilyTheme;
 
 #[derive(Debug)]
-pub(crate) struct ArchitectureNativeStyle {
-    pub(crate) layout_text: TextStyle,
+pub struct ArchitectureNativeStyle {
+    pub layout_text: TextStyle,
     pub(crate) node_fill: String,
     pub(crate) group_fill: String,
     pub(crate) node_stroke: String,
     pub(crate) text_ink: String,
     pub(crate) icon_ink: String,
     pub(crate) stroke_width: f64,
-    pub(crate) radius: f64,
-    pub(crate) group_radius: f64,
+    pub radius: f64,
+    pub group_radius: f64,
     pub(crate) elevation: Elevation,
     pub(crate) edge_style: EdgeStyle,
-    pub(crate) marker_style: MarkerStyle,
+    pub marker_style: MarkerStyle,
 }
 
 impl ArchitectureNativeStyle {
@@ -27,11 +28,16 @@ impl ArchitectureNativeStyle {
         let body_family = ["themeVariables.fontFamily", "fontFamily"]
             .into_iter()
             .filter_map(|path| authored(config, &[path]))
-            .find_map(crate::config::normalized_config_font_family)
+            .find_map(merman_render_core::config::normalized_config_font_family)
             .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
         let size = config
             .explicit_config_owns_path("architecture.fontSize")
-            .then(|| crate::config::config_f64(config.as_value(), &["architecture", "fontSize"]))
+            .then(|| {
+                merman_render_core::config::config_f64(
+                    config.as_value(),
+                    &["architecture", "fontSize"],
+                )
+            })
             .flatten()
             .filter(|size| size.is_finite())
             .map_or(typography.base_size_px, |size| size.max(1.0));

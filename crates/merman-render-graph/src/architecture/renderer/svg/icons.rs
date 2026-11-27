@@ -1,11 +1,23 @@
-use crate::resources::OperationWorkMeter;
-use crate::svg::IconRegistry;
-use crate::svg::icon_registry::{
-    IconIdScope, IconRenderRequest, render_icon, rewrite_builtin_icon_ids,
-};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::icon_registry::{
+    IconDefsPlacement, IconIdScope, IconRegistry, IconRenderRequest, ParsedIconBody,
+    UntrustedIconXml, render_icon,
+};
+use merman_render_core::resources::OperationWorkMeter;
 
-use super::super::{SvgOutput, fmt_into};
+use super::{SvgOutput, fmt_into};
+
+fn rewrite_builtin_icon_ids(
+    body: &'static str,
+    scope: IconIdScope,
+) -> merman_render_core::Result<UntrustedIconXml> {
+    let parsed = ParsedIconBody::parse_builtin_fragment(body).map_err(|_| {
+        merman_render_core::Error::icon_processing("built-in icon fragment is invalid")
+    })?;
+    parsed
+        .rewrite_ids(scope, IconDefsPlacement::Inline)
+        .map_err(|_| merman_render_core::Error::icon_processing("built-in icon ID scoping failed"))
+}
 
 pub(super) fn arch_icon_body(name: &str) -> &'static str {
     // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
@@ -51,13 +63,15 @@ pub(super) fn write_arch_icon_svg(
     icon_name: &str,
     icon_size_px: f64,
     id_scope: Option<IconIdScope>,
-    native: Option<&crate::architecture::ArchitectureNativeStyle>,
-) -> crate::Result<()> {
+    native: Option<&super::super::ArchitectureNativeStyle>,
+) -> merman_render_core::Result<()> {
     let body = arch_icon_body(icon_name);
     let rewritten;
     let body = if arch_icon_body_has_internal_ids(icon_name) {
         let id_scope = id_scope.ok_or_else(|| {
-            crate::Error::icon_processing("built-in icon with internal IDs is missing its scope")
+            merman_render_core::Error::icon_processing(
+                "built-in icon with internal IDs is missing its scope",
+            )
         })?;
         rewritten = rewrite_builtin_icon_ids(body, id_scope)?;
         rewritten.untrusted_xml_parts().1
@@ -71,7 +85,7 @@ pub(super) fn write_arch_icon_svg(
     out.push_str(r#"" viewBox="0 0 80 80">"#);
     if let Some(native) = native {
         // The card supplies the icon tile. Registered multicolor icons are emitted separately.
-        let ink = super::super::escape_attr(&native.icon_ink);
+        let ink = merman_render_core::xml::escape_attr(&native.icon_ink);
         out.push_str(&body.replace("#087ebf", "none").replace("#fff", &ink));
     } else {
         out.push_str(body);
@@ -92,8 +106,8 @@ pub(super) fn write_arch_icon_svg_with_registry(
     icon_size_px: f64,
     id_scope: IconIdScope,
     resources: &ArchitectureNodeResources<'_>,
-    native: Option<&crate::architecture::ArchitectureNativeStyle>,
-) -> crate::Result<()> {
+    native: Option<&super::super::ArchitectureNativeStyle>,
+) -> merman_render_core::Result<()> {
     let svg = match resources.icon_registry {
         Some(registry) => render_icon(
             registry,
@@ -120,9 +134,16 @@ pub(super) fn write_arch_icon_svg_with_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
-    use crate::svg::IconPack;
-    use crate::svg::icon_registry::icon_id_scope_for_test;
+    use merman_render_core::icon_registry::{IconIdScopePrefix, IconPack};
+    use merman_render_core::resources::RenderResourcePolicy;
+
+    fn icon_id_scope_for_test(value: &str) -> IconIdScope {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        IconIdScopePrefix::from_parts(&[value], &meter)
+            .unwrap()
+            .scope_parts(&[], &meter)
+            .unwrap()
+    }
 
     #[test]
     fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
@@ -166,7 +187,7 @@ mod tests {
             }
         }"##;
         let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
-        let effective_config = crate::test_support::presentation_config(
+        let effective_config = crate::architecture::renderer::presentation_config(
             serde_json::json!({ "securityLevel": "loose" }),
         );
         let work_meter =

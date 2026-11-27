@@ -1,11 +1,17 @@
-use super::super::*;
-use crate::architecture_metrics::architecture_estimate_service_bounds;
-use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
+use super::super::metrics::architecture_estimate_service_bounds;
+use crate::architecture::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
 use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
 };
+use merman_render_core::{
+    Bounds, Result, root_svg,
+    svg_output::{BoundedSvgOutput, SvgOutput, timing::RenderTimings},
+    theme_svg::elevation,
+};
 
-use super::ArchitectureEmitCheckpoints;
+use super::super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
+#[cfg(feature = "layout-shoal")]
+use super::ArchitectureCanonicalSvg;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::icons::ArchitectureNodeResources;
@@ -16,9 +22,7 @@ use super::nodes::{
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
 use super::settings::ArchitectureRenderSettings;
 use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
-use crate::architecture::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
-
-// Architecture diagram SVG renderer implementation (split from parity.rs).
+use super::{ArchitectureEmitCheckpoints, ArchitectureSvgContext};
 
 fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_size_px: f64) -> bool {
     const EPSILON: f64 = 1e-6;
@@ -56,23 +60,26 @@ impl<'a> ArchitectureDrawingBounds<'a> {
     fn from_shoal(
         layout: &ArchitectureDiagramLayout,
         model: &'a ArchitectureDiagramModel,
-        geometry: &crate::architecture::ArchitectureShoalGeometry,
+        geometry: &dyn ArchitectureCanonicalSvg,
     ) -> Self {
         let group_rects = model
             .groups
             .iter()
-            .zip(&geometry.groups)
-            .map(|(model_group, group)| GroupRect {
-                id: model_group.id.as_str(),
-                parent: group
-                    .parent
-                    .map(|index| model.groups[index as usize].id.as_str()),
-                x: group.rect.x,
-                y: group.rect.y,
-                w: group.rect.width,
-                h: group.rect.height,
-                icon: model_group.icon.as_deref(),
-                title: model_group.title.as_deref(),
+            .zip(0..geometry.group_count())
+            .map(|(model_group, ordinal)| {
+                let group = geometry.group(ordinal);
+                GroupRect {
+                    id: model_group.id.as_str(),
+                    parent: group
+                        .parent
+                        .map(|index| model.groups[index as usize].id.as_str()),
+                    x: group.x,
+                    y: group.y,
+                    w: group.width,
+                    h: group.height,
+                    icon: model_group.icon.as_deref(),
+                    title: model_group.title.as_deref(),
+                }
             })
             .collect();
         Self {
@@ -88,7 +95,7 @@ fn architecture_legacy_bounds<'a>(
     model: &'a ArchitectureDiagramModel,
     node_xy: &rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     settings: &ArchitectureRenderSettings,
-    text_measurer: &dyn crate::text::TextMeasurer,
+    text_measurer: &dyn merman_render_core::text::TextMeasurer,
 ) -> ArchitectureDrawingBounds<'a> {
     let icon_size_px = settings.icon_size_px;
     let padding_px = settings.padding_px;
@@ -269,23 +276,22 @@ fn architecture_legacy_bounds<'a>(
     }
 }
 
-pub(crate) fn render_architecture_diagram_svg_typed_with_config(
+pub fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &ArchitectureDiagramModel,
     effective_config: &merman_model::presentation::PresentationConfig,
-    group_theme: &crate::architecture::ArchitectureGroupThemePlan,
-    #[cfg(feature = "layout-shoal")] shoal_geometry: Option<
-        &crate::architecture::ArchitectureShoalGeometry,
-    >,
-    options: &SvgExecution<'_>,
+    group_theme: &super::super::ArchitectureGroupThemePlan,
+    options: &ArchitectureSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let timing = options.timing();
-    let mut timings = super::super::timing::RenderTimings::default();
+    let timing = options.timing;
+    let mut timings = RenderTimings::default();
     let total_timer = timing.start();
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
-    let diagram_id = options.diagram_id_or("architecture");
-    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
+    let diagram_id = options.diagram_id;
+    #[cfg(feature = "layout-shoal")]
+    let shoal_geometry = options.canonical;
+    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter);
     checkpoints.checkpoint()?;
     let typography = group_theme.typography_theme();
     let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, typography);
@@ -312,7 +318,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         node_xy.insert(n.id.as_str(), (n.x, n.y));
     }
 
-    let text_measurer = options.text_measurer();
+    let text_measurer = options.text_measurer;
 
     let legacy_bounds =
         || architecture_legacy_bounds(layout, model, &node_xy, &settings, text_measurer);
@@ -330,11 +336,11 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
 
     let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_viewport = options.root_viewport(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
+    let mut out = BoundedSvgOutput::new(options.work_meter);
+    let root_viewport = &options.viewport;
     let root_document = begin_architecture_document(
         &mut out,
-        &root_viewport,
+        root_viewport,
         diagram_id,
         css,
         &a11y,
@@ -365,7 +371,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
 
         let card = kurbo::Rect::new(0.0, 0.0, icon_size_px, icon_size_px);
         let silhouette = kurbo::RoundedRect::from_rect(card, native.radius).to_path(0.1);
-        let depth = crate::theme::elevation_svg::bounds(&native.elevation, card);
+        let depth = elevation::bounds(&native.elevation, card);
         for (index, service) in model
             .nodes
             .iter()
@@ -377,7 +383,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
                 .get(service.id.as_str())
                 .copied()
                 .unwrap_or((0.0, 0.0));
-            let _ = crate::theme::elevation_svg::write_depth(
+            let _ = elevation::write_depth(
                 &mut out,
                 &native.elevation,
                 &format!("{}-architecture-service-{index}", diagram_id.semantic_str()),
@@ -433,8 +439,8 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             text_measurer,
             resources: ArchitectureNodeResources {
                 effective_config,
-                icon_registry: options.icon_registry(),
-                work_meter: options.work_meter(),
+                icon_registry: options.icon_registry,
+                work_meter: options.work_meter,
             },
             icon_scope_root: None,
             service_icon_scope_prefix: None,
@@ -452,7 +458,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
 
     let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
         out: &mut out,
-        root_viewport: &root_viewport,
+        root_viewport: root_viewport,
         root_document,
         content_bounds,
         padding_px,
@@ -460,7 +466,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         icon_size_px,
         use_max_width,
         is_empty,
-        trust_content_bounds: options.icon_registry().is_none(),
+        trust_content_bounds: options.icon_registry.is_none(),
     })?;
     let rooted_svg = root_document.complete(out.finish()?)?;
 

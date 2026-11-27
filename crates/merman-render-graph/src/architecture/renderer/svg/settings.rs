@@ -1,6 +1,6 @@
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 
-use super::super::SvgDiagramId;
+use super::SvgDiagramId;
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
@@ -18,8 +18,8 @@ impl ArchitectureRenderSettings {
     pub(super) fn apply_native(
         &mut self,
         diagram_id: SvgDiagramId<'_>,
-        native: &crate::architecture::ArchitectureNativeStyle,
-        binding: &crate::architecture::ArchitectureCssBinding,
+        native: &super::super::ArchitectureNativeStyle,
+        binding: &super::super::ArchitectureCssBinding,
     ) {
         use std::fmt::Write;
         self.compound_text_style.clone_from(&native.layout_text);
@@ -34,7 +34,7 @@ impl ArchitectureRenderSettings {
 
     pub(super) fn from_prepared(
         diagram_id: SvgDiagramId<'_>,
-        typography: &crate::architecture::ArchitectureTypographyThemePlan,
+        typography: &crate::architecture::renderer::ArchitectureTypographyThemePlan,
     ) -> Self {
         let binding = typography.css_binding();
         let mut css = String::new();
@@ -62,7 +62,7 @@ impl ArchitectureRenderSettings {
             arch_font_size_px: binding.arch_font_size_px,
             use_max_width: binding.use_max_width,
             text_style: typography.svg_text_style(),
-            compound_text_style: crate::architecture::architecture_cytoscape_text_style(
+            compound_text_style: super::super::architecture_cytoscape_text_style(
                 binding.arch_font_size_px,
             ),
         }
@@ -74,23 +74,12 @@ mod tests {
     use super::*;
 
     fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
-        let config = crate::test_support::presentation_config(config.clone());
+        let config = crate::architecture::renderer::presentation_config(config.clone());
         let typography =
-            crate::architecture::ArchitectureTypographyThemePlan::resolve(&config, None);
-        let request = crate::svg::SvgRenderOptions {
-            diagram_id: Some(id.to_owned()),
-            ..Default::default()
-        };
-        super::super::super::with_test_svg_execution(
-            crate::DiagramFamilyId::ARCHITECTURE,
-            &request,
-            |options| {
-                ArchitectureRenderSettings::from_prepared(
-                    options.diagram_id_or("diag"),
-                    &typography,
-                )
-            },
-        )
+            crate::architecture::renderer::ArchitectureTypographyThemePlan::resolve(&config, None);
+        crate::architecture::renderer::with_test_svg_id(id, |diagram_id, _| {
+            ArchitectureRenderSettings::from_prepared(diagram_id, &typography)
+        })
     }
 
     #[test]
@@ -216,7 +205,7 @@ mod tests {
             r#"#diag{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
         ));
         assert_eq!(
-            crate::config::config_root_font_family_css(&cfg),
+            merman_render_core::config::config_root_font_family_css(&cfg),
             "Courier,monospace"
         );
         assert!(

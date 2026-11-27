@@ -59,7 +59,7 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
-diagram-architecture = ["merman-model/diagram-architecture", "merman-render-core/icon-svg", "merman-render-core/theme-elevation", "dep:pulldown-cmark", "dep:indexmap"]
+diagram-architecture = ["merman-model/diagram-architecture", "dep:merman-render-graph", "merman-render-graph/diagram-architecture"]
 diagram-block = ["merman-model/diagram-block", "merman-render-core/theme-elevation", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap"]
 diagram-c4 = ["merman-model/diagram-c4", "dep:merman-render-graph", "merman-render-graph/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "dep:merman-render-graph", "merman-render-graph/diagram-class", "merman-render-core/resources-class", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
@@ -101,7 +101,7 @@ system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 benchmark-stages = ["merman-model/benchmark-stages", "merman-render-core/benchmark-stages", "merman-render-sequence?/benchmark-stages", "merman-render-graph?/benchmark-stages"]
-layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape"]
+layout-cytoscape = ["dep:manatee", "merman-render-core/layout-cytoscape", "merman-render-graph?/layout-cytoscape"]
 layout-dagre = ["dep:dugong", "merman-render-core/layout-dagre", "merman-render-flow?/layout-dagre", "merman-render-graph?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core/layout-elk", "merman-render-graph?/layout-elk"]
 layout-shoal = ["dep:merman-layout-shoal", "merman-render-core/shoal-bridge", "merman-render-graph?/layout-shoal"]

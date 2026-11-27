@@ -1,8 +1,8 @@
-use crate::model::Bounds;
-use crate::text::{TextMeasurer, TextStyle};
+use merman_render_core::Bounds;
+use merman_render_core::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
-pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
+pub const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
 #[cfg(any(feature = "layout-cytoscape", test))]
 const CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX: f64 = 0.0;
 const CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX: f64 = 2.0;
@@ -132,7 +132,7 @@ pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
         + CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX
 }
 
-pub(crate) fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {
+pub fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {
     let b = bounds.get_or_insert(other.clone());
     b.min_x = b.min_x.min(other.min_x);
     b.min_y = b.min_y.min(other.min_y);
@@ -342,16 +342,20 @@ pub(crate) fn architecture_estimate_service_bounds(
 mod tests {
     struct CanvasProbe;
 
-    impl crate::text::TextMeasurer for CanvasProbe {
+    impl merman_render_core::text::TextMeasurer for CanvasProbe {
         fn measure(
             &self,
             _text: &str,
-            _style: &crate::text::TextStyle,
-        ) -> crate::text::TextMetrics {
+            _style: &merman_render_core::text::TextStyle,
+        ) -> merman_render_core::text::TextMetrics {
             panic!("Architecture labels must use the Canvas2D operation")
         }
 
-        fn measure_canvas_text_width_px(&self, text: &str, _style: &crate::text::TextStyle) -> f64 {
+        fn measure_canvas_text_width_px(
+            &self,
+            text: &str,
+            _style: &merman_render_core::text::TextStyle,
+        ) -> f64 {
             match text {
                 "edge" => 32.2,
                 "short" => 40.1,
@@ -362,8 +366,8 @@ mod tests {
         }
     }
 
-    fn cytoscape_text_style(font_size: f64) -> crate::text::TextStyle {
-        crate::text::TextStyle {
+    fn cytoscape_text_style(font_size: f64) -> merman_render_core::text::TextStyle {
+        merman_render_core::text::TextStyle {
             font_family: Some("Helvetica Neue,Helvetica,sans-serif".to_string()),
             font_size,
             font_weight: None,
@@ -373,19 +377,19 @@ mod tests {
 
     struct CreateTextVerticalProbe;
 
-    impl crate::text::TextMeasurer for CreateTextVerticalProbe {
+    impl merman_render_core::text::TextMeasurer for CreateTextVerticalProbe {
         fn measure(
             &self,
             _text: &str,
-            _style: &crate::text::TextStyle,
-        ) -> crate::text::TextMetrics {
+            _style: &merman_render_core::text::TextStyle,
+        ) -> merman_render_core::text::TextMetrics {
             panic!("Architecture createText bounds must use exact SVG operations")
         }
 
         fn measure_svg_tspan_text_bbox_height_px(
             &self,
             text: &str,
-            _style: &crate::text::TextStyle,
+            _style: &merman_render_core::text::TextStyle,
         ) -> f64 {
             assert_eq!(text, "First line");
             19.0
@@ -394,7 +398,7 @@ mod tests {
         fn measure_svg_create_text_middle_bbox_y_offset_px(
             &self,
             text: &str,
-            _style: &crate::text::TextStyle,
+            _style: &merman_render_core::text::TextStyle,
         ) -> f64 {
             assert_eq!(text, "First line");
             5.1875
@@ -403,7 +407,7 @@ mod tests {
 
     #[test]
     fn architecture_text_phases_match_mermaid_source_and_operation_metrics() {
-        let style = crate::text::TextStyle {
+        let style = merman_render_core::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
             font_weight: None,
@@ -523,13 +527,13 @@ mod tests {
 
     #[test]
     fn architecture_cytoscape_child_label_bounds_centralize_compound_child_label_phase() {
-        let style = crate::text::TextStyle {
+        let style = merman_render_core::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 12.0,
             font_weight: None,
             font_style: None,
         };
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
 
         let label_bounds = super::architecture_cytoscape_child_label_bounds(
             Some("API gateway"),
@@ -563,7 +567,7 @@ mod tests {
             half_width: 50.0,
             bottom_extension_px: 18.0,
         };
-        let icon_bounds = crate::model::Bounds {
+        let icon_bounds = merman_render_core::Bounds {
             min_x: 10.0,
             min_y: 20.0,
             max_x: 90.0,
@@ -579,7 +583,7 @@ mod tests {
 
     #[test]
     fn architecture_cytoscape_child_contribution_bounds_preserve_body_label_union_phases() {
-        let icon_bounds = crate::model::Bounds {
+        let icon_bounds = merman_render_core::Bounds {
             min_x: 10.0,
             min_y: 20.0,
             max_x: 90.0,
@@ -621,7 +625,7 @@ mod tests {
     #[test]
     fn architecture_compound_child_and_final_element_bounds_split_label_phases() {
         let style = cytoscape_text_style(18.0);
-        let icon_bounds = crate::model::Bounds {
+        let icon_bounds = merman_render_core::Bounds {
             min_x: -20.0,
             min_y: -20.0,
             max_x: 20.0,

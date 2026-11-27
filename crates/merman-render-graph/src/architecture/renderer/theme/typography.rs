@@ -1,9 +1,9 @@
 use merman_model::presentation::PresentationConfig;
 
 use super::super::{ArchitectureCssBinding, ArchitectureNativeStyle, native_theme::authored};
-use crate::config::configured_theme_font_size_css_or_root_number_px;
-use crate::mermaid_style::{css_font_size_value_override, parse_style_declaration};
-use crate::theme::FamilyTheme;
+use merman_render_core::config::configured_theme_font_size_css_or_root_number_px;
+use merman_render_core::mermaid_style::{css_font_size_value_override, parse_style_declaration};
+use merman_theme_contract::v2::FamilyTheme;
 
 /// Resolves Architecture's inherited SVG typography without taking ownership of Cytoscape text.
 ///
@@ -12,7 +12,7 @@ use crate::theme::FamilyTheme;
 /// the Cytoscape layout and group-icon-alignment owner. Keeping those values separate preserves
 /// Mermaid's layout semantics.
 #[derive(Debug)]
-pub(crate) struct ArchitectureTypographyThemePlan {
+pub struct ArchitectureTypographyThemePlan {
     css_binding: ArchitectureCssBinding,
     font_family_css: String,
     font_size_px: f64,
@@ -23,7 +23,7 @@ impl ArchitectureTypographyThemePlan {
         config: &PresentationConfig,
         native: Option<(&FamilyTheme, &ArchitectureNativeStyle)>,
     ) -> Self {
-        use crate::number_format::{canonical_number, canonicalize_number};
+        use merman_render_core::number_format::{canonical_number, canonicalize_number};
 
         let config_value = config.as_value();
         let configured_size = configured_theme_font_size_css_or_root_number_px(config_value);
@@ -55,7 +55,7 @@ impl ArchitectureTypographyThemePlan {
         };
 
         let font_family_css = native.map_or_else(
-            || crate::config::config_font_family_css(config),
+            || merman_render_core::config::config_font_family_css(config),
             |(_, style)| style.layout_text.font_family.clone().unwrap_or_default(),
         );
         let mut css_binding =
@@ -74,7 +74,7 @@ impl ArchitectureTypographyThemePlan {
         &self.font_family_css
     }
 
-    pub(crate) const fn css_binding(&self) -> &ArchitectureCssBinding {
+    pub const fn css_binding(&self) -> &ArchitectureCssBinding {
         &self.css_binding
     }
 
@@ -82,8 +82,8 @@ impl ArchitectureTypographyThemePlan {
         self.font_size_px
     }
 
-    pub(crate) fn svg_text_style(&self) -> crate::text::TextStyle {
-        crate::text::TextStyle {
+    pub fn svg_text_style(&self) -> merman_render_core::text::TextStyle {
+        merman_render_core::text::TextStyle {
             font_family: Some(self.font_family_css().to_owned()),
             font_size: self.font_size_px(),
             font_weight: None,

@@ -329,7 +329,12 @@
         "path": "."
       },
       "relationships": ["behavior-reference", "translated"],
-      "local_paths": ["crates/manatee", "crates/merman-render/src/architecture.rs"],
+      "local_paths": [
+        "crates/manatee",
+        "crates/merman-render-graph/src/architecture/renderer/fcose.rs",
+        "crates/merman-render-graph/src/architecture/renderer/metrics.rs",
+        "crates/merman-render-graph/src/architecture/renderer/mod.rs"
+      ],
       "license_expression": "MIT",
       "license_files": [
         {
@@ -379,7 +384,10 @@
         "path": "."
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/manatee", "crates/merman-render/src/architecture.rs"],
+      "local_paths": [
+        "crates/manatee",
+        "crates/merman-render-graph/src/architecture/renderer/fcose.rs"
+      ],
       "license_expression": "MIT",
       "license_files": [
         {
@@ -936,7 +944,7 @@
         "crates/merman-model/src",
         "crates/merman-markup/src",
         "crates/merman-render/src",
-        "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "crates/merman-render-graph/src/architecture/renderer/svg/icons.rs",
         "crates/merman-render-charts/src",
         "crates/merman-render-core/src",
         "crates/merman-render-flow/src",

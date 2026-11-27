@@ -1,6 +1,11 @@
 use std::fmt::Write as _;
 
-use super::super::{SvgDiagramId, SvgOutput, escape_attr_display, escape_xml_display, root_svg};
+use super::{SvgDiagramId, SvgOutput};
+use merman_render_core::{
+    root_svg,
+    svg_output::XmlTextOutput,
+    xml::{escape_attr_display, escape_xml_display},
+};
 
 pub(super) struct ArchitectureA11y {
     pub(super) aria_labelledby: Option<String>,
@@ -50,7 +55,7 @@ pub(super) fn begin_architecture_document(
     css: &str,
     a11y: &ArchitectureA11y,
     use_max_width: bool,
-) -> crate::Result<root_svg::RootDocument> {
+) -> merman_render_core::Result<root_svg::RootDocument> {
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "architecture");
     root_chrome.aria_labelledby = a11y.aria_labelledby.as_deref();
     root_chrome.aria_describedby = a11y.aria_describedby.as_deref();
@@ -63,7 +68,7 @@ pub(super) fn begin_architecture_document(
 
     out.push_str(a11y.nodes.as_str());
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(out).push_str(css);
+    XmlTextOutput::new(out).push_str(css);
     out.push_str("</style>");
     out.push_str("<g/>");
     out.checkpoint()?;
