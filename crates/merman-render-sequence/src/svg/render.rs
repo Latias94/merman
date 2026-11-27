@@ -111,7 +111,6 @@ pub fn render_parity(request: SequenceSvgRequest<'_>) -> Result<root_svg::Rooted
         canvas_background,
     } = request;
     let model = prepared.model_for_render(semantic);
-    let effective_config = sanitize_config.as_value();
     let checkpoints = SequenceEmitCheckpoints::for_emit(work_meter);
     checkpoints.checkpoint()?;
     let layout = prepared.layout();
@@ -119,7 +118,7 @@ pub fn render_parity(request: SequenceSvgRequest<'_>) -> Result<root_svg::Rooted
     let compat = prepared.typography().compat_binding();
 
     let settings =
-        SequenceRenderSettings::from_resolved_typography(effective_config, prepared.typography());
+        SequenceRenderSettings::from_resolved_typography(sanitize_config, prepared.typography());
     let stroke_width = native.map(|theme| theme.form.stroke_width as f32);
     let radius = native.map(|theme| theme.form.radius as f32);
     let actor_rect_style = super::actor_shapes::SequenceActorRectStyle {
