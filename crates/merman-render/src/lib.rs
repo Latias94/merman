@@ -233,12 +233,10 @@ mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
-#[cfg(feature = "diagram-sequence")]
-pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
-pub mod svg_security;
+pub use merman_render_core::svg_security;
 #[cfg(any(
     feature = "diagram-er",
     feature = "diagram-flowchart",

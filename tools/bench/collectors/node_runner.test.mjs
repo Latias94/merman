@@ -60,9 +60,9 @@ function plan(dir, scenarios) {
   return raw;
 }
 
-function run(dir, engine, extra = [], runner = cli) {
+function run(dir, engine, extra = [], runner = cli, timeout = 20_000) {
   const result = spawnSync(process.execPath, [runner, "--plan", "plan.json", "--engine", engine, ...extra], {
-    cwd: dir, encoding: "utf8", timeout: 20_000,
+    cwd: dir, encoding: "utf8", timeout,
   });
   if (result.error) throw result.error;
   assert.equal(result.stdout.trim().split("\n").length, 1, result.stderr);
@@ -817,12 +817,13 @@ test("mid-plan request exceptions, process exits and timeouts preserve every ind
     if (source === 'hang') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
     return {svg: '<svg><text>pass</text></svg>'};
   }`);
-  const { report, status, stderr } = run(dir, "pele", ["--samples", "1", "--timeout-seconds", "2"]);
+  const timeoutSeconds = process.platform === "win32" ? 12 : 2;
+  const { report, status, stderr } = run(dir, "pele", ["--samples", "1", "--timeout-seconds", String(timeoutSeconds)], cli, 75_000);
   assert.equal(status, 1, stderr);
   assert.equal(report.status, "failed");
   assert.equal(report.plan_sha256, sha256(raw));
   assert.equal(report.host.node, process.version);
-  assert.equal(report.timeout_seconds, 2);
+  assert.equal(report.timeout_seconds, timeoutSeconds);
   assert.equal(report.planned_scenarios, modes.length);
   assert.deepEqual(report.scenarios.map((row) => row.id), modes);
   const [before, thrown, exited, timeout, after] = report.scenarios;

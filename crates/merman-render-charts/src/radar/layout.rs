@@ -330,11 +330,33 @@ pub fn layout_radar_diagram_typed_with_work_meter(
 mod tests {
     use super::{RadarDiagramLayout, RadarTicks, layout_radar_diagram_typed_with_work_meter};
     use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
+    use merman_model::{OperationControl, OperationPhase};
     use merman_render_core::{
         Error, Result,
         resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId},
     };
     use serde_json::json;
+
+    #[test]
+    fn radar_layout_observes_cancellation_before_and_during_fractional_graticules() {
+        let mut model = RadarDiagramModel::default();
+        model.options.ticks = 2.5;
+        for checkpoints in [0, 2] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(checkpoints);
+            let meter = OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                control,
+            );
+            let error =
+                layout_radar_diagram_typed_with_work_meter(&model, &json!({}), &meter).unwrap_err();
+            assert!(matches!(
+                error,
+                Error::Cancelled(cancelled) if cancelled.phase == OperationPhase::Layout
+            ));
+            assert_eq!(meter.used(), if checkpoints == 0 { 0 } else { 3 });
+        }
+    }
 
     fn layout_radar_diagram_typed(
         model: &RadarDiagramModel,

@@ -37,7 +37,16 @@ The operation-context thread-local key already has a const initializer. Clippy 1
 `missing_const_for_thread_local` from the standard library's TLS fallback on Android. Keep the
 allowance on that declaration until an admitted compiler update handles the expansion correctly.
 
-`xtask verify --strict` compiles all four vendored renderer crates. Workspace tests follow
+The default xtask build supports contract checks such as `verify-feature-matrix`,
+`verify-native-abi`, and `verify-capability-surface` without the SVG renderer. Use
+`--features render-parity` for rendered fixture commands and the full binding and resource
+projections. Those projections validate capabilities compiled into an actual artifact contract.
+Use `--features wasm-host` for WASM inspection and Typst package tasks without selecting the
+native SVG renderer.
+
+`cargo run --locked -p xtask -- verify --strict` remains the complete local gate. The default
+binary delegates `verify` to the render-parity build, which compiles all four vendored
+renderer crates. Workspace tests follow
 their manifests, and `merman-export` integration tests cover Krilla's PDF behavior. The Clippy
 gate applies `-D warnings` to workspace-owned targets. See the separate
 [independent crate release gates](../release/RELEASING.md#independent-crate-publication-and-recovery).
@@ -448,6 +457,10 @@ and strict index updates stop on download failures. Containers use the pinned ba
 | Tree-sitter family support | Language metadata, composed catalog contract, corpus, incremental, query, and conformance gates |
 | Dependency policy | `cargo deny`, RustSec governance, and release closure reports |
 | Published bytes | Release package, checksum, provenance, and install smoke |
+
+The locked `cargo deny` graph explicitly includes `xtask/render-parity`, preserving its native
+render and math coverage when default contract tooling does not link those features. Artifact
+closure checks still resolve each target's own features separately.
 
 ## Digest Policy
 

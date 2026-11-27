@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Geometry and SVG rendering primitives for Merman's graph families."
+documentation = "https://docs.rs/merman-render-graph"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "graph"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

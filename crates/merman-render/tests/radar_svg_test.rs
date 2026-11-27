@@ -1,4 +1,6 @@
 mod common;
+#[path = "radar_svg_test/native.rs"]
+mod native;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;

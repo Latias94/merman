@@ -1,4 +1,4 @@
-//! Layout geometry and SVG drawing for Mermaid Sequence diagrams.
+//! Layout preparation, geometry, and SVG drawing for Mermaid Sequence diagrams.
 
 #![forbid(unsafe_code)]
 
@@ -15,4 +15,11 @@ pub mod frame;
 pub mod model;
 
 #[doc(hidden)]
+pub mod preparation;
+
+#[doc(hidden)]
 pub mod rect_paint;
+
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub mod svg;

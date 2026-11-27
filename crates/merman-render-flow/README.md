@@ -13,4 +13,7 @@ image handling, styling, and SVG emission. With `layout-dagre`, this crate also 
 extracts compound graphs, selects cluster anchors, and accounts for graph mutations. The
 renderer supplies source direction and projects solved geometry into the diagram layout.
 
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
 Use `merman` for source-to-output rendering.

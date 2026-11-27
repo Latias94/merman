@@ -7,5 +7,8 @@ into bounded rows. The `diagram-railroad` feature parses Railroad IR, EBNF, ABNF
 `diagram-treemap` parses rows and builds the Treemap hierarchy. `editor-facts` enables syntax spans
 for editor consumers.
 
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
 Use `merman-core` to parse a complete Mermaid source with frontmatter, configuration, diagnostic
 mapping, and editor facts.

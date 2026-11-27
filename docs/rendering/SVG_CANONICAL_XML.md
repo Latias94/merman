@@ -24,13 +24,13 @@ deterministic.
 ## Usage
 
 - Generate a report (does not fail the build):
-  - `cargo run -p xtask -- compare-svg-xml`
+  - `cargo run -p xtask --features render-parity -- compare-svg-xml`
 
 - Fail on mismatches (recommended in CI once stable):
-  - `cargo run -p xtask -- compare-svg-xml --check`
+  - `cargo run -p xtask --features render-parity -- compare-svg-xml --check`
 
 - Narrow scope:
-  - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter titled`
+  - `cargo run -p xtask --features render-parity -- compare-svg-xml --diagram flowchart --filter titled`
 
 ## Options
 

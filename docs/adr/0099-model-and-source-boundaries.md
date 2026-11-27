@@ -110,22 +110,23 @@ admission, and the editor and compatibility projections.
 
 ### Sequence diagrams
 
-`merman-core-sequence` owns tokenization and grammar actions for Sequence. Core projects editor
-facts from the same lexical stream, builds the semantic model, and maps diagnostics to source.
+`merman-core-sequence` owns Sequence tokenization, grammar replay, and semantic model construction.
+Core captures editor facts from the same lexical stream before handing ownership to the Sequence
+parser, then maps diagnostics to the original source and applies the shared admission policies.
 
-`merman-render-sequence` owns the Sequence layout types, participant geometry, glyphs, lifelines,
-and prepared control frames. It owns activation state, geometry, palette slots, and balanced SVG
-groups. `merman-render` supplies the bounded SVG sink, diagram ID, and operation work meter
-and still orchestrates text, math, label placement, and the complete document.
+`merman-render-sequence` owns Sequence preparation, typography, layout, and complete SVG emission
+for both Mermaid parity and the opt-in NativeCompact profile. It uses the shared text, math, and
+bounded SVG contracts from `merman-render-core`. `merman-render` supplies the paired semantic
+model and operation context, finalizes diagram IDs, and owns terminal output admission. This
+follows the vertical renderer boundary in [ADR-0103](0103-vertical-workspace-crate-boundaries.md).
 
 ### Chart rendering
 
-`merman-render-charts` owns typed layout, style binding, and SVG content for Pie. It uses the
-shared CSS, XML escaping, and theme paint writers in `merman-render-core`. `merman-render`
-supplies text metrics and assembles the chart into a scoped SVG document under the render
-operation's output policy. For XY Chart, the chart crate owns typed layout, plot geometry, and
-bar label placement. For Sankey, it owns the typed layout, configuration lookup, and SVG body.
-`merman-render` supplies text metrics and owns root and output policy for both families.
+`merman-render-charts` owns typed layout, style binding, and complete SVG emission for Pie,
+Sankey, and Treemap. It uses the shared text measurement, CSS, XML escaping, and theme paint
+writers in `merman-render-core`. `merman-render` supplies the operation's measurer and viewport
+context and owns terminal SVG policy. For XY Chart, the chart crate owns typed layout, plot
+geometry, and bar label placement.
 
 The chart crate owns Quadrant Chart geometry, paint binding, and SVG content. It also owns Radar
 layout and its point and radius codecs, Venn layout and its solver, and Wardley layout and

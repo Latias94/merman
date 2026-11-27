@@ -8,7 +8,7 @@ renderer.
 
 Generate one or more local SVGs:
 
-`cargo run -p xtask -- gen-debug-svgs --diagram state --filter <fixture_stem>`
+`cargo run -p xtask --features render-parity -- gen-debug-svgs --diagram state --filter <fixture_stem>`
 
 Outputs are written under `target/debug-svgs/state/` by default.
 
@@ -22,8 +22,8 @@ viewport delta (`style="max-width: ...px"` and/or `viewBox="..."`), which depend
 
 Generate the focused parity report with:
 
-- `cargo run -p xtask -- compare-state-svgs --filter <fixture_stem> --check-dom --dom-mode parity-root`
+- `cargo run -p xtask --features render-parity -- compare-state-svgs --filter <fixture_stem> --check-dom --dom-mode parity-root`
 
 Then inspect the contributors to either SVG's emitted bounds with:
 
-- `cargo run -p xtask -- debug-svg-bbox --svg <path-to-svg>`
+- `cargo run -p xtask --features render-parity -- debug-svg-bbox --svg <path-to-svg>`

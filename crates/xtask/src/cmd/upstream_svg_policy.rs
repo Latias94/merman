@@ -6,6 +6,7 @@ pub(crate) fn upstream_svg_capture_background(diagram: &str) -> Option<&'static 
 }
 
 /// Mirrors the reference capture's root-only projection without finalizing HTML labels as XML.
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn apply_upstream_svg_capture_background(diagram: &str, svg: &str) -> String {
     use std::sync::LazyLock;
     static ROOT: LazyLock<regex::Regex> =
@@ -220,6 +221,7 @@ pub(crate) fn parser_only_fixture_reason(
     merman_fixture_render_context::parser_only_fixture_reason(diagram, fixture_name_or_stem)
 }
 
+#[cfg(any(test, feature = "render-parity"))]
 pub(crate) fn upstream_svg_compare_skip_reason(
     diagram: &str,
     fixture_name_or_stem: &str,

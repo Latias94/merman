@@ -1,13 +1,4 @@
-pub(crate) use merman_model::families::state::{
-    StateDiagramModel, StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord,
-    StateRelation, StateStyleClass,
-};
-
-pub(super) struct StateModelConstruction {
-    pub model: StateDiagramModel,
-    #[cfg(feature = "presentation")]
-    pub presentation: Vec<super::render_model::StateNodePresentation>,
-}
+pub(crate) use merman_model::families::state::StateDiagramModel;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut StateDiagramModel,

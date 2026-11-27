@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Syntax parsers for Merman's graph diagram families."
+documentation = "https://docs.rs/merman-core-graph"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "parser", "graph"]
+categories = ["parser-implementations", "visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
@@ -16,13 +19,16 @@ third-party-bundle = true
 default = []
 diagram-class = ["merman-model/diagram-class", "dep:merman-core-preprocess", "merman-core-preprocess/mermaid-unicode"]
 diagram-er = ["merman-model/diagram-er", "dep:indexmap", "dep:merman-core-preprocess"]
-diagram-state = ["merman-model/diagram-state", "dep:merman-core-preprocess"]
+diagram-state = ["merman-model/diagram-state", "dep:indexmap", "dep:merman-core-preprocess", "dep:merman-markup", "merman-markup/html", "dep:serde_json"]
 editor-facts = []
+presentation = ["merman-model/presentation-data"]
 
 [dependencies]
 indexmap = { workspace = true, optional = true }
 merman-core-preprocess = { workspace = true, optional = true }
+merman-markup = { workspace = true, optional = true }
 merman-model.workspace = true
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }

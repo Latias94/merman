@@ -6,19 +6,19 @@ checks in one shot and aggregates failures.
 ## Run
 
 - Strict investigation mode, where reviewed browser text-layout residuals remain blocking:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-decimals 3`
 
 - Release policy with browser text layout reported as diagnostic:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 - Use a specific strict DOM comparison mode for all diagrams:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 - Only run a subset of diagrams:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --diagram flowchart --diagram sequence`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --diagram flowchart --diagram sequence`
 
 - Skip some diagrams:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --skip gantt --skip flowchart`
+  - `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --skip gantt --skip flowchart`
 
 ## Outputs
 
@@ -121,7 +121,7 @@ Text measurement is always deterministic; there is no single-value selector.
 
 Example:
 
-- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root`
+- `cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root`
 
 The Linux release lane follows the successful DOM/semantic comparison with
 `npm run oracle:root-viewport --prefix playground/tests`. The browser oracle mounts the generated

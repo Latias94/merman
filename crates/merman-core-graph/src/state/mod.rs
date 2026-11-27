@@ -1,13 +1,18 @@
-//! State syntax and flat statement construction.
+//! State syntax, database replay, and model construction.
 
+mod db;
+mod document;
 mod lexer;
 mod parser;
+#[cfg(feature = "presentation")]
+mod render_model;
 
 use crate::scan::collect_lexical_events;
 use lexer::Lexer;
 use merman_model::families::state::{StateDocumentBuilder, StateDocumentId};
 use merman_model::{OperationControl, OperationControlResult};
 
+pub use db::{StateModelError, StateSource};
 pub use lexer::{StateDirection, StateLexicalError, StateLexicalEvent, StateToken};
 pub use parser::{StateExpectedTokens, StateSyntaxDiagnostic};
 
@@ -47,6 +52,17 @@ impl StateSyntax {
     ) -> OperationControlResult<Result<StateParsedDocument, StateSyntaxDiagnostic>> {
         control.checkpoint()?;
         parser::parse(self.events.into_iter(), self.source_len, control)
+    }
+
+    /// Consumes the same syntax and constructs the database after grammar validation.
+    pub fn into_source(
+        self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateSource, StateSyntaxDiagnostic>> {
+        match self.into_document(control)? {
+            Ok(document) => Ok(Ok(StateSource::from_document(document, control)?)),
+            Err(diagnostic) => Ok(Err(diagnostic)),
+        }
     }
 }
 

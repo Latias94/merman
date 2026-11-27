@@ -723,7 +723,7 @@
         "path": "crates/ratex-katex-fonts/fonts"
       },
       "relationships": ["embedded"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "local_paths": ["Cargo.lock", "crates/merman-render-core/Cargo.toml"],
       "license_expression": "OFL-1.1",
       "license_files": [
         {
@@ -925,22 +925,25 @@
       "local_paths": [
         "crates/merman-core/src",
         "crates/merman-core-flow/src",
+        "crates/merman-core-graph/src/state",
         "crates/merman-core-preprocess/src/scan/langium.rs",
+        "crates/merman-core-sequence/src",
         "crates/merman-core-structured/src/info.rs",
         "crates/merman-core-structured/src/ishikawa.rs",
         "crates/merman-model/src",
         "crates/merman-markup/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "crates/merman-render-charts/src/pie",
         "crates/merman-render-charts/src/quadrantchart/layout.rs",
         "crates/merman-render-charts/src/quadrantchart/svg.rs",
-        "crates/merman-render-charts/src/radar/layout.rs",
+        "crates/merman-render-charts/src/radar",
         "crates/merman-render-charts/src/treemap/layout.rs",
         "crates/merman-render-charts/src/venn/layout.rs",
         "crates/merman-render-charts/src/wardley/layout.rs",
         "crates/merman-render-core/src/step_animation.rs",
         "crates/merman-render-flow/src",
-        "crates/merman-render-sequence/src/frame",
+        "crates/merman-render-sequence/src",
         "crates/merman-render-structured/src/info",
         "fixtures"
       ],
@@ -1045,7 +1048,7 @@
         "path": "crates"
       },
       "relationships": ["linked"],
-      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "local_paths": ["Cargo.lock", "crates/merman-render-core/src/math/prepared.rs"],
       "license_expression": "MIT",
       "license_files": [
         {

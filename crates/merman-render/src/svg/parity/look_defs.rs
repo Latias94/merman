@@ -2,9 +2,6 @@
 
 use super::*;
 
-/// Mermaid Neo emits a zero-blur shadow translated by this distance on each axis.
-pub(super) const NEO_SHADOW_OFFSET_PX: f64 = 4.0;
-
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedLookDefs {
     flood_color: &'static str,

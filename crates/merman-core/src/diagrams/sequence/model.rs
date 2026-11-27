@@ -1,7 +1,4 @@
-pub(crate) use merman_model::families::sequence::{
-    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox, SequenceDiagramModel,
-    SequenceMessage, SequenceMessagePayload, SequenceNote,
-};
+pub(super) use merman_model::families::sequence::SequenceDiagramModel;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut SequenceDiagramModel,

@@ -8,7 +8,7 @@
 
 use merman::OperationControl;
 #[cfg(feature = "native-fonts")]
-use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
+use merman::svg::export::{NativeFontError, NativeFontLimits};
 use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::transport_handles::{HandleRegistry, OperationControlRegistry};
 use merman_bindings_core::{
@@ -1780,10 +1780,9 @@ unsafe fn engine_new_with_fonts_impl(
             }
             owned_fonts.append(&mut bundled);
             let control = OperationControl::new();
-            let context = NativeFontContext::from_font_bytes(owned_fonts, limits, &control)
-                .map_err(native_failure_from_font)?
-                .with_strict_glyph_coverage(true);
-            let services = BindingEngineServices::new().with_native_font_context(context);
+            let services =
+                BindingEngineServices::from_strict_native_font_bytes(owned_fonts, limits, &control)
+                    .map_err(native_failure_from_font)?;
             let options_json =
                 unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
             let engine_config = MermanNativeEngineConfig {

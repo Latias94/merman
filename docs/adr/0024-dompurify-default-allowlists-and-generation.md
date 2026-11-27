@@ -61,7 +61,7 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
   `tools/upstreams/REPOS.lock.json`.
 - Verify generated allowlists using:
   - DOMPurify allowlists only: `cargo run -p xtask -- verify-dompurify-defaults`
-  - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
+  - umbrella generated-artifact check: `cargo run -p xtask --features render-parity -- verify-generated`
 - Implement a DOMPurify-inspired tag/attribute validation step in `merman-core::sanitize` driven by:
   - `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`
   - `DEFAULT_URI_SAFE_ATTRIBUTES` / `DEFAULT_DATA_URI_TAGS`

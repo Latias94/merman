@@ -13,17 +13,17 @@ use crate::{
     ParseDiagnosticSpanKind, SemanticMetadata,
 };
 #[cfg(feature = "editor-facts")]
-use merman_core_sequence::sequence::{SequenceLexicalEvent, SequenceToken as Tok};
-use merman_core_sequence::sequence::{SequenceSyntax, SequenceSyntaxDiagnostic};
+use merman_core_sequence::sequence::{
+    SequenceLexicalEvent, SequenceToken as Tok, box_color_and_title,
+};
+use merman_core_sequence::sequence::{
+    SequenceModelError, SequenceSyntax, SequenceSyntaxDiagnostic,
+};
 #[cfg(test)]
 use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::Action;
-use super::db::SequenceDb;
-#[cfg(feature = "editor-facts")]
-use super::db::box_color_and_title;
 use super::model::SequenceDiagramModel;
 
 #[cfg(test)]
@@ -70,7 +70,7 @@ fn sequence_parse_diagnostic(diagnostic: SequenceSyntaxDiagnostic) -> ParseDiagn
 }
 
 pub(super) struct SequenceSemanticSource {
-    pub(super) db: SequenceDb,
+    pub(super) model: SequenceDiagramModel,
     #[cfg(feature = "editor-facts")]
     pub(super) editor_facts: Option<EditorSemanticFacts>,
 }
@@ -160,11 +160,10 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
     )?;
     Ok(match construction {
         Ok(SequenceSemanticSource {
-            db,
+            mut model,
             #[cfg(feature = "editor-facts")]
             editor_facts,
         }) => {
-            let mut model = db.into_model();
             super::sanitize_common_db_fields(&mut model, &meta.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
@@ -208,20 +207,20 @@ pub(super) fn construct_sequence_semantic_source(
             control,
         )?),
     };
-    let actions = match syntax.into_actions(control)? {
-        Ok(actions) => actions,
-        Err(diagnostic) => {
+    let model = match syntax.into_model(
+        wrap_enabled,
+        crate::inline_config::parse_mermaid_inline_object_controlled,
+        control,
+    )? {
+        Ok(model) => model,
+        Err(SequenceModelError::Grammar(diagnostic)) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {
                 diagnostic: sequence_parse_diagnostic(diagnostic),
                 #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
-    };
-
-    let db = match build_sequence_db(actions, wrap_enabled, control)? {
-        Ok(db) => db,
-        Err(message) => {
+        Err(SequenceModelError::Db(message)) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Db {
                 message,
                 #[cfg(feature = "editor-facts")]
@@ -230,29 +229,11 @@ pub(super) fn construct_sequence_semantic_source(
         }
     };
 
-    control.checkpoint()?;
     Ok(Ok(SequenceSemanticSource {
-        db,
+        model,
         #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
-}
-
-fn build_sequence_db(
-    actions: Vec<Action>,
-    wrap_enabled: Option<bool>,
-    control: &OperationControl,
-) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
-    let mut db = SequenceDb::new(wrap_enabled);
-    for (index, action) in actions.into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Err(error) = db.apply_controlled(action, control)? {
-            return Ok(Err(error));
-        }
-    }
-    Ok(Ok(db))
 }
 
 pub(super) fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
@@ -933,22 +914,6 @@ mod tests {
         assert_eq!(sequence_syntax_construction_count(), 1);
         #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read().collections, 1);
-    }
-
-    #[test]
-    fn cancelled_replay_releases_remaining_flat_events() {
-        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
-        let control = OperationControl::new();
-        let actions = SequenceSyntax::lex(&source, &control)
-            .unwrap()
-            .into_actions(&control)
-            .unwrap()
-            .expect("Sequence parser accepts the workload");
-        control.cancel_after_checkpoints(16);
-        let Err(error) = build_sequence_db(actions, None, &control) else {
-            panic!("replay returns cancellation through the outer result");
-        };
-        assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
     #[cfg(feature = "compat-json")]

@@ -4,6 +4,7 @@ use crate::XtaskError;
 use std::fs;
 use std::path::PathBuf;
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
     let mut svg_path: Option<PathBuf> = None;
     let mut padding: f64 = 8.0;

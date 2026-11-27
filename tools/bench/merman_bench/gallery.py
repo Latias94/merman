@@ -2,10 +2,12 @@
 
 from collections import Counter
 import json
+import os
 from pathlib import Path
 import re
 from statistics import median
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree as ET
 
@@ -94,7 +96,8 @@ def render_pele_cards(cases):
         plan.write_bytes(raw)
         run = subprocess.run(["node", HERE / "collectors/node_runner.mjs", "--engine", "pele", "--plan", plan,
                               "--samples", "3", "--drawing-dir", drawings, "--all-drawings"],
-                             cwd=consumer, stdout=subprocess.PIPE)
+                             cwd=consumer, stdout=subprocess.PIPE,
+                             env={**os.environ, "MERMAN_BENCH_PYTHON": sys.executable})
         report = json.loads(run.stdout)
         failures = node_worker_failures(report)
         if run.returncode != int(bool(failures)) or report["engine"] != "pele" or report["plan_sha256"] != digest(raw):

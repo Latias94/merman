@@ -438,7 +438,7 @@ The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are l
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
 - Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
-- Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
+- Local evidence: `Cargo.lock`, `crates/merman-render-core/Cargo.toml`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt`](THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt) (notice, SHA-256 `752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e`)
   - [`THIRD_PARTY_LICENSES/katex-fonts/OFL.txt`](THIRD_PARTY_LICENSES/katex-fonts/OFL.txt) (license, SHA-256 `f19c674290e5dc79f02e8efe16139ab56a06a7128876f5b1579ffd0db5bc897e`)
@@ -539,7 +539,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `ascii-render`, `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core-flow/src`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-charts/src/quadrantchart/layout.rs`, `crates/merman-render-charts/src/quadrantchart/svg.rs`, `crates/merman-render-charts/src/radar/layout.rs`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-charts/src/wardley/layout.rs`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-flow/src`, `crates/merman-render-sequence/src/frame`, `crates/merman-render-structured/src/info`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core-flow/src`, `crates/merman-core-graph/src/state`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render-charts/src/pie`, `crates/merman-render-charts/src/quadrantchart/layout.rs`, `crates/merman-render-charts/src/quadrantchart/svg.rs`, `crates/merman-render-charts/src/radar`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-charts/src/wardley/layout.rs`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-flow/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src/info`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 
@@ -635,7 +635,7 @@ Optional math rendering links the RaTeX 0.1.15 crate family; its separately lice
 - Relationship: `linked`
 - License expression: `MIT`
 - Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
-- Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
+- Local evidence: `Cargo.lock`, `crates/merman-render-core/src/math/prepared.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/ratex/LICENSE`](THIRD_PARTY_LICENSES/ratex/LICENSE) (license, SHA-256 `f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0`)
   - [`THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt) (notice, SHA-256 `e3cf753ddd8012543a3297b62b4cf5450db1d5a3ae7ddd7afae593db927c2980`)

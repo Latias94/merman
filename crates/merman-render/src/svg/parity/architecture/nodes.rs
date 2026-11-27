@@ -247,7 +247,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         &parse_work,
                         merman_model::OperationPhase::Emit,
                     );
-                    let sanitized = crate::html::resolve_svg_fragment(
+                    let sanitized = merman_render_core::html::resolve_svg_fragment(
                         merman_markup::sanitize::sanitize_xhtml_in_svg_context_with_sink(
                             icon_text.trim(),
                             resources.effective_config.as_config(),

@@ -1,16 +1,27 @@
+#[cfg(feature = "render-parity")]
 use crate::XtaskError;
+#[cfg(feature = "render-parity")]
 use regex::Regex;
+#[cfg(feature = "render-parity")]
 use std::fs;
+#[cfg(feature = "render-parity")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "render-parity")]
 use std::sync::OnceLock;
 
+#[cfg(feature = "render-parity")]
 mod baseline;
 mod cypress;
+#[cfg(feature = "render-parity")]
 mod docs;
+#[cfg(feature = "render-parity")]
 mod examples;
+#[cfg(feature = "render-parity")]
 mod fixture_files;
+#[cfg(feature = "render-parity")]
 mod html;
 
+#[cfg(feature = "render-parity")]
 pub(crate) use baseline::{
     acquire_imported_fixture_family_locks, acquire_imported_fixture_transaction_locks,
     acquire_imported_fixture_workspace_lock, candidate_snapshot_failure,
@@ -20,15 +31,20 @@ pub(crate) use baseline::{
     validate_exact_import_candidate_filter,
 };
 pub(crate) use cypress::{CypressRenderHelper, materialize_cypress_fixture_source};
+#[cfg(feature = "render-parity")]
 pub(crate) use docs::import_upstream_docs;
+#[cfg(feature = "render-parity")]
 pub(crate) use examples::import_upstream_examples;
+#[cfg(feature = "render-parity")]
 pub(crate) use fixture_files::{
     ImportedFixtureSnapshot, cleanup_deferred_fixture_files, cleanup_fixture_files,
     defer_fixture_files_with_replace_existing, imported_fixture_config_look,
     write_imported_fixture,
 };
+#[cfg(feature = "render-parity")]
 pub(crate) use html::import_upstream_html;
 
+#[cfg(any(test, feature = "render-parity"))]
 fn normalize_imported_diagram_dir(detected: &str) -> Option<&'static str> {
     merman::model::family::diagram_type_metadata_id(detected)
 }

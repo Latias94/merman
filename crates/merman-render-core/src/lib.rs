@@ -12,6 +12,9 @@ mod geometry;
 #[cfg(feature = "graph-layout")]
 #[doc(hidden)]
 pub mod graph_layout;
+#[cfg(feature = "html")]
+#[doc(hidden)]
+pub mod html;
 #[cfg(feature = "icon-registry")]
 #[doc(hidden)]
 pub mod icon_registry;
@@ -19,6 +22,9 @@ mod layout;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod layout_work;
+#[cfg(feature = "math-labels")]
+#[doc(hidden)]
+pub mod math;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod mermaid_style;
@@ -55,6 +61,9 @@ pub mod svg_output;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_scan;
+#[cfg(feature = "html")]
+#[doc(hidden)]
+pub mod svg_security;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_xml;

@@ -292,52 +292,6 @@ fn mermaid_base_css_exposes_the_complete_common_neo_contract() {
 }
 
 #[test]
-fn pie_css_honors_mermaid_11_16_theme_options() {
-    let cfg = serde_json::json!({
-        "themeVariables": {
-            "fontFamily": "\"ibm plex sans\", arial, sans-serif",
-            "textColor": "#111111",
-            "taskTextDarkColor": "#222222",
-            "pieStrokeColor": "#333333",
-            "pieStrokeWidth": "4px",
-            "pieOpacity": "0.9",
-            "pieOuterStrokeColor": "#444444",
-            "pieOuterStrokeWidth": "5px",
-            "pieTitleTextSize": "26px",
-            "pieTitleTextColor": "#555555",
-            "pieSectionTextSize": "18px",
-            "pieSectionTextColor": "#666666",
-            "pieLegendTextSize": "19px",
-            "pieLegendTextColor": "#777777"
-        }
-    });
-
-    let mut css = String::new();
-    let paint_plan = crate::pie::PieThemePlan::baseline(
-        &merman_model::families::pie::PieDiagramModel::default(),
-        &cfg,
-    );
-    write_pie_css(
-        &mut output::XmlTextOutput::new(&mut css),
-        SvgId::new("pie").unwrap(),
-        &paint_plan,
-    )
-    .unwrap();
-
-    assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
-    assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));
-    assert!(css.contains(
-        r#"#pie .pieCircle.highlightedOnHover:hover{transition-duration:250ms;scale:1.05;opacity:1;}"#
-    ));
-    assert!(css.contains(r#"#pie .pieOuterCircle{stroke:#444444;stroke-width:5px;fill:none;}"#));
-    assert!(css.contains(r#"#pie .pieTitleText{text-anchor:middle;font-size:26px;fill:#555555;font-family:"ibm plex sans",arial,sans-serif;}"#));
-    assert!(css.contains(
-        r#"#pie .slice{font-family:"ibm plex sans",arial,sans-serif;fill:#666666;font-size:18px;}"#
-    ));
-    assert!(css.contains(r#"#pie .legend text{fill:#777777;font-family:"ibm plex sans",arial,sans-serif;font-size:19px;}"#));
-}
-
-#[test]
 fn er_css_honors_mermaid_11_15_theme_options() {
     let cfg = serde_json::json!({
         "look": "neo",

@@ -7,16 +7,27 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Layout, geometry, and presentation for Merman's chart families."
+documentation = "https://docs.rs/merman-render-charts"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "charts"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
 
 [features]
 default = []
-diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
+diagram-pie = [
+    "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/root-svg",
+    "merman-render-core/text-layout", "merman-render-core/theme-svg",
+]
 diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
-diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
+diagram-radar = [
+    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar",
+    "merman-render-core/root-svg",
+]
 diagram-sankey = [
     "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
     "dep:serde", "dep:serde_json", "merman-model/diagram-sankey", "merman-render-core/root-svg",
@@ -50,3 +61,9 @@ ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
+merman-theme-contract = { workspace = true, features = ["presets"] }
+roxmltree.workspace = true
+svgtypes.workspace = true

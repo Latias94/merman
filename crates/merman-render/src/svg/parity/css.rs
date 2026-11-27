@@ -10,9 +10,7 @@ use merman_render_core::svg_css::CssSelectorDiagramId;
 ))]
 pub(crate) use merman_render_core::svg_css::PreparedCommonNeoCss;
 pub(super) use merman_render_core::svg_css::{
-    FragmentDiagramId, MermaidBaseCss, write_mermaid_base_css_prefix,
-    write_mermaid_base_css_root_rule,
-    write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to,
+    FragmentDiagramId, write_mermaid_base_css_root_rule as write_mermaid_base_css_root_rule_to,
 };
 
 pub(super) fn write_mermaid_paragraph_css_to(
@@ -116,23 +114,6 @@ where
     );
     values.common.write_root(&mut out, id, fragment_id)?;
     Ok(out)
-}
-
-#[cfg(feature = "diagram-pie")]
-pub(super) fn write_pie_css(
-    out: &mut output::XmlTextOutput<'_, impl SvgOutput>,
-    diagram_id: SvgId<'_>,
-    paint_plan: &crate::pie::PieThemePlan,
-) -> Result<()> {
-    let common = paint_plan.common_css();
-    common.write_prefix(out, diagram_id)?;
-    merman_render_charts::pie::write_mermaid_css_rules(
-        out,
-        diagram_id,
-        paint_plan.mermaid_style().css_binding(),
-        common.font_family(),
-    )?;
-    common.write_root(out, diagram_id, diagram_id)
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
