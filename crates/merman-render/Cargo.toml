@@ -60,7 +60,7 @@ all-diagrams = [
     "diagram-zenuml",
 ]
 diagram-architecture = ["merman-model/diagram-architecture", "dep:merman-render-graph", "merman-render-graph/diagram-architecture"]
-diagram-block = ["merman-model/diagram-block", "merman-render-core/theme-elevation", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap"]
+diagram-block = ["merman-model/diagram-block", "dep:merman-render-structured", "merman-render-structured/diagram-block"]
 diagram-c4 = ["merman-model/diagram-c4", "dep:merman-render-graph", "merman-render-graph/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "dep:merman-render-graph", "merman-render-graph/diagram-class", "merman-render-core/resources-class", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-cynefin = ["merman-model/diagram-cynefin", "dep:merman-render-structured", "merman-render-structured/diagram-cynefin"]

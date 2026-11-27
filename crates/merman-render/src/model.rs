@@ -127,19 +127,8 @@ impl<W: std::io::Write> std::io::Write for GeometryJsonWriter<'_, W> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-block")]
-pub struct BlockDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    #[serde(
-        default,
-        rename = "shapeGeometries",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub shape_geometries: Vec<crate::block::BlockShapeGeometry>,
-    pub bounds: Option<Bounds>,
-}
+pub use merman_render_structured::block::BlockDiagramLayout;
 
 #[cfg(feature = "diagram-requirement")]
 pub use merman_render_graph::requirement::RequirementDiagramLayout;

@@ -1,9 +1,5 @@
 //! Renderer-level label measurement and Flowchart typography admission.
 
-#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
-use super::{
-    TextMeasurer, TextMetrics, TextStyle, measure_xhtml_label_fragment_with_terminal_fonts,
-};
 #[cfg(all(
     test,
     any(
@@ -16,22 +12,6 @@ pub(crate) use merman_render_core::text::inline_html::style_requests_bold_font_w
 
 #[cfg(test)]
 mod inline_frontend_tests;
-
-#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
-pub(crate) fn measure_unwrapped_xhtml_label_fragment(
-    measurer: &dyn TextMeasurer,
-    fragment: &str,
-    style: &TextStyle,
-    root_font_size: f64,
-) -> TextMetrics {
-    measure_xhtml_label_fragment_with_terminal_fonts(
-        measurer,
-        fragment,
-        style,
-        None,
-        root_font_size,
-    )
-}
 
 #[cfg(any(
     feature = "diagram-flowchart",

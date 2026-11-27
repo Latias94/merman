@@ -87,7 +87,7 @@ shared presentation lexer. `merman-core-graph` owns syntax and semantic replay f
 GitGraph, and State. `merman-core-sequence` owns Sequence syntax and semantic replay.
 `merman-core-structured` provides Packet syntax parsing and the four Railroad dialects.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text
-contracts. `merman-render-structured` provides complete layout and SVG for Cynefin, Event
+contracts. `merman-render-structured` provides complete layout and SVG for Block, Cynefin, Event
 Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, and Tree View.
 [Structured diagram ownership](../adr/0099-model-and-source-boundaries.md#structured-diagrams)
 

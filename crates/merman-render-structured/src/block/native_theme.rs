@@ -1,12 +1,13 @@
 use merman_theme_contract::v2::{EdgeLabelBackground, Elevation, Form};
 
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 use super::BlockCssThemeBinding;
 
 #[derive(Debug)]
-pub(crate) struct BlockNativeStyle {
-    pub(crate) form: Form,
+pub struct BlockNativeStyle {
+    pub form: Form,
     pub(crate) elevation: Elevation,
 }
 
@@ -47,7 +48,7 @@ impl BlockNativeStyle {
                 edge_label_background,
                 cluster_bkg: roles.surface_container.first_color().to_string(),
                 cluster_border: border,
-                html_labels: crate::config::config_effective_html_labels(config),
+                html_labels: merman_render_core::config::config_effective_html_labels(config),
                 palette_look: String::new(),
                 palette: Vec::new(),
                 root_font_family: font_family_css(typography.stack(typography.body_family)),

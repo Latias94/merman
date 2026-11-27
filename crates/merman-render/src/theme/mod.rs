@@ -18,14 +18,12 @@ pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_labe
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
-    feature = "diagram-block",
 ))]
 pub(crate) use merman_render_core::theme_svg::elevation as elevation_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
-    feature = "diagram-block",
 ))]
 pub(crate) use merman_render_core::theme_svg::marker as marker_svg;
 

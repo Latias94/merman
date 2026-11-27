@@ -46,8 +46,6 @@ pub(crate) use merman_render_core::text::{
 };
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
-#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
-pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
 #[cfg(any(
     feature = "diagram-flowchart",

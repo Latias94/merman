@@ -2,8 +2,8 @@ use std::fmt::Write as _;
 
 use merman_model::families::block::BlockDiagramRenderModel;
 
-use crate::model::BlockDiagramLayout;
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use super::BlockDiagramLayout;
+use merman_render_core::resources::{OperationWorkError, OperationWorkMeter};
 
 pub(super) fn is_font_key(key: &str) -> bool {
     matches!(
@@ -26,15 +26,21 @@ fn is_box_style_key(key: &str) -> bool {
 
 pub(super) fn source_style_winners(
     styles: &[String],
-) -> Vec<(&str, crate::mermaid_style::ParsedStyleDeclaration<'_>)> {
-    let mut winners: Vec<(&str, crate::mermaid_style::ParsedStyleDeclaration<'_>)> = Vec::new();
+) -> Vec<(
+    &str,
+    merman_render_core::mermaid_style::ParsedStyleDeclaration<'_>,
+)> {
+    let mut winners: Vec<(
+        &str,
+        merman_render_core::mermaid_style::ParsedStyleDeclaration<'_>,
+    )> = Vec::new();
     for raw in styles {
         let raw = raw.trim().trim_end_matches(';').trim();
-        let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
+        let Some(parsed) = merman_render_core::mermaid_style::parse_style_declaration(raw) else {
             continue;
         };
         if !is_box_style_key(parsed.property())
-            && !crate::mermaid_style::is_label_style_key(parsed.property())
+            && !merman_render_core::mermaid_style::is_label_style_key(parsed.property())
         {
             continue;
         }
@@ -65,7 +71,8 @@ pub(super) fn source_font_styles(
     for class in classes {
         if let Some(definition) = definitions.get(class) {
             for raw in &definition.styles {
-                if let Some(declaration) = crate::mermaid_style::parse_style_declaration(raw)
+                if let Some(declaration) =
+                    merman_render_core::mermaid_style::parse_style_declaration(raw)
                     && is_font_key(declaration.property())
                 {
                     fonts.insert(
@@ -183,10 +190,10 @@ fn lower(
         .map(|(raw, _)| raw.to_owned())
         .collect::<Vec<_>>();
     for font in fonts {
-        let parsed = crate::mermaid_style::parse_style_declaration(&font)
+        let parsed = merman_render_core::mermaid_style::parse_style_declaration(&font)
             .expect("prepared font declaration");
         if let Some(raw) = declarations.iter_mut().find(|raw| {
-            crate::mermaid_style::parse_style_declaration(raw)
+            merman_render_core::mermaid_style::parse_style_declaration(raw)
                 .is_some_and(|declaration| declaration.property() == parsed.property())
         }) {
             *raw = font;
@@ -195,14 +202,14 @@ fn lower(
         }
     }
     for raw in &declarations {
-        let parsed = crate::mermaid_style::parse_style_declaration(raw)
+        let parsed = merman_render_core::mermaid_style::parse_style_declaration(raw)
             .expect("prepared source declaration");
         let key = parsed.property();
         if is_box_style_key(key) {
             box_style.push_str(raw);
             box_style.push(';');
         }
-        if !crate::mermaid_style::is_label_style_key(key) {
+        if !merman_render_core::mermaid_style::is_label_style_key(key) {
             continue;
         }
         text_style.push_str(raw);
@@ -213,7 +220,7 @@ fn lower(
             let _ = write!(
                 &mut div_prefix,
                 "color: {}; ",
-                crate::svg::cssom_color_value(value)
+                merman_render_core::theme_svg::cssom_color_value(value)
             );
         } else {
             svg_text_style.push_str(raw);
@@ -233,10 +240,10 @@ fn lower(
 
 /// Lowered source declarations in layout node order.
 #[derive(Debug, Default)]
-pub(crate) struct BlockNodeBindings(Box<[Option<BlockNodeTerminalBinding>]>);
+pub struct BlockNodeBindings(Box<[Option<BlockNodeTerminalBinding>]>);
 
 impl BlockNodeBindings {
-    pub(crate) fn prepare(
+    pub fn prepare(
         model: &BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,

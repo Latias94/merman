@@ -10,10 +10,10 @@ use super::BlockNode;
 /// change an older object that remains attached to the hierarchy. For repeated visible IDs,
 /// later non-empty fields replace earlier fields in object insertion order.
 #[derive(Debug)]
-pub(crate) struct BlockNodeSource<'a> {
+pub struct BlockNodeSource<'a> {
     pub(crate) color_index: Option<usize>,
-    pub(crate) label: &'a str,
-    pub(crate) block_type: &'a str,
+    pub label: &'a str,
+    pub block_type: &'a str,
     pub(crate) classes: &'a [String],
     pub(crate) styles: &'a [String],
     pub(crate) directions: &'a [String],
@@ -58,7 +58,7 @@ impl<'a> BlockNodeSource<'a> {
     }
 }
 
-pub(crate) fn resolve_block_node_sources(
+pub fn resolve_block_node_sources(
     model: &BlockDiagramRenderModel,
 ) -> HashMap<&str, BlockNodeSource<'_>> {
     let mut visible = vec![false; model.blocks_flat.len()];

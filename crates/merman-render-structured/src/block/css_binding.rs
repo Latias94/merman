@@ -8,9 +8,9 @@ pub(crate) struct BlockClassCssDeclarations {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BlockCssThemeBinding {
+pub struct BlockCssThemeBinding {
     pub(crate) class_definitions: Vec<BlockClassCssDeclarations>,
-    pub(crate) look_defs: Option<crate::svg::PreparedLookDefs>,
+    pub(crate) look_defs: Option<merman_render_core::svg_css::PreparedLookDefs>,
     pub(crate) text_color: String,
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
@@ -26,15 +26,18 @@ pub(crate) struct BlockCssThemeBinding {
     pub(crate) palette_look: String,
     pub(crate) palette: Vec<(String, Option<String>)>,
     pub(crate) root_font_family: String,
-    pub(crate) edge_stroke_width_px: Option<f64>,
+    pub edge_stroke_width_px: Option<f64>,
     pub(crate) look: String,
     pub(crate) hand_drawn_seed: Option<f64>,
 }
 
 impl BlockCssThemeBinding {
     fn stroke_width(config: &Value) -> String {
-        crate::config::config_css_number_or_string(config, &["themeVariables", "strokeWidth"])
-            .unwrap_or_else(|| "1".to_owned())
+        merman_render_core::config::config_css_number_or_string(
+            config,
+            &["themeVariables", "strokeWidth"],
+        )
+        .unwrap_or_else(|| "1".to_owned())
     }
 
     fn parse_stroke_width_px(value: &str) -> Option<f64> {
@@ -112,7 +115,7 @@ impl BlockCssThemeBinding {
         let declarations = |styles: &[String]| {
             styles
                 .iter()
-                .filter_map(|style| crate::mermaid_style::parse_safe_style_decl(style))
+                .filter_map(|style| merman_render_core::mermaid_style::parse_safe_style_decl(style))
                 .map(|(key, value)| (key.to_owned(), value.to_owned()))
                 .collect()
         };
@@ -126,9 +129,9 @@ impl BlockCssThemeBinding {
             .collect();
     }
 
-    pub(crate) fn resolve(config: &Value) -> crate::Result<Self> {
+    pub(crate) fn resolve(config: &Value) -> merman_render_core::Result<Self> {
         let token = |key: &str, fallback: &str| {
-            crate::config::config_string(config, &["themeVariables", key])
+            merman_render_core::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
         };
         let text_color = token("textColor", "#333");
@@ -141,7 +144,7 @@ impl BlockCssThemeBinding {
         let line_color = token("lineColor", "#333333");
         let title_color = token("titleColor", &text_color);
         let arrowhead_color = token("arrowheadColor", &line_color);
-        let fade = |raw: String, opacity| -> crate::Result<String> {
+        let fade = |raw: String, opacity| -> merman_render_core::Result<String> {
             use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
             let color = ThemeColor::parse(raw.trim())?;
             Ok(rgba(
@@ -177,7 +180,7 @@ impl BlockCssThemeBinding {
             .unwrap_or_default();
         Ok(Self {
             class_definitions: Vec::new(),
-            look_defs: Some(crate::svg::PreparedLookDefs::new(config)),
+            look_defs: Some(merman_render_core::svg_css::PreparedLookDefs::new(config)),
             text_color,
             node_text_color,
             title_color,
@@ -190,10 +193,10 @@ impl BlockCssThemeBinding {
             edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             cluster_bkg,
             cluster_border,
-            html_labels: crate::config::config_effective_html_labels(config),
+            html_labels: merman_render_core::config::config_effective_html_labels(config),
             palette_look,
             palette,
-            root_font_family: crate::config::config_root_font_family_css(config),
+            root_font_family: merman_render_core::config::config_root_font_family_css(config),
             look: config
                 .get("look")
                 .and_then(Value::as_str)

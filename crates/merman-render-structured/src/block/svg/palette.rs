@@ -1,10 +1,13 @@
-use super::super::*;
+use merman_render_core::{Result, svg_css::SvgId, svg_output::SvgOutput};
+
+use super::super::BlockCssThemeBinding;
+use super::BlockSvgContext;
 
 pub(super) fn write_palette_css(
     out: &mut impl SvgOutput,
-    id: SvgDiagramId<'_>,
-    binding: &crate::block::BlockCssThemeBinding,
-    options: &SvgExecution<'_>,
+    id: SvgId<'_>,
+    binding: &BlockCssThemeBinding,
+    options: &BlockSvgContext<'_>,
 ) -> Result<()> {
     let look = &binding.palette_look;
     for (index, (border, background)) in binding.palette.iter().enumerate() {

@@ -121,7 +121,6 @@ pub mod geom;
 pub mod gitgraph;
 #[cfg(any(
     feature = "diagram-agentflow",
-    feature = "diagram-block",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",

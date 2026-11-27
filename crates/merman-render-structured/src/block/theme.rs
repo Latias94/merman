@@ -1,13 +1,13 @@
 use indexmap::IndexMap;
 use merman_model::families::block::BlockClassDef;
 
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 
 use super::{BlockCssThemeBinding, BlockNativeStyle};
 
 /// Final Block typography shared by layout measurement and SVG CSS.
 #[derive(Debug)]
-pub(crate) struct BlockTypographyThemePlan {
+pub struct BlockTypographyThemePlan {
     css_binding: BlockCssThemeBinding,
     native: Option<BlockNativeStyle>,
     padding: f64,
@@ -15,7 +15,7 @@ pub(crate) struct BlockTypographyThemePlan {
 }
 
 impl BlockTypographyThemePlan {
-    pub(crate) fn resolve(config: &serde_json::Value) -> crate::Result<Self> {
+    pub(crate) fn resolve(config: &serde_json::Value) -> merman_render_core::Result<Self> {
         let settings = super::config::BlockConfigView::new(config).layout_settings();
         Ok(Self {
             css_binding: BlockCssThemeBinding::resolve(config)?,
@@ -26,8 +26,8 @@ impl BlockTypographyThemePlan {
     }
 
     pub(crate) fn resolve_native(
-        theme: &crate::theme::FamilyTheme,
-        background: Option<crate::theme::Color>,
+        theme: &merman_theme_contract::v2::FamilyTheme,
+        background: Option<merman_theme_contract::v2::Color>,
         config: &serde_json::Value,
     ) -> Self {
         let (native, css_binding) = BlockNativeStyle::resolve(theme, background, config);
@@ -52,7 +52,7 @@ impl BlockTypographyThemePlan {
         self.css_binding.prepare_class_definitions(definitions);
     }
 
-    pub(crate) fn css_binding(&self) -> &BlockCssThemeBinding {
+    pub fn css_binding(&self) -> &BlockCssThemeBinding {
         &self.css_binding
     }
 
@@ -60,7 +60,7 @@ impl BlockTypographyThemePlan {
         &self.text_style
     }
 
-    pub(crate) fn native(&self) -> Option<&BlockNativeStyle> {
+    pub fn native(&self) -> Option<&BlockNativeStyle> {
         self.native.as_ref()
     }
 

@@ -1,17 +1,36 @@
-use super::super::*;
-use crate::block::{
-    BlockEdgeRoutes, BlockNodeBindings, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
-    BlockTypographyThemePlan, block_label_is_effectively_empty, block_render_edge_points,
-};
-use crate::model::{LayoutEdge, LayoutPoint};
-use crate::svg::BaseEdgeMarkerKind;
-use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use crate::svg::parity::roughjs_common::paths::{
-    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_svg_path,
+use std::fmt::Write as _;
+
+use base64::Engine as _;
+use merman_render_core::{
+    Bounds, Error, LayoutEdge, LayoutPoint, Result,
+    config::DiagramLook,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    rough_svg::{
+        closed_path_d_from_points, operation_randomness,
+        paths::{roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_svg_path},
+    },
+    svg_bounds::svg_emitted_bounds_from_svg,
+    svg_css::{SvgId as SvgDiagramId, write_mermaid_base_css_root_rule},
+    svg_edge_parity::{
+        curve,
+        markers::{self, BaseEdgeMarkerKind},
+        path_numbers::json_stringify_points,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::{literal_label::flowchart_non_markdown_svg_plain_text, svg_label as label},
+    xml::escape_attr,
 };
 use merman_theme_contract::v2::EdgeStyle;
 
-// Block diagram SVG renderer implementation (split from parity.rs).
+use super::super::{
+    BlockCssThemeBinding, BlockDiagramLayout, BlockNodeBindings, BlockOrthogonalRoute,
+    BlockPreparedLabels, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+    BlockTypographyThemePlan, SVG_EDGE_LABEL_BACKGROUND_PADDING, block_label_is_effectively_empty,
+    block_render_edge_points, resolve_block_node_sources,
+};
+use super::BlockSvgContext;
 
 // Mermaid's Block renderer expands the visible group bounds by a fixed five pixels. Block has no
 // `diagramPadding` configuration field, so this must not be driven by an opaque config key.
@@ -202,14 +221,14 @@ fn write_important_declarations<'a>(
     Ok(())
 }
 
-pub(crate) fn render_block_diagram_svg_model_with_theme(
+pub fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_model::families::block::BlockDiagramRenderModel,
     node_bindings: &BlockNodeBindings,
-    edge_routes: &BlockEdgeRoutes,
+    edge_routes: &[Option<BlockOrthogonalRoute>],
     typography_theme: &BlockTypographyThemePlan,
-    prepared_labels: &crate::block::BlockPreparedLabels,
-    options: &SvgExecution<'_>,
+    prepared_labels: &BlockPreparedLabels,
+    options: &BlockSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
     fn decode_block_label_html(raw: &str) -> String {
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
@@ -287,7 +306,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         path_data: &str,
         options: RoughPathRenderOptions<'_>,
-        work_meter: &crate::resources::OperationWorkMeter,
+        work_meter: &OperationWorkMeter,
     ) -> bool {
         if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
             path_data,
@@ -300,8 +319,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 let _ = write!(
                     out,
                     r#"<g class="basic label-container outer-path" transform="translate({},{})">"#,
-                    fmt_display(tx),
-                    fmt_display(ty)
+                    fmt(tx),
+                    fmt(ty)
                 );
             } else {
                 let _ = write!(out, r#"<g class="basic label-container outer-path">"#);
@@ -318,7 +337,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/>"#,
                 escape_attr(&stroke_d),
                 escape_attr(options.stroke),
-                fmt_display(options.stroke_width as f64),
+                fmt(options.stroke_width as f64),
                 escape_attr(options.style)
             );
             out.push_str("</g>");
@@ -328,7 +347,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
     }
 
-    let nodes_by_id = crate::block::resolve_block_node_sources(model);
+    let nodes_by_id = resolve_block_node_sources(model);
     let shape_geometries_by_id: std::collections::HashMap<_, _> = layout
         .shape_geometries
         .iter()
@@ -354,8 +373,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     fn write_block_class_css(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
-        theme: &crate::block::BlockCssThemeBinding,
-        options: &SvgExecution<'_>,
+        theme: &BlockCssThemeBinding,
+        options: &BlockSvgContext<'_>,
     ) -> Result<()> {
         fn declarations(values: &[(String, String)]) -> impl Iterator<Item = (&str, &str)> {
             values
@@ -400,7 +419,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         typography_theme: &BlockTypographyThemePlan,
-        options: &SvgExecution<'_>,
+        options: &BlockSvgContext<'_>,
     ) -> Result<()> {
         let theme = typography_theme.css_binding();
         let font_family = typography_theme.font_family_css();
@@ -531,25 +550,22 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             diagram_id,
             text_color,
         );
-        let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
-            out,
-            diagram_id,
-            &theme.root_font_family,
-        );
+        let _ = write_mermaid_base_css_root_rule(out, diagram_id, &theme.root_font_family);
         out.checkpoint()?;
         write_block_class_css(out, diagram_id, theme, options)?;
         Ok(())
     }
 
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = options.diagram_id;
     let native = typography_theme.native();
     let palette_size = typography_theme.css_binding().palette.len();
-    let look = crate::config::DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
-    let hand_drawn_seed = options.rough_randomness(
+    let look = DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
+    let hand_drawn_seed = operation_randomness(
+        options.operation,
         typography_theme
             .css_binding()
             .hand_drawn_seed
-            .unwrap_or(options.seed() as f64),
+            .unwrap_or(0.0),
         "render.block.roughjs",
     );
     let node_theme = typography_theme.css_binding();
@@ -591,10 +607,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             layout_bounds.max_y,
         ));
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(options.work_meter);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
-    let root_context = options.root_viewport(crate::DiagramFamilyId::BLOCK, diagram_id);
+    let root_context = &options.viewport;
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -604,7 +620,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     out.push_str("<style>");
     out.checkpoint()?;
     write_block_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
+        &mut XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
         options,
@@ -620,7 +636,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         super::native::write_markers(&mut out, diagram_id, style.form.marker_style)?;
     } else {
         let mut base_edge_markers = String::new();
-        super::super::markers::push_base_edge_markers(&mut base_edge_markers, diagram_id, "block");
+        markers::push_base_edge_markers(&mut base_edge_markers, diagram_id, "block");
         out.push_str(&base_edge_markers);
         options.checkpoint_emit()?;
     }
@@ -764,7 +780,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         randomness: &hand_drawn_seed,
                         transform: None,
                     },
-                    options.work_meter(),
+                    options.work_meter,
                 );
                 if rough_emitted {
                     has_rough_path = true;
@@ -794,8 +810,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
                     super::native::cylinder_path(*width, *body_height, *radius_x, *radius_y),
                     escape_attr(node_box_style),
-                    fmt_display(-width / 2.0),
-                    fmt_display(-(body_height / 2.0 + radius_y))
+                    fmt(-width / 2.0),
+                    fmt(-(body_height / 2.0 + radius_y))
                 );
             }
             BlockShapeBoundary::Polygon {
@@ -818,7 +834,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                             randomness: &hand_drawn_seed,
                             transform: Some((translation.x, translation.y)),
                         },
-                        options.work_meter(),
+                        options.work_meter,
                     );
                 if rough_emitted {
                     has_rough_path = true;
@@ -830,19 +846,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         if index > 0 {
                             out.push(' ');
                         }
-                        let _ = write!(
-                            &mut out,
-                            "{},{}",
-                            fmt_display(point.x),
-                            fmt_display(point.y)
-                        );
+                        let _ = write!(&mut out, "{},{}", fmt(point.x), fmt(point.y));
                     }
                     let _ = write!(
                         &mut out,
                         r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
                         escape_attr(node_box_style),
-                        fmt_display(translation.x),
-                        fmt_display(translation.y)
+                        fmt(translation.x),
+                        fmt(translation.y)
                     );
                 }
             }
@@ -893,7 +904,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 label_markup
             );
         } else {
-            let label_text = crate::graph_label::flowchart_non_markdown_svg_plain_text(&label);
+            let label_text = flowchart_non_markdown_svg_plain_text(&label);
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
@@ -901,7 +912,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
-            let _ = crate::svg::parity::label::write_svg_text_centered_with_style(
+            let _ = label::write_svg_text_centered_with_style(
                 &mut out,
                 &label_text,
                 node_svg_text_style,
@@ -922,7 +933,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let fallback_points;
         let mut fallback_d;
         let (d, points, marker_refs) = 'geometry: {
-            if let Some(route) = edge_routes.orthogonal_route(edge_index) {
+            if let Some(route) = edge_routes.get(edge_index).and_then(Option::as_ref) {
                 let b = &route.bounds;
                 union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
                 break 'geometry (
@@ -946,7 +957,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
                     &fallback_d,
                     0.3,
-                    options.work_meter(),
+                    options.work_meter,
                     &hand_drawn_seed,
                 )
             {
@@ -1044,19 +1055,18 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 })?
             );
         } else {
-            let label_text = crate::graph_label::flowchart_non_markdown_svg_plain_text(
-                &decode_block_label_html(&e.label),
-            );
+            let label_text =
+                flowchart_non_markdown_svg_plain_text(&decode_block_label_html(&e.label));
             options
-                .work_meter()
+                .work_meter
                 .charge_emit_work(1usize.saturating_add(label_text.len().div_ceil(64)))?;
             let text_y = options
-                .text_measurer()
+                .text_measurer
                 .measure_svg_create_text_bbox_y_offset_px(
                     &label_text,
                     &prepared_label.typography.style,
                 );
-            let padding = crate::block::SVG_EDGE_LABEL_BACKGROUND_PADDING;
+            let padding = SVG_EDGE_LABEL_BACKGROUND_PADDING;
             let text_width = (lbl.width - 2.0 * padding).max(0.0);
             let text_height = (lbl.height - 2.0 * padding).max(0.0);
             let _ = write!(
@@ -1071,7 +1081,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(lbl.width),
                 fmt(lbl.height),
             );
-            crate::svg::parity::label::write_svg_text_centered(&mut out, &label_text, true);
+            label::write_svg_text_centered(&mut out, &label_text, true);
             out.push_str("</g></g>");
         }
         out.checkpoint()?;

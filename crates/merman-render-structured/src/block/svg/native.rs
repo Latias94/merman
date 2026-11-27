@@ -1,14 +1,21 @@
 use kurbo::{Affine, BezPath, Circle, Ellipse, Rect, Shape};
 use merman_theme_contract::v2::{Elevation, MarkerStyle};
 
-use super::super::*;
-use crate::block::{BlockNativeStyle, BlockShapeBoundary, BlockShapeGeometry};
-use crate::svg::BaseEdgeMarkerKind;
-use crate::theme::{elevation_svg, marker_svg};
+use merman_render_core::{
+    Result,
+    number_format::canonical_number as fmt,
+    svg_css::SvgId,
+    svg_edge_parity::markers::{self, BaseEdgeMarkerKind},
+    svg_output::SvgOutput,
+    theme_svg::{elevation as elevation_svg, marker as marker_svg},
+};
+
+use super::super::{BlockNativeStyle, BlockShapeBoundary, BlockShapeGeometry};
+use super::BlockSvgContext;
 
 pub(super) fn write_markers(
     out: &mut impl SvgOutput,
-    id: SvgDiagramId<'_>,
+    id: SvgId<'_>,
     style: MarkerStyle,
 ) -> Result<()> {
     let arrow = marker_svg::arrow_path(style);
@@ -50,19 +57,19 @@ pub(super) fn write_markers(
 pub(super) fn cylinder_path(width: f64, body_height: f64, radius_x: f64, radius_y: f64) -> String {
     format!(
         "M{},{} a{},{} 0,0,0 {} 0 a{},{} 0,0,0 {} 0 l0,{} a{},{} 0,0,0 {} 0 l0,{}",
-        fmt_display(0.0),
-        fmt_display(radius_y),
-        fmt_display(radius_x),
-        fmt_display(radius_y),
-        fmt_display(width),
-        fmt_display(radius_x),
-        fmt_display(radius_y),
-        fmt_display(-width),
-        fmt_display(body_height),
-        fmt_display(radius_x),
-        fmt_display(radius_y),
-        fmt_display(width),
-        fmt_display(-body_height),
+        fmt(0.0),
+        fmt(radius_y),
+        fmt(radius_x),
+        fmt(radius_y),
+        fmt(width),
+        fmt(radius_x),
+        fmt(radius_y),
+        fmt(-width),
+        fmt(body_height),
+        fmt(radius_x),
+        fmt(radius_y),
+        fmt(width),
+        fmt(-body_height),
     )
 }
 
@@ -123,7 +130,7 @@ pub(super) fn write_node_depth(
     native: &BlockNativeStyle,
     id: &str,
     geometry: &BlockShapeGeometry,
-    options: &SvgExecution<'_>,
+    options: &BlockSvgContext<'_>,
 ) -> Result<Option<Rect>> {
     let (min_x, min_y, max_x, max_y) = geometry.rendered_extents();
     if matches!(native.elevation, Elevation::Flat)
@@ -135,9 +142,7 @@ pub(super) fn write_node_depth(
         return Ok(None);
     };
     let origin = (geometry.allocated.x, geometry.allocated.y);
-    options
-        .work_meter()
-        .charge_emit_work(path.elements().len())?;
+    options.work_meter.charge_emit_work(path.elements().len())?;
     let _ = elevation_svg::write_depth(out, &native.elevation, id, &path, origin);
     out.checkpoint()?;
     Ok(Some(

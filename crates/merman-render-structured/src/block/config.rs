@@ -1,5 +1,5 @@
-use crate::config::{config_f64, config_font_family_or_first_array_css};
-use crate::text::TextStyle;
+use merman_render_core::config::{config_f64, config_font_family_or_first_array_css};
+use merman_render_core::text::TextStyle;
 use serde_json::Value;
 
 const DEFAULT_BLOCK_PADDING: f64 = 8.0;
@@ -23,7 +23,7 @@ impl<'a> BlockConfigView<'a> {
             padding: self.padding(),
             text_style: TextStyle {
                 font_family: Some(config_font_family_or_first_array_css(self.effective_config)),
-                font_size: crate::config::config_theme_or_root_font_size_px_opt(
+                font_size: merman_render_core::config::config_theme_or_root_font_size_px_opt(
                     self.effective_config,
                 )
                 .filter(|size| *size >= 0.0)
@@ -54,7 +54,7 @@ impl<'a> BlockConfigView<'a> {
                 Value::String(value) => !value.is_empty(),
                 _ => false,
             })
-            .and_then(crate::config::json_f64)
+            .and_then(merman_render_core::config::json_f64)
             .unwrap_or(5.0);
         BlockShapeSettings {
             neo_square,
@@ -154,13 +154,17 @@ mod tests {
             "flowchart": {"htmlLabels": true}
         });
 
-        assert!(!crate::config::config_effective_html_labels(&cfg));
+        assert!(!merman_render_core::config::config_effective_html_labels(
+            &cfg
+        ));
     }
 
     #[test]
     fn block_layout_settings_use_flowchart_html_label_fallback() {
         let cfg = json!({"flowchart": {"htmlLabels": false}});
 
-        assert!(!crate::config::config_effective_html_labels(&cfg));
+        assert!(!merman_render_core::config::config_effective_html_labels(
+            &cfg
+        ));
     }
 }

@@ -1,17 +1,19 @@
 use super::*;
-use crate::environment::RenderEnvironment;
-use crate::resources::{
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::{
+    family::DiagramFamilyId, presentation::RenderSemanticModel, runtime::RuntimePolicy,
+};
+use merman_render_core::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
-use crate::text::DeterministicTextMeasurer;
-use merman_core::{MermaidEngine, ParseOptions};
-use merman_model::presentation::RenderSemanticModel;
+use merman_render_core::text::DeterministicTextMeasurer;
+use merman_render_core::{
+    LayoutNode,
+    svg_css::{SvgDiagramIdProjection, SvgId},
+};
 use std::cell::Cell;
 use std::fmt;
 use std::ops::Range;
-
-#[cfg(feature = "layout-shoal")]
-mod orthogonal;
 
 const BOUNDED_BLOCK_SOURCE: &str = r#"block
   A["Alpha"] --> B["Beta"]
@@ -21,7 +23,7 @@ const BOUNDED_BLOCK_SOURCE: &str = r#"block
 
 #[test]
 fn block_shared_rough_protocol_matches_fixed_head_and_following_prng() {
-    use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, paths::fixed_head_protocol};
+    use merman_render_core::rough_svg::{ops_to_svg_path_d, paths::fixed_head_protocol};
     for seed in [0.0, 1.0, -1.0] {
         for path in [
             "M0 0 L40 0 L40 20 L0 20 Z",
@@ -38,7 +40,7 @@ fn block_shared_rough_protocol_matches_fixed_head_and_following_prng() {
             let actual_randomness = randomness();
             let expected =
                 fixed_head_protocol::outline_first_paths(path, &expected_randomness, false);
-            let meter = crate::resources::OperationWorkMeter::new(
+            let meter = merman_render_core::resources::OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let actual = roughjs_paths_for_svg_path(path, 1.3, "0 0", &meter, &actual_randomness)
@@ -116,7 +118,7 @@ fn block_layout_edge_index_preserves_first_match_and_missing_behavior() {
 
 fn render_block_direct_with_policy(
     policy: RenderResourcePolicy,
-) -> crate::Result<root_svg::RootedSvg> {
+) -> merman_render_core::Result<root_svg::RootedSvg> {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
         .expect("parse Block resource-bound fixture")
@@ -126,49 +128,38 @@ fn render_block_direct_with_policy(
         panic!("expected a typed Block render model");
     };
     let effective_config = &parsed.metadata().effective_config;
-    let mut typography_theme =
-        BlockTypographyThemePlan::resolve(effective_config.as_value()).unwrap();
-    typography_theme.prepare_class_definitions(&model.class_defs);
     // Keep this helper's resource policy targeted at emission, as before.
-    let layout_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+    let layout_meter = std::sync::Arc::new(OperationWorkMeter::new(
         RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
-    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let measurer = DeterministicTextMeasurer::default();
+    let (layout, prepared_labels, typography_theme) = crate::block::prepare_block_layout(
         model,
-        typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(effective_config.as_value(), None),
-        typography_theme.css_binding().html_labels,
-        typography_theme.text_style().clone(),
-        &DeterministicTextMeasurer::default(),
         effective_config,
+        None,
+        &measurer,
         &layout_meter,
     )?;
-    let edge_routes = BlockEdgeRoutes::prepare(
-        model,
-        &mut layout,
-        &typography_theme,
-        #[cfg(feature = "layout-shoal")]
-        crate::layout_backend::GraphLayoutBackend::Native,
-        &layout_meter,
-    )?;
-    let session = crate::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(policy)
-        .begin_session()
-        .expect("render session");
-    let request = SvgRenderOptions::default();
-    let debug = SvgDebugOptions::default();
-    let execution =
-        SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
-            .expect("SVG execution");
+    let work_meter = OperationWorkMeter::new(policy);
+    let projection = SvgDiagramIdProjection::new(&work_meter);
+    let diagram_id = SvgId::new("merman").unwrap().with_projection(&projection);
+    let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+    let options = BlockSvgContext {
+        diagram_id,
+        viewport: root_svg::RootViewportContext::new(DiagramFamilyId::BLOCK, diagram_id),
+        work_meter: &work_meter,
+        text_measurer: &measurer,
+        operation: &operation,
+    };
     let node_bindings = BlockNodeBindings::prepare(model, &layout, &layout_meter)?;
     render_block_diagram_svg_model_with_theme(
         &layout,
         model,
         &node_bindings,
-        &edge_routes,
+        &[],
         &typography_theme,
         &prepared_labels,
-        &execution,
+        &options,
     )
 }
 
@@ -178,7 +169,7 @@ fn block_prepared_class_css_keeps_shape_and_span_declaration_order() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("render prepared Block class CSS");
     let svg = rendered.as_str();
-    let document = crate::xml_dom::Document::parse(svg).expect("Block class stylesheet XML");
+    let document = roxmltree::Document::parse(svg).expect("Block class stylesheet XML");
     let css = document
         .descendants()
         .find(|node| node.has_tag_name("style"))
@@ -234,14 +225,18 @@ impl SvgOutput for RejectEscapedAmpersand {
         self.retained.as_str()
     }
 
-    fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+    fn replace_range(
+        &mut self,
+        range: Range<usize>,
+        replacement: &str,
+    ) -> merman_render_core::Result<()> {
         self.retained.replace_range(range, replacement);
         Ok(())
     }
 
-    fn checkpoint(&mut self) -> crate::Result<()> {
+    fn checkpoint(&mut self) -> merman_render_core::Result<()> {
         if self.rejected {
-            Err(crate::Error::InvalidModel {
+            Err(merman_render_core::Error::InvalidModel {
                 message: "test SVG sink rejected the escaped ampersand".to_string(),
             })
         } else {
@@ -258,13 +253,13 @@ fn block_important_declarations_stop_at_first_svg_sink_failure() {
         .into_iter()
         .inspect(|_| polls.set(polls.get() + 1));
 
-    let error = write_important_declarations(
-        &mut crate::svg::parity::output::XmlTextOutput::new(&mut out),
-        declarations,
-    )
-    .expect_err("the rejecting sink must stop Block class declaration emission");
+    let error = write_important_declarations(&mut XmlTextOutput::new(&mut out), declarations)
+        .expect_err("the rejecting sink must stop Block class declaration emission");
 
-    assert!(matches!(error, crate::Error::InvalidModel { .. }));
+    assert!(matches!(
+        error,
+        merman_render_core::Error::InvalidModel { .. }
+    ));
     assert_eq!(polls.get(), 1, "remaining declarations must not be parsed");
     assert_eq!(
         out.writes_after_rejection, 0,
@@ -295,7 +290,7 @@ fn block_svg_sink_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
             .expect("valid below-exact Block SVG ceiling"),
     )
     .expect_err("one byte below the direct Block SVG size must fail inside the renderer");
-    let crate::Error::ResourceLimitExceeded(limit) = error else {
+    let merman_render_core::Error::ResourceLimitExceeded(limit) = error else {
         panic!("expected Block MaxSvgBytes rejection, got {error}");
     };
     assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
@@ -316,7 +311,7 @@ fn block_base_marker_definitions_preserve_historical_bytes() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .unwrap();
     let svg: &str = &rendered;
-    let document = crate::xml_dom::Document::parse(svg).unwrap();
+    let document = roxmltree::Document::parse(svg).unwrap();
     let markers = document
         .descendants()
         .filter(|node| node.has_tag_name("marker"))
@@ -335,18 +330,18 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     let policy = RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(ResourceLimitId::MaxSvgBytes, 1)
         .expect("valid SVG byte limit");
-    let session = RenderEnvironment::deterministic()
-        .with_resource_policy(policy)
-        .begin_session()
-        .expect("begin render session");
-    let request = SvgRenderOptions {
-        diagram_id: Some("terminal".to_string()),
-        ..SvgRenderOptions::default()
+    let work_meter = OperationWorkMeter::new(policy);
+    let projection = SvgDiagramIdProjection::new(&work_meter);
+    let diagram_id = SvgId::new("terminal").unwrap().with_projection(&projection);
+    let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+    let measurer = DeterministicTextMeasurer::default();
+    let options = BlockSvgContext {
+        diagram_id,
+        viewport: root_svg::RootViewportContext::new(DiagramFamilyId::BLOCK, diagram_id),
+        work_meter: &work_meter,
+        text_measurer: &measurer,
+        operation: &operation,
     };
-    let debug = SvgDebugOptions::default();
-    let options =
-        SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
-            .expect("SVG execution");
     let layout = BlockDiagramLayout {
         nodes: vec![LayoutNode {
             id: "node".to_string(),
@@ -377,7 +372,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         &layout,
         model,
         &BlockNodeBindings::default(),
-        &BlockEdgeRoutes::default(),
+        &[],
         &typography,
         &crate::block::BlockPreparedLabels::default(),
         &options,

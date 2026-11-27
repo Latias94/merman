@@ -6,7 +6,7 @@
 //! cylinder.
 
 use super::BlockShapeSettings;
-use crate::model::{LayoutNode, LayoutPoint};
+use merman_render_core::{LayoutNode, LayoutPoint};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -142,7 +142,8 @@ impl BlockShapeGeometry {
         })
     }
 
-    pub(crate) fn intersect(&self, target: &LayoutPoint) -> LayoutPoint {
+    #[doc(hidden)]
+    pub fn intersect(&self, target: &LayoutPoint) -> LayoutPoint {
         let center = LayoutPoint {
             x: self.allocated.x,
             y: self.allocated.y,
@@ -200,7 +201,8 @@ impl BlockShapeGeometry {
     /// Block layout stores the grid slot separately from the shape that Mermaid actually draws.
     /// The latter is the source of truth for the SVG root viewport, because several shapes may
     /// intentionally extend beyond their allocated slot.
-    pub(crate) fn rendered_extents(&self) -> (f64, f64, f64, f64) {
+    #[doc(hidden)]
+    pub fn rendered_extents(&self) -> (f64, f64, f64, f64) {
         let (min_x, min_y, max_x, max_y) = boundary_extents(&self.boundary);
         (
             self.allocated.x + min_x,
@@ -210,7 +212,8 @@ impl BlockShapeGeometry {
         )
     }
 
-    pub(crate) fn label_offset_x(&self, block_type: &str) -> f64 {
+    #[doc(hidden)]
+    pub fn label_offset_x(&self, block_type: &str) -> f64 {
         match &self.boundary {
             BlockShapeBoundary::Polygon { translation, .. }
                 if matches!(block_type, "odd" | "rect_left_inv_arrow") =>

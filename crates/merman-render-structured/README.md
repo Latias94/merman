@@ -18,6 +18,10 @@ selection, and root context, then applies canvas and terminal output policies.
 The `diagram-cynefin` feature provides typed layout, presentation binding, and complete SVG
 emission. Measurement, viewport, and work limits come from the rendering operation.
 
+The `diagram-block` feature provides grid layout, retained XHTML labels, style binding, and
+complete SVG emission. `merman-render` supplies optional orthogonal routes and the operation's
+measurement, viewport, and resource policies.
+
 The `diagram-timeline` feature provides typed layout and complete SVG for horizontal and vertical
 Timeline diagrams. The rendering operation supplies its measurement, viewport, and work policies.
 

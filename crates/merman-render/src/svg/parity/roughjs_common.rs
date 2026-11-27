@@ -4,7 +4,6 @@ pub(in crate::svg::parity) use merman_render_core::rough_svg::ops_to_svg_path_d;
 
 #[cfg(any(
     feature = "diagram-c4",
-    feature = "diagram-block",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"

@@ -74,7 +74,6 @@ pub(crate) use look_defs::PreparedLookDefs;
     )
 )]
 use merman_render_core::svg_edge_parity::curve;
-pub(crate) use util::cssom_color_value;
 #[cfg(feature = "diagram-cynefin")]
 mod cynefin;
 #[cfg_attr(
@@ -204,7 +203,6 @@ mod quadrantchart;
 mod requirement;
 #[cfg(any(
     feature = "diagram-agentflow",
-    feature = "diagram-block",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
@@ -883,7 +881,6 @@ impl<'a> SvgExecution<'a> {
     #[cfg(any(
         test,
         feature = "diagram-agentflow",
-        feature = "diagram-block",
         feature = "diagram-class",
         feature = "diagram-flowchart",
         feature = "diagram-state",
@@ -895,7 +892,6 @@ impl<'a> SvgExecution<'a> {
 
     #[cfg(any(
         feature = "diagram-agentflow",
-        feature = "diagram-block",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
@@ -1610,7 +1606,6 @@ mod operation_time_tests {
     test,
     any(
         feature = "diagram-agentflow",
-        feature = "diagram-block",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",

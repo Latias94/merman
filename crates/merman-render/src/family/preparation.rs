@@ -184,27 +184,14 @@ fn prepare_block_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let mut typography_theme = match native {
-        Some(theme) => crate::block::BlockTypographyThemePlan::resolve_native(
-            theme,
-            execution.family.session().canvas_background(),
-            meta.effective_config.as_value(),
-        ),
-        None => crate::block::BlockTypographyThemePlan::resolve(meta.effective_config.as_value())?,
-    };
-    typography_theme.prepare_class_definitions(&model.class_defs);
-    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let native = execution
+        .native_family_theme()
+        .map(|theme| (theme, execution.family.session().canvas_background()));
+    let (mut layout, prepared_labels, typography_theme) = crate::block::prepare_block_layout(
         model,
-        typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(
-            meta.effective_config.as_value(),
-            typography_theme.native(),
-        ),
-        typography_theme.css_binding().html_labels,
-        typography_theme.text_style().clone(),
-        execution.text_measurer(),
         &meta.effective_config,
+        native,
+        execution.text_measurer(),
         &execution.work_meter(),
     )?;
     let edge_routes = crate::block::BlockEdgeRoutes::prepare(

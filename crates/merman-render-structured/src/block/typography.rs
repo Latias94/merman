@@ -1,9 +1,11 @@
 use indexmap::IndexMap;
 use merman_model::families::block::BlockClassDef;
 
-use crate::mermaid_style::{self, CssFontSizeContext, TextStyleCascade};
-use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::text::TextStyle;
+use merman_render_core::mermaid_style::{self, CssFontSizeContext, TextStyleCascade};
+use merman_render_core::resources::{
+    OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation,
+};
+use merman_render_core::text::TextStyle;
 
 #[derive(Debug)]
 pub(crate) struct BlockLabelTypography {
@@ -176,10 +178,12 @@ impl BlockLabelTypography {
             let mut declarations = stylesheet_fonts(definitions, &["label"], work)?;
             declarations.extend(inline.iter().cloned());
             apply_font_declarations(&mut font, &declarations, root_size);
-            if let std::borrow::Cow::Owned(style) = crate::text::svg_markdown_word_style(
-                &font,
-                crate::text::MermaidMarkdownWordType::Normal,
-            ) {
+            if let std::borrow::Cow::Owned(style) =
+                merman_render_core::text::inline_html::svg_markdown_word_style(
+                    &font,
+                    merman_render_core::text::inline_html::MermaidMarkdownWordType::Normal,
+                )
+            {
                 font = style;
             }
             // The fixed outer row tspan owns its inner word's declarations. The
@@ -209,7 +213,7 @@ impl BlockLabelTypography {
                 });
             }
             let wrapped = format!("<block-label>{xhtml}</block-label>");
-            if let Ok(document) = crate::xml_dom::Document::parse(&wrapped) {
+            if let Ok(document) = roxmltree::Document::parse(&wrapped) {
                 let root = document.root_element();
                 let mut edits = Vec::new();
                 let mut projected_bytes = xhtml.len();
@@ -245,7 +249,7 @@ impl BlockLabelTypography {
                                 .ok_or_else(|| work.arithmetic_overflow())?;
                             work.preflight_prepared_text_retained_bytes(upper_bound)?;
                             let style = format!("{};{original}", class_fonts.join(";"));
-                            let escaped = crate::svg::escape_attr(&style);
+                            let escaped = merman_render_core::xml::escape_attr(&style);
                             let (range, replacement) = if let Some(attribute) =
                                 node.attribute_node("style")
                             {
@@ -302,7 +306,7 @@ impl BlockLabelTypography {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
+    use merman_render_core::resources::RenderResourcePolicy;
     use std::sync::Arc;
 
     #[test]
