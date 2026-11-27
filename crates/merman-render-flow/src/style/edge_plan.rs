@@ -1,10 +1,11 @@
 //! Operation-local Flowchart edge source-style plan.
 
+#[cfg(any(feature = "canonical-edge-paint", test))]
+use super::compiled::admitted_flowchart_source_stroke_width;
 use super::{
     FlowchartTextStyleResolution,
     compiled::{
-        FlowchartCompiledStyles, FlowchartPreparedClassStyles,
-        admitted_flowchart_source_stroke_width, flowchart_compile_prepared_styles,
+        FlowchartCompiledStyles, FlowchartPreparedClassStyles, flowchart_compile_prepared_styles,
     },
 };
 use crate::{
