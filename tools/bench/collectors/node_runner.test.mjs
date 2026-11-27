@@ -33,6 +33,31 @@ test("import-to-first uses the first returned drawing and excludes later calls a
   }
 });
 
+test("peak RSS is sampled after the final render and before validation or drawing capture", async () => {
+  const events = [];
+  const report = await measureScenario([{}], () => {
+    events.push("render");
+    return "<svg/>";
+  }, {
+    samples: 2,
+    warmup: noWarmup,
+    readPeakRss() {
+      events.push("rss");
+      return 123;
+    },
+    validate(jobs) {
+      events.push("validate");
+      return jobs.map(() => ({ status: "ok" }));
+    },
+    afterLastBatch() {
+      events.push("drawing");
+    },
+  });
+
+  assert.equal(report.peak_rss_kib, 123);
+  assert.deepEqual(events, ["render", "render", "render", "rss", "validate", "drawing"]);
+});
+
 function project(t) {
   const scratch = fileURLToPath(new URL("../../../target/", import.meta.url));
   mkdirSync(scratch, { recursive: true });
