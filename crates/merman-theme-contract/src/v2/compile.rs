@@ -4,7 +4,7 @@ use std::sync::Arc;
 #[cfg(feature = "presets")]
 use super::BuiltinPreset;
 use super::contrast::{
-    BLACK, DARK_INK, TEXT_CONTRAST, automatic_fill_ink_over, backdrop, best_ink,
+    BLACK, DARK_INK, TEXT_CONTRAST, automatic_fill_ink_over, backdrop, best_ink, is_opaque,
 };
 use super::document::{
     CanvasPatch, DataPatch, ElevationEffect, ElevationPreset, ElevationSpec, FamilyOverride,
@@ -269,15 +269,23 @@ impl ThemeCompiler {
         }
 
         let mut notices = Vec::new();
-        let mut contrast = ContrastChecks {
+        let mut shared_inputs = Vec::new();
+        let base_fill_ink = Arc::clone(&base.data.fill_ink);
+        let title_accent = (!authored_title).then_some(accent);
+        ContrastChecks {
             appearance,
             auto_fix,
             notices: &mut notices,
-        };
-        let base_fill_ink = Arc::clone(&base.data.fill_ink);
-        let title_accent = (!authored_title).then_some(accent);
-        contrast.check_family(&mut base, 1.0, "data.fill", title_accent);
+            scope: NoticeScope::Shared(&mut shared_inputs),
+        }
+        .check_family(&mut base, 1.0, "data.fill", title_accent);
         for (id, family) in &mut family_overrides {
+            let mut contrast = ContrastChecks {
+                appearance,
+                auto_fix,
+                notices: &mut notices,
+                scope: NoticeScope::Family(id, &shared_inputs),
+            };
             let title_accent =
                 title_accent.filter(|_| !family_authored_titles.contains(id.as_str()));
             if family.roles.canvas != base.roles.canvas {
@@ -296,7 +304,13 @@ impl ThemeCompiler {
             let opacity = pie.form.chart.pie_opacity;
             pie.data.fill_ink = base_fill_ink;
             set_automatic_fill_ink(&mut pie.data, &pie.roles.canvas, opacity, appearance);
-            contrast.check_fill_ink(&mut pie, opacity, "pie.data.fill");
+            ContrastChecks {
+                appearance,
+                auto_fix,
+                notices: &mut notices,
+                scope: NoticeScope::Family("pie", &shared_inputs),
+            }
+            .check_fill_ink(&mut pie, opacity, "pie.data.fill");
             if pie.data.fill_ink != base.data.fill_ink {
                 family_overrides.insert("pie".to_owned(), pie);
             }
@@ -540,19 +554,99 @@ struct ContrastChecks<'a> {
     appearance: Appearance,
     auto_fix: bool,
     notices: &'a mut Vec<ThemeNotice>,
+    scope: NoticeScope<'a>,
+}
+
+enum NoticeScope<'a> {
+    Shared(&'a mut Vec<ContrastNoticeInput>),
+    Family(&'a str, &'a [ContrastNoticeInput]),
+}
+
+type ContrastBackground<'a> = (&'static str, &'a Paint, Option<&'a Paint>);
+
+struct ContrastNoticeInput {
+    color: Color,
+    opacity: f64,
+    paints: Vec<(Paint, Option<Paint>)>,
+}
+
+fn same_notice(shared: &ThemeNotice, family: &ThemeNotice) -> bool {
+    match (shared, family) {
+        (
+            ThemeNotice::LowContrast {
+                foreground: shared_name,
+                background: "data.fill",
+                ratio: shared_ratio,
+                minimum: shared_minimum,
+            },
+            ThemeNotice::LowContrast {
+                foreground,
+                background: "pie.data.fill",
+                ratio,
+                minimum,
+            },
+        ) => shared_name == foreground && shared_ratio == ratio && shared_minimum == minimum,
+        _ => shared == family,
+    }
 }
 
 impl ContrastChecks<'_> {
+    fn push_notice(
+        &mut self,
+        mut notice: ThemeNotice,
+        color: Color,
+        backgrounds: &[ContrastBackground<'_>],
+        opacity: f64,
+    ) {
+        let paints = || {
+            backgrounds
+                .iter()
+                .map(|&(_, paint, canvas)| (paint, canvas.filter(|_| !is_opaque(paint, opacity))))
+        };
+        match &mut self.scope {
+            NoticeScope::Shared(inputs) => inputs.push(ContrastNoticeInput {
+                color,
+                opacity,
+                paints: paints()
+                    .map(|(paint, canvas)| (paint.clone(), canvas.cloned()))
+                    .collect(),
+            }),
+            NoticeScope::Family(id, inputs) => {
+                // Shared inputs correspond to the leading notices. A ratio (especially 1:1)
+                // or a replacement color alone can coincide for different contrast inputs.
+                if inputs.iter().zip(&*self.notices).any(|(input, shared)| {
+                    input.opacity == opacity
+                        && input.color == color
+                        && same_notice(shared, &notice)
+                        && input
+                            .paints
+                            .iter()
+                            .map(|(paint, canvas)| (paint, canvas.as_ref()))
+                            .eq(paints())
+                }) {
+                    return;
+                }
+                let foreground = match &mut notice {
+                    ThemeNotice::LowContrast { foreground, .. }
+                    | ThemeNotice::ContrastAdjusted { foreground, .. } => foreground,
+                };
+                *foreground = format!("family_overrides[{id:?}].{foreground}");
+            }
+        }
+        self.notices.push(notice);
+    }
+
     fn check(
         &mut self,
         name: &str,
         color: &mut Color,
-        backgrounds: &[(&'static str, &Paint, Option<&Paint>)],
+        backgrounds: &[ContrastBackground<'_>],
         opacity: f64,
         minimum: f64,
     ) {
+        let appearance = self.appearance;
         let ratio = |color, background: &Paint, canvas: Option<&Paint>| {
-            Paint::Solid(color).minimum_contrast_over(background, opacity, canvas, self.appearance)
+            Paint::Solid(color).minimum_contrast_over(background, opacity, canvas, appearance)
         };
         if self.auto_fix
             && let Some(adjusted) = fit_contrast(*color, |candidate| {
@@ -561,21 +655,32 @@ impl ContrastChecks<'_> {
                     .all(|&(_, background, canvas)| ratio(candidate, background, canvas) >= minimum)
             })
         {
+            let original = *color;
             *color = adjusted;
-            self.notices.push(ThemeNotice::ContrastAdjusted {
-                foreground: name.to_owned(),
-                color: adjusted,
-            });
+            self.push_notice(
+                ThemeNotice::ContrastAdjusted {
+                    foreground: name.to_owned(),
+                    color: adjusted,
+                },
+                original,
+                backgrounds,
+                opacity,
+            );
         }
         for &(background, paint, canvas) in backgrounds {
             let ratio = ratio(*color, paint, canvas);
             if ratio < minimum {
-                self.notices.push(ThemeNotice::LowContrast {
-                    foreground: name.to_owned(),
-                    background,
-                    ratio,
-                    minimum,
-                });
+                self.push_notice(
+                    ThemeNotice::LowContrast {
+                        foreground: name.to_owned(),
+                        background,
+                        ratio,
+                        minimum,
+                    },
+                    *color,
+                    &[(background, paint, canvas)],
+                    opacity,
+                );
             }
         }
     }

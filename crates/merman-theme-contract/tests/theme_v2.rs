@@ -164,6 +164,190 @@ fn a_custom_theme_reports_low_contrast_and_can_adjust_it() {
 }
 
 #[test]
+fn family_contrast_reports_inherited_notices_once() {
+    let shared = json!({
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {"text.muted": "#EEEEEE"}
+    });
+    let mut overridden = shared.clone();
+    overridden["overrides"] = json!([
+        {"families": ["flowchart"], "form": {"radius": 12}},
+        {"families": ["state"], "typography": {"base_size_px": 18}}
+    ]);
+    for auto_fix in [false, true] {
+        let compiler = ThemeCompiler::new().with_auto_fix_contrast(auto_fix);
+        let shared = compiler
+            .compile_json(shared.to_string().as_bytes(), None)
+            .unwrap();
+        let overridden = compiler
+            .compile_json(overridden.to_string().as_bytes(), None)
+            .unwrap();
+        assert_eq!(shared.notices().len(), if auto_fix { 1 } else { 2 });
+        assert_eq!(overridden.notices(), shared.notices());
+        for family in ["flowchart", "state"] {
+            assert_eq!(overridden.family(family).roles, *shared.roles());
+            assert_eq!(overridden.family(family).data, *shared.data());
+        }
+        assert_eq!(overridden.family("flowchart").form.radius, 12.0);
+        assert_eq!(overridden.family("state").typography.base_size_px, 18.0);
+    }
+}
+
+#[test]
+fn family_contrast_recomputes_adjustments_and_keeps_authored_titles() {
+    let document = br##"{
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {
+            "canvas": "#FFFFFF", "surface.node": "#FFFFFF", "surface.container": "#FFFFFF",
+            "text.primary": "#EEEEEE", "text.title": "#CCCCCC"
+        },
+        "overrides": [
+            {"families": ["flowchart"], "roles": {
+                "canvas": "#000000", "surface.node": "#000000", "surface.container": "#000000"
+            }},
+            {"families": ["class"], "roles": {
+                "surface.callout": "#713F12", "text.title": "#112233"
+            }}
+        ]
+    }"##;
+    let resolved = ThemeCompiler::new()
+        .with_auto_fix_contrast(true)
+        .compile_json(document, None)
+        .unwrap();
+    let flowchart = &resolved.family("flowchart").roles;
+    assert_eq!(flowchart.text_primary, Color::rgb(238, 238, 238));
+    assert_eq!(flowchart.text_title, Color::rgb(204, 204, 204));
+    assert_ne!(flowchart.text_primary, resolved.roles().text_primary);
+    assert_ne!(flowchart.text_title, resolved.roles().text_title);
+
+    let class = &resolved.family("class").roles;
+    assert_eq!(class.text_title, Color::rgb(17, 34, 51));
+    assert_eq!(class.text_primary, resolved.roles().text_primary);
+    assert_ne!(class.text_callout, resolved.roles().text_callout);
+    assert!(resolved.notices().iter().any(|notice| matches!(notice,
+        ThemeNotice::ContrastAdjusted { foreground, color }
+            if foreground == "family_overrides[\"class\"].text.callout"
+                && *color == class.text_callout
+    )));
+    assert!(!resolved.notices().iter().any(|notice| matches!(notice,
+        ThemeNotice::ContrastAdjusted { foreground, .. }
+            if foreground == "family_overrides[\"class\"].text.primary"
+    )));
+}
+
+#[test]
+fn family_contrast_reports_changed_inputs_even_at_the_same_ratio() {
+    let mut document = json!({
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {"text.callout": "#00000000"},
+        "overrides": [{"families": ["sequence"], "roles": {"surface.callout": "#FFFFFF"}}]
+    });
+    let compiler = ThemeCompiler::new();
+    let resolved = compiler
+        .compile_json(document.to_string().as_bytes(), None)
+        .unwrap();
+    let inherited_fail = json!({
+        "kind": "low_contrast", "foreground": "text.callout", "background": "surface.callout",
+        "ratio": 1.0, "minimum": 4.5
+    });
+    let mut family_fail = inherited_fail.clone();
+    family_fail["foreground"] = json!("family_overrides[\"sequence\"].text.callout");
+    assert_eq!(
+        json!(resolved.notices()),
+        json!([inherited_fail, family_fail])
+    );
+
+    let strict = compiler.with_strict_contrast(true);
+    let error = strict
+        .compile_json(document.to_string().as_bytes(), None)
+        .unwrap_err();
+    assert_eq!(error.path(), Some("text.callout"));
+    document.as_object_mut().unwrap().remove("roles");
+    document["overrides"][0]["roles"]["text.callout"] = json!("#FFFFFF");
+    let error = strict
+        .compile_json(document.to_string().as_bytes(), None)
+        .unwrap_err();
+    assert_eq!(
+        error.path(),
+        Some("family_overrides[\"sequence\"].text.callout")
+    );
+    assert_eq!((error.line(), error.column()), (None, None));
+}
+
+#[test]
+fn family_contrast_uses_pie_slice_opacity_even_without_a_stored_override() {
+    let mut document = json!({
+        "schema_version": 2,
+        "extends": "studio",
+        "form": {"chart": {"pie_opacity": 0.65}},
+        "appearances": {"light": {"data": {
+            "fill": ["#444444", "#444444", "#444444", "#444444"], "fill_ink": "#FFFFFF"
+        }}}
+    });
+    let compiler = ThemeCompiler::new();
+    let foreground = "family_overrides[\"pie\"].data.fill_ink[0]";
+    for explicit in [false, true] {
+        if explicit {
+            document["form"]["chart"]["pie_opacity"] = json!(1.0);
+            document["overrides"] = json!([
+                {"families": ["pie"], "form": {"chart": {"pie_opacity": 0.65}}}
+            ]);
+        }
+        let text = document.to_string();
+        let resolved = compiler.compile_json(text.as_bytes(), None).unwrap();
+        assert!(low_contrast(&resolved, foreground, "pie.data.fill") < 4.5);
+        assert_eq!(
+            resolved.family("pie").data.fill_ink,
+            resolved.data().fill_ink
+        );
+        assert_eq!(json!(resolved).get("family_overrides").is_some(), explicit);
+        let strict = compiler.clone().with_strict_contrast(true);
+        assert_eq!(
+            strict
+                .compile_json(text.as_bytes(), None)
+                .unwrap_err()
+                .path(),
+            Some(foreground)
+        );
+        let fixed = strict
+            .with_auto_fix_contrast(true)
+            .compile_json(text.as_bytes(), None)
+            .unwrap();
+        assert_eq!(fixed.data().fill_ink(0), Color::rgb(255, 255, 255));
+        assert_ne!(
+            fixed.family("pie").data.fill_ink(0),
+            fixed.data().fill_ink(0)
+        );
+        assert!(fixed.notices().iter().any(|notice| matches!(notice,
+            ThemeNotice::ContrastAdjusted { foreground: name, color }
+                if name == foreground && *color == fixed.family("pie").data.fill_ink(0)
+        )));
+    }
+
+    document["overrides"][0]["form"]["chart"]["pie_opacity"] = json!(1.0);
+    document["appearances"]["light"]["data"]["fill"][0] = json!("#FFFFFF");
+    for auto_fix in [false, true] {
+        let resolved = compiler
+            .clone()
+            .with_auto_fix_contrast(auto_fix)
+            .compile_json(document.to_string().as_bytes(), None)
+            .unwrap();
+        assert_eq!(resolved.notices().len(), 1);
+        assert_eq!(
+            json!(resolved.notices())[0]["foreground"],
+            "data.fill_ink[0]"
+        );
+        assert_eq!(
+            resolved.family("pie").data.fill_ink,
+            resolved.data().fill_ink
+        );
+    }
+}
+
+#[test]
 fn contrast_checks_between_canvas_stops_and_through_translucent_surfaces() {
     let input = br##"{
         "schema_version": 2,
@@ -191,7 +375,11 @@ fn contrast_checks_between_canvas_stops_and_through_translucent_surfaces() {
     let shaded_ratio = low_contrast(&theme, "text.primary", "surface.node");
     assert!((shaded_ratio - 1.97468).abs() < 0.001, "{shaded_ratio}");
     assert_eq!(
-        low_contrast(&theme, "data.fill_ink[0]", "pie.data.fill"),
+        low_contrast(
+            &theme,
+            "family_overrides[\"pie\"].data.fill_ink[0]",
+            "pie.data.fill"
+        ),
         shaded_ratio
     );
 
