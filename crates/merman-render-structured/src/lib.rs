@@ -29,3 +29,7 @@ pub mod railroad;
 #[cfg(feature = "diagram-timeline")]
 #[doc(hidden)]
 pub mod timeline;
+
+#[cfg(feature = "diagram-tree-view")]
+#[doc(hidden)]
+pub mod tree_view;

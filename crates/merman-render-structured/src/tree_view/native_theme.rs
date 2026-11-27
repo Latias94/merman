@@ -1,4 +1,4 @@
-use crate::theme::Color;
+use merman_theme_contract::v2::Color;
 
 #[derive(Debug)]
 pub(crate) struct TreeViewNativeStyle {

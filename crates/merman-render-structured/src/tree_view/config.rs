@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use merman_render_core::config::{config_bool, config_f64, config_string};
 use serde_json::Value;
 use std::collections::HashMap;
 

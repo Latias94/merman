@@ -263,8 +263,6 @@ mod timeline;
     )
 )]
 use merman_render_core::svg_output::timing;
-#[cfg(feature = "diagram-tree-view")]
-mod tree_view;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 #[cfg_attr(
@@ -1506,13 +1504,25 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-tree-view")]
-        BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.theme(),
-            effective_config,
-            options,
-        ),
+        BuiltinFamilyArtifact::TreeView(artifact) => {
+            use crate::tree_view::{TreeViewSvgContext, render_tree_view_diagram_svg_model};
+
+            let diagram_id = options.diagram_id_or("treeView");
+            render_tree_view_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.theme(),
+                effective_config,
+                &TreeViewSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::TREE_VIEW, diagram_id),
+                    icon_registry: options.icon_registry(),
+                    work_meter: options.work_meter(),
+                    require_portable: options.family.session().portability_requirement()
+                        == crate::theme::ThemePortabilityRequirement::RequirePortable,
+                },
+            )
+        }
         #[cfg(feature = "diagram-ishikawa")]
         BuiltinFamilyArtifact::Ishikawa(artifact) => {
             let diagram_id = options.diagram_id_or("ishikawa");

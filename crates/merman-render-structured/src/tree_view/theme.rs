@@ -1,13 +1,13 @@
 use serde_json::Value;
 
-use crate::config::{config_css_number_or_string, config_f64, config_string};
+use merman_render_core::config::{config_css_number_or_string, config_f64, config_string};
 
 use super::config::DEFAULT_LINE_THICKNESS;
 use super::native_theme::TreeViewNativeStyle;
 
 /// Operation-local values shared by Tree View measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct TreeViewCssBinding {
+pub struct TreeViewCssBinding {
     pub(crate) native: Option<TreeViewNativeStyle>,
     pub(crate) font_family: String,
     pub(crate) label_font_size: f64,
@@ -43,7 +43,7 @@ impl TreeViewCssBinding {
         };
         Self {
             native: None,
-            font_family: crate::config::config_font_family_css(config),
+            font_family: merman_render_core::config::config_font_family_css(config),
             label_font_size: label_font_size.unwrap_or(16.0),
             label_font_size_verified: label_font_size.is_some(),
             root_font_size_css,
@@ -62,7 +62,7 @@ impl TreeViewCssBinding {
 
     pub(crate) fn for_native(
         config: &merman_model::presentation::PresentationConfig,
-        theme: &crate::theme::FamilyTheme,
+        theme: &merman_theme_contract::v2::FamilyTheme,
     ) -> Self {
         let typography = &theme.typography;
         let roles = &theme.roles;
@@ -77,7 +77,9 @@ impl TreeViewCssBinding {
                 label_weight: typography.label_weight.to_string(),
                 directory_weight: typography.title_weight.to_string(),
             }),
-            font_family: crate::theme::font_family_css(typography.stack(typography.code_family)),
+            font_family: merman_render_core::mermaid_style::font_family_css(
+                typography.stack(typography.code_family),
+            ),
             label_font_size: typography.base_size_px,
             label_font_size_css: format!("{}px", typography.base_size_px),
             root_font_size_css: None,
@@ -98,7 +100,7 @@ impl TreeViewCssBinding {
 }
 
 fn resolve_label_font_size(config: &Value, size: &str) -> (Option<f64>, Option<String>) {
-    use crate::mermaid_style::{
+    use merman_render_core::mermaid_style::{
         CssFontSizeContext, CssFontSizeOwnership, css_font_size_is_zero,
         css_font_size_value_override, resolve_mermaid_absolute_font_size_px,
         resolve_mermaid_font_size_px,

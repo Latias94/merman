@@ -1,11 +1,42 @@
-use super::IconRenderRequest;
-use crate::svg::pipeline::validate_well_formed_svg_with_controls;
+use super::{IconDefsPlacement, IconIdScope, IconRegistry, ParsedIconBody, ResolvedIcon};
+use crate::svg_xml::validate_well_formed_svg_with_controls;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use merman_model::OperationPhase;
-use merman_render_core::icon_registry::{IconDefsPlacement, ParsedIconBody, ResolvedIcon};
 #[cfg(test)]
 use quick_xml::events::Event;
-use std::cell::Cell;
+use std::{cell::Cell, fmt};
+
+const MERMAID_UNKNOWN_ICON_BODY: &str = r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#;
+
+/// Emits the Mermaid placeholder for an unresolved icon.
+pub fn mermaid_unknown_icon_svg(width: impl fmt::Display, height: impl fmt::Display) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 80 80">{MERMAID_UNKNOWN_ICON_BODY}</svg>"#
+    )
+}
+
+/// Emits one admitted, sanitized, and ID-scoped icon using the operation budget.
+pub fn render_icon(
+    registry: &IconRegistry,
+    request: IconRenderRequest<'_>,
+) -> crate::Result<Option<String>> {
+    registry
+        .resolve_icon(request.icon_name, request.fallback_prefix)
+        .map(|icon| render_resolved_icon(icon, icon.parsed_body(), &request))
+        .transpose()
+}
+
+/// Borrowed inputs for an SVG icon occurrence.
+pub struct IconRenderRequest<'a> {
+    pub icon_name: &'a str,
+    pub width_px: f64,
+    pub height_px: f64,
+    pub fallback_prefix: Option<&'a str>,
+    pub extra_class: Option<&'a str>,
+    pub id_scope: IconIdScope,
+    pub effective_config: &'a merman_model::presentation::PresentationConfig,
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
+}
 
 const WORK_BYTES_PER_UNIT: usize = 256;
 // XML attribute escaping expands one source scalar by at most `&quot;` (six bytes).
@@ -138,7 +169,7 @@ impl SanitizeOutputSink for BoundedSanitizeSink<'_> {
     }
 }
 
-pub(super) fn render_resolved_icon(
+fn render_resolved_icon(
     icon: &ResolvedIcon,
     body: &ParsedIconBody,
     request: &IconRenderRequest<'_>,
@@ -475,9 +506,32 @@ fn js_number(mut value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::icon_registry::{IconIdScopePrefix, IconPack, IconRegistryResourceLimitId};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-    use crate::svg::icon_registry::{IconPack, IconRegistry, icon_id_scope_for_test, render_icon};
+    use merman_model::{
+        MermaidConfig, OperationControl,
+        presentation::PresentationConfig,
+        resources::{InputResourcePolicy, ResourceProfile},
+    };
     use serde_json::json;
+
+    fn presentation_config(value: serde_json::Value) -> PresentationConfig {
+        PresentationConfig::from_config_controlled(
+            MermaidConfig::from_value(value),
+            &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap()
+    }
+
+    fn icon_id_scope_for_test(value: &str) -> IconIdScope {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        IconIdScopePrefix::from_parts(&[value], &meter)
+            .unwrap()
+            .scope_parts(&[], &meter)
+            .unwrap()
+    }
 
     #[derive(Debug)]
     struct InvalidUtf8Sink<'a>(BoundedSanitizeSink<'a>);
@@ -533,7 +587,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<String>, usize) {
         let registry = registry_with_icon(body);
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -564,7 +618,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<Vec<String>>, usize, usize) {
         let registry = registry_with_icon(body);
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -615,7 +669,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
         let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -655,7 +709,7 @@ mod tests {
             Err(BoundedSanitizeError::AllocationFailed)
         );
 
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -673,7 +727,7 @@ mod tests {
     fn bounded_sanitizer_admits_parser_input_independently_of_output() {
         let input = "<script>removed</script><b>ok</b>";
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -694,7 +748,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_charges_tree_storage_and_replays_cancellation() {
         let input = "<b>ok</b>";
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -907,9 +961,8 @@ mod tests {
 
     #[test]
     fn repeated_maximum_body_precharges_aggregate_svg_and_work_exactly() {
-        let maximum =
-            usize::try_from(crate::svg::IconRegistryResourceLimitId::MaxBodyBytes.fixed_value())
-                .expect("maximum icon body bytes fit usize");
+        let maximum = usize::try_from(IconRegistryResourceLimitId::MaxBodyBytes.fixed_value())
+            .expect("maximum icon body bytes fit usize");
         let prefix = r#"<path data-padding=""#;
         let suffix = r#"" d="M0 0H16V16H0z"/>"#;
         let body = format!(

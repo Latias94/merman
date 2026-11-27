@@ -25,6 +25,7 @@ diagram-journey = ["dep:merman-model", "dep:merman-render-core", "dep:merman-the
 diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet", "merman-render-core/root-svg"]
 diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad", "merman-render-core/root-svg"]
 diagram-timeline = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-timeline", "merman-render-core/root-svg"]
+diagram-tree-view = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-tree-view", "merman-render-core/icon-svg", "merman-render-core/root-svg", "merman-render-core/text-layout"]
 
 system-timezone = ["merman-model?/system-timezone"]
 

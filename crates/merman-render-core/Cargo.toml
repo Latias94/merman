@@ -22,6 +22,7 @@ css-style = ["dep:cssparser", "dep:merman-markup", "dep:merman-model", "dep:serd
 graph-layout = ["dep:kurbo"]
 html = ["svg-output", "merman-markup/html"]
 icon-registry = ["resources", "dep:quick-xml", "dep:roxmltree", "dep:serde_json"]
+icon-svg = ["icon-registry", "html", "svg-parse"]
 route-paint = ["dep:kurbo"]
 layout-cytoscape = ["svg-output", "dep:manatee"]
 layout-dagre = ["svg-output", "dep:dugong"]

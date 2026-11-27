@@ -832,16 +832,10 @@ fn prepare_tree_view_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::tree_view::TreeViewCssBinding;
-
-    let theme = match execution.native_family_theme() {
-        Some(theme) => TreeViewCssBinding::for_native(&meta.effective_config, theme),
-        None => TreeViewCssBinding::from_config(meta.effective_config.as_value()),
-    };
-    let layout = crate::tree_view::layout_tree_view_diagram_typed(
+    let (layout, theme) = crate::tree_view::prepare_tree_view_diagram(
         model,
-        meta.effective_config.as_value(),
-        &theme,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::TreeView(Box::new(

@@ -1,43 +1,61 @@
-use super::super::*;
-use crate::model::TreeViewNodeLayout;
-use crate::svg::icon_registry::{
-    IconIdScopePrefix, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
-};
-use crate::tree_view::{
-    TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
-    TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
-    TreeViewCssBinding, is_tree_view_highlight_class,
-};
-use merman_model::families::tree_view::TreeViewDiagramModel;
+use std::fmt::Write as _;
 
-const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
-const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
+use merman_model::{
+    OperationPhase, families::tree_view::TreeViewDiagramModel, family::DiagramFamilyId,
+    presentation::PresentationConfig,
+};
+use merman_render_core::{
+    Error, Result,
+    icon_registry::{
+        IconIdScopePrefix, IconRegistry, IconRenderRequest, mermaid_unknown_icon_svg, render_icon,
+    },
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext, RootedSvg},
+    svg_css::{CssSelectorDiagramId, SvgId},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::escape_xml_display,
+};
+
+use super::{
+    TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
+    TREE_VIEW_DIRECTORY_NODE_TYPE, TREE_VIEW_HIGHLIGHT_RECT_EXTENSION,
+    TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_PREFIX, TREE_VIEW_ICON_SIZE,
+    TreeViewCssBinding, TreeViewDiagramLayout, TreeViewNodeLayout, is_tree_view_highlight_class,
+};
+
+/// Host-owned SVG identity, viewport, icon registry, and portability policy.
+pub struct TreeViewSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub icon_registry: Option<&'a IconRegistry>,
+    pub work_meter: &'a OperationWorkMeter,
+    pub require_portable: bool,
+}
 
 struct TreeViewNodeRenderContext<'a, 'id> {
     layout: &'a TreeViewDiagramLayout,
-    diagram_id: SvgDiagramId<'id>,
-    icon_registry: Option<&'a crate::svg::IconRegistry>,
-    effective_config: &'a merman_model::presentation::PresentationConfig,
-    work_meter: &'a crate::resources::OperationWorkMeter,
+    diagram_id: SvgId<'id>,
+    icon_registry: Option<&'a IconRegistry>,
+    effective_config: &'a PresentationConfig,
+    work_meter: &'a OperationWorkMeter,
 }
 
-pub(crate) fn render_tree_view_diagram_svg_model(
+/// Emits a bounded Tree View document for the selected theme and root policy.
+pub fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramModel,
     theme: &TreeViewCssBinding,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    if !theme.label_font_size_verified
-        && options.family.session().portability_requirement()
-            == crate::theme::ThemePortabilityRequirement::RequirePortable
-    {
+    effective_config: &PresentationConfig,
+    context: &TreeViewSvgContext<'_>,
+) -> Result<RootedSvg> {
+    if !theme.label_font_size_verified && context.require_portable {
         return Err(Error::UnsupportedNativeThemeFeature {
-            family_id: crate::DiagramFamilyId::TREE_VIEW,
+            family_id: DiagramFamilyId::TREE_VIEW,
             message: "themeVariables.treeView.labelFontSize must resolve to a measurable size.",
         });
     }
-    let diagram_id = options.diagram_id_or("treeView");
+    let diagram_id = context.diagram_id;
     let acc_title = model.acc_title.as_deref().filter(|t| !t.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|d| !d.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
@@ -63,15 +81,15 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     };
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treeView");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::TREE_VIEW, diagram_id)
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
-    options.checkpoint_emit()?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -91,13 +109,13 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     }
     out.push_str("<style>");
     push_tree_view_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        super::super::util::css_selector_diagram_id(diagram_id),
+        &mut XmlTextOutput::new(&mut out),
+        CssSelectorDiagramId(diagram_id),
         theme,
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
-    options.checkpoint_emit()?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     out.checkpoint()?;
@@ -112,9 +130,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     let node_context = TreeViewNodeRenderContext {
         layout,
         diagram_id,
-        icon_registry: options.icon_registry(),
+        icon_registry: context.icon_registry,
         effective_config,
-        work_meter: options.work_meter(),
+        work_meter: context.work_meter,
     };
     for line in &layout.lines {
         if line.kind == "horizontal"
@@ -294,11 +312,11 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
 
 fn tree_view_icon_svg(
     icon: &str,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     node_id: i64,
-    icon_registry: Option<&crate::svg::IconRegistry>,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    work_meter: &crate::resources::OperationWorkMeter,
+    icon_registry: Option<&IconRegistry>,
+    effective_config: &PresentationConfig,
+    work_meter: &OperationWorkMeter,
 ) -> Result<String> {
     if let Some(body) = tree_view_icon_body(icon) {
         return Ok(format!(

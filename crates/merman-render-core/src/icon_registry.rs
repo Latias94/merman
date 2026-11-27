@@ -3,6 +3,8 @@ mod ingest;
 mod limits;
 mod lookup;
 mod pack;
+#[cfg(feature = "icon-svg")]
+mod render;
 mod xml;
 
 pub use error::{IconRegistryBuildError, IconRegistryBuildErrorKind};
@@ -13,6 +15,8 @@ pub use limits::{
 };
 pub use lookup::parse_icon_reference;
 pub use pack::IconPack;
+#[cfg(feature = "icon-svg")]
+pub use render::{IconRenderRequest, mermaid_unknown_icon_svg, render_icon};
 pub use xml::{IconDefsPlacement, ParsedIconBody, UntrustedIconXml};
 
 use crate::resources::{OperationWorkError, OperationWorkMeter};
