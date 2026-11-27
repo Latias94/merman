@@ -265,15 +265,8 @@ pub(crate) struct BarycenterEntryIx {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SortEntryIx {
-    pub vs: Vec<usize>,
+    pub members: std::ops::Range<usize>,
     pub i: usize,
-    pub barycenter: Option<f64>,
-    pub weight: Option<f64>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SortResultIx {
-    pub vs: Vec<usize>,
     pub barycenter: Option<f64>,
     pub weight: Option<f64>,
 }
@@ -363,13 +356,16 @@ pub fn sort(entries: &[SortEntry], bias_right: bool) -> SortResult {
     }
 }
 
-pub(crate) fn sort_ix(entries: &[SortEntryIx], bias_right: bool) -> SortResultIx {
-    let mut total_len: usize = 0;
-    let mut sortable: Vec<usize> = Vec::new();
-    let mut unsortable: Vec<usize> = Vec::new();
-
+pub(crate) fn sort_ix(
+    entries: &[SortEntryIx],
+    bias_right: bool,
+    sortable: &mut Vec<usize>,
+    unsortable: &mut Vec<usize>,
+    mut emit: impl FnMut(&SortEntryIx) -> usize,
+) -> (Option<f64>, Option<f64>) {
+    sortable.clear();
+    unsortable.clear();
     for (ix, entry) in entries.iter().enumerate() {
-        total_len += entry.vs.len();
         if entry.barycenter.is_some() {
             sortable.push(ix);
         } else {
@@ -395,16 +391,15 @@ pub(crate) fn sort_ix(entries: &[SortEntryIx], bias_right: bool) -> SortResultIx
         }
     });
 
-    let mut out: Vec<usize> = Vec::with_capacity(total_len);
     let mut sum: f64 = 0.0;
     let mut weight: f64 = 0.0;
     let mut vs_index: usize = 0;
 
     fn consume_unsortable(
-        out: &mut Vec<usize>,
         entries: &[SortEntryIx],
         unsortable: &mut Vec<usize>,
         mut index: usize,
+        emit: &mut impl FnMut(&SortEntryIx) -> usize,
     ) -> usize {
         while let Some(&last_ix) = unsortable.last() {
             let last = &entries[last_ix];
@@ -414,37 +409,28 @@ pub(crate) fn sort_ix(entries: &[SortEntryIx], bias_right: bool) -> SortResultIx
             let Some(last_ix) = unsortable.pop() else {
                 break;
             };
-            out.extend(entries[last_ix].vs.iter().copied());
+            emit(&entries[last_ix]);
             index += 1;
         }
         index
     }
 
-    vs_index = consume_unsortable(&mut out, entries, &mut unsortable, vs_index);
+    vs_index = consume_unsortable(entries, unsortable, vs_index, &mut emit);
 
-    for entry_ix in sortable {
+    for &entry_ix in sortable.iter() {
         let entry = &entries[entry_ix];
-        vs_index += entry.vs.len();
-        out.extend(entry.vs.iter().copied());
+        vs_index += emit(entry);
         if let (Some(bc), Some(w)) = (entry.barycenter, entry.weight) {
             sum += bc * w;
             weight += w;
         }
-        vs_index = consume_unsortable(&mut out, entries, &mut unsortable, vs_index);
+        vs_index = consume_unsortable(entries, unsortable, vs_index, &mut emit);
     }
 
     if weight != 0.0 {
-        SortResultIx {
-            vs: out,
-            barycenter: Some(sum / weight),
-            weight: Some(weight),
-        }
+        (Some(sum / weight), Some(weight))
     } else {
-        SortResultIx {
-            vs: out,
-            barycenter: None,
-            weight: None,
-        }
+        (None, None)
     }
 }
 
