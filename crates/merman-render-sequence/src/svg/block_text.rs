@@ -227,7 +227,7 @@ fn block_text_dy(index: usize, margin: f64, font_size: f64) -> String {
 }
 
 pub(super) fn block_row_dy(index: usize, margin: f64, font_size: f64) -> Option<f64> {
-    (margin == 0.0 && index != 0).then(|| index as f64 * font_size)
+    (margin == 0.0 && index != 0).then_some(index as f64 * font_size)
 }
 
 #[cfg(test)]
