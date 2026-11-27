@@ -319,7 +319,12 @@ impl<'a> ComponentCursor<'a> {
     }
 
     fn hue_unit(&mut self) -> Option<HueUnit> {
-        for expected in ["grad", "turn", "rad", "deg"] {
+        for (expected, unit) in [
+            ("grad", HueUnit::Grad),
+            ("turn", HueUnit::Turn),
+            ("rad", HueUnit::Rad),
+            ("deg", HueUnit::Degrees),
+        ] {
             let Some(candidate) = self.source.get(self.offset..self.offset + expected.len()) else {
                 continue;
             };
@@ -327,12 +332,7 @@ impl<'a> ComponentCursor<'a> {
                 continue;
             }
             self.offset += expected.len();
-            return Some(match candidate {
-                "grad" => HueUnit::Grad,
-                "rad" => HueUnit::Rad,
-                "turn" => HueUnit::Turn,
-                _ => HueUnit::Degrees,
-            });
+            return Some(unit);
         }
         None
     }
@@ -393,7 +393,7 @@ pub fn hsl_to_rgb(hsla: HslaChannels) -> RgbaChannels {
             alpha: hsla.alpha,
         };
     }
-    let hue = hsla.hue_degrees / 360.0;
+    let hue = clamp_hue(hsla.hue_degrees) / 360.0;
     let saturation = hsla.saturation_percent / 100.0;
     let lightness = hsla.lightness_percent / 100.0;
     let q = if lightness < 0.5 {
@@ -433,7 +433,11 @@ pub fn clamp_rgb(value: f64) -> f64 {
 }
 
 pub fn clamp_hue(value: f64) -> f64 {
-    value % 360.0
+    if (0.0..360.0).contains(&value) {
+        value
+    } else {
+        value.rem_euclid(360.0)
+    }
 }
 
 pub fn clamp_percent(value: f64) -> f64 {
@@ -448,7 +452,7 @@ fn keyword_hex(keyword: &str) -> Option<&'static str> {
     Some(match keyword {
         "aliceblue" => "#f0f8ff",
         "antiquewhite" => "#faebd7",
-        "aqua" | "cyanaqua" => "#00ffff",
+        "aqua" | "cyan" => "#00ffff",
         "aquamarine" => "#7fffd4",
         "azure" => "#f0ffff",
         "beige" => "#f5f5dc",

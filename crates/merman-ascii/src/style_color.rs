@@ -68,6 +68,18 @@ mod tests {
             Some(AsciiRgb::from_hex24(0x0000ff))
         );
         assert_eq!(
+            parse_css_color("hsl(-300, 50%, 50%)"),
+            Some(AsciiRgb::from_hex24(0xbfbf40))
+        );
+        for cyan in [
+            "cyan",
+            "aqua",
+            "hsl(0.5TURN, 100%, 50%)",
+            "hsl(200gRaD 100% 50%)",
+        ] {
+            assert_eq!(parse_css_color(cyan), Some(AsciiRgb::from_hex24(0x00ffff)));
+        }
+        assert_eq!(
             parse_css_color("RGB(1, 2, 3)"),
             Some(AsciiRgb::new(1, 2, 3))
         );

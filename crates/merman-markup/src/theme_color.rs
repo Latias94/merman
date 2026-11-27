@@ -577,7 +577,7 @@ mod tests {
         );
         assert_eq!(
             channel("hsl(1TURN 50% 50%)", ColorChannel::Hue).unwrap(),
-            1.0
+            0.0
         );
         assert_eq!(
             channel("hsl(100grad 50% 50%)", ColorChannel::Hue).unwrap(),
@@ -585,13 +585,18 @@ mod tests {
         );
         assert_eq!(
             channel("hsl(100GRAD 50% 50%)", ColorChannel::Hue).unwrap(),
-            100.0
+            90.0
+        );
+        assert_eq!(
+            channel("hsl(-300DeG 50% 50%)", ColorChannel::Hue).unwrap(),
+            60.0
         );
 
         let keyword = ThemeColor::parse("ReD").unwrap();
         assert_eq!(keyword.raw(), Some("ReD"));
         assert_eq!(keyword.source_format(), ColorSourceFormat::Keyword);
         assert_eq!(keyword.stringify(), "#ff0000");
+        assert_eq!(ThemeColor::parse("CYAN").unwrap().stringify(), "#00ffff");
         assert_eq!(
             ThemeColor::parse("transparent").unwrap().stringify(),
             "#00000000"
