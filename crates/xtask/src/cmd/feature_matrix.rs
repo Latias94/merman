@@ -486,12 +486,6 @@ const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
     },
     DependencyFeatureContract {
         package: "merman-core",
-        dependency: "indexmap",
-        expected_features: &["serde"],
-        expected_uses_default_features: None,
-    },
-    DependencyFeatureContract {
-        package: "merman-core",
         dependency: "serde_json",
         expected_features: &["float_roundtrip"],
         expected_uses_default_features: None,
