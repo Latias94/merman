@@ -3,6 +3,7 @@
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
+    feature = "layout-grid",
     feature = "layout-shoal"
 ))]
 use merman_render_graph::class::ClassDiagramModel;
@@ -29,6 +30,37 @@ pub use dagre::debug_build_class_diagram_dagre_graph;
 pub(crate) use dagre::layout as layout_class_diagram_typed_with_config;
 #[cfg(feature = "layout-elk")]
 pub(crate) use elk_layout::layout_class_diagram_elk_typed_with_config_and_operation_seed;
+
+#[cfg(feature = "layout-grid")]
+pub(crate) fn layout_grid(
+    model: &ClassDiagramModel,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &crate::LayoutExecution<'_>,
+    render: &ClassRenderConfig,
+    work: &crate::layout_work::OperationLayoutWorkControl,
+) -> crate::Result<(
+    crate::model::ClassDiagramLayout,
+    ClassPreparedLabels,
+    crate::graph_layout::RouteContract,
+)> {
+    merman_render_graph::class::grid::layout(
+        model,
+        config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        render,
+        crate::graph_label::flowchart_label_metrics_for_layout,
+        work,
+        execution.work_meter_ref(),
+    )
+    .map(|(layout, labels, paint)| {
+        (
+            layout,
+            labels,
+            crate::graph_layout::RouteContract::Grid(paint),
+        )
+    })
+}
 
 #[cfg(all(test, feature = "layout-dagre"))]
 mod native_theme;

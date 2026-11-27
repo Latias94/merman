@@ -1,7 +1,7 @@
 use super::context::ClassEmitCheckpoint;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
 use super::nodes::{
-    ClassNodesRenderContext, ClassNodesRenderState, render_class_elk_adapter_dom,
+    ClassNodesRenderContext, ClassNodesRenderState, render_class_flat_adapter_dom,
     render_class_render_tree,
 };
 use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_document};
@@ -55,6 +55,8 @@ pub struct ClassSvgContext<'a> {
     pub timing: RenderTiming,
     pub hand_drawn_seed: RoughRandomness,
     pub elk_parity: bool,
+    #[cfg(feature = "layout-grid")]
+    pub grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
     #[cfg(feature = "layout-shoal")]
     pub canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
 }
@@ -99,10 +101,24 @@ pub fn render_class_diagram_svg_model_with_config(
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
     let elk_parity = options.elk_parity;
+    #[cfg(feature = "layout-grid")]
+    let grid = options.grid.map(|mut paint| {
+        if !mermaid_config.explicit_config_owns_path("grid.curve")
+            && matches!(relation_theme.native_edge_curve(), Some("step" | "linear"))
+        {
+            // The native straight/orthogonal/sketch forms can use the Grid shaft vertices.
+            paint.curve = "linear";
+        }
+        paint
+    });
+    #[cfg(feature = "layout-grid")]
+    let uses_grid = grid.is_some();
+    #[cfg(not(feature = "layout-grid"))]
+    let uses_grid = false;
 
-    // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
-    // the layout coordinates directly and keeps the viewport padding as the only outer margin.
-    let content_tx = if elk_parity || uses_canonical_routes {
+    // Mermaid's Dagre renderer applies fixed 8px graph margins. The flat registered renderers
+    // emit the layout coordinates directly with the viewport padding as their outer margin.
+    let content_tx = if elk_parity || uses_grid || uses_canonical_routes {
         0.0
     } else {
         CLASS_GRAPH_MARGIN_PX
@@ -223,6 +239,12 @@ pub fn render_class_diagram_svg_model_with_config(
         &line_hop_edges,
         options.work_meter,
     )?;
+    #[cfg(feature = "layout-grid")]
+    let line_hop_paths = if let Some(paint) = grid {
+        super::grid::line_hop_paths(&paint_edges, &relations_by_id, paint, options.work_meter)?
+    } else {
+        line_hop_paths
+    };
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &paint_edges,
         clusters: &layout.clusters,
@@ -232,7 +254,9 @@ pub fn render_class_diagram_svg_model_with_config(
         line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
-        prepared_svg_edge_labels: &prepared_labels.edges_by_id,
+        prepared_labels,
+        #[cfg(feature = "layout-grid")]
+        grid,
         #[cfg(feature = "layout-shoal")]
         canonical_routes,
         diagram_marker_class: aria_roledescription,
@@ -248,7 +272,7 @@ pub fn render_class_diagram_svg_model_with_config(
         hand_drawn_seed: hand_drawn_seed.clone(),
         timing,
         uses_elk_adapter_dom: elk_parity,
-        edge_paths_class: if elk_parity {
+        edge_paths_class: if elk_parity || uses_grid {
             "edges edgePaths"
         } else {
             "edgePaths"
@@ -304,9 +328,9 @@ pub fn render_class_diagram_svg_model_with_config(
         timing,
         emit,
     };
-    if elk_parity {
+    if elk_parity || uses_grid {
         out.push_str(r#"<g class="root">"#);
-        render_class_elk_adapter_dom(
+        render_class_flat_adapter_dom(
             ClassNodesRenderState {
                 out: &mut out,
                 content_bounds: &mut content_bounds,

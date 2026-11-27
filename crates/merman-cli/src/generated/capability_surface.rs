@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:2a88bd488f79037eb314b77ba637357e4574576fe70c49174cdf2fe9b1ff5e72";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:1689cf4aacf0d72e2cae34e65d6c1d7192908fe03b657afa91e14439a78a9e33";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -728,7 +728,7 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         key: CapabilityKey::LayoutGrid,
         id: "layout-grid",
         kind: "engine",
-        description: "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout.",
+        description: "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, and Requirement SVG layout.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },

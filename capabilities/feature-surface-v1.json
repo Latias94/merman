@@ -129,7 +129,7 @@
     {
       "id": "layout-grid",
       "kind": "engine",
-      "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout.",
+      "description": "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, and Requirement SVG layout.",
       "targets": ["native", "web"],
       "implications": ["svg"],
       "absence": {

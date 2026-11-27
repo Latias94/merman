@@ -21,6 +21,8 @@ use merman_render_core::entities::decode_entities_minimal;
 use merman_render_core::graph_layout::{Direction, direction_from_rank};
 use merman_render_core::layout_work::OperationLayoutWorkControl;
 use merman_render_core::math::MathRenderer;
+#[cfg(feature = "layout-grid")]
+use merman_render_core::resources::OperationWorkMeter;
 use merman_render_core::text::{TextMeasurer, WrapMode};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
@@ -56,6 +58,11 @@ pub struct RelationTerminals<'a> {
 }
 
 pub trait MeasurementTarget<'a> {
+    #[cfg(feature = "layout-grid")]
+    fn grid_label_work(&self) -> Option<(&OperationWorkMeter, &OperationLayoutWorkControl)> {
+        None
+    }
+
     fn namespace(&mut self, id: &'a str, parent: Option<&'a str>, title: (f64, f64)) -> Result<()>;
 
     fn node(&mut self, id: &'a str, parent: Option<&'a str>, size: (f64, f64)) -> Result<()>;
@@ -306,14 +313,47 @@ pub fn measure_into<'a>(
         } else {
             Cow::Borrowed(rel.title.as_str())
         };
-        let (lw, lh, prepared) = prepare_edge_title(
-            &title,
-            measurer,
-            text_style,
-            wrap_mode_label,
-            mermaid_config,
-            math_renderer,
-        );
+        let prepare_regular_title = || {
+            prepare_edge_title(
+                &title,
+                measurer,
+                text_style,
+                wrap_mode_label,
+                mermaid_config,
+                math_renderer,
+            )
+        };
+        #[cfg(not(feature = "layout-grid"))]
+        let (lw, lh, prepared) = prepare_regular_title();
+        #[cfg(feature = "layout-grid")]
+        let grid_work = target.grid_label_work();
+        #[cfg(feature = "layout-grid")]
+        let grid = grid_work.is_some();
+        #[cfg(feature = "layout-grid")]
+        let (lw, lh, prepared) = if let Some((meter, work)) = grid_work {
+            if rel.title.is_empty() {
+                (0.0, 0.0, None)
+            } else {
+                let label = super::grid::prepare_label_rect(
+                    &rel.title,
+                    &rel.id,
+                    mermaid_config,
+                    render_config,
+                    measurer,
+                    math_renderer,
+                    work,
+                    meter,
+                )?;
+                let size = label.size;
+                labels
+                    .prepared_labels
+                    .grid_by_id
+                    .insert(rel.id.clone(), label);
+                (size.width, size.height, None)
+            }
+        } else {
+            prepare_regular_title()
+        };
         if let Some(mut label) = prepared {
             let bytes = std::mem::size_of::<(String, ClassPreparedSvgEdgeLabel)>()
                 .saturating_add(std::mem::size_of::<usize>())
@@ -330,6 +370,8 @@ pub fn measure_into<'a>(
         }
 
         let measure_terminal = |text: Option<&str>| {
+            #[cfg(feature = "layout-grid")]
+            let text = text.filter(|&text| !grid || text != "none");
             positive_label_size(plain_label_metrics(
                 text.unwrap_or_default(),
                 measurer,

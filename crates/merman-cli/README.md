@@ -660,8 +660,8 @@ cargo install merman-cli --version 0.11.0 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `layout-grid`, `layout-layered`, `layout-shoal`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and its EPL-2.0 notice and provenance. Lean builds can omit ELK with `--no-default-features`. Features such as `png` and `network-icons` enable `svg` and `icons`, respectively.
 
-In a source build, enable `layout-grid` and the matching Flowchart, Swimlane, Agentflow, ER,
-Mindmap, or Requirement diagram feature to use `layout: grid` in diagram or site config.
+In a source build, enable `layout-grid` and the matching Flowchart, Swimlane, Agentflow, Class,
+ER, Mindmap, or Requirement diagram feature to use `layout: grid` in diagram or site config.
 `merman-cli capabilities --json` reports `layout-grid` when the built CLI can accept that selection.
 Enable `layout-layered` and the matching Flowchart, Swimlane, Agentflow, or Mindmap diagram
 feature for `layout: layered`. Add `layout-dagre` to allow a retry after a recoverable Layered error.

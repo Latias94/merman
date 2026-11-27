@@ -27,8 +27,9 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub(super) relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
-    pub(super) prepared_svg_edge_labels:
-        &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
+    pub(super) prepared_labels: &'a crate::class::ClassPreparedLabels,
+    #[cfg(feature = "layout-grid")]
+    pub(super) grid: Option<merman_render_core::graph_layout::mermaid_grid::GridPaint>,
     #[cfg(feature = "layout-shoal")]
     pub(super) canonical_routes: Option<&'a ClassCanonicalRoutes<'a>>,
     pub(super) diagram_marker_class: &'a str,
@@ -99,7 +100,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     render_class_edge_labels(out, content_bounds, detail, &local_ctx, path_emission)
 }
 
-fn local_edge_context<'a>(
+pub(super) fn local_edge_context<'a>(
     ctx: &ClassSplitEdgeGroupsRenderContext<'a>,
     bounds_dx: f64,
     bounds_dy: f64,
@@ -113,7 +114,9 @@ fn local_edge_context<'a>(
         line_hop_paths: ctx.line_hop_paths,
         relations_by_id: ctx.relations_by_id,
         relation_index_by_id: ctx.relation_index_by_id,
-        prepared_svg_edge_labels: ctx.prepared_svg_edge_labels,
+        prepared_labels: ctx.prepared_labels,
+        #[cfg(feature = "layout-grid")]
+        grid: ctx.grid,
         #[cfg(feature = "layout-shoal")]
         canonical_routes: ctx.canonical_routes,
         diagram_marker_class: ctx.diagram_marker_class,

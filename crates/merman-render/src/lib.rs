@@ -286,6 +286,7 @@ pub const fn layout_grid_available() -> bool {
         any(
             feature = "diagram-flowchart",
             feature = "diagram-agentflow",
+            feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement",
@@ -630,6 +631,7 @@ impl std::ops::Deref for LayoutExecution<'_> {
     not(any(
         feature = "layout-dagre",
         feature = "layout-elk",
+        feature = "layout-grid",
         feature = "layout-shoal"
     )),
     allow(
@@ -663,6 +665,14 @@ pub(crate) fn layout_class_typed_by_engine(
     let backend = options.layout_backend();
     backend.validate_rootless_graph()?;
     match backend {
+        #[cfg(feature = "layout-grid")]
+        layout_backend::GraphLayoutBackend::Grid => class::layout_grid(
+            model,
+            effective_config,
+            options,
+            render_config,
+            &work_control,
+        ),
         #[cfg(feature = "layout-shoal")]
         GraphLayoutBackend::Shoal => class::shoal::layout(
             model,

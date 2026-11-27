@@ -240,6 +240,7 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
+                feature = "diagram-class",
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
                 feature = "diagram-requirement"
@@ -1118,6 +1119,8 @@ fn workflow_grid() {
     workflow_mermaid_layout(
         "grid",
         &[
+            #[cfg(feature = "diagram-class")]
+            ("class", "classDiagram\nclass A\n", "ClassDiagramV2"),
             #[cfg(feature = "diagram-er")]
             (
                 "er",

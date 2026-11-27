@@ -485,6 +485,7 @@ pub(crate) const fn layout_grid_available() -> bool {
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
             feature = "diagram-agentflow",
+            feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-mindmap",
             feature = "diagram-requirement"

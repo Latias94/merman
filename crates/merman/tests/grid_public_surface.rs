@@ -12,6 +12,7 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
                 feature = "diagram-agentflow",
+                feature = "diagram-class",
                 feature = "diagram-er",
                 feature = "diagram-mindmap",
                 feature = "diagram-requirement"
@@ -24,6 +25,7 @@ fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-mindmap",
     feature = "diagram-requirement"
@@ -56,6 +58,8 @@ mod families {
             DiagramFamilyId::AGENTFLOW,
             "agentflow LR\nA[Start] -->|Approved| B[Done]\n",
         ),
+        #[cfg(feature = "diagram-class")]
+        (DiagramFamilyId::CLASS, "classDiagram\nclass A\n"),
         #[cfg(feature = "diagram-er")]
         (
             DiagramFamilyId::ER,
@@ -178,23 +182,4 @@ mod families {
             }))
         ));
     }
-}
-
-#[cfg(feature = "diagram-class")]
-#[test]
-fn class_rejects_grid_as_a_selectable_backend() {
-    use merman::svg::RenderError as SvgError;
-    use merman::{LayoutBackend, RenderError, Renderer};
-
-    let renderer = Renderer::builder()
-        .with_default_layout(LayoutBackend::Grid)
-        .build()
-        .unwrap();
-    assert!(matches!(
-        renderer.render_svg("classDiagram\nclass A\n"),
-        Err(RenderError::Svg(SvgError::UnsupportedLayoutBackend {
-            backend: "grid",
-            ..
-        }))
-    ));
 }

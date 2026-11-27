@@ -33,6 +33,9 @@ mod edge;
 
 mod groups;
 
+#[cfg(feature = "layout-grid")]
+mod grid;
+
 mod interface;
 
 mod label;

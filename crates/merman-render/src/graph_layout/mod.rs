@@ -115,6 +115,7 @@ pub(crate) enum RouteContract {
     #[cfg(all(
         feature = "layout-grid",
         any(
+            feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",

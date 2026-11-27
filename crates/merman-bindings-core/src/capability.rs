@@ -24,6 +24,7 @@ macro_rules! mermaid_layout_capabilities {
                     feature = "diagram-flowchart",
                     feature = "diagram-agentflow",
                     feature = "diagram-swimlane",
+                    feature = "diagram-class",
                     feature = "diagram-er",
                     feature = "diagram-mindmap",
                     feature = "diagram-requirement"

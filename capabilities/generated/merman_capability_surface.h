@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:2a88bd488f79037eb314b77ba637357e4574576fe70c49174cdf2fe9b1ff5e72"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:1689cf4aacf0d72e2cae34e65d6c1d7192908fe03b657afa91e14439a78a9e33"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -265,7 +265,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-dagre", "engine", "Enable Mermaid Dagre-backed SVG graph layout.", MERMAN_CAPABILITY_LAYOUT_DAGRE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_DAGRE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
-    { "layout-grid", "engine", "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, Mindmap, and Requirement SVG layout.", MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS, 1 },
+    { "layout-grid", "engine", "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, Class, ER, Mindmap, and Requirement SVG layout.", MERMAN_CAPABILITY_LAYOUT_GRID_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_GRID_IMPLICATIONS, 1 },
     { "layout-layered", "engine", "Select Mermaid Layered for Flowchart, Swimlane, Agentflow, and Mindmap SVG layout.", MERMAN_CAPABILITY_LAYOUT_LAYERED_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_LAYERED_IMPLICATIONS, 1 },
     { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },

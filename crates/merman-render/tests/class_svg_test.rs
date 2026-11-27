@@ -1391,6 +1391,7 @@ fn class_and_er_elk_missing_sections_paint_clipped_linear_edges_and_centered_lab
                 "classDiagram\nclass A\nclass B\nclass C\nclass D\nclass E\nclass F\nclass G\nclass H\nA \"1\" --> \"many\" H : a deliberately wide relationship label\n",
                 "ClassDiagramV2",
             ),
+            #[cfg(feature = "diagram-er")]
             (
                 "erDiagram\nA ||--o{ WiderTarget : \"a deliberately wide relationship label\"\n",
                 "ErDiagram",

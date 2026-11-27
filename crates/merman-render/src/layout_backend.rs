@@ -211,6 +211,7 @@ pub(crate) fn resolve(
             DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::AGENTFLOW
                 | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::CLASS
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::REQUIREMENT
@@ -399,7 +400,9 @@ mod tests {
                         || (backend == Backend::Grid
                             && matches!(
                                 family,
-                                DiagramFamilyId::ER | DiagramFamilyId::REQUIREMENT
+                                DiagramFamilyId::CLASS
+                                    | DiagramFamilyId::ER
+                                    | DiagramFamilyId::REQUIREMENT
                             )))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);

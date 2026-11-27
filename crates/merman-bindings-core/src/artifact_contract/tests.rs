@@ -892,6 +892,8 @@ fn mermaid_layouts_require_artifact_admission() {
         ),
     ];
     const GRID_ONLY_DIAGRAMS: &[(&str, &str, &[u8])] = &[
+        #[cfg(feature = "diagram-class")]
+        ("classDiagram", "ClassDiagramV2", b"classDiagram\nclass A\n"),
         #[cfg(feature = "diagram-er")]
         (
             "er",
