@@ -20,7 +20,6 @@ use merman_theme_contract::v2::{Elevation, MarkerStyle, Paint, Texture};
 use super::{
     FlowchartEdgeDataPointsScratch, FlowchartHierarchyPlan, FlowchartMarkerBase,
     FlowchartRenderCtx,
-    css::flowchart_normal_edge_css_width,
     defs::compact_classic_point_end,
     flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
     paint::{prepare_dagre_linear_edge_route, with_flowchart_paint_context},
@@ -470,7 +469,7 @@ fn render_scene(
     let line_color = resolved_color(&ctx.compatibility.line_color, meter)?;
     let connector = SceneStroke {
         color: line_color,
-        width: css_width(&flowchart_normal_edge_css_width(ctx.compatibility), meter)?,
+        width: css_width(&ctx.compatibility.normal_edge_css_width(), meter)?,
         dash: None,
     };
 

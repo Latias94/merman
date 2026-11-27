@@ -1,63 +1,72 @@
-use crate::config::{config_css_number_or_string, config_string};
-use crate::theme::{Color, FamilyTheme};
+//! Prepared Flow theme shared by layout, stylesheet, and SVG body paint.
+
+use std::borrow::Cow;
+
+use merman_render_core::{
+    config::{self, ConfigLookup, DiagramLook, config_css_number_or_string, config_string},
+    mermaid_style::font_family_css,
+    svg_css::{PreparedCommonNeoCss, PreparedLookDefs},
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 use serde_json::Value;
 
-use super::native_theme::FlowchartNativeStyle;
+use crate::layout_config::FlowchartConfigView;
+
+mod native;
+pub use native::{FlowchartNativeStyle, default_curve};
 
 /// Operation-local visual compatibility inputs. Raw CSS remains observable in SVG.
 #[derive(Debug)]
-pub(crate) struct FlowchartCompatibilityBinding {
-    pub(crate) look: crate::config::DiagramLook<'static>,
-    pub(crate) hand_drawn_seed: Option<f64>,
-    pub(crate) look_defs: crate::svg::PreparedLookDefs,
-    pub(crate) text_color: String,
-    pub(crate) line_color: String,
+pub struct FlowchartCompatibilityBinding {
+    pub look: DiagramLook<'static>,
+    pub hand_drawn_seed: Option<f64>,
+    pub(crate) look_defs: PreparedLookDefs,
+    pub text_color: String,
+    pub line_color: String,
     pub(crate) arrowhead_color: String,
-    pub(crate) node_border: String,
-    pub(crate) main_bkg: String,
-    pub(crate) node_text_color: String,
-    pub(crate) title_color: String,
-    pub(crate) stroke_width: String,
-    pub(crate) connector_stroke_width: Option<f32>,
+    pub node_border: String,
+    pub main_bkg: String,
+    pub node_text_color: String,
+    pub title_color: String,
+    pub stroke_width: String,
+    pub connector_stroke_width: Option<f32>,
     pub(crate) stroke_width_configured: bool,
     pub(crate) error_bkg: String,
     pub(crate) error_text: String,
-    pub(crate) edge_label_background: String,
+    pub edge_label_background: String,
     pub(crate) tertiary: String,
-    pub(crate) cluster_bkg: String,
-    pub(crate) cluster_border: String,
+    pub cluster_bkg: String,
+    pub cluster_border: String,
     pub(crate) border2: String,
-    pub(crate) drop_shadow: String,
+    pub drop_shadow: String,
     pub(crate) root_font_family: String,
-    pub(crate) root_font_weight: Option<u16>,
-    pub(crate) agentflow_container_stroke: String,
-    pub(crate) neo: crate::svg::PreparedCommonNeoCss,
-    pub(crate) html_labels: bool,
-    pub(crate) node_stroke_width: f32,
-    pub(crate) node_corner_radius: f64,
+    pub root_font_weight: Option<u16>,
+    pub agentflow_container_stroke: String,
+    pub(crate) neo: PreparedCommonNeoCss,
+    pub html_labels: bool,
+    pub node_stroke_width: f32,
+    pub node_corner_radius: f64,
     pub(crate) node_corner_radius_configured: bool,
-    pub(crate) rounded_rect_radius: Value,
-    pub(crate) rounded_rect_radius_truthy: bool,
-    pub(crate) rounded_rect_radius_numeric: Option<f64>,
-    pub(crate) note_fill: String,
-    pub(crate) note_stroke: String,
-    pub(crate) state_inner_fill: String,
-    pub(crate) small_state_shadow: bool,
-    pub(crate) collapsed_agentflow_stroke: String,
+    pub rounded_rect_radius: Value,
+    pub rounded_rect_radius_truthy: bool,
+    pub rounded_rect_radius_numeric: Option<f64>,
+    pub note_fill: String,
+    pub note_stroke: String,
+    pub state_inner_fill: String,
+    pub small_state_shadow: bool,
+    pub collapsed_agentflow_stroke: String,
 }
 
 impl FlowchartCompatibilityBinding {
-    pub(crate) fn title_color_source(
-        config: &(impl crate::config::ConfigLookup + ?Sized),
-    ) -> (Option<&'static str>, &str) {
-        crate::config::selected_config_string(
+    fn title_color_source(config: &(impl ConfigLookup + ?Sized)) -> (Option<&'static str>, &str) {
+        config::selected_config_string(
             config,
             &["themeVariables.titleColor", "themeVariables.textColor"],
         )
         .map_or((None, "#333"), |(path, color)| (Some(path), color))
     }
 
-    pub(crate) fn resolve(config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
+    pub fn resolve(config: &(impl ConfigLookup + ?Sized)) -> Self {
         let theme = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
@@ -66,29 +75,29 @@ impl FlowchartCompatibilityBinding {
         let cluster_border = theme("clusterBorder", "#aaaa33");
         let node_border = theme("nodeBorder", "#9370DB");
         let stroke_width = config_css_number_or_string(config, &["themeVariables", "strokeWidth"]);
-        let node_corner_radius = crate::config::config_f64(config, &["themeVariables", "radius"]);
+        let node_corner_radius = config::config_f64(config, &["themeVariables", "radius"]);
         let rounded_rect_radius = config
             .get("themeVariables")
             .and_then(|theme| theme.get("radius"))
             .filter(|radius| !radius.is_null())
             .cloned()
             .unwrap_or_else(|| serde_json::json!(5));
-        let rounded_rect_radius_truthy = crate::config::json_value_is_truthy(&rounded_rect_radius);
+        let rounded_rect_radius_truthy = config::json_value_is_truthy(&rounded_rect_radius);
         let rounded_rect_radius_numeric = rounded_rect_radius_truthy
-            .then(|| crate::config::json_f64(&rounded_rect_radius))
+            .then(|| config::json_f64(&rounded_rect_radius))
             .flatten();
         Self {
-            look: crate::config::config_diagram_look(config).into_static(),
+            look: config::config_diagram_look(config).into_static(),
             hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            look_defs: PreparedLookDefs::new(config),
             rounded_rect_radius,
             rounded_rect_radius_truthy,
             rounded_rect_radius_numeric,
             note_fill: theme("noteBkgColor", "#fff5ad"),
             note_stroke: theme("noteBorderColor", "#aaaa33"),
             state_inner_fill: theme("stateBorder", &node_border),
-            small_state_shadow: crate::config::value_at(config, &["themeVariables", "nodeShadow"])
-                .is_some_and(crate::config::json_value_is_truthy),
+            small_state_shadow: config::value_at(config, &["themeVariables", "nodeShadow"])
+                .is_some_and(config::json_value_is_truthy),
             collapsed_agentflow_stroke: theme(
                 "flowContainerStroke",
                 &theme("secondaryBorderColor", "#aaaa33"),
@@ -115,24 +124,28 @@ impl FlowchartCompatibilityBinding {
             ),
             cluster_border,
             drop_shadow: theme("dropShadow", "none"),
-            root_font_family: crate::config::config_root_font_family_css(config),
+            root_font_family: config::config_root_font_family_css(config),
             root_font_weight: None,
-            neo: crate::svg::PreparedCommonNeoCss::new(config),
-            html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
-            node_stroke_width: crate::config::config_f64(
-                config,
-                &["themeVariables", "strokeWidth"],
-            )
-            .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
-            .map(|value| value as f32)
-            .unwrap_or(1.3),
+            neo: PreparedCommonNeoCss::new(config),
+            html_labels: FlowchartConfigView::new(config).effective_html_labels(),
+            node_stroke_width: config::config_f64(config, &["themeVariables", "strokeWidth"])
+                .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
+                .map(|value| value as f32)
+                .unwrap_or(1.3),
             node_corner_radius: node_corner_radius.unwrap_or(5.0).max(0.0),
             node_corner_radius_configured: node_corner_radius.is_some(),
         }
     }
 
+    pub fn normal_edge_css_width(&self) -> Cow<'_, str> {
+        self.connector_stroke_width
+            .map_or(Cow::Borrowed(self.stroke_width.as_str()), |width| {
+                Cow::Owned(width.to_string())
+            })
+    }
+
     fn native(
-        config: &merman_model::presentation::PresentationConfig,
+        config: &(impl ConfigLookup + ?Sized),
         theme: &FamilyTheme,
         style: &FlowchartNativeStyle,
     ) -> Self {
@@ -143,9 +156,9 @@ impl FlowchartCompatibilityBinding {
         let width = style.form.stroke_width.to_string();
         let radius = style.form.radius;
         Self {
-            look: crate::config::config_diagram_look(config).into_static(),
+            look: config::config_diagram_look(config).into_static(),
             hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
-            look_defs: crate::svg::PreparedLookDefs::new(config),
+            look_defs: PreparedLookDefs::new(config),
             node_text_color: text_color.clone(),
             text_color,
             arrowhead_color: line_color.clone(),
@@ -154,7 +167,7 @@ impl FlowchartCompatibilityBinding {
             node_border: border.clone(),
             main_bkg: style.node.to_string(),
             title_color: roles.text_title.to_string(),
-            neo: crate::svg::PreparedCommonNeoCss::native_node_stroke(&border, &width),
+            neo: PreparedCommonNeoCss::native_node_stroke(&border, &width),
             stroke_width: width,
             connector_stroke_width: Some(style.form.connector_width as f32),
             stroke_width_configured: config_css_number_or_string(
@@ -170,15 +183,13 @@ impl FlowchartCompatibilityBinding {
             cluster_border: border.clone(),
             border2: border.clone(),
             drop_shadow: "none".to_owned(),
-            root_font_family: crate::theme::font_family_css(
-                theme.typography.stack(theme.typography.body_family),
-            ),
+            root_font_family: font_family_css(theme.typography.stack(theme.typography.body_family)),
             root_font_weight: Some(theme.typography.label_weight),
             agentflow_container_stroke: border.clone(),
-            html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
+            html_labels: FlowchartConfigView::new(config).effective_html_labels(),
             node_stroke_width: style.form.stroke_width as f32,
             node_corner_radius: radius,
-            node_corner_radius_configured: crate::config::config_f64(
+            node_corner_radius_configured: config::config_f64(
                 config,
                 &["themeVariables", "radius"],
             )
@@ -188,22 +199,22 @@ impl FlowchartCompatibilityBinding {
             rounded_rect_radius_numeric: Some(radius),
             note_fill: style.callout.to_string(),
             note_stroke: border.clone(),
-            small_state_shadow: crate::config::value_at(config, &["themeVariables", "nodeShadow"])
-                .is_some_and(crate::config::json_value_is_truthy),
+            small_state_shadow: config::value_at(config, &["themeVariables", "nodeShadow"])
+                .is_some_and(config::json_value_is_truthy),
             collapsed_agentflow_stroke: border,
         }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartPreparedTheme {
-    pub(crate) compatibility: FlowchartCompatibilityBinding,
-    pub(crate) native: Option<FlowchartNativeStyle>,
+pub struct FlowchartPreparedTheme {
+    pub compatibility: FlowchartCompatibilityBinding,
+    pub native: Option<FlowchartNativeStyle>,
 }
 
 impl FlowchartPreparedTheme {
-    pub(crate) fn resolve(
-        config: &merman_model::presentation::PresentationConfig,
+    pub fn resolve(
+        config: &(impl ConfigLookup + ?Sized),
         theme: Option<&FamilyTheme>,
         background: Option<Color>,
     ) -> Self {
@@ -242,7 +253,7 @@ mod tests {
             ] {
                 let config = serde_json::json!({"look": raw, "handDrawnSeed": seed});
                 let binding = FlowchartCompatibilityBinding::resolve(&config);
-                let expected = crate::config::config_diagram_look(&config);
+                let expected = config::config_diagram_look(&config);
                 assert_eq!(binding.look.as_str(), expected.as_str());
                 assert_eq!(binding.look.serialized(), expected.serialized());
                 assert_eq!(binding.hand_drawn_seed, seed.as_f64());

@@ -1,15 +1,14 @@
 pub(crate) use merman_render_flow::bpmn;
 use merman_render_flow::layout_config as config;
+pub(crate) use merman_render_flow::theme as native_theme;
 use merman_render_flow::{class_style, source_style, style};
 #[cfg(test)]
 mod bpmn_layout_tests;
-mod compatibility;
 #[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
 mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
-pub(crate) mod native_theme;
 use crate::graph_label as label;
 mod image;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
@@ -29,13 +28,13 @@ pub(crate) use merman_model::families::flowchart::{
 pub(crate) use class_style::{
     FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
 };
-pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 pub(crate) use edge_occurrence::FlowchartEdgeOwners;
 pub(crate) use merman_render_flow::lane_title::zero_width_lane_title_rows;
 pub(crate) use merman_render_flow::projection::{
     FlowchartEdgeKey, FlowchartEdgeTransportPlan, FlowchartRenderModelRef, ProjectedFlowchartEdge,
     project_flowchart_edge,
 };
+pub(crate) use native_theme::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -44,8 +43,7 @@ pub(crate) use merman_render_flow::projection::{
 ))]
 pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{
-    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles,
-    FlowchartConfigView,
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartBaseTypographyPlan, FlowchartConfigView,
 };
 pub(crate) use image::{ImageSquareGeometry, ImageSquareSizing};
 #[cfg(not(test))]

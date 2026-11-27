@@ -1,7 +1,7 @@
 //! Flowchart document stylesheet and deferred container palette emission.
 
+use std::fmt;
 use std::fmt::Write as _;
-use std::{borrow::Cow, fmt};
 
 use indexmap::IndexMap;
 use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
@@ -10,19 +10,24 @@ use merman_render_core::{
     number_format::canonical_number,
     resources::OperationWorkMeter,
     svg_css::{
-        CssSelectorDiagramId, PreparedCommonNeoCss, SvgDiagramIdValue, SvgId,
-        escape_css_identifier, write_mermaid_base_css_root_rule,
+        CssSelectorDiagramId, SvgDiagramIdValue, SvgId, escape_css_identifier,
+        write_mermaid_base_css_root_rule,
     },
     svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
-    text::TextStyle,
     theme_svg::cssom_color_value,
     write_static_css,
 };
-use merman_theme_contract::v2::Color;
 
-use crate::{class_style::FlowchartClassDefStyles, source_style::FlowchartStyleDeclaration};
+use crate::{
+    class_style::FlowchartClassDefStyles,
+    source_style::FlowchartStyleDeclaration,
+    theme::{FlowchartNativeStyle, FlowchartPreparedTheme},
+};
 
 mod palette;
+
+#[cfg(test)]
+mod document_tests;
 
 pub use palette::ContainerPalette;
 
@@ -37,55 +42,18 @@ pub fn title_css_class(diagram_type: &str) -> &'static str {
     }
 }
 
-/// Borrows the stylesheet inputs from the already prepared compatibility and theme binding.
-pub struct FlowchartStylesheetTheme<'a> {
-    pub line_color: &'a str,
-    pub arrowhead_color: &'a str,
-    pub node_border: &'a str,
-    pub main_bkg: &'a str,
-    pub text_color: &'a str,
-    pub node_text_color: &'a str,
-    pub title_color: &'a str,
-    pub stroke_width: &'a str,
-    pub connector_stroke_width: Option<f32>,
-    pub error_bkg: &'a str,
-    pub error_text: &'a str,
-    pub edge_label_background: &'a str,
-    pub tertiary: &'a str,
-    pub cluster_bkg: &'a str,
-    pub cluster_border: &'a str,
-    pub border2: &'a str,
-    pub drop_shadow: &'a str,
-    pub root_font_family: &'a str,
-    pub root_font_weight: Option<u16>,
-    pub neo: &'a PreparedCommonNeoCss,
-    pub html_labels: bool,
-    pub hand_drawn: bool,
-}
-
-pub enum SwimlaneStylesheet {
-    Mermaid,
-    Native {
-        container: Color,
-        guide: Color,
-        emphasis: Color,
-        on_emphasis: Color,
-    },
-}
-
 pub struct FlowchartStylesheetRequest<'a, DefinitionId> {
     pub diagram_id: SvgId<'a>,
     pub diagram_type: &'a str,
     pub drop_shadow_id: DefinitionId,
     pub drop_shadow_small_id: DefinitionId,
     pub gradient_id: DefinitionId,
-    pub theme: FlowchartStylesheetTheme<'a>,
-    pub native_title: Option<&'a TextStyle>,
+    pub theme: &'a FlowchartPreparedTheme,
     pub palette: &'a ContainerPalette<'a>,
     pub font_family: &'a str,
     pub font_size: f64,
     pub class_defs: &'a IndexMap<String, Vec<String>>,
-    pub swimlane: Option<SwimlaneStylesheet>,
+    pub swimlane: bool,
     pub allow_deferred_palette: bool,
 }
 
@@ -122,12 +90,12 @@ pub fn write_flowchart_stylesheet<'a, DefinitionId: fmt::Display>(
         } else {
             flowchart_palette_offset
         };
-        if let Some(swimlane) = request.swimlane {
+        if request.swimlane {
             write_swimlane_css(
                 &mut css_out,
                 request.diagram_id,
-                request.theme.cluster_border,
-                swimlane,
+                &request.theme.compatibility.cluster_border,
+                request.theme.native.as_ref(),
             );
         }
         palette_offset
@@ -263,15 +231,6 @@ where
     }
 }
 
-pub fn flowchart_normal_edge_css_width(
-    stroke_width: &str,
-    connector_width: Option<f32>,
-) -> Cow<'_, str> {
-    connector_width.map_or(Cow::Borrowed(stroke_width), |width| {
-        Cow::Owned(width.to_string())
-    })
-}
-
 fn write_flowchart_css(
     out: &mut impl SvgOutput,
     request: &FlowchartStylesheetRequest<'_, impl fmt::Display>,
@@ -284,7 +243,6 @@ fn write_flowchart_css(
         drop_shadow_small_id,
         gradient_id,
         theme,
-        native_title,
         palette,
         font_family,
         font_size,
@@ -292,25 +250,26 @@ fn write_flowchart_css(
         ..
     } = request;
     let id = CssSelectorDiagramId(*diagram_id);
-    let stroke = theme.line_color;
-    let arrowhead_color = theme.arrowhead_color;
-    let node_border = theme.node_border;
-    let main_bkg = theme.main_bkg;
-    let text_color = theme.text_color;
-    let node_text_color = theme.node_text_color;
-    let title_color = theme.title_color;
-    let stroke_width = theme.stroke_width;
-    let connector_width =
-        flowchart_normal_edge_css_width(stroke_width, theme.connector_stroke_width);
+    let native_title = theme.native.as_ref().map(|style| &style.title_style);
+    let theme = &theme.compatibility;
+    let stroke = theme.line_color.as_str();
+    let arrowhead_color = theme.arrowhead_color.as_str();
+    let node_border = theme.node_border.as_str();
+    let main_bkg = theme.main_bkg.as_str();
+    let text_color = theme.text_color.as_str();
+    let node_text_color = theme.node_text_color.as_str();
+    let title_color = theme.title_color.as_str();
+    let stroke_width = theme.stroke_width.as_str();
+    let connector_width = theme.normal_edge_css_width();
     let connector_width: &str = connector_width.as_ref();
-    let error_bkg = theme.error_bkg;
-    let error_text = theme.error_text;
-    let edge_label_background = theme.edge_label_background;
-    let tertiary = theme.tertiary;
-    let cluster_bkg = theme.cluster_bkg;
-    let cluster_border = theme.cluster_border;
-    let tooltip_border = theme.border2;
-    let drop_shadow = theme.drop_shadow;
+    let error_bkg = theme.error_bkg.as_str();
+    let error_text = theme.error_text.as_str();
+    let edge_label_background = theme.edge_label_background.as_str();
+    let tertiary = theme.tertiary.as_str();
+    let cluster_bkg = theme.cluster_bkg.as_str();
+    let cluster_border = theme.cluster_border.as_str();
+    let tooltip_border = theme.border2.as_str();
+    let drop_shadow = theme.drop_shadow.as_str();
 
     let faded_label_background;
     let label_bkg = if native_title.is_some() {
@@ -491,7 +450,7 @@ fn write_flowchart_css(
     theme
         .neo
         .write_with_ids(out, id, gradient_id, scoped_drop_shadow)?;
-    let _ = write_mermaid_base_css_root_rule(&mut *out, id, theme.root_font_family);
+    let _ = write_mermaid_base_css_root_rule(&mut *out, id, &theme.root_font_family);
 
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
     // - HTML labels: `.classDef > *` + `.classDef span`
@@ -521,7 +480,7 @@ fn write_flowchart_css(
                 escape_css_identifier(class),
                 style
             );
-        } else if theme.hand_drawn {
+        } else if theme.look.is_hand_drawn() {
             // Hand-drawn nodes render as `.rough-node` and bake classDef fill/stroke directly onto
             // their RoughJS paths. Restricting SVG classDef shape selectors to `.node` and
             // `.cluster` preserves classic/cluster styling in both browsers and `usvg` without
@@ -586,7 +545,7 @@ fn write_swimlane_css<DiagramId>(
     out: &mut impl SvgOutput,
     diagram_id: DiagramId,
     cluster_border: &str,
-    style: SwimlaneStylesheet,
+    native: Option<&FlowchartNativeStyle>,
 ) where
     DiagramId: SvgDiagramIdValue,
 {
@@ -595,13 +554,14 @@ fn write_swimlane_css<DiagramId>(
         out,
         r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
     );
-    if let SwimlaneStylesheet::Native {
-        container,
-        guide,
-        emphasis,
-        on_emphasis,
-    } = style
-    {
+    if let Some(native) = native {
+        let FlowchartNativeStyle {
+            container,
+            guide,
+            emphasis,
+            on_emphasis,
+            ..
+        } = native;
         let _ = write!(
             out,
             "#{id} .swimlane.cluster rect.swimlane-body{{fill:{};stroke:{}}}#{id} .swimlane.cluster rect.swimlane-title{{fill:{};stroke:{}}}#{id} .swimlane-label text{{fill:{}}}#{id} .swimlane-label span{{color:{}}}",
@@ -686,12 +646,7 @@ mod tests {
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
         let mut css = String::new();
-        write_swimlane_css(
-            &mut css,
-            "seq:prod.v1",
-            "#aaaa33",
-            SwimlaneStylesheet::Mermaid,
-        );
+        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33", None);
 
         assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
         assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));

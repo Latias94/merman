@@ -209,35 +209,9 @@ pub struct FlowchartLayout {
     feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
-pub use merman_render_core::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneNodeLayout {
-    pub id: String,
-    pub label: String,
-    pub label_type: String,
-    pub shape: String,
-    #[serde(default)]
-    pub parent_id: Option<String>,
-    #[serde(default)]
-    pub top_lane_id: Option<String>,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub label_width: f64,
-    pub label_height: f64,
-    pub layer: usize,
-    pub order: usize,
-    pub is_edge_label: bool,
-}
+pub use merman_render_core::{
+    SwimlaneDirection, SwimlaneLaneLayout, SwimlaneNodeLayout, SwimlaneTitleRect,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(any(

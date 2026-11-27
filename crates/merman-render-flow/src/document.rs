@@ -16,7 +16,9 @@ use merman_render_core::{
 use crate::stylesheet::{FlowchartStylesheetRequest, title_css_class, write_flowchart_stylesheet};
 
 mod ids;
+mod ownership;
 pub use ids::{FlowchartDocumentId, FlowchartDocumentScope};
+pub use ownership::{FlowchartDocumentIdRequest, FlowchartDocumentIds};
 
 pub struct FlowchartSvgDocumentRequest<'a> {
     pub root_viewport: RootViewportContext<'a>,
@@ -116,13 +118,13 @@ impl FlowchartSvgDocument<'_> {
         self,
         work_meter: &'work OperationWorkMeter,
         stylesheet: FlowchartStylesheetRequest<'_, FlowchartDocumentId<'_>>,
-        look_defs: &PreparedLookDefs,
         emit_graph_children: impl FnOnce(&mut BoundedSvgOutput<'work>) -> Result<bool>,
     ) -> Result<WrittenFlowchartSvg<'work>> {
         let mut out = BoundedSvgOutput::new(work_meter);
         let diagram_id = stylesheet.diagram_id;
         let diagram_type = stylesheet.diagram_type;
         let gradient_id = stylesheet.gradient_id;
+        let look_defs = &stylesheet.theme.compatibility.look_defs;
         let root_document = self.push_root_open(&mut out, diagram_id, diagram_type)?;
         self.push_accessibility_metadata(&mut out);
         let deferred_palette = write_flowchart_stylesheet(&mut out, work_meter, stylesheet)?;

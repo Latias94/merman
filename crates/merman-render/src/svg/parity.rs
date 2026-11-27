@@ -35,28 +35,14 @@ mod c4;
 mod class;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
 pub(crate) use class::class_canonical_marker;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod css;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use css::PreparedCommonNeoCss;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
 pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
-pub(crate) use look_defs::PreparedLookDefs;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -157,15 +143,6 @@ use merman_render_core::text::svg_label as label;
     )
 ))]
 mod canonical_rough;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod look_defs;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 #[cfg_attr(

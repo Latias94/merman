@@ -1,4 +1,5 @@
 use super::*;
+use merman_render_flow::{document as document_ids, layout_config as render_config};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod agentflow;
@@ -11,7 +12,6 @@ mod cluster_geometry;
 mod compact;
 mod css;
 mod defs;
-mod document_ids;
 mod edge;
 mod edge_fill;
 mod edge_geom;
@@ -23,7 +23,6 @@ mod node_style;
 mod paint;
 pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes};
 mod render;
-mod render_config;
 mod render_input;
 mod step;
 mod style;

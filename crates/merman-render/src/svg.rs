@@ -22,13 +22,6 @@ mod parity;
 pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
 #[cfg(all(feature = "diagram-block", feature = "layout-shoal"))]
 pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) use parity::PreparedCommonNeoCss;
-pub(crate) use parity::PreparedLookDefs;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
 pub(crate) use parity::class_canonical_marker;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]

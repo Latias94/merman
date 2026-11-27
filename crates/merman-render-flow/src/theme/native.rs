@@ -1,23 +1,21 @@
-pub(crate) use merman_render_flow::layout_config::density_scales;
-use merman_theme_contract::v2::{DataPalette, EdgeStyle, Elevation, Form};
+use merman_model::{families::flowchart::FlowchartModel, presentation::PresentationConfig};
+use merman_render_core::{mermaid_style::font_family_css, text::TextStyle};
+use merman_theme_contract::v2::{Color, DataPalette, EdgeStyle, Elevation, FamilyTheme, Form};
 
-use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, font_family_css};
-
-use super::FlowchartShape;
+use crate::shapes::FlowchartShape;
 
 #[derive(Debug)]
-pub(crate) struct FlowchartNativeStyle {
-    pub(crate) form: Form,
-    pub(crate) elevation: Elevation,
-    pub(crate) canvas: Color,
-    pub(crate) node: Color,
-    pub(crate) border: Color,
-    pub(crate) container: Color,
-    pub(crate) emphasis: Color,
+pub struct FlowchartNativeStyle {
+    pub form: Form,
+    pub elevation: Elevation,
+    pub canvas: Color,
+    pub node: Color,
+    pub border: Color,
+    pub container: Color,
+    pub emphasis: Color,
     pub(crate) on_emphasis: Color,
     pub(crate) guide: Color,
-    pub(crate) title_style: TextStyle,
+    pub title_style: TextStyle,
     pub(super) callout: Color,
     on_callout: Color,
     data: DataPalette,
@@ -51,7 +49,7 @@ impl FlowchartNativeStyle {
         }
     }
 
-    pub(crate) fn node_colors(
+    pub fn node_colors(
         &self,
         shape: Option<FlowchartShape>,
         ordinal: Option<usize>,
@@ -94,15 +92,15 @@ impl FlowchartNativeStyle {
         }
     }
 
-    pub(crate) fn has_depth(&self) -> bool {
+    pub fn has_depth(&self) -> bool {
         !matches!(self.elevation, Elevation::Flat)
     }
 }
 
-pub(crate) fn default_curve(
+pub fn default_curve(
     edge_style: EdgeStyle,
-    model: &super::FlowchartModel,
-    config: &merman_model::presentation::PresentationConfig,
+    model: &FlowchartModel,
+    config: &PresentationConfig,
 ) -> Option<&'static str> {
     if config.explicit_config_owns_path("flowchart.curve")
         || model

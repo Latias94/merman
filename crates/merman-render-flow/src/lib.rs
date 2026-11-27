@@ -118,3 +118,11 @@ pub mod markers;
 ))]
 #[doc(hidden)]
 pub mod node_body;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod theme;

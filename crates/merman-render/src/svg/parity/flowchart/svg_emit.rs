@@ -1,6 +1,6 @@
 use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use merman_render_flow::graph::FlowchartGraphTimings;
-use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
+use merman_render_flow::stylesheet::FlowchartStylesheetRequest;
 
 use super::defs::{bind_marker_path_sources_for, prepare_flowchart_markers};
 use super::edge_fill::FlowchartEdgeFillPlan;
@@ -210,15 +210,6 @@ pub(super) fn render_flowchart_svg_model(
             drop(_g_viewbox);
             let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
-            let swimlane = swimlane_layout.map(|_| match ctx.native {
-                Some(native) => SwimlaneStylesheet::Native {
-                    container: native.container,
-                    guide: native.guide,
-                    emphasis: native.emphasis,
-                    on_emphasis: native.on_emphasis,
-                },
-                None => SwimlaneStylesheet::Mermaid,
-            });
             let document = document.write(
                 options.work_meter(),
                 FlowchartStylesheetRequest {
@@ -227,17 +218,15 @@ pub(super) fn render_flowchart_svg_model(
                     drop_shadow_id: document_scope.drop_shadow(),
                     drop_shadow_small_id: document_scope.drop_shadow_small(),
                     gradient_id: document_scope.root_gradient(),
-                    theme: super::css::stylesheet_theme(&prepared_theme.compatibility),
-                    native_title: ctx.native.map(|native| &native.title_style),
+                    theme: prepared_theme,
                     palette: &ctx.palette,
                     font_family,
                     font_size,
                     class_defs: &model.class_defs,
-                    swimlane,
+                    swimlane: swimlane_layout.is_some(),
                     allow_deferred_palette: options.generation == crate::svg::SvgGeneration::Static
                         && ctx.icon_registry.is_none(),
                 },
-                &prepared_theme.compatibility.look_defs,
                 |out| {
                     let mut paint = render::FlowchartRootPaint {
                         ctx,

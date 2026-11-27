@@ -1,9 +1,11 @@
 #[cfg(feature = "diagram-agentflow")]
 mod agentflow;
+mod render;
 mod typography;
 
 #[cfg(feature = "diagram-agentflow")]
 pub use agentflow::project_agentflow_flowchart_config;
+pub use render::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub use typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
 
 use merman_model::families::flowchart::FlowchartModel;

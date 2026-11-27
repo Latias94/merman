@@ -1,10 +1,15 @@
 //! Flowchart render configuration preparation.
 
-use crate::flowchart::FlowchartConfigView;
-use crate::text::{TextStyle, WrapMode};
+use merman_model::{families::flowchart::FlowchartModel, presentation::PresentationConfig};
+use merman_render_core::text::{TextStyle, WrapMode};
+
+use super::{
+    FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles, FlowchartConfigView, density_scales,
+};
+use crate::theme::{FlowchartCompatibilityBinding, FlowchartNativeStyle, default_curve};
 
 #[derive(Debug)]
-pub(crate) struct FlowchartRenderConfig {
+pub struct FlowchartRenderConfig {
     pub font_family: String,
     pub font_size: f64,
     pub wrapping_width: f64,
@@ -31,19 +36,16 @@ pub(crate) struct FlowchartRenderConfig {
 }
 
 impl FlowchartRenderConfig {
-    pub(crate) fn apply_native(
+    pub fn apply_native(
         &mut self,
-        native: &crate::flowchart::native_theme::FlowchartNativeStyle,
-        model: &crate::flowchart::FlowchartModel,
-        config: &merman_model::presentation::PresentationConfig,
+        native: &FlowchartNativeStyle,
+        model: &FlowchartModel,
+        config: &PresentationConfig,
         uses_elk: bool,
     ) {
-        self.node_padding *= crate::flowchart::native_theme::density_scales(native.form.density).0;
+        self.node_padding *= density_scales(native.form.density).0;
         self.cluster_fill_color = native.container.to_string();
-        if !uses_elk
-            && let Some(curve) =
-                crate::flowchart::native_theme::default_curve(native.form.edge_style, model, config)
-        {
+        if !uses_elk && let Some(curve) = default_curve(native.form.edge_style, model, config) {
             self.default_edge_interpolate = curve.to_owned();
         }
         if native.form.radius > 0.0 {
@@ -52,12 +54,12 @@ impl FlowchartRenderConfig {
     }
 }
 
-pub(crate) fn prepare_flowchart_render_config(
-    model: &crate::flowchart::FlowchartModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
+pub fn prepare_flowchart_render_config(
+    model: &FlowchartModel,
+    effective_config: &PresentationConfig,
+    compatibility: &FlowchartCompatibilityBinding,
     is_elk_layout: bool,
-    base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
+    base_typography: Option<&FlowchartBaseTypographyPlan>,
 ) -> FlowchartRenderConfig {
     let config = FlowchartConfigView::new(effective_config);
     let typography = base_typography.map_or_else(
@@ -66,7 +68,7 @@ pub(crate) fn prepare_flowchart_render_config(
             let font_size = config.render_font_size();
             let text_style = config.render_text_style(&font_family, font_size);
             let html_label_text_style = config.html_label_measurement_base_style(&text_style);
-            crate::flowchart::FlowchartBaseTypographyStyles {
+            FlowchartBaseTypographyStyles {
                 font_family,
                 font_size,
                 text_style,
@@ -75,7 +77,7 @@ pub(crate) fn prepare_flowchart_render_config(
         },
         |plan| plan.render_styles(effective_config),
     );
-    let crate::flowchart::FlowchartBaseTypographyStyles {
+    let FlowchartBaseTypographyStyles {
         font_family,
         font_size,
         text_style,

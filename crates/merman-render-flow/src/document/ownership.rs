@@ -4,12 +4,11 @@
 //! as generated DOM identifiers because nodes, clusters, lanes, edges, accessibility metadata,
 //! filters, markers, root-theme resources, and prepared-text labels all share one SVG namespace.
 
-use merman_render_core::svg_css::SvgId;
-pub(in crate::svg::parity::flowchart) use merman_render_flow::document::FlowchartDocumentId;
-use merman_render_flow::document::FlowchartDocumentScope;
+use merman_render_core::{LayoutNode, SwimlaneLaneLayout, SwimlaneNodeLayout, svg_css::SvgId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::render_input::FlowchartRenderEdgeRef;
+use super::{FlowchartDocumentId, FlowchartDocumentScope};
+use crate::projection::{FlowchartEdgeKey, FlowchartRenderEdgeRef};
 
 #[derive(Debug, Clone, Copy)]
 enum FlowchartNodeDocumentId {
@@ -17,32 +16,29 @@ enum FlowchartNodeDocumentId {
     Subgraph(usize),
 }
 
+/// Assigns generated IDs to prepared layout and semantic owners.
 #[derive(Debug)]
-pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIds {
+pub struct FlowchartDocumentIds {
     scope: FlowchartDocumentScope,
-    edge_ids: FxHashSet<crate::flowchart::FlowchartEdgeKey>,
+    edge_ids: FxHashSet<FlowchartEdgeKey>,
     node_ids: FxHashMap<String, FlowchartNodeDocumentId>,
     cluster_ids: FxHashMap<String, usize>,
     lane_ids: FxHashMap<String, usize>,
     synthetic_label_ids: FxHashMap<String, usize>,
 }
 
-pub(in crate::svg::parity::flowchart) struct FlowchartDocumentIdRequest<'plan, 'data> {
-    pub(in crate::svg::parity::flowchart) diagram_id: SvgId<'plan>,
-    pub(in crate::svg::parity::flowchart) edge_order: &'plan [FlowchartRenderEdgeRef<'data>],
-    pub(in crate::svg::parity::flowchart) node_dom_index: &'plan FxHashMap<&'data str, usize>,
-    pub(in crate::svg::parity::flowchart) subgraph_index_by_id: &'plan FxHashMap<&'data str, usize>,
-    pub(in crate::svg::parity::flowchart) layout_nodes: &'data [crate::model::LayoutNode],
-    pub(in crate::svg::parity::flowchart) swimlane_nodes:
-        Option<&'data [crate::model::SwimlaneNodeLayout]>,
-    pub(in crate::svg::parity::flowchart) swimlane_lanes:
-        Option<&'data [crate::model::SwimlaneLaneLayout]>,
+pub struct FlowchartDocumentIdRequest<'plan, 'data> {
+    pub diagram_id: SvgId<'plan>,
+    pub edge_order: &'plan [FlowchartRenderEdgeRef<'data>],
+    pub node_dom_index: &'plan FxHashMap<&'data str, usize>,
+    pub subgraph_index_by_id: &'plan FxHashMap<&'data str, usize>,
+    pub layout_nodes: &'data [LayoutNode],
+    pub swimlane_nodes: Option<&'data [SwimlaneNodeLayout]>,
+    pub swimlane_lanes: Option<&'data [SwimlaneLaneLayout]>,
 }
 
 impl FlowchartDocumentIds {
-    pub(in crate::svg::parity::flowchart) fn prepare(
-        request: FlowchartDocumentIdRequest<'_, '_>,
-    ) -> Self {
+    pub fn prepare(request: FlowchartDocumentIdRequest<'_, '_>) -> Self {
         let scope = FlowchartDocumentScope::new(request.diagram_id);
 
         let edge_ids = request.edge_order.iter().map(|edge| edge.key).collect();
@@ -105,61 +101,43 @@ impl FlowchartDocumentIds {
         }
     }
 
-    pub(in crate::svg::parity::flowchart) fn scope(&self) -> &FlowchartDocumentScope {
+    pub fn scope(&self) -> &FlowchartDocumentScope {
         &self.scope
     }
 
-    pub(in crate::svg::parity::flowchart) fn edge(
-        &self,
-        key: crate::flowchart::FlowchartEdgeKey,
-    ) -> Option<FlowchartDocumentId<'_>> {
+    pub fn edge(&self, key: FlowchartEdgeKey) -> Option<FlowchartDocumentId<'_>> {
         self.edge_ids.contains(&key).then(|| {
             self.scope
                 .edge(key.semantic_index(), key.self_loop_segment_order())
         })
     }
 
-    pub(in crate::svg::parity::flowchart) fn node(
-        &self,
-        raw_id: &str,
-    ) -> Option<FlowchartDocumentId<'_>> {
+    pub fn node(&self, raw_id: &str) -> Option<FlowchartDocumentId<'_>> {
         self.node_ids.get(raw_id).map(|&owner| match owner {
             FlowchartNodeDocumentId::Node(ordinal) => self.scope.node(ordinal),
             FlowchartNodeDocumentId::Subgraph(ordinal) => self.scope.subgraph_node(ordinal),
         })
     }
 
-    pub(in crate::svg::parity::flowchart) fn cluster(
-        &self,
-        raw_id: &str,
-    ) -> Option<FlowchartDocumentId<'_>> {
+    pub fn cluster(&self, raw_id: &str) -> Option<FlowchartDocumentId<'_>> {
         self.cluster_ids
             .get(raw_id)
             .map(|&ordinal| self.scope.cluster(ordinal))
     }
 
-    pub(in crate::svg::parity::flowchart) fn lane(
-        &self,
-        raw_id: &str,
-    ) -> Option<FlowchartDocumentId<'_>> {
+    pub fn lane(&self, raw_id: &str) -> Option<FlowchartDocumentId<'_>> {
         self.lane_ids
             .get(raw_id)
             .map(|&ordinal| self.scope.lane(ordinal))
     }
 
-    pub(in crate::svg::parity::flowchart) fn synthetic_label(
-        &self,
-        raw_id: &str,
-    ) -> Option<FlowchartDocumentId<'_>> {
+    pub fn synthetic_label(&self, raw_id: &str) -> Option<FlowchartDocumentId<'_>> {
         self.synthetic_label_ids
             .get(raw_id)
             .map(|&ordinal| self.scope.synthetic_label(ordinal))
     }
 
-    pub(in crate::svg::parity::flowchart) fn icon_scope(
-        &self,
-        raw_node_id: &str,
-    ) -> Option<String> {
+    pub fn icon_scope(&self, raw_node_id: &str) -> Option<String> {
         // Iconify rewrites fragment ids from this unescaped logical prefix. Materialize only this
         // one node-local boundary; XML/CSS escaping happens later inside the icon renderer.
         self.node(raw_node_id).map(|id| format!("{id}-icon"))
@@ -176,16 +154,17 @@ impl FlowchartDocumentIds {
 
     #[cfg(test)]
     fn compact_owner_payload_bytes(&self) -> usize {
-        self.edge_ids.len() * std::mem::size_of::<crate::flowchart::FlowchartEdgeKey>()
-            + self.node_ids.len() * std::mem::size_of::<(&str, FlowchartNodeDocumentId)>()
+        self.edge_ids.len() * std::mem::size_of::<FlowchartEdgeKey>()
+            + self.node_ids.len() * std::mem::size_of::<(String, FlowchartNodeDocumentId)>()
             + (self.cluster_ids.len() + self.lane_ids.len() + self.synthetic_label_ids.len())
-                * std::mem::size_of::<(&str, usize)>()
+                * std::mem::size_of::<(String, usize)>()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_model::families::flowchart::FlowEdge;
 
     const DOCUMENT_NAMESPACE: &str = "merman-flowchart-document";
 
@@ -217,8 +196,62 @@ mod tests {
         );
     }
 
-    fn edge(id: String) -> crate::flowchart::FlowEdge {
-        crate::flowchart::FlowEdge {
+    #[test]
+    fn synthetic_label_ordinals_preserve_layout_priority_and_swimlane_row_offsets() {
+        let layout_nodes = ["semantic", "shared", "shared"].map(|id| LayoutNode {
+            id: id.to_owned(),
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        });
+        let swimlane_nodes =
+            [("plain", false), ("shared", true), ("generated", true)].map(|(id, is_edge_label)| {
+                SwimlaneNodeLayout {
+                    id: id.to_owned(),
+                    label: String::new(),
+                    label_type: String::new(),
+                    shape: String::new(),
+                    parent_id: None,
+                    top_lane_id: None,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                    label_width: 0.0,
+                    label_height: 0.0,
+                    layer: 0,
+                    order: 0,
+                    is_edge_label,
+                }
+            });
+        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: SvgId::new("diagram").unwrap(),
+            edge_order: &[],
+            node_dom_index: &FxHashMap::from_iter([("semantic", 0)]),
+            subgraph_index_by_id: &FxHashMap::default(),
+            layout_nodes: &layout_nodes,
+            swimlane_nodes: Some(&swimlane_nodes),
+            swimlane_lanes: None,
+        });
+
+        assert!(ids.synthetic_label("plain").is_none());
+        assert!(ids.synthetic_label("semantic").is_none());
+        assert_eq!(
+            ids.synthetic_label("shared").unwrap().to_string(),
+            "diagram-merman-flowchart-document-synthetic-label-1"
+        );
+        assert_eq!(
+            ids.synthetic_label("generated").unwrap().to_string(),
+            "diagram-merman-flowchart-document-synthetic-label-5"
+        );
+    }
+
+    fn edge(id: String) -> FlowEdge {
+        FlowEdge {
             id,
             from: "A".to_string(),
             to: "B".to_string(),
@@ -257,7 +290,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, edge)| FlowchartRenderEdgeRef {
-                key: crate::flowchart::FlowchartEdgeKey::new(index),
+                key: FlowchartEdgeKey::new(index),
                 edge,
             })
             .collect::<Vec<_>>();
@@ -278,7 +311,7 @@ mod tests {
             .map(|(index, id)| (id.as_str(), index))
             .collect::<FxHashMap<_, _>>();
         let layout_nodes = (0..SYNTHETIC_COUNT)
-            .map(|index| crate::model::LayoutNode {
+            .map(|index| LayoutNode {
                 id: format!("synthetic-{index}"),
                 x: 0.0,
                 y: 0.0,
@@ -308,15 +341,15 @@ mod tests {
             ids.scope().as_str().len(),
             diagram_id.len() + DOCUMENT_NAMESPACE.len() + 1
         );
-        let largest_compact_entry = std::mem::size_of::<(&str, FlowchartNodeDocumentId)>()
-            .max(std::mem::size_of::<(&str, usize)>())
-            .max(std::mem::size_of::<crate::flowchart::FlowchartEdgeKey>());
+        let largest_compact_entry = std::mem::size_of::<(String, FlowchartNodeDocumentId)>()
+            .max(std::mem::size_of::<(String, usize)>())
+            .max(std::mem::size_of::<FlowchartEdgeKey>());
         assert!(
             ids.compact_owner_payload_bytes() <= ids.compact_owner_count() * largest_compact_entry,
-            "owner payload must contain only borrowed identities and fixed-size ordinals"
+            "the inline owner payload is independent of the document namespace length"
         );
         assert_eq!(
-            ids.edge(crate::flowchart::FlowchartEdgeKey::new(EDGE_COUNT - 1))
+            ids.edge(FlowchartEdgeKey::new(EDGE_COUNT - 1))
                 .expect("prepared edge id")
                 .to_string(),
             format!("{diagram_id}-{DOCUMENT_NAMESPACE}-edge-{}", EDGE_COUNT - 1)
@@ -342,10 +375,10 @@ mod tests {
     fn self_loop_segments_have_distinct_document_ids_under_one_semantic_owner() {
         let source_edge = edge("authored".to_owned());
         let edge_order = [
-            crate::flowchart::FlowchartEdgeKey::new(0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 1),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 2),
+            FlowchartEdgeKey::new(0),
+            FlowchartEdgeKey::self_loop_segment(0, 0),
+            FlowchartEdgeKey::self_loop_segment(0, 1),
+            FlowchartEdgeKey::self_loop_segment(0, 2),
         ]
         .map(|key| FlowchartRenderEdgeRef {
             key,
@@ -372,12 +405,9 @@ mod tests {
         for (order, id) in document_ids[1..].iter().enumerate() {
             assert!(id.ends_with(&format!("-edge-0-segment-{order}")));
         }
+        assert!(ids.edge(FlowchartEdgeKey::new(1)).is_none());
         assert!(
-            ids.edge(crate::flowchart::FlowchartEdgeKey::new(1))
-                .is_none()
-        );
-        assert!(
-            ids.edge(crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 3))
+            ids.edge(FlowchartEdgeKey::self_loop_segment(0, 3))
                 .is_none()
         );
     }

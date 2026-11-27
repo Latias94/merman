@@ -106,6 +106,6 @@ mod xml_chars;
 pub use geometry::{Bounds, LayoutPoint};
 pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[doc(hidden)]
-pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneTitleRect};
+pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneNodeLayout, SwimlaneTitleRect};
 #[cfg(feature = "svg-output")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};
