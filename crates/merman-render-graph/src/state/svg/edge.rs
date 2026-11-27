@@ -583,6 +583,7 @@ fn state_canonical_edge_bounds(
     bounds
 }
 
+#[derive(Default)]
 pub(super) struct StateEdgePathScratch {
     #[cfg(feature = "layout-shoal")]
     canonical: CanonicalPaintScratch,
@@ -592,21 +593,6 @@ pub(super) struct StateEdgePathScratch {
     classes: String,
     marker_end: String,
     ryu: ryu_js::Buffer,
-}
-
-impl Default for StateEdgePathScratch {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "layout-shoal")]
-            canonical: CanonicalPaintScratch::default(),
-            json: Vec::new(),
-            base64: String::new(),
-            style: String::new(),
-            classes: String::new(),
-            marker_end: String::new(),
-            ryu: ryu_js::Buffer::new(),
-        }
-    }
 }
 
 /// Formats `&[LayoutPoint]` into `out` byte-for-byte identically to `serde_json::to_writer`,

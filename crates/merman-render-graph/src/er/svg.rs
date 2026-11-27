@@ -345,22 +345,12 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[ErRelationship]) -> String {
     format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
 }
 
+#[derive(Default)]
 struct RoughRectBorderPath {
     path: String,
     fill_path: String,
     coordinates: [String; 4],
     ryu: ryu_js::Buffer,
-}
-
-impl Default for RoughRectBorderPath {
-    fn default() -> Self {
-        Self {
-            path: String::new(),
-            fill_path: String::new(),
-            coordinates: Default::default(),
-            ryu: ryu_js::Buffer::new(),
-        }
-    }
 }
 
 #[inline]
