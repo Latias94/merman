@@ -2,7 +2,7 @@ use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use super::CynefinTextRole;
-use crate::mermaid_style::{
+use merman_render_core::mermaid_style::{
     css_font_size_is_zero, css_font_size_value_override, is_resource_free_css_value,
     resolve_explicit_css_absolute_font_size_px,
 };
@@ -64,8 +64,8 @@ fn admit_painter_font_size_px(css: &str, size: f64) -> Option<f64> {
 impl CynefinFontBinding {
     pub(super) fn new(config: &Value) -> Self {
         // Match the already prepared common root rule, including its number canonicalization.
-        let inherited_px = crate::number_format::canonicalize_number(
-            crate::config::config_theme_font_size_css_or_root_number_px(config, 16.0),
+        let inherited_px = merman_render_core::number_format::canonicalize_number(
+            merman_render_core::config::config_theme_font_size_css_or_root_number_px(config, 16.0),
         );
         let values = &config["themeVariables"]["cynefin"];
         let domain = FontOperand::new(values.get("domainFontSize"), 16.0);
@@ -179,7 +179,7 @@ fn number_px(number: f64) -> String {
 /// Decimal strings use binary64 parsing; bounded radix integers retain their exact conversion.
 /// Radix integers outside `u64` have no computed size.
 fn subtraction_operand(raw: &str) -> Option<f64> {
-    let raw = crate::text::trim_ecmascript_whitespace(raw);
+    let raw = merman_render_core::text::trim_ecmascript_whitespace(raw);
     if raw.is_empty() {
         return Some(0.0);
     }

@@ -262,12 +262,11 @@ fn prepare_railroad_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::railroad::resolve_railroad_style(&meta.effective_config, native);
-    let layout = crate::railroad::layout_railroad_diagram_typed_for_type_with_style(
+    let (layout, style) = crate::railroad::prepare_railroad_diagram(
         model,
         diagram_type,
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Railroad(Box::new(
@@ -323,12 +322,10 @@ fn prepare_cynefin_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::cynefin::CynefinStyle::resolve(&meta.effective_config, native);
-    let layout = crate::cynefin::layout_cynefin_diagram_typed_with_style(
+    let (layout, style) = merman_render_structured::cynefin::prepare_cynefin_diagram(
         model,
-        meta.effective_config.as_value(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Cynefin(Box::new(
@@ -346,13 +343,11 @@ fn prepare_wardley_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::wardley::WardleyStyle::resolve(&meta.effective_config, native);
-    let layout = crate::wardley::layout_wardley_diagram_typed_with_style(
+    let (layout, style) = crate::wardley::prepare_wardley_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Wardley(Box::new(
@@ -773,19 +768,12 @@ fn prepare_quadrant_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
-        native,
-        &meta.effective_config,
-        model,
-        execution.work_meter_ref(),
-    )?;
-    let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
+    let (layout, point_theme) = crate::quadrantchart::prepare_quadrantchart_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        &point_theme,
-        execution.text_measurer(),
+        &meta.effective_config,
+        execution.native_family_theme(),
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::QuadrantChart(Box::new(
         QuadrantChartFamilyArtifact {

@@ -2,6 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-cynefin")]
+#[doc(hidden)]
+pub mod cynefin;
+
 #[cfg(feature = "diagram-info")]
 #[doc(hidden)]
 pub mod info;

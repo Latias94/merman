@@ -1,11 +1,23 @@
-use super::*;
-use crate::wardley::{
+use std::fmt::Write as _;
+
+use merman_model::{OperationPhase, families::wardley::WardleyDiagramModel};
+use merman_render_core::{
+    Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext, RootedSvg},
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput},
+    xml::{escape_attr_display, escape_xml_display},
+};
+
+use super::{
     WardleyAnnotationsBoxLayout, WardleyArrowLayout, WardleyCircleLayout, WardleyDiagramLayout,
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
-    WardleyPaintBinding, WardleySourceOverlayLayout, WardleyStyle, WardleyTextAnchor,
-    WardleyTextLayout, WardleyTextRole,
+    WardleySourceOverlayLayout, WardleyStyle, WardleyTextAnchor, WardleyTextLayout,
+    font_size::WardleyFontSize,
+    theme::{WardleyPaintBinding, WardleyTextRole},
 };
-use merman_model::families::wardley::WardleyDiagramModel;
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {
@@ -46,7 +58,7 @@ fn write_text(
     let font_size = match wardley_style.font_size(role) {
         Some(size) => size,
         None => {
-            fallback_size = crate::wardley::WardleyFontSize::numeric(text.font_size);
+            fallback_size = WardleyFontSize::numeric(text.font_size);
             &fallback_size
         }
     };
@@ -151,7 +163,7 @@ fn write_circle(
 
 fn write_accessibility(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
 ) -> Result<()> {
@@ -347,15 +359,15 @@ fn write_pipelines(
 fn write_links(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    diagram_id: SvgDiagramId<'_>,
-    options: &SvgExecution<'_>,
+    diagram_id: SvgId<'_>,
+    work_meter: &OperationWorkMeter,
     wardley_style: &WardleyStyle,
 ) -> Result<()> {
     let theme = wardley_style.paint_binding();
     out.push_str(r#"<g class="wardley-links">"#);
     out.checkpoint()?;
     for link in &layout.links {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         let class = if link.dashed {
             "wardley-link wardley-link--dashed"
         } else {
@@ -384,7 +396,7 @@ fn write_links(
             );
         }
         out.replace_range(insert_at..insert_at, &marker_attrs)?;
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
     }
     for link in &layout.links {
         if let Some(label) = &link.label {
@@ -409,13 +421,13 @@ fn write_trends(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyPaintBinding,
-    diagram_id: SvgDiagramId<'_>,
-    options: &SvgExecution<'_>,
+    diagram_id: SvgId<'_>,
+    work_meter: &OperationWorkMeter,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-trends">"#);
     out.checkpoint()?;
     for trend in &layout.trends {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         write_line(
             out,
             trend.line,
@@ -427,7 +439,7 @@ fn write_trends(
         let insert_at = out.len() - 2;
         let marker_attr = format!(r#" marker-end="url(#arrow-{diagram_id})""#);
         out.replace_range(insert_at..insert_at, &marker_attr)?;
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -763,7 +775,7 @@ fn write_marker_path(out: &mut impl SvgOutput, path: &str, fill: &str) -> Result
 
 fn write_defs(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     theme: &WardleyPaintBinding,
 ) -> Result<()> {
     let diagram_id = escape_attr_display(diagram_id);
@@ -786,13 +798,24 @@ fn write_defs(
     out.checkpoint()
 }
 
-pub(crate) fn render_wardley_diagram_svg_model(
+/// Operation context for the Wardley document before shared SVG finalization.
+pub struct WardleySvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+    /// Whether the session supplies a canvas paint, including an explicit transparent paint.
+    pub has_host_canvas: bool,
+}
+
+/// Emits the complete Wardley document from its paired layout and resolved style.
+pub fn render_wardley_svg(
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramModel,
     wardley_style: &WardleyStyle,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("wardley");
+    context: &WardleySvgContext<'_>,
+) -> Result<RootedSvg> {
+    let diagram_id = context.diagram_id;
+    let work_meter = context.work_meter;
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
@@ -806,9 +829,9 @@ pub(crate) fn render_wardley_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::WARDLEY, diagram_id)
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr)?;
 
@@ -823,7 +846,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
         out.push_str(r#"<g class="wardley-map">"#);
         out.checkpoint()?;
     }
-    if !wardley_style.is_native() && options.family.session().canvas_background().is_none() {
+    if !wardley_style.is_native() && !context.has_host_canvas {
         let _ = write!(
             out,
             r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,
@@ -850,8 +873,8 @@ pub(crate) fn render_wardley_diagram_svg_model(
     write_stages(&mut out, layout, wardley_style)?;
     write_grid(&mut out, layout, theme)?;
     write_pipelines(&mut out, layout, model, theme)?;
-    write_links(&mut out, layout, diagram_id, options, wardley_style)?;
-    write_trends(&mut out, layout, theme, diagram_id, options)?;
+    write_links(&mut out, layout, diagram_id, work_meter, wardley_style)?;
+    write_trends(&mut out, layout, theme, diagram_id, work_meter)?;
     write_nodes(&mut out, layout, wardley_style)?;
     write_annotations(&mut out, layout, wardley_style)?;
     write_notes(&mut out, layout, wardley_style)?;
@@ -873,32 +896,42 @@ pub(crate) fn render_wardley_diagram_svg_model(
     out.checkpoint()?;
     write_defs(&mut out, diagram_id, theme)?;
     out.push_str("</svg>");
-    options.checkpoint_emit()?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
     root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{
-        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    use merman_model::{family::DiagramFamilyId, presentation::PresentationConfig};
+    use merman_render_core::{
+        Error,
+        resources::{
+            RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+        },
+        svg_css::SvgDiagramIdProjection,
+        text::{TextMeasurer, TextMetrics, TextStyle},
     };
-    use crate::text::DeterministicTextMeasurer;
+    use merman_theme_contract::v2::ThemeCompiler;
+
+    use super::super::{prepare_wardley_diagram, test_support::presentation_config};
+
+    struct NoAnnotationMeasurements;
+
+    impl TextMeasurer for NoAnnotationMeasurements {
+        fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+            panic!("fixtures without annotation boxes do not measure text");
+        }
+    }
 
     #[test]
     fn wardley_evolved_model_label_keeps_its_source_evolution_paint() {
-        use crate::theme::ThemeCompiler;
-
         let native = ThemeCompiler::new()
             .compile_json(br#"{"schema_version":2,"extends":"blueprint"}"#, None)
             .unwrap();
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "themeVariables": { "wardley": { "evolutionStroke": "#ab1234" } }
         }));
-        let style = WardleyStyle::resolve(
-            &config,
-            Some(native.family(crate::DiagramFamilyId::WARDLEY.as_str())),
-        );
         let model: WardleyDiagramModel = serde_json::from_value(serde_json::json!({
             "nodes": [{
                 "id": "evolved", "label": "Evolved API", "x": 0.8, "y": 0.6,
@@ -906,12 +939,12 @@ mod tests {
             }]
         }))
         .unwrap();
-        let layout = crate::wardley::layout_wardley_diagram_typed_with_style(
+        let (layout, style) = prepare_wardley_diagram(
             &model,
             None,
-            config.as_value(),
-            &style,
-            &DeterministicTextMeasurer::default(),
+            &config,
+            Some(native.family(DiagramFamilyId::WARDLEY.as_str())),
+            &NoAnnotationMeasurements,
         )
         .unwrap();
         let mut svg = String::new();
@@ -924,38 +957,28 @@ mod tests {
         assert_eq!(label.attribute("fill"), Some("#ab1234"));
     }
 
-    fn render_wardley_with_policy(
-        policy: RenderResourcePolicy,
-    ) -> crate::Result<root_svg::RootedSvg> {
+    fn render_wardley_with_policy(policy: RenderResourcePolicy) -> Result<RootedSvg> {
         let model = WardleyDiagramModel::default();
-        let effective_config = serde_json::json!({});
-        let effective_mermaid_config =
-            crate::test_support::presentation_config(effective_config.clone());
-        let style = WardleyStyle::resolve(&effective_mermaid_config, None);
-        let layout = crate::wardley::layout_wardley_diagram_typed(
+        let (layout, style) = prepare_wardley_diagram(
             &model,
             None,
-            &effective_config,
-            &DeterministicTextMeasurer::default(),
+            &PresentationConfig::empty_object(),
+            None,
+            &NoAnnotationMeasurements,
         )?;
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(policy)
-            .begin_session()
-            .expect("render session");
-        let request = SvgRenderOptions {
-            diagram_id: Some("wardley-bounded".to_string()),
-            ..Default::default()
+        let work_meter = OperationWorkMeter::new(policy);
+        let projection = SvgDiagramIdProjection::new(&work_meter);
+        let diagram_id = SvgId::new("wardley-bounded")
+            .unwrap()
+            .with_projection(&projection);
+        let context = WardleySvgContext {
+            diagram_id,
+            viewport: RootViewportContext::new(DiagramFamilyId::WARDLEY, diagram_id),
+            work_meter: &work_meter,
+            has_host_canvas: false,
         };
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::unthemed_for_test(
-            &request,
-            &debug,
-            &session,
-            crate::DiagramFamilyId::WARDLEY,
-        )
-        .expect("SVG execution");
 
-        render_wardley_diagram_svg_model(&layout, &model, &style, &execution)
+        render_wardley_svg(&layout, &model, &style, &context)
     }
 
     #[test]
@@ -981,7 +1004,7 @@ mod tests {
                 .expect("valid below-exact Wardley SVG ceiling"),
         )
         .expect_err("one byte below the Wardley SVG sink size must fail");
-        let crate::Error::ResourceLimitExceeded(limit) = error else {
+        let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected Wardley MaxSvgBytes rejection, got {error}");
         };
         assert_eq!(limit.cause, ResourceLimitCause::Ceiling);

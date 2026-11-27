@@ -2,9 +2,11 @@ use merman_model::families::railroad::RailroadDiagramModel;
 use merman_render_core::{
     Error, Result,
     number_format::canonical_number as fmt,
-    svg_css::{SvgDiagramIdValue, escape_css_identifier},
-    svg_output::{SvgOutput, XmlTextOutput},
-    text::TextStyle,
+    resources::OperationWorkMeter,
+    root_svg::{DiagramBounds, RootChrome, RootViewportContext, RootViewportSpec, RootedSvg},
+    svg_css::{SvgId, escape_css_identifier},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::TextMeasurer,
     xml::{escape_xml_display, is_xml_1_0_char},
 };
 
@@ -13,16 +15,42 @@ use super::{
     layout::{RailroadRenderNode, railroad_render_node},
 };
 
-/// Writes Railroad accessibility text, styles, and rules into an open SVG document.
-///
-/// The caller supplies the projected diagram ID and its raw SVG text bbox measurements.
-pub fn write_svg_contents(
+/// Emits the complete Railroad SVG before shared canvas and terminal admission.
+pub fn render_railroad_svg(
+    layout: &RailroadDiagramLayout,
+    model: &RailroadDiagramModel,
+    style: &RailroadStyle,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+    measurer: &dyn TextMeasurer,
+) -> Result<RootedSvg> {
+    let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
+    let root_spec = RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let mut root_chrome = RootChrome::new(diagram_id, &layout.diagram_type);
+    root_chrome.class = Some("railroad-diagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let root_document = root_viewport.write_open(&mut out, root_spec, root_chrome)?;
+
+    write_svg_contents(&mut out, layout, model, style, measurer, diagram_id)?;
+    out.push_str("</svg>\n");
+    root_document.complete(out.finish()?)
+}
+
+fn write_svg_contents(
     out: &mut impl SvgOutput,
     layout: &RailroadDiagramLayout,
     model: &RailroadDiagramModel,
     style: &RailroadStyle,
-    measure_bbox: &dyn Fn(&str, &TextStyle) -> (f64, f64),
-    diagram_id: impl SvgDiagramIdValue,
+    measurer: &dyn TextMeasurer,
+    diagram_id: SvgId<'_>,
 ) -> Result<()> {
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
@@ -47,7 +75,7 @@ pub fn write_svg_contents(
     write_railroad_css(
         &mut XmlTextOutput::new(out),
         style,
-        diagram_id.semantic_value(),
+        diagram_id.semantic_str(),
     )?;
     out.checkpoint()?;
     out.push_str("</style>");
@@ -73,7 +101,7 @@ pub fn write_svg_contents(
         );
         out.checkpoint()?;
         let (render_node, definition_up) =
-            railroad_render_node(&model_rule.definition, style, measure_bbox);
+            railroad_render_node(&model_rule.definition, style, measurer);
         let _ = write!(
             out,
             r#"<g transform="translate({}, {})">"#,
@@ -365,8 +393,148 @@ impl std::fmt::Display for SvgAttribute<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
+    use merman_model::{
+        SourceSpan,
+        families::railroad::{RailroadAstNode, RailroadRuleModel},
+        family::DiagramFamilyId,
+        presentation::PresentationConfig,
+    };
+    use merman_render_core::{
+        resources::RenderResourcePolicy,
+        text::{TextMetrics, TextStyle},
+    };
+
     use super::*;
-    use crate::railroad::style::railroad_style;
+    use crate::railroad::{prepare_railroad_diagram, style::railroad_style};
+
+    #[derive(Default)]
+    struct RailroadBBoxMeasurer {
+        calls: RefCell<Vec<(&'static str, String)>>,
+    }
+
+    impl TextMeasurer for RailroadBBoxMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("Railroad must request the raw SVG bbox probes");
+        }
+
+        fn measure_svg_raw_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            self.calls.borrow_mut().push(("width", text.to_owned()));
+            match text {
+                "other" => 31.25,
+                "? anything ?" => 62.75,
+                _ => 40.0,
+            }
+        }
+
+        fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.calls.borrow_mut().push(("height", text.to_owned()));
+            style.font_size * 1.1
+        }
+    }
+
+    #[test]
+    fn railroad_variants_use_raw_svg_bbox_width_then_height_in_layout_and_svg() {
+        let span = SourceSpan::new(0, 0);
+        let model = RailroadDiagramModel {
+            acc_title: Some("Grammar & tokens".to_owned()),
+            acc_descr: Some("Terms < expressions".to_owned()),
+            title: None,
+            rules: vec![RailroadRuleModel {
+                name: "expr".to_owned(),
+                definition: RailroadAstNode::Choice {
+                    alternatives: vec![
+                        RailroadAstNode::NonTerminal {
+                            name: "other".to_owned(),
+                            span,
+                            selection: span,
+                        },
+                        RailroadAstNode::Special {
+                            text: "anything".to_owned(),
+                            span,
+                            selection: span,
+                        },
+                    ],
+                    span,
+                },
+            }],
+        };
+        let config = PresentationConfig::empty_object();
+        let id = SvgId::new("railroad-bbox").unwrap();
+        let viewport = RootViewportContext::new(DiagramFamilyId::RAILROAD, id);
+        let definition_calls = [
+            ("width", "other"),
+            ("height", "other"),
+            ("width", "? anything ?"),
+            ("height", "? anything ?"),
+        ];
+        let mut layout_calls = vec![("width", "expr ="), ("height", "expr =")];
+        layout_calls.extend(definition_calls);
+
+        for diagram_type in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let measurer = RailroadBBoxMeasurer::default();
+            let (layout, style) =
+                prepare_railroad_diagram(&model, diagram_type, &config, None, &measurer).unwrap();
+            let elements = &layout.rules[0].elements;
+            let other = elements
+                .iter()
+                .find(|element| element.label == "other")
+                .unwrap();
+            let special = elements
+                .iter()
+                .find(|element| element.label == "? anything ?")
+                .unwrap();
+            assert_eq!(layout.diagram_type, diagram_type);
+            assert_eq!(other.width, 31.25 + 20.0, "{diagram_type}");
+            assert_eq!(special.width, 62.75 + 20.0, "{diagram_type}");
+            assert_eq!(other.height, 14.0 * 1.1 + 20.0, "{diagram_type}");
+            assert_eq!(special.height, other.height, "{diagram_type}");
+            let calls = measurer.calls.take();
+            assert_eq!(
+                calls
+                    .iter()
+                    .map(|(op, text)| (*op, text.as_str()))
+                    .collect::<Vec<_>>(),
+                layout_calls
+            );
+
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            let svg =
+                render_railroad_svg(&layout, &model, &style, id, &viewport, &meter, &measurer)
+                    .unwrap();
+            let calls = measurer.calls.into_inner();
+            assert_eq!(
+                calls
+                    .iter()
+                    .map(|(op, text)| (*op, text.as_str()))
+                    .collect::<Vec<_>>(),
+                definition_calls
+            );
+            assert!(svg.as_str().ends_with("</svg>\n"));
+            let document = roxmltree::Document::parse(svg.as_str()).unwrap();
+            let root = document.root_element();
+            assert_eq!(root.attribute("aria-roledescription"), Some(diagram_type));
+            assert_eq!(
+                root.attribute("aria-labelledby"),
+                Some("chart-title-railroad-bbox")
+            );
+            assert_eq!(
+                root.attribute("aria-describedby"),
+                Some("chart-desc-railroad-bbox")
+            );
+            let mut contents = root.children().filter(roxmltree::Node::is_element);
+            assert_eq!(
+                contents.next().and_then(|node| node.text()),
+                Some("Grammar & tokens")
+            );
+            assert_eq!(
+                contents.next().and_then(|node| node.text()),
+                Some("Terms < expressions")
+            );
+        }
+    }
 
     #[test]
     fn root_font_rule_matches_mermaid_namespacing() {

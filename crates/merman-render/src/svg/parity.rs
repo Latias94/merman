@@ -234,8 +234,6 @@ mod path_bounds;
 mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]
 mod quadrantchart;
-#[cfg(feature = "diagram-railroad")]
-mod railroad;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
 #[cfg(any(
@@ -310,8 +308,6 @@ mod usecase;
 mod util;
 #[cfg(feature = "diagram-venn")]
 mod venn;
-#[cfg(feature = "diagram-wardley")]
-mod wardley;
 #[cfg(feature = "diagram-xychart")]
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
@@ -1245,20 +1241,36 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-wardley")]
-        BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.style(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Wardley(artifact) => {
+            use merman_render_charts::wardley::{WardleySvgContext, render_wardley_svg};
+
+            let diagram_id = options.diagram_id_or("wardley");
+            let context = WardleySvgContext {
+                diagram_id,
+                viewport: options.root_viewport(crate::DiagramFamilyId::WARDLEY, diagram_id),
+                work_meter: options.work_meter(),
+                has_host_canvas: options.family.session().canvas_background().is_some(),
+            };
+            render_wardley_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                &context,
+            )
+        }
         #[cfg(feature = "diagram-railroad")]
-        BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.style(),
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::Railroad(artifact) => {
+            let diagram_id = options.diagram_id_or("railroad");
+            crate::railroad::render_railroad_svg(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.style(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::RAILROAD, diagram_id),
+                options.work_meter(),
+                measurer,
+            )
+        }
         #[cfg(feature = "diagram-mindmap")]
         BuiltinFamilyArtifact::Mindmap(artifact) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(

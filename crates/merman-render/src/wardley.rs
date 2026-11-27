@@ -1,16 +1,6 @@
-mod font_size;
-mod theme;
+//! Wardley renderer integration and layout type exports.
 
-pub(crate) use font_size::WardleyFontSize;
-pub(crate) use theme::{WardleyPaintBinding, WardleyStyle, WardleyTextRole};
-
-use crate::Result;
-use crate::text::{TextMeasurer, TextStyle};
-use merman_model::families::wardley::WardleyDiagramModel;
-use merman_render_charts::wardley::{
-    WardleyAnnotationMeasurement, layout_wardley_diagram_typed as layout_typed,
-};
-use serde_json::Value;
+pub(crate) use merman_render_charts::wardley::{WardleyStyle, prepare_wardley_diagram};
 
 pub use merman_render_charts::wardley::{
     WardleyAnnotationLayout, WardleyAnnotationPointLayout, WardleyAnnotationsBoxLayout,
@@ -23,57 +13,50 @@ pub use merman_render_charts::wardley::{
 };
 
 #[cfg(test)]
-pub(crate) fn layout_wardley_diagram_typed(
-    model: &WardleyDiagramModel,
-    diagram_title: Option<&str>,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<WardleyDiagramLayout> {
-    let config = crate::test_support::presentation_config(effective_config.clone());
-    let style = WardleyStyle::resolve(&config, None);
-    layout_wardley_diagram_typed_with_style(
-        model,
-        diagram_title,
-        effective_config,
-        &style,
-        measurer,
-    )
-}
+mod tests {
+    use std::cell::RefCell;
 
-pub(crate) fn layout_wardley_diagram_typed_with_style(
-    model: &WardleyDiagramModel,
-    diagram_title: Option<&str>,
-    effective_config: &Value,
-    style: &WardleyStyle,
-    measurer: &dyn TextMeasurer,
-) -> Result<WardleyDiagramLayout> {
-    let mut annotation_style = None;
-    layout_typed(
-        model,
-        diagram_title,
-        effective_config,
-        style.layout_overrides(),
-        |text, font_size, measurement| {
-            let text_style = annotation_style.get_or_insert_with(|| TextStyle {
-                font_family: Some(style.font_family_css().to_owned()),
-                font_size,
-                font_weight: style
-                    .native_font_weight(WardleyTextRole::AnnotationBoxLine)
-                    .map(|weight| weight.to_string()),
-                font_style: None,
-            });
-            match measurement {
-                WardleyAnnotationMeasurement::ComputedLength => {
-                    measurer.measure_svg_text_computed_length_px(text, text_style)
-                }
-                WardleyAnnotationMeasurement::RawBboxHeight => {
-                    measurer.measure_svg_raw_text_bbox_height_px(text, text_style)
-                }
+    use serde_json::json;
+
+    use super::prepare_wardley_diagram;
+    use crate::{
+        test_support::presentation_config,
+        text::{TextMeasurer, TextMetrics, TextStyle},
+    };
+
+    #[test]
+    fn annotations_measure_the_family_font_override_used_by_svg() {
+        struct FontProbe(RefCell<Vec<String>>);
+        impl TextMeasurer for FontProbe {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                assert_eq!(style.font_family.as_deref(), Some("Georgia,serif"));
+                self.0.borrow_mut().push(text.to_owned());
+                crate::text::DeterministicTextMeasurer::default().measure(text, style)
             }
-        },
-    )
+        }
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "wardley-beta\nannotations [0.1, 0.2]\nannotation 1,[0.78, 0.82] \"Font probe\"",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Wardley(model) = parsed.model() else {
+            panic!("expected Wardley render model");
+        };
+        let measurer = FontProbe(RefCell::new(Vec::new()));
+        let config = presentation_config(json!({
+            "themeVariables":{"fontFamily":"Inter, sans-serif", "wardley":{"fontFamily":"Georgia, serif"}}
+        }));
+        let (layout, _) = prepare_wardley_diagram(model, None, &config, None, &measurer).unwrap();
+        assert!(layout.annotations_box.unwrap().rect.is_some());
+        assert!(
+            measurer
+                .0
+                .borrow()
+                .iter()
+                .any(|text| text == "1. Font probe")
+        );
+    }
 }
-
-#[cfg(all(test, feature = "diagram-wardley"))]
-#[path = "wardley_layout_tests.rs"]
-mod wardley_layout_tests;

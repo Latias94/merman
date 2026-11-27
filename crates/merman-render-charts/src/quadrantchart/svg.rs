@@ -1,9 +1,125 @@
-use merman_model::families::quadrant_chart::QuadrantChartPointModel;
+use std::fmt::Write as _;
+
+use merman_model::families::quadrant_chart::{QuadrantChartDiagramModel, QuadrantChartPointModel};
 use merman_render_core::{
-    Error, Result, number_format::canonical_number as fmt, svg_output::SvgOutput, xml::escape_xml,
+    Error, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::{CssSelectorDiagramId, SvgId, escape_css_identifier},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::escape_xml,
+};
+use serde_json::Value;
+
+use super::{
+    QuadrantChartAxisLabelData, QuadrantChartDiagramLayout, QuadrantChartPointThemePlan,
+    config::use_max_width,
 };
 
-use super::{QuadrantChartAxisLabelData, QuadrantChartDiagramLayout};
+/// Host-selected SVG ID, viewport policy, and operation meter.
+pub struct QuadrantChartSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+}
+
+/// Emits the complete Quadrant Chart SVG from its paired layout and presentation.
+pub fn render_quadrantchart_svg(
+    layout: &QuadrantChartDiagramLayout,
+    model: &QuadrantChartDiagramModel,
+    point_theme: &QuadrantChartPointThemePlan,
+    effective_config: &Value,
+    context: &QuadrantChartSvgContext<'_>,
+) -> Result<root_svg::RootedSvg> {
+    if point_theme.point_count() != layout.points.len() || model.points.len() != layout.points.len()
+    {
+        return Err(Error::InvalidModel {
+            message: "Quadrant Chart point theme plan does not match the terminal layout"
+                .to_string(),
+        });
+    }
+    let diagram_id = context.diagram_id;
+    let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .filter(|description| !description.is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
+    let use_max_width = use_max_width(effective_config);
+
+    let mut out = BoundedSvgOutput::new(context.work_meter);
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        0.0,
+        0.0,
+        layout.width.max(1.0),
+        layout.height.max(1.0),
+        0.0,
+    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "quadrantChart");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document = context.viewport.write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width),
+        root_chrome,
+    )?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
+            escape_xml(title)
+        );
+        out.checkpoint()?;
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
+            escape_xml(description)
+        );
+        out.checkpoint()?;
+    }
+
+    out.push_str("<style>");
+    out.checkpoint()?;
+    let common_css = point_theme.common_css();
+    let selector = CssSelectorDiagramId(diagram_id);
+    {
+        let mut css_out = XmlTextOutput::new(&mut out);
+        common_css.write_prefix(&mut css_out, selector)?;
+        common_css.write_root(&mut css_out, selector, diagram_id)?;
+    }
+    if let Some((title_family, title_weight, label_weight)) = point_theme.native_title_style() {
+        let id = escape_css_identifier(diagram_id.semantic_str());
+        let _ = write!(
+            &mut XmlTextOutput::new(&mut out),
+            "#{id} .quadrants text,#{id} .data-points text,#{id} .labels text{{font-weight:{label_weight};}}\
+             #{id} .title text{{font-family:{title_family};font-weight:{title_weight};}}",
+        );
+    }
+    out.checkpoint()?;
+    // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
+    out.push_str(r#"</style><g/>"#);
+    out.checkpoint()?;
+
+    out.push_str(r#"<g class="main">"#);
+    out.checkpoint()?;
+
+    write_svg_body(&mut out, layout, &model.points)?;
+
+    out.push_str("</g></svg>\n");
+    root_document.complete(out.finish()?)
+}
 
 fn quadrantchart_dominant_baseline(horizontal_pos: &str) -> &'static str {
     if horizontal_pos == "top" {

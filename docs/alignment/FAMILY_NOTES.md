@@ -816,7 +816,8 @@ an explicit zero still overrides the class radius. Owners:
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
 family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs) and
+Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs),
+[SVG emitter](../../crates/merman-render-charts/src/quadrantchart/svg.rs), and
 [SVG tests](../../crates/merman-render/tests/quadrantchart_svg_test.rs).
 
 ## Radar
@@ -847,7 +848,7 @@ not gain drawing effects that the selected upstream renderer omits. Browser text
 belong to the shared root diagnostic boundary; fixed width floors and fixture-specific roots are
 not valid substitutes for measurement.
 
-Owners: [Railroad layout](../../crates/merman-render/src/railroad.rs),
+Owners: [Railroad layout](../../crates/merman-render-structured/src/railroad/layout.rs),
 [parser tests](../../crates/merman-core/src/tests/railroad.rs), and
 [SVG/grammar-combination tests](../../crates/merman-render/tests/railroad_svg_test.rs).
 
@@ -1039,7 +1040,7 @@ become allocation counts, and SVG emits their resulting coordinates with JavaScr
 text instead of replacing nonfinite coordinates with zero. Absent offsets retain strategy and
 anchor defaults; explicit zero remains an authored override.
 
-Owners: [Wardley layout](../../crates/merman-render/src/wardley.rs) and
+Owners: [Wardley layout](../../crates/merman-render-charts/src/wardley/layout.rs) and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).
 
 ## XYChart

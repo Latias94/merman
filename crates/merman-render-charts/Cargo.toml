@@ -22,7 +22,7 @@ diagram-pie = [
     "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/root-svg",
     "merman-render-core/text-layout", "merman-render-core/theme-svg",
 ]
-diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
+diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart", "merman-render-core/root-svg"]
 diagram-radar = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar",
@@ -42,7 +42,11 @@ diagram-venn = [
     "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
     "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
 ]
-diagram-wardley = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley"]
+diagram-wardley = [
+    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-wardley",
+    "merman-render-core/root-svg",
+]
 diagram-xychart = [
     "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
     "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-xychart",

@@ -1,21 +1,51 @@
-use merman_model::families::quadrant_chart::QuadrantChartDiagramModel;
-use merman_model::presentation::PresentationConfig;
+use merman_model::{
+    families::quadrant_chart::QuadrantChartDiagramModel, presentation::PresentationConfig,
+};
+use merman_render_core::{
+    config::config_font_family_css,
+    resources::{OperationWorkError, OperationWorkMeter},
+    svg_css::PreparedCommonCss,
+};
+use merman_theme_contract::v2::FamilyTheme;
 
-use crate::resources::{OperationWorkError, OperationWorkMeter};
-use crate::theme::FamilyTheme;
+use super::{
+    QuadrantChartCssBinding, QuadrantChartDiagramLayout, QuadrantChartLayoutSettings,
+    config::inherited_font_size_px, layout_quadrantchart_diagram_typed,
+    native_theme::QuadrantNativeStyle,
+};
 
-pub(super) use merman_render_charts::quadrantchart::QuadrantChartCssBinding;
+/// Resolves point and typography roles before laying out the semantic chart.
+pub fn prepare_quadrantchart_diagram(
+    model: &QuadrantChartDiagramModel,
+    diagram_title: Option<&str>,
+    config: &PresentationConfig,
+    native: Option<&FamilyTheme>,
+    work_meter: &OperationWorkMeter,
+) -> merman_render_core::Result<(QuadrantChartDiagramLayout, QuadrantChartPointThemePlan)> {
+    let point_theme = QuadrantChartPointThemePlan::resolve(native, config, model, work_meter)?;
+    let mut settings = QuadrantChartLayoutSettings::from_effective_config(config.as_value());
+    point_theme.apply_native_layout(&mut settings);
+    let layout = layout_quadrantchart_diagram_typed(
+        model,
+        diagram_title,
+        &settings,
+        &point_theme.css,
+        point_theme.native_point_inks(),
+    );
+    Ok((layout, point_theme))
+}
 
+/// Presentation bound to the prepared point order.
 #[derive(Debug)]
-pub(crate) struct QuadrantChartPointThemePlan {
+pub struct QuadrantChartPointThemePlan {
     css: QuadrantChartCssBinding,
-    native: Option<super::native_theme::QuadrantNativeStyle>,
-    common_css: crate::svg::PreparedCommonCss,
+    native: Option<QuadrantNativeStyle>,
+    common_css: PreparedCommonCss,
     point_count: usize,
 }
 
 impl QuadrantChartPointThemePlan {
-    pub(crate) fn resolve(
+    fn resolve(
         theme: Option<&FamilyTheme>,
         config: &PresentationConfig,
         model: &QuadrantChartDiagramModel,
@@ -24,23 +54,22 @@ impl QuadrantChartPointThemePlan {
         let point_count = model.points.len();
         work_meter.charge(point_count)?;
         let mut css = QuadrantChartCssBinding::resolve(config.as_value());
-        let native = theme
-            .map(|theme| super::native_theme::QuadrantNativeStyle::bind(theme, config, &mut css));
+        let native = theme.map(|theme| QuadrantNativeStyle::bind(theme, config, &mut css));
         let common_css = if let Some(style) = &native {
             let family = style
                 .body_family
                 .clone()
-                .unwrap_or_else(|| crate::config::config_font_family_css(config));
+                .unwrap_or_else(|| config_font_family_css(config));
             let size = style
                 .base_size
-                .unwrap_or_else(|| super::config::inherited_font_size_px(config.as_value()));
-            crate::svg::PreparedCommonCss::with_resolved_typography(
+                .unwrap_or_else(|| inherited_font_size_px(config.as_value()));
+            PreparedCommonCss::with_resolved_typography(
                 config.as_value(),
                 family,
                 format!("{size}px"),
             )
         } else {
-            crate::svg::PreparedCommonCss::new(config.as_value(), None)
+            PreparedCommonCss::new(config.as_value(), None)
         };
         Ok(Self {
             css,
@@ -50,13 +79,13 @@ impl QuadrantChartPointThemePlan {
         })
     }
 
-    pub(super) fn apply_native_layout(&self, cfg: &mut super::config::QuadrantChartLayoutSettings) {
+    fn apply_native_layout(&self, cfg: &mut QuadrantChartLayoutSettings) {
         if let Some(style) = &self.native {
             style.apply_layout(cfg);
         }
     }
 
-    pub(crate) fn native_title_style(&self) -> Option<(&str, u16, u16)> {
+    pub(super) fn native_title_style(&self) -> Option<(&str, u16, u16)> {
         let native = self.native.as_ref()?;
         Some((
             native
@@ -68,21 +97,17 @@ impl QuadrantChartPointThemePlan {
         ))
     }
 
-    pub(super) fn css(&self) -> &QuadrantChartCssBinding {
-        &self.css
-    }
-
-    pub(super) fn native_point_inks(&self) -> Option<&[String]> {
+    fn native_point_inks(&self) -> Option<&[String]> {
         self.native
             .as_ref()
             .and_then(|style| style.points.as_deref())
     }
 
-    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+    pub(super) fn common_css(&self) -> &PreparedCommonCss {
         &self.common_css
     }
 
-    pub(crate) fn point_count(&self) -> usize {
+    pub(super) fn point_count(&self) -> usize {
         self.point_count
     }
 }
@@ -118,20 +143,12 @@ mod tests {
         .unwrap();
         let config = PresentationConfig::empty_object();
         let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            merman_render_core::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let plan =
-            QuadrantChartPointThemePlan::resolve(None, &config, &model, &work_meter).unwrap();
+        let (layout, plan) =
+            prepare_quadrantchart_diagram(&model, None, &config, None, &work_meter).unwrap();
 
         assert_eq!(plan.point_count(), 2);
-        let layout = super::super::layout_quadrantchart_diagram_typed(
-            &model,
-            None,
-            config.as_value(),
-            &plan,
-            &crate::text::DeterministicTextMeasurer::default(),
-        )
-        .unwrap();
         assert_eq!(layout.points[0].radius, 5.0);
         assert_eq!(layout.points[0].fill, "var(--source)");
         assert_eq!(layout.points[1].radius, 7.0);

@@ -1,32 +1,41 @@
 use merman_model::presentation::PresentationConfig;
-use merman_render_charts::wardley::WardleyLayoutOverrides;
+use merman_render_core::{
+    config::{
+        MERMAID_DEFAULT_FONT_FAMILY_CSS, config_f64, config_f64_css_absolute_px, config_string,
+        normalize_css_font_family, value_at,
+    },
+    mermaid_style::{css_font_family_override, font_family_css},
+};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
-use crate::config::config_string;
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use super::{
+    WardleyLayoutOverrides,
+    font_size::{WardleyFontSize, WardleyFontSizes},
+};
 
 #[derive(Debug)]
-pub(crate) struct WardleyPaintBinding {
-    pub(crate) background_color: String,
-    pub(crate) axis_color: String,
-    pub(crate) axis_text_color: String,
-    pub(crate) grid_color: String,
-    pub(crate) component_fill: String,
-    pub(crate) component_stroke: String,
-    pub(crate) component_label_color: String,
-    pub(crate) link_stroke: String,
-    pub(crate) evolution_stroke: String,
-    pub(crate) anchor_label_color: String,
-    pub(crate) stage_divider_color: String,
-    pub(crate) build_fill: String,
-    pub(crate) build_stroke: String,
-    pub(crate) buy_fill: String,
-    pub(crate) outsource_fill: String,
-    pub(crate) market_fill: String,
-    pub(crate) annotation_fill: String,
-    pub(crate) annotation_text: String,
-    pub(crate) arrow_fill: String,
-    pub(crate) arrow_text: String,
-    pub(crate) connector_width: f64,
+pub(super) struct WardleyPaintBinding {
+    pub(super) background_color: String,
+    pub(super) axis_color: String,
+    pub(super) axis_text_color: String,
+    pub(super) grid_color: String,
+    pub(super) component_fill: String,
+    pub(super) component_stroke: String,
+    pub(super) component_label_color: String,
+    pub(super) link_stroke: String,
+    pub(super) evolution_stroke: String,
+    pub(super) anchor_label_color: String,
+    pub(super) stage_divider_color: String,
+    pub(super) build_fill: String,
+    pub(super) build_stroke: String,
+    pub(super) buy_fill: String,
+    pub(super) outsource_fill: String,
+    pub(super) market_fill: String,
+    pub(super) annotation_fill: String,
+    pub(super) annotation_text: String,
+    pub(super) arrow_fill: String,
+    pub(super) arrow_text: String,
+    pub(super) connector_width: f64,
 }
 
 impl WardleyPaintBinding {
@@ -135,7 +144,7 @@ impl WardleyPaintBinding {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WardleyTextRole {
+pub(super) enum WardleyTextRole {
     Title,
     AxisLabel,
     StageLabel,
@@ -152,11 +161,11 @@ pub(crate) enum WardleyTextRole {
 
 /// Style shared by Wardley layout measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct WardleyStyle {
+pub struct WardleyStyle {
     paint_binding: WardleyPaintBinding,
     font_family_css: Box<str>,
     write_font_family: bool,
-    font_sizes: super::font_size::WardleyFontSizes,
+    font_sizes: WardleyFontSizes,
     native: Option<Box<WardleyNativeStyle>>,
 }
 
@@ -170,7 +179,7 @@ struct WardleyNativeStyle {
 }
 
 impl WardleyStyle {
-    pub(crate) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
+    pub(super) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
         let values = config.as_value();
         let family_font =
             accepted_font_family(values["themeVariables"]["wardley"]["fontFamily"].as_str());
@@ -183,7 +192,7 @@ impl WardleyStyle {
         ]
         .into_iter()
         .find_map(|(path, owner)| {
-            accepted_font_family(crate::config::value_at(values, path).and_then(|v| v.as_str()))
+            accepted_font_family(value_at(values, path).and_then(|v| v.as_str()))
                 .map(|font| (font, owner))
         });
         let write_font_family = family_font.is_some()
@@ -192,12 +201,12 @@ impl WardleyStyle {
                 .is_some_and(|(_, path)| config.explicit_config_owns_path(path));
         let font_family_css = family_font
             .or_else(|| root_font.map(|(font, _)| font))
-            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned());
+            .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned());
         let mut style = Self {
             paint_binding: WardleyPaintBinding::from_config(values),
             font_family_css: font_family_css.into_boxed_str(),
             write_font_family,
-            font_sizes: super::font_size::WardleyFontSizes::from_config(values),
+            font_sizes: WardleyFontSizes::from_config(values),
             native: None,
         };
         if let Some(theme) = native {
@@ -220,9 +229,9 @@ impl WardleyStyle {
         let base_size = [
             (
                 "themeVariables.fontSize",
-                crate::config::config_f64_css_absolute_px(values, &["themeVariables", "fontSize"]),
+                config_f64_css_absolute_px(values, &["themeVariables", "fontSize"]),
             ),
-            ("fontSize", crate::config::config_f64(values, &["fontSize"])),
+            ("fontSize", config_f64(values, &["fontSize"])),
         ]
         .into_iter()
         .find_map(|(path, size)| size.filter(|size| owns(path) && size.is_finite() && *size >= 0.0))
@@ -247,11 +256,11 @@ impl WardleyStyle {
         }
     }
 
-    pub(crate) fn native_title_family(&self) -> Option<&str> {
+    pub(super) fn native_title_family(&self) -> Option<&str> {
         self.native.as_ref()?.title_family.as_deref()
     }
 
-    pub(crate) fn title_color(&self) -> &str {
+    pub(super) fn title_color(&self) -> &str {
         self.native
             .as_deref()
             .map_or(self.paint_binding.axis_text_color.as_str(), |native| {
@@ -259,30 +268,30 @@ impl WardleyStyle {
             })
     }
 
-    pub(crate) fn native_font_weight(&self, role: WardleyTextRole) -> Option<u16> {
+    pub(super) fn native_font_weight(&self, role: WardleyTextRole) -> Option<u16> {
         self.native.as_ref().map(|native| match role {
             WardleyTextRole::Title => native.title_weight,
             _ => native.label_weight,
         })
     }
 
-    pub(crate) const fn paint_binding(&self) -> &WardleyPaintBinding {
+    pub(super) const fn paint_binding(&self) -> &WardleyPaintBinding {
         &self.paint_binding
     }
 
-    pub(crate) const fn is_native(&self) -> bool {
+    pub(super) const fn is_native(&self) -> bool {
         self.native.is_some()
     }
 
-    pub(crate) fn font_family_css(&self) -> &str {
+    pub(super) fn font_family_css(&self) -> &str {
         &self.font_family_css
     }
 
-    pub(crate) const fn should_write_inherited_font(&self) -> bool {
+    pub(super) const fn should_write_inherited_font(&self) -> bool {
         self.write_font_family
     }
 
-    pub(crate) fn font_size(&self, role: WardleyTextRole) -> Option<&super::WardleyFontSize> {
+    pub(super) fn font_size(&self, role: WardleyTextRole) -> Option<&WardleyFontSize> {
         self.font_sizes.role(role)
     }
 }
@@ -302,8 +311,8 @@ fn accepted_font_family(font: Option<&str>) -> Option<String> {
             return None;
         }
     }
-    crate::mermaid_style::css_font_family_override(&format!("font-family:{font}"))?;
-    let normalized = crate::config::normalize_css_font_family(font);
+    css_font_family_override(&format!("font-family:{font}"))?;
+    let normalized = normalize_css_font_family(font);
     (!normalized.is_empty()).then_some(normalized)
 }
 
@@ -325,7 +334,7 @@ mod tests {
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = super::super::test_support::presentation_config(serde_json::json!({
             "themeVariables": {
                 "background": "var(--background)",
                 "primaryTextColor": "currentColor",

@@ -1,8 +1,11 @@
-use crate::Error;
-use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use crate::wardley::{
-    WardleyArrowDirection, WardleyFontWeight, WardleyNodeShapeLayout, WardleySourceOverlayLayout,
-    layout_wardley_diagram_typed,
+use merman_render_core::{
+    Error, Result,
+    text::{TextMeasurer, TextMetrics, TextStyle},
+};
+
+use super::{
+    WardleyArrowDirection, WardleyDiagramLayout, WardleyFontWeight, WardleyNodeShapeLayout,
+    WardleySourceOverlayLayout, prepare_wardley_diagram, test_support::presentation_config,
 };
 use merman_model::families::wardley::{
     WardleyAccelerator, WardleyAnnotation, WardleyAxes, WardleyDeaccelerator, WardleyDiagramModel,
@@ -13,6 +16,16 @@ use serde_json::json;
 use std::cell::RefCell;
 
 const EPSILON: f64 = 1.0e-9;
+
+fn layout_wardley_diagram_typed(
+    model: &WardleyDiagramModel,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<WardleyDiagramLayout> {
+    let config = presentation_config(effective_config.clone());
+    prepare_wardley_diagram(model, diagram_title, &config, None, measurer).map(|(layout, _)| layout)
+}
 
 #[test]
 fn annotation_number_admission_rejects_nan_before_numeric_sorting() {
@@ -29,41 +42,6 @@ fn annotation_number_admission_rejects_nan_before_numeric_sorting() {
         .expect_err("NaN must not reach a numeric sort comparator");
     assert!(
         matches!(error, Error::InvalidModel { message } if message == "Wardley annotation numbers must not be NaN")
-    );
-}
-
-#[test]
-fn annotations_measure_the_family_font_override_used_by_svg() {
-    struct FontProbe(RefCell<Vec<String>>);
-    impl TextMeasurer for FontProbe {
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            assert_eq!(style.font_family.as_deref(), Some("Georgia,serif"));
-            self.0.borrow_mut().push(text.to_owned());
-            crate::text::DeterministicTextMeasurer::default().measure(text, style)
-        }
-    }
-    let parsed = merman_core::MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(
-            "wardley-beta\nannotations [0.1, 0.2]\nannotation 1,[0.78, 0.82] \"Font probe\"",
-            merman_core::ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap()
-        .into_presentation();
-    let merman_model::presentation::RenderSemanticModel::Wardley(model) = parsed.model() else {
-        panic!("expected Wardley render model");
-    };
-    let measurer = FontProbe(RefCell::new(Vec::new()));
-    let layout = layout_wardley_diagram_typed(model, None, &json!({
-        "themeVariables":{"fontFamily":"Inter, sans-serif", "wardley":{"fontFamily":"Georgia, serif"}}
-    }), &measurer).unwrap();
-    assert!(layout.annotations_box.unwrap().rect.is_some());
-    assert!(
-        measurer
-            .0
-            .borrow()
-            .iter()
-            .any(|text| text == "1. Font probe")
     );
 }
 

@@ -1,11 +1,14 @@
 use merman_model::families::railroad::{
     RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
-use merman_render_core::{Bounds, Result, text::TextStyle};
+use merman_render_core::{
+    Bounds, Result,
+    text::{TextMeasurer, TextStyle},
+};
 
 use super::{
-    MeasureRawSvgBBox, RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout,
-    RailroadRuleLayout, RailroadStyle,
+    RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout, RailroadRuleLayout,
+    RailroadStyle,
 };
 
 #[derive(Debug, Clone)]
@@ -48,20 +51,18 @@ impl RailroadRenderNode {
 }
 
 /// Lays out a typed Railroad diagram using the caller's raw SVG text bbox measurements.
-///
-/// The callback returns width and height, in that order.
-pub fn layout_railroad_diagram_typed(
+pub(super) fn layout_railroad_diagram_typed(
     model: &RailroadDiagramModel,
     diagram_type: &str,
     style: &RailroadStyle,
-    measure_bbox: &dyn Fn(&str, &TextStyle) -> (f64, f64),
+    measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
     let mut y = style.padding;
     let mut max_width: f64 = 0.0;
     let mut rules = Vec::new();
 
     for rule in &model.rules {
-        let mut rule_layout = layout_rule(rule, y, style, measure_bbox);
+        let mut rule_layout = layout_rule(rule, y, style, measurer);
         y += rule_layout.height + style.vertical_separation;
         max_width = max_width.max(rule_layout.width);
         rule_layout.x = 0.0;
@@ -107,7 +108,7 @@ fn layout_rule(
     rule: &RailroadRuleModel,
     y: f64,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> RailroadRuleLayout {
     let rule_name = format!("{} =", rule.name);
     let name_width = measure_text(
@@ -115,11 +116,11 @@ fn layout_rule(
         style.rule_name_font_family(),
         style.font_size,
         style.rule_name_weight(),
-        measure_bbox,
+        measurer,
     )
     .0 + 20.0;
     let definition_x = name_width + 20.0;
-    let definition = layout_expr(&rule.definition, style, measure_bbox);
+    let definition = layout_expr(&rule.definition, style, measurer);
     let baseline_y = 20.0_f64.max(definition.up);
     let definition_y = baseline_y - definition.up;
     let mut elements = definition.elements;
@@ -163,27 +164,23 @@ fn layout_rule(
 fn layout_expr(
     node: &RailroadAstNode,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
     match node {
-        RailroadAstNode::Terminal { value, .. } => {
-            layout_box("terminal", value, style, measure_bbox)
-        }
+        RailroadAstNode::Terminal { value, .. } => layout_box("terminal", value, style, measurer),
         RailroadAstNode::NonTerminal { name, .. } => {
-            layout_box("nonterminal", name, style, measure_bbox)
+            layout_box("nonterminal", name, style, measurer)
         }
         RailroadAstNode::Special { text, .. } => {
-            layout_box("special", &format!("? {text} ?"), style, measure_bbox)
+            layout_box("special", &format!("? {text} ?"), style, measurer)
         }
-        RailroadAstNode::Sequence { elements, .. } => {
-            layout_sequence(elements, style, measure_bbox)
-        }
+        RailroadAstNode::Sequence { elements, .. } => layout_sequence(elements, style, measurer),
         RailroadAstNode::Choice { alternatives, .. } => {
-            layout_choice(alternatives, style, measure_bbox)
+            layout_choice(alternatives, style, measurer)
         }
-        RailroadAstNode::Optional { element, .. } => layout_optional(element, style, measure_bbox),
+        RailroadAstNode::Optional { element, .. } => layout_optional(element, style, measurer),
         RailroadAstNode::Repetition { element, min, .. } => {
-            layout_repetition(element, *min, style, measure_bbox)
+            layout_repetition(element, *min, style, measurer)
         }
     }
 }
@@ -191,9 +188,9 @@ fn layout_expr(
 pub(super) fn railroad_render_node(
     node: &RailroadAstNode,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> (RailroadRenderNode, f64) {
-    let layout = layout_expr(node, style, measure_bbox);
+    let layout = layout_expr(node, style, measurer);
     (layout.render_node, layout.up)
 }
 
@@ -201,7 +198,7 @@ fn layout_box(
     kind: &str,
     label: &str,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
     let font_family = if kind == "terminal" {
         style.terminal_font_family()
@@ -209,7 +206,7 @@ fn layout_box(
         &style.font_family
     };
     let (text_width, text_height) =
-        measure_text(label, font_family, style.font_size, None, measure_bbox);
+        measure_text(label, font_family, style.font_size, None, measurer);
     let width = text_width + style.padding * 2.0;
     let height = text_height + style.padding * 2.0;
     let element = RailroadElementLayout {
@@ -239,11 +236,11 @@ fn layout_box(
 fn layout_sequence(
     elements: &[RailroadAstNode],
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
     let rendered: Vec<_> = elements
         .iter()
-        .map(|element| layout_expr(element, style, measure_bbox))
+        .map(|element| layout_expr(element, style, measurer))
         .collect();
     if rendered.is_empty() {
         return empty_expr();
@@ -300,11 +297,11 @@ fn layout_sequence(
 fn layout_choice(
     alternatives: &[RailroadAstNode],
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
     let rendered: Vec<_> = alternatives
         .iter()
-        .map(|alternative| layout_expr(alternative, style, measure_bbox))
+        .map(|alternative| layout_expr(alternative, style, measurer))
         .collect();
     if rendered.is_empty() {
         return empty_expr();
@@ -457,9 +454,9 @@ fn same_layout_coordinate(left: f64, right: f64) -> bool {
 fn layout_optional(
     element: &RailroadAstNode,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
-    let mut inner = layout_expr(element, style, measure_bbox);
+    let mut inner = layout_expr(element, style, measurer);
     let arc_radius = style.arc_radius;
     let arc_height = arc_radius * 2.0;
     let total_width = inner.width + arc_radius * 4.0;
@@ -556,9 +553,9 @@ fn layout_repetition(
     element: &RailroadAstNode,
     min: RailroadRepeatBound,
     style: &RailroadStyle,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
-    let mut inner = layout_expr(element, style, measure_bbox);
+    let mut inner = layout_expr(element, style, measurer);
     let arc_radius = style.arc_radius;
     let arc_height = arc_radius * 2.0;
     let total_width = inner.width + arc_radius * 4.0;
@@ -721,7 +718,7 @@ fn measure_text(
     font_family: &str,
     font_size: f64,
     font_weight: Option<u16>,
-    measure_bbox: &MeasureRawSvgBBox<'_>,
+    measurer: &dyn TextMeasurer,
 ) -> (f64, f64) {
     let text_style = TextStyle {
         font_family: Some(font_family.to_owned()),
@@ -729,7 +726,9 @@ fn measure_text(
         font_weight: font_weight.map(|weight| weight.to_string()),
         font_style: None,
     };
-    measure_bbox(text, &text_style)
+    let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);
+    let height = measurer.measure_svg_raw_text_bbox_height_px(text, &text_style);
+    (width, height)
 }
 
 fn translate_elements(elements: &mut [RailroadElementLayout], dx: f64, dy: f64) {
@@ -847,6 +846,7 @@ mod tests {
     use super::*;
     use crate::railroad::style::railroad_style;
     use merman_model::SourceSpan;
+    use merman_render_core::text::TextMetrics;
     use svgtypes::{PathParser, PathSegment};
 
     const SPAN: SourceSpan = SourceSpan { start: 0, end: 0 };
@@ -877,11 +877,16 @@ mod tests {
         }
     }
 
-    fn measure_bbox(text: &str, style: &TextStyle) -> (f64, f64) {
-        (
-            text.len() as f64 * style.font_size / 2.0,
-            style.font_size * 1.1,
-        )
+    struct TestMeasurer;
+
+    impl TextMeasurer for TestMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text.len() as f64 * style.font_size / 2.0,
+                height: style.font_size * 1.1,
+                line_count: 1,
+            }
+        }
     }
 
     fn choice_branch_connector_paths(
@@ -894,7 +899,7 @@ mod tests {
             span: SPAN,
         };
         let style = railroad_style(effective_config);
-        let (render_node, _) = railroad_render_node(&choice, &style, &measure_bbox);
+        let (render_node, _) = railroad_render_node(&choice, &style, &TestMeasurer);
         let RailroadRenderNode::Group {
             class, children, ..
         } = render_node
@@ -964,7 +969,7 @@ mod tests {
         let (render_node, _) = railroad_render_node(
             &node,
             &railroad_style(&serde_json::json!({})),
-            &measure_bbox,
+            &TestMeasurer,
         );
         let RailroadRenderNode::Group {
             class, children, ..
@@ -1008,7 +1013,7 @@ mod tests {
         };
         let style = railroad_style(&serde_json::json!({}));
         let layout =
-            layout_railroad_diagram_typed(&model, "railroad", &style, &measure_bbox).unwrap();
+            layout_railroad_diagram_typed(&model, "railroad", &style, &TestMeasurer).unwrap();
 
         assert_eq!(layout.rules.len(), 1);
         assert!(layout.rules[0].width > 0.0);
@@ -1022,7 +1027,7 @@ mod tests {
         assert_eq!(layout.diagram_type, "railroad");
 
         let ebnf_layout =
-            layout_railroad_diagram_typed(&model, "railroadEbnf", &style, &measure_bbox).unwrap();
+            layout_railroad_diagram_typed(&model, "railroadEbnf", &style, &TestMeasurer).unwrap();
         assert_eq!(ebnf_layout.diagram_type, "railroadEbnf");
         assert_eq!(
             serde_json::to_value(&ebnf_layout).unwrap()["diagram_type"],

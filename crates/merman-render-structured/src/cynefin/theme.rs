@@ -1,6 +1,7 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use merman_render_core::{mermaid_style::font_family_css, svg_css::PreparedCommonCss};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 #[derive(Debug)]
 pub(crate) struct CynefinNativeStyle {
@@ -48,8 +49,8 @@ pub(crate) enum CynefinTextRole {
 
 /// Style shared by Cynefin layout measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct CynefinStyle {
-    common_css: crate::svg::PreparedCommonCss,
+pub struct CynefinStyle {
+    common_css: PreparedCommonCss,
     colors: super::CynefinTheme,
 }
 
@@ -60,9 +61,9 @@ impl CynefinStyle {
         let common_css = match native {
             Some(theme) => Self::apply_native(&mut colors, theme, config),
             None => {
-                let font_family = crate::config::config_font_family_css(values);
+                let font_family = merman_render_core::config::config_font_family_css(values);
                 // Match layout measurement and both stylesheet font declarations.
-                crate::svg::PreparedCommonCss::new(values, Some(&font_family))
+                PreparedCommonCss::new(values, Some(&font_family))
             }
         };
         Self { common_css, colors }
@@ -72,7 +73,7 @@ impl CynefinStyle {
         colors: &mut super::CynefinTheme,
         theme: &FamilyTheme,
         config: &PresentationConfig,
-    ) -> crate::svg::PreparedCommonCss {
+    ) -> PreparedCommonCss {
         let values = config.as_value();
         let variables = &values["themeVariables"];
         let owns = |path: &str| config.explicit_config_owns_path(path);
@@ -129,14 +130,20 @@ impl CynefinStyle {
         let family = if native_family {
             font_family_css(typography.stack(typography.body_family))
         } else {
-            crate::config::config_font_family_css(values)
+            merman_render_core::config::config_font_family_css(values)
         };
         let base_size = [
             (
                 "themeVariables.fontSize",
-                crate::config::config_f64_css_absolute_px(values, &["themeVariables", "fontSize"]),
+                merman_render_core::config::config_f64_css_absolute_px(
+                    values,
+                    &["themeVariables", "fontSize"],
+                ),
             ),
-            ("fontSize", crate::config::config_f64(values, &["fontSize"])),
+            (
+                "fontSize",
+                merman_render_core::config::config_f64(values, &["fontSize"]),
+            ),
         ]
         .into_iter()
         .find_map(|(path, size)| size.filter(|size| owns(path) && size.is_finite() && *size >= 0.0))
@@ -152,10 +159,13 @@ impl CynefinStyle {
             title_weight: typography.title_weight,
             label_weight: typography.label_weight,
         }));
-        crate::svg::PreparedCommonCss::with_resolved_typography(
+        PreparedCommonCss::with_resolved_typography(
             values,
             family,
-            format!("{}px", crate::number_format::canonical_number(base_size)),
+            format!(
+                "{}px",
+                merman_render_core::number_format::canonical_number(base_size)
+            ),
         )
     }
 
@@ -163,7 +173,7 @@ impl CynefinStyle {
         self.common_css.font_family()
     }
 
-    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+    pub(crate) fn common_css(&self) -> &PreparedCommonCss {
         &self.common_css
     }
 
@@ -178,7 +188,7 @@ mod tests {
 
     #[test]
     fn binding_preserves_scoped_roles_and_shared_measurement_values() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let values = serde_json::json!({
             "themeVariables": {
                 "fontFamily": "Config Sans", "textColor": "root-text",
                 "lineColor": "root-line", "primaryTextColor": "root-label",
@@ -188,7 +198,16 @@ mod tests {
                     "itemFontSize": 15
                 }
             }
-        }));
+        });
+        let config = PresentationConfig::from_config_controlled(
+            merman_model::MermaidConfig::from_value(values),
+            &merman_model::resources::InputResourcePolicy::for_profile(
+                merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
+            ),
+            &merman_model::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
         let plan = CynefinStyle::resolve(&config, None);
         assert_eq!(plan.colors().text_color, "var(--text)");
         assert_eq!(plan.colors().boundary_color, "currentColor");

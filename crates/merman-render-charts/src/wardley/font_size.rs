@@ -1,8 +1,12 @@
 use merman_model::presentation::PresentationConfig;
-use merman_render_charts::wardley::WardleyLayoutFontSizes;
+use merman_render_core::{
+    config::json_f64,
+    mermaid_style::{css_font_size_is_zero, resolve_explicit_css_absolute_font_size_px},
+    number_format::canonical_number,
+};
 use serde_json::Value;
 
-use super::WardleyTextRole;
+use super::{WardleyLayoutFontSizes, theme::WardleyTextRole};
 
 /// The four configurable SVG font-size expressions in the pinned Wardley renderer.
 #[derive(Debug)]
@@ -15,24 +19,20 @@ pub(super) struct WardleyFontSizes {
 }
 
 #[derive(Debug)]
-pub(crate) struct WardleyFontSize {
-    pub(crate) css: String,
-    pub(crate) used_px: Option<f64>,
+pub(super) struct WardleyFontSize {
+    pub(super) css: String,
+    used_px: Option<f64>,
 }
 
 impl WardleyFontSize {
-    pub(crate) fn numeric(size: f64) -> Self {
+    pub(super) fn numeric(size: f64) -> Self {
         if !size.is_finite() {
             return Self::css("NaN".to_owned());
         }
-        Self::css(crate::number_format::canonical_number(size).to_string())
+        Self::css(canonical_number(size).to_string())
     }
 
     fn css(css: String) -> Self {
-        use crate::mermaid_style::{
-            css_font_size_is_zero, resolve_explicit_css_absolute_font_size_px,
-        };
-
         let invalid_attribute = {
             let mut parser = cssparser::Parser::new(&css);
             let mut invalid = false;
@@ -83,7 +83,7 @@ impl WardleyFontSizes {
         let config = &config["wardley-beta"];
         let axis = config.get("axisFontSize").filter(|value| !value.is_null());
         let label = config.get("labelFontSize").filter(|value| !value.is_null());
-        let axis_number = axis.map_or(Some(12.0), crate::config::json_f64);
+        let axis_number = axis.map_or(Some(12.0), json_f64);
         let direct = |value: Option<&Value>, fallback| {
             value.map_or_else(
                 || WardleyFontSize::numeric(fallback),
