@@ -1,9 +1,12 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::{config_font_family_css, config_theme_font_size_css_or_root_number_px_opt};
-use crate::svg::PreparedCommonCss;
-use crate::text::TextStyle;
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::config::{
+    config_font_family_css, config_theme_font_size_css_or_root_number_px_opt,
+};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_render_core::svg_css::PreparedCommonCss;
+use merman_render_core::text::TextStyle;
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::config::{JourneyConfigView, JourneyLayoutSettings, JourneyRenderSettings};
 use super::{JourneyCssBinding, JourneyNativeStyle};
@@ -14,8 +17,9 @@ enum JourneyAppearance {
     Native(JourneyNativeStyle),
 }
 
+/// Resolved Journey layout and SVG presentation.
 #[derive(Debug)]
-pub(crate) struct JourneyStyle {
+pub struct JourneyStyle {
     appearance: JourneyAppearance,
     common_css: PreparedCommonCss,
     layout_settings: JourneyLayoutSettings,
@@ -83,9 +87,9 @@ impl JourneyStyle {
     pub(super) fn native_title_style(&self) -> Option<TextStyle> {
         let native = self.native()?;
         let render = &self.render_settings;
-        let size = crate::mermaid_style::resolve_mermaid_font_size_px(
+        let size = merman_render_core::mermaid_style::resolve_mermaid_font_size_px(
             &render.title_font_size,
-            crate::mermaid_style::CssFontSizeContext::uniform(self.font_size_px),
+            merman_render_core::mermaid_style::CssFontSizeContext::uniform(self.font_size_px),
         )
         .unwrap_or(self.font_size_px * 1.9375);
         Some(TextStyle {

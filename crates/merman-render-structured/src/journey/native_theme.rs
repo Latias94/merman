@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::DataPalette;
+use merman_theme_contract::v2::{Color, DataPalette, FamilyTheme};
 
-use crate::model::JourneyMouthKind;
-use crate::theme::{Color, FamilyTheme};
+use super::JourneyMouthKind;
 
 #[derive(Debug)]
 pub(crate) struct JourneyNativeStyle {

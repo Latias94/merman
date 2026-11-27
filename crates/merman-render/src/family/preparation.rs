@@ -639,12 +639,11 @@ fn prepare_journey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::journey::JourneyStyle::resolve(&meta.effective_config, native);
-    let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
+    let (layout, style) = crate::journey::prepare_journey_diagram(
         model,
         meta.title.as_deref(),
-        &style,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Journey(Box::new(

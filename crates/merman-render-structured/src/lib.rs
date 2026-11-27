@@ -16,6 +16,9 @@ pub mod info;
 #[cfg(feature = "diagram-ishikawa")]
 #[doc(hidden)]
 pub mod ishikawa;
+#[cfg(feature = "diagram-journey")]
+#[doc(hidden)]
+pub mod journey;
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;

@@ -1,4 +1,4 @@
-use crate::config::config_string;
+use merman_render_core::config::config_string;
 
 #[derive(Debug)]
 pub(crate) struct JourneyCssBinding {

@@ -25,6 +25,9 @@ The `diagram-gantt` feature provides time and task layout, presentation binding,
 Gantt SVG emission. The rendering operation supplies the text measurer, clock, time-zone resolver,
 viewport, and work meter.
 
+The `diagram-journey` feature provides typed layout, presentation binding, and complete Journey
+SVG emission. The rendering operation supplies text measurement, viewport, and work limits.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

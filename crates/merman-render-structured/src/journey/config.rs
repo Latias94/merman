@@ -1,6 +1,7 @@
-use crate::config::{config_bool, config_f64, config_string, config_string_vec};
-use crate::text::TextStyle;
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::config::{config_bool, config_f64, config_string, config_string_vec};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_render_core::text::TextStyle;
+use merman_theme_contract::v2::FamilyTheme;
 use serde_json::Value;
 
 use super::JourneyNativeStyle;
@@ -255,7 +256,7 @@ impl JourneyLayoutSettings {
     }
 }
 
-pub(crate) const fn default_use_max_width() -> bool {
+pub(super) const fn default_use_max_width() -> bool {
     DEFAULT_USE_MAX_WIDTH
 }
 
@@ -268,8 +269,8 @@ mod tests {
     #[test]
     fn native_journey_preserves_default_section_slot_wrap() {
         let config = PresentationConfig::empty_object();
-        let theme = crate::theme::ThemeCompiler::new()
-            .compile_preset(crate::theme::BuiltinPreset::Studio, None)
+        let theme = merman_theme_contract::v2::ThemeCompiler::new()
+            .compile_preset(merman_theme_contract::v2::BuiltinPreset::Studio, None)
             .unwrap();
         let style = JourneyNativeStyle::new(theme.family("journey"), &config);
         let view = JourneyConfigView::new(config.as_value());

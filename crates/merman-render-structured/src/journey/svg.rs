@@ -1,14 +1,29 @@
-use super::super::*;
-use crate::journey::{
-    JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
-    JourneyCssBinding, JourneyNativeStyle, JourneyStyle, JourneyTextPlacement,
+use std::fmt::Write as _;
+
+use merman_model::{OperationPhase, families::journey::JourneyDiagramModel};
+use merman_render_core::{
+    Bounds, Error, Result,
+    number_format::{canonical_number as fmt, canonical_number_with_nonfinite},
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::{
+        CssSelectorDiagramId, PreparedCommonCss, SvgDiagramIdValue, SvgId, scoped_svg_id,
+        scoped_svg_url,
+    },
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::split_html_br_lines,
+    xml::{escape_attr, escape_attr_display, escape_xml},
 };
-use crate::text::split_html_br_lines;
-use merman_model::families::journey::JourneyDiagramModel;
+
+use super::{
+    JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
+    JourneyCssBinding, JourneyDiagramLayout, JourneyMouthKind, JourneyNativeStyle,
+    JourneySectionLayout, JourneyStyle, JourneyTaskLayout, JourneyTextPlacement,
+};
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
     match v {
-        Some(value) => crate::number_format::canonical_number_with_nonfinite(value).to_string(),
+        Some(value) => canonical_number_with_nonfinite(value).to_string(),
         None => "NaN".to_string(),
     }
 }
@@ -166,7 +181,7 @@ fn write_text_candidate(
 
 fn write_task_rect(
     out: &mut impl SvgOutput,
-    task: &crate::model::JourneyTaskLayout,
+    task: &JourneyTaskLayout,
     radius: &str,
     native_stroke: Option<&str>,
 ) {
@@ -193,7 +208,7 @@ fn write_task_rect(
 
 fn write_section_rect(
     out: &mut impl SvgOutput,
-    section: &crate::model::JourneySectionLayout,
+    section: &JourneySectionLayout,
     native: Option<&JourneyNativeStyle>,
 ) {
     let class = format!("journey-section section-type-{}", section.num);
@@ -229,7 +244,7 @@ fn write_section_rect(
 fn journey_css(
     diagram_id: impl SvgDiagramIdValue,
     theme: &JourneyCssBinding,
-    common: &crate::svg::PreparedCommonCss,
+    common: &PreparedCommonCss,
 ) -> String {
     let mut out = String::new();
     common
@@ -361,15 +376,16 @@ fn journey_css(
     out
 }
 
-pub(crate) fn render_journey_diagram_svg_model(
-    layout: &crate::model::JourneyDiagramLayout,
+/// Emits a complete Journey document for the shared terminal SVG pipeline.
+pub fn render_journey_svg(
+    layout: &JourneyDiagramLayout,
     model: &JourneyDiagramModel,
     style: &JourneyStyle,
     diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
+    diagram_id: SvgId<'_>,
+    viewport: &root_svg::RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
-
     let diagram_title = layout
         .title
         .as_deref()
@@ -408,7 +424,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     let title_font_family = render_settings.title_font_family.as_str();
     let title_color = &render_settings.title_color;
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(work_meter);
     let aria_labelledby = model
         .acc_title
         .as_deref()
@@ -435,20 +451,18 @@ pub(crate) fn render_journey_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::JOURNEY, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
-                layout.use_max_width,
-            )
-            .with_mermaid_responsive_height(layout.use_max_width, svg_height)
-            .with_fixed_size(layout.width, svg_height)
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
-            root_chrome,
-        )?;
-    options.checkpoint_emit()?;
+    let root_document = viewport.write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+            layout.use_max_width,
+        )
+        .with_mermaid_responsive_height(layout.use_max_width, svg_height)
+        .with_fixed_size(layout.width, svg_height)
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
+        root_chrome,
+    )?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -470,7 +484,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 
     out.push_str("<style>");
     if let Some(native) = native {
-        let id = super::super::util::css_selector_diagram_id(diagram_id);
+        let id = CssSelectorDiagramId(diagram_id);
         let mut css = String::new();
         style.common_css().write_prefix(&mut css, id)?;
         let _ = write!(
@@ -483,10 +497,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             text = native.text,
             stroke_width = fmt(native.border_width),
         );
-        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+        XmlTextOutput::new(&mut out).push_str(&css);
     } else if let Some(mermaid) = style.css_binding() {
         let css = journey_css(diagram_id, mermaid, style.common_css());
-        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+        XmlTextOutput::new(&mut out).push_str(&css);
     }
     out.push_str("</style>");
     out.push_str(r#"<g/>"#);
@@ -533,11 +547,9 @@ pub(crate) fn render_journey_diagram_svg_model(
     let mut last_section = "";
     for task in &layout.tasks {
         if last_section != task.section {
-            let section = section_iter
-                .next()
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: "Journey section layout is missing a task's section header".to_owned(),
-                })?;
+            let section = section_iter.next().ok_or_else(|| Error::InvalidModel {
+                message: "Journey section layout is missing a task's section header".to_owned(),
+            })?;
             let section_class = format!("journey-section section-type-{}", section.num);
             section_colour = render_settings
                 .section_colours
@@ -590,7 +602,7 @@ pub(crate) fn render_journey_diagram_svg_model(
             y2 = fmt(task.line_y2),
             line_stroke = escape_attr(line_stroke),
         );
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
 
         let face_paint = native.map(|style| style.face_paint(&task.mouth));
         let face_attributes = face_paint.as_ref().map_or_else(String::new, |(fill, ink)| {
@@ -627,7 +639,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         );
 
         match task.mouth {
-            crate::model::JourneyMouthKind::Smile => {
+            JourneyMouthKind::Smile => {
                 let _ = write!(
                     &mut out,
                     r#"<path class="mouth" d="M7.5,0A7.5,7.5,0,1,1,-7.5,0L-6.818,0A6.818,6.818,0,1,0,6.818,0Z" transform="translate({x},{y})"/>"#,
@@ -635,7 +647,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     y = fmt_task_face_y(task.face_cy.map(|v| v + 2.0)),
                 );
             }
-            crate::model::JourneyMouthKind::Sad => {
+            JourneyMouthKind::Sad => {
                 let _ = write!(
                     &mut out,
                     r#"<path class="mouth" d="M-7.5,0A7.5,7.5,0,1,1,7.5,0L6.818,0A6.818,6.818,0,1,0,-6.818,0Z" transform="translate({x},{y})"/>"#,
@@ -643,7 +655,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     y = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                 );
             }
-            crate::model::JourneyMouthKind::Ambivalent => {
+            JourneyMouthKind::Ambivalent => {
                 let _ = write!(
                     &mut out,
                     r#"<line class="mouth" stroke="{face_ink}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"#,
@@ -747,18 +759,18 @@ pub(crate) fn render_journey_diagram_svg_model(
 
 #[cfg(test)]
 mod tests {
+    use super::super::{JourneyLineLayout, presentation_config};
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::model::{
-        Bounds, JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskLayout,
+    use merman_model::family::DiagramFamilyId;
+    use merman_render_core::{
+        resources::{
+            RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+        },
+        svg_css::SvgDiagramIdProjection,
     };
-    use crate::resources::{
-        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-    };
-    use merman_model::families::journey::JourneyDiagramModel;
 
-    fn bounded_journey_layout() -> crate::model::JourneyDiagramLayout {
-        crate::model::JourneyDiagramLayout {
+    fn bounded_journey_layout() -> JourneyDiagramLayout {
+        JourneyDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: -25.0,
@@ -816,32 +828,39 @@ mod tests {
         }
     }
 
+    fn render_test_journey(
+        layout: &JourneyDiagramLayout,
+        style: &JourneyStyle,
+        id: &str,
+        policy: RenderResourcePolicy,
+    ) -> Result<root_svg::RootedSvg> {
+        let work_meter = OperationWorkMeter::new(policy);
+        let projection = SvgDiagramIdProjection::new(&work_meter);
+        let diagram_id = SvgId::new(id)
+            .expect("valid Journey test ID")
+            .with_projection(&projection);
+        let viewport = root_svg::RootViewportContext::new(DiagramFamilyId::JOURNEY, diagram_id);
+        let svg = render_journey_svg(
+            layout,
+            &JourneyDiagramModel::default(),
+            style,
+            None,
+            diagram_id,
+            &viewport,
+            &work_meter,
+        );
+        projection.finish()?;
+        svg
+    }
+
     fn render_bounded_journey_with_policy(
         policy: RenderResourcePolicy,
-    ) -> crate::Result<root_svg::RootedSvg> {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(policy)
-            .begin_session()
-            .expect("render session");
-        let request = SvgRenderOptions {
-            diagram_id: Some("journey-bounded".to_string()),
-            ..Default::default()
-        };
-        let debug = SvgDebugOptions::default();
-        let execution =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::JOURNEY)
-                .expect("SVG execution");
-        let layout = bounded_journey_layout();
-        let typography_theme = JourneyStyle::resolve(
-            &crate::test_support::presentation_config(serde_json::json!({})),
-            None,
-        );
-        render_journey_diagram_svg_model(
-            &layout,
-            &JourneyDiagramModel::default(),
-            &typography_theme,
-            None,
-            &execution,
+    ) -> Result<root_svg::RootedSvg> {
+        render_test_journey(
+            &bounded_journey_layout(),
+            &JourneyStyle::resolve(&presentation_config(serde_json::json!({})), None),
+            "journey-bounded",
+            policy,
         )
     }
 
@@ -852,7 +871,7 @@ mod tests {
         for (stroke, expected) in [(None, None), (Some("#654321"), Some("stroke:#654321;"))] {
             let mut out = String::new();
             write_task_rect(&mut out, &task, "9", stroke);
-            let document = crate::xml_dom::Document::parse(&out).unwrap();
+            let document = roxmltree::Document::parse(&out).unwrap();
             let rect = document.root_element();
             assert_eq!(rect.attribute("style"), expected);
             assert_eq!(rect.attribute("fill"), Some("A&B"));
@@ -889,7 +908,7 @@ mod tests {
                 .expect("valid below-exact Journey SVG ceiling"),
         )
         .expect_err("one byte below the Journey SVG size must fail");
-        let crate::Error::ResourceLimitExceeded(limit) = error else {
+        let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected Journey MaxSvgBytes rejection, got {error}");
         };
         assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
@@ -921,8 +940,7 @@ mod tests {
             }
         });
 
-        let typography =
-            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
+        let typography = JourneyStyle::resolve(&presentation_config(cfg), None);
         let css = journey_css(
             "journey",
             typography.css_binding().unwrap(),
@@ -954,8 +972,7 @@ mod tests {
     #[test]
     fn journey_css_uses_default_font_and_edge_color() {
         let cfg = serde_json::json!({});
-        let typography =
-            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
+        let typography = JourneyStyle::resolve(&presentation_config(cfg), None);
         let css = journey_css(
             "journey",
             typography.css_binding().unwrap(),
@@ -992,7 +1009,7 @@ mod tests {
                 "fillType0": "#b0b0b0"
             }
         });
-        let layout = crate::model::JourneyDiagramLayout {
+        let layout = JourneyDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: -25.0,
@@ -1048,22 +1065,14 @@ mod tests {
                 y2: 200.0,
             },
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("journey".to_string()),
-            ..Default::default()
-        };
-        let typography_theme =
-            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg.clone()), None);
+        let typography_theme = JourneyStyle::resolve(&presentation_config(cfg.clone()), None);
 
-        let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
-            render_journey_diagram_svg_model(
-                &layout,
-                &JourneyDiagramModel::default(),
-                &typography_theme,
-                None,
-                options,
-            )
-        })
+        let svg = render_test_journey(
+            &layout,
+            &typography_theme,
+            "journey",
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
         .unwrap();
 
         assert!(svg.contains(r#"#journey .task-type-0,#journey .section-type-0{fill:#b0b0b0;}"#));
@@ -1075,7 +1084,7 @@ mod tests {
 
     #[test]
     fn journey_root_honors_disabled_max_width() {
-        let layout = crate::model::JourneyDiagramLayout {
+        let layout = JourneyDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: -25.0,
@@ -1101,24 +1110,15 @@ mod tests {
                 y2: 200.0,
             },
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("journeyFixed".to_string()),
-            ..Default::default()
-        };
-        let typography_theme = JourneyStyle::resolve(
-            &crate::test_support::presentation_config(serde_json::json!({})),
-            None,
-        );
+        let typography_theme =
+            JourneyStyle::resolve(&presentation_config(serde_json::json!({})), None);
 
-        let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
-            render_journey_diagram_svg_model(
-                &layout,
-                &JourneyDiagramModel::default(),
-                &typography_theme,
-                None,
-                options,
-            )
-        })
+        let svg = render_test_journey(
+            &layout,
+            &typography_theme,
+            "journeyFixed",
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
