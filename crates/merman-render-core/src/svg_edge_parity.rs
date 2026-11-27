@@ -4,6 +4,7 @@ pub mod curve;
 pub mod edge_label_geometry;
 pub mod edge_path;
 pub mod line_hops;
+pub mod markers;
 pub mod path_numbers;
 
 mod path_length;
