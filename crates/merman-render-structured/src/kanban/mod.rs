@@ -1,14 +1,38 @@
-use crate::Result;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-use crate::resources::OperationWorkMeter;
+//! Layout, prepared labels, and complete SVG emission for Kanban boards.
+
+use std::sync::Arc;
+
+use merman_model::{families::kanban::KanbanDiagramRenderModel, presentation::PresentationConfig};
 #[cfg(test)]
-use crate::resources::RenderResourcePolicy;
-use crate::svg_security::{
-    MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+use merman_render_core::resources::RenderResourcePolicy;
+use merman_render_core::{
+    Bounds, Error, Result,
+    config::config_bool,
+    layout_work::OperationLayoutWorkControl,
+    resources::{OperationWorkMeter, PreparedTextRetainedReservation},
+    svg_css::PreparedCommonCss,
+    svg_security::{
+        MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+    },
+    text::{
+        TextMeasurer, TextMetrics, TextStyle, measure_xhtml_label_fragment_with_terminal_fonts,
+        mermaid_markdown_to_xhtml_label_fragment,
+    },
+    theme_svg::elevation,
 };
-use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_model::families::kanban::KanbanDiagramRenderModel;
+use merman_theme_contract::v2::FamilyTheme;
+
+mod config;
+mod css_binding;
+mod model;
+mod native_theme;
+mod svg;
+
+use config::KanbanConfigView;
+use css_binding::KanbanCssBinding;
+pub use model::{KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
+use native_theme::{KanbanNativeStyle, task_body};
+pub use svg::{KanbanSvgContext, render_kanban_diagram_svg};
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
@@ -18,28 +42,23 @@ const KANBAN_DETAIL_LABEL_MEASUREMENT_PASSES: usize = 2;
 const MERMAID_TASK_RADIUS_PX: f64 = 5.0;
 
 pub(crate) struct KanbanMarkdown<'a> {
-    sanitize_config: &'a merman_model::presentation::PresentationConfig,
+    sanitize_config: &'a PresentationConfig,
     auto_wrap: bool,
 }
 
 impl<'a> KanbanMarkdown<'a> {
-    pub(crate) fn new(
-        effective_config: &'a merman_model::presentation::PresentationConfig,
-    ) -> Self {
+    pub(crate) fn new(effective_config: &'a PresentationConfig) -> Self {
         Self {
             sanitize_config: effective_config,
-            auto_wrap: crate::config::config_bool(
-                effective_config.as_value(),
-                &["markdownAutoWrap"],
-            )
-            .unwrap_or(true),
+            auto_wrap: config_bool(effective_config.as_value(), &["markdownAutoWrap"])
+                .unwrap_or(true),
         }
     }
 
     pub(crate) fn render(&self, raw: &str) -> String {
         let sanitized =
             merman_markup::sanitize::sanitize_text(raw, self.sanitize_config.as_config());
-        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
+        mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
     }
 
     pub(crate) fn measure_html(
@@ -50,26 +69,19 @@ impl<'a> KanbanMarkdown<'a> {
         max_width: Option<f64>,
     ) -> TextMetrics {
         // HTML rem lengths use the document's default root, independently of the diagram size.
-        crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
-            measurer, html, style, max_width, 16.0,
-        )
+        measure_xhtml_label_fragment_with_terminal_fonts(measurer, html, style, max_width, 16.0)
     }
 }
 
-mod config;
-mod css_binding;
-mod native_theme;
-pub(crate) use config::{KanbanConfigView, default_use_max_width};
-pub(crate) use css_binding::KanbanCssBinding;
-pub(crate) use native_theme::{KanbanNativeStyle, task_body};
+/// Prepared geometry, paint, and XHTML with their operation-owned retained-text lease.
 #[derive(Debug)]
-pub(crate) struct KanbanPreparedArtifact {
+pub struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,
-    adaptation: Option<crate::LayoutAdaptationObservation>,
+    adaptation: Option<(f64, f64)>,
     sections: Vec<KanbanPreparedMarkdownLabel>,
     items: Vec<KanbanPreparedItem>,
     appearance: KanbanAppearance,
-    _retained_text: Option<crate::resources::PreparedTextRetainedReservation>,
+    _retained_text: Option<PreparedTextRetainedReservation>,
 }
 
 #[derive(Debug)]
@@ -83,9 +95,9 @@ pub(crate) enum KanbanAppearance {
 }
 
 impl KanbanPreparedArtifact {
-    pub(crate) fn with_retained_text_accounting(
+    fn with_retained_text_accounting(
         mut self,
-        work_meter: &std::sync::Arc<OperationWorkMeter>,
+        work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         let payloads = self
             .sections
@@ -117,12 +129,13 @@ impl KanbanPreparedArtifact {
                     .saturating_mul(std::mem::size_of::<KanbanPreparedItem>()),
             );
         let bytes = payloads.fold(owner_bytes, usize::saturating_add);
-        let work = OperationLayoutWorkControl::new(std::sync::Arc::clone(work_meter));
+        let work = OperationLayoutWorkControl::new(Arc::clone(work_meter));
         self._retained_text = Some(work.reserve_prepared_text_retained_bytes(bytes)?);
         Ok(self)
     }
 
-    pub(crate) const fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
+    /// Returns the requested and observed widths for an adapted board.
+    pub const fn fit_width_observation(&self) -> Option<(f64, f64)> {
         self.adaptation
     }
 
@@ -130,7 +143,7 @@ impl KanbanPreparedArtifact {
         &self.appearance
     }
 
-    pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
+    pub fn layout(&self) -> &KanbanDiagramLayout {
         &self.layout
     }
 
@@ -248,7 +261,7 @@ fn replace_first_like_javascript(source: &str, search: &str, replacement: &str) 
 fn prepare_kanban_ticket_link(
     ticket_base_url: Option<&str>,
     ticket: Option<&str>,
-    effective_config: &merman_model::presentation::PresentationConfig,
+    effective_config: &PresentationConfig,
 ) -> Option<KanbanPreparedTicketLink> {
     let ticket = ticket.filter(|ticket| !ticket.is_empty())?;
     let ticket_url = replace_first_like_javascript(ticket_base_url?, "#TICKET#", ticket);
@@ -389,7 +402,7 @@ pub(crate) fn layout_kanban_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let effective_config = crate::test_support::presentation_config(effective_config.clone());
+    let effective_config = presentation_config_for_test(effective_config.clone());
     let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
     prepare_kanban_diagram_typed_with_work_meter(
         model,
@@ -397,19 +410,40 @@ pub(crate) fn layout_kanban_diagram_typed(
         None,
         measurer,
         &work_meter,
-        &crate::LayoutOptions::default(),
+        None,
     )
     .map(|prepared| prepared.layout)
 }
 
-/// Prepares a Kanban model under the cumulative work meter owned by the render operation.
-pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+/// Prepares and admits a Kanban board against the operation's shared work and text budgets.
+///
+/// `fit_width` is the positive finite container width admitted by the host for FitWidth.
+pub fn prepare_kanban_diagram(
     model: &KanbanDiagramRenderModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    native: Option<&crate::theme::FamilyTheme>,
+    effective_config: &PresentationConfig,
+    native: Option<&FamilyTheme>,
+    measurer: &dyn TextMeasurer,
+    work_meter: &Arc<OperationWorkMeter>,
+    fit_width: Option<f64>,
+) -> Result<KanbanPreparedArtifact> {
+    prepare_kanban_diagram_typed_with_work_meter(
+        model,
+        effective_config,
+        native,
+        measurer,
+        work_meter,
+        fit_width,
+    )?
+    .with_retained_text_accounting(work_meter)
+}
+
+fn prepare_kanban_diagram_typed_with_work_meter(
+    model: &KanbanDiagramRenderModel,
+    effective_config: &PresentationConfig,
+    native: Option<&FamilyTheme>,
     measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
-    options: &crate::LayoutOptions,
+    fit_width: Option<f64>,
 ) -> Result<KanbanPreparedArtifact> {
     work_meter
         .policy()
@@ -418,7 +452,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     let native = native.map(KanbanNativeStyle::resolve);
     let common = native
         .is_none()
-        .then(|| crate::svg::PreparedCommonCss::new(effective_config.as_value(), None));
+        .then(|| PreparedCommonCss::new(effective_config.as_value(), None));
     let config_view = KanbanConfigView::new(effective_config.as_value());
     let body = if let Some(native) = &native {
         native.body.clone()
@@ -456,7 +490,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             if let Some(parent) = item.parent_id.as_deref()
                 && parent != section.id
             {
-                return Err(crate::Error::InvalidModel {
+                return Err(Error::InvalidModel {
                     message: format!(
                         "Kanban card {} must follow its declared section {}",
                         item.id, section.id
@@ -523,8 +557,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         prepared_sections.push(prepared_label);
     }
 
-    let mut section_item_ranges = (options.adaptation == crate::LayoutAdaptation::FitWidth)
-        .then(|| Vec::with_capacity(sections.len()));
+    let mut section_item_ranges = fit_width.map(|_| Vec::with_capacity(sections.len()));
     let card_radius = native
         .as_ref()
         .map_or(MERMAID_TASK_RADIUS_PX, |style| style.form.radius);
@@ -612,9 +645,9 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         }
     }
 
-    if let Some(ranges) = section_item_ranges {
+    if let Some((requested_width, ranges)) = fit_width.zip(section_item_ranges) {
         let gap = padding / 2.0;
-        let inner_width = (options.container_width - 2.0 * viewbox_padding).max(0.0);
+        let inner_width = (requested_width - 2.0 * viewbox_padding).max(0.0);
         let capacity = (((inner_width + gap) / (section_width + gap)).floor() as usize)
             .max(1)
             .min(sections.len().max(1));
@@ -671,7 +704,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         if let Some(native) = &native
             && !matches!(native.elevation, merman_theme_contract::v2::Elevation::Flat)
         {
-            let depth = crate::theme::elevation_svg::bounds(&native.elevation, task_body(n));
+            let depth = elevation::bounds(&native.elevation, task_body(n));
             min_x = min_x.min(depth.x0);
             min_y = min_y.min(depth.y0);
             max_x = max_x.max(depth.x1);
@@ -722,21 +755,18 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         None
     };
 
-    let adaptation = if options.adaptation == crate::LayoutAdaptation::FitWidth {
+    let adaptation = if let Some(requested_width) = fit_width {
         let actual_width = match &bounds {
             Some(bounds) => bounds.max_x - bounds.min_x,
             None if sections.is_empty() => 100.0,
             None => f64::NAN,
         };
         if !actual_width.is_finite() {
-            return Err(crate::Error::InvalidModel {
+            return Err(Error::InvalidModel {
                 message: "fit-width Kanban bounds exceed finite layout coordinates".to_owned(),
             });
         }
-        Some(crate::LayoutAdaptationObservation::fit_width(
-            options.container_width,
-            actual_width.max(1.0),
-        ))
+        Some((requested_width, actual_width.max(1.0)))
     } else {
         None
     };
@@ -772,11 +802,11 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
 #[cfg(test)]
 pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     layout: &KanbanDiagramLayout,
-    effective_config: &merman_model::presentation::PresentationConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanPreparedArtifact> {
     let config_view = KanbanConfigView::new(effective_config.as_value());
-    let common = crate::svg::PreparedCommonCss::new(effective_config.as_value(), None);
+    let common = PreparedCommonCss::new(effective_config.as_value(), None);
     let settings = config_view.layout_settings_with_text_style(config::common_label_style(&common));
     let ticket_base_url = config_view.ticket_base_url();
     let markdown = KanbanMarkdown::new(effective_config);
@@ -837,15 +867,37 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
 }
 
 #[cfg(test)]
+fn presentation_config_for_test(value: serde_json::Value) -> PresentationConfig {
+    use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+    use merman_model::{MermaidConfig, OperationControl};
+
+    PresentationConfig::from_config_controlled(
+        MermaidConfig::from_value(value),
+        &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .unwrap()
+}
+
+#[cfg(test)]
 mod tests {
     use super::{
-        kanban_layout_work_units, layout_kanban_diagram_typed,
-        prepare_kanban_diagram_typed_with_work_meter, replace_first_like_javascript,
+        kanban_layout_work_units, layout_kanban_diagram_typed, prepare_kanban_diagram,
+        prepare_kanban_diagram_typed_with_work_meter, presentation_config_for_test,
+        replace_first_like_javascript,
     };
-    use crate::Error;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_model::families::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+    use merman_model::{
+        families::kanban::{KanbanDiagramRenderModel, KanbanRenderNode},
+        presentation::PresentationConfig,
+    };
+    use merman_render_core::Error;
+    use merman_render_core::resources::{
+        OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+    };
+    use merman_render_core::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
+    };
     use serde_json::json;
     use std::cell::Cell;
 
@@ -900,16 +952,14 @@ mod tests {
         use std::sync::Arc;
 
         let prepare = |meter: &Arc<OperationWorkMeter>| {
-            prepare_kanban_diagram_typed_with_work_meter(
+            prepare_kanban_diagram(
                 &KanbanDiagramRenderModel { nodes: Vec::new() },
-                &merman_model::presentation::PresentationConfig::default(),
+                &PresentationConfig::default(),
                 None,
                 &DeterministicTextMeasurer::default(),
                 meter,
-                &crate::LayoutOptions::default(),
+                None,
             )
-            .unwrap()
-            .with_retained_text_accounting(meter)
         };
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -954,20 +1004,19 @@ mod tests {
         );
         for security_level in ["strict", "loose"] {
             let prepare = |ticket_base_url: &str, policy| {
-                let config = crate::test_support::presentation_config(json!({
+                let config = presentation_config_for_test(json!({
                     "securityLevel": security_level,
                     "kanban": { "ticketBaseUrl": ticket_base_url }
                 }));
                 let meter = Arc::new(OperationWorkMeter::new(policy));
-                let artifact = prepare_kanban_diagram_typed_with_work_meter(
+                let artifact = prepare_kanban_diagram(
                     &model,
                     &config,
                     None,
                     &DeterministicTextMeasurer::default(),
                     &meter,
-                    &crate::LayoutOptions::default(),
-                )
-                .and_then(|artifact| artifact.with_retained_text_accounting(&meter));
+                    None,
+                );
                 (artifact, meter)
             };
             let policy = RenderResourcePolicy::unbounded_for_trusted_input();
@@ -1043,7 +1092,7 @@ mod tests {
                 item_with_details("task", "Task", "todo", Some("MC-1"), None),
             ],
         };
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config_for_test(json!({
             "kanban": { "ticketBaseUrl": "https://example.invalid/#TICKET#" }
         }));
         let artifact = prepare_kanban_diagram_typed_with_work_meter(
@@ -1052,7 +1101,7 @@ mod tests {
             None,
             &DeterministicTextMeasurer::default(),
             &meter,
-            &crate::LayoutOptions::default(),
+            None,
         )
         .unwrap();
         control.cancel();
@@ -1079,11 +1128,11 @@ mod tests {
         let measurer = CountingTextMeasurer::default();
         let prepared = prepare_kanban_diagram_typed_with_work_meter(
             &model,
-            &merman_model::presentation::PresentationConfig::default(),
+            &PresentationConfig::default(),
             None,
             &measurer,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
-            &crate::LayoutOptions::default(),
+            None,
         )
         .unwrap();
         assert!(measurer.calls.get() >= 4);
@@ -1103,7 +1152,7 @@ mod tests {
                 item("second", "Second task", "done"),
             ],
         };
-        let config = crate::test_support::presentation_config(json!({
+        let config = presentation_config_for_test(json!({
             "fontFamily": "RootFallback",
             "themeVariables": {
                 "fontFamily": "Configured, monospace",
@@ -1116,7 +1165,7 @@ mod tests {
             None,
             &CountingTextMeasurer::default(),
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
-            &crate::LayoutOptions::default(),
+            None,
         )
         .unwrap();
 
@@ -1180,11 +1229,11 @@ mod tests {
         let narrow_meter = OperationWorkMeter::new(narrow_policy);
         let error = prepare_kanban_diagram_typed_with_work_meter(
             &model,
-            &crate::test_support::presentation_config(json!({})),
+            &presentation_config_for_test(json!({})),
             None,
             &measurer,
             &narrow_meter,
-            &crate::LayoutOptions::default(),
+            None,
         )
         .unwrap_err();
 
@@ -1203,11 +1252,11 @@ mod tests {
         let exact_measurer = CountingTextMeasurer::default();
         prepare_kanban_diagram_typed_with_work_meter(
             &model,
-            &crate::test_support::presentation_config(json!({})),
+            &presentation_config_for_test(json!({})),
             None,
             &exact_measurer,
             &exact_meter,
-            &crate::LayoutOptions::default(),
+            None,
         )
         .unwrap();
 

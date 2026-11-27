@@ -23,6 +23,9 @@ pub mod ishikawa;
 #[cfg(feature = "diagram-journey")]
 #[doc(hidden)]
 pub mod journey;
+#[cfg(feature = "diagram-kanban")]
+#[doc(hidden)]
+pub mod kanban;
 #[cfg(feature = "diagram-packet")]
 #[doc(hidden)]
 pub mod packet;

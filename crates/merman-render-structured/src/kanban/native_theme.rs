@@ -1,8 +1,7 @@
-use merman_theme_contract::v2::{DataPalette, Elevation, Form};
+use merman_render_core::{mermaid_style::font_family_css, text::TextStyle};
+use merman_theme_contract::v2::{Color, DataPalette, Elevation, FamilyTheme, Form};
 
-use crate::model::KanbanItemLayout;
-use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, font_family_css};
+use super::KanbanItemLayout;
 
 #[derive(Debug)]
 pub(crate) struct KanbanNativeStyle {

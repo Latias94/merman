@@ -23,7 +23,6 @@ pub(crate) use merman_render_core::theme_svg::edge_label_background as edge_labe
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
     feature = "diagram-zenuml",
-    feature = "diagram-kanban",
     feature = "diagram-block",
     feature = "diagram-usecase",
 ))]

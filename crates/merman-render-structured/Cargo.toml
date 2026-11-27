@@ -27,6 +27,11 @@ diagram-gantt = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme
 diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/root-svg", "merman-render-core/theme-svg"]
 diagram-ishikawa = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/root-svg", "merman-render-core/rough-svg"]
 diagram-journey = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-journey", "merman-render-core/root-svg", "merman-render-core/text-layout"]
+diagram-kanban = [
+    "dep:kurbo", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-kanban",
+    "merman-render-core/markdown-labels", "merman-render-core/root-svg", "merman-render-core/theme-elevation",
+]
 diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet", "merman-render-core/root-svg"]
 diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad", "merman-render-core/root-svg"]
 diagram-timeline = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-timeline", "merman-render-core/root-svg"]
@@ -36,6 +41,7 @@ system-timezone = ["merman-model?/system-timezone"]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
 merman-markup = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }

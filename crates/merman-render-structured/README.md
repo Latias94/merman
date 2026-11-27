@@ -36,6 +36,10 @@ The `diagram-event-modeling` feature provides frame and swimlane layout, present
 prepared XHTML labels, and complete Event Modeling SVG emission. The rendering operation supplies
 text measurement, the root viewport, and the shared work meter.
 
+The `diagram-kanban` feature provides section and card layout, prepared XHTML labels and ticket
+links, and complete Kanban SVG emission. The render operation supplies measurement, the admitted
+fit width, the root viewport, and the shared work meter.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

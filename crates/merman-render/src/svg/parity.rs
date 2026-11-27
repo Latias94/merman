@@ -130,8 +130,6 @@ mod gantt;
 mod info;
 #[cfg(feature = "diagram-journey")]
 mod journey;
-#[cfg(feature = "diagram-kanban")]
-mod kanban;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1292,7 +1290,18 @@ fn render_builtin_family_artifact_raw(
         ),
         #[cfg(feature = "diagram-kanban")]
         BuiltinFamilyArtifact::Kanban(pair) => {
-            kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
+            use crate::kanban::{KanbanSvgContext, render_kanban_diagram_svg};
+
+            let diagram_id = options.diagram_id_or("merman");
+            render_kanban_diagram_svg(
+                pair.layout(),
+                effective_config,
+                &KanbanSvgContext {
+                    diagram_id,
+                    viewport: options.root_viewport(crate::DiagramFamilyId::KANBAN, diagram_id),
+                    work_meter: options.work_meter(),
+                },
+            )
         }
         #[cfg(feature = "diagram-gantt")]
         BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(

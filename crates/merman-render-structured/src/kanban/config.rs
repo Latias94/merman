@@ -1,5 +1,8 @@
-use crate::config::{DiagramLook, config_bool, config_diagram_look, config_f64, config_string};
-use crate::text::TextStyle;
+use merman_render_core::config::{
+    DiagramLook, config_bool, config_diagram_look, config_f64, config_string,
+};
+use merman_render_core::svg_css::PreparedCommonCss;
+use merman_render_core::text::TextStyle;
 use serde_json::Value;
 
 const DEFAULT_SECTION_WIDTH: f64 = 200.0;
@@ -23,7 +26,7 @@ impl<'a> KanbanConfigView<'a> {
 
     #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> KanbanLayoutSettings {
-        let common = crate::svg::PreparedCommonCss::new(self.effective_config, None);
+        let common = PreparedCommonCss::new(self.effective_config, None);
         self.layout_settings_with_text_style(common_label_style(&common))
     }
 
@@ -71,8 +74,8 @@ impl<'a> KanbanConfigView<'a> {
     }
 }
 
-pub(super) fn common_label_style(common: &crate::svg::PreparedCommonCss) -> TextStyle {
-    let size = crate::mermaid_style::parse_svg_number_or_px(common.font_size_css())
+pub(super) fn common_label_style(common: &PreparedCommonCss) -> TextStyle {
+    let size = merman_render_core::mermaid_style::parse_svg_number_or_px(common.font_size_css())
         .expect("prepared Kanban common CSS has an absolute root font size");
     label_style(common.font_family(), size)
 }

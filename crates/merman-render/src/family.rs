@@ -2219,7 +2219,13 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     pub fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
         match &self.family {
             #[cfg(feature = "diagram-kanban")]
-            BuiltinFamilyArtifact::Kanban(pair) => pair.layout().layout_adaptation(),
+            BuiltinFamilyArtifact::Kanban(pair) => {
+                pair.layout()
+                    .fit_width_observation()
+                    .map(|(requested_width, actual_width)| {
+                        crate::LayoutAdaptationObservation::fit_width(requested_width, actual_width)
+                    })
+            }
             _ => self.graph_placement().and_then(|layout| layout.adaptation),
         }
     }

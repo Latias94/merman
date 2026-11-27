@@ -1293,6 +1293,7 @@ name = "merman-render-structured"
 version = "0.11.0"
 dependencies = [
  "cssparser",
+ "kurbo",
  "merman-markup",
  "merman-model",
  "merman-render-core",

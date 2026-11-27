@@ -1,17 +1,38 @@
-use super::super::*;
-use crate::kanban::{
+use std::fmt::Write as _;
+
+use kurbo::Shape;
+use merman_model::{OperationPhase, presentation::PresentationConfig};
+use merman_render_core::{
+    Bounds, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext},
+    svg_css::{CssSelectorDiagramId, SvgId, escape_css_identifier},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    theme_svg::elevation,
+    xml::escape_attr,
+};
+use merman_theme_contract::v2::Elevation;
+
+use super::{
     KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanAppearance,
+    KanbanConfigView, KanbanCssBinding, KanbanItemLabelPositions, KanbanItemLayout,
     KanbanNativeStyle, KanbanPreparedArtifact, KanbanPreparedLabelGeometry, task_body,
 };
-use kurbo::Shape;
-use merman_theme_contract::v2::Elevation;
+
+/// The operation's projected SVG identity, viewport, and work meter.
+pub struct KanbanSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+}
 
 fn write_kanban_native_css(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     theme: &KanbanNativeStyle,
 ) {
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let _ = write!(
         out,
         r#"#{id}{{font-family:{family};font-size:{size}px;font-weight:{weight};fill:{text}}}
@@ -40,9 +61,9 @@ fn write_kanban_native_css(
 fn write_kanban_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    theme: &crate::kanban::KanbanCssBinding,
+    theme: &KanbanCssBinding,
 ) -> Result<()> {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = escape_css_identifier(diagram_id);
     let common = &theme.common;
     common.write_prefix(out, diagram_id)?;
     let label_text_color = common.text_color();
@@ -126,12 +147,12 @@ fn write_kanban_css(
 #[cfg(test)]
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let mut out = String::new();
-    let binding = crate::kanban::KanbanCssBinding::for_test(effective_config, None)?;
+    let binding = KanbanCssBinding::for_test(effective_config, None)?;
     write_kanban_css(&mut out, diagram_id, &binding)?;
     Ok(out)
 }
 
-fn kanban_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+fn kanban_dom_id(diagram_id: SvgId<'_>, raw_id: &str) -> String {
     format!("{diagram_id}-{raw_id}")
 }
 
@@ -151,7 +172,7 @@ struct KanbanLabelGroup<'a> {
 
 fn write_kanban_task_rect(
     out: &mut impl SvgOutput,
-    item: &crate::model::KanbanItemLayout,
+    item: &KanbanItemLayout,
     rect_x: f64,
     rect_y: f64,
 ) {
@@ -223,10 +244,11 @@ fn write_kanban_label_group(
     out.checkpoint()
 }
 
-pub(crate) fn render_kanban_diagram_svg(
+/// Writes a balanced, operation-bounded document using the board's prepared label terminals.
+pub fn render_kanban_diagram_svg(
     prepared: &KanbanPreparedArtifact,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    options: &SvgExecution<'_>,
+    effective_config: &PresentationConfig,
+    context: &KanbanSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
@@ -237,7 +259,7 @@ pub(crate) fn render_kanban_diagram_svg(
     };
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = context.diagram_id;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -250,7 +272,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "kanban");
     root_chrome.dom = root_svg::RootDomProfile {
@@ -259,19 +281,17 @@ pub(crate) fn render_kanban_diagram_svg(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::KANBAN, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-            root_chrome,
-        )?;
-    options.checkpoint_emit()?;
+    let root_document = context.viewport.write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+        root_chrome,
+    )?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
 
     out.push_str("<style>");
     {
-        let mut css = super::super::output::XmlTextOutput::new(&mut out);
+        let mut css = XmlTextOutput::new(&mut out);
         match prepared.appearance() {
             KanbanAppearance::Mermaid(binding) => {
                 write_kanban_css(&mut css, diagram_id.semantic_str(), binding)?;
@@ -281,7 +301,7 @@ pub(crate) fn render_kanban_diagram_svg(
     }
     out.push_str("</style>");
     out.checkpoint()?;
-    let config_view = crate::kanban::KanbanConfigView::new(effective_config);
+    let config_view = KanbanConfigView::new(effective_config);
     let label_min_height = KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
     let data_look = config_view.look();
     let data_look_attr = escape_attr(data_look.as_str());
@@ -296,7 +316,7 @@ pub(crate) fn render_kanban_diagram_svg(
         layout.sections.iter().zip(prepared_sections).enumerate()
     {
         let section_dom_id = kanban_dom_id(diagram_id, &s.id);
-        options.checkpoint_emit()?;
+        context.work_meter.checkpoint(OperationPhase::Emit)?;
         let left = s.center_x - s.width / 2.0;
         let geometry = prepared_label.geometry;
         let label_width = geometry.foreign_object_width;
@@ -360,13 +380,8 @@ pub(crate) fn render_kanban_diagram_svg(
         for (index, item) in layout.items.iter().enumerate() {
             let silhouette = task_body(item).to_rounded_rect(item.rx).to_path(0.1);
             let scope = format!("{}-task-{index}", diagram_id.semantic_str());
-            let _ = crate::theme::elevation_svg::write_depth(
-                &mut out,
-                &theme.elevation,
-                &scope,
-                &silhouette,
-                (0.0, 0.0),
-            );
+            let _ =
+                elevation::write_depth(&mut out, &theme.elevation, &scope, &silhouette, (0.0, 0.0));
             out.checkpoint()?;
         }
     }
@@ -385,14 +400,14 @@ pub(crate) fn render_kanban_diagram_svg(
 
     for (n, prepared_item) in layout.items.iter().zip(prepared_items) {
         let item_dom_id = kanban_dom_id(diagram_id, &n.id);
-        options.checkpoint_emit()?;
+        context.work_meter.checkpoint(OperationPhase::Emit)?;
         let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
         let title_geometry = prepared_item.title.geometry;
         let ticket_geometry = prepared_item.ticket.geometry;
         let assigned_geometry = prepared_item.assigned.geometry;
-        let crate::kanban::KanbanItemLabelPositions {
+        let KanbanItemLabelPositions {
             left_x,
             right_x,
             title_y,
@@ -508,17 +523,25 @@ pub(crate) fn render_kanban_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::environment::{
-        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
-        MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
-        TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementSource,
-    };
     use crate::kanban::{
-        KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, prepare_kanban_artifact_from_layout_for_test,
+        KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, KanbanDiagramLayout, KanbanMarkdown,
+        KanbanSectionLayout, prepare_kanban_artifact_from_layout_for_test,
+        presentation_config_for_test,
     };
-    use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-    use crate::text::TextMetrics;
+    use merman_model::family::DiagramFamilyId;
+    use merman_render_core::{
+        resources::RenderResourcePolicy,
+        svg_css::SvgDiagramIdProjection,
+        text::{
+            DeterministicTextMeasurer, TextMetrics,
+            measurement::{
+                HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest,
+                HostTextMeasurer, MeasurementProfileId, TextMeasurementOperation,
+                TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+                TextMeasurementSession, TextMeasurementSource,
+            },
+        },
+    };
     use std::sync::Arc;
 
     struct WideHost;
@@ -541,16 +564,36 @@ mod tests {
     fn render_test_kanban(
         layout: &KanbanDiagramLayout,
         effective_config: &serde_json::Value,
-        options: &SvgRenderOptions,
+        diagram_id: &str,
     ) -> Result<String> {
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let effective_config = crate::test_support::presentation_config(effective_config.clone());
+        let measurer = DeterministicTextMeasurer::default();
+        let effective_config = presentation_config_for_test(effective_config.clone());
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer)?;
-        with_test_svg_execution(DiagramFamilyId::KANBAN, options, |options| {
-            render_kanban_diagram_svg(&prepared, &effective_config, options)
-        })
-        .and_then(|svg| svg.into_string_for(DiagramFamilyId::KANBAN))
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        render_prepared_test_kanban(&prepared, &effective_config, diagram_id, &meter)
+    }
+
+    fn render_prepared_test_kanban(
+        prepared: &KanbanPreparedArtifact,
+        config: &PresentationConfig,
+        diagram_id: &str,
+        meter: &OperationWorkMeter,
+    ) -> Result<String> {
+        let projection = SvgDiagramIdProjection::new(meter);
+        let diagram_id = SvgId::new(diagram_id)
+            .expect("valid test SVG ID")
+            .with_projection(&projection);
+        render_kanban_diagram_svg(
+            prepared,
+            config,
+            &KanbanSvgContext {
+                diagram_id,
+                viewport: RootViewportContext::new(DiagramFamilyId::KANBAN, diagram_id),
+                work_meter: meter,
+            },
+        )?
+        .into_string_for(DiagramFamilyId::KANBAN)
     }
 
     fn attr_f64(tag: &str, name: &str) -> f64 {
@@ -645,9 +688,9 @@ mod tests {
                 "textColor": "#abcdef"
             }
         });
-        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+        let svg = render_test_kanban(&layout, &config, "merman").unwrap();
 
-        let document = crate::xml_dom::Document::parse(&svg).expect("valid Kanban SVG");
+        let document = roxmltree::Document::parse(&svg).expect("valid Kanban SVG");
         let stylesheet = document
             .root_element()
             .children()
@@ -689,7 +732,7 @@ mod tests {
         write_kanban_css(
             &mut out,
             "k",
-            &crate::kanban::KanbanCssBinding::for_test(
+            &KanbanCssBinding::for_test(
                 &serde_json::json!({}),
                 Some(("Typed, sans-serif", "24px")),
             )
@@ -712,7 +755,7 @@ mod tests {
             }
         });
 
-        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+        let svg = render_test_kanban(&layout, &config, "merman").unwrap();
 
         assert!(svg.contains(
             r#"<a class="kanban-ticket-link" xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038">"#
@@ -730,7 +773,7 @@ mod tests {
             }
         });
 
-        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+        let svg = render_test_kanban(&layout, &config, "merman").unwrap();
 
         assert!(svg.contains(
             r#"<a class="kanban-ticket-link" xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038" target="_blank">"#
@@ -747,7 +790,7 @@ mod tests {
             }
         });
 
-        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+        let svg = render_test_kanban(&layout, &config, "merman").unwrap();
 
         assert!(svg.contains(r#"<a class="kanban-ticket-link">"#), "{svg}");
         assert!(!svg.contains("xlink:href"), "{svg}");
@@ -766,7 +809,7 @@ mod tests {
             }
         });
 
-        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+        let svg = render_test_kanban(&layout, &config, "merman").unwrap();
 
         assert!(
             svg.contains(
@@ -837,12 +880,9 @@ mod tests {
                 },
             ],
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("kanban_fixture".to_string()),
-            ..Default::default()
-        };
+        let diagram_id = "kanban_fixture";
 
-        let svg = render_test_kanban(&layout, &serde_json::json!({}), &options).unwrap();
+        let svg = render_test_kanban(&layout, &serde_json::json!({}), diagram_id).unwrap();
 
         assert!(svg.contains(r#"id="kanban_fixture-constructor""#));
         assert!(svg.contains(r#"id="kanban_fixture-task1""#));
@@ -911,13 +951,10 @@ mod tests {
                 icon: None,
             }],
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("kb".to_string()),
-            ..Default::default()
-        };
+        let diagram_id = "kb";
 
         let config = serde_json::json!({"securityLevel": "strict"});
-        let svg = render_test_kanban(&layout, &config, &options).unwrap();
+        let svg = render_test_kanban(&layout, &config, diagram_id).unwrap();
 
         assert!(svg.contains(r#"<span class="nodeLabel"><p><em>Ready</em></p></span>"#));
         assert!(svg.contains(
@@ -926,12 +963,10 @@ mod tests {
         assert!(!svg.contains("*Ready*"), "{svg}");
         assert!(!svg.contains("**Ship it**"), "{svg}");
 
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let style = crate::kanban::KanbanConfigView::new(&config)
-            .layout_settings()
-            .text_style;
-        let sanitize_config = crate::test_support::presentation_config(config.clone());
-        let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
+        let measurer = DeterministicTextMeasurer::default();
+        let style = KanbanConfigView::new(&config).layout_settings().text_style;
+        let sanitize_config = presentation_config_for_test(config.clone());
+        let markdown = KanbanMarkdown::new(&sanitize_config);
         let section_html = markdown.render("*Ready*");
         let section_metrics = markdown.measure_html(&measurer, &section_html, &style, None);
         let source_metrics = markdown.measure_html(&measurer, "*Ready*", &style, None);
@@ -949,8 +984,8 @@ mod tests {
         let config = serde_json::json!({
             "securityLevel": "strict"
         });
-        let sanitize_config = crate::test_support::presentation_config(config);
-        let html = crate::kanban::KanbanMarkdown::new(&sanitize_config)
+        let sanitize_config = presentation_config_for_test(config);
+        let html = KanbanMarkdown::new(&sanitize_config)
             .render("*Ready* <b onclick=\"alert(1)\">safe</b><script>alert(2)</script>");
 
         assert!(html.contains("<em>Ready</em>"), "{html}");
@@ -990,13 +1025,10 @@ mod tests {
             }],
             items: Vec::new(),
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("kb".to_string()),
-            ..Default::default()
-        };
+        let diagram_id = "kb";
 
         let svg =
-            render_test_kanban(&layout, &serde_json::json!({"look": "neo"}), &options).unwrap();
+            render_test_kanban(&layout, &serde_json::json!({"look": "neo"}), diagram_id).unwrap();
 
         assert!(
             svg.contains(r#"id="kb-todo" data-look="neo""#),
@@ -1025,12 +1057,9 @@ mod tests {
             sections: Vec::new(),
             items: Vec::new(),
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("kanbanFixed".to_string()),
-            ..Default::default()
-        };
+        let diagram_id = "kanbanFixed";
 
-        let svg = render_test_kanban(&layout, &serde_json::json!({}), &options).unwrap();
+        let svg = render_test_kanban(&layout, &serde_json::json!({}), diagram_id).unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
         let view_box = root_open
             .split_once(r#"viewBox=""#)
@@ -1100,21 +1129,16 @@ mod tests {
                 icon: None,
             }],
         };
-        let options = SvgRenderOptions {
-            diagram_id: Some("kb".to_string()),
-            ..Default::default()
-        };
+        let diagram_id = "kb";
 
         let config = serde_json::json!({});
-        let svg = render_test_kanban(&layout, &config, &options).unwrap();
+        let svg = render_test_kanban(&layout, &config, diagram_id).unwrap();
 
         let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let style = crate::kanban::KanbanConfigView::new(&config)
-            .layout_settings()
-            .text_style;
-        let sanitize_config = crate::test_support::presentation_config(config.clone());
-        let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
+        let measurer = DeterministicTextMeasurer::default();
+        let style = KanbanConfigView::new(&config).layout_settings().text_style;
+        let sanitize_config = presentation_config_for_test(config.clone());
+        let markdown = KanbanMarkdown::new(&sanitize_config);
         let title_html = markdown.render("Implement renderer");
         let title_metrics = markdown.measure_html(&measurer, &title_html, &style, None);
         let item = &layout.items[0];
@@ -1165,32 +1189,25 @@ mod tests {
             "v1",
         )
         .unwrap();
-        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-            TextMeasurementPolicy::host_display(
-                identity,
-                Arc::new(WideHost),
-                [TextMeasurementPhase::Wrap],
-            ),
-        );
-        let session = environment.begin_session().unwrap();
-        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let options =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::KANBAN)
-                .expect("SVG execution");
+        let measurement = TextMeasurementSession::new(TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(WideHost),
+            [TextMeasurementPhase::Wrap],
+        ));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        let measurer = measurement.routed(&meter, TextMeasurementPhase::Wrap, None);
 
         let config = merman_model::presentation::PresentationConfig::default();
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer).unwrap();
-        let measurement_count_before_render: u64 = session
-            .text_measurement_report()
+        let measurement_count_before_render: u64 = measurement
+            .report()
             .entries()
             .iter()
             .map(|entry| entry.count())
             .sum();
-        let svg = render_kanban_diagram_svg(&prepared, &config, &options).unwrap();
-        let report = session.text_measurement_report();
+        let svg = render_prepared_test_kanban(&prepared, &config, "merman", &meter).unwrap();
+        let report = measurement.report();
         let measurement_count_after_render: u64 =
             report.entries().iter().map(|entry| entry.count()).sum();
 

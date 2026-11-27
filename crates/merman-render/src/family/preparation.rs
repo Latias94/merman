@@ -1185,15 +1185,16 @@ pub(super) fn prepare_non_class_render<'parsed>(
         #[cfg(feature = "diagram-kanban")]
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
+                let fit_width = (options.adaptation == crate::LayoutAdaptation::FitWidth)
+                    .then_some(options.container_width);
+                crate::kanban::prepare_kanban_diagram(
                     model,
                     &meta.effective_config,
                     execution.native_family_theme(),
                     execution.text_measurer(),
-                    execution.work_meter_ref(),
-                    options,
-                )?
-                .with_retained_text_accounting(&execution.work_meter())
+                    execution.family.session().work_meter(),
+                    fit_width,
+                )
             })?)
         }
         #[cfg(feature = "diagram-gantt")]

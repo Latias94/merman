@@ -44,7 +44,7 @@ pub(crate) use parity::er_canonical_marker;
     feature = "diagram-swimlane",
     feature = "diagram-sequence",
     feature = "diagram-zenuml",
-    feature = "diagram-kanban",
+    feature = "diagram-block",
 ))]
 pub(crate) use parity::escape_attr;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
@@ -69,7 +69,6 @@ pub use icon_registry::{
     feature = "diagram-agentflow",
     feature = "diagram-class",
     feature = "diagram-flowchart",
-    feature = "diagram-kanban",
     feature = "diagram-requirement",
     feature = "diagram-swimlane"
 ))]
@@ -83,7 +82,6 @@ pub(crate) use parity::render_architecture_family_artifact;
 #[cfg(feature = "native-compact")]
 pub(crate) use parity::render_native_compact_family_artifact;
 #[cfg(any(
-    feature = "diagram-kanban",
     feature = "diagram-mindmap",
     feature = "diagram-radar",
     feature = "diagram-treemap"

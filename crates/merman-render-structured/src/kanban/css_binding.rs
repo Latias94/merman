@@ -1,7 +1,10 @@
-use crate::config::{config_string, json_value_is_truthy};
-use crate::svg::PreparedCommonCss;
 use merman_markup::theme_color::{darken, lighten};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Result,
+    config::{config_string, json_value_is_truthy},
+    svg_css::{PreparedCommonCss, default_section_colors},
+};
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -43,25 +46,17 @@ pub(super) fn dark_mode(config: &PresentationConfig) -> bool {
 }
 
 impl KanbanCssBinding {
-    pub(super) fn mermaid(
-        config: &PresentationConfig,
-        common: PreparedCommonCss,
-    ) -> crate::Result<Self> {
+    pub(super) fn mermaid(config: &PresentationConfig, common: PreparedCommonCss) -> Result<Self> {
         Self::from_common(config.as_value(), common, dark_mode(config))
     }
 
-    fn from_common(
-        config: &Value,
-        common: PreparedCommonCss,
-        dark_mode: bool,
-    ) -> crate::Result<Self> {
+    fn from_common(config: &Value, common: PreparedCommonCss, dark_mode: bool) -> Result<Self> {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_string())
         };
         let sections = (0..12)
             .map(|index| {
-                let [scale, label, inverse] =
-                    crate::svg::render_theme::kanban_section_defaults(index);
+                let [scale, label, inverse] = default_section_colors(index);
                 let c_scale = color(&format!("cScale{index}"), scale);
                 let section_fill = if dark_mode {
                     darken(&c_scale, 10.0)?
@@ -75,7 +70,7 @@ impl KanbanCssBinding {
                     c_scale_inv: color(&format!("cScaleInv{index}"), inverse),
                 })
             })
-            .collect::<crate::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             common,
             background: color("background", "white"),
@@ -87,10 +82,7 @@ impl KanbanCssBinding {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(
-        config: &Value,
-        typography: Option<(&str, &str)>,
-    ) -> crate::Result<Self> {
+    pub(crate) fn for_test(config: &Value, typography: Option<(&str, &str)>) -> Result<Self> {
         let common = match typography {
             Some((family, size)) => PreparedCommonCss::with_resolved_typography(
                 config,
@@ -102,7 +94,7 @@ impl KanbanCssBinding {
         Self::from_common(
             config,
             common,
-            dark_mode(&crate::test_support::presentation_config(config.clone())),
+            dark_mode(&super::presentation_config_for_test(config.clone())),
         )
     }
 }
@@ -128,5 +120,78 @@ mod tests {
         );
         assert_eq!(binding.background, "var(--card)");
         assert_eq!(binding.node_border, "currentColor");
+    }
+
+    #[test]
+    fn prepared_kanban_binding_resolves_theme_roles() {
+        let cfg = json!({
+            "themeVariables": {
+                "background": "#0f172a",
+                "nodeBorder": "#38bdf8",
+                "textColor": "#f8fafc",
+                "git0": "#22c55e",
+                "gitBranchLabel0": "#020617",
+                "cScale0": "hsl(160, 80%, 40%)",
+                "cScaleLabel0": "#f8fafc",
+                "cScaleInv0": "#111827"
+            }
+        });
+
+        let kanban = KanbanCssBinding::for_test(&cfg, None).unwrap();
+
+        assert_eq!(kanban.common.text_color(), "#f8fafc");
+        assert_eq!(kanban.background, "#0f172a");
+        assert_eq!(kanban.node_border, "#38bdf8");
+        assert_eq!(kanban.root_fill, "#22c55e");
+        assert_eq!(kanban.root_label, "#020617");
+        assert_eq!(kanban.sections[0].c_scale, "hsl(160, 80%, 40%)");
+        assert_eq!(kanban.sections[0].section_fill, "hsl(160, 80%, 50%)");
+        assert_eq!(kanban.sections[0].c_scale_label, "#f8fafc");
+        assert_eq!(kanban.sections[0].c_scale_inv, "#111827");
+    }
+
+    #[test]
+    fn prepared_kanban_binding_dark_mode_adjusts_section_fill_down() {
+        let cfg = json!({
+            "darkMode": true
+        });
+
+        let kanban = KanbanCssBinding::for_test(&cfg, None).unwrap();
+
+        assert_eq!(kanban.sections[0].c_scale, "hsl(240, 100%, 76.2745098039%)");
+        assert_eq!(
+            kanban.sections[0].section_fill,
+            "hsl(240, 100%, 66.2745098039%)"
+        );
+        assert_eq!(kanban.sections[0].c_scale_label, "#ffffff");
+        assert_eq!(
+            kanban.sections[0].c_scale_inv,
+            "hsl(60, 100%, 86.2745098039%)"
+        );
+    }
+
+    #[test]
+    fn prepared_kanban_binding_uses_khroma_for_every_supported_color_syntax() {
+        let cases = [
+            ("#ff0000", "hsl(0, 100%, 60%)"),
+            ("rebeccapurple", "hsl(270, 50%, 50%)"),
+            (
+                "rgb(18 52 86 / .5)",
+                "hsla(210, 65.3846153846%, 30.3921568627%, 0.5)",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let cfg = json!({ "themeVariables": { "cScale0": input } });
+            let kanban = KanbanCssBinding::for_test(&cfg, None).unwrap();
+            assert_eq!(kanban.sections[0].section_fill, expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn prepared_kanban_binding_rejects_invalid_derived_colors() {
+        let cfg = json!({ "themeVariables": { "cScale0": "var(--runtime-color)" } });
+        let error = KanbanCssBinding::for_test(&cfg, None).unwrap_err();
+        assert!(matches!(error, merman_render_core::Error::Color(_)));
     }
 }
