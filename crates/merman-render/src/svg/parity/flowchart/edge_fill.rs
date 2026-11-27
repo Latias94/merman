@@ -1,13 +1,11 @@
 //! Shoal paint derived from the visible cluster surfaces and the final edge geometry.
 
-use super::defs::FlowchartMarkerEmissionPlan;
 use super::render_input::FlowchartRenderEdgeRef;
 use super::*;
 use crate::flowchart::FlowchartEdgeKey;
 use crate::theme::Color;
 use kurbo::Rect;
-
-pub(super) const CASING_WIDTH_ADD: f64 = 3.0;
+use merman_render_flow::markers::FlowchartMarkerEmissionPlan;
 
 #[derive(Clone, Copy)]
 #[cfg_attr(
@@ -48,7 +46,7 @@ impl FlowchartEdgeFillPlan {
         &self,
         out: &mut impl SvgOutput,
         ctx: &FlowchartRenderCtx<'_>,
-        marker_plan: &FlowchartMarkerEmissionPlan,
+        marker_plan: &FlowchartMarkerEmissionPlan<'_>,
         edges: &[FlowchartRenderEdgeRef<'_>],
         cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     ) -> Result<()> {
@@ -100,13 +98,7 @@ impl FlowchartEdgeFillPlan {
                     }
                 }
             }
-            marker_plan.push_casing_marker_attributes_for(
-                out,
-                ctx.document_ids().marker_scope(),
-                ctx.diagram_type,
-                edge.key,
-                ctx.work_meter,
-            )?;
+            marker_plan.push_casing_marker_attributes_for(out, edge.key)?;
             out.push_str("/>");
             out.checkpoint()?;
         }
@@ -139,6 +131,7 @@ mod shoal {
     use kurbo::{Point, RoundedRect, Shape, Vec2};
     use merman_layout_shoal::geom::{Bounds as SpatialBounds, Bvh, BvhEntry};
     use merman_model::families::flowchart::FlowEdgeVisibility;
+    use merman_render_flow::markers::CASING_WIDTH_ADD;
     use merman_theme_contract::v2::{Paint, Texture};
     use std::ops::ControlFlow::{Break, Continue};
 

@@ -10,11 +10,12 @@ The crate also projects visible endpoints and memberships and builds collision-s
 Shape names, asset dimension checks, and geometry shared by the Flowchart, Swimlane, and
 AgentFlow renderers. This crate owns Mermaid's Bang and Cloud outlines and BPMN body geometry,
 including connection points. It parses authored styles, prepares the operation-local class styles
-shared by layout and paint, and writes the SVG document, marker definitions, graph and edge-label
-groups, SVG edge labels, edge paths, container shells, and the supported shape bodies. It plans
-and emits the shared graph traversal, including nested roots, native depth passes and the flat ELK
-order. `merman-render` supplies measured labels and routes, paints the remaining node, edge and
-container details, admits the theme and model, and applies final output policy.
+shared by layout and paint, and writes the SVG document, edge marker references and definitions,
+graph and edge-label groups, SVG edge labels, edge paths, container shells, and the supported
+shape bodies. It plans and emits the shared graph traversal, including nested roots, native depth
+passes and the flat ELK order. `merman-render` supplies measured labels and routes, paints the
+remaining node, edge and container details, admits the theme and model, and applies final output
+policy.
 With `layout-dagre`, this crate also
 assembles and extracts compound graphs, selects cluster anchors, and accounts for graph mutations.
 The renderer supplies source direction and projects solved geometry into the diagram layout.

@@ -2,7 +2,7 @@ use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchar
 use merman_render_flow::graph::FlowchartGraphTimings;
 use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
 
-use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
+use super::defs::{bind_marker_path_sources_for, prepare_flowchart_markers};
 use super::edge_fill::FlowchartEdgeFillPlan;
 use super::render_config::FlowchartRenderConfig;
 use super::viewbox::{
@@ -101,19 +101,11 @@ pub(super) fn render_flowchart_svg_model(
             let marker_plan = if FlowchartEdgeFillPlan::applies(ctx) {
                 // Route painting consumes stroke widths before fill-aware marker colors are known.
                 for edge in hierarchy_plan.ordered_edges() {
-                    FlowchartMarkerEmissionPlan::bind_path_sources_for(
-                        ctx,
-                        hierarchy_plan,
-                        edge.key,
-                    )?;
+                    bind_marker_path_sources_for(ctx, hierarchy_plan, edge.key)?;
                 }
                 None
             } else {
-                Some(FlowchartMarkerEmissionPlan::prepare(
-                    ctx,
-                    hierarchy_plan,
-                    &edge_fills,
-                )?)
+                Some(prepare_flowchart_markers(ctx, hierarchy_plan, &edge_fills)?)
             };
 
             let subgraph_title_y_shift =
@@ -172,7 +164,7 @@ pub(super) fn render_flowchart_svg_model(
                         bbox_max_x = bbox_max_x.max(bounds.x1);
                         bbox_max_y = bbox_max_y.max(bounds.y1);
                     }
-                    FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan, &edge_fills)?
+                    prepare_flowchart_markers(ctx, hierarchy_plan, &edge_fills)?
                 }
             };
 
@@ -247,16 +239,8 @@ pub(super) fn render_flowchart_svg_model(
                 },
                 &prepared_theme.compatibility.look_defs,
                 |out| {
-                    let defs = prepare_flowchart_defs(
-                        document_ids.marker_scope(),
-                        diagram_type,
-                        ctx,
-                        &marker_plan,
-                    );
-
                     let mut paint = render::FlowchartRootPaint {
                         ctx,
-                        defs,
                         timing: render_timing,
                         details: &mut detail,
                         node_label_div_style: String::new(),

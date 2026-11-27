@@ -1,8 +1,8 @@
 //! Flowchart edge path renderer.
 
-use super::super::defs::FlowchartMarkerEmissionPlan;
 use super::super::*;
 use merman_render_flow::edge_svg::{FlowchartEdgeSvgEmission, FlowchartNeoEdgeMaskPlan};
+use merman_render_flow::markers::FlowchartMarkerEmissionPlan;
 
 #[cfg(test)]
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
@@ -14,7 +14,7 @@ use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdge
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
-    marker_plan: &FlowchartMarkerEmissionPlan,
+    marker_plan: &FlowchartMarkerEmissionPlan<'_>,
     adaptive_ink: Option<&'static str>,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
@@ -95,13 +95,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         scratch.edge_class_attr.push_str(" transition");
     }
     scratch.edge_marker_attrs.clear();
-    marker_plan.push_edge_marker_attributes_for(
-        &mut scratch.edge_marker_attrs,
-        ctx.document_ids().marker_scope(),
-        ctx.diagram_type,
-        key,
-        ctx.work_meter,
-    )?;
+    marker_plan.push_edge_marker_attributes_for(&mut scratch.edge_marker_attrs, key)?;
     let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
     let path = FlowchartEdgeSvgEmission {
         edge_dom_id,

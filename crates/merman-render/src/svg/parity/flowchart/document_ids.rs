@@ -109,10 +109,6 @@ impl FlowchartDocumentIds {
         &self.scope
     }
 
-    pub(in crate::svg::parity::flowchart) fn marker_scope(&self) -> &str {
-        self.scope.as_str()
-    }
-
     pub(in crate::svg::parity::flowchart) fn edge(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
@@ -309,7 +305,7 @@ mod tests {
             EDGE_COUNT + NODE_COUNT + 2 * CLUSTER_COUNT + SYNTHETIC_COUNT
         );
         assert_eq!(
-            ids.marker_scope().len(),
+            ids.scope().as_str().len(),
             diagram_id.len() + DOCUMENT_NAMESPACE.len() + 1
         );
         let largest_compact_entry = std::mem::size_of::<(&str, FlowchartNodeDocumentId)>()

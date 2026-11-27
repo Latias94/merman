@@ -11,6 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::plan::FlowchartHierarchyPlan;
 use crate::edge_labels::{write_edge_labels, write_elk_edge_labels};
+use crate::markers::FlowchartMarkerEmissionPlan;
 use crate::projection::{FlowchartRenderEdgeRef, FlowchartRenderModelRef};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,8 +42,6 @@ pub struct FlowchartGraphTimings {
 pub trait FlowchartGraphPaint<S: SvgOutput> {
     type EdgeScratch: Default;
 
-    fn write_base_markers(&self, out: &mut S) -> Result<()>;
-    fn write_extra_markers(&self, out: &mut S) -> Result<()>;
     fn group_title_is_struck(&self, id: &str) -> bool;
     fn write_cluster(
         &self,
@@ -84,6 +83,7 @@ pub struct FlowchartGraph<'plan, 'data> {
     pub hierarchy: &'plan FlowchartHierarchyPlan<'data>,
     pub model: &'plan FlowchartRenderModelRef<'data>,
     pub work_meter: &'plan OperationWorkMeter,
+    pub markers: &'plan FlowchartMarkerEmissionPlan<'plan>,
     pub subgraphs_by_id: &'plan FxHashMap<&'data str, &'data FlowSubgraph>,
     pub subgraph_ids_with_children: &'plan FxHashSet<&'data str>,
     pub recursive_clusters: &'plan FxHashSet<&'data str>,
@@ -144,7 +144,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         timing: RenderTiming,
         details: &mut FlowchartGraphTimings,
     ) -> Result<()> {
-        paint.write_base_markers(out)?;
+        self.markers.push_base_markers(out)?;
         let mut emission = GraphEmission {
             paint,
             timing,
@@ -152,7 +152,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         };
         if self.hierarchy.uses_elk_adapter_dom {
             out.checkpoint()?;
-            emission.paint.write_extra_markers(out)?;
+            self.markers.push_extra_markers(out)?;
             out.checkpoint()?;
             return self.write_elk(out, &mut emission);
         }
@@ -163,7 +163,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         } else {
             self.write_root_pass(out, &mut emission, RootPass::Complete)?;
         }
-        emission.paint.write_extra_markers(out)
+        self.markers.push_extra_markers(out)
     }
 
     fn checkpoint_emit(&self) -> Result<()> {

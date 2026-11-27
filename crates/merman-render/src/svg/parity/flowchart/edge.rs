@@ -1,38 +1,21 @@
 //! Flowchart edge marker and class helpers.
 
-pub(in crate::svg::parity::flowchart) use merman_render_flow::markers::FlowchartMarkerBase;
+#[cfg(any(
+    feature = "layout-shoal",
+    test,
+    all(
+        feature = "native-compact",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    )
+))]
+pub(in crate::svg::parity::flowchart) use merman_render_flow::markers::{
+    FlowchartMarkerBase, flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
+};
 
 use super::FlowchartCompiledStyles;
 
 pub(super) use merman_render_flow::edge_svg::flowchart_neo_mask_uses_dash_pairs;
-
-pub(super) fn flowchart_edge_marker_end_base(
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<FlowchartMarkerBase> {
-    match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointEnd),
-        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
-        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
-        Some("arrow_point") => Some(FlowchartMarkerBase::PointEnd),
-        Some("arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
-        Some("arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
-        Some("arrow_open_head") => Some(FlowchartMarkerBase::OpenArrowEnd),
-        Some("arrow_hollow_circle") => Some(FlowchartMarkerBase::HollowCircleEnd),
-        Some("arrow_open") => None,
-        _ => Some(FlowchartMarkerBase::PointEnd),
-    }
-}
-
-pub(super) fn flowchart_edge_marker_start_base(
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<FlowchartMarkerBase> {
-    match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointStart),
-        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleStart),
-        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossStart),
-        _ => None,
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeAnimationResolution {

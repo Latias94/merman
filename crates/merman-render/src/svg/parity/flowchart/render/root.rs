@@ -4,7 +4,6 @@ use merman_render_flow::graph::{
     FlowchartClusterPass, FlowchartGraph, FlowchartGraphPaint, FlowchartGraphTimings,
 };
 
-use super::super::defs::{FlowchartDefs, FlowchartMarkerEmissionPlan};
 use super::super::edge_fill::FlowchartEdgeFillPlan;
 use super::super::paint::{FlowchartEdgeLabels, prepare_rough_edge_paths};
 use super::super::render_input::FlowchartRenderEdgeRef;
@@ -13,17 +12,17 @@ use super::cluster::render_flowchart_cluster_pass;
 use super::edge_label::render_swimlane_edge_label_node;
 use super::node::render_flowchart_node_depth;
 use crate::svg::parity::timing::RenderTiming;
+use merman_render_flow::markers::FlowchartMarkerEmissionPlan;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRootPaint<'a, 'data> {
     pub ctx: &'a FlowchartRenderCtx<'data>,
-    pub defs: FlowchartDefs<'a>,
     pub timing: RenderTiming,
     pub details: &'a mut FlowchartRenderDetails,
     pub node_label_div_style: String,
     pub edge_cache:
         &'a mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     pub hierarchy_plan: &'a FlowchartHierarchyPlan<'data>,
-    pub marker_plan: &'a FlowchartMarkerEmissionPlan,
+    pub marker_plan: &'a FlowchartMarkerEmissionPlan<'a>,
     pub edge_fills: &'a FlowchartEdgeFillPlan,
     pub edge_labels: &'a mut FlowchartEdgeLabels,
     pub step_badges: &'a super::super::step::StepBadges,
@@ -42,6 +41,7 @@ impl FlowchartRootPaint<'_, '_> {
             hierarchy,
             model: ctx.model,
             work_meter: ctx.work_meter,
+            markers: self.marker_plan,
             subgraphs_by_id: &ctx.subgraphs_by_id,
             subgraph_ids_with_children: &ctx.subgraph_ids_with_children,
             recursive_clusters: &ctx.recursive_clusters,
@@ -58,14 +58,6 @@ impl FlowchartRootPaint<'_, '_> {
 
 impl<S: SvgOutput> FlowchartGraphPaint<S> for FlowchartRootPaint<'_, '_> {
     type EdgeScratch = FlowchartEdgeDataPointsScratch;
-
-    fn write_base_markers(&self, out: &mut S) -> Result<()> {
-        self.defs.push_base_markers(out)
-    }
-
-    fn write_extra_markers(&self, out: &mut S) -> Result<()> {
-        self.defs.push_extra_markers(out)
-    }
 
     fn group_title_is_struck(&self, id: &str) -> bool {
         self.ctx.layout.route_contract.group_title_is_struck(id)

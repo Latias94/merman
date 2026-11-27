@@ -100,4 +100,5 @@ serde_json = { workspace = true, optional = true }
 unicode-segmentation = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
 merman-render-core = { workspace = true, features = ["test-support"] }
