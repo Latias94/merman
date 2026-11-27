@@ -1,7 +1,7 @@
 //! Layered's common renderer uses the provider's axis-tagged routes and its label anchors.
 
 use kurbo::{Point, Size};
-use merman_model::OperationPhase;
+use merman_model::{OperationPhase, families::flowchart::FlowEdge};
 use merman_render_core::{
     LayoutPoint,
     route_types::RoutePoint,

@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:867d2711b24923c6222c0203d470f9934aecd7fc42e9d263daff198127a0b745";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:e088aabad0eef6435f1c4ad1b4c0a4f7528620a55b4a931bb7b6ce9f44c77026";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -21,6 +21,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "layout-dagre",
     "layout-elk",
     "layout-grid",
+    "layout-layered",
     "layout-shoal",
     "markdown",
     "math",
@@ -115,6 +116,7 @@ pub enum CapabilityKey {
     LayoutDagre,
     LayoutElk,
     LayoutGrid,
+    LayoutLayered,
     LayoutShoal,
     Markdown,
     Math,
@@ -144,6 +146,7 @@ impl CapabilityKey {
         Self::LayoutDagre,
         Self::LayoutElk,
         Self::LayoutGrid,
+        Self::LayoutLayered,
         Self::LayoutShoal,
         Self::Markdown,
         Self::Math,
@@ -173,6 +176,7 @@ impl CapabilityKey {
             "layout-dagre" => Some(Self::LayoutDagre),
             "layout-elk" => Some(Self::LayoutElk),
             "layout-grid" => Some(Self::LayoutGrid),
+            "layout-layered" => Some(Self::LayoutLayered),
             "layout-shoal" => Some(Self::LayoutShoal),
             "markdown" => Some(Self::Markdown),
             "math" => Some(Self::Math),
@@ -208,21 +212,22 @@ impl CapabilityKey {
             Self::LayoutDagre => &CAPABILITIES[7],
             Self::LayoutElk => &CAPABILITIES[8],
             Self::LayoutGrid => &CAPABILITIES[9],
-            Self::LayoutShoal => &CAPABILITIES[10],
-            Self::Markdown => &CAPABILITIES[11],
-            Self::Math => &CAPABILITIES[12],
-            Self::NativeFonts => &CAPABILITIES[13],
-            Self::NetworkIcons => &CAPABILITIES[14],
-            Self::ParallelMarkdown => &CAPABILITIES[15],
-            Self::Pdf => &CAPABILITIES[16],
-            Self::Png => &CAPABILITIES[17],
-            Self::Rustdoc => &CAPABILITIES[18],
-            Self::ShellCompletions => &CAPABILITIES[19],
-            Self::Svg => &CAPABILITIES[20],
-            Self::SystemClock => &CAPABILITIES[21],
-            Self::SystemRandom => &CAPABILITIES[22],
-            Self::SystemTimezone => &CAPABILITIES[23],
-            Self::SystemTiming => &CAPABILITIES[24],
+            Self::LayoutLayered => &CAPABILITIES[10],
+            Self::LayoutShoal => &CAPABILITIES[11],
+            Self::Markdown => &CAPABILITIES[12],
+            Self::Math => &CAPABILITIES[13],
+            Self::NativeFonts => &CAPABILITIES[14],
+            Self::NetworkIcons => &CAPABILITIES[15],
+            Self::ParallelMarkdown => &CAPABILITIES[16],
+            Self::Pdf => &CAPABILITIES[17],
+            Self::Png => &CAPABILITIES[18],
+            Self::Rustdoc => &CAPABILITIES[19],
+            Self::ShellCompletions => &CAPABILITIES[20],
+            Self::Svg => &CAPABILITIES[21],
+            Self::SystemClock => &CAPABILITIES[22],
+            Self::SystemRandom => &CAPABILITIES[23],
+            Self::SystemTimezone => &CAPABILITIES[24],
+            Self::SystemTiming => &CAPABILITIES[25],
         }
     }
 }
@@ -255,6 +260,7 @@ impl CapabilityKey {
             Self::LayoutShoal => 1_u64 << 22,
             Self::LayoutDagre => 1_u64 << 23,
             Self::LayoutGrid => 1_u64 << 24,
+            Self::LayoutLayered => 1_u64 << 25,
         }
     }
 }
@@ -722,7 +728,15 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         key: CapabilityKey::LayoutGrid,
         id: "layout-grid",
         kind: "engine",
-        description: "Select Mermaid Grid for Flowchart, Swimlane, and Agentflow SVG layout.",
+        description: "Select Mermaid Grid for Flowchart, Swimlane, Agentflow, ER, and Mindmap SVG layout.",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::LayoutLayered,
+        id: "layout-layered",
+        kind: "engine",
+        description: "Select Mermaid Layered for Flowchart, Swimlane, and Agentflow SVG layout.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },

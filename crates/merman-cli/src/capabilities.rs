@@ -484,9 +484,23 @@ pub(crate) const fn layout_grid_available() -> bool {
         any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
+            feature = "diagram-agentflow",
+            feature = "diagram-er",
+            feature = "diagram-mindmap"
         )
     )) && merman::svg::layout_grid_available()
+}
+
+#[cfg(feature = "svg")]
+pub(crate) const fn layout_layered_available() -> bool {
+    cfg!(all(
+        feature = "layout-layered",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )) && merman::svg::layout_layered_available()
 }
 
 fn compiled_capability_ids() -> Vec<&'static str> {
@@ -511,6 +525,10 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     #[cfg(feature = "svg")]
     if layout_grid_available() {
         capabilities.push(descriptor::CapabilityKey::LayoutGrid.id());
+    }
+    #[cfg(feature = "svg")]
+    if layout_layered_available() {
+        capabilities.push(descriptor::CapabilityKey::LayoutLayered.id());
     }
     include_capability!("layout-shoal", "layout-shoal");
     include_capability!("markdown", "markdown");

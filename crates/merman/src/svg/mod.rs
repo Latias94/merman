@@ -48,17 +48,32 @@ pub use merman_render::{
     layout_shoal_available, math_available,
 };
 
-/// Reports whether this facade includes Mermaid Grid for a compiled Flowchart, Swimlane,
-/// or Agentflow renderer. Consult the operation's capability plan for session admission.
+/// Reports whether this facade includes Mermaid Grid for any compiled family.
+/// Consult the operation's capability plan for session admission.
 pub const fn layout_grid_available() -> bool {
     cfg!(all(
         feature = "layout-grid",
         any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
+            feature = "diagram-agentflow",
+            feature = "diagram-er",
+            feature = "diagram-mindmap"
         )
     )) && merman_render::layout_grid_available()
+}
+
+/// Reports whether this facade includes Mermaid Layered for any compiled family.
+/// Consult the operation's capability plan for session admission.
+pub const fn layout_layered_available() -> bool {
+    cfg!(all(
+        feature = "layout-layered",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )) && merman_render::layout_layered_available()
 }
 
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.

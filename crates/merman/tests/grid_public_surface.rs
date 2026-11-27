@@ -3,7 +3,7 @@
 use merman::svg::layout_grid_available;
 
 #[test]
-fn grid_availability_requires_the_facade_feature_and_a_flow_family() {
+fn grid_availability_requires_the_facade_feature_and_a_supported_family() {
     assert_eq!(
         layout_grid_available(),
         cfg!(all(
@@ -11,7 +11,9 @@ fn grid_availability_requires_the_facade_feature_and_a_flow_family() {
             any(
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
+                feature = "diagram-agentflow",
+                feature = "diagram-er",
+                feature = "diagram-mindmap"
             )
         ))
     );
@@ -20,9 +22,11 @@ fn grid_availability_requires_the_facade_feature_and_a_flow_family() {
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    feature = "diagram-er",
+    feature = "diagram-mindmap"
 ))]
-mod flow_families {
+mod families {
     use super::layout_grid_available;
     #[cfg(feature = "layout-grid")]
     use merman::svg::RenderCapabilityPolicy;
@@ -34,18 +38,33 @@ mod flow_families {
         SvgRequest,
     };
 
-    const HEADERS: &[(DiagramFamilyId, &str)] = &[
+    const DIAGRAMS: &[(DiagramFamilyId, &str)] = &[
         #[cfg(feature = "diagram-flowchart")]
-        (DiagramFamilyId::FLOWCHART, "flowchart LR"),
+        (
+            DiagramFamilyId::FLOWCHART,
+            "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
         #[cfg(feature = "diagram-swimlane")]
-        (DiagramFamilyId::SWIMLANE, "swimlane-beta LR"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "swimlane-beta LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
         #[cfg(feature = "diagram-agentflow")]
-        (DiagramFamilyId::AGENTFLOW, "agentflow-beta LR"),
+        (
+            DiagramFamilyId::AGENTFLOW,
+            "agentflow LR\nA[Start] -->|Approved| B[Done]\n",
+        ),
+        #[cfg(feature = "diagram-er")]
+        (
+            DiagramFamilyId::ER,
+            "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+        ),
+        #[cfg(feature = "diagram-mindmap")]
+        (
+            DiagramFamilyId::MINDMAP,
+            "mindmap\n  root((Start))\n    Done\n",
+        ),
     ];
-
-    fn source(header: &str) -> String {
-        format!("{header}\nA[Start] -->|Approved| B[Done]\n")
-    }
 
     fn plan(
         renderer: &Renderer,
@@ -69,10 +88,9 @@ mod flow_families {
             .with_default_layout(LayoutBackend::Grid)
             .build()
             .unwrap();
-        for &(family, header) in HEADERS {
-            let source = source(header);
-            let planned = plan(&renderer, &source, SvgRequest::default());
-            let rendered = renderer.render_svg(&source);
+        for &(family, source) in DIAGRAMS {
+            let planned = plan(&renderer, source, SvgRequest::default());
+            let rendered = renderer.render_svg(source);
             if layout_grid_available() {
                 let plan = planned.unwrap();
                 assert_eq!(plan.family_id(), family);
@@ -128,10 +146,7 @@ mod flow_families {
             .with_default_layout(LayoutBackend::Dagre)
             .build()
             .unwrap();
-        let source = format!(
-            "---\nconfig:\n  layout: grid\n---\n{}",
-            source(HEADERS[0].1)
-        );
+        let source = format!("---\nconfig:\n  layout: grid\n---\n{}", DIAGRAMS[0].1);
         assert_eq!(
             plan(&renderer, &source, SvgRequest::default())
                 .unwrap()

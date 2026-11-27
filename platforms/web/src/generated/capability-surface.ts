@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:867d2711b24923c6222c0203d470f9934aecd7fc42e9d263daff198127a0b745" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e088aabad0eef6435f1c4ad1b4c0a4f7528620a55b4a931bb7b6ce9f44c77026" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -50,6 +50,13 @@ export const WEB_CAPABILITIES = [
   },
   {
     "id": "layout-grid",
+    "implications": [
+      "svg"
+    ],
+    "kind": "engine"
+  },
+  {
+    "id": "layout-layered",
     "implications": [
       "svg"
     ],
@@ -229,6 +236,7 @@ export const WEB_CAPABILITY_IDS = [
   "layout-dagre",
   "layout-elk",
   "layout-grid",
+  "layout-layered",
   "layout-shoal",
   "math",
   "svg"

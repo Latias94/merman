@@ -197,19 +197,28 @@ impl SvgEnvironment {
         Ok(())
     }
 
-    pub fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {
-        // Another consumer can compile Shoal into the shared renderer independently of this facade.
-        let policy = if cfg!(feature = "layout-shoal") {
-            policy
-        } else {
-            policy.with_denied(merman_render::RenderCapability::LayoutShoal)
-        };
+    pub fn with_capability_policy(mut self, mut policy: RenderCapabilityPolicy) -> Self {
+        use merman_render::RenderCapability;
+
         // Apply the facade's own selection even when dependencies unify renderer features.
-        let policy = if crate::svg::layout_grid_available() {
-            policy
-        } else {
-            policy.with_denied(merman_render::RenderCapability::LayoutGrid)
-        };
+        for (capability, available) in [
+            (
+                RenderCapability::LayoutShoal,
+                cfg!(feature = "layout-shoal"),
+            ),
+            (
+                RenderCapability::LayoutGrid,
+                crate::svg::layout_grid_available(),
+            ),
+            (
+                RenderCapability::LayoutLayered,
+                crate::svg::layout_layered_available(),
+            ),
+        ] {
+            if !available {
+                policy = policy.with_denied(capability);
+            }
+        }
         self.backend = self.backend.with_capability_policy(policy);
         self
     }

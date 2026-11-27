@@ -146,6 +146,7 @@ fn selected_case() -> String {
         "cytoscape-layout",
         "elk-layout",
         "grid-layout",
+        "layered-layout",
         "math",
         "rustdoc",
         "completions",
@@ -188,6 +189,7 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
         "grid-layout" => vec!["layout-grid", "svg"],
+        "layered-layout" => vec!["layout-layered", "svg"],
         "math" => vec!["layout-dagre", "math", "svg"],
         "rustdoc" => vec![
             "layout-cytoscape",
@@ -237,10 +239,21 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
             any(
                 feature = "diagram-flowchart",
                 feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
+                feature = "diagram-agentflow",
+                feature = "diagram-er",
+                feature = "diagram-mindmap"
             )
         ))]
         "layout-grid",
+        #[cfg(all(
+            feature = "layout-layered",
+            any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            )
+        ))]
+        "layout-layered",
         #[cfg(feature = "layout-shoal")]
         "layout-shoal",
         #[cfg(feature = "markdown")]
@@ -1100,40 +1113,80 @@ fn workflow_elk() {
 
 fn workflow_grid() {
     #[cfg(feature = "layout-grid")]
-    {
-        let families: &[(&str, &str, &str)] = &[
-            #[cfg(feature = "diagram-flowchart")]
-            ("flowchart", "flowchart LR", "FlowchartV2"),
-            #[cfg(feature = "diagram-swimlane")]
-            ("swimlane", "swimlane-beta LR", "FlowchartV2"),
-            #[cfg(feature = "diagram-agentflow")]
-            ("agentflow", "agentflow-beta LR", "AgentflowDiagram"),
-        ];
-        assert!(!families.is_empty(), "Grid requires a compiled flow family");
-        let temp = tempfile::tempdir().expect("create Grid config directory");
-        let config = temp.path().join("grid.json");
-        fs::write(&config, r#"{"layout":"grid"}"#).expect("write Grid site config");
-
-        for &(family, header, layout_kind) in families {
-            let diagram = format!("{header}\nA[Start] -->|Approved| B[Done]\n");
-            let source = format!("---\nconfig:\n  layout: grid\n---\n{diagram}");
-            let rendered = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
-            assert_success(&rendered, family);
-            assert_svg(&rendered.stdout);
-
-            let layout = run(
-                &["layout", "--config-file", "grid.json", "-"],
-                diagram.as_bytes(),
-                Some(temp.path()),
-            );
-            assert_success(&layout, family);
-            let payload: Value = serde_json::from_slice(&layout.stdout).expect("Grid layout JSON");
-            assert_eq!(payload["family_id"], family);
-            assert!(payload["layout"][layout_kind].is_object(), "{payload}");
-        }
-    }
+    workflow_mermaid_layout(
+        "grid",
+        &[
+            #[cfg(feature = "diagram-er")]
+            (
+                "er",
+                "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+                "ErDiagram",
+            ),
+            #[cfg(feature = "diagram-mindmap")]
+            (
+                "mindmap",
+                "mindmap\n  root((Start))\n    Done\n",
+                "MindmapDiagram",
+            ),
+        ],
+    );
     #[cfg(not(feature = "layout-grid"))]
     panic!("Grid matrix case lacks layout-grid");
+}
+
+fn workflow_layered() {
+    #[cfg(feature = "layout-layered")]
+    workflow_mermaid_layout("layered", &[]);
+    #[cfg(not(feature = "layout-layered"))]
+    panic!("Layered matrix case lacks layout-layered");
+}
+
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+fn workflow_mermaid_layout(backend: &str, extra_families: &[(&str, &str, &str)]) {
+    let flow_families: &[(&str, &str, &str)] = &[
+        #[cfg(feature = "diagram-flowchart")]
+        (
+            "flowchart",
+            "flowchart LR\nA[Start] -->|Approved| B[Done]\n",
+            "FlowchartV2",
+        ),
+        #[cfg(feature = "diagram-swimlane")]
+        (
+            "swimlane",
+            "swimlane-beta LR\nA[Start] -->|Approved| B[Done]\n",
+            "FlowchartV2",
+        ),
+        #[cfg(feature = "diagram-agentflow")]
+        (
+            "agentflow",
+            "agentflow LR\nA[Start] -->|Approved| B[Done]\n",
+            "AgentflowDiagram",
+        ),
+    ];
+    assert!(!flow_families.is_empty() || !extra_families.is_empty());
+    let temp = tempfile::tempdir().expect("create layout config directory");
+    fs::write(
+        temp.path().join("layout.json"),
+        serde_json::json!({"layout": backend}).to_string(),
+    )
+    .expect("write layout site config");
+
+    for &(family, diagram, layout_kind) in flow_families.iter().chain(extra_families) {
+        let source = format!("---\nconfig:\n  layout: {backend}\n---\n{diagram}");
+        let rendered = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
+        assert_success(&rendered, family);
+        assert_svg(&rendered.stdout);
+
+        let layout = run(
+            &["layout", "--config-file", "layout.json", "-"],
+            diagram.as_bytes(),
+            Some(temp.path()),
+        );
+        assert_success(&layout, family);
+        let payload: Value = serde_json::from_slice(&layout.stdout).expect("layout JSON");
+        assert_eq!(payload["family_id"], family);
+        assert!(payload["layout"][layout_kind].is_object(), "{payload}");
+    }
 }
 
 #[cfg(all(
@@ -1409,6 +1462,9 @@ fn workflow_auto() {
     if compiled_capabilities_for_auto_detection().contains(&"layout-grid") {
         workflow_grid();
     }
+    if compiled_capabilities_for_auto_detection().contains(&"layout-layered") {
+        workflow_layered();
+    }
     #[cfg(feature = "ascii")]
     workflow_ascii();
     #[cfg(feature = "icons")]
@@ -1464,6 +1520,7 @@ fn execute_primary_workflow(case: &str) {
         "cytoscape-layout" => workflow_cytoscape(),
         "elk-layout" => workflow_elk(),
         "grid-layout" => workflow_grid(),
+        "layered-layout" => workflow_layered(),
         "math" => workflow_math(),
         "rustdoc" => workflow_rustdoc(),
         "completions" => workflow_completions(),
