@@ -14,6 +14,8 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 pub(crate) mod config;
+#[cfg(feature = "layout-dagre")]
+pub mod dagre;
 pub mod measured;
 mod model;
 mod native_theme;

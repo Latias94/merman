@@ -1,4 +1,3 @@
-use crate::dagre::self_loop::compact_self_loop_geometry;
 use crate::geom::Size;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -12,6 +11,7 @@ use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 use indexmap::IndexMap;
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::dagre_geometry::compact_self_loop_geometry;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

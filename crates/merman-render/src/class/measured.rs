@@ -1,18 +1,14 @@
 //! Supplies the renderer's shared createText metrics to Class measurement.
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(feature = "layout-elk")]
 use super::{ClassDiagramModel, ClassRenderConfig};
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(feature = "layout-elk")]
 use crate::{
     Result, layout_work::OperationLayoutWorkControl, math::MathRenderer, text::TextMeasurer,
 };
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(feature = "layout-elk")]
 use merman_model::presentation::PresentationConfig;
-#[cfg(feature = "layout-dagre")]
-pub(super) use merman_render_graph::class::measured::MeasuredGraph;
-#[cfg(all(test, feature = "layout-dagre"))]
-pub(super) use merman_render_graph::class::measured::MeasuredNode;
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(feature = "layout-elk")]
 use merman_render_graph::class::measured::{self, MeasuredClassDiagram};
 
 #[cfg(feature = "layout-shoal")]
@@ -20,7 +16,7 @@ mod shoal;
 #[cfg(feature = "layout-shoal")]
 pub(super) use shoal::measure_for_shoal;
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+#[cfg(feature = "layout-elk")]
 pub(super) fn measure_class_diagram(
     model: &ClassDiagramModel,
     config: &PresentationConfig,

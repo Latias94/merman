@@ -1,10 +1,13 @@
-//! State diagram configuration, measurement, styling, and SVG emission.
+//! State diagram configuration, measurement, Dagre layout, styling, and SVG emission.
 
 type StateNode = merman_model::families::state::StateDiagramRenderNode;
 
 mod compatibility;
 mod config;
+#[cfg(feature = "layout-dagre")]
+mod dagre;
 mod geometry;
+mod layout_input;
 mod measure;
 mod style_plan;
 mod svg;
@@ -19,8 +22,17 @@ use compatibility::{StateNodeKind, StateTerminalPaintProperty, StateTerminalSurf
 pub use config::{
     StateConfigView, StateLayoutSettings, normalize_dir, state_node_is_effective_group,
 };
+#[cfg(feature = "layout-dagre")]
+pub use dagre::{
+    debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
+    layout as layout_dagre,
+};
 use geometry::RectWithTitleGeometry;
 pub use geometry::StateDiagramLayout;
+pub use layout_input::{
+    HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
+    validate_state_parent_cycles,
+};
 pub use measure::{
     edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
     title_label_metrics,

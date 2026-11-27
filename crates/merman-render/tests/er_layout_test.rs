@@ -1,5 +1,5 @@
 use merman_core::{MermaidEngine, ParseOptions};
-use merman_model::families::er::{ErDiagramModel, ErEntity, ErRelationship, ErSubgraph};
+use merman_model::families::er::{ErDiagramModel, ErSubgraph};
 use merman_model::presentation::{
     AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
 };
@@ -86,90 +86,6 @@ fn er_cyclic_compound_model() -> ErDiagramModel {
             .collect(),
         ..Default::default()
     }
-}
-
-#[test]
-fn er_direct_model_rejects_compound_and_helper_parent_cycles() {
-    let helper_collision = ErDiagramModel {
-        direction: "TB".to_string(),
-        entities: [(
-            "A".to_string(),
-            ErEntity {
-                id: "entity-A-0".to_string(),
-                label: "A".to_string(),
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect(),
-        subgraphs: vec![ErSubgraph {
-            id: "entity-A-0---entity-A-0---1".to_string(),
-            title: "Group".to_string(),
-            nodes: vec!["A".to_string()],
-            ..Default::default()
-        }],
-        relationships: vec![ErRelationship {
-            entity_a: "entity-A-0".to_string(),
-            entity_b: "entity-A-0".to_string(),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-    for model in [er_cyclic_compound_model(), helper_collision] {
-        let presentation = er_presentation_from_model(model);
-        let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let error = family::prepare(&presentation, &LayoutOptions::default(), session)
-            .err()
-            .expect("external ER containment cycle must return an error");
-        let merman_render::Error::InvalidModel { message } = error else {
-            panic!("expected InvalidModel, got {error:?}");
-        };
-        assert!(message.contains("ER parent cycle"), "{message}");
-    }
-}
-
-#[test]
-fn er_direct_model_preserves_membership_overwrites_and_child_order() {
-    let model = ErDiagramModel {
-        direction: "TB".to_string(),
-        entities: ["ONE", "TWO", "THREE"]
-            .into_iter()
-            .enumerate()
-            .map(|(index, name)| {
-                (
-                    name.to_string(),
-                    ErEntity {
-                        id: format!("entity-{name}-{index}"),
-                        label: "Repeated label".to_string(),
-                        ..Default::default()
-                    },
-                )
-            })
-            .collect(),
-        subgraphs: [
-            ("Left", vec!["ONE", "TWO", "ONE", "THREE"]),
-            ("Right", vec!["THREE"]),
-        ]
-        .into_iter()
-        .map(|(id, nodes)| ErSubgraph {
-            id: id.to_string(),
-            title: "Repeated label".to_string(),
-            nodes: nodes.into_iter().map(str::to_string).collect(),
-            ..Default::default()
-        })
-        .collect(),
-        ..Default::default()
-    };
-    let mut final_membership = model.clone();
-    final_membership.subgraphs[0].nodes = vec!["TWO".to_string(), "ONE".to_string()];
-    let project = |model| {
-        let presentation = er_presentation_from_model(model);
-        let session = RenderEnvironment::deterministic().begin_session().unwrap();
-        let artifact = family::prepare(&presentation, &LayoutOptions::default(), session)
-            .expect("repeated ER memberships remain valid");
-        artifact.layout_json().unwrap()["layout"]["ErDiagram"].clone()
-    };
-    assert_eq!(project(model), project(final_membership));
 }
 
 #[test]
@@ -335,54 +251,6 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         has_dashed,
         "expected at least one NON_IDENTIFYING relationship to be dashed"
     );
-}
-
-#[test]
-fn er_dagre_recursive_relationship_keeps_internal_helper_ranks() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("er")
-        .join(
-            "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002.mmd",
-        );
-    let text = std::fs::read_to_string(&path).expect("fixture");
-    let text = text.replacen("  logLevel: 1.0", "  layout: dagre\n  logLevel: 1.0", 1);
-
-    let layout = layout_er(&text);
-    let node = |id: &str| {
-        layout
-            .nodes
-            .iter()
-            .find(|node| node.id == id)
-            .unwrap_or_else(|| panic!("missing ER layout node {id}"))
-    };
-    let customer = node("entity-CUSTOMER-0");
-    let helper_1 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---1");
-    let helper_2 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---2");
-    let order = node("entity-ORDER-1");
-    let line_item = node("entity-LINE-ITEM-2");
-
-    assert!(customer.y < helper_1.y && helper_1.y < helper_2.y);
-    assert!((helper_1.y - order.y).abs() < 1e-9);
-    assert!((helper_2.y - line_item.y).abs() < 1e-9);
-
-    let loop_middle = layout
-        .edges
-        .iter()
-        .find(|edge| edge.id == "er-rel-0")
-        .expect("recursive relationship middle segment");
-    assert_eq!(
-        layout
-            .edges
-            .iter()
-            .filter(|edge| edge.id.starts_with("er-rel-0"))
-            .count(),
-        3,
-    );
-    assert_eq!(loop_middle.from, helper_1.id);
-    assert_eq!(loop_middle.to, helper_2.id);
-    assert!(loop_middle.label.is_some());
-    assert!(customer.y < order.y && order.y < line_item.y);
 }
 
 #[test]

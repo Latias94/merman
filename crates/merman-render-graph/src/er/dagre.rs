@@ -1,27 +1,40 @@
 //! Dagre compound graph construction, solving, and ER relationship projection.
 
 use super::{
-    ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, calc_label_position,
-    er_layout_bounds, er_marker_id, er_subgraph_title_metrics, parse_er_rel_idx_from_edge_name,
+    ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, calc_label_position,
+    er_layout_bounds, er_marker_id, er_rel_idx_from_edge_id, er_subgraph_title_metrics,
 };
-use crate::geom::Box2;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_model::families::er::ErDiagramModel;
+use merman_model::families::er::{ErDiagramModel, ErEntity};
+use merman_render_core::graph_layout::dagre_rankdir;
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::text::TextMeasurer;
+use merman_render_core::{
+    Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
-pub(super) fn layout(
+#[cfg(test)]
+mod tests;
+
+/// Solved Dagre geometry with distinct layout and SVG edge projections.
+#[derive(Debug)]
+pub struct ErDagreLayout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub render_edges: Vec<LayoutEdge>,
+    pub clusters: Vec<LayoutCluster>,
+    pub bounds: Option<Bounds>,
+}
+
+pub fn layout(
     model: &ErDiagramModel,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
-    prepared_labels: Arc<ErPreparedLabels>,
+    prepared_labels: &ErPreparedLabels,
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<ErDiagramLayout> {
+) -> Result<ErDagreLayout> {
     let membership_count = model.subgraphs.iter().try_fold(0usize, |count, subgraph| {
         work_control.checked_add(count, subgraph.nodes.len())
     })?;
@@ -64,7 +77,7 @@ pub(super) fn layout(
         // Mermaid's Dagre adapter always enables `compound: true`, even without clusters.
         compound: true,
     });
-    let rankdir = crate::dagre::rankdir(direction);
+    let rankdir = dagre_rankdir(direction);
     g.set_graph(GraphLabel {
         rankdir,
         nodesep: node_spacing,
@@ -335,8 +348,14 @@ pub(super) fn layout(
         return Err(Error::InvalidModel { message });
     }
 
-    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut g, work_control))
-        .map_err(|error| work_control.map_dugong_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        dugong::layout_controlled(&mut g, work_control)
+    };
+    solved.map_err(|error| work_control.map_dugong_error(error))?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut clusters = Vec::new();
@@ -371,7 +390,7 @@ pub(super) fn layout(
                     .dir
                     .clone()
                     .unwrap_or_else(|| model.direction.clone());
-                clusters.push(crate::model::LayoutCluster {
+                clusters.push(LayoutCluster {
                     id: id.clone(),
                     x,
                     y,
@@ -403,9 +422,19 @@ pub(super) fn layout(
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut node_rect_by_id: HashMap<String, Box2> = HashMap::new();
+    let mut node_rect_by_id = HashMap::new();
     for n in &nodes {
-        node_rect_by_id.insert(n.id.clone(), Box2::from_center(n.x, n.y, n.width, n.height));
+        let half_width = n.width / 2.0;
+        let half_height = n.height / 2.0;
+        node_rect_by_id.insert(
+            n.id.clone(),
+            Bounds {
+                min_x: n.x - half_width,
+                min_y: n.y - half_height,
+                max_x: n.x + half_width,
+                max_y: n.y + half_height,
+            },
+        );
     }
 
     let mut edges_by_id: HashMap<String, LayoutEdgeParts> = HashMap::new();
@@ -427,7 +456,7 @@ pub(super) fn layout(
         let rel_idx = key
             .name
             .as_ref()
-            .and_then(|name| parse_er_rel_idx_from_edge_name(name))
+            .and_then(|name| er_rel_idx_from_edge_id(name))
             .and_then(|idx| model.relationships.get(idx).map(|_| idx));
 
         let rel = rel_idx.and_then(|idx| model.relationships.get(idx));
@@ -449,10 +478,8 @@ pub(super) fn layout(
 
         if !is_er_self_loop_dummy_node_id(&key.v)
             && !is_er_self_loop_dummy_node_id(&key.w)
-            && let (Some(from_rect), Some(to_rect)) = (
-                node_rect_by_id.get(&key.v).copied(),
-                node_rect_by_id.get(&key.w).copied(),
-            )
+            && let (Some(from_rect), Some(to_rect)) =
+                (node_rect_by_id.get(&key.v), node_rect_by_id.get(&key.w))
         {
             clip_edge_endpoints(&mut points, from_rect, to_rect);
         }
@@ -615,14 +642,12 @@ pub(super) fn layout(
 
     let bounds = er_layout_bounds(&nodes, &layout_edges);
 
-    Ok(ErDiagramLayout {
+    Ok(ErDagreLayout {
         nodes,
         edges: layout_edges,
         render_edges,
-        swimlane: None,
         clusters,
         bounds,
-        prepared_labels,
     })
 }
 
@@ -900,7 +925,7 @@ fn er_self_loop_label_position(
 fn intersect_segment_with_rect(
     p0: &LayoutPoint,
     p1: &LayoutPoint,
-    rect: Box2,
+    rect: &Bounds,
 ) -> Option<LayoutPoint> {
     let dx = p1.x - p0.x;
     let dy = p1.y - p0.y;
@@ -910,10 +935,10 @@ fn intersect_segment_with_rect(
 
     let mut candidates: Vec<(f64, LayoutPoint)> = Vec::new();
     let eps = 1e-9;
-    let min_x = rect.min_x();
-    let max_x = rect.max_x();
-    let min_y = rect.min_y();
-    let max_y = rect.max_y();
+    let min_x = rect.min_x;
+    let max_x = rect.max_x;
+    let min_y = rect.min_y;
+    let max_y = rect.max_y;
 
     if dx.abs() > eps {
         for x_edge in [min_x, max_x] {
@@ -948,17 +973,21 @@ fn intersect_segment_with_rect(
         .map(|(_, p)| p)
 }
 
-fn clip_edge_endpoints(points: &mut [LayoutPoint], from: Box2, to: Box2) {
+fn contains_point(rect: &Bounds, point: &LayoutPoint) -> bool {
+    point.x >= rect.min_x && point.x <= rect.max_x && point.y >= rect.min_y && point.y <= rect.max_y
+}
+
+fn clip_edge_endpoints(points: &mut [LayoutPoint], from: &Bounds, to: &Bounds) {
     if points.len() < 2 {
         return;
     }
-    if from.contains_point(points[0].x, points[0].y)
+    if contains_point(from, &points[0])
         && let Some(p) = intersect_segment_with_rect(&points[0], &points[1], from)
     {
         points[0] = p;
     }
     let last = points.len() - 1;
-    if to.contains_point(points[last].x, points[last].y)
+    if contains_point(to, &points[last])
         && let Some(p) = intersect_segment_with_rect(&points[last], &points[last - 1], to)
     {
         points[last] = p;

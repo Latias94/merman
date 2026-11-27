@@ -1,7 +1,9 @@
-//! ER configuration, prepared labels and styles, and complete SVG emission.
+//! ER configuration, prepared labels and styles, Dagre layout, and complete SVG emission.
 
 mod binding;
 mod config;
+#[cfg(feature = "layout-dagre")]
+mod dagre;
 mod geometry;
 mod labels;
 mod markers;
@@ -14,7 +16,13 @@ mod theme;
 
 pub use binding::ErCssBinding;
 pub use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings, ErRenderSettings};
-pub use geometry::{ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_rel_idx_from_edge_id};
+#[cfg(feature = "layout-dagre")]
+pub use dagre::{ErDagreLayout, layout as layout_dagre};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+pub use geometry::calc_label_position;
+pub use geometry::{
+    ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_layout_bounds, er_rel_idx_from_edge_id,
+};
 pub use labels::{
     ErBoxLabel, ErPreparedLabels, ErPreparedRelationshipLabel, er_subgraph_title_metrics,
     er_swimlane_title_metrics,

@@ -7,11 +7,12 @@ facade selects the backend and supplies the operation context and canonical rout
 The `diagram-er` feature owns ER configuration, theme
 binding, label preparation, and complete SVG emission. `merman-render` selects the layout backend,
 supplies canonical routes and the operation context, and applies terminal SVG policies.
-`layout-shoal` adds marker footprints for routing and viewport geometry.
+`layout-dagre` enables the ER Dagre adapter. `layout-shoal` adds marker footprints for routing
+and viewport geometry.
 
 The `diagram-class` feature owns Class style binding, label preparation, and complete SVG
 emission. The facade selects the layout backend and supplies measured geometry and canonical
-routes.
+routes. `layout-dagre` enables the Class Dagre adapter.
 
 The `diagram-c4` feature owns C4 style and text preparation, grid layout, and complete SVG
 emission. The facade supplies routed geometry when the operation selects Shoal.
@@ -31,7 +32,8 @@ services, and applies terminal SVG policies.
 
 The `diagram-state` feature owns State presentation binding, label measurement, and
 complete SVG emission. `merman-render` selects the layout backend, supplies its route
-geometry and the operation context, and applies terminal SVG policies.
+geometry and the operation context, and applies terminal SVG policies. `layout-dagre` enables
+the State Dagre adapter.
 
 The `diagram-usecase` feature owns Usecase style binding, label preparation, Dagre layout,
 and complete SVG emission. `merman-render` selects the layout backend, supplies canonical

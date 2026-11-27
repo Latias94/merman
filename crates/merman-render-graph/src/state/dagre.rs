@@ -1,26 +1,26 @@
 //! Dagre graph construction, cluster extraction, and layout projection for State.
 
 use super::config::{StateConfigView, normalize_dir, state_node_is_effective_group};
-use super::layout::{
+use super::layout_input::{
     HiddenPrefixMatcher, note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles,
 };
 use super::measure::{edge_label_metrics, state_node_dimensions, title_label_metrics};
-use super::{StateDiagramModel, StateNode, state_value_to_label_text};
-use crate::dagre::{rankdir, self_loop::compact_self_loop_geometry};
-use crate::geom::Size;
-use crate::graph_layout::ir::direction_from_rank;
-use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
-};
-use crate::text::{TextMeasurer, WrapMode};
-use crate::{Error, Result};
+use super::{StateDiagramLayout, StateNode, state_value_to_label_text};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use euclid::Size2D;
+use merman_model::families::state::StateDiagramRenderModel as StateDiagramModel;
+use merman_render_core::dagre_geometry::compact_self_loop_geometry;
+use merman_render_core::euclid_box::Box2 as Rect;
+use merman_render_core::graph_layout::{dagre_rankdir as rankdir, direction_from_rank};
+use merman_render_core::layout_work::OperationLayoutWorkControl;
+use merman_render_core::shape_intersection::{Outline, intersect_node_outline};
+use merman_render_core::text::{TextMeasurer, WrapMode};
+use merman_render_core::{
+    Bounds, Error, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, Result,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
-
-type Rect = crate::geom::Box2;
 
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -771,11 +771,14 @@ fn layout_prepared_node(
 
     // State diagrams use Mermaid's unified Dagre renderer, so use Dugong's canonical pipeline
     // here (edge label proxies, BK positioning, etc.).
-    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(
-        &mut prepared.graph,
-        work_control
-    ))
-    .map_err(|error| work_control.map_dugong_error(error))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        dugong::layout_controlled(&mut prepared.graph, work_control)
+    };
+    solved.map_err(|error| work_control.map_dugong_error(error))?;
 
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {
@@ -1109,11 +1112,11 @@ fn compact_self_loop_edges(
                 x: node_x,
                 y: node_y,
             },
-            Size::new(node_width, node_height),
+            Size2D::new(node_width, node_height),
             rankdir,
             &hints,
             0.0,
-            Size::new(label_width, label_height),
+            Size2D::new(label_width, label_height),
         );
 
         if let Some(label) = label.as_mut() {
@@ -1489,7 +1492,8 @@ fn build_state_diagram_dagre_input(
     })
 }
 
-pub(super) fn layout(
+/// Runs State Dagre using the work control already charged for State adapter admission.
+pub fn layout(
     model: &StateDiagramModel,
     effective_config: &Value,
     style_plan: &super::StateStylePlan,
@@ -1763,7 +1767,6 @@ pub(super) fn layout(
     // Mermaid 12's drawRect uses a rectangular intersection even when its visible
     // corners are rounded. Polygon intersection no longer adds the historical half pixel.
     {
-        use crate::elk_edge_geometry::{Outline, Shape};
         let layout_nodes: HashMap<&str, &LayoutNode> = out_nodes
             .iter()
             .map(|node| (node.id.as_str(), node))
@@ -1800,12 +1803,7 @@ pub(super) fn layout(
                     "choice" => Outline::Diamond,
                     _ => Outline::Rect,
                 };
-                let hit = Shape {
-                    node,
-                    outline,
-                    intersection: None,
-                }
-                .intersect(&target);
+                let hit = intersect_node_outline(node, outline, &target);
                 if hit.x.is_finite() && hit.y.is_finite() {
                     edge.points[endpoint] = hit;
                 }
@@ -1844,45 +1842,26 @@ pub(super) fn layout(
     })
 }
 
-fn resolve_debug_style(model: &StateDiagramModel, config: &Value) -> super::StateStylePlan {
-    use crate::layout_backend::{self, GraphLayoutBackend};
-
-    let backend = layout_backend::resolve(crate::DiagramFamilyId::STATE, "stateDiagram", config)
-        .unwrap_or(GraphLayoutBackend::Dagre);
-    super::StateStylePlan::resolve_classic(model, config, backend == GraphLayoutBackend::Dagre)
-}
-
-/// Debug-only helper: builds the Dagre input graph for stateDiagram-v2 *before* layout runs.
-///
-/// This shares the same graph construction path as `layout`.
-/// It is used by `xtask` to compare `dugong` against Mermaid's JS Dagre implementation
-/// (`dagre-d3-es`) at the layout output layer (nodes/edges/points) rather than at the SVG layer.
+/// Builds the debug graph using the style selected by the facade.
 #[doc(hidden)]
 pub fn debug_build_state_diagram_dagre_graph(
     model: &StateDiagramModel,
     effective_config: &Value,
+    style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    let style_plan = resolve_debug_style(model, effective_config);
     Ok(
-        build_state_diagram_dagre_input(
-            model,
-            effective_config,
-            &style_plan,
-            measurer,
-            None,
-            None,
-        )?
-        .graph,
+        build_state_diagram_dagre_input(model, effective_config, style_plan, measurer, None, None)?
+            .graph,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::DeterministicTextMeasurer;
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::presentation::RenderSemanticModel;
+    use merman_render_core::text::DeterministicTextMeasurer;
 
     #[test]
     fn state_dagre_input_interleaves_child_parent_insertion_like_mermaid() {
@@ -1897,7 +1876,12 @@ mod tests {
         let RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };
-        let style_plan = resolve_debug_style(model, parsed.metadata().effective_config.as_value());
+        // This fixture has no explicit layout override, so its debug graph uses Dagre style.
+        let style_plan = super::super::StateStylePlan::resolve_classic(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            true,
+        );
         let input = build_state_diagram_dagre_input(
             model,
             parsed.metadata().effective_config.as_value(),

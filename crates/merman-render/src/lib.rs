@@ -28,17 +28,6 @@ pub mod class;
 use merman_render_core::{config, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
-#[cfg(all(
-    feature = "layout-dagre",
-    any(
-        feature = "diagram-agentflow",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-state",
-        feature = "diagram-swimlane"
-    )
-))]
-mod dagre;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
     not(feature = "all-diagrams"),

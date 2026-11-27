@@ -1,10 +1,13 @@
-use crate::geom::Size;
-use crate::model::LayoutPoint;
+//! Mermaid Dagre self-loop geometry shared by graph adapters.
+
+use crate::LayoutPoint;
 use dugong::RankDir;
 
-pub(crate) struct CompactSelfLoopGeometry {
-    pub(crate) points: Vec<LayoutPoint>,
-    pub(crate) label_center: LayoutPoint,
+type Size = euclid::Size2D<f64, euclid::UnknownUnit>;
+
+pub struct CompactSelfLoopGeometry {
+    pub points: Vec<LayoutPoint>,
+    pub label_center: LayoutPoint,
 }
 
 #[derive(Clone, Copy)]
@@ -60,7 +63,7 @@ fn side_from_layout_hints(
 
 // Port of Mermaid 11.16.0's getSelfLoopSide, getSelfLoopPoints, and
 // getSelfLoopLabelPosition helpers in the Dagre rendering adapter.
-pub(crate) fn compact_self_loop_geometry(
+pub fn compact_self_loop_geometry(
     node_center: &LayoutPoint,
     node_size: Size,
     rankdir: RankDir,

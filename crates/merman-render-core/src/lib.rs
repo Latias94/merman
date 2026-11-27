@@ -5,6 +5,9 @@
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod config;
+#[cfg(all(feature = "euclid-geometry", feature = "layout-dagre"))]
+#[doc(hidden)]
+pub mod dagre_geometry;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod entities;
@@ -52,6 +55,9 @@ pub mod route_types;
 #[cfg(feature = "route-paint")]
 pub mod route_paint;
 
+#[cfg(feature = "svg-output")]
+#[doc(hidden)]
+pub mod shape_intersection;
 #[cfg(feature = "svg-animation")]
 #[doc(hidden)]
 pub mod step_animation;

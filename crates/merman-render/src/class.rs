@@ -5,18 +5,19 @@
     feature = "layout-elk",
     feature = "layout-shoal"
 ))]
-use merman_render_graph::class::{ClassDiagramModel, class_namespace_label, normalize_dir};
+use merman_render_graph::class::ClassDiagramModel;
 pub(crate) use merman_render_graph::class::{
     ClassNodeVisualPlan, ClassPreparedLabels, ClassRelationThemePlan, ClassRenderConfig,
     ClassTextThemePlan, class_layout_work_units, class_requires_math,
 };
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-use merman_render_graph::class::{
-    EdgeTerminalMetrics, Rect, apply_class_terminal_labels, class_namespace_ids_in_decl_order,
-    compute_bounds, terminal_path_for_edge,
-};
 #[cfg(feature = "layout-elk")]
-use merman_render_graph::class::{TerminalPos, calculate_point, required_terminal_label_position};
+use merman_render_graph::class::{
+    EdgeTerminalMetrics, Rect, TerminalPos, apply_class_terminal_labels, calculate_point,
+    class_namespace_ids_in_decl_order, compute_bounds, required_terminal_label_position,
+    terminal_path_for_edge,
+};
+#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+use merman_render_graph::class::{class_namespace_label, normalize_dir};
 
 #[cfg(feature = "layout-dagre")]
 mod dagre;
@@ -24,11 +25,7 @@ mod dagre;
 mod elk_layout;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
-#[cfg(any(
-    feature = "layout-dagre",
-    feature = "layout-elk",
-    feature = "layout-shoal"
-))]
+#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;

@@ -96,6 +96,18 @@ pub fn direction_from_rank(rank: &str) -> Direction {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
+pub fn dagre_rankdir(direction: Direction) -> dugong::RankDir {
+    use dugong::RankDir;
+
+    match direction {
+        Direction::Down => RankDir::TB,
+        Direction::Up => RankDir::BT,
+        Direction::Right => RankDir::LR,
+        Direction::Left => RankDir::RL,
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(any(test, feature = "test-support"), derive(Clone))]
 pub struct MeasuredGraph {
