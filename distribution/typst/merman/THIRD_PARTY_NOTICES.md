@@ -201,7 +201,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src/state`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/pie`, `crates/merman-render-charts/src/quadrantchart/layout.rs`, `crates/merman-render-charts/src/quadrantchart/svg.rs`, `crates/merman-render-charts/src/radar`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn/layout.rs`, `crates/merman-render-charts/src/wardley/layout.rs`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-flow/src`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src/info`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-core-flow/src`, `crates/merman-core-graph/src/state`, `crates/merman-core-preprocess/src/scan/langium.rs`, `crates/merman-core-preprocess/src/yaml.rs`, `crates/merman-core-sequence/src`, `crates/merman-core-structured/src/info.rs`, `crates/merman-core-structured/src/ishikawa.rs`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `crates/merman-render-charts/src/pie`, `crates/merman-render-charts/src/quadrantchart`, `crates/merman-render-charts/src/radar`, `crates/merman-render-charts/src/treemap/layout.rs`, `crates/merman-render-charts/src/venn`, `crates/merman-render-charts/src/wardley`, `crates/merman-render-core/src/step_animation.rs`, `crates/merman-render-flow/src`, `crates/merman-render-graph/src/er`, `crates/merman-render-sequence/src`, `crates/merman-render-structured/src/cynefin`, `crates/merman-render-structured/src/info`, `crates/merman-render-structured/src/railroad`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -285,7 +285,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render/src/venn/theme/css_binding.rs`, `crates/merman-render-charts/src/venn/solver.rs`
+- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
 - Legal file: `THIRD_PARTY_LICENSES/venn-js/LICENSE`
 
 ### ZenUML Core
