@@ -203,26 +203,30 @@ fn compact_sequence_rejects_non_standalone_or_custom_pipeline() {
 fn compact_sequence_admits_exact_svg_bytes_but_rejects_one_less() {
     use merman::svg::{RenderResourcePolicy, ResourceLimitId};
 
-    let expected = standalone(SEQUENCE, compact_request()).unwrap();
-    let bytes = expected.svg().len();
-    let with_limit = |limit| {
-        let mut request = compact_request();
-        request.environment = request.environment.with_resource_policy(
-            RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxSvgBytes, limit)
-                .unwrap(),
-        );
-        standalone(SEQUENCE, request)
-    };
+    let framed =
+        format!("{SEQUENCE}    loop Retry\n        Client->>Server: Send again\n    end\n");
+    for source in [SEQUENCE, framed.as_str()] {
+        let expected = standalone(source, compact_request()).unwrap();
+        let bytes = expected.svg().len();
+        let with_limit = |limit| {
+            let mut request = compact_request();
+            request.environment = request.environment.with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxSvgBytes, limit)
+                    .unwrap(),
+            );
+            standalone(source, request)
+        };
 
-    assert_eq!(with_limit(bytes).unwrap().svg(), expected.svg());
-    let error = with_limit(bytes - 1)
-        .map(|_| ())
-        .expect_err("the actual byte budget is one byte short");
-    let RenderError::ResourceLimitExceeded(limit) = error else {
-        panic!("expected the SVG byte limit, got {error:?}");
-    };
-    assert_eq!(limit.id, "max_svg_bytes");
-    assert_eq!(limit.maximum, (bytes - 1) as u64);
-    assert!(limit.actual > limit.maximum);
+        assert_eq!(with_limit(bytes).unwrap().svg(), expected.svg());
+        let error = with_limit(bytes - 1)
+            .map(|_| ())
+            .expect_err("the actual byte budget is one byte short");
+        let RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected the SVG byte limit, got {error:?}");
+        };
+        assert_eq!(limit.id, "max_svg_bytes");
+        assert_eq!(limit.maximum, (bytes - 1) as u64);
+        assert!(limit.actual > limit.maximum);
+    }
 }

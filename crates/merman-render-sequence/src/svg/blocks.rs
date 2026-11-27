@@ -80,23 +80,49 @@ fn write_control_line(
     Ok(())
 }
 
-fn write_block_frame(
-    out: &mut impl SvgOutput,
-    x1: f64,
-    x2: f64,
-    y1: f64,
-    y2: f64,
-    ctx: &SequenceBlockRenderContext<'_>,
-) -> Result<()> {
-    for coordinates in [
+pub(super) fn block_frame_lines([x1, y1, x2, y2]: [f64; 4]) -> [[f64; 4]; 4] {
+    [
         [x1, y1, x2, y1],
         [x2, y1, x2, y2],
         [x1, y2, x2, y2],
         [x1, y1, x1, y2],
-    ] {
-        write_control_line(out, coordinates, false, ctx)?;
+    ]
+}
+
+pub(super) struct BlockLabelBox {
+    pub(super) points: [[f64; 2]; 5],
+    pub(super) text_position: [f64; 2],
+}
+
+impl BlockLabelBox {
+    pub(super) fn new(x1: f64, y1: f64, width: f64, height: f64, margin: f64) -> Self {
+        let height = if height == 0.0 { 20.0 } else { height };
+        let x2 = x1 + width;
+        let y3 = y1 + height;
+        let y2 = y3 - 7.0;
+        let x3 = x2 - 8.4;
+        Self {
+            points: [[x1, y1], [x2, y1], [x2, y2], [x3, y3], [x1, y3]],
+            text_position: [
+                (x1 + width / 2.0).round(),
+                sequence_drawn_text_y(
+                    sequence_drawn_text_first_y(y1 + height / 2.0, margin),
+                    margin,
+                    0.0,
+                ),
+            ],
+        }
     }
-    Ok(())
+
+    pub(super) fn bounds(&self) -> [f64; 4] {
+        let [[x1, y1], [x2, _], [_, y2], [x3, y3], _] = self.points;
+        [
+            x1.min(x2).min(x3),
+            y1.min(y2).min(y3),
+            x1.max(x2).max(x3),
+            y1.max(y2).max(y3),
+        ]
+    }
 }
 
 pub(super) fn write_block_label_box(
@@ -106,30 +132,17 @@ pub(super) fn write_block_label_box(
     label: &str,
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
-    let label_box_width = ctx.label_box_drawn_width;
     let neo_height = if ctx.is_neo { 15.0 } else { 0.0 };
-    let label_box_height = ctx.label_box_height + neo_height;
-    let label_box_height = if label_box_height == 0.0 {
-        20.0
-    } else {
-        label_box_height
-    };
+    let label_box = BlockLabelBox::new(
+        frame_x1,
+        frame_y1,
+        ctx.label_box_drawn_width,
+        ctx.label_box_height + neo_height,
+        ctx.box_text_margin,
+    );
     let typography = ctx.loop_typography;
-    let x1 = frame_x1;
-    let y1 = frame_y1;
-    let x2 = x1 + label_box_width;
-    let y3 = y1 + label_box_height;
-    let y2 = y3 - 7.0;
-    let x3 = x2 - 8.4;
-    ctx.keyword_paint.include_bounds(
-        out,
-        [
-            x1.min(x2).min(x3),
-            y1.min(y2).min(y3),
-            x1.max(x2).max(x3),
-            y1.max(y2).max(y3),
-        ],
-    )?;
+    let [[x1, y1], [x2, _], [_, y2], [x3, y3], _] = label_box.points;
+    ctx.keyword_paint.include_bounds(out, label_box.bounds())?;
     let _ = write!(
         out,
         r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox""#,
@@ -143,12 +156,7 @@ pub(super) fn write_block_label_box(
     ctx.keyword_paint.write_attributes(out, false);
     out.push_str("/>");
     out.checkpoint()?;
-    let label_cx = (x1 + label_box_width / 2.0).round();
-    let label_cy = sequence_drawn_text_y(
-        sequence_drawn_text_first_y(y1 + label_box_height / 2.0, ctx.box_text_margin),
-        ctx.box_text_margin,
-        0.0,
-    );
+    let [label_cx, label_cy] = label_box.text_position;
     let style = typography.terminal_style(
         "",
         super::settings::sequence_text_style_attribute(ctx.loop_text_style),
@@ -177,7 +185,9 @@ pub(super) fn render_sequence_block(
     let frame_y1 = frame.y;
     let frame_y2 = frame.y + frame.height;
     write_control_structure_group_open(out, control_id);
-    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2, ctx)?;
+    for coordinates in block_frame_lines([frame_x1, frame_y1, frame_x2, frame_y2]) {
+        write_control_line(out, coordinates, false, ctx)?;
+    }
     for (index, section) in frame.sections.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(index)?;
         write_control_line(out, [frame_x1, section.y, frame_x2, section.y], true, ctx)?;

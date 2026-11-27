@@ -100,7 +100,8 @@ let svg = Renderer::new().render_svg_with(
 ```
 
 - With `diagram-sequence`, the producer uses the prepared layout for classic rectangular
-  participants, plain notes, activation bars, and supported straight messages.
+  participants, plain notes, activation bars, and supported straight messages. Classic Mermaid
+  diagrams can also use `loop` and `alt`/`else` frames with prepared bounds and plain headings.
 - With `diagram-flowchart`, the producer supports classic, ungrouped diagrams with rectangular
   nodes and unlabeled edges. Plain node labels may wrap between whole words. Disable `htmlLabels`
   for either backend.
