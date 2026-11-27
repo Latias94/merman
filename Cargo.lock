@@ -2414,7 +2414,6 @@ version = "0.11.0"
 dependencies = [
  "cssparser",
  "futures",
- "granit-parser",
  "indexmap",
  "json5",
  "merman-core-flow",
@@ -2458,7 +2457,9 @@ dependencies = [
 name = "merman-core-preprocess"
 version = "0.11.0"
 dependencies = [
+ "granit-parser",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]

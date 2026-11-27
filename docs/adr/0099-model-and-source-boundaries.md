@@ -36,8 +36,9 @@ Use `merman_model::families::<family>` as the canonical family namespace. Core r
 
 `merman-core-preprocess` owns controlled UTF-8 edits, byte-span mapping, and the source-only
 line-ending, HTML attribute, and Mermaid entity rewrites. It also scans the shared Langium string
-and declaration terminals. Core's preprocessing orchestrator combines the frontmatter and
-directive modules, which own their configuration admission and source evidence. Core also owns
+and declaration terminals and owns the bounded YAML arena, value materialization, and YAML-local
+source ranges. Core's preprocessing orchestrator combines the frontmatter and directive modules,
+which admit configuration and map the YAML evidence to the diagram source. Core also owns
 `PreprocessedSource` and the projection of parser diagnostics and editor facts back to the
 original source.
 

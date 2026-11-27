@@ -1,26 +1,33 @@
-#[cfg(feature = "editor-facts")]
-use crate::preprocess::{FrontmatterInsertOrder, SourceConfigPath};
-use crate::{OperationControl, OperationControlResult};
+//! Bounded YAML parsing and source-order capture for preprocessed text.
+
+#[cfg(feature = "yaml-editor")]
+use crate::SourceConfigPath;
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
-#[cfg(feature = "editor-facts")]
+#[cfg(feature = "yaml-editor")]
 use granit_parser::{Span, StructureStyle};
-use merman_model::json::{JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES};
+use merman_model::json::{
+    JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES, clone_value_nonrecursive,
+    drop_value_nonrecursive,
+};
+use merman_model::{OperationControl, OperationControlResult};
 use serde_json::{Map, Number, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::size_of;
+#[cfg(feature = "yaml-editor")]
+use std::sync::Arc;
 
 const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
 const YAML_MATERIALIZATION_INPUT_MULTIPLIER: usize = 16;
 const YAML_PARSER_MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
 #[cfg(test)]
-pub(crate) fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
+fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
     let control = OperationControl::new();
     parse_yaml_value_controlled(input, max_nesting_depth, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
-pub(crate) fn parse_yaml_value_controlled(
+pub fn parse_yaml_value_controlled(
     input: &str,
     max_nesting_depth: usize,
     control: &OperationControl,
@@ -41,51 +48,71 @@ fn default_materialization_budget(input: &str) -> usize {
         .max(YAML_MATERIALIZATION_MIN_BYTES)
 }
 
-#[cfg(feature = "editor-facts")]
+#[cfg(feature = "yaml-editor")]
 #[derive(Debug)]
-pub(crate) struct YamlConfigKeyEvidence {
-    pub(crate) path: SourceConfigPath,
-    pub(crate) span: Option<std::ops::Range<usize>>,
-    pub(crate) rewrite_safe: bool,
+pub struct YamlConfigKeyEvidence {
+    pub path: SourceConfigPath,
+    pub span: Option<std::ops::Range<usize>>,
+    pub rewrite_safe: bool,
 }
 
-pub(crate) struct YamlValueCapture {
-    pub(crate) value: Result<Value, String>,
-    pub(crate) collection_text: YamlCollectionText,
-    #[cfg(feature = "editor-facts")]
-    pub(crate) keys: Vec<YamlConfigKeyEvidence>,
-    #[cfg(feature = "editor-facts")]
-    pub(crate) rewrite_safe: bool,
+pub struct YamlValueCapture {
+    pub value: Result<Value, String>,
+    pub collection_text: YamlCollectionText,
+    #[cfg(feature = "yaml-editor")]
+    pub keys: Vec<YamlConfigKeyEvidence>,
+    #[cfg(feature = "yaml-editor")]
+    pub rewrite_safe: bool,
 }
 
 /// Ordered JSON text for requested top-level collection fields.
-pub(crate) type YamlCollectionText = BTreeMap<&'static str, String>;
+pub type YamlCollectionText = BTreeMap<&'static str, String>;
 
 #[derive(Default)]
 struct Capture<'a> {
     collection_text_keys: &'a [&'static str],
     root_key_order: Option<&'a mut Vec<String>>,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     ordered_document: Option<&'a mut String>,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     insert_order: Option<InsertOrderCapture<'a>>,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     keys: bool,
 }
 
-#[cfg(feature = "editor-facts")]
-struct InsertOrderCapture<'a> {
-    routes: &'a [(&'static str, &'static str)],
-    max_bytes: usize,
-    max_depth: usize,
-    output: &'a mut Option<FrontmatterInsertOrder>,
+/// Selects the ordered roots to project for a proposed insertion.
+#[cfg(feature = "yaml-editor")]
+pub struct YamlInsertOrderRequest<'a> {
+    /// Source keys and destination names in the caller's precedence order.
+    pub routes: &'a [(&'static str, &'static str)],
+    /// Root key whose presence makes the insertion unnecessary.
+    pub insert_key: &'static str,
+    pub max_bytes: usize,
+    pub max_depth: usize,
 }
 
-pub(crate) fn parse_yaml_with_capture_controlled(
+/// Order evidence for a YAML document that admits insertion of the requested key.
+#[cfg(feature = "yaml-editor")]
+#[derive(Debug, Clone, PartialEq)]
+pub enum YamlInsertOrder {
+    /// The document is appendable and contains none of the requested routes.
+    NoRoutes,
+    /// The selected routes were projected into ordered JSON.
+    Captured(Arc<str>),
+    /// The selected routes exceeded the projection budget.
+    ExceededBudget,
+}
+
+#[cfg(feature = "yaml-editor")]
+struct InsertOrderCapture<'a> {
+    request: YamlInsertOrderRequest<'a>,
+    output: &'a mut Option<YamlInsertOrder>,
+}
+
+pub fn parse_yaml_with_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
     collection_text_keys: &[&'static str],
-    #[cfg(feature = "editor-facts")] capture_keys: bool,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
     parse_yaml_controlled(
@@ -95,29 +122,25 @@ pub(crate) fn parse_yaml_with_capture_controlled(
         default_materialization_budget(input),
         Capture {
             collection_text_keys,
-            #[cfg(feature = "editor-facts")]
-            keys: capture_keys,
             ..Capture::default()
         },
         control,
     )
 }
 
-#[cfg(feature = "editor-facts")]
-pub(crate) fn parse_yaml_frontmatter_capture_controlled(
+#[cfg(feature = "yaml-editor")]
+pub fn parse_yaml_frontmatter_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
-    insert_routes: Option<&[(&'static str, &'static str)]>,
-    max_order_bytes: usize,
-    max_order_depth: usize,
+    collection_text_keys: &[&'static str],
+    insert_order_request: Option<YamlInsertOrderRequest<'_>>,
     control: &OperationControl,
-) -> OperationControlResult<(YamlValueCapture, Option<FrontmatterInsertOrder>)> {
-    let Some(routes) = insert_routes else {
+) -> OperationControlResult<(YamlValueCapture, Option<YamlInsertOrder>)> {
+    let Some(request) = insert_order_request else {
         let captured = parse_yaml_with_capture_controlled(
             input,
             max_nesting_depth,
-            &["title", "displayMode"],
-            false,
+            collection_text_keys,
             control,
         )?;
         return Ok((captured, None));
@@ -129,12 +152,10 @@ pub(crate) fn parse_yaml_frontmatter_capture_controlled(
         max_nesting_depth,
         default_materialization_budget(input),
         Capture {
-            collection_text_keys: &["title", "displayMode"],
+            collection_text_keys,
             keys: true,
             insert_order: Some(InsertOrderCapture {
-                routes,
-                max_bytes: max_order_bytes,
-                max_depth: max_order_depth,
+                request,
                 output: &mut insert_order,
             }),
             ..Capture::default()
@@ -144,8 +165,7 @@ pub(crate) fn parse_yaml_frontmatter_capture_controlled(
     Ok((captured, insert_order))
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) fn parse_yaml_value_with_root_order_controlled(
+pub fn parse_yaml_value_with_root_order_controlled(
     input: &str,
     max_nesting_depth: usize,
     control: &OperationControl,
@@ -165,7 +185,7 @@ pub(crate) fn parse_yaml_value_with_root_order_controlled(
     Ok(captured.value.map(|value| (value, root_key_order)))
 }
 
-pub(crate) fn parse_yaml_value_with_limits_controlled(
+pub fn parse_yaml_value_with_limits_controlled(
     input: &str,
     max_input_bytes: usize,
     max_nesting_depth: usize,
@@ -183,8 +203,8 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
     .value)
 }
 
-#[cfg(feature = "editor-facts")]
-pub(crate) fn parse_yaml_ordered_document_controlled(
+#[cfg(feature = "yaml-editor")]
+pub fn parse_yaml_ordered_document_controlled(
     input: &str,
     max_bytes: usize,
     max_nesting_depth: usize,
@@ -220,19 +240,19 @@ fn parse_yaml_controlled(
                 "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
             )),
             collection_text: YamlCollectionText::new(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             keys: Vec::new(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
         });
     }
     let mut builder = YamlValueBuilder::new(
         max_nesting_depth,
         materialization_budget,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         capture.keys,
     );
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     {
         builder.frontmatter_appendable = capture.insert_order.is_some();
     }
@@ -240,9 +260,9 @@ fn parse_yaml_controlled(
     // Feature unification may enable comment support for semantic-only callers.
     // Emit comments only when collecting editor evidence.
     let options = granit_parser::options! {
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         emit_comments: capture.keys,
-        #[cfg(not(feature = "editor-facts"))]
+        #[cfg(not(feature = "yaml-editor"))]
         emit_comments: false,
     };
     for (index, event) in Parser::new_from_str_with_options(input, options).enumerate() {
@@ -252,7 +272,7 @@ fn parse_yaml_controlled(
         let (event, _span) = match event {
             Ok(event) => event,
             Err(error) => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if capture.keys && error.kind() == &granit_parser::ErrorKind::TooManyComments {
                     // Optional editor evidence must not narrow semantic source acceptance.
                     // Discard partial evidence and retry once without comment buffering,
@@ -272,59 +292,59 @@ fn parse_yaml_controlled(
                     semantic.rewrite_safe = false;
                     return Ok(semantic);
                 }
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 let (keys, _) = builder.take_capture();
                 return Ok(YamlValueCapture {
                     value: Err(error.to_string()),
                     collection_text: YamlCollectionText::new(),
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     keys,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     rewrite_safe: false,
                 });
             }
         };
         if let Err(error) = builder.on_event(
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             input,
             event,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             _span,
         ) {
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             let (keys, _) = builder.take_capture();
             return Ok(YamlValueCapture {
                 value: Err(error),
                 collection_text: YamlCollectionText::new(),
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 keys,
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 rewrite_safe: false,
             });
         }
     }
 
     control.checkpoint()?;
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     let insert_order = capture
         .insert_order
         .filter(|_| builder.frontmatter_appendable);
     let captured = (|| {
         if !value.as_ref().is_ok_and(Value::is_object) {
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             if let Some(insert_order) = insert_order
                 && input.is_empty()
                 && builder.root.is_none()
                 && matches!(&value, Ok(Value::Null))
             {
-                *insert_order.output = Some(FrontmatterInsertOrder::without_compatibility_routes());
+                *insert_order.output = Some(YamlInsertOrder::NoRoutes);
             }
             return Ok(YamlCollectionText::new());
         }
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         if let Some(document) = capture.ordered_document
             && let Some(root) = builder.root
         {
@@ -335,26 +355,28 @@ fn parse_yaml_controlled(
         } else {
             builder.capture_collection_text(capture.collection_text_keys, control)?
         };
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         if let Some(insert_order) = insert_order
             && let Ok(Value::Object(fields)) = &value
-            && !fields.contains_key("config")
+            && !fields.contains_key(insert_order.request.insert_key)
         {
-            let order = if insert_order
+            let request = insert_order.request;
+            let order = if request
                 .routes
                 .iter()
                 .any(|(key, _)| fields.contains_key(*key))
             {
-                FrontmatterInsertOrder::from_compatibility_capture(
-                    builder.frontmatter_insert_order(
-                        insert_order.routes,
-                        insert_order.max_bytes,
-                        insert_order.max_depth,
-                        control,
-                    )?,
-                )
+                match builder.frontmatter_insert_order(
+                    request.routes,
+                    request.max_bytes,
+                    request.max_depth,
+                    control,
+                )? {
+                    Some(json) => YamlInsertOrder::Captured(json.into()),
+                    None => YamlInsertOrder::ExceededBudget,
+                }
             } else {
-                FrontmatterInsertOrder::without_compatibility_routes()
+                YamlInsertOrder::NoRoutes
             };
             *insert_order.output = Some(order);
         }
@@ -367,7 +389,7 @@ fn parse_yaml_controlled(
         Ok(text) => text,
         Err(cancelled) => {
             if let Ok(value) = value {
-                crate::json_value::drop_value_nonrecursive(value);
+                drop_value_nonrecursive(value);
             }
             return Err(cancelled);
         }
@@ -375,14 +397,14 @@ fn parse_yaml_controlled(
     Ok(YamlValueCapture {
         value,
         collection_text,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         keys,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         rewrite_safe,
     })
 }
 
-#[cfg(feature = "editor-facts")]
+#[cfg(feature = "yaml-editor")]
 fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops::Range<usize>> {
     let mut range = span.byte_range()?;
     if matches!(style, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted) {
@@ -401,7 +423,7 @@ fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops
     input.get(range.clone()).map(|_| range)
 }
 
-#[cfg(feature = "editor-facts")]
+#[cfg(feature = "yaml-editor")]
 fn yaml_key_span_is_rewrite_safe(
     input: &str,
     span: Span,
@@ -420,13 +442,13 @@ struct YamlValueBuilder {
     anchors: HashMap<usize, NodeId>,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     capture_keys: bool,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     key_evidence: Vec<YamlConfigKeyEvidence>,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     rewrite_safe: bool,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     frontmatter_appendable: bool,
 }
 
@@ -434,7 +456,7 @@ impl YamlValueBuilder {
     fn new(
         max_nesting_depth: usize,
         materialization_budget: usize,
-        #[cfg(feature = "editor-facts")] capture_keys: bool,
+        #[cfg(feature = "yaml-editor")] capture_keys: bool,
     ) -> Self {
         Self {
             stack: Vec::new(),
@@ -443,39 +465,39 @@ impl YamlValueBuilder {
             anchors: HashMap::new(),
             max_nesting_depth,
             materialization_budget,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             capture_keys,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_evidence: Vec::new(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: true,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             frontmatter_appendable: false,
         }
     }
 
     fn on_event(
         &mut self,
-        #[cfg(feature = "editor-facts")] input: &str,
+        #[cfg(feature = "yaml-editor")] input: &str,
         event: Event<'_>,
-        #[cfg(feature = "editor-facts")] span: Span,
+        #[cfg(feature = "yaml-editor")] span: Span,
     ) -> Result<(), String> {
         match event {
             Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => Ok(()),
             Event::DocumentEnd => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if self.frontmatter_appendable && !span.is_empty() {
                     self.frontmatter_appendable = false;
                 }
                 Ok(())
             }
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             Event::Comment(_, _) => {
                 self.rewrite_safe = false;
                 Ok(())
             }
             Event::Alias(anchor_id) => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 {
                     self.rewrite_safe = false;
                 }
@@ -489,19 +511,19 @@ impl YamlValueBuilder {
                     node,
                     role,
                     0,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     false,
                 )
             }
             Event::Scalar(raw, style, anchor_id, tag) => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if self.frontmatter_appendable
                     && matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
                     && span.end.byte_offset() == Some(input.len())
                 {
                     self.frontmatter_appendable = false;
                 }
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if anchor_id != 0
                     || tag.is_some()
                     || matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
@@ -510,52 +532,52 @@ impl YamlValueBuilder {
                 }
                 let role = self.reserve_role()?;
                 let value = scalar_to_value(raw.as_ref(), style, tag.as_deref())?;
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 let key_source = self.capture_keys.then(|| YamlKeySource {
                     span: yaml_key_span(input, span, style),
                     rewrite_safe: yaml_key_span_is_rewrite_safe(input, span, style, raw.as_ref()),
                 });
                 let node = self.push_node(YamlNode::Scalar {
                     value,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     key_source,
                 });
                 self.complete_node(
                     node,
                     role,
                     anchor_id,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     true,
                 )
             }
             Event::SequenceStart(_, anchor_id, _tag) => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if anchor_id != 0 || _tag.is_some() {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Sequence(Vec::new()),
                     role,
                     anchor_id,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     path,
                 })
             }
             Event::MappingStart(_style, anchor_id, _tag) => {
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if anchor_id != 0 || _tag.is_some() {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if self.frontmatter_appendable && matches!(role, Role::Root) {
                     self.frontmatter_appendable =
                         _style == StructureStyle::Block && span.start.col() == 0;
                 }
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Mapping {
@@ -565,7 +587,7 @@ impl YamlValueBuilder {
                     },
                     role,
                     anchor_id,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     path,
                 })
             }
@@ -595,7 +617,7 @@ impl YamlValueBuilder {
                     node,
                     frame.role,
                     frame.anchor_id,
-                    #[cfg(feature = "editor-facts")]
+                    #[cfg(feature = "yaml-editor")]
                     true,
                 )
             }
@@ -603,12 +625,12 @@ impl YamlValueBuilder {
         }
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     fn take_capture(&mut self) -> (Vec<YamlConfigKeyEvidence>, bool) {
         (std::mem::take(&mut self.key_evidence), self.rewrite_safe)
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     fn path_for_role(&self, role: &Role) -> Option<SourceConfigPath> {
         if !self.capture_keys {
             return None;
@@ -662,7 +684,7 @@ impl YamlValueBuilder {
         node: NodeId,
         role: Role,
         anchor_id: usize,
-        #[cfg(feature = "editor-facts")] source_addressable: bool,
+        #[cfg(feature = "yaml-editor")] source_addressable: bool,
     ) -> Result<(), String> {
         if anchor_id != 0 {
             self.anchors.insert(anchor_id, node);
@@ -686,9 +708,9 @@ impl YamlValueBuilder {
             }
             Role::MappingKey => {
                 let key = node_to_mapping_key(&self.arena, node);
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 let mut key = key;
-                #[cfg(feature = "editor-facts")]
+                #[cfg(feature = "yaml-editor")]
                 if self.capture_keys {
                     let parent_path = self.stack.last().and_then(|frame| frame.path.clone());
                     match (&mut key, source_addressable, parent_path) {
@@ -803,7 +825,7 @@ impl YamlValueBuilder {
         Ok(text)
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     fn frontmatter_insert_order(
         &self,
         routes: &[(&'static str, &'static str)],
@@ -874,7 +896,7 @@ struct NodeId(usize);
 enum YamlNode {
     Scalar {
         value: Value,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         key_source: Option<YamlKeySource>,
     },
     Sequence(Vec<NodeId>),
@@ -1012,11 +1034,11 @@ struct Frame {
     container: Container,
     role: Role,
     anchor_id: usize,
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     path: Option<SourceConfigPath>,
 }
 
-#[cfg(feature = "editor-facts")]
+#[cfg(feature = "yaml-editor")]
 struct YamlKeySource {
     span: Option<std::ops::Range<usize>>,
     rewrite_safe: bool,
@@ -1041,11 +1063,11 @@ enum Role {
 enum MappingKey {
     String {
         name: String,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         span: Option<std::ops::Range<usize>>,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         rewrite_safe: bool,
-        #[cfg(feature = "editor-facts")]
+        #[cfg(feature = "yaml-editor")]
         path: Option<SourceConfigPath>,
     },
     Ignored,
@@ -1055,67 +1077,67 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
     match &arena[node.0] {
         YamlNode::Scalar {
             value: Value::String(key),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_source,
         } => MappingKey::String {
             name: key.clone(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: key_source.as_ref().is_none_or(|source| source.rewrite_safe),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Number(key),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_source,
         } => MappingKey::String {
             name: key.to_string(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(true),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_source,
         } => MappingKey::String {
             name: "true".to_string(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(false),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_source,
         } => MappingKey::String {
             name: "false".to_string(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Null,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             key_source,
         } => MappingKey::String {
             name: "null".to_string(),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             rewrite_safe: false,
-            #[cfg(feature = "editor-facts")]
+            #[cfg(feature = "yaml-editor")]
             path: None,
         },
         YamlNode::Scalar {
@@ -1178,7 +1200,7 @@ fn materialize_yaml_controlled(
 
                 match yaml_node {
                     YamlNode::Scalar { value, .. } => {
-                        values.push(crate::json_value::clone_value_nonrecursive(value));
+                        values.push(clone_value_nonrecursive(value));
                     }
                     YamlNode::Sequence(items) => {
                         tasks.push(MaterializeTask::CompleteSequence { len: items.len() });
@@ -1236,13 +1258,13 @@ fn materialize_yaml_controlled(
                     {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::json_value::drop_value_nonrecursive(Value::Object(map));
+                        drop_value_nonrecursive(Value::Object(map));
                         return Err(cancelled);
                     }
                     let Some(value) = children.next() else {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::json_value::drop_value_nonrecursive(Value::Object(map));
+                        drop_value_nonrecursive(Value::Object(map));
                         return Ok(Err("invalid YAML materialization state".to_string()));
                     };
                     map.insert(key.clone(), value);
@@ -1287,7 +1309,7 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
 
 fn drop_materialized_values(values: Vec<Value>) {
     for value in values {
-        crate::json_value::drop_value_nonrecursive(value);
+        drop_value_nonrecursive(value);
     }
 }
 
@@ -1487,13 +1509,23 @@ fn is_yaml_float_body(body: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OperationCancelled;
+    use merman_model::OperationCancelled;
     use serde_json::json;
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     fn capture_yaml(input: &str) -> YamlValueCapture {
-        parse_yaml_with_capture_controlled(input, 16, &[], true, &OperationControl::new())
-            .expect("a private parse control cannot be cancelled")
+        parse_yaml_controlled(
+            input,
+            YAML_PARSER_MAX_INPUT_BYTES,
+            16,
+            default_materialization_budget(input),
+            Capture {
+                keys: true,
+                ..Capture::default()
+            },
+            &OperationControl::new(),
+        )
+        .expect("a private parse control cannot be cancelled")
     }
 
     #[test]
@@ -1504,6 +1536,71 @@ mod tests {
         let result = parse_yaml_value_controlled("value: 1\n", 16, &control);
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
+    }
+
+    #[test]
+    fn root_key_order_keeps_authored_sequence_in_the_value_parse() {
+        let control = OperationControl::new();
+        let (value, order) = parse_yaml_value_with_root_order_controlled(
+            "z: &items [first, second]\n'b': *items\na: 3\n",
+            16,
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(order, ["z", "b", "a"]);
+        assert_eq!(
+            value,
+            json!({"z": ["first", "second"], "b": ["first", "second"], "a": 3})
+        );
+    }
+
+    #[cfg(feature = "yaml-editor")]
+    #[test]
+    fn yaml_insert_order_distinguishes_absence_and_budget_exhaustion() {
+        let routes = [
+            ("legacy", "flowchart"),
+            ("journey", "journey"),
+            ("flowchart", "flowchart"),
+        ];
+        let control = OperationControl::new();
+        let parse = |input, max_bytes| {
+            parse_yaml_frontmatter_capture_controlled(
+                input,
+                16,
+                &[],
+                Some(YamlInsertOrderRequest {
+                    routes: &routes,
+                    insert_key: "config",
+                    max_bytes,
+                    max_depth: 16,
+                }),
+                &control,
+            )
+            .unwrap()
+        };
+        let source = concat!(
+            "metadata: &options {z: [one, two], a: 2}\n",
+            "flowchart: *options\n",
+            "journey: {width: 10}\n",
+            "legacy: {stale: 0}\n",
+        );
+        let expected = r#"{"flowchart":{"z":["one","two"],"a":2},"journey":{"width":10}}"#;
+        let (captured, order) = parse(source, expected.len());
+        let value = captured.value.unwrap();
+        assert_eq!(value["metadata"], value["flowchart"]);
+        assert_eq!(order, Some(YamlInsertOrder::Captured(expected.into())));
+        let (captured, order) = parse(source, expected.len() - 1);
+        assert_eq!(captured.value.unwrap(), value);
+        assert_eq!(order, Some(YamlInsertOrder::ExceededBudget));
+
+        assert_eq!(parse("", 0).1, Some(YamlInsertOrder::NoRoutes));
+        assert_eq!(
+            parse("title: title\n", 0).1,
+            Some(YamlInsertOrder::NoRoutes)
+        );
+        assert_eq!(parse("config: null\n", expected.len()).1, None);
+        assert_eq!(parse("{legacy: 1}\n", expected.len()).1, None);
     }
 
     #[test]
@@ -1602,7 +1699,7 @@ second: *base
         assert_eq!(value["second"], value["base"]);
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn comment_capture_limit_preserves_semantic_values_and_resource_limits() {
         let mut input = String::from("key: # first comment\n");
@@ -1643,7 +1740,7 @@ second: *base
         }
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn comment_capture_limit_does_not_hide_later_yaml_syntax_errors() {
         let mut input = String::from("key: # first comment\n");
@@ -1657,7 +1754,7 @@ second: *base
         assert!(!captured.rewrite_safe);
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn key_evidence_does_not_flatten_mapping_paths_through_sequences() {
         let captured = capture_yaml(
@@ -1682,7 +1779,7 @@ plain:
         }));
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn complex_mapping_keys_do_not_publish_descendant_config_paths() {
         let captured = capture_yaml(
@@ -1709,7 +1806,7 @@ plain:
         assert!(!captured.rewrite_safe);
     }
 
-    #[cfg(feature = "editor-facts")]
+    #[cfg(feature = "yaml-editor")]
     #[test]
     fn alias_keys_and_values_do_not_publish_anchor_provenance_at_the_use_site() {
         let captured = capture_yaml(
