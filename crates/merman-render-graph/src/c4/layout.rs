@@ -3,14 +3,18 @@ use super::{
     C4ConfigView, C4Look, C4Model, C4NodeShape, c4_cap_radius, c4_node_shape,
     c4_person_head_radius, c4_stereotype_text, measure_c4_unified_text, prepare_c4_legacy_text,
 };
-use crate::model::{
-    Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
-    C4TextBlockLayout, LayoutPoint,
+use super::{
+    C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout, C4TextBlockLayout,
 };
-use crate::resources::OperationWorkMeter;
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
+use euclid::{
+    default::{Point2D, Size2D},
+    point2,
+};
 use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Relation, C4Shape};
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::text::TextMeasurer;
+use merman_render_core::{Bounds, LayoutPoint};
+use merman_render_core::{Error, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -118,16 +122,16 @@ impl BoundsState {
 
 #[derive(Debug, Clone)]
 struct Rect {
-    origin: crate::geom::Point,
-    size: crate::geom::Size,
+    origin: Point2D<f64>,
+    size: Size2D<f64>,
     margin: f64,
 }
 
-pub(super) struct C4Measurement<'a> {
-    pub(super) typography: &'a super::C4TypographyThemePlan,
-    pub(super) conf: &'a C4Conf,
-    pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) work: &'a OperationWorkMeter,
+pub struct C4Measurement<'a> {
+    pub typography: &'a super::C4TypographyThemePlan,
+    pub conf: &'a C4Conf,
+    pub measurer: &'a dyn TextMeasurer,
+    pub work: &'a OperationWorkMeter,
 }
 
 struct C4LayoutContext<'a> {
@@ -448,7 +452,7 @@ fn intersect_shape_point(shape: C4NodeShape, from: &Rect, end_point: LayoutPoint
     }
 }
 
-pub(super) fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayout {
+pub fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayout {
     let type_c4_shape = shape.type_c4_shape.as_str().to_string();
     let shape_kind = c4_node_shape(shape);
     let look = ctx.conf.look;
@@ -688,8 +692,8 @@ fn layout_c4_shape_array(
     for &idx in shape_indices {
         let mut shape = measure_c4_shape(&ctx.model.shapes[idx], &ctx.measure);
         let mut rect = Rect {
-            origin: crate::geom::point(0.0, 0.0),
-            size: crate::geom::Size::new(shape.width, shape.height),
+            origin: point2(0.0, 0.0),
+            size: Size2D::new(shape.width, shape.height),
             margin: shape.margin,
         };
         current_bounds.insert_rect(&mut rect, ctx.c4_shape_in_row, ctx.measure.conf);
@@ -732,7 +736,7 @@ impl C4BoundaryFrame {
     }
 }
 
-pub(super) fn prepare_c4_boundary_layout(
+pub fn prepare_c4_boundary_layout(
     boundary: &C4Boundary,
     width_limit: f64,
     ctx: &C4Measurement<'_>,
@@ -966,7 +970,7 @@ fn layout_inside_boundary(
     Ok(())
 }
 
-pub(super) fn measure_c4_relation(
+pub fn measure_c4_relation(
     rel: &C4Relation,
     index: usize,
     c4_type: &str,
@@ -984,7 +988,7 @@ pub(super) fn measure_c4_relation(
         if measure_ink_later && !rel_text_wrap {
             ctx.work.charge(text.len().saturating_add(1))?;
             let line_count = if text.contains('<') {
-                crate::text::split_mermaid_common_br_lines(text).len()
+                merman_render_core::text::line_break::split_mermaid_common_br_lines(text).len()
             } else {
                 1
             };
@@ -1036,12 +1040,12 @@ pub(super) fn measure_c4_relation(
 }
 
 /// Lays out a typed C4 render model without a compatibility-JSON round trip.
-pub(crate) fn layout_c4_diagram_typed(
+pub fn layout_c4_diagram_typed(
     model: &C4DiagramModel,
     effective_config: &Value,
     typography: &super::C4TypographyThemePlan,
     measurer: &dyn TextMeasurer,
-    container: crate::geom::Size,
+    container: Size2D<f64>,
     screen_available_width: Option<f64>,
     work: &OperationWorkMeter,
 ) -> Result<C4DiagramLayout> {
@@ -1133,8 +1137,8 @@ pub(crate) fn layout_c4_diagram_typed(
             s.alias.as_str(),
             (
                 Rect {
-                    origin: crate::geom::point(l.x, l.y),
-                    size: crate::geom::Size::new(l.width, l.height),
+                    origin: point2(l.x, l.y),
+                    size: Size2D::new(l.width, l.height),
                     margin: l.margin,
                 },
                 Some(c4_node_shape(s)),
@@ -1152,8 +1156,8 @@ pub(crate) fn layout_c4_diagram_typed(
             .or_insert_with(|| {
                 (
                     Rect {
-                        origin: crate::geom::point(layout.x, layout.y),
-                        size: crate::geom::Size::new(layout.width, layout.height),
+                        origin: point2(layout.x, layout.y),
+                        size: Size2D::new(layout.width, layout.height),
                         margin: 0.0,
                     },
                     None,

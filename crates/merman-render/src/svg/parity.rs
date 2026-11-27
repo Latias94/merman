@@ -206,7 +206,6 @@ mod requirement;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-block",
-    feature = "diagram-c4",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
@@ -897,6 +896,15 @@ impl<'a> SvgExecution<'a> {
         self.family.session().local_time_zone()
     }
 
+    #[cfg(any(
+        test,
+        feature = "diagram-agentflow",
+        feature = "diagram-block",
+        feature = "diagram-class",
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    ))]
     pub(crate) fn seed(&self) -> u64 {
         self.family.session().render_seed().get()
     }
@@ -904,7 +912,6 @@ impl<'a> SvgExecution<'a> {
     #[cfg(any(
         feature = "diagram-agentflow",
         feature = "diagram-block",
-        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",
@@ -918,15 +925,10 @@ impl<'a> SvgExecution<'a> {
         configured_seed: f64,
         owner_domain: &str,
     ) -> roughr::core::RoughRandomness {
-        let resolved_seed = if configured_seed == 0.0 {
-            self.seed() as f64
-        } else {
-            configured_seed
-        };
-        let operation = self.family.session().operation_context();
-        roughr::core::RoughRandomness::new(
-            roughr::core::RoughJsSeed::new(resolved_seed),
-            roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
+        merman_render_core::rough_svg::operation_randomness(
+            self.family.session().operation_context(),
+            configured_seed,
+            owner_domain,
         )
     }
 
@@ -1561,7 +1563,6 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             effective_config.as_value(),
             title,
-            measurer,
             artifact.typography_theme(),
             artifact.cluster_theme(),
             artifact.text_paint(),
@@ -1633,7 +1634,6 @@ mod operation_time_tests {
     any(
         feature = "diagram-agentflow",
         feature = "diagram-block",
-        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-flowchart",

@@ -1,17 +1,21 @@
-use super::super::{
-    SvgDiagramId, SvgOutput, escape_attr_display, fmt, root_svg, scoped_svg_id, scoped_svg_url,
-};
-use crate::c4::C4ShoalRelation;
-use crate::{Error, Result};
+use super::super::C4RoutedRelation;
 use base64::{display::Base64Display, engine::general_purpose::STANDARD};
 use kurbo::Rect;
+use merman_render_core::{
+    Error, Result,
+    number_format::canonical_number as fmt,
+    root_svg,
+    svg_css::{SvgId, scoped_svg_id, scoped_svg_url},
+    svg_output::SvgOutput,
+    xml::escape_attr_display,
+};
 
 pub(super) fn open_shaft(
     out: &mut impl SvgOutput,
-    route: &C4ShoalRelation,
+    route: &C4RoutedRelation,
     stroke: &str,
     stroke_width: f64,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     viewport: root_svg::DiagramBounds,
     points: &mut Vec<u8>,
 ) -> Result<()> {

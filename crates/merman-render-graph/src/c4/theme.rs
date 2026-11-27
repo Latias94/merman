@@ -4,7 +4,7 @@ use merman_model::config::MermaidThemeId;
 use merman_model::families::c4::C4Boundary;
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::FamilyTheme;
+use merman_theme_contract::v2::FamilyTheme;
 
 const MERMAID_BOUNDARY_FILL: &str = "none";
 const MERMAID_BOUNDARY_STROKE: &str = "#444444";
@@ -19,12 +19,12 @@ struct C4BoundaryStyle {
 
 /// Fill, stroke, and radius for the explicit boundaries rendered by C4.
 #[derive(Debug)]
-pub(crate) struct C4ClusterThemePlan {
+pub struct C4ClusterThemePlan {
     boundaries: BTreeMap<Box<str>, C4BoundaryStyle>,
 }
 
 impl C4ClusterThemePlan {
-    pub(crate) fn resolve(
+    pub fn resolve(
         native: Option<&FamilyTheme>,
         boundaries: &[C4Boundary],
         config: &PresentationConfig,
@@ -89,7 +89,7 @@ impl C4ClusterThemePlan {
         Self { boundaries: styles }
     }
 
-    pub(crate) fn boundary_tokens(&self, alias: &str) -> Option<(&str, &str, &str)> {
+    pub fn boundary_tokens(&self, alias: &str) -> Option<(&str, &str, &str)> {
         let style = self.boundaries.get(alias)?;
         Some((&style.fill, &style.stroke, &style.radius))
     }

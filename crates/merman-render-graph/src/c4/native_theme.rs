@@ -1,14 +1,15 @@
 use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_theme_contract::v2::FamilyTheme;
 
 #[derive(Debug)]
-pub(crate) struct C4NativeStyle {
-    pub(crate) radius: f64,
+pub struct C4NativeStyle {
+    pub radius: f64,
     pub(crate) shape_width: f64,
-    pub(crate) connector_width: f64,
-    pub(crate) edge_style: EdgeStyle,
+    pub connector_width: f64,
+    pub edge_style: EdgeStyle,
     pub(crate) marker_style: MarkerStyle,
     pub(crate) title_ink: String,
     pub(crate) title_family: String,
@@ -75,7 +76,7 @@ pub(super) fn authored_font_family(config: &PresentationConfig) -> Option<String
         .into_iter()
         .filter(|path| config.explicit_config_owns_path(path))
         .filter_map(|path| config.get_str(path))
-        .find_map(crate::config::normalized_config_font_family)
+        .find_map(merman_render_core::config::normalized_config_font_family)
 }
 
 pub(super) fn font_stack(theme: &FamilyTheme, role: merman_theme_contract::v2::FontRole) -> String {

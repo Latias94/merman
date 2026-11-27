@@ -70,7 +70,7 @@ named offsets supplied in color slots remain strings. The SVG renderer applies
 `parseInt(String(offset))` to both forms before positioning labels; a numeric `1e21` therefore
 becomes an offset of `1`, while an unconverted decimal string retains its full integer prefix.
 
-Owners: [C4 layout](../../crates/merman-render/src/c4.rs),
+Owners: [C4 layout](../../crates/merman-render-graph/src/c4/layout.rs),
 [relation geometry tests](../../crates/merman-render/tests/c4_relation_geometry_test.rs), and
 [public typed-render tests](../../crates/merman/tests/c4_typed_render.rs).
 

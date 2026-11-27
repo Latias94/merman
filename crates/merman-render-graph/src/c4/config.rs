@@ -1,8 +1,8 @@
-use crate::config::{
+use merman_render_core::config::{
     DiagramLook, config_bool, config_css_number_or_string, config_diagram_look, config_f64,
     config_f64_css_px, config_string,
 };
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 use serde_json::Value;
 
 pub(crate) const C4_DEFAULT_FONT_FAMILY: &str = r#""Open Sans", sans-serif"#;
@@ -46,7 +46,7 @@ const DEFAULT_MESSAGE_FONT_SIZE: f64 = 12.0;
 /// The C4 renderer supports the same global look vocabulary as Mermaid, while keeping the
 /// implementation-owned behavior explicit at the family boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum C4Look {
+pub enum C4Look {
     Classic,
     Neo,
     HandDrawn,
@@ -73,18 +73,18 @@ impl C4Look {
         matches!(self, Self::Neo)
     }
 
-    pub(crate) const fn is_hand_drawn(self) -> bool {
+    pub const fn is_hand_drawn(self) -> bool {
         matches!(self, Self::HandDrawn)
     }
 }
 
-pub(crate) struct C4ConfigView<'a> {
+pub struct C4ConfigView<'a> {
     effective_config: &'a Value,
     c4_config: &'a Value,
 }
 
 impl<'a> C4ConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
             c4_config: effective_config.get("c4").unwrap_or(&Value::Null),
@@ -101,7 +101,7 @@ impl<'a> C4ConfigView<'a> {
             .max(0.0)
     }
 
-    pub(crate) fn layout_settings(&self) -> C4LayoutSettings {
+    pub fn layout_settings(&self) -> C4LayoutSettings {
         C4LayoutSettings {
             look: self.look(),
             diagram_margin_x: self
@@ -190,7 +190,8 @@ impl<'a> C4ConfigView<'a> {
             Some(Value::String(raw)) => raw.trim(),
             Some(_) => return String::new(),
         };
-        let Some(parsed) = crate::mermaid_style::parse_css_font_family_value(raw) else {
+        let Some(parsed) = merman_render_core::mermaid_style::parse_css_font_family_value(raw)
+        else {
             return String::new();
         };
         // CSSOM receives the raw value and an empty priority, before normalization can remove
@@ -200,7 +201,7 @@ impl<'a> C4ConfigView<'a> {
         {
             return String::new();
         }
-        crate::config::normalize_css_font_family(raw)
+        merman_render_core::config::normalize_css_font_family(raw)
     }
 
     pub(crate) fn use_max_width(&self) -> bool {
@@ -231,12 +232,12 @@ impl<'a> C4ConfigView<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct C4LayoutSettings {
-    pub(crate) look: C4Look,
+pub struct C4LayoutSettings {
+    pub look: C4Look,
     pub(crate) diagram_margin_x: f64,
     pub(crate) diagram_margin_y: f64,
-    pub(crate) c4_shape_margin: f64,
-    pub(crate) c4_shape_padding: f64,
+    pub c4_shape_margin: f64,
+    pub c4_shape_padding: f64,
     pub(crate) width: f64,
     pub(crate) height: f64,
     pub(crate) wrap: bool,
@@ -257,7 +258,7 @@ pub(super) fn cssom_accepts_value_priority(value: &str, important: bool) -> bool
     let mut parser = cssparser::Parser::new(value);
     parser
         .expect_ident()
-        .is_ok_and(|name| crate::text::is_css_wide_keyword(name))
+        .is_ok_and(|name| merman_render_core::text::is_css_wide_keyword(name))
         && parser.is_exhausted()
 }
 

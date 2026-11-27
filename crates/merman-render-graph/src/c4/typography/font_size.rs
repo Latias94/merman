@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::mermaid_style::{
+use merman_render_core::mermaid_style::{
     CssFontSizeContext, CssFontSizeOwnership, css_font_size_value_override, parse_style_declaration,
 };
 
@@ -25,7 +25,7 @@ impl C4ElementFontSize {
                 used_px: Some(14.0),
             };
         };
-        if !crate::config::json_value_is_truthy(value) {
+        if !merman_render_core::config::json_value_is_truthy(value) {
             return inherited();
         }
         let css = match value {

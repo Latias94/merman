@@ -2,6 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-c4")]
+#[doc(hidden)]
+pub mod c4;
+
 #[cfg(feature = "diagram-class")]
 #[doc(hidden)]
 pub mod class;

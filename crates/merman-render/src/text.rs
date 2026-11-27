@@ -58,10 +58,7 @@ pub use metrics::unsupported_html_label_style;
 pub(crate) use merman_render_core::text::parse_css_font_stack;
 pub(crate) use merman_render_core::text::{non_markdown_svg_words, xhtml_font_default};
 
-#[cfg(feature = "diagram-c4")]
-pub(crate) use merman_render_core::text::is_css_wide_keyword;
 pub(crate) use merman_render_core::text::mermaid_xhtml_label_plain_text;
-pub(crate) use merman_render_core::text::wrap_label_like_mermaid_lines_with_checkpoint;
 pub use merman_render_core::text::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
     FontStack, FontStackError, FontStyle, GenericFontFamily, TextMetrics, TextStyle, WrapMode,

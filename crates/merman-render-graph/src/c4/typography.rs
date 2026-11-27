@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::configured_theme_font_size_css_or_root_number_px;
-use crate::mermaid_style::{
+use merman_render_core::config::configured_theme_font_size_css_or_root_number_px;
+use merman_render_core::mermaid_style::{
     CssFontFamilyOwnership, css_font_size_value_override, parse_style_declaration,
 };
-use crate::text::TextStyle;
+use merman_render_core::text::TextStyle;
 
 mod font_size;
 use font_size::C4ElementFontSize;
@@ -16,8 +16,8 @@ use font_size::C4ElementFontSize;
 /// C4 roles keep their independent `c4.*Font*` owners. Inheriting font families resolve against
 /// the root for measurement while retaining their configured CSS spelling for the writer.
 #[derive(Debug)]
-pub(crate) struct C4TypographyThemePlan {
-    common_css: crate::svg::PreparedCommonCss,
+pub struct C4TypographyThemePlan {
+    common_css: merman_render_core::svg_css::PreparedCommonCss,
     person_border: String,
     person_background: String,
     element_styles: BTreeMap<String, C4ElementStyle>,
@@ -60,7 +60,7 @@ impl C4PreparedFont {
             format!("font-family:{css_font_family}")
         };
         let family_ownership =
-            crate::mermaid_style::css_font_family_ownership([declaration.as_str()]);
+            merman_render_core::mermaid_style::css_font_family_ownership([declaration.as_str()]);
         if family_ownership == CssFontFamilyOwnership::Inherited {
             font.font_family = Some(root_font_family.to_owned());
         }
@@ -130,8 +130,8 @@ pub(super) struct C4ElementColors {
 }
 
 impl C4TypographyThemePlan {
-    pub(crate) fn resolve(
-        native: Option<&crate::theme::FamilyTheme>,
+    pub fn resolve(
+        native: Option<&merman_theme_contract::v2::FamilyTheme>,
         effective_config: &PresentationConfig,
         model: &merman_model::families::c4::C4DiagramModel,
     ) -> Self {
@@ -177,7 +177,7 @@ impl C4TypographyThemePlan {
         let root_family = match native {
             Some(theme) => v2::authored_font_family(effective_config)
                 .unwrap_or_else(|| v2::font_stack(theme, theme.typography.body_family)),
-            None => crate::config::config_font_family_css(effective_config),
+            None => merman_render_core::config::config_font_family_css(effective_config),
         };
         let root_family = root_family.as_str();
         let native_size = serde_json::Value::from(font_size_px);
@@ -225,7 +225,7 @@ impl C4TypographyThemePlan {
                 )
             })
             .collect();
-        let common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
+        let common_css = merman_render_core::svg_css::PreparedCommonCss::with_resolved_typography(
             config,
             root_family.to_owned(),
             font_size_css,
@@ -278,12 +278,12 @@ impl C4TypographyThemePlan {
         };
         Self {
             common_css,
-            person_border: crate::config::config_string(
+            person_border: merman_render_core::config::config_string(
                 config,
                 &["themeVariables", "personBorder"],
             )
             .unwrap_or_else(|| "hsl(240, 60%, 86.2745098039%)".to_owned()),
-            person_background: crate::config::config_string(
+            person_background: merman_render_core::config::config_string(
                 config,
                 &["themeVariables", "personBkg"],
             )
@@ -303,11 +303,11 @@ impl C4TypographyThemePlan {
         }
     }
 
-    pub(crate) fn native_style(&self) -> Option<&super::C4NativeStyle> {
+    pub fn native_style(&self) -> Option<&super::C4NativeStyle> {
         self.native.as_deref()
     }
 
-    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+    pub(crate) fn common_css(&self) -> &merman_render_core::svg_css::PreparedCommonCss {
         &self.common_css
     }
     pub(crate) fn person_border(&self) -> &str {
@@ -355,7 +355,7 @@ impl C4TypographyThemePlan {
 
     #[cfg(test)]
     pub(crate) fn use_config_root_css_for_test(&mut self, config: &serde_json::Value) {
-        self.common_css = crate::svg::PreparedCommonCss::new(config, None);
+        self.common_css = merman_render_core::svg_css::PreparedCommonCss::new(config, None);
     }
 }
 
@@ -372,7 +372,7 @@ mod tests {
             ]
         }))
         .expect("C4 actual-type fixture");
-        let config = crate::test_support::presentation_config(serde_json::json!({"c4": {
+        let config = super::super::test_config(serde_json::json!({"c4": {
             "custom_typeFontFamily": "  Custom Sans ;  ", "custom_typeFontSize": "19",
             "custom_typeFontWeight": 600, "custom_type_bg_color": "var(--card)",
             "custom_type_border_color": "", "custom_type_font_color": 42,

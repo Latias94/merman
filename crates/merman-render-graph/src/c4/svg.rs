@@ -1,15 +1,41 @@
-use super::super::*;
-use crate::c4::{
-    C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4_ROUNDED_RADIUS, C4_TECHNOLOGY_GAP, C4ConfigView,
-    C4PersonOutline, c4_cap_radius, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
+use std::fmt::Write as _;
+
+use merman_model::{
+    OperationPhase,
+    families::c4::{C4Boundary, C4DiagramModel, C4Shape},
+    runtime::OperationContext,
 };
-use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use crate::svg::parity::roughjs_common::paths::{
-    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
-    roughjs_paths_for_hand_drawn_svg_path,
+use merman_render_core::{
+    Bounds, Error, Result, entities,
+    number_format::{canonical_number as fmt, canonical_number_with_nonfinite},
+    resources::OperationWorkMeter,
+    root_svg::{self, RootViewportContext},
+    rough_svg::{
+        closed_path_d_from_points, operation_randomness,
+        paths::{
+            roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
+            roughjs_paths_for_hand_drawn_svg_path,
+        },
+    },
+    svg_css::{SvgId, scoped_svg_id, scoped_svg_url},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    text::line_break::split_mermaid_common_br_lines,
+    xml::{escape_attr, escape_attr_display, escape_xml, escape_xml_display},
 };
-use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
+
+#[cfg(feature = "layout-shoal")]
+use super::C4RoutedGeometry;
+use super::{
+    C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4_ROUNDED_RADIUS, C4_TECHNOLOGY_GAP,
+    C4ClusterThemePlan, C4ConfigView, C4DiagramLayout, C4Look, C4NativeStyle, C4NodeShape,
+    C4PersonOutline, C4ShapeLayout, C4TextBlockLayout, C4TextPaintPlan, C4TypographyThemePlan,
+    c4_cap_radius, c4_node_shape, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
+};
+
+#[cfg(feature = "layout-shoal")]
+mod routed;
+
 type C4SvgModelShape = C4Shape;
 type C4SvgModelBoundary = C4Boundary;
 
@@ -28,7 +54,7 @@ enum C4PaintVisit {
     PaintBoundary(usize),
 }
 
-fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintItem>> {
+fn c4_paint_order(layout: &C4DiagramLayout) -> Result<Vec<C4PaintItem>> {
     let mut shapes_by_parent: std::collections::HashMap<&str, Vec<usize>> =
         std::collections::HashMap::new();
     for (index, shape) in layout.shapes.iter().enumerate() {
@@ -53,12 +79,12 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
         .enumerate()
         .filter_map(|(index, boundary)| (boundary.alias == "global").then_some(index));
     let Some(global_boundary) = global_boundaries.next() else {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "c4: expected the implicit global boundary while painting".to_string(),
         });
     };
     if global_boundaries.next().is_some() {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "c4: expected exactly one implicit global boundary while painting".to_string(),
         });
     }
@@ -72,7 +98,7 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
         match visit {
             C4PaintVisit::EnterBoundary(index) => {
                 if std::mem::replace(&mut visited_boundaries[index], true) {
-                    return Err(crate::Error::InvalidModel {
+                    return Err(Error::InvalidModel {
                         message: format!(
                             "c4: boundary {} is reachable more than once while painting",
                             layout.boundaries[index].alias
@@ -108,12 +134,12 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
     }
 
     if visited_boundaries.iter().any(|visited| !visited) {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "c4: found an orphaned or cyclic boundary while painting".to_string(),
         });
     }
     if painted_shapes.iter().any(|painted| !painted) {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "c4: found a shape outside the global boundary tree while painting"
                 .to_string(),
         });
@@ -125,7 +151,7 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
 fn write_c4_css_with_typography(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    typography: &crate::c4::C4TypographyThemePlan,
+    typography: &C4TypographyThemePlan,
 ) -> Result<()> {
     let common = typography.common_css();
     common.write_prefix(out, diagram_id)?;
@@ -222,9 +248,9 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
     let x = x + width / 2.0;
 
     out.checkpoint()?;
-    let lines = crate::text::split_mermaid_common_br_lines(content);
+    let lines = split_mermaid_common_br_lines(content);
     if lines.len() != line_count {
-        return Err(crate::Error::InvalidModel {
+        return Err(Error::InvalidModel {
             message: "C4 legacy text rows do not match their prepared layout".to_owned(),
         });
     }
@@ -241,8 +267,8 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         let _ = write!(
             out,
             r#"<text x="{}" y="{}" dominant-baseline="middle""#,
-            crate::number_format::canonical_number_with_nonfinite(x),
-            crate::number_format::canonical_number_with_nonfinite(y)
+            canonical_number_with_nonfinite(x),
+            canonical_number_with_nonfinite(y)
         );
         out.checkpoint()?;
         for (k, v) in attrs {
@@ -264,7 +290,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
     Ok(())
 }
 
-fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) -> Result<()> {
+fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgId<'_>) -> Result<()> {
     const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
     let _ = write!(
@@ -290,7 +316,7 @@ fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) ->
 
 fn write_c4_relation_arrows(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     [head, end]: [&str; 2],
     fill: Option<&str>,
 ) -> Result<()> {
@@ -314,7 +340,7 @@ fn write_c4_relation_arrows(
 
 fn write_c4_relation_defs(
     out: &mut impl SvgOutput,
-    diagram_id: SvgDiagramId<'_>,
+    diagram_id: SvgId<'_>,
     fill: Option<&str>,
 ) -> Result<()> {
     write_c4_relation_arrows(out, diagram_id, ["arrowhead", "arrowend"], fill)?;
@@ -344,7 +370,7 @@ fn c4_shape_classes(type_c4_shape: &str) -> String {
 fn c4_write_unified_section(
     out: &mut impl SvgOutput,
     class: &str,
-    block: &crate::model::C4TextBlockLayout,
+    block: &C4TextBlockLayout,
     total_width: f64,
     section_y: f64,
     color: &str,
@@ -374,7 +400,7 @@ fn c4_write_unified_section(
             fmt(y),
         );
         for (word_index, word) in row.words.iter().enumerate() {
-            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let visible = entities::decode_svg_text_content_entities(word);
             let prefix = if word_index == 0 { "" } else { " " };
             let _ = write!(
                 out,
@@ -440,7 +466,7 @@ fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
 fn c4_hand_drawn_paths(
     path_data: &str,
     stroke_width: f32,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, String)> {
     let paths = roughjs_paths_for_hand_drawn_svg_path(
@@ -451,14 +477,14 @@ fn c4_hand_drawn_paths(
         randomness,
     );
     work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-    paths.ok_or_else(|| crate::Error::InvalidModel {
+    paths.ok_or_else(|| Error::InvalidModel {
         message: "c4: handDrawn shape geometry generation failed".to_string(),
     })
 }
 
 fn c4_hand_drawn_stroke(
     path_data: &str,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<String> {
     let path = roughjs_hand_drawn_stroke_path_for_svg_path(
@@ -468,7 +494,7 @@ fn c4_hand_drawn_stroke(
         randomness,
     );
     work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-    path.ok_or_else(|| crate::Error::InvalidModel {
+    path.ok_or_else(|| Error::InvalidModel {
         message: "c4: failed to generate handDrawn stroke geometry".to_string(),
     })
 }
@@ -502,14 +528,14 @@ fn c4_write_hand_drawn_pair(
 )]
 fn c4_write_unified_shape(
     out: &mut impl SvgOutput,
-    shape: &crate::model::C4ShapeLayout,
-    node_shape: crate::c4::C4NodeShape,
+    shape: &C4ShapeLayout,
+    node_shape: C4NodeShape,
     fill: &str,
     stroke: &str,
-    look: crate::c4::C4Look,
-    work_meter: &crate::resources::OperationWorkMeter,
+    look: C4Look,
+    work_meter: &OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
-    native: Option<&crate::c4::C4NativeStyle>,
+    native: Option<&C4NativeStyle>,
 ) -> Result<()> {
     let width = shape.width.max(1.0);
     let height = shape.height.max(1.0);
@@ -518,7 +544,7 @@ fn c4_write_unified_shape(
 
     if look.is_hand_drawn() {
         match node_shape {
-            crate::c4::C4NodeShape::Rounded => {
+            C4NodeShape::Rounded => {
                 let path = c4_rounded_rect_path_d(width, height, radius);
                 let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container">"#);
@@ -527,7 +553,7 @@ fn c4_write_unified_shape(
                 out.push_str("</g>");
                 return out.checkpoint();
             }
-            crate::c4::C4NodeShape::Framed => {
+            C4NodeShape::Framed => {
                 let path = c4_rounded_rect_path_d(width, height, radius);
                 let pair = c4_hand_drawn_paths(&path, stroke_width, work_meter, randomness)?;
                 let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
@@ -558,7 +584,7 @@ fn c4_write_unified_shape(
                 out.push_str("</g>");
                 return out.checkpoint();
             }
-            crate::c4::C4NodeShape::Person => {
+            C4NodeShape::Person => {
                 let C4PersonOutline {
                     head_radius,
                     head_y,
@@ -583,7 +609,7 @@ fn c4_write_unified_shape(
                     randomness,
                 );
                 work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
-                let head_pair = head_pair.ok_or_else(|| crate::Error::InvalidModel {
+                let head_pair = head_pair.ok_or_else(|| Error::InvalidModel {
                     message: "c4: handDrawn person geometry generation failed".to_string(),
                 })?;
                 out.push_str(r#"<g class="basic label-container">"#);
@@ -602,7 +628,7 @@ fn c4_write_unified_shape(
                 out.push_str("</g></g>");
                 return out.checkpoint();
             }
-            crate::c4::C4NodeShape::Cylinder => {
+            C4NodeShape::Cylinder => {
                 let rx = width / 2.0;
                 let ry = c4_cap_radius(width);
                 let body_height = (height - 2.0 * ry).max(1.0);
@@ -645,7 +671,7 @@ fn c4_write_unified_shape(
                 out.push_str("</g>");
                 return out.checkpoint();
             }
-            crate::c4::C4NodeShape::HorizontalCylinder => {
+            C4NodeShape::HorizontalCylinder => {
                 let h = height.max(1.0);
                 let ry = h / 2.0;
                 let rx = c4_cap_radius(h);
@@ -699,7 +725,7 @@ fn c4_write_unified_shape(
         }
     };
     match node_shape {
-        crate::c4::C4NodeShape::Rounded => {
+        C4NodeShape::Rounded => {
             let radius_attr = native.map_or(5.0, |theme| theme.radius);
             let _ = write!(
                 out,
@@ -712,7 +738,7 @@ fn c4_write_unified_shape(
                 radius = fmt(radius_attr),
             );
         }
-        crate::c4::C4NodeShape::Framed => {
+        C4NodeShape::Framed => {
             let frame_width = C4_FRAMED_FRAME_WIDTH;
             let points = format!(
                 "0,0 {},0 {},-{} 0,-{} 0,0 -8,0 {},0 {},-{} -8,-{} -8,0",
@@ -737,7 +763,7 @@ fn c4_write_unified_shape(
                 escape_attr(&shape_style(true)),
             );
         }
-        crate::c4::C4NodeShape::Person => {
+        C4NodeShape::Person => {
             let C4PersonOutline {
                 head_radius,
                 head_y,
@@ -760,7 +786,7 @@ fn c4_write_unified_shape(
                 escape_attr(&shape_style(false))
             );
         }
-        crate::c4::C4NodeShape::Cylinder => {
+        C4NodeShape::Cylinder => {
             let rx = width / 2.0;
             let ry = c4_cap_radius(width);
             let body_height = (height - 2.0 * ry).max(1.0);
@@ -788,7 +814,7 @@ fn c4_write_unified_shape(
                 escape_attr(&shape_style(false))
             );
         }
-        crate::c4::C4NodeShape::HorizontalCylinder => {
+        C4NodeShape::HorizontalCylinder => {
             let h = height.max(1.0);
             let ry = h / 2.0;
             let rx = c4_cap_radius(h);
@@ -821,23 +847,30 @@ fn c4_write_unified_shape(
     out.checkpoint()
 }
 
+/// The projected SVG identity, root policy, randomness, and meter of the current operation.
+pub struct C4SvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: RootViewportContext<'a>,
+    pub work_meter: &'a OperationWorkMeter,
+    pub operation: &'a OperationContext,
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer takes the layout, source model, and resolved styles separately."
 )]
-pub(crate) fn render_c4_diagram_svg_typed(
-    layout: &crate::model::C4DiagramLayout,
+pub fn render_c4_diagram_svg_typed(
+    layout: &C4DiagramLayout,
     model: &C4DiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
-    typography_theme: &crate::c4::C4TypographyThemePlan,
-    cluster_theme: &crate::c4::C4ClusterThemePlan,
-    text_paint: &crate::c4::C4TextPaintPlan,
-    #[cfg(feature = "layout-shoal")] shoal: Option<&crate::c4::C4ShoalGeometry>,
-    options: &SvgExecution<'_>,
+    typography_theme: &C4TypographyThemePlan,
+    cluster_theme: &C4ClusterThemePlan,
+    text_paint: &C4TextPaintPlan,
+    #[cfg(feature = "layout-shoal")] shoal: Option<&C4RoutedGeometry>,
+    context: C4SvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = context.diagram_id;
     let native = typography_theme.native_style();
     #[cfg(feature = "layout-shoal")]
     let is_shoal = shoal.is_some();
@@ -890,7 +923,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         .filter(|s| !s.is_empty())
         .map(|_| format!("chart-title-{diagram_id}"));
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         viewbox_x - hand_drawn_outset,
         viewbox_y - hand_drawn_outset,
@@ -903,10 +936,10 @@ pub(crate) fn render_c4_diagram_svg_typed(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::C4, diagram_id)
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
-    options.checkpoint_emit()?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
 
     if let Some(title) = model
         .acc_title
@@ -935,7 +968,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.push_str("<style>");
     out.checkpoint()?;
     {
-        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        let mut css_out = XmlTextOutput::new(&mut out);
         write_c4_css_with_typography(&mut css_out, diagram_id, typography_theme)?;
     }
     out.push_str("</style>");
@@ -954,7 +987,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for b in &model.boundaries {
         boundary_meta.insert(b.alias.as_str(), b);
     }
-    let hand_drawn_randomness = options.rough_randomness(
+    let hand_drawn_randomness = operation_randomness(
+        context.operation,
         effective_config
             .get("handDrawnSeed")
             .and_then(serde_json::Value::as_f64)
@@ -963,7 +997,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     );
 
     for item in c4_paint_order(layout)? {
-        options.checkpoint_emit()?;
+        context.work_meter.checkpoint(OperationPhase::Emit)?;
         match item {
             C4PaintItem::BoundaryBackground(index) => {
                 let boundary = &layout.boundaries[index];
@@ -989,21 +1023,20 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
                 let meta = shape_meta.get(s.alias.as_str()).copied();
-                let paint =
-                    text_paint
-                        .element_paint(index)
-                        .ok_or_else(|| crate::Error::InvalidModel {
-                            message: format!("c4: missing prepared element paint {}", s.alias),
-                        })?;
+                let paint = text_paint
+                    .element_paint(index)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("c4: missing prepared element paint {}", s.alias),
+                    })?;
                 let bg_color = paint.background.as_str();
                 let border_color = paint.border.as_str();
                 let font_color = paint.text.as_str();
                 let Some(meta) = meta else {
-                    return Err(crate::Error::InvalidModel {
+                    return Err(Error::InvalidModel {
                         message: format!("c4: missing model shape {}", s.alias),
                     });
                 };
-                let node_shape = crate::c4::c4_node_shape(meta);
+                let node_shape = c4_node_shape(meta);
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
                 let _ = write!(
                     &mut out,
@@ -1013,7 +1046,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
                     classes,
                 );
-                if look != crate::c4::C4Look::Classic {
+                if look != C4Look::Classic {
                     let _ = write!(out, r#" data-look="{}""#, look.as_str());
                 }
                 if is_shoal {
@@ -1033,7 +1066,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     bg_color,
                     border_color,
                     look,
-                    options.work_meter(),
+                    context.work_meter,
                     &hand_drawn_randomness,
                     native,
                 )?;
@@ -1064,7 +1097,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             .saturating_sub(1) as f64;
                 let padding = c4_cfg.shape_padding();
                 let label_transform = match node_shape {
-                    crate::c4::C4NodeShape::Person => {
+                    C4NodeShape::Person => {
                         let head_radius = (s.width * 0.23).clamp(16.0, 56.0);
                         let overlap = head_radius * 0.27;
                         let body_height = (s.height - 2.0 * head_radius + overlap).max(1.0);
@@ -1074,15 +1107,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             body_top + body_height / 2.0 - total_height / 2.0,
                         )
                     }
-                    crate::c4::C4NodeShape::Cylinder => {
+                    C4NodeShape::Cylinder => {
                         (-total_width / 2.0, -total_height / 2.0 + padding / 1.5)
                     }
-                    crate::c4::C4NodeShape::HorizontalCylinder => {
+                    C4NodeShape::HorizontalCylinder => {
                         let ry = s.height / 2.0;
                         let rx = ry / (2.5 + s.height / 50.0);
                         (-total_width / 2.0 - rx, -total_height / 2.0)
                     }
-                    crate::c4::C4NodeShape::Rounded | crate::c4::C4NodeShape::Framed => {
+                    C4NodeShape::Rounded | C4NodeShape::Framed => {
                         (-total_width / 2.0, -total_height / 2.0)
                     }
                 };
@@ -1115,16 +1148,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
-                let font_color = text_paint.boundary_text_color(index).ok_or_else(|| {
-                    crate::Error::InvalidModel {
-                        message: format!("c4: missing prepared boundary paint {}", b.alias),
-                    }
-                })?;
+                let font_color =
+                    text_paint
+                        .boundary_text_color(index)
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: format!("c4: missing prepared boundary paint {}", b.alias),
+                        })?;
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
                 let Some((fill_color, stroke_color, boundary_radius_attr)) =
                     cluster_theme.boundary_tokens(&b.alias)
                 else {
-                    return Err(crate::Error::InvalidModel {
+                    return Err(Error::InvalidModel {
                         message: format!("C4 cluster theme plan is missing boundary `{}`", b.alias),
                     });
                 };
@@ -1285,7 +1319,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let (text_color, stroke_color) =
             text_paint
                 .relation_paint(idx)
-                .ok_or_else(|| crate::Error::InvalidModel {
+                .ok_or_else(|| Error::InvalidModel {
                     message: format!(
                         "c4: missing prepared relation paint {} -> {}",
                         rel.from, rel.to
@@ -1364,14 +1398,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 geometry
                     .relations
                     .get(idx)
-                    .ok_or_else(|| crate::Error::InvalidModel {
+                    .ok_or_else(|| Error::InvalidModel {
                         message: format!("c4: missing canonical relation {idx}"),
                     })
             })
             .transpose()?;
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            super::shoal::open_shaft(
+            routed::open_shaft(
                 &mut out,
                 route,
                 stroke_color,
@@ -1450,19 +1484,19 @@ pub(crate) fn render_c4_diagram_svg_typed(
             out.push_str("/>");
         }
         out.checkpoint()?;
-        options.checkpoint_emit()?;
+        context.work_meter.checkpoint(OperationPhase::Emit)?;
 
         #[cfg(feature = "layout-shoal")]
         if let Some(route) = canonical {
-            let Some(label) = &route.label else {
+            let Some(label_origin) = &route.label_origin else {
                 continue;
             };
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
                 escape_attr(&route.id),
-                fmt(label.origin.x),
-                fmt(label.origin.y)
+                fmt(label_origin.x),
+                fmt(label_origin.y)
             );
             out.checkpoint()?;
         }
@@ -1569,7 +1603,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
-    options.checkpoint_emit()?;
+    context.work_meter.checkpoint(OperationPhase::Emit)?;
     root_document.complete(out.finish()?)
 }
 
@@ -1623,14 +1657,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -1660,7 +1694,7 @@ mod tests {
         )
         .expect_err("the rejecting sink must stop C4 text emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "C4 text emission must stop at the first failed sink checkpoint"
@@ -1716,11 +1750,11 @@ mod tests {
         assert!(css.contains(authored_font_family));
     }
 
-    fn prepared_css_for_test(config: &serde_json::Value) -> crate::c4::C4TypographyThemePlan {
+    fn prepared_css_for_test(config: &serde_json::Value) -> C4TypographyThemePlan {
         let model = serde_json::from_value(json!({})).expect("empty C4 model");
-        let mut plan = crate::c4::C4TypographyThemePlan::resolve(
+        let mut plan = C4TypographyThemePlan::resolve(
             None,
-            &crate::test_support::presentation_config(config.clone()),
+            &super::super::test_config(config.clone()),
             &model,
         );
         plan.use_config_root_css_for_test(config);

@@ -4,11 +4,11 @@ use merman_model::config::MermaidThemeId;
 use merman_model::families::c4::C4DiagramModel;
 use merman_model::presentation::PresentationConfig;
 
-use crate::model::C4DiagramLayout;
+use super::C4DiagramLayout;
 
 /// Source-owned colors and theme fallbacks for each prepared layout occurrence.
 #[derive(Debug)]
-pub(crate) struct C4TextPaintPlan {
+pub struct C4TextPaintPlan {
     elements: Vec<C4ElementTerminalPaint>,
     relations: Vec<C4RelationPaintOverride>,
     relationship_text: String,
@@ -30,13 +30,13 @@ struct C4RelationPaintOverride {
 }
 
 impl C4TextPaintPlan {
-    pub(crate) fn prepare(
+    pub fn prepare(
         model: &C4DiagramModel,
         layout: &C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
         config: &PresentationConfig,
         uses_shoal: bool,
-    ) -> crate::Result<Self> {
+    ) -> merman_render_core::Result<Self> {
         // The last source entry for an alias owns overrides. Defaults belong to each
         // layout occurrence's actual type, even when aliases repeat.
         let source_shapes: BTreeMap<_, _> = model
@@ -76,13 +76,13 @@ impl C4TextPaintPlan {
         let mut elements = Vec::with_capacity(layout.shapes.len());
         for shape in &layout.shapes {
             let source = source_shapes.get(shape.alias.as_str()).ok_or_else(|| {
-                crate::Error::InvalidModel {
+                merman_render_core::Error::InvalidModel {
                     message: format!("c4: missing model shape {}", shape.alias),
                 }
             })?;
             let defaults = typography
                 .prepare_element_colors(&shape.type_c4_shape, &view)
-                .ok_or_else(|| crate::Error::InvalidModel {
+                .ok_or_else(|| merman_render_core::Error::InvalidModel {
                     message: format!("c4: missing prepared element style {}", shape.type_c4_shape),
                 })?;
             let text = source
@@ -222,7 +222,7 @@ mod tests {
             "container_width": 100.0, "container_height": 100.0, "c4_type": "C4Context", "title": null,
             "boundaries": [], "shapes": [shape, external_shape], "rels": [relation, relation]
         })).expect("C4 actual layout fixture");
-        let config = crate::test_support::presentation_config(serde_json::json!({"c4": {
+        let config = super::super::test_config(serde_json::json!({"c4": {
             "person_border_color": "var(--actual-border)", "custom_border_color": "red"
         }}));
         let mut typography = super::super::C4TypographyThemePlan::resolve(None, &config, &model);
