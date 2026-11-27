@@ -2,7 +2,6 @@ use crate::MermaidConfig;
 #[cfg(any(
     feature = "diagram-cynefin",
     feature = "diagram-event-modeling",
-    feature = "diagram-git-graph",
     feature = "diagram-packet",
     feature = "diagram-pie",
     feature = "diagram-radar",
@@ -18,7 +17,6 @@ use serde_json::{Map, Value};
 #[cfg(any(
     feature = "diagram-cynefin",
     feature = "diagram-event-modeling",
-    feature = "diagram-git-graph",
     feature = "diagram-packet",
     feature = "diagram-pie",
     feature = "diagram-radar",
@@ -33,7 +31,6 @@ pub(crate) struct LangiumCommonDbFields {
 #[cfg(any(
     feature = "diagram-cynefin",
     feature = "diagram-event-modeling",
-    feature = "diagram-git-graph",
     feature = "diagram-packet",
     feature = "diagram-pie",
     feature = "diagram-radar",
@@ -58,7 +55,6 @@ impl LangiumCommonDbFields {
 #[cfg(any(
     feature = "diagram-cynefin",
     feature = "diagram-event-modeling",
-    feature = "diagram-git-graph",
     feature = "diagram-packet",
     feature = "diagram-pie",
     feature = "diagram-radar",

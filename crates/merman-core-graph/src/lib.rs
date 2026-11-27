@@ -6,6 +6,9 @@
 pub mod class;
 #[cfg(feature = "diagram-er")]
 pub mod er;
+#[cfg(feature = "diagram-git-graph")]
+#[doc(hidden)]
+pub mod git_graph;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 #[cfg(any(
