@@ -1,5 +1,5 @@
 #[cfg(test)]
-use super::directives::{Directive, detect_init_controlled};
+use super::directive_config::{Directive, detect_init_controlled};
 use super::{DirectiveRecoveryMode, PreprocessResult, preprocess_source_capture_controlled};
 #[cfg(feature = "editor-facts")]
 use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
@@ -99,7 +99,7 @@ pub(super) fn detect_init(
 
 #[cfg(test)]
 mod tests {
-    use super::super::directives::detect_directives;
+    use super::super::directive_config::detect_directives;
     use super::super::preprocess_builtin_semantic_controlled;
     use super::*;
     use crate::SourceSpan;

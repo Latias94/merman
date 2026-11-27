@@ -16,13 +16,12 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
 use merman_core_preprocess::directives::{
-    DirectiveBlock, DirectiveRecoveryMode, directive_blocks_controlled,
-    normalize_directive_quotes_controlled,
+    DirectiveArgument, DirectiveBlock, ScannedDirective, normalize_directive_quotes_controlled,
+    scan_directive_body,
 };
-use merman_core_preprocess::scan::controlled::{
-    ControlledScanCheckpoints, push_str_controlled, trim_start_whitespace_controlled,
-    trim_whitespace_bounds_controlled,
-};
+#[cfg(test)]
+use merman_core_preprocess::directives::{DirectiveRecoveryMode, directive_blocks_controlled};
+use merman_core_preprocess::scan::controlled::{ControlledScanCheckpoints, push_str_controlled};
 #[cfg(test)]
 pub(super) use sanitize::sanitize_directive;
 pub(super) use sanitize::sanitize_directive_controlled;
@@ -557,18 +556,6 @@ pub(super) fn detect_directives(input: &str) -> Result<Vec<Directive>> {
     Ok(directives)
 }
 
-pub(crate) fn directive_removal_ranges_controlled(
-    text: &str,
-    control: &OperationControl,
-) -> OperationControlResult<Vec<std::ops::Range<usize>>> {
-    Ok(
-        directive_blocks_controlled(text, DirectiveRecoveryMode::Strict, control)?
-            .into_iter()
-            .map(|block| block.range)
-            .collect(),
-    )
-}
-
 fn parse_directive_capture_controlled(
     raw: &str,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
@@ -576,35 +563,22 @@ fn parse_directive_capture_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<DirectiveParseCapture> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let (raw_start, raw_end) = trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
-    let raw = &raw[raw_start..raw_end];
-    if raw.is_empty() {
+    #[cfg(not(feature = "editor-facts"))]
+    let parse_arguments = true;
+    let Some(ScannedDirective {
+        keyword: ty,
+        #[cfg(feature = "editor-facts")]
+        keyword_span,
+        argument,
+        ..
+    }) = scan_directive_body(raw, parse_arguments, &mut checkpoints)?
+    else {
         checkpoints.finish()?;
         return Ok(DirectiveParseCapture {
             directive: None,
             error: None,
         });
-    }
-
-    let mut type_end = 0usize;
-    for (index, ch) in raw.char_indices() {
-        checkpoints.scanned(ch.len_utf8())?;
-        if !ch.is_ascii_alphanumeric() && ch != '_' {
-            break;
-        }
-        type_end = index + ch.len_utf8();
-    }
-    if type_end == 0 {
-        checkpoints.finish()?;
-        return Ok(DirectiveParseCapture {
-            directive: None,
-            error: None,
-        });
-    }
-    let mut ty = String::with_capacity(type_end);
-    push_str_controlled(&mut ty, &raw[..type_end], &mut checkpoints)?;
-    #[cfg(feature = "editor-facts")]
-    let keyword_span = raw_start..raw_start + type_end;
+    };
 
     #[cfg(feature = "editor-facts")]
     if !parse_arguments {
@@ -613,23 +587,16 @@ fn parse_directive_capture_controlled(
             directive: Some(Directive {
                 ty,
                 args: None,
-                #[cfg(feature = "editor-facts")]
                 keyword_span,
-                #[cfg(feature = "editor-facts")]
                 config_keys: Vec::new(),
-                #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
-                #[cfg(feature = "editor-facts")]
                 appearance_owner: None,
-                #[cfg(feature = "editor-facts")]
                 arguments_complete: false,
             }),
             error: None,
         });
     }
 
-    let whitespace = trim_start_whitespace_controlled(&raw[type_end..], &mut checkpoints)?;
-    let mut position = type_end + whitespace;
     #[cfg(feature = "editor-facts")]
     let mut config_keys = Vec::new();
     #[cfg(feature = "editor-facts")]
@@ -637,21 +604,13 @@ fn parse_directive_capture_controlled(
     #[cfg(feature = "editor-facts")]
     let mut arguments_complete = true;
 
-    let args = if raw.as_bytes().get(position) == Some(&b':') {
-        checkpoints.scanned(1)?;
-        position += 1;
-        let whitespace = trim_start_whitespace_controlled(&raw[position..], &mut checkpoints)?;
-        position += whitespace;
-        let rest = &raw[position..];
-        let (rest_start, rest_end) = trim_whitespace_bounds_controlled(rest, &mut checkpoints)?;
-        let rest = &rest[rest_start..rest_end];
-        #[cfg(feature = "editor-facts")]
-        let rest_offset = raw_start
-            .saturating_add(position)
-            .saturating_add(rest_start);
-        if rest.is_empty() {
-            None
-        } else if rest.starts_with('{') || rest.starts_with('[') {
+    let args = match argument {
+        Some(DirectiveArgument::Structured {
+            source: rest,
+            #[cfg(feature = "editor-facts")]
+                offset: rest_offset,
+            ..
+        }) => {
             if rest.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
                 return Ok(DirectiveParseCapture {
                     directive: Some(Directive {
@@ -728,17 +687,15 @@ fn parse_directive_capture_controlled(
                     .collect();
             }
             captured.value
-        } else {
+        }
+        Some(DirectiveArgument::Literal(value)) => {
             #[cfg(feature = "editor-facts")]
             {
                 rewrite_safe = false;
             }
-            let mut value = String::with_capacity(rest.len());
-            push_str_controlled(&mut value, rest, &mut checkpoints)?;
             Some(Value::String(value))
         }
-    } else {
-        None
+        None => None,
     };
 
     checkpoints.finish()?;
