@@ -658,7 +658,11 @@ cargo install merman-cli --version 0.11.0 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
-Additional leaves are `jpeg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `layout-shoal`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `layout-grid`, `layout-shoal`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and its EPL-2.0 notice and provenance. Lean builds can omit ELK with `--no-default-features`. Features such as `png` and `network-icons` enable `svg` and `icons`, respectively.
+
+In a source build, enable `layout-grid` and the matching Flowchart, Swimlane, or Agentflow diagram
+feature to use `layout: grid` in diagram or site config. `merman-cli capabilities --json` reports
+`layout-grid` when the built CLI can accept that selection.
 
 The current source build requires an explicit layout leaf for defaults-off recipes that render
 ordinary graph diagrams. Default CLI builds include Dagre, ELK, and Cytoscape. An explicit Shoal

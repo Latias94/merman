@@ -145,6 +145,7 @@ fn selected_case() -> String {
         "parallel-pdf",
         "cytoscape-layout",
         "elk-layout",
+        "grid-layout",
         "math",
         "rustdoc",
         "completions",
@@ -186,6 +187,7 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         ],
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
+        "grid-layout" => vec!["layout-grid", "svg"],
         "math" => vec!["layout-dagre", "math", "svg"],
         "rustdoc" => vec![
             "layout-cytoscape",
@@ -230,6 +232,15 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "layout-dagre",
         #[cfg(feature = "layout-elk")]
         "layout-elk",
+        #[cfg(all(
+            feature = "layout-grid",
+            any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            )
+        ))]
+        "layout-grid",
         #[cfg(feature = "layout-shoal")]
         "layout-shoal",
         #[cfg(feature = "markdown")]
@@ -643,13 +654,13 @@ fn workflow_base() {
     assert_eq!(detect.stdout, b"flowchart-v2\n");
 
     let parse = run(&["parse", "-"], SIMPLE_SOURCE.as_bytes(), None);
-    #[cfg(feature = "all-diagrams")]
+    #[cfg(feature = "diagram-flowchart")]
     {
         assert_success(&parse, "parse stdin");
         let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
         assert!(payload.is_object());
     }
-    #[cfg(not(feature = "all-diagrams"))]
+    #[cfg(not(feature = "diagram-flowchart"))]
     {
         assert_eq!(
             parse.status.code(),
@@ -1087,6 +1098,63 @@ fn workflow_elk() {
     panic!("ELK matrix case lacks layout-elk");
 }
 
+fn workflow_grid() {
+    #[cfg(feature = "layout-grid")]
+    {
+        let families: &[(&str, &str, &str)] = &[
+            #[cfg(feature = "diagram-flowchart")]
+            ("flowchart", "flowchart LR", "FlowchartV2"),
+            #[cfg(feature = "diagram-swimlane")]
+            ("swimlane", "swimlane-beta LR", "FlowchartV2"),
+            #[cfg(feature = "diagram-agentflow")]
+            ("agentflow", "agentflow-beta LR", "AgentflowDiagram"),
+        ];
+        assert!(!families.is_empty(), "Grid requires a compiled flow family");
+        let temp = tempfile::tempdir().expect("create Grid config directory");
+        let config = temp.path().join("grid.json");
+        fs::write(&config, r#"{"layout":"grid"}"#).expect("write Grid site config");
+
+        for &(family, header, layout_kind) in families {
+            let diagram = format!("{header}\nA[Start] -->|Approved| B[Done]\n");
+            let source = format!("---\nconfig:\n  layout: grid\n---\n{diagram}");
+            let rendered = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
+            assert_success(&rendered, family);
+            assert_svg(&rendered.stdout);
+
+            let layout = run(
+                &["layout", "--config-file", "grid.json", "-"],
+                diagram.as_bytes(),
+                Some(temp.path()),
+            );
+            assert_success(&layout, family);
+            let payload: Value = serde_json::from_slice(&layout.stdout).expect("Grid layout JSON");
+            assert_eq!(payload["family_id"], family);
+            assert!(payload["layout"][layout_kind].is_object(), "{payload}");
+        }
+    }
+    #[cfg(not(feature = "layout-grid"))]
+    panic!("Grid matrix case lacks layout-grid");
+}
+
+#[cfg(all(
+    feature = "svg",
+    feature = "diagram-flowchart",
+    not(feature = "layout-grid")
+))]
+#[test]
+fn grid_source_requires_cli_opt_in() {
+    let source = format!("---\nconfig:\n  layout: grid\n---\n{SIMPLE_SOURCE}");
+    let output = run(&["render", "--format", "svg", "-"], source.as_bytes(), None);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("layout backend `grid` is unsupported")
+            || stderr.contains("lacks capability `layout-grid`"),
+        "{stderr}"
+    );
+}
+
 fn workflow_math() {
     #[cfg(feature = "math")]
     {
@@ -1332,8 +1400,15 @@ fn workflow_auto() {
     workflow_base();
     #[cfg(feature = "analysis")]
     workflow_analysis();
-    #[cfg(feature = "svg")]
+    #[cfg(all(
+        feature = "svg",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    ))]
     workflow_svg();
+    if compiled_capabilities_for_auto_detection().contains(&"layout-grid") {
+        workflow_grid();
+    }
     #[cfg(feature = "ascii")]
     workflow_ascii();
     #[cfg(feature = "icons")]
@@ -1388,6 +1463,7 @@ fn execute_primary_workflow(case: &str) {
         "parallel-pdf" => workflow_batch("pdf", Some("2")),
         "cytoscape-layout" => workflow_cytoscape(),
         "elk-layout" => workflow_elk(),
+        "grid-layout" => workflow_grid(),
         "math" => workflow_math(),
         "rustdoc" => workflow_rustdoc(),
         "completions" => workflow_completions(),

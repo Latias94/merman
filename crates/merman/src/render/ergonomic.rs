@@ -39,6 +39,8 @@ pub enum LayoutBackend {
     Elk,
     Cytoscape,
     Shoal,
+    /// Mermaid Grid for Flowchart, Swimlane, and Agentflow with `layout-grid` enabled.
+    Grid,
 }
 
 impl LayoutBackend {
@@ -48,6 +50,7 @@ impl LayoutBackend {
             Self::Elk => "elk",
             Self::Cytoscape => "cose-bilkent",
             Self::Shoal => "shoal",
+            Self::Grid => "grid",
         }
     }
 }

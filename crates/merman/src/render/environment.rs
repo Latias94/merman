@@ -204,6 +204,12 @@ impl SvgEnvironment {
         } else {
             policy.with_denied(merman_render::RenderCapability::LayoutShoal)
         };
+        // Apply the facade's own selection even when dependencies unify renderer features.
+        let policy = if crate::svg::layout_grid_available() {
+            policy
+        } else {
+            policy.with_denied(merman_render::RenderCapability::LayoutGrid)
+        };
         self.backend = self.backend.with_capability_policy(policy);
         self
     }

@@ -48,6 +48,19 @@ pub use merman_render::{
     layout_shoal_available, math_available,
 };
 
+/// Reports whether this facade includes Mermaid Grid for a compiled Flowchart, Swimlane,
+/// or Agentflow renderer. Consult the operation's capability plan for session admission.
+pub const fn layout_grid_available() -> bool {
+    cfg!(all(
+        feature = "layout-grid",
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )) && merman_render::layout_grid_available()
+}
+
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.
 #[cfg(any(
     feature = "native-fonts",

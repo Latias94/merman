@@ -264,6 +264,12 @@ A widened core dependency can have more parsers than a locally selected SVG or A
 
 For ordinary graph diagrams, a missing ELK loader falls back to Dagre when `layout-dagre` is compiled. If neither is available, an ELK request reports missing `layout-elk`. Mindmap uses its own registered fallback chain through Cytoscape and Dagre. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. The SVG and layout JSON operations report a typed missing-capability error for an unavailable or denied backend before measuring labels. Inspect the SVG render plan for the required and missing IDs.
 
+Enable `layout-grid` alongside `diagram-flowchart`, `diagram-swimlane`, or `diagram-agentflow` to
+select Grid with `layout: grid` in Mermaid config or `LayoutBackend::Grid` in the Rust builder. Grid
+uses the selected family's authored placements and preserves its diagram identity. An explicit
+Grid request without a compiled adapter returns `UnsupportedLayoutBackend`. A host that denies
+an available adapter gets `MissingCapability` for `layout-grid`.
+
 With `layout-shoal`, a Rust host that repeatedly lays out flat or compound layered graphs can
 clone an environment created with `SvgEnvironment::with_shoal_scratch_reuse`. This applies to
 natural-width and `FitWidth` layouts. The environment and its clones share one idle slot for up

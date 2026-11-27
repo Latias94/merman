@@ -127,6 +127,17 @@
       }
     },
     {
+      "id": "layout-grid",
+      "kind": "engine",
+      "description": "Select Mermaid Grid for Flowchart, Swimlane, and Agentflow SVG layout.",
+      "targets": ["native", "web"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "unsupported-layout-backend",
+        "contract": "Explicit Grid selection requires a compiled Grid provider for Flowchart, Swimlane, or Agentflow. Selectable families without a Grid adapter reject it as an unsupported layout backend. Denying a compiled Grid selection returns a typed missing-capability error."
+      }
+    },
+    {
       "id": "layout-shoal",
       "kind": "engine",
       "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.",

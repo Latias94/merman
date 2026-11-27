@@ -47,6 +47,7 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-dagre`, `layout-elk`, `layout-cytoscape` | Mermaid-compatible layout engines | Each implies `svg` |
+| `layout-grid` | Mermaid Grid for Flowchart, Swimlane, and Agentflow | Opt-in for Rust and CLI source builds. Implies `svg`. |
 | `layout-shoal` | Experimental Merman layered, lane and grid layouts with orthogonal edge routing | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
@@ -511,6 +512,7 @@ and layout JSON APIs report a typed error at admission when the selected engine 
 | --- | --- |
 | `layout-dagre` | `layout: dagre`, or the Mermaid 12 fallback for an absent ELK loader |
 | `layout-elk` | Mermaid 12’s default, `layout: elk`, or another registered ELK algorithm |
+| `layout-grid` | `layout: grid` for Flowchart, Swimlane, or Agentflow |
 | `layout-shoal` | Set `layout: shoal` in the diagram or site config |
 | No graph engine | The default request reports `layout-elk` missing. An explicit `layout: dagre` reports `layout-dagre` missing. |
 
