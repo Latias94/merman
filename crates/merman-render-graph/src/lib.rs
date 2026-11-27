@@ -9,3 +9,7 @@ pub mod er;
 #[cfg(feature = "diagram-git-graph")]
 #[doc(hidden)]
 pub mod gitgraph;
+
+#[cfg(feature = "diagram-state")]
+#[doc(hidden)]
+pub mod state;

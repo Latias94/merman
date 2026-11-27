@@ -1,10 +1,9 @@
-use crate::model::LayoutPoint;
-
-use super::path_bounds::{
+use crate::LayoutPoint;
+use crate::svg_bounds::{
     CubicBezier, SvgPathBounds, svg_path_bounds_include_cubic, svg_path_bounds_include_quadratic,
 };
-use super::util::fmt_path_coordinate_into;
-use super::*;
+
+use super::path_numbers::{fmt_path_coordinate_into, fmt_path_into};
 
 #[derive(Debug, Clone, Copy)]
 struct PathPoint {
@@ -176,12 +175,12 @@ fn emit_cmd_quadratic(
     }
 }
 
-pub(super) struct CurveGeometry {
-    pub(super) d: String,
-    pub(super) bounds: Option<SvgPathBounds>,
+pub struct CurveGeometry {
+    pub d: String,
+    pub bounds: Option<SvgPathBounds>,
 }
 
-pub(super) fn curve_geometry(
+pub fn curve_geometry(
     points: &[LayoutPoint],
     interpolate: &str,
     rounded_radius: f64,
@@ -197,7 +196,7 @@ pub(super) fn curve_geometry(
     }
 }
 
-pub(super) fn interpolated_path_d(points: &[LayoutPoint], interpolate: &str) -> String {
+pub fn interpolated_path_d(points: &[LayoutPoint], interpolate: &str) -> String {
     interpolate_path(points, interpolate, 5.0, None)
 }
 
@@ -409,13 +408,11 @@ fn curve_monotone_path_d_impl(
 }
 
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
-pub(super) fn curve_basis_path_d(points: &[LayoutPoint]) -> String {
+pub fn curve_basis_path_d(points: &[LayoutPoint]) -> String {
     curve_basis_path_d_impl(points, None)
 }
 
-pub(super) fn curve_basis_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
+pub fn curve_basis_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
     let mut b = BoundsBuilder::default();
     let d = curve_basis_path_d_impl(points, Some(&mut b));
     (d, b.bounds)
@@ -500,13 +497,11 @@ fn curve_basis_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBui
     out
 }
 
-pub(super) fn curve_linear_path_d(points: &[LayoutPoint]) -> String {
+pub fn curve_linear_path_d(points: &[LayoutPoint]) -> String {
     curve_linear_path_d_impl(points, None)
 }
 
-pub(super) fn curve_linear_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
+pub fn curve_linear_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
     let mut b = BoundsBuilder::default();
     let d = curve_linear_path_d_impl(points, Some(&mut b));
     (d, b.bounds)
@@ -535,7 +530,7 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
     out
 }
 
-pub(super) fn curve_rounded_path_d(points: &[LayoutPoint], radius: f64) -> String {
+pub fn curve_rounded_path_d(points: &[LayoutPoint], radius: f64) -> String {
     curve_rounded_path_d_impl(points, radius, None)
 }
 
@@ -803,9 +798,7 @@ fn curve_step_before_path_d_impl(
 }
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
-pub(super) fn curve_step_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
+pub fn curve_step_path_d_and_bounds(points: &[LayoutPoint]) -> (String, Option<SvgPathBounds>) {
     let mut b = BoundsBuilder::default();
     let d = curve_step_path_d_impl(points, Some(&mut b));
     (d, b.bounds)

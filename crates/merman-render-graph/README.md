@@ -9,6 +9,10 @@ The `diagram-git-graph` feature owns GitGraph preparation, layout, theme binding
 complete SVG emission. `merman-render` supplies routed measurement, viewport context,
 and terminal SVG policies.
 
+The `diagram-state` feature owns State presentation binding, label measurement, and
+complete SVG emission. `merman-render` selects the layout backend, supplies its route
+geometry and the operation context, and applies terminal SVG policies.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

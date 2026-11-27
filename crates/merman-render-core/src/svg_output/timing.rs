@@ -2,30 +2,30 @@ use merman_model::runtime::{OperationTimer, OperationTiming};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RenderTiming {
+pub struct RenderTiming {
     authority: Option<OperationTiming>,
 }
 
 impl RenderTiming {
-    pub(crate) const fn disabled() -> Self {
+    pub const fn disabled() -> Self {
         Self { authority: None }
     }
 
-    pub(crate) const fn enabled(authority: OperationTiming) -> Self {
+    pub const fn enabled(authority: OperationTiming) -> Self {
         Self {
             authority: Some(authority),
         }
     }
 
-    pub(crate) const fn is_enabled(self) -> bool {
+    pub const fn is_enabled(self) -> bool {
         self.authority.is_some()
     }
 
-    pub(crate) fn start(self) -> Option<OperationTimer> {
+    pub fn start(self) -> Option<OperationTimer> {
         self.authority.map(OperationTiming::start)
     }
 
-    pub(crate) fn section<'duration>(
+    pub fn section<'duration>(
         self,
         dst: &'duration mut Duration,
     ) -> Option<TimingGuard<'duration>> {
@@ -37,7 +37,7 @@ impl RenderTiming {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct RenderTimings {
+pub struct RenderTimings {
     pub total: Duration,
     pub deserialize_model: Duration,
     pub build_ctx: Duration,
@@ -47,7 +47,7 @@ pub(crate) struct RenderTimings {
 }
 
 #[derive(Debug)]
-pub(crate) struct TimingGuard<'a> {
+pub struct TimingGuard<'a> {
     dst: &'a mut Duration,
     timer: Option<OperationTimer>,
 }

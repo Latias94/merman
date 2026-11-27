@@ -1844,6 +1844,14 @@ pub(super) fn layout(
     })
 }
 
+fn resolve_debug_style(model: &StateDiagramModel, config: &Value) -> super::StateStylePlan {
+    use crate::layout_backend::{self, GraphLayoutBackend};
+
+    let backend = layout_backend::resolve(crate::DiagramFamilyId::STATE, "stateDiagram", config)
+        .unwrap_or(GraphLayoutBackend::Dagre);
+    super::StateStylePlan::resolve_classic(model, config, backend == GraphLayoutBackend::Dagre)
+}
+
 /// Debug-only helper: builds the Dagre input graph for stateDiagram-v2 *before* layout runs.
 ///
 /// This shares the same graph construction path as `layout`.
@@ -1855,7 +1863,7 @@ pub fn debug_build_state_diagram_dagre_graph(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    let style_plan = super::StateStylePlan::resolve_unthemed(model, effective_config);
+    let style_plan = resolve_debug_style(model, effective_config);
     Ok(
         build_state_diagram_dagre_input(
             model,
@@ -1889,10 +1897,7 @@ mod tests {
         let RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };
-        let style_plan = crate::state::StateStylePlan::resolve_unthemed(
-            model,
-            parsed.metadata().effective_config.as_value(),
-        );
+        let style_plan = resolve_debug_style(model, parsed.metadata().effective_config.as_value());
         let input = build_state_diagram_dagre_input(
             model,
             parsed.metadata().effective_config.as_value(),

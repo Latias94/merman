@@ -477,19 +477,8 @@ impl SwimlaneLayout {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-state")]
-pub struct StateDiagramLayout {
-    pub nodes: Vec<LayoutNode>,
-    pub edges: Vec<LayoutEdge>,
-    pub clusters: Vec<LayoutCluster>,
-    pub bounds: Option<Bounds>,
-    /// Registered ELK layout uses its own edge painting projection.
-    #[serde(skip)]
-    pub uses_elk_adapter_dom: bool,
-    #[serde(skip)]
-    pub elk_edge_paths: std::collections::HashMap<String, Vec<LayoutPoint>>,
-}
+pub use merman_render_graph::state::StateDiagramLayout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-class")]

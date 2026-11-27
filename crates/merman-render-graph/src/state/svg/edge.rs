@@ -1,6 +1,20 @@
 use super::*;
+use base64::Engine as _;
 #[cfg(feature = "layout-shoal")]
-use crate::graph_layout::{canonical::CanonicalPaintedEdge, route_paint::RouteStyle};
+use merman_render_core::{Error, svg_bounds::svg_path_bounds_from_d};
+use merman_render_core::{
+    svg_edge_parity::{
+        curve::curve_basis_path_d,
+        edge_label_geometry::position_edge_label,
+        edge_path::{render_path, write_neo_edge_mask},
+        line_hops::rewrite_style_after_line_hop,
+        svg_path_length_from_d,
+    },
+    svg_output::{FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR},
+    text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, line_break::mermaid_html_breaks_to_newlines},
+    theme_svg::edge_label_background::write_backplate,
+};
+use merman_theme_contract::v2::{Color, EdgeLabelBackground};
 
 #[derive(Debug, Clone, Copy)]
 struct StateEdgeBoundaryNode {
@@ -10,10 +24,7 @@ struct StateEdgeBoundaryNode {
     height: f64,
 }
 
-fn state_edge_outside_node(
-    node: &StateEdgeBoundaryNode,
-    point: &crate::model::LayoutPoint,
-) -> bool {
+fn state_edge_outside_node(node: &StateEdgeBoundaryNode, point: &LayoutPoint) -> bool {
     let dx = (point.x - node.x).abs();
     let dy = (point.y - node.y).abs();
     let w = node.width / 2.0;
@@ -23,9 +34,9 @@ fn state_edge_outside_node(
 
 fn state_edge_rect_intersection(
     node: &StateEdgeBoundaryNode,
-    inside_point: &crate::model::LayoutPoint,
-    outside_point: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
+    inside_point: &LayoutPoint,
+    outside_point: &LayoutPoint,
+) -> LayoutPoint {
     let x = node.x;
     let y = node.y;
     let w = node.width / 2.0;
@@ -45,7 +56,7 @@ fn state_edge_rect_intersection(
         } else {
             (r_abs * q) / q_abs
         };
-        let mut res = crate::model::LayoutPoint {
+        let mut res = LayoutPoint {
             x: if inside_point.x < outside_point.x {
                 inside_point.x + r
             } else {
@@ -103,17 +114,17 @@ fn state_edge_rect_intersection(
         iy = outside_point.y;
     }
 
-    crate::model::LayoutPoint { x: ix, y: iy }
+    LayoutPoint { x: ix, y: iy }
 }
 
 fn state_edge_cut_path_at_intersect(
-    input: &[crate::model::LayoutPoint],
+    input: &[LayoutPoint],
     boundary: &StateEdgeBoundaryNode,
-) -> Vec<crate::model::LayoutPoint> {
+) -> Vec<LayoutPoint> {
     if input.is_empty() {
         return Vec::new();
     }
-    let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut out: Vec<LayoutPoint> = Vec::new();
     let mut last_point_outside = input[0].clone();
     let mut is_inside = false;
     const EPS: f64 = 1e-9;
@@ -186,11 +197,11 @@ fn state_edge_boundary_for_layout_node(
 
 fn state_edge_clip_self_loop_points_to_node(
     ctx: &StateRenderCtx<'_>,
-    le: &crate::model::LayoutEdge,
-    input: &[crate::model::LayoutPoint],
+    le: &LayoutEdge,
+    input: &[LayoutPoint],
     origin_x: f64,
     origin_y: f64,
-) -> Option<Vec<crate::model::LayoutPoint>> {
+) -> Option<Vec<LayoutPoint>> {
     if le.from != le.to || input.len() < 3 {
         return None;
     }
@@ -212,7 +223,7 @@ fn state_edge_clip_self_loop_points_to_node(
     }
 
     let boundary = state_edge_boundary_for_layout_node(ctx, le.from.as_str(), origin_x, origin_y)?;
-    let center = crate::model::LayoutPoint {
+    let center = LayoutPoint {
         x: boundary.x,
         y: boundary.y,
     };
@@ -233,25 +244,21 @@ fn state_edge_clip_self_loop_points_to_node(
 }
 
 fn state_edge_find_adjacent_point(
-    point_a: &crate::model::LayoutPoint,
-    point_b: &crate::model::LayoutPoint,
+    point_a: &LayoutPoint,
+    point_b: &LayoutPoint,
     distance: f64,
-) -> crate::model::LayoutPoint {
+) -> LayoutPoint {
     let x_diff = point_b.x - point_a.x;
     let y_diff = point_b.y - point_a.y;
     let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
     let ratio = distance / length;
-    crate::model::LayoutPoint {
+    LayoutPoint {
         x: point_b.x - ratio * x_diff,
         y: point_b.y - ratio * y_diff,
     }
 }
 
-fn state_edge_is_corner_point(
-    prev: &crate::model::LayoutPoint,
-    curr: &crate::model::LayoutPoint,
-    next: &crate::model::LayoutPoint,
-) -> bool {
+fn state_edge_is_corner_point(prev: &LayoutPoint, curr: &LayoutPoint, next: &LayoutPoint) -> bool {
     (prev.x == curr.x
         && curr.y == next.y
         && (curr.x - next.x).abs() > 5.0
@@ -262,9 +269,7 @@ fn state_edge_is_corner_point(
             && (curr.y - next.y).abs() > 5.0)
 }
 
-fn state_edge_fix_corners(
-    line_data: &[crate::model::LayoutPoint],
-) -> Vec<crate::model::LayoutPoint> {
+fn state_edge_fix_corners(line_data: &[LayoutPoint]) -> Vec<LayoutPoint> {
     if line_data.len() < 3 {
         return line_data.to_vec();
     }
@@ -295,7 +300,7 @@ fn state_edge_fix_corners(
             let a = std::f64::consts::SQRT_2 * 2.0;
             let r = 5.0;
             if corner_point.x == new_prev_point.x {
-                new_corner_point = crate::model::LayoutPoint {
+                new_corner_point = LayoutPoint {
                     x: if x_diff < 0.0 {
                         new_prev_point.x - r + a
                     } else {
@@ -308,7 +313,7 @@ fn state_edge_fix_corners(
                     },
                 };
             } else {
-                new_corner_point = crate::model::LayoutPoint {
+                new_corner_point = LayoutPoint {
                     x: if x_diff < 0.0 {
                         new_prev_point.x - a
                     } else {
@@ -337,9 +342,9 @@ fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
 }
 
 fn state_rounded_end_marker_offset_points(
-    input: &[crate::model::LayoutPoint],
+    input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
-) -> Vec<crate::model::LayoutPoint> {
+) -> Vec<LayoutPoint> {
     let Some(offset) = state_marker_offset_for(arrow_type_end) else {
         return input.to_vec();
     };
@@ -354,7 +359,7 @@ fn state_rounded_end_marker_offset_points(
     let end = &input[input.len() - 1];
     let previous = &input[input.len() - 2];
     let angle = (end.y - previous.y).atan2(end.x - previous.x);
-    out[input.len() - 1] = crate::model::LayoutPoint {
+    out[input.len() - 1] = LayoutPoint {
         x: end.x - offset * angle.cos(),
         y: end.y - offset * angle.sin(),
     };
@@ -362,13 +367,10 @@ fn state_rounded_end_marker_offset_points(
 }
 
 fn state_line_with_end_marker_offset_points(
-    input: &[crate::model::LayoutPoint],
+    input: &[LayoutPoint],
     arrow_type_end: Option<&str>,
-) -> Vec<crate::model::LayoutPoint> {
-    fn calculate_delta_and_angle(
-        a: &crate::model::LayoutPoint,
-        b: &crate::model::LayoutPoint,
-    ) -> (f64, f64, f64) {
+) -> Vec<LayoutPoint> {
+    fn calculate_delta_and_angle(a: &LayoutPoint, b: &LayoutPoint) -> (f64, f64, f64) {
         let delta_x = b.x - a.x;
         let delta_y = b.y - a.y;
         let angle = (delta_y / delta_x).atan();
@@ -414,7 +416,7 @@ fn state_line_with_end_marker_offset_points(
             offset_y -= adjustment;
         }
 
-        out.push(crate::model::LayoutPoint {
+        out.push(LayoutPoint {
             x: point.x + offset_x,
             y: point.y + offset_y,
         });
@@ -424,17 +426,17 @@ fn state_line_with_end_marker_offset_points(
 }
 
 pub(super) struct StatePreparedEdgeGeometry {
-    original_label_path_points: Vec<crate::model::LayoutPoint>,
-    pub(super) data_points: Vec<crate::model::LayoutPoint>,
-    label_path_points: Vec<crate::model::LayoutPoint>,
+    original_label_path_points: Vec<LayoutPoint>,
+    pub(super) data_points: Vec<LayoutPoint>,
+    label_path_points: Vec<LayoutPoint>,
     rendered_d: String,
     points_were_explicitly_updated: bool,
 }
 
 fn state_edge_finish_geometry(
-    original_label_path_points: Vec<crate::model::LayoutPoint>,
-    data_points: Vec<crate::model::LayoutPoint>,
-    label_path_points: Vec<crate::model::LayoutPoint>,
+    original_label_path_points: Vec<LayoutPoint>,
+    data_points: Vec<LayoutPoint>,
+    label_path_points: Vec<LayoutPoint>,
     arrow_type_end: Option<&str>,
     points_were_explicitly_updated: bool,
 ) -> StatePreparedEdgeGeometry {
@@ -459,7 +461,7 @@ fn state_edge_finish_geometry(
 
 pub(super) fn state_edge_prepare_geometry(
     ctx: &StateRenderCtx<'_>,
-    le: &crate::model::LayoutEdge,
+    le: &LayoutEdge,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
@@ -472,7 +474,7 @@ pub(super) fn state_edge_prepare_geometry(
             .unwrap_or(&le.points);
         let data_points: Vec<_> = points
             .iter()
-            .map(|point| crate::model::LayoutPoint {
+            .map(|point| LayoutPoint {
                 x: point.x - origin_x,
                 y: point.y - origin_y,
             })
@@ -489,8 +491,7 @@ pub(super) fn state_edge_prepare_geometry(
         } else {
             arrow_type_end
         };
-        let rendered_d =
-            super::super::edge_path::render_path(&mut curve_points, curve, None, marker_end);
+        let rendered_d = render_path(&mut curve_points, curve, None, marker_end);
         return StatePreparedEdgeGeometry {
             original_label_path_points: data_points.clone(),
             label_path_points: data_points.clone(),
@@ -499,9 +500,9 @@ pub(super) fn state_edge_prepare_geometry(
             points_were_explicitly_updated: false,
         };
     }
-    let mut raw_local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut raw_local_points: Vec<LayoutPoint> = Vec::new();
     for p in &le.points {
-        raw_local_points.push(crate::model::LayoutPoint {
+        raw_local_points.push(LayoutPoint {
             x: p.x - origin_x,
             y: p.y - origin_y,
         });
@@ -551,25 +552,23 @@ fn state_edge_stroke_outset(ctx: &StateRenderCtx<'_>) -> f64 {
 }
 
 #[cfg(feature = "layout-shoal")]
-fn state_canonical_edge_bounds(
-    geometry: &CanonicalPaintedEdge,
-    rough_d: Option<&str>,
-    stroke_outset: f64,
-) -> kurbo::Rect {
-    let bounds = &geometry.path.bounds;
-    let path_bounds = rough_d
-        .and_then(super::super::svg_path_bounds_from_d)
+fn state_canonical_edge_bounds(geometry: &StateCanonicalEdge, stroke_outset: f64) -> kurbo::Rect {
+    let bounds = &geometry.bounds;
+    let path_bounds = geometry
+        .rough_d
+        .as_deref()
+        .and_then(svg_path_bounds_from_d)
         .map_or_else(
             || kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
             |bounds| kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
         );
     let mut bounds = path_bounds.inflate(stroke_outset, stroke_outset);
-    if geometry.markers.1.depth > 0.0 {
+    if geometry.end_marker.depth > 0.0 {
         let [_, _, shoulder, reference] = &geometry.marker_points;
         let reference = kurbo::Point::new(reference.x, reference.y);
         let forward = (reference - kurbo::Point::new(shoulder.x, shoulder.y)).normalize();
         let across = kurbo::Vec2::new(-forward.y, forward.x);
-        let ref_x = f64::from(STATE_BARB_TIP_X) - geometry.markers.1.trim;
+        let ref_x = f64::from(STATE_BARB_TIP_X) - geometry.end_marker.trim;
         let ref_y = f64::from(STATE_BARB_CENTER_Y);
         for dx in [-ref_x, f64::from(STATE_BARB_VIEWPORT_WIDTH) - ref_x] {
             for dy in [-ref_y, ref_y] {
@@ -584,14 +583,14 @@ fn state_canonical_edge_bounds(
 fn write_state_edge_path(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
-    le: &crate::model::LayoutEdge,
+    le: &LayoutEdge,
     edge_id: &str,
     classes: &str,
     marker_end: Option<&str>,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     if !ctx.uses_elk_adapter_dom && !ctx.uses_canonical_routes() && le.points.len() < 2 {
@@ -601,36 +600,26 @@ fn write_state_edge_path(
     #[cfg(feature = "layout-shoal")]
     let canonical = ctx
         .canonical_routes
-        .map(|routes| {
+        .map(|paint| {
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx);
-            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved)?;
-            let rough_d = if state_effective_look(ctx) == "handDrawn" {
-                work_meter.charge(geometry.path.d.len().max(1))?;
-                Some(super::super::canonical_rough::constrained_rough_edge_path(
-                    &geometry.path.d,
-                    geometry.markers,
-                    work_meter,
-                    &ctx.hand_drawn_seed,
-                )?)
-            } else {
-                None
-            };
-            let bounds =
-                state_canonical_edge_bounds(&geometry, rough_d.as_deref(), outset) + origin;
+            let randomness =
+                (state_effective_look(ctx) == "handDrawn").then_some(&ctx.hand_drawn_seed);
+            let geometry = paint(le, -origin, outset, randomness)?;
+            let bounds = state_canonical_edge_bounds(&geometry, outset) + origin;
             *canonical_bounds = Some(canonical_bounds.map_or(bounds, |cur| cur.union(bounds)));
-            Ok::<_, Error>((geometry, rough_d))
+            Ok::<_, Error>(geometry)
         })
         .transpose()?;
 
     let legacy;
     let (base_d, paint_d, points) = 'geometry: {
         #[cfg(feature = "layout-shoal")]
-        if let Some((geometry, rough_d)) = &canonical {
-            let path_d = geometry.path.d.as_str();
+        if let Some(geometry) = &canonical {
+            let path_d = geometry.d.as_str();
             break 'geometry (
                 path_d,
-                rough_d.as_deref().unwrap_or(path_d),
+                geometry.rough_d.as_deref().unwrap_or(path_d),
                 &geometry.data_points,
             );
         }
@@ -644,9 +633,9 @@ fn write_state_edge_path(
         .encode(serde_json::to_vec(points).unwrap_or_default());
     let mut original_style = String::new();
     if state_data_look(ctx) == "neo"
-        && let Some(length) = super::super::svg_path_length_from_d(base_d)
+        && let Some(length) = svg_path_length_from_d(base_d)
     {
-        super::super::edge_path::write_neo_edge_mask(
+        write_neo_edge_mask(
             &mut original_style,
             length,
             None,
@@ -659,7 +648,7 @@ fn write_state_edge_path(
     }
     original_style.push_str("fill:none;;;fill:none");
     let style = if let Some(path) = hopped_d {
-        super::super::line_hops::rewrite_style_after_line_hop(&original_style, path, work_meter)?
+        rewrite_style_after_line_hop(&original_style, path, work_meter)?
     } else {
         std::borrow::Cow::Borrowed(original_style.as_str())
     };
@@ -688,7 +677,7 @@ pub(super) fn render_state_edge_path(
     edge: &StateSvgEdge,
     origin_x: f64,
     origin_y: f64,
-    work_meter: &crate::resources::OperationWorkMeter,
+    work_meter: &OperationWorkMeter,
     #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     let mut classes = if ctx.uses_elk_adapter_dom
@@ -757,9 +746,9 @@ pub(super) fn render_state_edge_label(
         };
         format!(
             r#" {}="state-transition-label-background:{}" {}="{}""#,
-            crate::svg::fallback::FALLBACK_OCCURRENCE_DATA_ATTR,
+            FALLBACK_OCCURRENCE_DATA_ATTR,
             escape_attr(id),
-            crate::svg::fallback::FALLBACK_BACKGROUND_FILL_DATA_ATTR,
+            FALLBACK_BACKGROUND_FILL_DATA_ATTR,
             escape_attr(fill),
         )
     }
@@ -767,7 +756,7 @@ pub(super) fn render_state_edge_label(
     fn edge_label_div_style(label_w: f64, prefix: &str, background: &str) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
-        let max_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
+        let max_width = MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
         if label_w >= max_width - 1e-3 {
             format!(
                 "{}{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
@@ -901,7 +890,7 @@ pub(super) fn render_state_edge_label(
 
     let empty_edge_label_style = edge_label_div_style(0.0, "", "");
     let label_text = if ctx.uses_elk_adapter_dom {
-        crate::text::mermaid_html_breaks_to_newlines(&edge.label)
+        mermaid_html_breaks_to_newlines(&edge.label)
     } else {
         std::borrow::Cow::Borrowed(edge.label.as_str())
     };
@@ -926,7 +915,7 @@ pub(super) fn render_state_edge_label(
         return Ok(());
     };
 
-    let label_position = crate::model::LayoutPoint {
+    let label_position = LayoutPoint {
         x: lbl.x - origin_x,
         y: lbl.y - origin_y,
     };
@@ -940,7 +929,7 @@ pub(super) fn render_state_edge_label(
             origin_x,
             origin_y,
         );
-        super::super::edge_label_geometry::position_edge_label(
+        position_edge_label(
             label_position,
             Some(&geometry.original_label_path_points),
             &geometry.label_path_points,
@@ -959,8 +948,6 @@ pub(super) fn render_state_edge_label(
     );
     let native_background = ctx.style_plan.compatibility().native_edge_label_paint;
     if let Some(paint) = native_background {
-        use merman_theme_contract::v2::EdgeLabelBackground;
-
         let fill = match paint.mode {
             EdgeLabelBackground::Auto => {
                 let center =
@@ -975,16 +962,10 @@ pub(super) fn render_state_edge_label(
             }
             EdgeLabelBackground::Canvas => paint.canvas,
             EdgeLabelBackground::Pill => paint.node,
-            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
+            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
         };
         let bounds = kurbo::Rect::from_center_size((0.0, 0.0), (w, h));
-        let _ = crate::theme::edge_label_bg::write_backplate(
-            out,
-            bounds,
-            paint.mode,
-            fill,
-            paint.border,
-        );
+        let _ = write_backplate(out, bounds, paint.mode, fill, paint.border);
         out.checkpoint()?;
     }
     write_visible_edge_label(
@@ -1014,9 +995,9 @@ mod tests {
     #[test]
     fn state_rounded_end_marker_offset_moves_only_the_terminal_point() {
         let input = vec![
-            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-            crate::model::LayoutPoint { x: 0.0, y: 20.0 },
-            crate::model::LayoutPoint { x: 20.0, y: 20.0 },
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 20.0 },
+            LayoutPoint { x: 20.0, y: 20.0 },
         ];
 
         let output = state_rounded_end_marker_offset_points(&input, Some("arrow_barb_neo"));
@@ -1031,8 +1012,8 @@ mod tests {
     #[test]
     fn state_line_with_end_marker_offset_shortens_neo_barb_terminal_point() {
         let input = vec![
-            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-            crate::model::LayoutPoint { x: 10.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 10.0, y: 0.0 },
         ];
 
         let output = state_line_with_end_marker_offset_points(&input, Some("arrow_barb_neo"));
@@ -1047,9 +1028,9 @@ mod tests {
     #[test]
     fn state_updated_path_labels_use_points_before_curve_projection() {
         let label_path_points = vec![
-            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-            crate::model::LayoutPoint { x: 0.0, y: 20.0 },
-            crate::model::LayoutPoint { x: 20.0, y: 20.0 },
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 20.0 },
+            LayoutPoint { x: 20.0, y: 20.0 },
         ];
         let geometry = state_edge_finish_geometry(
             label_path_points.clone(),
@@ -1068,8 +1049,8 @@ mod tests {
             curve_basis_path_d(&geometry.label_path_points),
             "fixCorners and marker offsets should affect only the rendered curve"
         );
-        let position = crate::svg::parity::edge_label_geometry::position_edge_label(
-            crate::model::LayoutPoint { x: 99.0, y: 99.0 },
+        let position = position_edge_label(
+            LayoutPoint { x: 99.0, y: 99.0 },
             Some(&geometry.original_label_path_points),
             &geometry.label_path_points,
             &geometry.rendered_d,
@@ -1081,10 +1062,10 @@ mod tests {
     #[test]
     fn state_updated_path_labels_preserve_offsets_from_the_unclipped_route() {
         let original = vec![
-            crate::model::LayoutPoint { x: -20.0, y: 0.0 },
-            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-            crate::model::LayoutPoint { x: 0.0, y: 20.0 },
-            crate::model::LayoutPoint { x: 20.0, y: 20.0 },
+            LayoutPoint { x: -20.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 20.0 },
+            LayoutPoint { x: 20.0, y: 20.0 },
         ];
         let clipped = original[1..].to_vec();
         let geometry = state_edge_finish_geometry(
@@ -1094,8 +1075,8 @@ mod tests {
             Some("arrow_barb_neo"),
             true,
         );
-        let position = crate::svg::parity::edge_label_geometry::position_edge_label(
-            crate::model::LayoutPoint { x: 99.0, y: 99.0 },
+        let position = position_edge_label(
+            LayoutPoint { x: 99.0, y: 99.0 },
             Some(&geometry.original_label_path_points),
             &geometry.label_path_points,
             &geometry.rendered_d,

@@ -2,10 +2,8 @@ use std::borrow::Cow;
 
 use merman_model::families::state::StateDiagramRenderNode;
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::EdgeLabelBackground;
+use merman_theme_contract::v2::{Color, EdgeLabelBackground, FamilyTheme};
 use serde_json::Value;
-
-use crate::theme::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StateNodeKind {
@@ -263,8 +261,8 @@ impl<'a> StateCompatibilityResolver<'a> {
 
     fn direct_css_px(&self, candidates: &[&'static str], fallback: f64) -> StateResolvedValue<f64> {
         for path in candidates {
-            let Some(value) =
-                value_at_dotted_path(self.value, path).and_then(crate::config::json_f64_css_px)
+            let Some(value) = value_at_dotted_path(self.value, path)
+                .and_then(merman_render_core::config::json_f64_css_px)
             else {
                 continue;
             };
@@ -281,7 +279,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             .filter(|path| self.path_is_owned(path))
             .find_map(|path| {
                 let value = value_at_dotted_path(self.value, path)?.as_str()?;
-                let css = crate::config::normalize_css_font_family(value);
+                let css = merman_render_core::config::normalize_css_font_family(value);
                 (!css.is_empty()).then_some(css)
             })
     }
@@ -289,7 +287,7 @@ impl<'a> StateCompatibilityResolver<'a> {
     fn owned_font_size(&self) -> Option<f64> {
         self.path_is_owned("themeVariables.fontSize")
             .then(|| {
-                crate::config::config_f64_css_absolute_px(
+                merman_render_core::config::config_f64_css_absolute_px(
                     self.value,
                     &["themeVariables", "fontSize"],
                 )
@@ -298,7 +296,9 @@ impl<'a> StateCompatibilityResolver<'a> {
             .filter(|size| *size >= 0.0)
             .or_else(|| {
                 self.path_is_owned("fontSize")
-                    .then(|| crate::config::config_f64_css_px(self.value, &["fontSize"]))
+                    .then(|| {
+                        merman_render_core::config::config_f64_css_px(self.value, &["fontSize"])
+                    })
                     .flatten()
                     .filter(|size| *size >= 0.0)
             })
@@ -330,7 +330,7 @@ fn state_js_css_interpolation_value(value: &Value) -> Option<String> {
     value
         .as_str()
         .map(str::to_string)
-        .or_else(|| crate::config::json_css_number_or_string(value))
+        .or_else(|| merman_render_core::config::json_css_number_or_string(value))
 }
 
 fn state_js_truthy(value: &Value) -> bool {
@@ -353,10 +353,10 @@ pub(crate) struct StateEdgeLabelPaint {
 
 /// State look, paint and typography shared by layout and SVG emission.
 #[derive(Debug, Clone)]
-pub(crate) struct StateCompatibilityPlan {
+pub struct StateCompatibilityPlan {
     pub(crate) redux_palette: Vec<(String, Option<String>)>,
     pub(crate) palette_look: String,
-    pub(crate) serialized_look: String,
+    pub serialized_look: String,
     pub(crate) root_font_family_css: String,
     pub(crate) dependency_numeric_zero_width: bool,
     pub(crate) dark_mode: bool,
@@ -397,17 +397,17 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) use_gradient: bool,
     pub(crate) gradient_start: String,
     pub(crate) gradient_stop: String,
-    pub(crate) neo_radius: f64,
-    pub(crate) rect_radius: f64,
+    pub neo_radius: f64,
+    pub rect_radius: f64,
     pub(crate) node_shadow: bool,
-    pub(crate) native_title: Option<crate::text::TextStyle>,
+    pub(crate) native_title: Option<merman_render_core::text::TextStyle>,
     pub(crate) native_label_weight: Option<String>,
     pub(crate) native_layout_scale: [f64; 3],
     pub(crate) native_marker: merman_theme_contract::v2::MarkerStyle,
 }
 
 impl StateCompatibilityPlan {
-    pub(crate) const CLASSIC_COMPOSITE_OUTER_RADIUS: f64 = 5.0;
+    pub const CLASSIC_COMPOSITE_OUTER_RADIUS: f64 = 5.0;
 
     pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self::resolve(StateCompatibilityResolver::new(
@@ -417,7 +417,7 @@ impl StateCompatibilityPlan {
     }
 
     pub(super) fn from_native(
-        theme: &crate::theme::FamilyTheme,
+        theme: &FamilyTheme,
         config: &PresentationConfig,
         background: Option<Color>,
     ) -> Self {
@@ -425,8 +425,8 @@ impl StateCompatibilityPlan {
 
         let value = config.as_value();
         let resolver = StateCompatibilityResolver::new(value, Some(config));
-        let diagram_look = crate::config::config_diagram_look(value);
-        let html_labels = crate::config::config_effective_html_labels(value);
+        let diagram_look = merman_render_core::config::config_diagram_look(value);
+        let html_labels = merman_render_core::config::config_effective_html_labels(value);
         let owns = |path| config.explicit_config_owns_path(path);
         let roles = &theme.roles;
         let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
@@ -522,15 +522,21 @@ impl StateCompatibilityPlan {
         let typography = &theme.typography;
         let (font_family_css, root_font_family_css) =
             if let Some(font) = resolver.owned_font_family() {
-                (font, crate::config::config_root_font_family_css(value))
+                (
+                    font,
+                    merman_render_core::config::config_root_font_family_css(value),
+                )
             } else {
-                let font = crate::theme::font_family_css(typography.stack(typography.body_family));
+                let font = merman_render_core::mermaid_style::font_family_css(
+                    typography.stack(typography.body_family),
+                );
                 (font.clone(), font)
             };
         let font_size_px = resolver
             .owned_font_size()
             .unwrap_or(typography.base_size_px);
-        let width = crate::number_format::canonical_number(theme.form.stroke_width).to_string();
+        let width = merman_render_core::number_format::canonical_number(theme.form.stroke_width)
+            .to_string();
         let width_px = format!("{width}px");
         Self {
             redux_palette: Vec::new(),
@@ -579,8 +585,8 @@ impl StateCompatibilityPlan {
             neo_radius: theme.form.radius,
             rect_radius: theme.form.radius,
             node_shadow: false,
-            native_title: Some(crate::text::TextStyle {
-                font_family: Some(crate::theme::font_family_css(
+            native_title: Some(merman_render_core::text::TextStyle {
+                font_family: Some(merman_render_core::mermaid_style::font_family_css(
                     typography.stack(typography.title_family),
                 )),
                 font_size: typography.base_size_px * 1.2,
@@ -593,20 +599,19 @@ impl StateCompatibilityPlan {
         }
     }
 
-    #[cfg(any(feature = "layout-dagre", test))]
     pub(crate) fn from_value(value: &Value) -> Self {
         Self::resolve(StateCompatibilityResolver::new(value, None))
     }
 
     fn resolve(resolver: StateCompatibilityResolver<'_>) -> Self {
-        let diagram_look = crate::config::config_diagram_look(resolver.value);
+        let diagram_look = merman_render_core::config::config_diagram_look(resolver.value);
         let look = StateCompatibilityLook::from_value(diagram_look.as_str());
-        let html_labels = crate::config::config_effective_html_labels(resolver.value);
+        let html_labels = merman_render_core::config::config_effective_html_labels(resolver.value);
         let font_family_css = resolver
             .owned_font_family()
-            .unwrap_or_else(|| crate::config::config_font_family_css(resolver.value));
+            .unwrap_or_else(|| merman_render_core::config::config_font_family_css(resolver.value));
         let font_size_px = resolver.owned_font_size().unwrap_or_else(|| {
-            crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
+            merman_render_core::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
         });
 
         let text_color = resolver.direct_string(&["themeVariables.textColor"], || {
@@ -733,12 +738,13 @@ impl StateCompatibilityPlan {
         {
             10.0
         } else {
-            crate::config::config_f64(resolver.value, &["themeVariables", "radius"]).unwrap_or(5.0)
+            merman_render_core::config::config_f64(resolver.value, &["themeVariables", "radius"])
+                .unwrap_or(5.0)
         };
         let node_shadow = resolver
             .value
             .pointer("/themeVariables/nodeShadow")
-            .is_some_and(crate::config::json_value_is_truthy);
+            .is_some_and(merman_render_core::config::json_value_is_truthy);
 
         let redux_palette = if matches!(
             resolver
@@ -797,7 +803,9 @@ impl StateCompatibilityPlan {
             redux_palette,
             palette_look,
             serialized_look: diagram_look.serialized().to_owned(),
-            root_font_family_css: crate::config::config_root_font_family_css(resolver.value),
+            root_font_family_css: merman_render_core::config::config_root_font_family_css(
+                resolver.value,
+            ),
             dependency_numeric_zero_width: state_dependency_numeric_zero_width(resolver.value),
             dark_mode: state_dark_mode(resolver.value),
             look,
@@ -847,7 +855,7 @@ impl StateCompatibilityPlan {
         }
     }
 
-    pub(crate) fn diagram_look(&self) -> &str {
+    pub fn diagram_look(&self) -> &str {
         self.look.as_str()
     }
 
@@ -863,7 +871,7 @@ impl StateCompatibilityPlan {
         matches!(&self.look, StateCompatibilityLook::HandDrawn)
     }
 
-    pub(crate) const fn is_neo(&self) -> bool {
+    pub const fn is_neo(&self) -> bool {
         matches!(&self.look, StateCompatibilityLook::Neo)
     }
 

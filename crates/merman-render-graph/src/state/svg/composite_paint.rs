@@ -4,7 +4,8 @@ use rustc_hash::FxBuildHasher;
 
 use super::*;
 use crate::state::{StateNodeKind, StateNodeStylePlan, StateTerminalPaintProperty};
-use crate::theme::{Color, canvas_svg::write_color, edge_label_bg::literal_fill};
+use merman_render_core::theme_svg::{canvas::write_color, edge_label_background::literal_fill};
+use merman_theme_contract::v2::Color;
 
 pub(super) type StateCompositePaints<'a> = IndexMap<&'a str, StateCompositePaint, FxBuildHasher>;
 

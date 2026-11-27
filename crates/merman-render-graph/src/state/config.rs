@@ -1,9 +1,9 @@
 //! Shared helpers for state diagram layout.
 
 use super::StateNode;
-use crate::config::{config_f64, config_f64_css_px, config_string};
-use crate::graph_layout::ir::{Direction, direction_from_rank};
-use crate::text::WrapMode;
+use merman_render_core::config::{config_f64, config_f64_css_px, config_string};
+use merman_render_core::graph_layout::{Direction, direction_from_rank};
+use merman_render_core::text::WrapMode;
 use serde_json::Value;
 
 const DEFAULT_STATE_NODE_SPACING: f64 = 50.0;
@@ -14,12 +14,11 @@ const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
 const DEFAULT_STATE_LABEL_MIN_WIDTH: f64 = 120.0;
 const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
 
-pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
+pub fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
 }
 
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-pub(super) fn normalize_dir(direction: &str) -> String {
+pub fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
         "BT" => "BT".to_string(),
@@ -88,14 +87,14 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
     std::borrow::Cow::Owned(out)
 }
 
-pub(crate) struct StateConfigView<'a> {
+pub struct StateConfigView<'a> {
     effective_config: &'a Value,
     flowchart_config: &'a Value,
     state_config: &'a Value,
 }
 
 impl<'a> StateConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+    pub fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
             flowchart_config: effective_config.get("flowchart").unwrap_or(&Value::Null),
@@ -103,7 +102,7 @@ impl<'a> StateConfigView<'a> {
         }
     }
 
-    pub(super) fn layout_settings(
+    pub fn layout_settings(
         &self,
         direction: &str,
         compatibility: &super::StateCompatibilityPlan,
@@ -209,14 +208,14 @@ impl<'a> StateConfigView<'a> {
     }
 }
 
-pub(super) struct StateLayoutSettings {
-    pub(super) direction: Direction,
-    pub(super) node_spacing: f64,
-    pub(super) rank_spacing: f64,
+pub struct StateLayoutSettings {
+    pub direction: Direction,
+    pub node_spacing: f64,
+    pub rank_spacing: f64,
     pub(super) html_labels: bool,
-    pub(super) wrap_mode: WrapMode,
-    pub(super) wrapping_width: f64,
-    pub(super) state_padding: f64,
+    pub wrap_mode: WrapMode,
+    pub wrapping_width: f64,
+    pub state_padding: f64,
     pub(super) label_min_width: f64,
 }
 

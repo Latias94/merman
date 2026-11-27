@@ -28,9 +28,18 @@ diagram-git-graph = [
     "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-git-graph",
     "merman-render-core/root-svg", "merman-render-core/svg-bounds", "merman-render-core/text-layout",
 ]
+diagram-state = [
+    "dep:base64", "dep:cssparser", "dep:indexmap", "dep:kurbo", "dep:merman-markup",
+    "dep:merman-model", "dep:merman-render-core",
+    "dep:merman-theme-contract", "dep:roughr", "dep:rustc-hash", "dep:serde", "dep:serde_json",
+    "merman-model/diagram-state", "merman-render-core/graph-layout", "merman-render-core/markdown-labels",
+    "merman-render-core/root-svg", "merman-render-core/rough-svg", "merman-render-core/svg-edge-parity",
+    "merman-render-core/theme-elevation", "merman-render-core/theme-label-background",
+]
 layout-shoal = ["dep:kurbo"]
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 cssparser = { workspace = true, optional = true }
 euclid = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
@@ -39,6 +48,7 @@ merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+roughr = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

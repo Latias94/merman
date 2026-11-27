@@ -370,7 +370,7 @@ fn prepare_state_family<'parsed>(
     let style = crate::state::StateStylePlan::resolve(
         model,
         &meta.effective_config,
-        execution.layout_backend(),
+        execution.layout_backend() == GraphLayoutBackend::Dagre,
         execution.native_family_theme(),
         execution.family.session().canvas_background(),
     );

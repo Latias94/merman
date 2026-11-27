@@ -66,7 +66,6 @@ pub(crate) use css::PreparedCommonNeoCss;
 ))]
 pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub(crate) use look_defs::PreparedLookDefs;
-pub(crate) use util::cssom_color_value;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -75,7 +74,8 @@ pub(crate) use util::cssom_color_value;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod curve;
+use merman_render_core::svg_edge_parity::curve;
+pub(crate) use util::cssom_color_value;
 #[cfg(feature = "diagram-cynefin")]
 mod cynefin;
 #[cfg_attr(
@@ -86,7 +86,7 @@ mod cynefin;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod edge_label_geometry;
+use merman_render_core::svg_edge_parity::edge_label_geometry;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -95,7 +95,7 @@ mod edge_label_geometry;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod edge_path;
+use merman_render_core::svg_edge_parity::edge_path;
 #[cfg(feature = "diagram-er")]
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
@@ -137,20 +137,20 @@ mod kanban;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
-        unused_imports,
-        reason = "The shared label writer serves selected families."
-    )
-)]
-use merman_render_core::text::svg_label as label;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
         dead_code,
         unused_imports,
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod line_hops;
+use merman_render_core::svg_edge_parity::line_hops;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "The shared label writer serves selected families."
+    )
+)]
+use merman_render_core::text::svg_label as label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -262,7 +262,7 @@ mod timeline;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod timing;
+use merman_render_core::svg_output::timing;
 #[cfg(feature = "diagram-tree-view")]
 mod tree_view;
 #[cfg(feature = "diagram-usecase")]

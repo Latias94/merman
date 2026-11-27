@@ -1,20 +1,28 @@
 use std::borrow::Cow;
 
-use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::text::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, html_has_soft_break_opportunity,
-    measure_html_with_inline_styles, mermaid_markdown_to_xhtml_label_fragment,
+use merman_render_core::{
+    entities::{decode_mermaid_entities_for_render_text, decode_svg_text_content_entities},
+    svg_scan::find_tag_end,
+    text::{
+        self, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+        inline_html::{
+            MermaidMarkdownWordType, measure_html_with_document_root,
+            measure_html_with_inline_styles, svg_markdown_word_style,
+        },
+        line_break::html_has_soft_break_opportunity,
+        mermaid_markdown_to_xhtml_label_fragment,
+    },
+    xml::is_xml_1_0_char,
 };
-use merman_render_core::svg_scan::find_tag_end;
 
 #[derive(Debug, Clone)]
-pub(crate) struct StateLabelMeasurement {
-    pub(crate) metrics: TextMetrics,
-    pub(crate) uses_html_wrapping_table: bool,
+pub struct StateLabelMeasurement {
+    pub metrics: TextMetrics,
+    pub uses_html_wrapping_table: bool,
 }
 
 impl StateLabelMeasurement {
-    pub(crate) fn plain_svg_metrics(
+    pub fn plain_svg_metrics(
         text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
@@ -36,27 +44,27 @@ fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     Some(merman_model::text::decode_html_entities_to_unicode(inner))
 }
 
-pub(crate) fn state_markdown_label_plain_text(text: &str) -> Option<Cow<'_, str>> {
+pub(super) fn state_markdown_label_plain_text(text: &str) -> Option<Cow<'_, str>> {
     let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
-    let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
-    let lines = crate::text::mermaid_markdown_to_lines(&source, true);
+    let source = text::split_html_br_lines(decoded.as_ref()).join("\n");
+    let lines = text::mermaid_markdown_to_lines(&source, true);
     if lines.len() != 1
         || lines[0]
             .iter()
-            .any(|(_, kind)| *kind != crate::text::MermaidMarkdownWordType::Normal)
+            .any(|(_, kind)| *kind != MermaidMarkdownWordType::Normal)
     {
         return None;
     }
     Some(Cow::Owned(
         lines[0]
             .iter()
-            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+            .map(|(word, _)| decode_svg_text_content_entities(word))
             .collect::<Vec<_>>()
             .join(" "),
     ))
 }
 
-pub(crate) fn state_value_to_label_text(value: &serde_json::Value) -> String {
+pub fn state_value_to_label_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Array(parts) => parts
@@ -72,7 +80,7 @@ fn escape_xml_attribute(value: &str) -> String {
     let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());
     for ch in decoded.chars() {
-        if !crate::xml::is_xml_1_0_char(ch) {
+        if !is_xml_1_0_char(ch) {
             continue;
         }
         match ch {
@@ -249,11 +257,12 @@ fn normalize_img_tags(fragment: &str, image_style: Option<(&str, f64)>) -> Strin
     out
 }
 
-pub(crate) fn state_node_label_xhtml(text: &str, font_size: f64) -> String {
+pub(super) fn state_node_label_xhtml(text: &str, font_size: f64) -> String {
     normalize_img_tags(&state_label_xhtml(text), Some((text, font_size)))
 }
 
-pub(crate) fn state_edge_label_xhtml(text: &str) -> String {
+/// Serializes the XHTML content of a sanitized State edge label.
+pub fn state_edge_label_xhtml(text: &str) -> String {
     normalize_img_tags(&state_label_xhtml(text), None)
 }
 
@@ -264,12 +273,10 @@ pub(super) fn state_svg_markdown_word_lines(
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
-) -> Vec<Vec<(String, crate::text::MermaidMarkdownWordType)>> {
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
-    let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
-    crate::text::mermaid_markdown_to_wrapped_word_lines(
-        measurer, &source, style, max_width, wrap_mode,
-    )
+    let source = text::split_html_br_lines(decoded.as_ref()).join("\n");
+    text::mermaid_markdown_to_wrapped_word_lines(measurer, &source, style, max_width, wrap_mode)
 }
 
 /// Mirror nonMarkdownToLines: split source breaks and words before decoding SVG entities.
@@ -278,10 +285,10 @@ pub(super) fn state_svg_plain_lines(text: &str) -> Vec<String> {
     let source = decoded.replace("\\n", "\n");
     source
         .split('\n')
-        .flat_map(crate::text::split_html_br_lines)
+        .flat_map(text::split_html_br_lines)
         .map(|line| {
-            crate::text::non_markdown_svg_words(line)
-                .map(crate::entities::decode_svg_text_content_entities)
+            text::non_markdown_svg_words(line)
+                .map(decode_svg_text_content_entities)
                 .collect::<Vec<_>>()
                 .join(" ")
         })
@@ -290,11 +297,11 @@ pub(super) fn state_svg_plain_lines(text: &str) -> Vec<String> {
 
 /// Measure retained SVG words with literal tspan operations, never a label-source API.
 pub(super) fn measure_state_svg_word_lines(
-    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> TextMetrics {
-    use crate::text::{svg_markdown_word_style, trim_html_collapsible_ascii_whitespace};
+    use text::trim_html_collapsible_ascii_whitespace;
 
     let mut width = 0.0_f64;
     let mut ink: Option<(f64, f64)> = None;
@@ -303,7 +310,7 @@ pub(super) fn measure_state_svg_word_lines(
         let mut run = String::new();
         let mut run_kind = None;
         for (word_index, (word, kind)) in line.iter().enumerate() {
-            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let visible = decode_svg_text_content_entities(word);
             let text = if word_index == 0 {
                 visible
             } else {
@@ -338,11 +345,11 @@ pub(super) fn measure_state_svg_word_lines(
         width: if lines
             .iter()
             .flatten()
-            .all(|(_, kind)| *kind == crate::text::MermaidMarkdownWordType::Normal)
+            .all(|(_, kind)| *kind == MermaidMarkdownWordType::Normal)
         {
             width
         } else {
-            crate::text::round_to_1_64_px(width)
+            text::round_to_1_64_px(width)
         },
         height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
         line_count: lines.len(),
@@ -356,8 +363,7 @@ pub(super) fn measure_state_svg_plain_label(
 ) -> TextMetrics {
     // Plain rows are already terminal text; do not apply even the SVG entity projection twice.
     let lines = state_svg_plain_lines(text);
-    let style =
-        crate::text::svg_markdown_word_style(style, crate::text::MermaidMarkdownWordType::Normal);
+    let style = svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
     let style = style.as_ref();
     let mut width = 0.0_f64;
     let mut ink: Option<(f64, f64)> = None;
@@ -378,7 +384,7 @@ pub(super) fn measure_state_svg_plain_label(
     }
 }
 
-pub(crate) fn measure_state_markdown_label(
+pub fn measure_state_markdown_label(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
@@ -417,9 +423,7 @@ pub(crate) fn measure_state_markdown_label(
         }
         // Adopted XHTML uses the host document's root size for rem, independently
         // of the diagram's inherited font size, as in the other prepared HTML labels.
-        None => {
-            crate::text::measure_html_with_document_root(measurer, &fragment, style, width, 16.0)
-        }
+        None => measure_html_with_document_root(measurer, &fragment, style, width, 16.0),
     };
 
     let natural = measure(None);
@@ -446,8 +450,8 @@ pub(crate) fn measure_state_markdown_label(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::DeterministicTextMeasurer;
     use serde_json::json;
+    use text::DeterministicTextMeasurer;
 
     struct LiteralSvgMeasurer;
 
@@ -527,8 +531,15 @@ mod tests {
         assert!(html.contains(
             r#"<img src="x" style="display: flex; flex-direction: column; width: 100%;" />"#
         ));
-        crate::xml_dom::Document::parse(&format!("<root>{html}</root>"))
-            .expect("State label fragment must be valid XHTML");
+        let svg = format!(
+            r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml">{html}</div></foreignObject></svg>"#,
+        );
+        merman_render_core::svg_xml::validate_well_formed_svg_with_controls(
+            &svg,
+            &mut || Ok(()),
+            &mut |_, _| Ok(()),
+        )
+        .expect("State label fragment must be valid XHTML");
     }
 
     #[test]
@@ -543,7 +554,7 @@ mod tests {
     #[test]
     fn elk_edge_breaks_follow_mermaid_regex_before_markdown() {
         assert_eq!(
-            state_edge_label_xhtml(&crate::text::mermaid_html_breaks_to_newlines(
+            state_edge_label_xhtml(&text::line_break::mermaid_html_breaks_to_newlines(
                 "Hello<br/>- l1<br/>- l2"
             )),
             "<p>Hello</p>- l1 - l2"

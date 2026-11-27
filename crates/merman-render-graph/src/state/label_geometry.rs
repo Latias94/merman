@@ -2,12 +2,21 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use crate::text::{MermaidMarkdownWordType, TextMetrics, WrapMode, svg_markdown_word_style};
+use merman_render_core::{
+    entities::decode_svg_text_content_entities,
+    text::{
+        TextMetrics, WrapMode,
+        inline_html::{MermaidMarkdownWordType, svg_markdown_word_style},
+    },
+};
 
-use super::StateLabelMeasurement;
+use super::label::{
+    StateLabelMeasurement, measure_state_svg_word_lines, state_markdown_label_plain_text,
+    state_svg_markdown_word_lines, state_svg_plain_lines,
+};
 use super::label_artifact::{StateLabelMetricsRequest, StateLabelOwner, StateLabelSourceKind};
 
-pub(super) const STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX: f64 = 2.0;
+const STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX: f64 = 2.0;
 
 fn native_padding_px(owner: StateLabelOwner<'_>) -> f64 {
     match owner {
@@ -61,7 +70,7 @@ impl StateNativeLabelLines {
             Self::Markdown(lines) => Cow::Owned(
                 lines[index]
                     .iter()
-                    .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+                    .map(|(word, _)| decode_svg_text_content_entities(word))
                     .collect::<Vec<_>>()
                     .join(" "),
             ),
@@ -72,7 +81,7 @@ impl StateNativeLabelLines {
 fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> StateNativeLabelLines {
     if request.source_kind == StateLabelSourceKind::Plain {
         return StateNativeLabelLines::Plain(
-            super::label::state_svg_plain_lines(request.text)
+            state_svg_plain_lines(request.text)
                 .into_iter()
                 .map(String::into_boxed_str)
                 .collect::<Vec<_>>()
@@ -80,11 +89,11 @@ fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> StateNativeL
         );
     }
     if request.max_width_px.is_none()
-        && let Some(text) = super::state_markdown_label_plain_text(request.text)
+        && let Some(text) = state_markdown_label_plain_text(request.text)
     {
         return StateNativeLabelLines::Plain(vec![text.into_owned().into_boxed_str()].into());
     }
-    let lines = super::label::state_svg_markdown_word_lines(
+    let lines = state_svg_markdown_word_lines(
         request.text,
         request.measurer,
         request.typography.text_style(),
@@ -102,7 +111,7 @@ fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> StateNativeL
                 .map(|words| {
                     words
                         .iter()
-                        .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+                        .map(|(word, _)| decode_svg_text_content_entities(word))
                         .collect::<Vec<_>>()
                         .join(" ")
                         .into_boxed_str()
@@ -132,7 +141,7 @@ fn markdown_line_bbox(
     let mut top = f64::INFINITY;
     let mut bottom = f64::NEG_INFINITY;
     for (index, (word, kind)) in words.iter().enumerate() {
-        let visible = crate::entities::decode_svg_text_content_entities(word);
+        let visible = decode_svg_text_content_entities(word);
         let text = if index == 0 {
             visible
         } else {
@@ -182,7 +191,7 @@ fn markdown_line_bbox(
 /// operation-selected SVG bbox profile after their first layout measurement, so the writer does not
 /// segment the semantic label independently.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct StateNativeLabelGeometry {
+pub struct StateNativeLabelGeometry {
     width_px: f64,
     height_px: f64,
     ink_left_from_anchor_px: f64,
@@ -224,7 +233,7 @@ impl StateNativeLabelGeometry {
         }
         let metrics = match &lines {
             StateNativeLabelLines::Plain(_) => measurement.metrics,
-            StateNativeLabelLines::Markdown(words) => super::label::measure_state_svg_word_lines(
+            StateNativeLabelLines::Markdown(words) => measure_state_svg_word_lines(
                 words,
                 request.measurer,
                 request.typography.text_style(),
@@ -360,23 +369,23 @@ impl StateNativeLabelGeometry {
         })
     }
 
-    pub(crate) const fn width_px(&self) -> f64 {
+    pub const fn width_px(&self) -> f64 {
         self.width_px
     }
 
-    pub(crate) const fn height_px(&self) -> f64 {
+    pub const fn height_px(&self) -> f64 {
         self.height_px
     }
 
-    pub(crate) const fn line_count(&self) -> usize {
+    pub(super) const fn line_count(&self) -> usize {
         self.line_count
     }
 
-    pub(crate) const fn baseline_x_px(&self) -> f64 {
+    pub(super) const fn baseline_x_px(&self) -> f64 {
         self.baseline_x_px
     }
 
-    pub(crate) fn baseline_y_px(&self, line_index: usize) -> Option<f64> {
+    pub(super) fn baseline_y_px(&self, line_index: usize) -> Option<f64> {
         if line_index < self.line_count {
             Some(self.first_baseline_y_px + self.line_height_px * line_index as f64)
         } else {
@@ -384,14 +393,14 @@ impl StateNativeLabelGeometry {
         }
     }
 
-    pub(crate) fn measured_line(&self, index: usize) -> Option<&str> {
+    pub(super) fn measured_line(&self, index: usize) -> Option<&str> {
         match &self.measured_lines {
             StateNativeLabelLines::Plain(lines) => lines.get(index).map(AsRef::as_ref),
             StateNativeLabelLines::Markdown(_) => None,
         }
     }
 
-    pub(crate) fn measured_word_line(
+    pub(super) fn measured_word_line(
         &self,
         index: usize,
     ) -> Option<&[(String, MermaidMarkdownWordType)]> {
@@ -401,7 +410,7 @@ impl StateNativeLabelGeometry {
         }
     }
 
-    pub(crate) fn layout_metrics(&self) -> TextMetrics {
+    pub fn layout_metrics(&self) -> TextMetrics {
         TextMetrics {
             width: self.width_px,
             height: self.height_px,

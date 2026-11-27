@@ -3,22 +3,28 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::text::{TextMeasurer, WrapMode};
+use merman_render_core::{
+    entities::decode_mermaid_entities_for_render_text,
+    text::{
+        TextMeasurer, WrapMode,
+        inline_html::{MermaidMarkdownWordType, svg_markdown_word_style},
+    },
+};
 
 use super::{
-    ResolvedLabelTypography, StateLabelMeasurement, StateNativeLabelGeometry,
-    measure_state_markdown_label,
+    label::{StateLabelMeasurement, measure_state_markdown_label, measure_state_svg_plain_label},
+    label_geometry::StateNativeLabelGeometry,
+    style_plan::ResolvedLabelTypography,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StateLabelSourceKind {
+pub enum StateLabelSourceKind {
     Markdown,
     Plain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StateLabelOwner<'a> {
+pub enum StateLabelOwner<'a> {
     Node(&'a str),
     NodeTitle(&'a str),
     NodeDescription(&'a str),
@@ -26,15 +32,16 @@ pub(crate) enum StateLabelOwner<'a> {
     Edge(&'a str),
 }
 
+/// Borrows the resolved typography and the operation's measurer for one label.
 #[derive(Clone, Copy)]
-pub(crate) struct StateLabelMetricsRequest<'a> {
-    pub(crate) owner: StateLabelOwner<'a>,
-    pub(crate) text: &'a str,
-    pub(crate) source_kind: StateLabelSourceKind,
-    pub(crate) measurer: &'a dyn TextMeasurer,
-    pub(crate) typography: &'a ResolvedLabelTypography,
-    pub(crate) max_width_px: Option<f64>,
-    pub(crate) wrap_mode: WrapMode,
+pub struct StateLabelMetricsRequest<'a> {
+    pub owner: StateLabelOwner<'a>,
+    pub text: &'a str,
+    pub source_kind: StateLabelSourceKind,
+    pub measurer: &'a dyn TextMeasurer,
+    pub typography: &'a ResolvedLabelTypography,
+    pub max_width_px: Option<f64>,
+    pub wrap_mode: WrapMode,
 }
 
 #[derive(Debug)]
@@ -91,12 +98,12 @@ fn label_slot<'a, T>(slots: &'a StateLabelSlots<T>, owner: StateLabelOwner<'_>) 
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct StateLabelSidecarBuilder {
+pub struct StateLabelSidecarBuilder {
     measured_native_geometries: RefCell<StateLabelSlots<StateNativeLabelGeometry>>,
 }
 
 impl StateLabelSidecarBuilder {
-    pub(crate) fn measured_native_geometry(
+    pub fn measured_native_geometry(
         &self,
         owner: StateLabelOwner<'_>,
     ) -> Option<StateNativeLabelGeometry> {
@@ -104,7 +111,7 @@ impl StateLabelSidecarBuilder {
         label_slot(&geometries, owner).cloned()
     }
 
-    pub(crate) fn measure_for_layout(
+    pub fn measure_for_layout(
         &self,
         request: StateLabelMetricsRequest<'_>,
     ) -> StateLabelMeasurement {
@@ -125,7 +132,7 @@ impl StateLabelSidecarBuilder {
         measurement
     }
 
-    pub(crate) fn finish(self) -> StateLabelSidecar {
+    pub fn finish(self) -> StateLabelSidecar {
         StateLabelSidecar {
             measured_native_geometries: self.measured_native_geometries.into_inner(),
         }
@@ -136,9 +143,9 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
     let style = if request.wrap_mode == WrapMode::HtmlLike {
         std::borrow::Cow::Borrowed(request.typography.text_style())
     } else {
-        crate::text::svg_markdown_word_style(
+        svg_markdown_word_style(
             request.typography.text_style(),
-            crate::text::MermaidMarkdownWordType::Normal,
+            MermaidMarkdownWordType::Normal,
         )
     };
     match request.source_kind {
@@ -151,11 +158,7 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
         ),
         StateLabelSourceKind::Plain if request.wrap_mode != WrapMode::HtmlLike => {
             StateLabelMeasurement {
-                metrics: super::label::measure_state_svg_plain_label(
-                    request.text,
-                    request.measurer,
-                    &style,
-                ),
+                metrics: measure_state_svg_plain_label(request.text, request.measurer, &style),
                 uses_html_wrapping_table: false,
             }
         }
@@ -175,12 +178,12 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct StateLabelSidecar {
+pub struct StateLabelSidecar {
     measured_native_geometries: StateLabelSlots<StateNativeLabelGeometry>,
 }
 
 impl StateLabelSidecar {
-    pub(crate) fn measured_native_geometry(
+    pub fn measured_native_geometry(
         &self,
         owner: StateLabelOwner<'_>,
     ) -> Option<&StateNativeLabelGeometry> {

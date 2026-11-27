@@ -1,10 +1,15 @@
 use super::*;
+use merman_render_core::{
+    config::normalize_css_font_family,
+    svg_css::write_mermaid_base_css_root_rule,
+    theme_svg::{cssom_color_value, marker::arrow_path},
+};
 
 fn write_state_palette_css<I: Copy + std::fmt::Display>(
     out: &mut impl SvgOutput,
     id: I,
     compatibility: &crate::state::StateCompatibilityPlan,
-) -> crate::Result<()> {
+) -> Result<()> {
     if compatibility.redux_palette.is_empty() {
         return out.checkpoint();
     }
@@ -131,15 +136,15 @@ impl StateBarb {
 }
 
 #[cfg(feature = "layout-shoal")]
-pub(crate) fn state_canonical_marker(
+pub fn state_canonical_marker(
     arrow_type_end: &str,
     neo: bool,
-) -> crate::graph_layout::Marker {
+) -> merman_render_core::route_types::Marker {
     if !matches!(arrow_type_end.trim(), "arrow_barb" | "arrow_barb_neo") {
         return Default::default();
     }
     let barb = StateBarb::for_look(neo);
-    crate::graph_layout::Marker {
+    merman_render_core::route_types::Marker {
         trim: f64::from(STATE_BARB_TIP_X - barb.ref_x),
         depth: f64::from(barb.ref_x - barb.rear_x),
         width: 2.0 * f64::from(barb.half_width),
@@ -154,8 +159,7 @@ where
     let compatibility = style_plan.compatibility();
     let transition_color = compatibility.transition_color.as_str();
     let barb = StateBarb::for_look(compatibility.is_neo());
-    let (glyph_path, glyph_attributes) = if let Some(path) =
-        crate::theme::marker_svg::arrow_path(compatibility.native_marker)
+    let (glyph_path, glyph_attributes) = if let Some(path) = arrow_path(compatibility.native_marker)
     {
         let attributes =
             if compatibility.native_marker == merman_theme_contract::v2::MarkerStyle::Open {
@@ -200,7 +204,7 @@ pub(super) fn state_root_defs<I>(
 fn write_state_class_declarations(
     out: &mut impl SvgOutput,
     styles: &[crate::state::StateCssDeclaration],
-) -> crate::Result<()> {
+) -> Result<()> {
     for declaration in styles {
         let semantic_key = declaration.property.as_str();
         let key = declaration.source_name.as_str();
@@ -215,7 +219,7 @@ fn write_state_class_declarations(
                 | "outline-color"
                 | "stroke"
         ) {
-            std::borrow::Cow::Owned(super::super::util::cssom_color_value(value))
+            std::borrow::Cow::Owned(cssom_color_value(value))
         } else {
             std::borrow::Cow::Borrowed(value)
         };
@@ -232,7 +236,7 @@ fn write_state_class_rule(
     class_id: &str,
     selector: std::fmt::Arguments<'_>,
     styles: &[crate::state::StateCssDeclaration],
-) -> crate::Result<()> {
+) -> Result<()> {
     if write!(out, "#{id} .{class_id}{selector}{{").is_err() {
         return out.checkpoint();
     }
@@ -245,7 +249,7 @@ pub(super) fn write_state_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     style_plan: &crate::state::StateStylePlan,
-) -> crate::Result<()>
+) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
@@ -262,7 +266,7 @@ where
     } else {
         theme.font_family_css.as_str()
     };
-    let ff = crate::config::normalize_css_font_family(ff);
+    let ff = normalize_css_font_family(ff);
     let font_size = base_text_style.font_size;
     let font_weight_decl = if uses_structured_typography {
         base_text_style
@@ -282,7 +286,7 @@ where
     } else {
         String::new()
     };
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let text_color = theme.text_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
@@ -646,9 +650,8 @@ where
     );
     let title_text_style = style_plan.title_text_style();
     if uses_structured_typography {
-        let title_ff = crate::config::normalize_css_font_family(
-            title_text_style.font_family.as_deref().unwrap_or(&ff),
-        );
+        let title_ff =
+            normalize_css_font_family(title_text_style.font_family.as_deref().unwrap_or(&ff));
         let title_weight_decl = title_text_style
             .font_weight
             .as_deref()
@@ -744,7 +747,7 @@ where
     } else {
         theme.root_font_family_css.clone()
     };
-    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(css, id, &root_font_family)?;
+    write_mermaid_base_css_root_rule(css, id, &root_font_family)?;
 
     css.checkpoint()?;
 
@@ -793,287 +796,6 @@ where
     }
 
     css.checkpoint()
-}
-
-pub(super) fn state_value_to_label_text(v: &serde_json::Value) -> String {
-    crate::state::state_value_to_label_text(v)
-}
-
-pub(super) fn state_node_label_text(n: &StateSvgNode) -> String {
-    n.label
-        .as_ref()
-        .map(state_value_to_label_text)
-        .unwrap_or_else(|| n.id.clone())
-}
-
-pub(super) fn state_node_label_html_with_style(
-    raw: &str,
-    span_style: Option<&str>,
-    font_size: f64,
-) -> String {
-    let style_attr = span_style
-        .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
-        .unwrap_or_default();
-    format!(
-        r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
-        style_attr,
-        crate::state::state_node_label_xhtml(raw, font_size)
-    )
-}
-
-fn state_escape_amp_preserving_entities(raw: &str) -> String {
-    crate::xml::normalize_html_entities_for_xml(raw).into_owned()
-}
-
-fn state_normalize_br_tags(raw: &str) -> String {
-    let bytes = raw.as_bytes();
-    let mut out = String::with_capacity(raw.len());
-    let mut cur = 0usize;
-    let mut i = 0usize;
-    while i + 2 < bytes.len() {
-        if bytes[i] != b'<' {
-            i += 1;
-            continue;
-        }
-        let b1 = bytes[i + 1];
-        let b2 = bytes[i + 2];
-        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-            i += 1;
-            continue;
-        }
-        let next = bytes.get(i + 3).copied();
-        if let Some(n) = next
-            && !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n')
-        {
-            i += 1;
-            continue;
-        }
-        if i > cur {
-            out.push_str(&raw[cur..i]);
-        }
-        let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
-            cur = i;
-            break;
-        };
-        out.push('\n');
-        i = i + end_rel + 1;
-        cur = i;
-    }
-    if cur < raw.len() {
-        out.push_str(&raw[cur..]);
-    }
-    out
-}
-
-fn write_state_html_lines_with_br(out: &mut String, normalized: &str) {
-    for (idx, line) in normalized.split('\n').enumerate() {
-        if idx > 0 {
-            out.push_str("<br />");
-        }
-        // State diagram labels are sanitized upstream (entities + limited tags). Preserve entities
-        // like `&lt;` without double-escaping, while still making stray `&` XML-safe.
-        out.push_str(&state_escape_amp_preserving_entities(line));
-    }
-}
-
-fn state_html_with_br(raw: &str, wrap_paragraph: bool) -> String {
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    let normalized = state_normalize_br_tags(decoded.as_ref());
-    let mut out = String::new();
-    if wrap_paragraph {
-        out.push_str("<p>");
-    }
-    write_state_html_lines_with_br(&mut out, &normalized);
-    if wrap_paragraph {
-        out.push_str("</p>");
-    }
-    out
-}
-
-fn html_paragraph_with_br(raw: &str) -> String {
-    state_html_with_br(raw, true)
-}
-
-pub(super) fn state_node_label_plain_html(raw: &str) -> String {
-    format!(
-        r#"<span class="nodeLabel">{}</span>"#,
-        html_paragraph_with_br(raw)
-    )
-}
-
-pub(super) fn state_edge_label_html(raw: &str) -> String {
-    crate::state::state_edge_label_xhtml(raw)
-}
-
-fn state_svg_text_style_attr(style_attr: &str) -> String {
-    let mut out = String::with_capacity(style_attr.len());
-    for declaration in style_attr.split(';') {
-        let declaration = declaration.trim();
-        if declaration.is_empty() {
-            continue;
-        }
-        let Some((property, value)) = declaration.split_once(':') else {
-            continue;
-        };
-        let property = property.trim();
-        let value = value.trim();
-        if property.is_empty() || value.is_empty() {
-            continue;
-        }
-        if !out.is_empty() {
-            out.push(';');
-        }
-        let property = if property.eq_ignore_ascii_case("color") {
-            "fill"
-        } else {
-            property
-        };
-        let _ = write!(&mut out, "{property}:{value}");
-    }
-    out
-}
-
-pub(super) fn state_svg_text_label(
-    raw: &str,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    let decoded = merman_model::text::restore_mermaid_entity_spelling(raw);
-    let source = decoded.replace("\\n", "\n");
-    let lines = source
-        .split('\n')
-        .flat_map(crate::text::split_html_br_lines)
-        .map(|line| {
-            crate::text::non_markdown_svg_words(line)
-                .map(crate::entities::decode_svg_text_content_entities)
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .collect::<Vec<_>>();
-    state_svg_text_label_lines(lines.iter().map(String::as_str), center_text, style_attr)
-}
-
-pub(crate) fn state_measured_svg_text_label(
-    geometry: &crate::state::StateNativeLabelGeometry,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    state_native_svg_text_label_lines(geometry, center_text, style_attr)
-}
-
-pub(crate) fn state_native_svg_text_label(
-    raw: &str,
-    measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    if let Some(geometry) = measured_geometry {
-        state_measured_svg_text_label(geometry, center_text, style_attr)
-    } else {
-        state_svg_text_label(raw, center_text, style_attr)
-    }
-}
-
-fn state_native_svg_text_label_lines(
-    geometry: &crate::state::StateNativeLabelGeometry,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    let text_anchor = if center_text {
-        r#" text-anchor="middle""#
-    } else {
-        ""
-    };
-    let baseline_x_px = if center_text {
-        0.0
-    } else {
-        geometry.baseline_x_px()
-    };
-    let svg_style_attr = style_attr
-        .map(state_svg_text_style_attr)
-        .filter(|style| !style.is_empty())
-        .map(|style| format!(r#" style="{}""#, escape_attr(&style)))
-        .unwrap_or_default();
-    let mut out = format!(r#"<text{text_anchor}{svg_style_attr}>"#);
-    for line_index in 0..geometry.line_count() {
-        let baseline_y_px = geometry
-            .baseline_y_px(line_index)
-            .expect("State native geometry covers every emitted line");
-        let _ = write!(
-            &mut out,
-            r#"<tspan class="text-outer-tspan row" x="{}" y="{}">"#,
-            fmt_display(baseline_x_px),
-            fmt_display(baseline_y_px),
-        );
-        if let Some(words) = geometry.measured_word_line(line_index) {
-            for (index, (word, kind)) in words.iter().enumerate() {
-                let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
-                    "italic"
-                } else {
-                    "normal"
-                };
-                let font_weight = if *kind == crate::text::MermaidMarkdownWordType::Strong {
-                    "bold"
-                } else {
-                    "normal"
-                };
-                let word = crate::entities::decode_svg_text_content_entities(word);
-                let _ = write!(
-                    &mut out,
-                    r#"<tspan font-style="{font_style}" class="text-inner-tspan" font-weight="{font_weight}"{svg_style_attr}>"#,
-                );
-                if index > 0 {
-                    out.push(' ');
-                }
-                let _ = write!(&mut out, "{}</tspan>", escape_xml_display(&word));
-            }
-        } else {
-            let line = geometry
-                .measured_line(line_index)
-                .expect("measured State label geometry retains emitted rows");
-            let _ = write!(
-                &mut out,
-                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan>"#,
-                svg_style_attr,
-                escape_xml_display(line)
-            );
-        }
-        out.push_str("</tspan>");
-    }
-    out.push_str("</text>");
-    out
-}
-
-fn state_svg_text_label_lines<'a>(
-    lines: impl IntoIterator<Item = &'a str>,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    let text_anchor = if center_text {
-        r#" text-anchor="middle""#
-    } else {
-        ""
-    };
-    let svg_style_attr = style_attr
-        .map(state_svg_text_style_attr)
-        .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_attr(&s)))
-        .unwrap_or_default();
-
-    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}>"#);
-    for (idx, line) in lines.into_iter().enumerate() {
-        let y = idx as f64 * 1.1 - 0.1;
-        let _ = write!(
-            &mut out,
-            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan></tspan>"#,
-            fmt_display(y),
-            svg_style_attr,
-            escape_xml_display(line)
-        );
-    }
-    out.push_str("</text>");
-    out
 }
 
 #[cfg(test)]
@@ -1132,7 +854,7 @@ mod tests {
         model: &StateSvgModel,
         config: &serde_json::Value,
     ) -> crate::state::StateStylePlan {
-        crate::state::StateStylePlan::resolve_unthemed(model, config)
+        crate::state::StateStylePlan::resolve_classic(model, config, true)
     }
 
     fn rendered_state_css(
@@ -1158,39 +880,6 @@ mod tests {
         )));
         assert_eq!(css.matches("#st .hot>*").count(), 1);
         assert!(!css.contains("color:rgb(34, 34, 34)!important;fill:rgb(34, 34, 34)!important"));
-    }
-
-    #[test]
-    fn state_svg_text_projects_color_and_emphasis_to_inner_tspan() {
-        let svg = state_svg_text_label(
-            "Styled",
-            true,
-            Some(
-                "color:#123456 !important;font-weight:700 !important;font-style:italic !important",
-            ),
-        );
-
-        assert!(svg.contains(
-            r#"<text y="-10.1" text-anchor="middle" style="fill:#123456 !important;font-weight:700 !important;font-style:italic !important">"#
-        ));
-        assert!(svg.contains(
-            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal" style="fill:#123456 !important;font-weight:700 !important;font-style:italic !important">Styled</tspan>"#
-        ));
-        assert!(!svg.contains("color:#123456"));
-    }
-
-    #[test]
-    fn state_svg_text_applies_the_resolved_style_to_each_line() {
-        let svg = state_svg_text_label(
-            "first\nsecond",
-            false,
-            Some("color:#abcdef;font-weight:bold"),
-        );
-        assert_eq!(
-            svg.matches("style=\"fill:#abcdef;font-weight:bold\"")
-                .count(),
-            3
-        );
     }
 
     #[test]
@@ -1253,7 +942,9 @@ mod tests {
 
     #[test]
     fn state_css_stops_at_the_class_rule_svg_byte_boundary() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use merman_render_core::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId,
+        };
 
         let config = json!({});
         let baseline_model = StateSvgModel::default();
@@ -1272,7 +963,10 @@ mod tests {
         let error = write_state_css(&mut out, "st", &plan)
             .expect_err("the first class rule must cross the SVG byte ceiling");
 
-        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert!(matches!(
+            error,
+            merman_render_core::Error::ResourceLimitExceeded(_)
+        ));
         assert!(out.len() <= max_svg_bytes);
         assert!(out.as_str().starts_with(baseline_css.as_str()));
         assert!(!out.as_str().contains("#st .hot span{"));

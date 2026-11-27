@@ -5,21 +5,18 @@ use merman_model::families::state::{
 use merman_model::presentation::PresentationConfig;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[cfg(any(feature = "layout-dagre", test))]
-use crate::layout_backend;
-use crate::layout_backend::GraphLayoutBackend;
-use crate::mermaid_style::{
+use merman_render_core::mermaid_style::{
     CssFontSizeContext, ParsedStyleDeclaration, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value, parse_style_declaration,
 };
-use crate::text::{FontStyle, TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use crate::theme::{Color, FamilyTheme};
+use merman_render_core::text::{FontStyle, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use merman_theme_contract::v2::{Color, FamilyTheme};
 
 use super::{StateCompatibilityPlan, StateNodeKind};
 
 /// One source-resolved font decision shared by State measurement and SVG emission.
 #[derive(Debug, Clone)]
-pub(crate) struct ResolvedLabelTypography {
+pub struct ResolvedLabelTypography {
     text_style: TextStyle,
     svg_inline_weight: bool,
     svg_inline_style: bool,
@@ -34,11 +31,11 @@ impl ResolvedLabelTypography {
         }
     }
 
-    pub(crate) const fn text_style(&self) -> &TextStyle {
+    pub const fn text_style(&self) -> &TextStyle {
         &self.text_style
     }
 
-    fn apply_font_family(&mut self, stack: crate::text::ParsedCssFontStack) {
+    fn apply_font_family(&mut self, stack: merman_render_core::text::ParsedCssFontStack) {
         self.text_style.font_family = Some(stack.as_css());
     }
 
@@ -198,7 +195,7 @@ impl StateClassStylePlan {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StateNodeStylePlan {
+pub struct StateNodeStylePlan {
     shape_style_attr: String,
     fill_path_style_attr: String,
     stroke_path_style_attr: String,
@@ -262,15 +259,15 @@ impl StateNodeStylePlan {
         self.stroke_width_override
     }
 
-    pub(crate) const fn radius_override(&self) -> Option<f64> {
+    pub const fn radius_override(&self) -> Option<f64> {
         self.radius_override
     }
 
-    pub(crate) const fn composite_outer_radius_override(&self) -> Option<f64> {
+    pub const fn composite_outer_radius_override(&self) -> Option<f64> {
         self.composite_outer_radius_override
     }
 
-    pub(crate) const fn padding_override(&self) -> Option<f64> {
+    pub const fn padding_override(&self) -> Option<f64> {
         self.padding_override
     }
 
@@ -282,7 +279,7 @@ impl StateNodeStylePlan {
         &self.label_typography
     }
 
-    pub(crate) const fn resolved_cluster_label_typography(&self) -> &ResolvedLabelTypography {
+    pub const fn resolved_cluster_label_typography(&self) -> &ResolvedLabelTypography {
         match &self.cluster_label_typography {
             Some(typography) => typography,
             None => &self.label_typography,
@@ -291,7 +288,7 @@ impl StateNodeStylePlan {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StateStylePlan {
+pub struct StateStylePlan {
     compatibility: StateCompatibilityPlan,
     base_label_typography: ResolvedLabelTypography,
     title_text_style: TextStyle,
@@ -302,24 +299,24 @@ pub(crate) struct StateStylePlan {
 }
 
 impl StateStylePlan {
-    #[cfg(any(feature = "layout-dagre", test))]
-    pub(crate) fn resolve_unthemed(
+    /// Resolves Mermaid styling using the facade's selected layout backend.
+    pub fn resolve_classic(
         model: &StateDiagramRenderModel,
         config: &serde_json::Value,
+        uses_dagre: bool,
     ) -> Self {
         Self::prepare(
             model,
             StateCompatibilityPlan::from_value(config),
-            layout_backend::resolve(crate::DiagramFamilyId::STATE, "stateDiagram", config)
-                .unwrap_or(GraphLayoutBackend::Dagre),
+            uses_dagre,
             None,
         )
     }
 
-    pub(crate) fn resolve(
+    pub fn resolve(
         model: &StateDiagramRenderModel,
         config: &PresentationConfig,
-        backend: GraphLayoutBackend,
+        uses_dagre: bool,
         native: Option<&FamilyTheme>,
         background: Option<Color>,
     ) -> Self {
@@ -327,18 +324,20 @@ impl StateStylePlan {
             Some(native) => StateCompatibilityPlan::from_native(native, config, background),
             None => StateCompatibilityPlan::from_config(config),
         };
-        Self::prepare(model, compatibility, backend, native)
+        Self::prepare(model, compatibility, uses_dagre, native)
     }
 
     fn prepare(
         model: &StateDiagramRenderModel,
         compatibility: StateCompatibilityPlan,
-        backend: GraphLayoutBackend,
+        uses_dagre: bool,
         native: Option<&FamilyTheme>,
     ) -> Self {
         let base = TextStyle {
             font_family: Some(compatibility.font_family_css.clone()),
-            font_size: crate::number_format::canonicalize_number(compatibility.font_size_px),
+            font_size: merman_render_core::number_format::canonicalize_number(
+                compatibility.font_size_px,
+            ),
             font_weight: compatibility.native_label_weight.clone(),
             font_style: None,
         };
@@ -351,9 +350,10 @@ impl StateStylePlan {
                     ..base.clone()
                 });
         title_text_style.font_size =
-            crate::number_format::canonicalize_number(title_text_style.font_size);
+            merman_render_core::number_format::canonicalize_number(title_text_style.font_size);
         let title_style_attr = native.map_or_else(String::new, |theme| {
-            let size = crate::number_format::canonical_number(title_text_style.font_size);
+            let size =
+                merman_render_core::number_format::canonical_number(title_text_style.font_size);
             let family = title_text_style
                 .font_family
                 .as_deref()
@@ -392,7 +392,7 @@ impl StateStylePlan {
                 (node.id.clone(), plan)
             })
             .collect();
-        let shadowed_self_loop_edges = if backend == GraphLayoutBackend::Dagre {
+        let shadowed_self_loop_edges = if uses_dagre {
             let hidden_prefixes = hidden_state_prefixes(model);
             shadowed_self_loop_edge_indices(model, &hidden_prefixes)
                 .into_iter()
@@ -412,7 +412,7 @@ impl StateStylePlan {
         }
     }
 
-    pub(crate) const fn compatibility(&self) -> &StateCompatibilityPlan {
+    pub const fn compatibility(&self) -> &StateCompatibilityPlan {
         &self.compatibility
     }
     pub(crate) const fn uses_structured_typography(&self) -> bool {
@@ -424,10 +424,10 @@ impl StateStylePlan {
     pub(crate) const fn base_label_typography(&self) -> &ResolvedLabelTypography {
         &self.base_label_typography
     }
-    pub(crate) const fn transition_label_typography(&self) -> &ResolvedLabelTypography {
+    pub const fn transition_label_typography(&self) -> &ResolvedLabelTypography {
         &self.base_label_typography
     }
-    pub(crate) const fn composite_label_typography(&self) -> &ResolvedLabelTypography {
+    pub const fn composite_label_typography(&self) -> &ResolvedLabelTypography {
         &self.base_label_typography
     }
     pub(crate) const fn title_text_style(&self) -> &TextStyle {
@@ -439,7 +439,7 @@ impl StateStylePlan {
     pub(crate) fn classes(&self) -> impl Iterator<Item = &StateClassStylePlan> {
         self.classes.values()
     }
-    pub(crate) fn node(&self, id: &str) -> Option<&StateNodeStylePlan> {
+    pub fn node(&self, id: &str) -> Option<&StateNodeStylePlan> {
         self.nodes.get(id)
     }
     pub(crate) fn is_shadowed_self_loop_edge(&self, id: &str) -> bool {
@@ -626,7 +626,7 @@ fn composite_fill_opacity(declarations: &IndexMap<String, EmittedDeclaration>) -
         let Some(declaration) = declarations.get(property) else {
             return Some(1.0);
         };
-        crate::theme::edge_label_bg::literal_opacity(&declaration.value)
+        merman_render_core::theme_svg::edge_label_background::literal_opacity(&declaration.value)
     };
     Some(opacity("opacity")? * opacity("fill-opacity")?)
 }
@@ -813,7 +813,7 @@ fn apply_source_text_property(
     let value = declaration.value().trim();
     match declaration.property() {
         "font-family" if is_safe_css_font_family_value(value) && !value.is_empty() => {
-            if let Some(stack) = crate::text::parse_css_font_stack(value) {
+            if let Some(stack) = merman_render_core::text::parse_css_font_stack(value) {
                 typography.apply_font_family(stack);
                 true
             } else {
@@ -864,7 +864,7 @@ fn apply_source_text_property(
 }
 
 fn resolve_source_font_weight(value: &str, inherited: Option<&str>) -> u16 {
-    crate::text::resolve_css_font_weight(value, inherited_font_weight(inherited))
+    merman_render_core::text::resolve_css_font_weight(value, inherited_font_weight(inherited))
         .expect("font-weight was validated before resolution")
 }
 
@@ -1043,7 +1043,7 @@ mod tests {
             "font-family:\"Final Sans\", monospace;font-style:oblique".to_string();
         model.nodes.extend([class_only, overridden]);
 
-        let plan = StateStylePlan::resolve_unthemed(&model, &json!({}));
+        let plan = StateStylePlan::resolve_classic(&model, &json!({}), true);
         let class_only = plan.node("ClassOnly").expect("class-only node style");
         let class_request = class_only.resolved_label_typography().text_style();
         assert_eq!(
@@ -1130,7 +1130,7 @@ mod tests {
             model.nodes.push(node);
         }
 
-        let plan = StateStylePlan::resolve_unthemed(&model, &json!({}));
+        let plan = StateStylePlan::resolve_classic(&model, &json!({}), true);
         for id in ["Composite", "CompositeLeaf"] {
             let node = plan.node(id).expect("composite style");
             assert_eq!(
@@ -1174,11 +1174,11 @@ mod tests {
 
     #[test]
     fn source_font_stack_rejects_unquoted_css_wide_keywords_in_any_position() {
-        assert!(crate::text::parse_css_font_stack("Excalifont, inherit").is_none());
-        assert!(crate::text::parse_css_font_stack("initial, Excalifont").is_none());
-        assert!(crate::text::parse_css_font_stack("Family unset, serif").is_none());
+        assert!(merman_render_core::text::parse_css_font_stack("Excalifont, inherit").is_none());
+        assert!(merman_render_core::text::parse_css_font_stack("initial, Excalifont").is_none());
+        assert!(merman_render_core::text::parse_css_font_stack("Family unset, serif").is_none());
 
-        let quoted = crate::text::parse_css_font_stack("\"inherit\", Excalifont")
+        let quoted = merman_render_core::text::parse_css_font_stack("\"inherit\", Excalifont")
             .expect("quoted CSS-wide text remains a valid family name");
         assert_eq!(quoted.as_css(), "\"inherit\", \"Excalifont\"");
     }
@@ -1221,7 +1221,7 @@ mod tests {
             model.nodes.push(node);
         }
 
-        let plan = StateStylePlan::resolve_unthemed(&model, &json!({ "look": "handDrawn" }));
+        let plan = StateStylePlan::resolve_classic(&model, &json!({ "look": "handDrawn" }), true);
 
         for id in ["Ordinary", "Choice", "End"] {
             let node = plan.node(id).unwrap_or_else(|| panic!("prepared {id}"));

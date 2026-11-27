@@ -2,11 +2,11 @@
 
 use super::config::{StateLayoutSettings, decode_html_entities_once};
 use super::{StateNode, state_value_to_label_text};
-use crate::graph_layout::ir::Direction;
-use crate::text::{TextMeasurer, WrapMode};
-use crate::{Error, Result};
+use merman_render_core::graph_layout::Direction;
+use merman_render_core::text::{TextMeasurer, WrapMode};
+use merman_render_core::{Error, Result};
 
-pub(super) fn edge_label_metrics(
+pub fn edge_label_metrics(
     edge_id: &str,
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -17,7 +17,7 @@ pub(super) fn edge_label_metrics(
     if label.trim().is_empty() {
         return (0.0, 0.0);
     }
-    let wrapping_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
+    let wrapping_width = merman_render_core::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
     let request = super::StateLabelMetricsRequest {
         owner: super::StateLabelOwner::Edge(edge_id),
         text: label,
@@ -92,7 +92,7 @@ fn node_label_metrics(
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
-pub(super) fn title_label_metrics(
+pub fn title_label_metrics(
     owner: super::StateLabelOwner<'_>,
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -141,7 +141,7 @@ pub(super) fn title_label_metrics(
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
-pub(super) fn state_fork_join_painted_dimensions(direction: Direction) -> (f64, f64) {
+pub fn state_fork_join_painted_dimensions(direction: Direction) -> (f64, f64) {
     if matches!(direction, Direction::Right | Direction::Left) {
         (10.0, 70.0)
     } else {
@@ -149,7 +149,7 @@ pub(super) fn state_fork_join_painted_dimensions(direction: Direction) -> (f64, 
     }
 }
 
-pub(super) fn state_node_dimensions(
+pub fn state_node_dimensions(
     n: &StateNode,
     settings: &StateLayoutSettings,
     style_plan: &super::StateStylePlan,
@@ -190,7 +190,7 @@ pub(super) fn state_node_dimensions(
                 settings.wrap_mode,
                 label_sidecar,
             );
-            let tw = crate::text::TextMetrics {
+            let tw = merman_render_core::text::TextMetrics {
                 width: tw,
                 height: th,
                 line_count: 1,
@@ -242,7 +242,7 @@ pub(super) fn state_node_dimensions(
                 settings.wrap_mode,
                 label_sidecar,
             );
-            let tw = crate::text::TextMetrics {
+            let tw = merman_render_core::text::TextMetrics {
                 width: tw,
                 height: th,
                 line_count: 1,
@@ -270,7 +270,7 @@ pub(super) fn state_node_dimensions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::{TextMetrics, TextStyle};
+    use merman_render_core::text::{TextMetrics, TextStyle};
 
     struct NonLatticeMeasurer {
         width: f64,

@@ -3,7 +3,7 @@
 //! This is a DOM-free port of Mermaid's `lineJump.ts`. Callers supply the curve
 //! eligibility rule and keep their original SVG paths wherever no override is emitted.
 
-use crate::model::LayoutPoint;
+use crate::LayoutPoint;
 use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
@@ -11,40 +11,40 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
 // Kept in sync with Mermaid's `generateRoundedPath` radius.
-pub(in crate::svg::parity) const ROUNDED_CORNER_RADIUS: f64 = 5.0;
+const ROUNDED_CORNER_RADIUS: f64 = 5.0;
 const CORNER_EPSILON: f64 = 1e-5;
 const ENDPOINT_EPSILON: f64 = 1e-6;
 const CORNER_JUMP_CLEARANCE: f64 = 2.0;
 const MIN_USEFUL_RADIUS_RATIO: f64 = 0.6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::svg::parity) enum LineHopStyle {
+pub enum LineHopStyle {
     Arc,
     Gap,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity) struct LineHopConfig {
-    pub(in crate::svg::parity) jump_radius: f64,
-    pub(in crate::svg::parity) jump_style: LineHopStyle,
+pub struct LineHopConfig {
+    pub jump_radius: f64,
+    pub jump_style: LineHopStyle,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity) struct LineHopEdge<'a> {
-    pub(in crate::svg::parity) id: &'a str,
-    pub(in crate::svg::parity) points: &'a [LayoutPoint],
-    pub(in crate::svg::parity) curve: Option<&'a str>,
-    pub(in crate::svg::parity) arrow_type_start: Option<&'a str>,
-    pub(in crate::svg::parity) arrow_type_end: Option<&'a str>,
+pub struct LineHopEdge<'a> {
+    pub id: &'a str,
+    pub points: &'a [LayoutPoint],
+    pub curve: Option<&'a str>,
+    pub arrow_type_start: Option<&'a str>,
+    pub arrow_type_end: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::svg::parity) struct LineHopCrossing<'a> {
-    pub(in crate::svg::parity) jump_edge_id: &'a str,
-    pub(in crate::svg::parity) other_edge_id: &'a str,
-    pub(in crate::svg::parity) segment_index: usize,
-    pub(in crate::svg::parity) t: f64,
-    pub(in crate::svg::parity) point: LayoutPoint,
+struct LineHopCrossing<'a> {
+    pub jump_edge_id: &'a str,
+    pub other_edge_id: &'a str,
+    pub segment_index: usize,
+    pub t: f64,
+    pub point: LayoutPoint,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +147,7 @@ fn path_emission_work_units(edges: &[LineHopEdge<'_>]) -> usize {
     })
 }
 
-pub(in crate::svg::parity) fn find_edge_intersections<'a>(
+fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<LineHopCrossing<'a>>> {
@@ -284,7 +284,7 @@ pub(in crate::svg::parity) fn find_edge_intersections<'a>(
 
 /// Emit after-paint overrides in edge order, indexed into the supplied edges. A crossing
 /// still triggers an override when available-radius checks suppress every visible hop.
-pub(in crate::svg::parity) fn line_hop_overrides(
+pub fn line_hop_overrides(
     edges: &[LineHopEdge<'_>],
     config: LineHopConfig,
     accepts_curve: impl Fn(Option<&str>) -> bool,
@@ -321,7 +321,7 @@ pub(in crate::svg::parity) fn line_hop_overrides(
 /// Callers supply draw-projected points before marker offsets and retain their
 /// original paths for labels, marker placement, and all non-crossing edges.
 /// Curve eligibility applies after intersection discovery, as in Mermaid.
-pub(in crate::svg::parity) fn elk_line_hop_paths<'a>(
+pub fn elk_line_hop_paths<'a>(
     config: &serde_json::Value,
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
@@ -358,7 +358,7 @@ pub(in crate::svg::parity) fn elk_line_hop_paths<'a>(
 /// Mirror lineJump.ts's after-paint mask rewrite, including its dashed-prefix behavior.
 /// The first matching mask supplies the second and fourth numbers, even when that
 /// fourth number belongs to a repeated dash pattern. Every declaration is replaced.
-pub(in crate::svg::parity) fn rewrite_style_after_line_hop<'a>(
+pub fn rewrite_style_after_line_hop<'a>(
     original_style: &'a str,
     hopped_d: &str,
     work_meter: &OperationWorkMeter,
@@ -455,7 +455,7 @@ pub(in crate::svg::parity) fn rewrite_style_after_line_hop<'a>(
     Ok(Cow::Owned(cleaned))
 }
 
-pub(in crate::svg::parity) fn curve_supports_line_hops(curve: Option<&str>) -> bool {
+pub fn curve_supports_line_hops(curve: Option<&str>) -> bool {
     matches!(
         curve,
         None | Some("linear" | "rounded" | "step" | "stepBefore" | "stepAfter")

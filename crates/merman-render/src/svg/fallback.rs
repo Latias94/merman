@@ -33,10 +33,9 @@ use html::{
 /// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
 pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
 
-/// Writer-owned terminal fill for a single fallback background occurrence.
-pub(crate) const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
-/// Stable occurrence identity paired with [`FALLBACK_BACKGROUND_FILL_DATA_ATTR`].
-pub(crate) const FALLBACK_OCCURRENCE_DATA_ATTR: &str = "data-merman-fallback-occurrence";
+pub(crate) use merman_render_core::svg_output::{
+    FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR,
+};
 /// Advisory compatibility evidence; this never grants native or portable admission.
 pub(crate) const FALLBACK_CSS_RESIDUAL_DATA_ATTR: &str = "data-merman-fallback-css-residual";
 

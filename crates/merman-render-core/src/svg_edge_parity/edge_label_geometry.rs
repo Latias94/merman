@@ -1,4 +1,4 @@
-use crate::model::LayoutPoint;
+use crate::LayoutPoint;
 
 fn js_round(value: f64, precision: i32) -> Option<f64> {
     if !value.is_finite() {
@@ -25,7 +25,7 @@ fn js_round(value: f64, precision: i32) -> Option<f64> {
 }
 
 /// Mirrors Mermaid 11.16 `utils.calcLabelPosition` for finite SVG geometry.
-pub(super) fn calc_label_position(label_path_points: &[LayoutPoint]) -> Option<LayoutPoint> {
+pub fn calc_label_position(label_path_points: &[LayoutPoint]) -> Option<LayoutPoint> {
     if label_path_points
         .iter()
         .any(|point| !point.x.is_finite() || !point.y.is_finite())
@@ -82,7 +82,7 @@ pub(super) fn calc_label_position(label_path_points: &[LayoutPoint]) -> Option<L
     None
 }
 
-pub(super) fn is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> bool {
+fn is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> bool {
     let Some(rounded_x) = js_rounded_number_string(point.x) else {
         return false;
     };
@@ -96,7 +96,7 @@ pub(super) fn is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> 
 }
 
 /// Mermaid 12.1 keeps layout label offsets when paint-time clipping moves the route.
-pub(super) fn position_edge_label(
+pub fn position_edge_label(
     dagre_anchor: LayoutPoint,
     original_path_points: Option<&[LayoutPoint]>,
     label_path_points: &[LayoutPoint],

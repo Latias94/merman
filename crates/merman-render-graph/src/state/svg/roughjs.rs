@@ -3,7 +3,7 @@
 use roughr::core::RoughRandomness;
 use roughr::{PathParser, PathSegment};
 
-use super::super::roughjs_common::{
+use merman_render_core::rough_svg::{
     closed_path_d_from_points as roughjs_closed_path_d_from_points,
     mermaid_arc_points as roughjs_arc_points, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
 };
@@ -92,7 +92,7 @@ pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
     roughjs_closed_path_d_from_points(&points)
 }
 
-pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
+pub(super) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,

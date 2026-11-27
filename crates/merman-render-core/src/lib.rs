@@ -58,6 +58,9 @@ pub mod svg_bounds;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_css;
+#[cfg(feature = "svg-edge-parity")]
+#[doc(hidden)]
+pub mod svg_edge_parity;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_output;

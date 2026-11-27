@@ -1,4 +1,13 @@
 use super::*;
+use merman_model::OperationPhase;
+use merman_render_core::{
+    number_format::canonicalize_number,
+    svg_bounds::svg_emitted_bounds_from_svg,
+    svg_edge_parity::line_hops::{LineHopEdge, elk_line_hop_paths},
+    svg_output::XmlTextOutput,
+    text::{svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px},
+};
+use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StateRenderPass {
@@ -11,24 +20,23 @@ enum StateRenderPass {
     clippy::too_many_arguments,
     reason = "The SVG writer takes layout, route geometry, and resolved styles separately."
 )]
-pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+pub fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
-    route_contract: &crate::graph_layout::RouteContract,
     style_plan: &crate::state::StateStylePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
+    options: &StateSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let elk_parity = route_contract.is_elk_parity();
+    let elk_parity = options.elk_parity;
     #[cfg(feature = "layout-shoal")]
-    let canonical_routes = route_contract.canonical_routes();
-    let timing = options.timing();
+    let canonical_routes = options.canonical_routes;
+    let timing = options.timing;
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = options.diagram_id;
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
@@ -63,9 +71,14 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         .render_settings(style_plan.compatibility());
     let serialized_diagram_look = style_plan.compatibility().serialized_look.clone();
     let title_top_margin = state_render_settings.title_top_margin;
-    let hand_drawn_seed = options.rough_randomness(
-        state_render_settings.hand_drawn_seed,
-        "render.state.roughjs",
+    let resolved_seed = if state_render_settings.hand_drawn_seed == 0.0 {
+        options.render_seed as f64
+    } else {
+        state_render_settings.hand_drawn_seed
+    };
+    let hand_drawn_seed = RoughRandomness::new(
+        RoughJsSeed::new(resolved_seed),
+        RoughMathRandom::new(options.operation.derive_u64("render.state.roughjs", 0)),
     );
     let rough_cache = StateRoughCache::default();
 
@@ -84,7 +97,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+    let mut layout_edges_by_id: FxHashMap<&str, &LayoutEdge> =
         FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
     for e in &layout.edges {
         layout_edges_by_id.insert(e.id.as_str(), e);
@@ -109,12 +122,12 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // `nodes` already preserves that first-seen insertion order, so use it directly.
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
-    let native = options.native_family_theme();
+    let native = options.native_theme;
     let native_elevation = native
         .map(|theme| &theme.elevation)
         .filter(|elevation| **elevation != merman_theme_contract::v2::Elevation::Flat);
     let mut ctx = StateRenderCtx {
-        work_meter: options.work_meter(),
+        work_meter: options.work_meter,
         diagram_id,
         uses_elk_adapter_dom: elk_parity,
         elk_edge_paths: &layout.elk_edge_paths,
@@ -142,9 +155,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         links: &model.links,
         states: &model.states,
         edges: &model.edges,
-        include_edges: options.debug.include_edges,
-        include_nodes: options.debug.include_nodes,
-        has_node_shadows: options.debug.include_nodes && native_elevation.is_some(),
+        include_edges: options.include_edges,
+        include_nodes: options.include_nodes,
+        has_node_shadows: options.include_nodes && native_elevation.is_some(),
         native_elevation,
         measurer,
         label_sidecar,
@@ -289,7 +302,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     }
 
     if elk_parity {
-        ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
+        ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config)?;
     } else {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
     }
@@ -301,10 +314,10 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(ctx.work_meter);
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
-    let root_context = options.root_viewport(crate::DiagramFamilyId::STATE, diagram_id);
+    let root_context = &options.viewport;
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -319,7 +332,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         root_svg::DeferredRootSpec::mermaid(state_render_settings.use_max_width),
         root_chrome,
     )?;
-    options.checkpoint_emit()?;
+    ctx.work_meter.checkpoint(OperationPhase::Emit)?;
 
     if has_acc_title {
         let _ = write!(
@@ -345,11 +358,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id,
-        style_plan,
-    )?;
+    write_state_css(&mut XmlTextOutput::new(&mut out), diagram_id, style_plan)?;
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -376,7 +385,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             &ctx,
             None,
             (origin_x, origin_y),
-            options,
             timing,
             &mut detail,
             &mut effect_outsets,
@@ -427,11 +435,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let title_style = style_plan.title_text_style();
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, title_style);
 
-        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+        let (ascent, descent) = svg_text_vertical_extents_px(
             measurer,
             title,
             title_style,
-            crate::text::svg_title_bbox_vertical_extents_px(title_style),
+            svg_title_bbox_vertical_extents_px(title_style),
         );
 
         paint_bounds.min_x = paint_bounds.min_x.min(title_x - title_left);
@@ -518,10 +526,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 fn prepare_state_line_hop_paths(
     ctx: &StateRenderCtx<'_>,
     effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
 ) -> Result<FxHashMap<String, String>> {
-    use crate::svg::parity::line_hops::{LineHopEdge, elk_line_hop_paths};
-
     if effective_config
         .pointer("/elk/lineHops")
         .and_then(serde_json::Value::as_bool)
@@ -529,7 +534,7 @@ fn prepare_state_line_hop_paths(
     {
         return Ok(FxHashMap::default());
     }
-    options.work_meter().charge(ctx.edges.len())?;
+    ctx.work_meter.charge(ctx.edges.len())?;
     let point_count = ctx
         .edges
         .iter()
@@ -540,11 +545,11 @@ fn prepare_state_line_hop_paths(
                 .map_or(edge.points.len(), Vec::len)
         })
         .fold(0usize, usize::saturating_add);
-    options.work_meter().charge(point_count.saturating_mul(2))?;
+    ctx.work_meter.charge(point_count.saturating_mul(2))?;
 
     struct OwnedEdge<'a> {
         id: &'a str,
-        points: Vec<crate::model::LayoutPoint>,
+        points: Vec<LayoutPoint>,
         curve: Option<&'static str>,
         arrow_type_end: Option<&'a str>,
     }
@@ -591,7 +596,7 @@ fn prepare_state_line_hop_paths(
         })
         .collect();
     Ok(
-        elk_line_hop_paths(effective_config, &edges, options.work_meter())?
+        elk_line_hop_paths(effective_config, &edges, ctx.work_meter)?
             .into_iter()
             .map(|(id, path)| (id.to_owned(), path))
             .collect(),
@@ -607,14 +612,13 @@ fn render_state_root(
     ctx: &StateRenderCtx<'_>,
     root: Option<&str>,
     parent_origin: (f64, f64),
-    options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
     effect_outsets: &mut EffectOutsets,
     pass: StateRenderPass,
 ) -> Result<()> {
     details.root_calls += 1;
-    options.checkpoint_emit()?;
+    ctx.work_meter.checkpoint(OperationPhase::Emit)?;
     let (parent_origin_x, parent_origin_y) = parent_origin;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
@@ -636,8 +640,8 @@ fn render_state_root(
             let ty = origin_y - parent_origin_y;
             let (origin_x, origin_y) = if ctx.uses_canonical_routes() {
                 (
-                    parent_origin_x + crate::number_format::canonicalize_number(tx),
-                    parent_origin_y + crate::number_format::canonicalize_number(ty),
+                    parent_origin_x + canonicalize_number(tx),
+                    parent_origin_y + canonicalize_number(ty),
                 )
             } else {
                 (origin_x, origin_y)
@@ -788,7 +792,7 @@ fn render_state_root(
                         .elk_edge_paths
                         .get(&layout_edge.id)
                         .map_or(layout_edge.points.len(), Vec::len);
-                    options.work_meter().charge(original_path_work)?;
+                    ctx.work_meter.charge(original_path_work)?;
                 }
                 render_state_edge_path(
                     out,
@@ -796,11 +800,11 @@ fn render_state_root(
                     edge,
                     origin_x,
                     origin_y,
-                    options.work_meter(),
+                    ctx.work_meter,
                     #[cfg(feature = "layout-shoal")]
                     &mut details.canonical_edge_bounds,
                 )?;
-                options.checkpoint_emit()?;
+                ctx.work_meter.checkpoint(OperationPhase::Emit)?;
             }
         }
         out.push_str("</g>");
@@ -830,7 +834,7 @@ fn render_state_root(
                         .elk_edge_paths
                         .get(&layout_edge.id)
                         .map_or(layout_edge.points.len(), Vec::len);
-                    options.work_meter().charge(original_path_work)?;
+                    ctx.work_meter.charge(original_path_work)?;
                 }
                 render_state_edge_label(out, ctx, edge, origin_x, origin_y)?;
                 out.checkpoint()?;
@@ -892,7 +896,6 @@ fn render_state_root(
             ctx,
             Some(child_root),
             (origin_x, origin_y),
-            options,
             timing,
             details,
             effect_outsets,
@@ -1364,169 +1367,4 @@ fn render_state_cluster(
     }
     out.push_str(&inner_shape);
     out.push_str("</g>");
-}
-
-#[cfg(all(test, feature = "layout-elk"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn state_elk_neo_note_crossing_rewrites_the_complete_original_mask() {
-        let parsed = merman_core::MermaidEngine::new()
-            .parse_diagram_for_render_model_sync(
-                "stateDiagram-v2\nA --> B: move\nC --> D\nnote right of A: annotation\n",
-                merman_core::ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model() else {
-            panic!("expected State render model");
-        };
-        let note = model
-            .edges
-            .iter()
-            .find(|edge| edge.classes.contains("note-edge"))
-            .unwrap();
-        // Supply controlled provider routes to the real State paint path. The note crosses an
-        // unrelated transition, while the labelled transition is deliberately away from both.
-        let edges: Vec<crate::model::LayoutEdge> = model
-            .edges
-            .iter()
-            .map(|edge| {
-                let points = if edge.id == note.id {
-                    vec![
-                        crate::model::LayoutPoint { x: 0.0, y: 50.0 },
-                        crate::model::LayoutPoint { x: 100.0, y: 50.0 },
-                    ]
-                } else if edge.start == "C" {
-                    vec![
-                        crate::model::LayoutPoint { x: 50.0, y: 0.0 },
-                        crate::model::LayoutPoint { x: 50.0, y: 100.0 },
-                    ]
-                } else {
-                    vec![
-                        crate::model::LayoutPoint { x: 0.0, y: 200.0 },
-                        crate::model::LayoutPoint { x: 100.0, y: 200.0 },
-                    ]
-                };
-                crate::model::LayoutEdge {
-                    id: edge.id.clone(),
-                    from: edge.start.clone(),
-                    to: edge.end.clone(),
-                    from_cluster: None,
-                    to_cluster: None,
-                    points,
-                    label: (!edge.label.is_empty()).then_some(crate::model::LayoutLabel {
-                        x: 50.0,
-                        y: 200.0,
-                        width: 32.0,
-                        height: 24.0,
-                    }),
-                    start_label_left: None,
-                    start_label_right: None,
-                    end_label_left: None,
-                    end_label_right: None,
-                    start_marker: None,
-                    end_marker: None,
-                    stroke_dasharray: None,
-                }
-            })
-            .collect();
-        let layout = StateDiagramLayout {
-            nodes: Vec::new(),
-            clusters: Vec::new(),
-            edges,
-            bounds: None,
-            uses_elk_adapter_dom: true,
-            elk_edge_paths: Default::default(),
-        };
-        let render = |hops: serde_json::Value| {
-            let config =
-                serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
-            let plan = crate::state::StateStylePlan::resolve_unthemed(model, &config);
-            let labels = crate::state::StateLabelSidecarBuilder::default().finish();
-            crate::svg::with_test_svg_execution(
-                crate::DiagramFamilyId::STATE,
-                &SvgRenderOptions::default(),
-                |execution| {
-                    render_state_diagram_svg_model(
-                        &layout,
-                        model,
-                        &labels,
-                        &crate::graph_layout::RouteContract::ElkParity,
-                        &plan,
-                        &config,
-                        None,
-                        &crate::text::DeterministicTextMeasurer::default(),
-                        execution,
-                    )
-                    .unwrap()
-                    .into_string_for(crate::DiagramFamilyId::STATE)
-                    .unwrap()
-                },
-            )
-        };
-        let baseline = render(serde_json::json!(false));
-        let baseline_doc = crate::xml_dom::Document::parse(&baseline).unwrap();
-        for hops in [serde_json::json!(true), serde_json::json!("gap")] {
-            let svg = render(hops);
-            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
-            for expected in baseline_doc
-                .descendants()
-                .filter(|node| node.attribute("data-edge") == Some("true"))
-            {
-                let actual = doc
-                    .descendants()
-                    .find(|node| {
-                        node.attribute("data-id") == expected.attribute("data-id")
-                            && node.has_tag_name("path")
-                    })
-                    .unwrap();
-                assert_eq!(
-                    actual.attribute("data-points"),
-                    expected.attribute("data-points")
-                );
-                assert_eq!(
-                    actual.attribute("marker-end"),
-                    expected.attribute("marker-end")
-                );
-                if expected.attribute("data-id") != Some(note.id.as_str()) {
-                    assert_eq!(actual.attribute("d"), expected.attribute("d"));
-                    assert_eq!(actual.attribute("style"), expected.attribute("style"));
-                    continue;
-                }
-                let d = actual.attribute("d").unwrap();
-                assert_ne!(Some(d), expected.attribute("d"));
-                let style = actual.attribute("style").unwrap();
-                let mask = style
-                    .split(';')
-                    .find_map(|declaration| declaration.trim().strip_prefix("stroke-dasharray:"))
-                    .unwrap();
-                let mask: Vec<f64> = mask
-                    .split_whitespace()
-                    .map(|number| number.parse().unwrap())
-                    .collect();
-                assert_eq!(mask.len(), 4, "{style}");
-                assert_eq!((mask[0], mask[1], mask[3]), (0.0, 0.0, 2.0));
-                let length = crate::svg::parity::svg_path_length_from_d(d).unwrap();
-                assert!(
-                    (mask[2] + 2.0 - length).abs() < 1e-6,
-                    "{style}: length={length}"
-                );
-            }
-            let label = |document: &crate::xml_dom::Document<'_>| {
-                let group = document
-                    .descendants()
-                    .find(|node| node.attribute("class") == Some("edgeLabels"))
-                    .unwrap();
-                group
-                    .descendants()
-                    .filter_map(|node| node.attribute("transform"))
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            };
-            assert_eq!(label(&doc), label(&baseline_doc));
-        }
-    }
 }

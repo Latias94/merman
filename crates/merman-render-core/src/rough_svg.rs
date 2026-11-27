@@ -1,6 +1,12 @@
 use std::fmt::Write as _;
 
 pub mod controlled;
+mod geometry;
+
+pub use geometry::{
+    RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
+    roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_rect_operations,
+};
 
 pub fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
     let hex = s.trim().strip_prefix('#')?;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::theme::elevation_svg;
+use merman_render_core::theme_svg::elevation as elevation_svg;
 
 pub(super) fn render_state_node_shadows(
     out: &mut impl SvgOutput,

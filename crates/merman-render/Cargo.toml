@@ -85,7 +85,7 @@ diagram-railroad = ["merman-model/diagram-railroad", "dep:merman-render-structur
 diagram-requirement = ["merman-model/diagram-requirement", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-sankey = ["merman-model/diagram-sankey", "dep:merman-render-charts", "merman-render-charts/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "dep:merman-render-sequence", "merman-render-sequence/svg"]
-diagram-state = ["merman-model/diagram-state", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
+diagram-state = ["merman-model/diagram-state", "dep:merman-render-graph", "merman-render-graph/diagram-state", "markdown-labels", "dep:roughr", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "merman-render-core/resources-swimlane", "merman-render-core/theme-elevation", "merman-render-core/theme-label-background", "dep:merman-render-flow", "merman-render-flow/diagram-swimlane", "dep:imagesize", "markdown-labels", "dep:roughr", "merman-render-core/rough-svg", "dep:indexmap", "merman-render-core/graph-layout"]
 diagram-timeline = ["merman-model/diagram-timeline", "dep:merman-render-structured", "merman-render-structured/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
@@ -112,7 +112,7 @@ math = ["merman-render-core/math", "merman-render-sequence?/math"]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["icon-registry", "math-labels", "root-svg", "svg-animation", "svg-bounds", "svg-identity", "theme-svg", "xhtml-labels"] }
+merman-render-core = { workspace = true, features = ["icon-registry", "math-labels", "root-svg", "svg-animation", "svg-bounds", "svg-edge-parity", "svg-identity", "theme-svg", "xhtml-labels"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }

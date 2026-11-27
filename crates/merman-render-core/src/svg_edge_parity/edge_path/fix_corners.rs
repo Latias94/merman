@@ -4,7 +4,7 @@
 //! before feeding the polyline into D3's line generator. This helps avoid sharp right-angle
 //! corners when using curved interpolators.
 
-pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::LayoutPoint>) {
+pub fn maybe_fix_corners(points: &mut Vec<crate::LayoutPoint>) {
     const CORNER_DIST: f64 = 5.0;
     let mut corners = (1..points.len().saturating_sub(1)).filter(|&index| {
         let prev = &points[index - 1];
@@ -27,10 +27,10 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
     };
 
     fn find_adjacent_point(
-        point_a: &crate::model::LayoutPoint,
-        point_b: &crate::model::LayoutPoint,
+        point_a: &crate::LayoutPoint,
+        point_b: &crate::LayoutPoint,
         distance: f64,
-    ) -> crate::model::LayoutPoint {
+    ) -> crate::LayoutPoint {
         let x_diff = point_b.x - point_a.x;
         let y_diff = point_b.y - point_a.y;
         let len = (x_diff * x_diff + y_diff * y_diff).sqrt();
@@ -38,14 +38,14 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
             return point_b.clone();
         }
         let ratio = distance / len;
-        crate::model::LayoutPoint {
+        crate::LayoutPoint {
             x: point_b.x - ratio * x_diff,
             y: point_b.y - ratio * y_diff,
         }
     }
 
     let a = (2.0_f64).sqrt() * 2.0;
-    let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut out: Vec<crate::LayoutPoint> = Vec::new();
     let mut copy_from = 0;
     for index in std::iter::once(first_corner).chain(corners) {
         for point in &points[copy_from..index] {
@@ -65,7 +65,7 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
         if (next.x - prev.x).abs() > 10.0 && (next.y - prev.y).abs() >= 10.0 {
             let r = CORNER_DIST;
             if corner.x == new_prev.x {
-                new_corner = crate::model::LayoutPoint {
+                new_corner = crate::LayoutPoint {
                     x: if x_diff < 0.0 {
                         new_prev.x - r + a
                     } else {
@@ -78,7 +78,7 @@ pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::L
                     },
                 };
             } else {
-                new_corner = crate::model::LayoutPoint {
+                new_corner = crate::LayoutPoint {
                     x: if x_diff < 0.0 {
                         new_prev.x - a
                     } else {
