@@ -18,12 +18,12 @@ use std::time::Duration;
 use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
-    BindingError, BindingErrorBody, BindingErrorKind, BindingOperationKind,
-    BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
-    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, ConstructorServiceKey, DecodedOperationOptions,
-    NODE_TRANSPORT_API_VERSION, OperationControl, OperationKey, OperationPhase,
-    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
+    BindingError, BindingErrorBody, BindingErrorKind, BindingOperationRequest,
+    BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
+    CapabilityKey, ConstructorServiceKey, DecodedOperationOptions, NODE_TRANSPORT_API_VERSION,
+    OperationControl, OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -370,10 +370,9 @@ struct NodeOperationRequest {
 }
 
 impl NodeOperationRequest {
-    fn binding_request(&self, control: OperationControl) -> BindingOperationRequest<'_> {
+    fn binding_request(&self) -> BindingOperationRequest<'_> {
         BindingOperationRequest::new(&self.operation_id, self.source.as_bytes())
             .with_optional_uri(self.uri.as_deref().map(str::as_bytes))
-            .with_control(control)
     }
 }
 
@@ -605,12 +604,15 @@ fn execute_wire_inner(
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
-    let (request, operation) = prepare_wire_request(request_json, &control, admitted_timeout_ms)?;
+    let request = parse_operation_request_framing(request_json)?;
+    let operation_request = request.binding_request();
+    let operation = operation_request.resolve_operation()?;
+    validate_wire_control(&request, &control, admitted_timeout_ms)?;
     let options = decode_operation_request_options(request.options_json.as_deref())?;
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
-    let operation_request = request.binding_request(control);
+    let operation_request = operation_request.with_control(control);
     if request.include_metadata {
         success_envelope(engine.execute_with_decoded_options(operation_request, options)?)
     } else {
@@ -805,13 +807,11 @@ fn validate_direct_svg_framing(
     Ok(())
 }
 
-fn prepare_wire_request(
-    request_json: &str,
+fn validate_wire_control(
+    request: &NodeOperationRequest,
     control: &OperationControl,
     admitted_timeout_ms: Option<u32>,
-) -> Result<(NodeOperationRequest, BindingOperationKind), BindingError> {
-    let request = parse_operation_request_framing(request_json)?;
-    let operation = validate_operation_request_identity(&request)?;
+) -> Result<(), BindingError> {
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
@@ -837,7 +837,7 @@ fn prepare_wire_request(
         }
         (Some(_), Some(_)) | (None, None) => {}
     }
-    Ok((request, operation))
+    Ok(())
 }
 
 pub(crate) fn error_envelope(error: &BindingError) -> String {
@@ -888,28 +888,6 @@ fn parse_operation_request_framing(
             .map_err(caller_options_error)?;
     }
     Ok(request)
-}
-
-fn validate_operation_request_identity(
-    request: &NodeOperationRequest,
-) -> Result<BindingOperationKind, BindingError> {
-    let operation = BindingOperationKind::from_id(&request.operation_id)?;
-    let has_uri = request.uri.as_deref().is_some_and(|uri| !uri.is_empty());
-    if operation.requires_uri() != has_uri {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!(
-                "operation `{}` {} a document URI",
-                operation.operation_id(),
-                if operation.requires_uri() {
-                    "requires"
-                } else {
-                    "does not accept"
-                }
-            ),
-        ));
-    }
-    Ok(operation)
 }
 
 fn decode_operation_request_options(
@@ -2506,25 +2484,41 @@ mod tests {
                 r#"{"operation_id":"unknown-operation","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
                 "MERMAN_UNSUPPORTED_OPERATION",
                 "unknown-operation",
+                Some("unknown operation `unknown-operation`"),
             ),
             (
                 r#"{"operation_id":"document-analysis-json","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
                 "MERMAN_INVALID_ARGUMENT",
                 "generic",
+                Some("operation `document-analysis-json` requires a document URI"),
             ),
             (
-                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
+                r#"{"operation_id":"document-analysis-json","source":"flowchart TD\nA-->B","uri":"","options_json":"{"}"#,
+                "MERMAN_INVALID_ARGUMENT",
+                "generic",
+                Some("operation `document-analysis-json` requires a document URI"),
+            ),
+            (
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":"file:///diagram.mmd","options_json":"{"}"#,
+                "MERMAN_INVALID_ARGUMENT",
+                "generic",
+                Some("operation `semantic-json` does not accept a document URI"),
+            ),
+            (
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":"","options_json":"{"}"#,
                 "MERMAN_CANCELLED",
                 "generic",
+                None,
             ),
             (
                 r#"{"operation_id":"svg","source":"flowchart TD\nA-->B","uri":null,"include_metadata":false,"options_json":"{"}"#,
                 "MERMAN_CANCELLED",
                 "generic",
+                None,
             ),
         ];
 
-        for (request, expected_code_name, expected_kind) in cases {
+        for (request, expected_code_name, expected_kind, expected_message) in cases {
             let control = merman_bindings_core::OperationControl::new();
             control.cancel();
             let response: serde_json::Value = serde_json::from_str(&execute_wire_with_control(
@@ -2542,6 +2536,7 @@ mod tests {
                     "admission"
                 );
             } else {
+                assert_eq!(response["error"]["message"], expected_message.unwrap());
                 assert!(response["error"].get("details").is_none());
             }
         }
@@ -2689,7 +2684,7 @@ mod tests {
         let matching: serde_json::Value = serde_json::from_str(
             &execute_wire_with_admitted_control(
                 &engine,
-                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":60000}}"#,
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":"","operation_control":{"timeout_ms":60000}}"#,
                 admitted_operation_control(Some(60_000)),
                 Some(60_000),
             ),
