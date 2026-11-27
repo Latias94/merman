@@ -1,7 +1,4 @@
-use roughr::core::{
-    Op, OpSet, OpSetType, OpType, Options, OptionsBuilder, RoughJsSeed, RoughMathRandom,
-    RoughRandomness,
-};
+use roughr::core::{Op, OpSet, OpSetType, OpType, Options, OptionsBuilder, RoughRandomness};
 use roughr::{PathParser, PathSegment};
 
 pub const SOURCE_COMMIT: &str = "bd1ef5b8c6e5ada9bbe544a54cd85e11e62e727a";
@@ -310,6 +307,7 @@ pub fn outline_first_paths(
 fn fixed_head_solid_protocol_matches_operations_and_following_prng() {
     use super::{RoughGeometryTarget, prepare_solid_svg_path};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use roughr::core::{RoughJsSeed, RoughMathRandom};
     for seed in [0.0, 1.0, -1.0] {
         for path in [
             "M0 0 L40 0 L40 20 L0 20 Z",
