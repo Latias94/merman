@@ -20,7 +20,6 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub style: &'a str,
     pub junction_style: &'a str,
     pub effect_filter_style: &'a str,
-    pub suppress_child_filters: bool,
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
@@ -80,14 +79,6 @@ impl<'a> std::ops::Deref for FlowchartNodeRenderCommon<'a> {
     type Target = FlowchartNodeGeometry<'a>;
     fn deref(&self) -> &Self::Target {
         &self.geometry
-    }
-}
-
-impl FlowchartNodeRenderCommon<'_> {
-    pub(super) fn write_child_filter_style(&self, out: &mut impl crate::svg::parity::SvgOutput) {
-        if self.suppress_child_filters {
-            out.push_str(";filter:none !important");
-        }
     }
 }
 
@@ -233,7 +224,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         style,
         junction_style: selection.junction_style.as_deref().unwrap_or(style),
         effect_filter_style,
-        suppress_child_filters: suppress_look_filter,
         theme_style: &selection.theme_style,
         rough_group_style: &prepared.rough_group_style,
         fill_color,

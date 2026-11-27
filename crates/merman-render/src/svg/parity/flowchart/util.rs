@@ -1,7 +1,6 @@
 //! Flowchart-specific rendering helpers.
 
 pub(in crate::svg::parity) use super::super::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
-pub(super) use merman_render_flow::svg_label::OptionalStyleAttr;
 
 pub(super) struct OptionalStyleXmlAttr<'a>(pub(super) &'a str);
 

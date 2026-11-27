@@ -63,7 +63,6 @@ pub(crate) fn flowchart_marker_metrics(
 
 use render::{render_flowchart_edge_label, render_flowchart_edge_path, render_flowchart_node};
 use types::*;
-use util::OptionalStyleAttr;
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 

@@ -5,7 +5,7 @@ use merman_render_flow::node_body::{RectangleBody, RectangleStyle};
 use crate::flowchart::{FlowchartShape, LeanGeometry, LeanKind, resolve_flowchart_shape};
 use crate::{Error, Result};
 
-use super::{OuterPathShape, TerminalNodeBody, body_svg, node_body};
+use super::{OuterPathShape, TerminalNodeBody, body_svg, node_body, stadium_geometry};
 
 pub(in super::super) fn render_flowchart_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -43,7 +43,12 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_curly_brace_comment(out, ctx, common, label, details);
         }
         FlowchartShape::Circle => {
-            super::render_circle(out, ctx, common, details)?;
+            node_body::write_circle(
+                out,
+                body_svg(common, details),
+                common.node_styles,
+                !common.effect_filter_style.is_empty(),
+            )?;
         }
         FlowchartShape::CollapsedGroup => {
             return Err(Error::InvalidModel {
@@ -60,13 +65,25 @@ pub(in super::super) fn render_flowchart_shape(
             .prepare(ctx, common, label)
             .write(out, body_svg(common, details)),
         FlowchartShape::Diamond => {
-            super::render_diamond(out, common, details);
+            node_body::write_diamond(
+                out,
+                body_svg(common, details),
+                common.centered_diamond,
+                !common.effect_filter_style.is_empty(),
+            );
         }
         FlowchartShape::Document => {
             super::render_wave_document(out, ctx, common, label, details);
         }
         FlowchartShape::DoubleCircle => {
-            super::render_double_circle(out, ctx, common, details)?;
+            node_body::write_double_circle(
+                out,
+                body_svg(common, details),
+                common.look_is_neo(),
+                common.node_classes,
+                common.node_styles,
+                !common.effect_filter_style.is_empty(),
+            )?;
         }
         FlowchartShape::Ellipse => {
             return Err(Error::InvalidModel {
@@ -76,7 +93,7 @@ pub(in super::super) fn render_flowchart_shape(
             });
         }
         FlowchartShape::Hexagon => {
-            super::render_hexagon(out, common, details);
+            node_body::write_hexagon(out, body_svg(common, details), common.look_is_neo());
         }
         FlowchartShape::HorizontalCylinder => {
             super::render_horizontal_cylinder(out, ctx, common, label, details);
@@ -128,7 +145,7 @@ pub(in super::super) fn render_flowchart_shape(
             .prepare(ctx, common, label)
             .write(out, body_svg(common, details)),
         FlowchartShape::Odd => {
-            super::render_odd(out, common, label, details);
+            node_body::write_odd(out, body_svg(common, details), &mut label.dx);
         }
         FlowchartShape::Process => {
             render_rectangle(out, ctx, common, details, RectangleBody::Process);
@@ -140,7 +157,8 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_stacked_document(out, ctx, common, label, details);
         }
         FlowchartShape::Stadium => {
-            super::render_stadium(out, ctx, common, label, details);
+            let stadium = stadium_geometry(ctx, common, label);
+            node_body::write_stadium(out, body_svg(common, details), stadium);
         }
         FlowchartShape::TaggedDocument => {
             super::render_tagged_wave_document(out, ctx, common, label, details);

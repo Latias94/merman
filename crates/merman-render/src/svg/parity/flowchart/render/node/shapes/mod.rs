@@ -11,25 +11,20 @@ use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDe
 
 use super::{FlowchartNodeGeometry, FlowchartNodeLabelState, FlowchartNodeRenderCommon, helpers};
 
-mod basic_geoms;
 mod bpmn;
 mod collapsed_group;
 mod curly_braces;
 mod cylinders;
 mod dispatch;
 mod document_shapes;
-mod hexagon;
 mod icon;
 mod icon_circle;
 mod icon_square;
 mod image_square;
 mod manuals;
-mod odd;
 mod outer_path;
-mod stadium;
 mod triangle;
 
-pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bpmn::render_bpmn;
 pub(super) use collapsed_group::{render_collapsed_group_body, render_collapsed_group_indicators};
 pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
@@ -40,14 +35,11 @@ pub(super) use document_shapes::{
     render_lined_wave_document, render_stacked_document, render_tagged_wave_document,
     render_wave_document,
 };
-pub(super) use hexagon::render_hexagon;
 pub(super) use icon::render_icon;
 pub(super) use icon_circle::render_icon_circle;
 pub(super) use icon_square::{render_icon_rounded, render_icon_square};
 pub(super) use image_square::try_render_image_square;
 pub(super) use manuals::{render_manual_file, render_manual_input};
-pub(super) use odd::render_odd;
-pub(super) use stadium::render_stadium;
 pub(super) use triangle::render_triangle_extract;
 
 use outer_path::OuterPathShape;
@@ -240,6 +232,21 @@ pub(super) fn try_render_flowchart_no_label(
     )
 }
 
+fn stadium_geometry(
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &FlowchartNodeGeometry<'_>,
+    label: &FlowchartNodeLabelState<'_>,
+) -> crate::flowchart::StadiumGeometry {
+    // The source sizes the path from its rendered label bbox, including fractional HTML fonts.
+    let metrics = shape_label_metrics(ctx, common, label, Some(common.layout_node));
+    crate::flowchart::StadiumGeometry::from_label(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    )
+}
+
 fn advance_lean(common: &FlowchartNodeGeometry<'_>, kind: crate::flowchart::LeanKind) {
     let geometry = body_geometry(common);
     if geometry.hand_drawn {
@@ -276,7 +283,11 @@ pub(super) fn advance_rough_geometry(
             curly_braces::advance_rough_geometry(ctx, common, label)
         }
         FlowchartShape::Circle | FlowchartShape::Diamond | FlowchartShape::DoubleCircle => {
-            basic_geoms::advance_rough_geometry(ctx, common)?
+            node_body::advance_basic_rough_geometry(
+                shape,
+                body_geometry(common),
+                common.look_is_neo(),
+            )?;
         }
         FlowchartShape::CollapsedGroup => {
             collapsed_group::advance_rough_geometry(ctx, common, label)
@@ -297,7 +308,9 @@ pub(super) fn advance_rough_geometry(
                         .into(),
             });
         }
-        FlowchartShape::Hexagon => hexagon::advance_hexagon_rough_geometry(ctx, common, label),
+        FlowchartShape::Hexagon => {
+            node_body::advance_hexagon_rough_geometry(body_geometry(common), common.look_is_neo());
+        }
         FlowchartShape::IconCircle => icon_circle::advance_rough_geometry(ctx, common, label),
         FlowchartShape::IconRounded => icon_square::advance_rough_geometry(ctx, common, label, 5.0),
         FlowchartShape::IconSquare => icon_square::advance_rough_geometry(ctx, common, label, 0.1),
@@ -317,7 +330,9 @@ pub(super) fn advance_rough_geometry(
         FlowchartShape::NotchedPentagon => OuterPathShape::NotchedPentagon
             .prepare(ctx, common, label)
             .advance_rough_geometry(body_geometry(common)),
-        FlowchartShape::Odd => odd::advance_odd_rough_geometry(ctx, common, label),
+        FlowchartShape::Odd => {
+            node_body::advance_odd_rough_geometry(body_geometry(common), &mut label.dx);
+        }
         FlowchartShape::Process => {
             RectangleBody::Process.advance_rough_geometry(body_geometry(common), ctx.compatibility)
         }
@@ -327,7 +342,10 @@ pub(super) fn advance_rough_geometry(
         FlowchartShape::StackedDocument => {
             document_shapes::advance_stacked_document_rough_geometry(ctx, common, label)
         }
-        FlowchartShape::Stadium => stadium::advance_stadium_rough_geometry(ctx, common, label),
+        FlowchartShape::Stadium => {
+            let stadium = stadium_geometry(ctx, common, label);
+            node_body::advance_stadium_rough_geometry(body_geometry(common), stadium);
+        }
         FlowchartShape::TaggedDocument => {
             document_shapes::advance_tagged_wave_document_rough_geometry(ctx, common, label)
         }

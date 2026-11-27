@@ -8,9 +8,7 @@
 ))]
 pub(in crate::svg::parity) use merman_render_core::rough_svg::paths;
 
-pub(in crate::svg::parity) use merman_render_core::rough_svg::{
-    closed_path_d_from_points, roughjs_circle_operations, roughjs_rect_operations,
-};
+pub(in crate::svg::parity) use merman_render_core::rough_svg::closed_path_d_from_points;
 
 #[cfg(test)]
 mod color_tests {

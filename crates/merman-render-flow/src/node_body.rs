@@ -14,6 +14,7 @@ use merman_render_core::{
 };
 use roughr::core::RoughRandomness;
 
+mod basic;
 mod cylinders;
 mod datastore;
 mod depth;
@@ -27,6 +28,11 @@ mod rectangle_with_divider;
 mod shapes;
 mod subroutine;
 
+pub use basic::{
+    advance_basic_rough_geometry, advance_hexagon_rough_geometry, advance_odd_rough_geometry,
+    advance_stadium_rough_geometry, write_circle, write_diamond, write_double_circle,
+    write_hexagon, write_odd, write_stadium,
+};
 pub use cylinders::CylinderBody;
 pub use datastore::{advance_datastore, write_datastore};
 pub use depth::{native_node_silhouette, write_native_node_depth};
