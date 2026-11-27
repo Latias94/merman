@@ -37,7 +37,12 @@ impl Constraints {
                 right: r.right.filter(|idx| *idx < node_count),
                 top: r.top.filter(|idx| *idx < node_count),
                 bottom: r.bottom.filter(|idx| *idx < node_count),
-                gap: r.gap.max(0.0),
+                // Keep NaN for axis validation. `max` alone would turn it into a zero gap.
+                gap: if r.gap.is_nan() {
+                    r.gap
+                } else {
+                    r.gap.max(0.0)
+                },
             });
         }
 
@@ -181,7 +186,10 @@ fn normalize_axis_constraint_graph<W: WorkControl + ?Sized>(
 
     let mut outgoing = vec![Vec::new(); node_count];
     let mut incoming = vec![Vec::new(); node_count];
-    for (from, to, _) in edges.clone() {
+    for (from, to, gap) in edges.clone() {
+        if !gap.is_finite() {
+            return Err(Error::InfeasibleConstraints { axis });
+        }
         let (from, to) = (parent[from], parent[to]);
         outgoing[from].push(to);
         incoming[to].push(from);
