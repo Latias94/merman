@@ -17,7 +17,7 @@ pub(crate) use merman_render_core::resources::{
     MAX_SVG_BACKEND_COORDINATE_MAGNITUDE, SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID,
 };
 pub(crate) use merman_render_core::resources::{
-    OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, SvgByteReservation,
+    OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation,
 };
 
 #[cfg(feature = "diagram-class")]

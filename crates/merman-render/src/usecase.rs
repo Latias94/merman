@@ -9,6 +9,8 @@ pub use merman_render_graph::usecase::UsecaseDiagramLayout;
 use merman_render_graph::usecase::UsecaseLabelPlan;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use merman_render_graph::usecase::actor;
+#[cfg(feature = "layout-shoal")]
+use merman_render_graph::usecase::{UsecaseCanonicalSvg, UsecaseEdgePainter};
 pub(crate) use merman_render_graph::usecase::{UsecaseEdgePlan, UsecaseNodePlan, requires_math};
 
 mod layout;
@@ -39,15 +41,17 @@ impl UsecasePreparedArtifact {
     }
 
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn canonical_boundary_geometry(
-        &self,
-    ) -> Option<(
-        &std::collections::HashMap<String, crate::model::LayoutLabel>,
-        &[(usize, usize)],
-    )> {
+    pub(crate) fn canonical_svg<'a>(
+        &'a self,
+        paint_edges: &'a UsecaseEdgePainter<'a>,
+    ) -> Option<UsecaseCanonicalSvg<'a>> {
         self.canonical
             .as_ref()
-            .map(|canonical| (&canonical.titles, canonical.boundary_order.as_slice()))
+            .map(|canonical| UsecaseCanonicalSvg {
+                titles: &canonical.titles,
+                boundary_order: &canonical.boundary_order,
+                paint_edges,
+            })
     }
 }
 

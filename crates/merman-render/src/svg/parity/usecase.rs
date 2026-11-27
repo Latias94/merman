@@ -11,8 +11,6 @@ use merman_model::{
     presentation::PresentationConfig,
 };
 use merman_render_core::{root_svg::RootedSvg, text::TextMeasurer};
-#[cfg(feature = "layout-shoal")]
-use merman_render_graph::usecase::UsecaseCanonicalSvg;
 use merman_render_graph::usecase::{
     UsecaseSvgContext, render_usecase_diagram_svg_model as render_usecase,
 };
@@ -33,14 +31,6 @@ pub(super) fn render_usecase_diagram_svg_model(
     let paint_edges = |bounds: &mut Bounds| {
         canonical::prepare_edges(prepared, config.as_value(), bounds, options)
     };
-    #[cfg(feature = "layout-shoal")]
-    let canonical = prepared
-        .canonical_boundary_geometry()
-        .map(|(titles, boundary_order)| UsecaseCanonicalSvg {
-            titles,
-            boundary_order,
-            paint_edges: &paint_edges,
-        });
     render_usecase(
         &prepared.prepared,
         model,
@@ -55,7 +45,7 @@ pub(super) fn render_usecase_diagram_svg_model(
             native_theme: options.native_family_theme(),
             icon_registry: options.icon_registry(),
             #[cfg(feature = "layout-shoal")]
-            canonical,
+            canonical: prepared.canonical_svg(&paint_edges),
         },
     )
 }

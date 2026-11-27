@@ -2,7 +2,6 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use merman_render_core::svg_css::CssSelectorDiagramId;
 #[cfg(test)]
 use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
@@ -11,35 +10,10 @@ use super::SvgOutput;
 pub(super) use merman_render_core::html::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
-    EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
+    EscapeAttrDisplay, escape_attr_display, escape_xml_display, escape_xml_into,
     escape_xml_serialized_text_into, escaped_attr_len, escaped_xml_len,
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
-
-pub(super) use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_id, scoped_svg_url};
-
-pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
-    CssSelectorDiagramId(diagram_id)
-}
-
-pub(super) use crate::config::config_f64;
-
-pub(super) use crate::config::config_string;
-
-pub(super) use crate::config::json_bool;
-
-pub(super) fn config_bool(
-    cfg: &(impl crate::config::ConfigLookup + ?Sized),
-    path: &[&str],
-) -> Option<bool> {
-    crate::config::value_at(cfg, path).and_then(json_bool)
-}
-
-pub(super) fn fmt_string(v: f64) -> String {
-    let mut out = String::new();
-    fmt_into(&mut out, v);
-    out
-}
 
 pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
     fmt(v)
@@ -57,29 +31,29 @@ pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
 }
 
 pub(super) use merman_render_core::svg_edge_parity::path_numbers::{
-    fmt_path, json_stringify_points, json_stringify_points_into,
+    json_stringify_points, json_stringify_points_into,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_render_core::xml::escape_xml_raw_into;
+    use merman_render_core::xml::{escape_attr_into, escape_xml_raw_into};
+
+    fn fmt_string(v: f64) -> String {
+        let mut out = String::new();
+        fmt_into(&mut out, v);
+        out
+    }
 
     #[test]
     fn fmt_into_matches_expected() {
-        fn fmt_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_into_string(f64::NAN), "0");
-        assert_eq!(fmt_into_string(f64::INFINITY), "0");
-        assert_eq!(fmt_into_string(-0.0), "0");
-        assert_eq!(fmt_into_string(0.0), "0");
-        assert_eq!(fmt_into_string(1.0), "1");
-        assert_eq!(fmt_into_string(1.0000004), "1");
-        assert_eq!(fmt_into_string(-1.0000004), "-1");
+        assert_eq!(fmt_string(f64::NAN), "0");
+        assert_eq!(fmt_string(f64::INFINITY), "0");
+        assert_eq!(fmt_string(-0.0), "0");
+        assert_eq!(fmt_string(0.0), "0");
+        assert_eq!(fmt_string(1.0), "1");
+        assert_eq!(fmt_string(1.0000004), "1");
+        assert_eq!(fmt_string(-1.0000004), "-1");
     }
 
     #[test]

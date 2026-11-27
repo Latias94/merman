@@ -15,7 +15,7 @@ use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, C4DiagramLayout, LayoutPoint};
+use crate::model::{Bounds, C4DiagramLayout};
 use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
 use merman_layout_shoal::{WidthPolicy, card_grid};

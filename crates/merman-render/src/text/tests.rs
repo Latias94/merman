@@ -1609,6 +1609,7 @@ fn markdown_svg_wrap_cancellation_skips_copy_without_a_width_limit() {
 #[test]
 fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
     use MermaidMarkdownWordType::*;
+    use merman_render_core::text::mermaid_markdown_to_wrapped_word_lines;
 
     let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {

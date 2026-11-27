@@ -1,6 +1,6 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
-pub(in crate::svg::parity) use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d};
+pub(in crate::svg::parity) use merman_render_core::rough_svg::ops_to_svg_path_d;
 
 #[cfg(any(
     feature = "diagram-c4",
@@ -12,8 +12,8 @@ pub(in crate::svg::parity) use merman_render_core::rough_svg::{controlled, ops_t
 pub(in crate::svg::parity) use merman_render_core::rough_svg::paths;
 
 pub(in crate::svg::parity) use merman_render_core::rough_svg::{
-    RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
-    roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_rect_operations,
+    closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
+    roughjs_rect_operations,
 };
 
 #[cfg(test)]

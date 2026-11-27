@@ -25,7 +25,7 @@ pub mod block;
 pub mod c4;
 #[cfg(feature = "diagram-class")]
 pub mod class;
-use merman_render_core::{config, entities, mermaid_style, number_format};
+use merman_render_core::{config, mermaid_style, number_format};
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
 #[cfg(all(

@@ -1,7 +1,3 @@
-use super::*;
-
-#[cfg(all(test, feature = "all-diagrams"))]
-use merman_render_core::svg_css::FragmentDiagramId;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

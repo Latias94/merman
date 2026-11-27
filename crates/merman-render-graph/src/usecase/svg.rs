@@ -36,12 +36,16 @@ pub use canonical::UsecasePaintedEdge;
 mod shapes;
 mod theme;
 
+#[cfg(feature = "layout-shoal")]
+pub type UsecaseEdgePainter<'a> =
+    dyn Fn(&mut Bounds) -> Result<Option<Vec<UsecasePaintedEdge>>> + 'a;
+
 /// Canonical geometry provided by the facade without transferring the routing backend.
 #[cfg(feature = "layout-shoal")]
 pub struct UsecaseCanonicalSvg<'a> {
     pub titles: &'a HashMap<String, merman_render_core::LayoutLabel>,
     pub boundary_order: &'a [(usize, usize)],
-    pub paint_edges: &'a dyn Fn(&mut Bounds) -> Result<Option<Vec<UsecasePaintedEdge>>>,
+    pub paint_edges: &'a UsecaseEdgePainter<'a>,
 }
 
 /// Operation context for complete Usecase SVG emission.

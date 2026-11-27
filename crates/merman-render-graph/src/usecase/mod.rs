@@ -34,7 +34,7 @@ mod theme;
 pub use marker::UsecaseMarker;
 pub use measure::number as configured_usecase_number;
 #[cfg(feature = "layout-shoal")]
-pub use svg::{UsecaseCanonicalSvg, UsecasePaintedEdge};
+pub use svg::{UsecaseCanonicalSvg, UsecaseEdgePainter, UsecasePaintedEdge};
 pub use svg::{UsecaseSvgContext, render_usecase_diagram_svg_model};
 use theme::UsecaseCssBinding;
 

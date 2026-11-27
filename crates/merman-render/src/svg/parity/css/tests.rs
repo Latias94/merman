@@ -1,5 +1,6 @@
-use super::*;
 use crate::svg::PreparedCommonCss;
+use merman_render_core::svg_css::{FragmentDiagramId, PreparedCommonNeoCss, SvgDiagramIdValue};
+use merman_render_core::svg_output::SvgOutput;
 use merman_render_graph::er::er_css_with_resolved_typography;
 use std::collections::BTreeMap;
 

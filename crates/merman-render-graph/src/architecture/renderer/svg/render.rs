@@ -458,7 +458,7 @@ pub fn render_architecture_diagram_svg_typed_with_config(
 
     let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
         out: &mut out,
-        root_viewport: root_viewport,
+        root_viewport,
         root_document,
         content_bounds,
         padding_px,

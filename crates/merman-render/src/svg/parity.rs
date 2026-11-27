@@ -23,8 +23,6 @@ use crate::{Error, Result};
 use base64::Engine as _;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
-#[cfg(test)]
-use merman_render_core::svg_css::SvgDiagramIdValue;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
 use merman_render_core::svg_output as output;
 use std::fmt::Write as _;
@@ -301,11 +299,6 @@ use style::is_text_style_key;
     )
 )]
 pub(crate) use util::escape_attr;
-#[cfg(all(
-    feature = "diagram-architecture",
-    any(feature = "layout-cytoscape", feature = "layout-shoal")
-))]
-use util::escape_attr_into;
 pub(crate) use util::escape_xml;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -315,9 +308,8 @@ pub(crate) use util::escape_xml;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, escape_attr_display, escape_xml_display,
-    escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_string, json_stringify_points,
-    json_stringify_points_into, scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
+    escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display,
+    json_stringify_points, json_stringify_points_into,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
@@ -1708,6 +1700,7 @@ mod operation_rough_seed_tests {
 mod diagram_id_projection_tests {
     use super::*;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_url};
 
     fn bounded_execution(maximum: usize) -> (RenderSession, SvgDebugOptions) {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()

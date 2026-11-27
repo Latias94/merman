@@ -157,7 +157,7 @@ mod tests {
         for padding in [0, 1024, 4096] {
             let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
             let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
-            let config = crate::class::test_support::presentation_config(serde_json::json!({
+            let config = crate::test_support::presentation_config(serde_json::json!({
                 "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
             }));
             let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
