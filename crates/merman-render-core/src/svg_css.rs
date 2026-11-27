@@ -16,8 +16,8 @@ mod prepared;
 mod resource_urls;
 
 pub use id::{
-    CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, scoped_drop_shadow,
-    scoped_svg_id, scoped_svg_url,
+    CssSelectorDiagramId, FragmentDiagramId, SvgDiagramIdProjection, SvgId, sanitize_svg_id,
+    scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
 };
 #[cfg(feature = "svg-identity")]
 pub use id_suffix::lower_id_suffix_selectors;

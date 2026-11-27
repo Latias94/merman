@@ -24,9 +24,6 @@ pub(crate) use merman_render_core::svg_scan::{
 use merman_render_core::svg_validation::test_support;
 use merman_render_core::svg_validation::{InlineRasterSources, SvgFontSeal, TerminalSvgValidation};
 pub use merman_render_core::svg_validation::{SvgReferencePlan, SvgResourceClosure};
-pub(crate) use merman_render_core::svg_validation::{
-    is_css_value_attribute, is_svg_idref_attribute, validate_well_formed_svg_with_controls,
-};
 pub(crate) use merman_render_core::svg_xml::SvgStructureMetrics;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;

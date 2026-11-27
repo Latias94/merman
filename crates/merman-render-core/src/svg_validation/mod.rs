@@ -1,5 +1,6 @@
 //! Shared XML and resource validation for SVG consumers.
 
+mod id_rebase;
 mod resource_closure;
 mod static_inline;
 mod terminal;
@@ -14,10 +15,10 @@ use crate::resources::{
 use crate::{Error, Result};
 use merman_model::OperationPhase;
 
+pub use id_rebase::SvgIdRebase;
 pub use resource_closure::SvgResourceClosure;
 pub use terminal::{
     InlineRasterSources, SvgReferencePlan, TerminalSvgValidation, plan_svg_occurrences_for_receipt,
-    validate_well_formed_svg_with_controls,
 };
 pub use text_tracking::SvgFontSeal;
 
@@ -71,7 +72,7 @@ impl<'a> SvgValidation<'a> {
     }
 }
 
-pub fn is_css_value_attribute(name: &str) -> bool {
+fn is_css_value_attribute(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
         "style"
@@ -91,7 +92,7 @@ pub fn is_css_value_attribute(name: &str) -> bool {
     )
 }
 
-pub fn is_svg_idref_attribute(name: &str) -> bool {
+fn is_svg_idref_attribute(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
         "aria-activedescendant"

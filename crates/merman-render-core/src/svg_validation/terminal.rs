@@ -91,7 +91,7 @@ pub(crate) fn validate_well_formed_svg_with_checkpoint(
     .map(|_| ())
 }
 
-pub fn validate_well_formed_svg_with_controls(
+pub(super) fn validate_well_formed_svg_with_controls(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,

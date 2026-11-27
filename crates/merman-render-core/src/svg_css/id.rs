@@ -175,6 +175,68 @@ where
     }
 }
 
+/// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
+/// family renderer.
+///
+/// The result is safe to interpolate directly after `#` in generated stylesheets without CSS
+/// escaping changing its selector meaning.
+pub fn sanitize_svg_id(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "m-untitled".to_string();
+    }
+
+    let mut iter = raw.chars();
+    let Some(first_raw) = iter.next() else {
+        return "m-untitled".to_string();
+    };
+
+    let sanitize_char = |ch: char| {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            ch
+        } else {
+            '-'
+        }
+    };
+    let first = sanitize_char(first_raw);
+    let mut out = String::with_capacity(raw.len() + 2);
+    let mut previous_was_dash = false;
+
+    if !first.is_ascii_alphabetic() {
+        out.push('m');
+        if first != '-' {
+            out.push('-');
+            previous_was_dash = true;
+        }
+    }
+
+    let push = |ch: char, out: &mut String, previous_was_dash: &mut bool| {
+        if ch == '-' {
+            if *previous_was_dash {
+                return;
+            }
+            *previous_was_dash = true;
+        } else {
+            *previous_was_dash = false;
+        }
+        out.push(ch);
+    };
+
+    push(first, &mut out, &mut previous_was_dash);
+    for ch in iter {
+        push(sanitize_char(ch), &mut out, &mut previous_was_dash);
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+
+    if out.is_empty() || out == "m" {
+        "m-untitled".to_string()
+    } else {
+        out
+    }
+}
+
 const fn is_normalized_svg_diagram_id(value: &str) -> bool {
     let bytes = value.as_bytes();
     if bytes.is_empty() || !bytes[0].is_ascii_alphabetic() {
