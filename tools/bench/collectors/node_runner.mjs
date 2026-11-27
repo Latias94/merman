@@ -225,18 +225,22 @@ function validateOutputs(jobs, lifetimeFd) {
   const options = {
     input: JSON.stringify(jobs), encoding: "utf8", maxBuffer: Infinity, stdio: ["pipe", "pipe", "inherit"],
   };
-  if (!posixProcessGroups) {
-    return JSON.parse(execFileSync("python", args, options));
-  }
+  if (posixProcessGroups && lifetimeFd !== undefined) options.stdio.push(lifetimeFd);
 
-  if (lifetimeFd !== undefined) options.stdio.push(lifetimeFd);
-  // Reap Python before returning. Its exit status takes precedence over a secondary stdin EPIPE.
-  const { status, signal, error, stdout } = spawnSync("python3", args, options);
-  if (signal || (status !== null && status !== 0)) {
-    throw new Error(`SVG validator failed (${signal ?? `exit ${status}`})`);
+  const interpreter = process.env.MERMAN_BENCH_PYTHON;
+  const defaults = posixProcessGroups ? [["python3"], ["python"]] : [["python"], ["python3"], ["py", "-3"]];
+  const commands = interpreter ? [[interpreter]] : defaults;
+  for (const [command, ...prefix] of commands) {
+    // Reap Python before returning. Its exit status takes precedence over a secondary stdin EPIPE.
+    const { status, signal, error, stdout } = spawnSync(command, [...prefix, ...args], options);
+    if (!interpreter && error?.code === "ENOENT") continue;
+    if (signal || (status !== null && status !== 0)) {
+      throw new Error(`SVG validator failed (${signal ?? `exit ${status}`})`);
+    }
+    if (error) throw error;
+    return JSON.parse(stdout);
   }
-  if (error) throw error;
-  return JSON.parse(stdout);
+  throw new Error("SVG validator needs Python. Set MERMAN_BENCH_PYTHON to the interpreter path.");
 }
 
 // Only assert literal root IDs in the subset that Merman's SVG ID sanitizer preserves.

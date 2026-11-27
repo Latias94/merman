@@ -269,7 +269,7 @@ impl ErBoxLabel {
         layout: ErHtmlLabelLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<TextMetrics> {
-        use crate::text::html_wrap::{NormalizedHtmlText, plan_html_lines};
+        use crate::text::html_wrap::{NormalizedHtmlText, plan_html_lines_with_measurer};
         let mut checkpoint = || {
             work_meter
                 .checkpoint(merman_model::OperationPhase::Layout)
@@ -285,11 +285,11 @@ impl ErBoxLabel {
             },
             &mut checkpoint,
         )?;
-        let lines = plan_html_lines(
+        let lines = plan_html_lines_with_measurer(
             &normalized,
             layout.break_spaces.then_some(layout.width_budget as f64),
-            measurer.begin_html_line_width(style),
-            &mut |text| {
+            Some((measurer, style, Default::default())),
+            &mut |text, _, _| {
                 checkpoint()?;
                 let width = measurer.measure_html_line_width_px(text, style);
                 checkpoint()?;

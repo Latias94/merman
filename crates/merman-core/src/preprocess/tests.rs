@@ -6,14 +6,14 @@ use super::directives::{parse_directive_like_upstream, sanitize_directive};
 use super::frontmatter::FrontmatterCapture;
 #[cfg(feature = "editor-facts")]
 use super::rewrite_order::MAX_REWRITE_DEPTH;
-use super::text::{
-    encode_mermaid_entities_like_upstream, normalize_crlf,
-    normalize_html_tag_attributes_like_upstream,
-};
 use super::*;
+use merman_core_preprocess::MappedSource;
 use merman_core_preprocess::frontmatter::dedent_frontmatter_body_controlled;
 use merman_core_preprocess::scan::controlled::{
     CONTROLLED_SCAN_CHECKPOINT_BYTES, ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
+};
+use merman_core_preprocess::text::{
+    normalize_crlf_controlled, normalize_html_tag_attributes_like_upstream_controlled,
 };
 use serde_json::{Map, Value, json};
 
@@ -213,7 +213,7 @@ fn comments_consume_preceding_blank_lines_but_preserve_following_blank_lines() {
             &OperationControl::new(),
         )
         .expect("active operation");
-        trim_source_start_controlled(&mut source, &OperationControl::new())
+        trim_source_start_controlled(source.mapped_mut(), &OperationControl::new())
             .expect("active operation");
         assert_eq!(source.text(), expected, "{input:?}");
     }
@@ -242,7 +242,7 @@ fn comments_follow_ecmascript_whitespace_and_multiline_anchors() {
             &OperationControl::new(),
         )
         .expect("active operation");
-        trim_source_start_controlled(&mut source, &OperationControl::new())
+        trim_source_start_controlled(source.mapped_mut(), &OperationControl::new())
             .expect("active operation");
         assert_eq!(source.text(), expected, "{input:?}");
     }
@@ -431,9 +431,13 @@ fn captured_detection_panic_does_not_swallow_cancellation() {
     assert!(matches!(result, Err(crate::OperationCancelled { .. })));
 }
 
-fn transformed(input: &str, transform: fn(&mut PreprocessedSource)) -> String {
-    let mut source = PreprocessedSource::new(input);
-    transform(&mut source);
+fn transformed(
+    input: &str,
+    transform: fn(&mut MappedSource, &OperationControl) -> OperationControlResult<()>,
+) -> String {
+    let control = OperationControl::new();
+    let mut source = MappedSource::new_controlled(input, false, &control).unwrap();
+    transform(&mut source, &control).unwrap();
     source.into_text()
 }
 
@@ -1025,10 +1029,10 @@ fn frontmatter_rewrite_safety_distinguishes_insertion_from_materialization() {
 #[test]
 fn normalize_crlf_matches_mermaid_line_ending_cleanup() {
     assert_eq!(
-        transformed("flowchart TD\r\nA-->B\rC-->D\n", normalize_crlf),
+        transformed("flowchart TD\r\nA-->B\rC-->D\n", normalize_crlf_controlled),
         "flowchart TD\nA-->B\nC-->D\n"
     );
-    assert_eq!(transformed("\r\r\n\n", normalize_crlf), "\n\n\n");
+    assert_eq!(transformed("\r\r\n\n", normalize_crlf_controlled), "\n\n\n");
 }
 
 #[test]
@@ -1036,28 +1040,28 @@ fn normalize_html_tag_attributes_matches_mermaid_cleanup_shape() {
     assert_eq!(
         transformed(
             r#"<span title="A" data-empty="">Label</span><br disabled="yes">"#,
-            normalize_html_tag_attributes_like_upstream,
+            normalize_html_tag_attributes_like_upstream_controlled,
         ),
         r#"<span title='A' data-empty=''>Label</span><br disabled='yes'>"#
     );
     assert_eq!(
         transformed(
             r#"<é title="A"><_x value="B"><1 n="C">"#,
-            normalize_html_tag_attributes_like_upstream,
+            normalize_html_tag_attributes_like_upstream_controlled,
         ),
         r#"<é title="A"><_x value='B'><1 n='C'>"#
     );
     assert_eq!(
         transformed(
             r#"<span a="x" title="A>B">"#,
-            normalize_html_tag_attributes_like_upstream,
+            normalize_html_tag_attributes_like_upstream_controlled,
         ),
         r#"<span a='x' title="A>B">"#
     );
     assert_eq!(
         transformed(
             r#"<<span title="A">"#,
-            normalize_html_tag_attributes_like_upstream,
+            normalize_html_tag_attributes_like_upstream_controlled,
         ),
         r#"<<span title='A'>"#
     );
@@ -1068,8 +1072,9 @@ fn normalize_html_attribute_quotes_keep_exact_unicode_source_spans() {
     let original = r#"flowchart TD
 A["<span title="😀">Label</span>"]
 "#;
-    let mut source = PreprocessedSource::new(original);
-    normalize_html_tag_attributes_like_upstream(&mut source);
+    let control = OperationControl::new();
+    let mut source = MappedSource::new_controlled(original, false, &control).unwrap();
+    normalize_html_tag_attributes_like_upstream_controlled(&mut source, &control).unwrap();
 
     assert!(source.text().contains("title='😀'"));
     let emoji = source.text().find('😀').unwrap();
@@ -1084,39 +1089,42 @@ fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
     assert_eq!(
         transformed(
             "Hello #there; #andHere;#77653;",
-            encode_mermaid_entities_like_upstream,
+            encode_mermaid_entities_like_upstream_controlled,
         ),
         "Hello ﬂ°there¶ß ﬂ°andHere¶ßﬂ°°77653¶ß"
     );
     assert_eq!(
         transformed(
             "style this; is ; everything :something#not-nothing; and this too;",
-            encode_mermaid_entities_like_upstream,
+            encode_mermaid_entities_like_upstream_controlled,
         ),
         "style this; is ; everything :something#not-nothing; and this too"
     );
     assert_eq!(
         transformed(
             "classDef this; is ; everything :something#not-nothing; and this too;",
-            encode_mermaid_entities_like_upstream,
+            encode_mermaid_entities_like_upstream_controlled,
         ),
         "classDef this; is ; everything :something#not-nothing; and this too"
     );
     assert_eq!(
         transformed(
             "style a fill:#fff; style b fill:#000;",
-            encode_mermaid_entities_like_upstream,
+            encode_mermaid_entities_like_upstream_controlled,
         ),
         "style a fill:ﬂ°fff¶ß style b fill:#000"
     );
     assert_eq!(
-        transformed("style a fill: #fff;", encode_mermaid_entities_like_upstream,),
+        transformed(
+            "style a fill: #fff;",
+            encode_mermaid_entities_like_upstream_controlled,
+        ),
         "style a fill: ﬂ°fff¶ß"
     );
     assert_eq!(
         transformed(
             "#é; #+123; #has-dash;",
-            encode_mermaid_entities_like_upstream,
+            encode_mermaid_entities_like_upstream_controlled,
         ),
         "#é; #+123; #has-dash;"
     );

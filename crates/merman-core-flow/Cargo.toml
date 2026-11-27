@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Syntax parsing for Merman's Mermaid Flowchart and Swimlane diagrams."
+documentation = "https://docs.rs/merman-core-flow"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "parser", "flowchart", "swimlane"]
+categories = ["parser-implementations", "visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

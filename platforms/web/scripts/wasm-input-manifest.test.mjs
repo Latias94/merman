@@ -94,6 +94,7 @@ describe("WASM input manifest", () => {
       "--format-version",
       "1",
       "--locked",
+      "--all-features",
       "--manifest-path",
       path.join(fixture.repoRoot, "Cargo.toml"),
     ]);

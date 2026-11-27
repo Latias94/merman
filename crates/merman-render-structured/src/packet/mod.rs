@@ -11,7 +11,7 @@ mod svg;
 pub use layout::layout_packet_diagram_typed;
 pub use model::{PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 pub use style::PacketStyle;
-pub use svg::write_svg_contents;
+pub use svg::render_packet_svg;
 
 fn terminal_title<'a>(
     model: &'a PacketDiagramModel,

@@ -6,8 +6,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Syntax parser for Merman's Mermaid sequence diagrams."
+description = "Syntax and semantic model construction for Merman's sequence diagrams."
+documentation = "https://docs.rs/merman-core-sequence"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "parser", "sequence"]
+categories = ["parser-implementations", "visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
@@ -17,8 +20,13 @@ default = []
 editor-facts = []
 
 [dependencies]
+cssparser.workspace = true
+indexmap.workspace = true
 merman-core-preprocess.workspace = true
 merman-model = { workspace = true, features = ["diagram-sequence"] }
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }

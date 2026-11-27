@@ -7,18 +7,37 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Layout, geometry, and presentation for Merman's chart families."
+documentation = "https://docs.rs/merman-render-charts"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "charts"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
 
 [features]
 default = []
-diagram-pie = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/theme-svg"]
+diagram-pie = [
+    "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-pie", "merman-render-core/root-svg",
+    "merman-render-core/text-layout", "merman-render-core/theme-svg",
+]
 diagram-quadrant-chart = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-quadrant-chart"]
-diagram-radar = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar"]
-diagram-sankey = ["dep:merman-model", "dep:merman-render-core", "dep:serde", "dep:serde_json", "merman-model/diagram-sankey"]
-diagram-treemap = ["dep:merman-model", "dep:merman-render-core", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-treemap"]
+diagram-radar = [
+    "dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-radar",
+    "merman-render-core/root-svg",
+]
+diagram-sankey = [
+    "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js",
+    "dep:serde", "dep:serde_json", "merman-model/diagram-sankey", "merman-render-core/root-svg",
+    "merman-render-core/text-layout",
+]
+diagram-treemap = [
+    "dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract",
+    "dep:rustc-hash", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-treemap",
+    "merman-render-core/root-svg", "merman-render-core/text-layout", "merman-render-core/theme-svg",
+]
 diagram-venn = [
     "dep:indexmap", "dep:libm", "dep:merman-model", "dep:merman-render-core", "dep:ryu-js",
     "dep:serde", "dep:serde_json", "dep:thiserror", "merman-model/diagram-venn",
@@ -33,6 +52,7 @@ diagram-xychart = [
 cssparser = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 libm = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
@@ -41,3 +61,9 @@ ryu-js = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
+merman-theme-contract = { workspace = true, features = ["presets"] }
+roxmltree.workspace = true
+svgtypes.workspace = true

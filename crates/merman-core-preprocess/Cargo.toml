@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Controlled source text edits and byte-span mapping for Merman."
+documentation = "https://docs.rs/merman-core-preprocess"
 readme = "README.md"
+keywords = ["mermaid", "parser", "preprocessing", "source-map"]
+categories = ["parser-implementations", "text-processing"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true

@@ -265,12 +265,11 @@ pub(crate) fn layout_c4_shoal(
     let mut relations = Vec::with_capacity(relation_count);
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
-    let measure_ink_later = measure
-        .measurer
-        .builtin_operation_carrier(
-            crate::environment::TextMeasurementOperation::MermaidCalculateTextDimensions,
-        )
-        .is_some();
+    let measure_ink_later = merman_render_core::text::measurement::measurement_reuse_key(
+        measure.measurer,
+        crate::environment::TextMeasurementOperation::MermaidCalculateTextDimensions,
+    )
+    .is_some();
     for (ordinal, rel) in model.rels.iter().enumerate() {
         let mut layout =
             measure_c4_relation(rel, ordinal, &model.c4_type, &measure, measure_ink_later)?;

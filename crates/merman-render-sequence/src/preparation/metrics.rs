@@ -1,0 +1,1488 @@
+use super::SequenceTextCheckpoints;
+use super::constants::sequence_text_dimensions_height_px;
+use merman_model::presentation::PresentationConfig;
+use merman_render_core::{
+    Result,
+    config::config_font_family_css,
+    math::{DelimitedMathLine, MathRenderer, PreparedMathLabel, parse_delimited_math_line},
+    text::{
+        TextMeasurer, TextMetrics, TextStyle, WrapMode, line_break::split_mermaid_common_br_lines,
+        measure_mermaid_text_dimensions_with_checkpoint, sequence_text_line_step_px,
+        wrap_label_like_mermaid_lines_with_checkpoint,
+    },
+};
+
+struct SequenceWrapTextMeasurer<'a> {
+    measurer: &'a dyn TextMeasurer,
+    checkpoints: SequenceTextCheckpoints<'a>,
+}
+
+impl TextMeasurer for SequenceWrapTextMeasurer<'_> {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        // The fallible wrapping core checks the same operation immediately after this infallible
+        // trait call, so a swallowed cancellation is propagated before another probe begins.
+        if self.checkpoints.checkpoint().is_err() {
+            return TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            };
+        }
+        let metrics = self.measurer.measure(text, style);
+        let _ = self.checkpoints.checkpoint();
+        metrics
+    }
+
+    fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
+        measure_svg_like_with_html_br(self.measurer, text, style, self.checkpoints)
+            .map_or(0.0, |metrics| metrics.0)
+    }
+}
+
+pub fn wrap_sequence_label_like_mermaid_lines(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: f64,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Vec<String>> {
+    let sequence_measurer = SequenceWrapTextMeasurer {
+        measurer,
+        checkpoints,
+    };
+    wrap_label_like_mermaid_lines_with_checkpoint(
+        label,
+        &sequence_measurer,
+        style,
+        max_width_px,
+        || checkpoints.checkpoint(),
+    )
+}
+
+/// Accept the static family-list grammar using CSS tokens, including quoted semicolons and
+/// escaped identifiers. A declaration separator is never a family value passed to CSSOM.
+pub fn sequence_inline_font_family(style: &TextStyle) -> Option<String> {
+    use cssparser::ToCss;
+    let family = style.font_family.as_deref()?;
+    let mut parser = cssparser::Parser::new(family);
+    let mut has_name = false;
+    let mut quoted = false;
+    let mut css = String::new();
+    while !parser.is_exhausted() {
+        match parser.next() {
+            Ok(token @ cssparser::Token::Ident(_)) if !quoted => {
+                if has_name {
+                    css.push(' ');
+                }
+                css.push_str(&token.to_css_string());
+                has_name = true;
+            }
+            Ok(token @ cssparser::Token::QuotedString(_)) if !has_name => {
+                css.push_str(&token.to_css_string());
+                has_name = true;
+                quoted = true;
+            }
+            Ok(cssparser::Token::BadString(value)) if !has_name => {
+                // cssparser reports an EOF-terminated quoted family as BadString. CSSOM closes
+                // this single-token value when assigning it, so preserve that narrow behavior
+                // without accepting malformed strings followed by more tokens.
+                let value = value.as_ref().to_owned();
+                if !parser.is_exhausted() {
+                    return None;
+                }
+                cssparser::serialize_string(&value, &mut css)
+                    .expect("serializing a CSS string into String cannot fail");
+                has_name = true;
+                quoted = true;
+            }
+            Ok(cssparser::Token::Comma) if has_name => {
+                css.push_str(", ");
+                has_name = false;
+                quoted = false;
+            }
+            _ => return None,
+        }
+    }
+    has_name.then_some(css)
+}
+
+pub fn sequence_drawn_text_style(style: &TextStyle, config: &PresentationConfig) -> TextStyle {
+    let mut effective = style.clone();
+    // CSSOM rejects invalid assignments, while accepted tokens must be serialized before
+    // embedding them in a declaration list (an EOF-terminated string needs its closing quote).
+    effective.font_family = Some(
+        sequence_inline_font_family(style)
+            .unwrap_or_else(|| config_font_family_css(config.as_value())),
+    );
+    effective
+}
+
+pub(super) fn measure_svg_like_with_html_br(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<(f64, f64)> {
+    let dimensions =
+        measure_mermaid_text_dimensions_with_checkpoint(measurer, text, style, || {
+            checkpoints.checkpoint()
+        })?;
+    Ok((dimensions.width as f64, dimensions.height as f64))
+}
+
+/// Prepare one final SVG text node after splitting or wrapping the authored label.
+///
+/// Mermaid 12.1/12.2 restore placeholders after serializing `drawText`'s text nodes;
+/// the browser then decodes one entity layer. Encoded markup remains literal text,
+/// and nested references must not be decoded again by the XML writer.
+pub fn prepare_sequence_text_line(raw: &str) -> std::borrow::Cow<'_, str> {
+    merman_model::text::decode_mermaid_entities_to_unicode(raw)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceDrawnTextNode {
+    Direct,
+    Tspan,
+}
+
+pub(super) fn measure_drawn_svg_like_with_html_br(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    terminal_style: &TextStyle,
+    node: SequenceDrawnTextNode,
+    config: &PresentationConfig,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<(f64, f64)> {
+    let effective_style = sequence_drawn_text_style(terminal_style, config);
+    let terminal_style = &effective_style;
+    let lines = split_mermaid_common_br_lines(text);
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    for line in lines {
+        let decoded = prepare_sequence_text_line(line);
+        let measured_line = if decoded.is_empty() {
+            "\u{200b}"
+        } else {
+            decoded.as_ref()
+        };
+        checkpoints.checkpoint()?;
+        let line_width = match node {
+            SequenceDrawnTextNode::Direct => {
+                measurer.measure_svg_raw_text_bbox_width_px(measured_line, terminal_style)
+            }
+            SequenceDrawnTextNode::Tspan => {
+                measurer.measure_svg_tspan_text_bbox_width_px(measured_line, terminal_style)
+            }
+        }
+        .max(0.0);
+        checkpoints.checkpoint()?;
+        let line_height = measure_sequence_drawn_line_height(
+            measurer,
+            measured_line,
+            &effective_style,
+            node,
+            checkpoints,
+        )?;
+        width = width.max(line_width);
+        height += line_height;
+    }
+
+    Ok((width, height))
+}
+
+/// Typed participant fonts reserve the emitted line stack, including normal and base typography.
+/// Keep the pinned calculateTextDimensions operation unchanged for unthemed and math labels.
+pub(super) fn measure_typed_actor_label_for_layout(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    terminal_style: Option<&TextStyle>,
+    config: &PresentationConfig,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
+    // Preserve prepared, mixed and fallback math measurement, including unmatched delimiters.
+    if text.contains("$$") {
+        return Ok(None);
+    }
+    let Some(style) = terminal_style else {
+        return Ok(None);
+    };
+    let lines = split_mermaid_common_br_lines(text);
+    let mut width = 0.0_f64;
+    let mut line_height = 0.0_f64;
+    for line in &lines {
+        checkpoints.checkpoint()?;
+        let (w, h) = measure_drawn_svg_like_with_html_br(
+            measurer,
+            line,
+            style,
+            SequenceDrawnTextNode::Tspan,
+            config,
+            checkpoints,
+        )?;
+        width = width.max(w);
+        line_height = line_height.max(h);
+    }
+    // Actor rows use font_size as their dy step, unlike drawText's per-row bbox advance.
+    let height = line_height + lines.len().saturating_sub(1) as f64 * style.font_size;
+    Ok(Some((width, height)))
+}
+
+/// Measures the final text DOM shape, after resolving its inherited font.
+pub fn measure_sequence_drawn_line_height(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    drawn_style: &TextStyle,
+    node: SequenceDrawnTextNode,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<f64> {
+    let text = if text.is_empty() { "\u{200b}" } else { text };
+    checkpoints.checkpoint()?;
+    let height = match node {
+        SequenceDrawnTextNode::Direct => {
+            measurer.measure_svg_raw_text_bbox_height_px(text, drawn_style)
+        }
+        SequenceDrawnTextNode::Tspan => {
+            measurer.measure_svg_tspan_text_bbox_height_px(text, drawn_style)
+        }
+    };
+    checkpoints.checkpoint()?;
+    Ok(height.max(0.0))
+}
+
+/// The middle/center branch of svgDraw.drawText, before its per-row rounding.
+pub fn sequence_drawn_text_first_y(base_y: f64, margin: f64) -> f64 {
+    base_y + if margin > 0.0 { margin / 2.0 } else { 0.0 }
+}
+
+pub fn sequence_drawn_text_y(first_y: f64, margin: f64, preceding_height: f64) -> f64 {
+    if margin > 0.0 {
+        // Math.round chooses the upper integer at negative half ties, unlike f64::round.
+        let y = first_y + preceding_height;
+        let floor = y.floor();
+        floor + if y - floor >= 0.5 { 1.0 } else { 0.0 }
+    } else {
+        first_y
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceMathHeightMode {
+    Actor,
+    Bound,
+    Draw,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SequenceMathTerminalGeometry {
+    layout_width: f64,
+    layout_height: f64,
+    browser_width: f64,
+    browser_height: f64,
+    projection_width: f64,
+    projection_height: f64,
+}
+
+impl SequenceMathTerminalGeometry {
+    pub(crate) const fn layout_size(self) -> (f64, f64) {
+        (self.layout_width, self.layout_height)
+    }
+
+    pub const fn browser_box_size(self) -> (f64, f64) {
+        (self.browser_width, self.browser_height)
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn native_projection_size(self) -> (f64, f64) {
+        (self.projection_width, self.projection_height)
+    }
+}
+
+fn sequence_math_chunks<'text>(
+    text: &'text str,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Vec<&'text str>> {
+    let mut chunks = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(start_rel) = text[search_from..].find("$$") {
+        checkpoints.checkpoint()?;
+        let start = search_from + start_rel;
+        let content_start = start + 2;
+        let Some(end_rel) = text[content_start..].find("$$") else {
+            break;
+        };
+        let end = content_start + end_rel + 2;
+        chunks.push(&text[start..end]);
+        search_from = end;
+    }
+    checkpoints.checkpoint()?;
+    Ok(chunks)
+}
+
+fn measure_plain_sequence_fragment(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<TextMetrics> {
+    checkpoints.checkpoint()?;
+    let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
+    checkpoints.checkpoint()?;
+    Ok(metrics)
+}
+
+fn measure_sequence_mixed_math_line(
+    measurer: &dyn TextMeasurer,
+    parsed: DelimitedMathLine<'_>,
+    style: &TextStyle,
+    config: &PresentationConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+
+    for fragment in parsed.fragments {
+        checkpoints.checkpoint()?;
+        if !fragment.leading_text.is_empty() {
+            let metrics = measure_plain_sequence_fragment(
+                measurer,
+                fragment.leading_text,
+                style,
+                checkpoints,
+            )?;
+            width += metrics.width.max(0.0);
+            height = height.max(metrics.height.max(0.0));
+        }
+
+        checkpoints.checkpoint()?;
+        let mut math_metrics =
+            math_renderer.measure_sequence_html_label_with_style(fragment.delimited, config, style);
+        checkpoints.checkpoint()?;
+        if math_metrics.is_none() {
+            checkpoints.checkpoint()?;
+            math_metrics = math_renderer.measure_html_label(
+                fragment.delimited,
+                config,
+                style,
+                Some(10_000.0),
+                WrapMode::HtmlLike,
+            );
+            checkpoints.checkpoint()?;
+        }
+        let Some(math_metrics) = math_metrics else {
+            return Ok(None);
+        };
+        width += math_metrics.width.max(0.0);
+        height = height.max(math_metrics.height.max(0.0));
+    }
+
+    if !parsed.trailing_text.is_empty() {
+        let metrics =
+            measure_plain_sequence_fragment(measurer, parsed.trailing_text, style, checkpoints)?;
+        width += metrics.width.max(0.0);
+        height = height.max(metrics.height.max(0.0));
+    }
+
+    checkpoints.checkpoint()?;
+    Ok(Some((width, height.max(1.0))))
+}
+
+fn measure_sequence_mixed_math_label(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &PresentationConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<TextMetrics>> {
+    let mut saw_math = false;
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    let mut line_count = 0usize;
+
+    for line in split_mermaid_common_br_lines(text) {
+        checkpoints.checkpoint()?;
+        line_count += 1;
+        let (line_width, line_height) = if let Some(parsed) = parse_delimited_math_line(line) {
+            saw_math = true;
+            let Some(metrics) = measure_sequence_mixed_math_line(
+                measurer,
+                parsed,
+                style,
+                config,
+                math_renderer,
+                checkpoints,
+            )?
+            else {
+                return Ok(None);
+            };
+            metrics
+        } else {
+            let (w, h) = measure_svg_like_with_html_br(measurer, line, style, checkpoints)?;
+            (w.max(0.0), h.max(0.0))
+        };
+        width = width.max(line_width);
+        height += line_height;
+    }
+
+    checkpoints.checkpoint()?;
+    Ok(saw_math.then_some(TextMetrics {
+        width,
+        height: height.max(1.0),
+        line_count: line_count.max(1),
+    }))
+}
+
+fn sequence_math_height_px(
+    text: &str,
+    style: &TextStyle,
+    config: &PresentationConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+    mode: SequenceMathHeightMode,
+    full_metrics: &TextMetrics,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<f64> {
+    let height = match mode {
+        SequenceMathHeightMode::Actor => full_metrics.height.round().max(1.0),
+        SequenceMathHeightMode::Bound | SequenceMathHeightMode::Draw => {
+            let line_step = sequence_text_line_step_px(style.font_size).round().max(1.0);
+            let base = if mode == SequenceMathHeightMode::Draw {
+                line_step
+            } else {
+                (line_step - 1.0)
+                    .max(sequence_text_dimensions_height_px(style.font_size))
+                    .max(1.0)
+            };
+            let mut math_h = base;
+            for chunk in sequence_math_chunks(text, checkpoints)? {
+                checkpoints.checkpoint()?;
+                let metrics =
+                    math_renderer.measure_sequence_html_label_with_style(chunk, config, style);
+                checkpoints.checkpoint()?;
+                if let Some(metrics) = metrics {
+                    math_h = math_h.max(metrics.height.round() + 2.0);
+                }
+            }
+            math_h.round().max(1.0)
+        }
+    };
+    Ok(height)
+}
+
+pub(crate) fn measure_sequence_math_label(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &PresentationConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: SequenceMathHeightMode,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
+    checkpoints.checkpoint()?;
+    if !text.contains("$$") {
+        return Ok(None);
+    }
+    let Some(renderer) = math_renderer else {
+        return Ok(None);
+    };
+    checkpoints.checkpoint()?;
+    let mut full_metrics = renderer.measure_sequence_html_label_with_style(text, config, style);
+    checkpoints.checkpoint()?;
+    if full_metrics.is_none() {
+        full_metrics = measure_sequence_mixed_math_label(
+            measurer,
+            text,
+            style,
+            config,
+            renderer,
+            checkpoints,
+        )?;
+    }
+    if full_metrics.is_none() {
+        checkpoints.checkpoint()?;
+        full_metrics =
+            renderer.measure_html_label(text, config, style, Some(10_000.0), WrapMode::HtmlLike);
+        checkpoints.checkpoint()?;
+    }
+    let Some(full_metrics) = full_metrics else {
+        return Ok(None);
+    };
+    let height = sequence_math_height_px(
+        text,
+        style,
+        config,
+        renderer,
+        mode,
+        &full_metrics,
+        checkpoints,
+    )?;
+    Ok(Some((full_metrics.width.round().max(1.0), height)))
+}
+
+pub fn prepared_sequence_math_terminal_geometry(
+    prepared: Option<&PreparedMathLabel>,
+    style: &TextStyle,
+    mode: SequenceMathHeightMode,
+) -> Option<SequenceMathTerminalGeometry> {
+    let prepared = prepared?;
+    let metrics = prepared.metrics();
+    let projection_width = metrics.width.max(0.0);
+    let projection_height = metrics.height.max(0.0);
+    let layout_height = match mode {
+        SequenceMathHeightMode::Actor => if metrics.line_count > 1 {
+            projection_height.ceil()
+        } else {
+            projection_height.round()
+        }
+        .max(1.0),
+        SequenceMathHeightMode::Bound | SequenceMathHeightMode::Draw => {
+            let line_step = sequence_text_line_step_px(style.font_size).round().max(1.0);
+            let base = if mode == SequenceMathHeightMode::Draw {
+                line_step
+            } else {
+                (line_step - 1.0)
+                    .max(sequence_text_dimensions_height_px(style.font_size))
+                    .max(1.0)
+            };
+            let math_line_height = prepared
+                .max_math_height_px()
+                .unwrap_or_else(|| prepared.max_line_height_px())
+                .round()
+                + 2.0;
+            let projected_layout_height = if metrics.line_count > 1 {
+                projection_height.ceil()
+            } else {
+                projection_height.round()
+            };
+            base.max(math_line_height)
+                .max(projected_layout_height)
+                .max(1.0)
+        }
+    };
+    let layout_width = projection_width.round().max(1.0);
+    let browser_width = layout_width.max(projection_width.ceil()).max(1.0);
+    let browser_height = layout_height.max(projection_height.ceil()).max(1.0);
+    Some(SequenceMathTerminalGeometry {
+        layout_width,
+        layout_height,
+        browser_width,
+        browser_height,
+        projection_width,
+        projection_height,
+    })
+}
+
+pub(crate) fn measure_prepared_sequence_math_label(
+    prepared: Option<&PreparedMathLabel>,
+    style: &TextStyle,
+    mode: SequenceMathHeightMode,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
+    checkpoints.checkpoint()?;
+    Ok(
+        prepared_sequence_math_terminal_geometry(prepared, style, mode)
+            .map(SequenceMathTerminalGeometry::layout_size),
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Text measurement consumes independent renderer inputs and checkpoints"
+)]
+pub(super) fn measure_sequence_label_for_layout_with_prepared(
+    prepared: Option<&PreparedMathLabel>,
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &PresentationConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: SequenceMathHeightMode,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<(f64, f64)> {
+    if text.contains("$$")
+        && let Some(metrics) =
+            measure_prepared_sequence_math_label(prepared, style, mode, checkpoints)?
+    {
+        return Ok(metrics);
+    }
+    if let Some(metrics) = measure_sequence_math_label(
+        measurer,
+        text,
+        style,
+        config,
+        math_renderer,
+        mode,
+        checkpoints,
+    )? {
+        Ok(metrics)
+    } else {
+        measure_svg_like_with_html_br(measurer, text, style, checkpoints)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merman_model::{OperationControl, OperationPhase};
+    use merman_render_core::{
+        Error,
+        math::{MathRenderer, PreparedMathLabel},
+        resources::{OperationWorkMeter, RenderResourcePolicy},
+        text::{TextMeasurer, TextMetrics, TextStyle},
+    };
+    use std::cell::{Cell, RefCell};
+
+    #[derive(Debug)]
+    struct PreciseMathRenderer;
+
+    impl MathRenderer for PreciseMathRenderer {
+        fn render_html_label(
+            &self,
+            text: &str,
+            _config: &merman_model::presentation::PresentationConfig,
+        ) -> Option<String> {
+            text.contains("$$").then(|| text.to_string())
+        }
+
+        fn measure_sequence_html_label(
+            &self,
+            text: &str,
+            _config: &merman_model::presentation::PresentationConfig,
+        ) -> Option<TextMetrics> {
+            (text.starts_with("$$") && text.ends_with("$$")).then_some(TextMetrics {
+                width: 10.008,
+                height: 20.008,
+                line_count: 1,
+            })
+        }
+    }
+
+    struct PreciseTextMeasurer;
+
+    impl TextMeasurer for PreciseTextMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 1.001,
+                height: 2.002,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct OperationProbe {
+        calls: RefCell<Vec<(String, String, String)>>,
+    }
+
+    impl OperationProbe {
+        fn record(&self, operation: &str, text: &str, style: &TextStyle) {
+            self.calls.borrow_mut().push((
+                operation.to_string(),
+                text.to_string(),
+                style.font_family.clone().unwrap_or_default(),
+            ));
+        }
+    }
+
+    impl TextMeasurer for OperationProbe {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("Sequence text must use the DOM-shape operation, not generic measure")
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("simple-width", text, style);
+            match style.font_family.as_deref() {
+                Some("sans-serif") => 60.0,
+                Some("serif") => 70.0,
+                _ => 50.0,
+            }
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.record("mermaid-dimensions", text, style);
+            let width = match style.font_family.as_deref() {
+                Some("sans-serif") => 60.0,
+                Some(family) if family.trim_end().ends_with(';') => 70.0,
+                _ => 50.0,
+            };
+            let height = match style.font_family.as_deref() {
+                Some("sans-serif") => 16.0,
+                Some(family) if family.trim_end().ends_with(';') => 17.0,
+                _ => 19.0,
+            };
+            TextMetrics {
+                width,
+                height,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("raw-width", text, style);
+            101.0
+        }
+
+        fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("raw-height", text, style);
+            31.0
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("tspan-width", text, style);
+            202.0
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("tspan-height", text, style);
+            23.0
+        }
+
+        fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("simple-height", text, style);
+            match style.font_family.as_deref() {
+                Some("sans-serif") => 16.0,
+                Some("serif") => 17.0,
+                _ => 19.0,
+            }
+        }
+    }
+
+    fn default_sequence_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+            font_size: 16.0,
+            font_weight: Some("400".to_string()),
+            font_style: None,
+        }
+    }
+
+    fn terminal_sequence_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("Excalifont".to_string()),
+            ..default_sequence_style()
+        }
+    }
+
+    fn drawn_text_config() -> merman_model::presentation::PresentationConfig {
+        crate::preparation::test_support::presentation_config(serde_json::json!({
+            "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
+            "themeVariables": { "fontFamily": "Theme Family, sans-serif" }
+        }))
+    }
+
+    #[test]
+    fn drawn_text_inherits_theme_only_when_inline_family_is_missing_or_rejected() {
+        let config = drawn_text_config();
+        for family in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("Inline Family; "),
+            Some("Arial; font-style: italic"),
+        ] {
+            let mut style = default_sequence_style();
+            style.font_family = family.map(str::to_string);
+            let drawn = super::sequence_drawn_text_style(&style, &config);
+            assert_eq!(
+                drawn.font_family.as_deref(),
+                Some("Theme Family,sans-serif")
+            );
+            assert_eq!(style.font_family.as_deref(), family);
+            assert_eq!(drawn.font_size, style.font_size);
+            assert_eq!(drawn.font_weight, style.font_weight);
+        }
+
+        let mut style = default_sequence_style();
+        style.font_family = Some("Inline Family, monospace".to_string());
+        let drawn = super::sequence_drawn_text_style(&style, &config);
+        assert_eq!(drawn.font_family, style.font_family);
+    }
+
+    fn checkpoints(
+        meter: &OperationWorkMeter,
+        phase: OperationPhase,
+    ) -> crate::preparation::SequenceTextCheckpoints<'_> {
+        crate::preparation::SequenceTextCheckpoints::for_phase(meter, phase)
+    }
+
+    struct CancellingDimensionsMeasurer {
+        control: OperationControl,
+        calls: Cell<usize>,
+    }
+
+    impl TextMeasurer for CancellingDimensionsMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            unreachable!("Sequence dimensions use the explicit Mermaid DOM operation")
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> TextMetrics {
+            let calls = self.calls.get() + 1;
+            self.calls.set(calls);
+            if calls == 1 {
+                self.control.cancel();
+            }
+            TextMetrics {
+                width: 10.0,
+                height: 20.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn multiline_sequence_measurement_stops_after_callback_cancels_layout() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let measurer = CancellingDimensionsMeasurer {
+            control,
+            calls: Cell::new(0),
+        };
+        let label = (0..130)
+            .map(|line| format!("line-{line}"))
+            .collect::<Vec<_>>()
+            .join("<br>");
+
+        let error = super::measure_svg_like_with_html_br(
+            &measurer,
+            &label,
+            &default_sequence_style(),
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected Sequence layout cancellation");
+        };
+
+        assert_eq!(error.phase, OperationPhase::Layout);
+        assert_eq!(measurer.calls.get(), 1);
+    }
+
+    #[test]
+    fn sequence_mixed_math_metrics_preserve_fragment_precision() {
+        let config = merman_model::presentation::PresentationConfig::default();
+        let style = TextStyle::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let metrics = super::measure_sequence_mixed_math_label(
+            &PreciseTextMeasurer,
+            "a$$x$$b",
+            &style,
+            &config,
+            &PreciseMathRenderer,
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
+        assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
+
+    #[test]
+    fn prepared_sequence_math_separates_mermaid_layout_from_native_projection_bounds() {
+        let prepared = PreparedMathLabel::for_test(TextMetrics {
+            width: 9.14448,
+            height: 18.28896,
+            line_count: 2,
+        });
+        let style = TextStyle::default();
+
+        let geometry = super::prepared_sequence_math_terminal_geometry(
+            Some(&prepared),
+            &style,
+            super::SequenceMathHeightMode::Draw,
+        )
+        .expect("prepared Sequence math bounds");
+
+        assert_eq!(geometry.layout_size().0, 9.0);
+        assert_eq!(geometry.browser_box_size().0, 10.0);
+        assert_eq!(
+            geometry.native_projection_size(),
+            (prepared.metrics().width, prepared.metrics().height)
+        );
+        assert!(geometry.browser_box_size().1 >= prepared.metrics().height.ceil());
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn prepared_sequence_math_uses_the_resolved_role_font_size() {
+        let backend = merman_render_core::math::ConfiguredMathBackend::compiled_ratex();
+        let config = merman_model::presentation::PresentationConfig::default();
+        let default_style = TextStyle::default();
+        let role_style = TextStyle {
+            font_size: 28.0,
+            ..TextStyle::default()
+        };
+
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let default = backend
+            .prepare(
+                merman_render_core::math::PrepareMathLabelRequest::sequence(
+                    "$$x^2$$",
+                    &config,
+                    &default_style,
+                    "#e5e7eb",
+                ),
+                &meter,
+            )
+            .unwrap();
+        let role = backend
+            .prepare(
+                merman_render_core::math::PrepareMathLabelRequest::sequence(
+                    "$$x^2$$",
+                    &config,
+                    &role_style,
+                    "#e5e7eb",
+                ),
+                &meter,
+            )
+            .unwrap();
+        let default = default.prepared().expect("default prepared math");
+        let role = role.prepared().expect("role prepared math");
+
+        assert!(role.browser_xhtml().contains("font-size:28px"));
+        assert!(role.metrics().width > default.metrics().width);
+        assert!(role.metrics().height > default.metrics().height);
+        assert!((role.metrics().width / default.metrics().width - 28.0 / 16.0).abs() < 1e-12);
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn prepared_sequence_math_preserves_mermaid_shell_height_semantics() {
+        use std::sync::Arc;
+
+        use merman_render_core::math::{
+            ConfiguredMathBackend, PrepareMathLabelRequest, RatexMathRenderer,
+        };
+
+        let config = merman_model::presentation::PresentationConfig::default();
+        let style = TextStyle::default();
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
+        let renderer = RatexMathRenderer;
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+
+        for text in ["Solve: $$\\sqrt{2+2}$$", "$$\\sqrt{2+2}=\\sqrt{4}=2$$"] {
+            let legacy = super::measure_sequence_math_label(
+                &measurer,
+                text,
+                &style,
+                &config,
+                Some(&renderer),
+                super::SequenceMathHeightMode::Draw,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .expect("measure diagnostic Sequence math");
+            let prepared_outcome = backend
+                .prepare(
+                    PrepareMathLabelRequest::sequence(text, &config, &style, "#333333")
+                        .with_text_measurer(&measurer),
+                    &meter,
+                )
+                .expect("prepare diagnostic math");
+            let prepared = super::measure_prepared_sequence_math_label(
+                prepared_outcome.prepared(),
+                &style,
+                super::SequenceMathHeightMode::Draw,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .expect("measure prepared Sequence math");
+
+            assert_eq!(
+                prepared.map(|(_, height)| height),
+                legacy.map(|(_, height)| height),
+                "prepared math must preserve Sequence's Mermaid-compatible shell height for {text:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn sequence_math_measurement_handles_multiple_formulas_on_one_line() {
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
+        let renderer = merman_render_core::math::RatexMathRenderer;
+        let config = merman_model::presentation::PresentationConfig::default();
+        let style = TextStyle::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let (width, height) = super::measure_sequence_math_label(
+            &measurer,
+            "a $$x$$ b $$y$$ c",
+            &style,
+            &config,
+            Some(&renderer),
+            super::SequenceMathHeightMode::Actor,
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap()
+        .expect("each same-line math fragment should contribute to Sequence measurement");
+
+        assert!(width > 0.0, "expected positive measured width");
+        assert!(height > 0.0, "expected positive measured height");
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn sequence_math_measurement_ignores_unclosed_delimiters_on_plain_lines() {
+        let measurer = merman_render_core::text::DeterministicTextMeasurer::default();
+        let renderer = merman_render_core::math::RatexMathRenderer;
+        let config = merman_model::presentation::PresentationConfig::default();
+        let style = TextStyle::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        assert!(
+            super::measure_sequence_math_label(
+                &measurer,
+                "literal $$",
+                &style,
+                &config,
+                Some(&renderer),
+                super::SequenceMathHeightMode::Actor,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap()
+            .is_none(),
+            "an unmatched delimiter alone must use plain Sequence measurement"
+        );
+
+        let metrics = super::measure_sequence_math_label(
+            &measurer,
+            "valid $$x$$<br>literal $$",
+            &style,
+            &config,
+            Some(&renderer),
+            super::SequenceMathHeightMode::Actor,
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+
+        assert!(
+            metrics.is_some(),
+            "an unmatched delimiter on a plain line must not discard complete formulas"
+        );
+    }
+
+    #[test]
+    fn sequence_drawn_entities_use_exact_terminal_text_and_weight() {
+        #[derive(Default)]
+        struct EntityLineProbe(RefCell<Vec<(&'static str, String, Option<String>)>>);
+
+        impl EntityLineProbe {
+            fn record(&self, operation: &'static str, text: &str, style: &TextStyle) -> f64 {
+                self.0
+                    .borrow_mut()
+                    .push((operation, text.to_owned(), style.font_weight.clone()));
+                let size = match text {
+                    "😀" => 40.0,
+                    "&#128512;" => 90.0,
+                    "&😀" => 48.0,
+                    "<br/>" => 50.0,
+                    "&lt;br/&gt;" => 100.0,
+                    "\u{200b}" => 0.0,
+                    "W" => 8.0,
+                    _ => panic!("unexpected terminal text: {text:?}"),
+                };
+                if operation.ends_with("height") {
+                    if style.font_weight.as_deref() == Some("700") {
+                        17.0
+                    } else {
+                        9.0
+                    }
+                } else if style.font_weight.as_deref() == Some("700") {
+                    size * 2.0
+                } else {
+                    size
+                }
+            }
+        }
+
+        impl TextMeasurer for EntityLineProbe {
+            fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+                panic!("drawn entities require the exact DOM measurement operation")
+            }
+            fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("raw-width", text, style)
+            }
+            fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("raw-height", text, style)
+            }
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("tspan-width", text, style)
+            }
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("tspan-height", text, style)
+            }
+        }
+
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        for node in [
+            super::SequenceDrawnTextNode::Direct,
+            super::SequenceDrawnTextNode::Tspan,
+        ] {
+            let operations = match node {
+                super::SequenceDrawnTextNode::Direct => ["raw-width", "raw-height"],
+                super::SequenceDrawnTextNode::Tspan => ["tspan-width", "tspan-height"],
+            };
+            for weight in ["400", "700"] {
+                let mut style = default_sequence_style();
+                style.font_weight = Some(weight.to_owned());
+                for (encoded, visible, width) in [
+                    ("#128512;", "😀", 40.0),
+                    ("&#128512;", "😀", 40.0),
+                    ("ﬂ°°128512¶ß", "😀", 40.0),
+                    ("#38;#35;128512#59;", "&#128512;", 90.0),
+                    ("&amp;#128512;", "&😀", 48.0),
+                    ("ﬂ°°38¶ßﬂ°°35¶ß128512ﬂ°°59¶ß", "&#128512;", 90.0),
+                    ("#lt;br/#gt;", "<br/>", 50.0),
+                    ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;", 100.0),
+                ] {
+                    let probe = EntityLineProbe::default();
+                    let dimensions = super::measure_drawn_svg_like_with_html_br(
+                        &probe,
+                        &format!("{encoded}<br/><br/>W"),
+                        &style,
+                        node,
+                        &drawn_text_config(),
+                        checkpoints(&meter, OperationPhase::Layout),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        dimensions,
+                        if weight == "700" {
+                            (width * 2.0, 51.0)
+                        } else {
+                            (width, 27.0)
+                        },
+                        "{encoded}/{node:?}/{weight}"
+                    );
+                    let expected: Vec<_> = [visible, "\u{200b}", "W"]
+                        .into_iter()
+                        .flat_map(|line| {
+                            operations.map(|operation| {
+                                (operation, line.to_owned(), Some(weight.to_owned()))
+                            })
+                        })
+                        .collect();
+                    assert_eq!(*probe.0.borrow(), expected, "{encoded}/{node:?}/{weight}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_entities_preserve_calculate_and_wrap_input() {
+        #[derive(Default)]
+        struct UpstreamProbe(RefCell<Vec<String>>);
+        impl TextMeasurer for UpstreamProbe {
+            fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+                panic!("upstream probes must keep their calculateTextDimensions operation")
+            }
+            fn measure_mermaid_calculate_text_dimensions(
+                &self,
+                text: &str,
+                _: &TextStyle,
+            ) -> TextMetrics {
+                self.0.borrow_mut().push(text.to_owned());
+                TextMetrics {
+                    width: 8.0,
+                    height: 9.0,
+                    line_count: 1,
+                }
+            }
+        }
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = default_sequence_style();
+        for raw in [
+            "#38;#35;128512#59;",
+            "#lt;br/#gt;",
+            "#38;lt#59;br/#38;gt#59;",
+        ] {
+            let probe = UpstreamProbe::default();
+            super::measure_svg_like_with_html_br(
+                &probe,
+                raw,
+                &style,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(*probe.0.borrow(), [raw, raw]);
+            probe.0.borrow_mut().clear();
+            let lines = super::wrap_sequence_label_like_mermaid_lines(
+                raw,
+                &probe,
+                &style,
+                1000.0,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(lines, [raw]);
+            // wrapLabel probes each word with its trailing space in both font families.
+            assert_eq!(*probe.0.borrow(), [format!("{raw} "), format!("{raw} ")]);
+        }
+    }
+
+    #[test]
+    fn sequence_calculated_dimensions_preserve_cssom_input_for_the_exact_operation() {
+        let measurer = OperationProbe::default();
+        let style = default_sequence_style();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let dimensions = super::measure_svg_like_with_html_br(
+            &measurer,
+            "alpha<br><br>beta",
+            &style,
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+
+        assert_eq!(dimensions, (70.0, 51.0));
+        let calls = measurer.calls.borrow();
+        assert_eq!(calls.len(), 6);
+        assert!(
+            calls
+                .iter()
+                .all(|(operation, _, _)| operation == "mermaid-dimensions")
+        );
+        assert!(calls.iter().any(|(_, _, family)| family == "sans-serif"));
+        assert!(calls.iter().any(|(_, _, family)| family.ends_with(';')));
+        assert!(calls.iter().any(|(_, text, _)| text == "\u{200b}"));
+    }
+
+    #[test]
+    fn typed_actor_measurement_leaves_math_to_the_existing_owner() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let probe = OperationProbe::default();
+        for label in ["probe-$$x$$", "probe-$$"] {
+            assert_eq!(
+                super::measure_typed_actor_label_for_layout(
+                    &probe,
+                    label,
+                    Some(&terminal_sequence_style()),
+                    &drawn_text_config(),
+                    checkpoints(&meter, OperationPhase::Layout),
+                )
+                .unwrap(),
+                None
+            );
+        }
+        assert!(probe.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn note_layout_keeps_math_and_unmatched_delimiters_on_the_existing_bound_route() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = default_sequence_style();
+        for label in ["probe-$$x$$", "probe-$$"] {
+            let probe = OperationProbe::default();
+            let metrics = super::measure_svg_like_with_html_br(
+                &probe,
+                label,
+                &style,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(metrics, (70.0, 17.0));
+            assert!(
+                probe
+                    .calls
+                    .borrow()
+                    .iter()
+                    .all(|(operation, _, _)| operation == "mermaid-dimensions")
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_drawn_dimensions_route_dom_shapes_with_the_terminal_cssom_font() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let direct = OperationProbe::default();
+        let direct_dimensions = super::measure_drawn_svg_like_with_html_br(
+            &direct,
+            "alpha<br><br>beta",
+            &terminal_sequence_style(),
+            super::SequenceDrawnTextNode::Direct,
+            &drawn_text_config(),
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+        assert_eq!(direct_dimensions, (101.0, 93.0));
+        let direct_calls = direct.calls.borrow();
+        assert_eq!(
+            direct_calls
+                .iter()
+                .filter(|(operation, _, _)| operation == "raw-width")
+                .count(),
+            3
+        );
+        assert_eq!(
+            direct_calls
+                .iter()
+                .filter(|(operation, _, _)| operation == "raw-height")
+                .count(),
+            3
+        );
+        assert!(
+            direct_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "simple-height")
+        );
+        assert!(
+            direct_calls
+                .iter()
+                .all(|(_, _, family)| family == "Excalifont")
+        );
+        assert!(direct_calls.iter().any(|(_, text, _)| text == "\u{200b}"));
+        assert!(
+            direct_calls
+                .iter()
+                .any(|(operation, _, _)| operation == "raw-height")
+        );
+        assert!(
+            direct_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "simple-height")
+        );
+
+        let tspan = OperationProbe::default();
+        let tspan_dimensions = super::measure_drawn_svg_like_with_html_br(
+            &tspan,
+            "alpha",
+            &terminal_sequence_style(),
+            super::SequenceDrawnTextNode::Tspan,
+            &drawn_text_config(),
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+        assert_eq!(tspan_dimensions, (202.0, 23.0));
+        let tspan_calls = tspan.calls.borrow();
+        assert!(
+            tspan_calls
+                .iter()
+                .all(|(_, _, family)| family == "Excalifont")
+        );
+        assert!(
+            tspan_calls
+                .iter()
+                .any(|(operation, _, _)| operation == "tspan-width")
+        );
+        assert!(
+            tspan_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "raw-width")
+        );
+        assert!(
+            tspan_calls
+                .iter()
+                .any(|(operation, _, _)| operation == "tspan-height")
+        );
+        assert!(
+            tspan_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "simple-height")
+        );
+    }
+
+    #[test]
+    fn sequence_multiline_tspan_height_rounds_only_after_raw_line_accumulation() {
+        struct SmallFontProbe;
+
+        impl TextMeasurer for SmallFontProbe {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                unreachable!("the Sequence DOM operation is explicit")
+            }
+
+            fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+                1.0
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                11.05078125
+            }
+        }
+
+        let text = std::iter::repeat_n("g", 10)
+            .collect::<Vec<_>>()
+            .join("<br>");
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let (_, raw_height) = super::measure_drawn_svg_like_with_html_br(
+            &SmallFontProbe,
+            &text,
+            &terminal_sequence_style(),
+            super::SequenceDrawnTextNode::Tspan,
+            &drawn_text_config(),
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+
+        assert_eq!(raw_height, 110.5078125);
+        assert_eq!(raw_height.round(), 111.0);
+        assert_ne!(raw_height.round(), 10.0 * 11.05078125_f64.round());
+    }
+    #[test]
+    fn drawn_text_y_rounds_accumulated_heights_with_javascript_half_ties() {
+        let first = super::sequence_drawn_text_first_y(10.25, 5.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 0.0), 13.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 10.4), 23.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 30.8), 44.0);
+        assert_eq!(super::sequence_drawn_text_y(-1.5, 5.0, 0.0), -1.0);
+        for margin in [0.0, -5.0] {
+            let first = super::sequence_drawn_text_first_y(10.25, margin);
+            assert_eq!(first, 10.25);
+            assert_eq!(super::sequence_drawn_text_y(first, margin, 30.8), 10.25);
+        }
+    }
+    #[test]
+    fn inline_font_family_uses_css_tokens_without_turning_values_into_declarations() {
+        let config = drawn_text_config();
+        for family in [
+            "Arial; font-style: italic",
+            "Arial;",
+            "Arial !important",
+            "Arial,",
+            "Arial,,serif",
+            "'Quoted' Extra",
+        ] {
+            let mut style = default_sequence_style();
+            style.font_family = Some(family.to_string());
+            assert_eq!(super::sequence_inline_font_family(&style), None, "{family}");
+            assert_eq!(
+                super::sequence_drawn_text_style(&style, &config)
+                    .font_family
+                    .as_deref(),
+                Some("Theme Family,sans-serif")
+            );
+        }
+        for family in [
+            "Arial, sans-serif",
+            r#""Semi;Colon", serif"#,
+            r"Escaped\;Name, serif",
+            "Arial /*comment*/, serif",
+        ] {
+            let mut style = default_sequence_style();
+            style.font_family = Some(family.to_string());
+            let inline = super::sequence_inline_font_family(&style);
+            assert!(inline.is_some(), "{family}");
+            assert_eq!(
+                super::sequence_drawn_text_style(&style, &config).font_family,
+                inline
+            );
+        }
+    }
+}

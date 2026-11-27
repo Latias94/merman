@@ -1,16 +1,23 @@
-//! Sequence lexical syntax and grammar actions.
+//! Sequence lexical syntax, grammar actions, and semantic replay.
 
 mod ast;
+mod db;
+mod json_object;
 mod lexer;
 mod parser;
+mod semantic;
 
 use lexer::Lexer;
 use merman_core_preprocess::scan::collect_lexical_events;
 use merman_model::{OperationControl, OperationControlResult};
 
 pub use ast::Action as SequenceAction;
+#[doc(hidden)]
+pub use db::box_color_and_title;
 pub use lexer::{LexError as SequenceLexicalError, SequenceLexicalEvent, Tok as SequenceToken};
 pub use parser::{SequenceExpectedTokens, SequenceSyntaxDiagnostic};
+#[doc(hidden)]
+pub use semantic::{SequenceInlineConfigParser, SequenceModelError};
 
 /// A single lexical stream, including events after recoverable lexer errors.
 pub struct SequenceSyntax {

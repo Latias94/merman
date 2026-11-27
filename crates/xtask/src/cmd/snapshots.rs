@@ -60,6 +60,7 @@ pub(crate) fn fixture_site_config_for_path(
         .map(|context| merman::SourcePresentationConfig::from_value(context.site_config_value()))
 }
 
+#[cfg(feature = "render-parity")]
 fn layout_snapshot_site_config() -> merman::SourcePresentationConfig {
     // Keep this aligned with `crates/merman-render/tests/common/mod.rs` so
     // regenerated layout goldens match the test harness exactly.
@@ -75,11 +76,13 @@ fn layout_snapshot_site_config() -> merman::SourcePresentationConfig {
     }))
 }
 
+#[cfg(feature = "render-parity")]
 fn layout_snapshot_environment() -> merman_render::environment::RenderEnvironment {
     merman_render::environment::RenderEnvironment::deterministic()
         .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::deterministic())
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -421,17 +424,26 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GeneratedArtifactCheck {
+    #[cfg(feature = "render-parity")]
     BindingContract,
+    #[cfg(feature = "render-parity")]
     CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
+    #[cfg(feature = "render-parity")]
     EditorLanguageContract,
+    #[cfg(feature = "render-parity")]
     NativeAbi,
+    #[cfg(feature = "render-parity")]
     PlaygroundAsciiCapabilities,
+    #[cfg(feature = "render-parity")]
     PlaygroundExampleCatalog,
+    #[cfg(feature = "render-parity")]
     ResourceContract,
     ThemeSnapshot,
+    #[cfg(feature = "render-parity")]
     TextMeasurementProtocol,
+    #[cfg(feature = "render-parity")]
     TypstProfileConstants,
     WebDiagramCatalog,
 }
@@ -452,6 +464,7 @@ fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::ThemeSnapshot]
 }
 
+#[cfg(feature = "render-parity")]
 fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
     [
         GeneratedArtifactCheck::BindingContract,
@@ -473,17 +486,26 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
 impl GeneratedArtifactCheck {
     fn label(self) -> &'static str {
         match self {
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::BindingContract => "binding contract",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::EditorLanguageContract => "editor language contract",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::NativeAbi => "native ABI",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::PlaygroundAsciiCapabilities => "Playground ASCII capabilities",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::ResourceContract => "resource contract",
             GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme artifacts",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::TextMeasurementProtocol => "text-measurement protocol",
+            #[cfg(feature = "render-parity")]
             GeneratedArtifactCheck::TypstProfileConstants => "Typst profile constants",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
@@ -533,25 +555,34 @@ fn verify_generated_artifact_check(
     tmp_dir: &Path,
 ) -> Result<Option<String>, XtaskError> {
     match check {
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::BindingContract => super::verify_binding_contract_artifacts(),
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::EditorLanguageContract => {
             super::verify_editor_language_contract_artifacts()
         }
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::PlaygroundAsciiCapabilities => {
             super::verify_playground_ascii_capabilities_artifact()
         }
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::ResourceContract => super::verify_resource_contract_artifacts(),
         GeneratedArtifactCheck::ThemeSnapshot => verify_theme_snapshot_artifact(tmp_dir),
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::TextMeasurementProtocol => {
             super::verify_text_measurement_protocol_artifacts()
         }
+        #[cfg(feature = "render-parity")]
         GeneratedArtifactCheck::TypstProfileConstants => {
             super::verify_typst_profile_constants_artifact()
         }
@@ -667,6 +698,7 @@ pub(crate) fn verify_web_diagram_catalog(args: Vec<String>) -> Result<(), XtaskE
     verify_generated_artifact_checks(args, &checks)
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_generated_checks();
     verify_generated_artifact_checks(args, &checks)
@@ -882,16 +914,20 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "render-parity")]
     use super::{
-        GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
-        fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
-        snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
+        GeneratedArtifactCheck, layout_snapshot_environment, verify_default_config_checks,
         verify_dompurify_defaults_checks, verify_generated_checks, verify_theme_snapshot_checks,
         verify_web_diagram_catalog_checks,
+    };
+    use super::{
+        MmdFixtureScan, collect_mmd_fixtures, fixture_render_context_catalog,
+        fixture_site_config_for_path, snapshot_selector_accepts, validate_verify_generated_args,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
 
+    #[cfg(feature = "render-parity")]
     #[test]
     fn generated_artifact_verify_commands_have_expected_scope() {
         assert_eq!(
@@ -1113,6 +1149,7 @@ mod tests {
         assert!(snapshot_selector_accepts("class", "error"));
     }
 
+    #[cfg(feature = "render-parity")]
     #[test]
     fn layout_snapshot_generation_uses_the_verifier_measurement_profile() {
         let session = layout_snapshot_environment()

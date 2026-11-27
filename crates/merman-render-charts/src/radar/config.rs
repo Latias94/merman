@@ -1,4 +1,4 @@
-use merman_render_core::config::config_f64_or;
+use merman_render_core::config::{config_bool, config_f64_or};
 use serde_json::Value;
 
 const DEFAULT_WIDTH: f64 = 600.0;
@@ -42,10 +42,21 @@ impl RadarLayoutSettings {
     }
 }
 
+pub(super) fn use_max_width(effective_config: &Value) -> bool {
+    let radar = effective_config.get("radar").unwrap_or(&Value::Null);
+    config_bool(radar, &["useMaxWidth"]).unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn radar_render_settings_project_use_max_width() {
+        let cfg = json!({"radar": {"useMaxWidth": false}});
+        assert!(!use_max_width(&cfg));
+    }
 
     #[test]
     fn radar_layout_settings_preserve_defaults() {

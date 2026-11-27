@@ -10,7 +10,7 @@ mod typography;
 pub use labels::{
     XY_CHART_DATA_LABEL_INSET_PX, XyChartRectDataLabel, XyChartRectDataLabels, rect_data_labels,
 };
-pub use layout::{XyChartLayoutTypography, XyChartTextMeasurer, layout_xychart_diagram_typed};
+pub use layout::{XyChartLayoutTypography, layout_xychart_diagram_typed};
 pub use model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };

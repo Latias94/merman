@@ -47,7 +47,7 @@ fn services(
     available_font_bytes: usize,
 ) -> Result<(BindingEngineServices, usize), BindingError> {
     use merman_bindings_core::OperationControl;
-    use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits};
+    use merman_export::{NativeFontError, NativeFontLimits};
 
     use crate::memory::copy_font;
     use crate::runtime::limit_error;
@@ -133,25 +133,23 @@ fn services(
             fonts.push(bytes);
         }
     }
-    let context = NativeFontContext::from_font_bytes(fonts, font_limits, &OperationControl::new())
-        .map_err(|error| match error {
-            NativeFontError::Limit {
-                resource,
-                actual,
-                limit,
-            } => limit_error(
-                resource,
-                actual,
-                limit,
-                "native font admission limit exceeded",
-            ),
-            error => {
-                BindingError::invalid_argument(format!("native font admission failed: {error}"))
-            }
-        })?
-        .with_strict_glyph_coverage(true);
-    Ok((
-        BindingEngineServices::new().with_native_font_context(context),
-        total,
-    ))
+    let services = BindingEngineServices::from_strict_native_font_bytes(
+        fonts,
+        font_limits,
+        &OperationControl::new(),
+    )
+    .map_err(|error| match error {
+        NativeFontError::Limit {
+            resource,
+            actual,
+            limit,
+        } => limit_error(
+            resource,
+            actual,
+            limit,
+            "native font admission limit exceeded",
+        ),
+        error => BindingError::invalid_argument(format!("native font admission failed: {error}")),
+    })?;
+    Ok((services, total))
 }

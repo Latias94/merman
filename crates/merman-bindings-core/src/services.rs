@@ -1,4 +1,6 @@
 use crate::{BindingError, ConstructorServiceKey, common};
+#[cfg(feature = "native-fonts")]
+use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
 #[cfg(feature = "svg")]
 use std::sync::Arc;
 
@@ -50,7 +52,7 @@ pub struct BindingEngineServices {
     #[cfg(feature = "svg")]
     host_text_measurer: Option<Arc<dyn crate::HostTextMeasurer>>,
     #[cfg(feature = "native-fonts")]
-    native_font_context: Option<merman::svg::export::NativeFontContext>,
+    native_font_context: Option<NativeFontContext>,
     #[cfg(feature = "svg")]
     icon_registry: Option<BindingIconRegistry>,
 }
@@ -94,12 +96,22 @@ impl BindingEngineServices {
     /// measurement selector. No font source is acquired while installing this service.
     #[cfg(feature = "native-fonts")]
     #[must_use]
-    pub fn with_native_font_context(
-        mut self,
-        context: merman::svg::export::NativeFontContext,
-    ) -> Self {
+    pub fn with_native_font_context(mut self, context: NativeFontContext) -> Self {
         self.native_font_context = Some(context);
         self
+    }
+
+    /// Loads caller-owned font bytes and installs strict glyph coverage for native services.
+    #[cfg(feature = "native-fonts")]
+    #[doc(hidden)]
+    pub fn from_strict_native_font_bytes(
+        fonts: Vec<Vec<u8>>,
+        limits: NativeFontLimits,
+        control: &crate::OperationControl,
+    ) -> Result<Self, NativeFontError> {
+        let context = NativeFontContext::from_font_bytes(fonts, limits, control)?
+            .with_strict_glyph_coverage(true);
+        Ok(Self::new().with_native_font_context(context))
     }
 
     #[cfg(feature = "svg")]
@@ -158,7 +170,7 @@ impl BindingEngineServices {
     }
 
     #[cfg(feature = "native-fonts")]
-    pub(crate) fn native_font_context(&self) -> Option<merman::svg::export::NativeFontContext> {
+    pub(crate) fn native_font_context(&self) -> Option<NativeFontContext> {
         self.native_font_context.clone()
     }
 

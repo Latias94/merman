@@ -19,9 +19,11 @@ use crate::{
 };
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(test)]
+use merman_core_graph::state::StateParsedDocument;
 #[cfg(feature = "editor-facts")]
 use merman_core_graph::state::{StateLexicalEvent, StateToken as Tok};
-use merman_core_graph::state::{StateSyntax, StateSyntaxDiagnostic};
+use merman_core_graph::state::{StateModelError, StateSource, StateSyntax, StateSyntaxDiagnostic};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -29,10 +31,9 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
+use super::StateDiagramModel;
 #[cfg(feature = "presentation")]
 use super::StateDiagramRenderModel;
-use super::db::StateDb;
-use super::{StateDiagramModel, StateDocumentScratch, StateStatement};
 
 #[cfg(test)]
 thread_local! {
@@ -49,22 +50,14 @@ pub(crate) fn state_syntax_construction_count() -> usize {
     STATE_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-fn into_state_document(
-    syntax: StateSyntax,
-    control: &OperationControl,
-) -> OperationControlResult<std::result::Result<StateDocumentScratch, ParseDiagnostic>> {
-    Ok(syntax
-        .into_document(control)?
-        .map(|document| StateDocumentScratch::from_parsed_parts(document.builder, document.root))
-        .map_err(state_parse_diagnostic))
-}
-
 #[cfg(test)]
 pub(super) fn parse_state_document_for_test(
     code: &str,
     control: &OperationControl,
-) -> OperationControlResult<std::result::Result<StateDocumentScratch, ParseDiagnostic>> {
-    into_state_document(StateSyntax::lex(code, control)?, control)
+) -> OperationControlResult<std::result::Result<StateParsedDocument, ParseDiagnostic>> {
+    Ok(StateSyntax::lex(code, control)?
+        .into_document(control)?
+        .map_err(state_parse_diagnostic))
 }
 
 fn state_parse_diagnostic(diagnostic: StateSyntaxDiagnostic) -> ParseDiagnostic {
@@ -95,8 +88,17 @@ fn state_parse_diagnostic(diagnostic: StateSyntaxDiagnostic) -> ParseDiagnostic 
     }
 }
 
+fn state_model_error(diagram_type: &str, error: StateModelError) -> Error {
+    match error {
+        StateModelError::Graph(message) => Error::diagram_parse_fallback(diagram_type, message),
+        StateModelError::Document(error) => Error::Internal(crate::InternalFailure::new(format!(
+            "State document construction invariant failed: {error}"
+        ))),
+    }
+}
+
 struct StateSemanticSource {
-    db: StateDb,
+    parsed: StateSource,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -148,7 +150,21 @@ impl StateSemanticFailure {
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_state(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_state_semantic_source(code, meta)?.db.into_model(meta)
+    let source = parse_state_semantic_source(code, meta)?;
+    let model = state_render_model_controlled(source.parsed, meta, &OperationControl::new())
+        .expect("a private operation control cannot be cancelled")?;
+    super::render_model_to_compat_json(&model, meta)
+}
+
+#[cfg(feature = "presentation")]
+fn state_render_model_controlled(
+    source: StateSource,
+    meta: &SourcePresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<StateDiagramRenderModel>> {
+    Ok(source
+        .into_render_model_controlled(meta.effective_config.as_config(), control)?
+        .map_err(|error| state_model_error(&meta.diagram_type, error)))
 }
 
 #[cfg(feature = "presentation")]
@@ -164,7 +180,7 @@ pub(crate) fn parse_state_model_for_render_controlled(
         control,
     )?;
     match construction {
-        Ok(source) => source.db.into_model_controlled(meta, control),
+        Ok(source) => state_render_model_controlled(source.parsed, meta, control),
         Err(failure) => Ok(Err(failure.into_parse_error(meta))),
     }
 }
@@ -184,17 +200,17 @@ pub(crate) fn parse_state_semantic_model_controlled(
     )?;
     match construction {
         Ok(StateSemanticSource {
-            db,
+            parsed,
             #[cfg(feature = "editor-facts")]
             editor_facts,
         }) => {
-            let model = match db.into_semantic_model_controlled(diagram_type, config, control)? {
+            let model = match parsed.into_semantic_model_controlled(config, control)? {
                 Ok(mut model) => {
                     super::sanitize_common_db_fields(&mut model, config);
                     control.checkpoint()?;
                     Ok(model)
                 }
-                Err(error) => Err(error),
+                Err(error) => Err(state_model_error(diagram_type, error)),
             };
             Ok(SemanticConstruction {
                 model,
@@ -229,11 +245,11 @@ pub(crate) fn parse_state_json_and_editor_facts(
     let construction = construct_state_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let construction = match construction {
         Ok(StateSemanticSource {
-            db,
+            parsed,
             #[cfg(feature = "editor-facts")]
             editor_facts,
         }) => {
-            let model = match db.into_model_controlled(meta, control)? {
+            let model = match state_render_model_controlled(parsed, meta, control)? {
                 Ok(model) => super::render_model::render_model_to_compat_json_controlled(
                     &model, meta, control,
                 )?,
@@ -295,74 +311,22 @@ fn construct_state_semantic_source(
             control,
         )?),
     };
-    let mut doc = match into_state_document(syntax, control)? {
-        Ok(doc) => doc,
+    let parsed = match syntax.into_source(control)? {
+        Ok(parsed) => parsed,
         Err(diagnostic) => {
             return Ok(Err(StateSemanticFailure {
-                diagnostic,
+                diagnostic: state_parse_diagnostic(diagnostic),
                 #[cfg(feature = "editor-facts")]
                 editor_facts: editor_facts.map(Box::new),
             }));
         }
     };
 
-    let mut divider_cnt = 0usize;
-    assign_divider_ids(&mut doc, &mut divider_cnt, control)?;
-
-    let mut db = StateDb::new();
-    db.set_root_doc(doc, control)?;
-    control.checkpoint()?;
     Ok(Ok(StateSemanticSource {
-        db,
+        parsed,
         #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
-}
-
-pub(super) fn assign_divider_ids(
-    document: &mut StateDocumentScratch,
-    cnt: &mut usize,
-    control: &OperationControl,
-) -> OperationControlResult<()> {
-    let Some(root) = document.root else {
-        return Ok(());
-    };
-    let mut stack = vec![(root, 0usize)];
-    let mut inspected = 0usize;
-    while let Some((doc, index)) = stack.last_mut() {
-        if inspected.is_multiple_of(128) {
-            control.checkpoint()?;
-        }
-        let Some(stmt) = document.get_mut(*doc).get_mut(*index) else {
-            stack.pop();
-            continue;
-        };
-        *index += 1;
-        let mut child = None;
-        match stmt {
-            StateStatement::State(st) => {
-                if st.ty == "divider" && st.id == "__divider__" {
-                    *cnt += 1;
-                    st.id = format!("divider-id-{cnt}");
-                }
-                child = st.doc;
-            }
-            StateStatement::Relation(relation) => {
-                for st in [&mut relation.state1, &mut relation.state2] {
-                    if st.ty == "divider" && st.id == "__divider__" {
-                        *cnt += 1;
-                        st.id = format!("divider-id-{cnt}");
-                    }
-                }
-            }
-            _ => {}
-        }
-        if let Some(child) = child {
-            stack.push((child, 0));
-        }
-        inspected = inspected.saturating_add(1);
-    }
-    control.checkpoint()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1272,18 +1236,37 @@ mod semantic_capture_tests {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn canonical_state_capture_preserves_grammar_recovery_and_database_validation_facts() {
-        for (source, valid, recovered) in [
-            ("stateDiagram-v2\nA --> B\n", true, false),
-            ("stateDiagram-v2\nstate A {\nB\n", false, true),
+        const COLLISION: &str =
+            "stateDiagram-v2\nnote right of A : note\nstate \"Authored\" as A----note-0\n";
+        let collision_with_open_block = format!("{COLLISION}state Unclosed {{\nChild\n");
+        let missing_close = "unexpected end of input; expected \"}\"";
+        for (source, valid, recovered, expected_message) in [
+            ("stateDiagram-v2\nA --> B\n", true, false, None),
+            (
+                "stateDiagram-v2\nstate A {\nB\n",
+                false,
+                true,
+                Some(missing_close),
+            ),
             (
                 "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
                 false,
                 false,
+                None,
             ),
             (
-                "stateDiagram-v2\nnote right of A : note\nstate \"Authored\" as A----note-0\n",
+                COLLISION,
                 false,
                 false,
+                Some(
+                    "Authored state id `A----note-0` conflicts with generated note id for state `A`",
+                ),
+            ),
+            (
+                collision_with_open_block.as_str(),
+                false,
+                true,
+                Some(missing_close),
             ),
         ] {
             reset_state_syntax_construction_count();
@@ -1298,13 +1281,11 @@ mod semantic_capture_tests {
             )
             .unwrap();
             assert_eq!(parsed.model.is_ok(), valid);
-            if source.contains("A----note-0") {
+            if let Some(expected) = expected_message {
                 let error = parsed.model.as_ref().unwrap_err();
                 assert!(
-                    error.to_string().contains(
-                        "Authored state id `A----note-0` conflicts with generated note id for state `A`"
-                    ),
-                    "unexpected State collision error: {error}"
+                    error.to_string().contains(expected),
+                    "unexpected State error for {source:?}: {error}"
                 );
             }
             let facts = parsed.editor_facts.expect("same-pass State facts");

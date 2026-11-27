@@ -6,13 +6,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import tomllib
 import time
 import unittest
-from contextlib import chdir, redirect_stderr
+from contextlib import ExitStack, chdir, redirect_stderr
 from hashlib import sha256
 from pathlib import Path
 from unittest import mock
@@ -29,119 +30,106 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class LayoutCalibrationProcessContractsTest(unittest.TestCase):
-    def test_timeout_terminates_the_managed_process_group(self) -> None:
+    def _assert_timeout_terminates_descendant(
+        self, *, leader_exits: bool = False, close_pipes: bool = False
+    ) -> None:
         if not sys.platform.startswith(("darwin", "linux", "win32")):
             self.skipTest("supported hosts only")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            started = root / "grandchild-started"
-            orphan = root / "grandchild-survived"
+        startup_seconds = 10
+        timeout_seconds = 1.0
+        with socket.socket() as listener, ExitStack() as cleanup:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            listener.settimeout(startup_seconds)
+            close_output = (
+                "sink = os.open(os.devnull, os.O_WRONLY)\n"
+                "os.dup2(sink, 1); os.dup2(sink, 2); os.close(sink)\n"
+                if close_pipes else ""
+            )
             grandchild = (
-                "import signal, time; from pathlib import Path; "
-                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-                f"Path({str(started)!r}).write_text('started'); "
-                "time.sleep(1.5); "
-                f"Path({str(orphan)!r}).write_text('orphan'); "
-                "time.sleep(60)"
+                "import os, signal, socket\n"
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                + close_output
+                + f"with socket.create_connection({listener.getsockname()!r}) as ready:\n"
+                "    ready.recv(1)\n"
             )
             parent = (
                 "import subprocess, sys, time; "
                 f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
-                "time.sleep(60)"
+                + ("" if leader_exits else "time.sleep(60)")
             )
+            communicate = subprocess.Popen.communicate
+            descendant = None
 
-            result = calibration.run_managed_process(
-                [sys.executable, "-c", parent],
-                cwd=calibration.ROOT,
-                timeout_seconds=1.0,
-                termination_grace_seconds=0.1,
-            )
+            def communicate_when_ready(process, input=None, timeout=None):
+                nonlocal descendant
+                if timeout != timeout_seconds:
+                    return communicate(process, input=input, timeout=timeout)
+                try:
+                    # The Windows helper needs the real launch byte after job assignment.
+                    if input is not None:
+                        process.stdin.write(input)
+                        process.stdin.flush()
+                    descendant = cleanup.enter_context(listener.accept()[0])
+                    if leader_exits:
+                        self.assertEqual(process.wait(timeout=startup_seconds), 0)
+                except (OSError, AssertionError, subprocess.TimeoutExpired) as error:
+                    if sys.platform != "win32":
+                        calibration.terminate_process_group(process)
+                    raise AssertionError("timeout fixture did not reach readiness") from error
+                return communicate(process, timeout=timeout)
 
-            self.assertTrue(result["timed_out"])
-            self.assertTrue(started.is_file(), "grandchild never started")
-            time.sleep(1.7)
-            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+            # Start the real communication deadline after the fixture is ready.
+            with mock.patch.object(subprocess.Popen, "communicate", communicate_when_ready):
+                result = calibration.run_managed_process(
+                    [sys.executable, "-c", parent],
+                    cwd=calibration.ROOT,
+                    timeout_seconds=timeout_seconds,
+                    termination_grace_seconds=0.1,
+                )
+
+            self.assertTrue(result["timed_out"], result)
+            if leader_exits:
+                self.assertEqual(result["returncode"], 0, result)
+            self.assertIsNotNone(descendant, "grandchild never connected")
+            # Only the descendant holds the peer socket and it is blocked on recv.
+            descendant.settimeout(startup_seconds)
+            try:
+                self.assertEqual(descendant.recv(1), b"", "grandchild sent unexpected data")
+            except ConnectionResetError:
+                pass  # Process termination can also reset the connection.
+            except TimeoutError as error:
+                raise AssertionError("grandchild survived the timeout") from error
+
+    def test_timeout_terminates_the_managed_process_group(self) -> None:
+        self._assert_timeout_terminates_descendant()
 
     def test_timeout_terminates_descendants_after_group_leader_exits(self) -> None:
-        if not sys.platform.startswith(("darwin", "linux", "win32")):
-            self.skipTest("supported hosts only")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            started = root / "grandchild-started"
-            orphan = root / "grandchild-survived"
-            grandchild = (
-                "import signal, time; from pathlib import Path; "
-                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-                f"Path({str(started)!r}).write_text('started'); "
-                "time.sleep(1.5); "
-                f"Path({str(orphan)!r}).write_text('orphan'); "
-                "time.sleep(60)"
-            )
-            parent = (
-                "import subprocess, sys; "
-                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}])"
-            )
-
-            result = calibration.run_managed_process(
-                [sys.executable, "-c", parent],
-                cwd=calibration.ROOT,
-                timeout_seconds=1.0,
-                termination_grace_seconds=0.1,
-            )
-
-            self.assertTrue(result["timed_out"])
-            self.assertEqual(result["returncode"], 0)
-            self.assertTrue(started.is_file(), "grandchild never started")
-            time.sleep(1.7)
-            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+        self._assert_timeout_terminates_descendant(leader_exits=True)
 
     def test_timeout_terminates_descendants_that_close_output_pipes(self) -> None:
-        if not sys.platform.startswith(("darwin", "linux", "win32")):
-            self.skipTest("supported hosts only")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            started = root / "grandchild-started"
-            orphan = root / "grandchild-survived"
-            grandchild = (
-                "import os, signal, time; from pathlib import Path; "
-                "sink = os.open(os.devnull, os.O_WRONLY); "
-                "os.dup2(sink, 1); os.dup2(sink, 2); os.close(sink); "
-                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-                f"Path({str(started)!r}).write_text('started'); "
-                "time.sleep(1.5); "
-                f"Path({str(orphan)!r}).write_text('orphan'); "
-                "time.sleep(60)"
-            )
-            parent = (
-                "import subprocess, sys, time; "
-                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
-                "time.sleep(60)"
-            )
-
-            result = calibration.run_managed_process(
-                [sys.executable, "-c", parent],
-                cwd=calibration.ROOT,
-                timeout_seconds=1.0,
-                termination_grace_seconds=0.1,
-            )
-
-            self.assertTrue(result["timed_out"])
-            self.assertTrue(started.is_file(), "grandchild never started")
-            time.sleep(1.7)
-            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+        self._assert_timeout_terminates_descendant(close_pipes=True)
 
     def test_windows_reads_peak_working_set_after_target_releases_memory(self) -> None:
         if sys.platform != "win32":
             self.skipTest("Windows only")
+        allocation_bytes = 64 * 1024 * 1024
+        target = (
+            "import mmap\n"
+            f"with mmap.mmap(-1, {allocation_bytes}) as memory:\n"
+            "    for offset in range(0, len(memory), mmap.PAGESIZE):\n"
+            "        memory[offset] = 1\n"
+            "print('done')\n"
+        )
         result = calibration.run_managed_process(
-            [sys.executable, "-c", "memory = bytearray(64 * 1024 * 1024); del memory; print('done')"],
+            [sys.executable, "-c", target],
             cwd=calibration.ROOT,
             timeout_seconds=10,
         )
         self.assertEqual(result["returncode"], 0)
         self.assertFalse(result["timed_out"])
         self.assertEqual(result["stdout"].strip(), "done")
-        self.assertGreaterEqual(result["maximum_resident_set_size_bytes"], 64 * 1024 * 1024)
+        self.assertGreaterEqual(result["maximum_resident_set_size_bytes"], allocation_bytes)
 
     def test_windows_preserves_target_exit_code_and_stderr(self) -> None:
         if sys.platform != "win32":

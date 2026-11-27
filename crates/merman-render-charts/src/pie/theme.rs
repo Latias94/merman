@@ -5,7 +5,9 @@ use merman_model::families::pie::PieDiagramModel;
 use merman_render_core::{Error, Result, config::ConfigLookup, config::selected_config_string};
 
 mod css_binding;
+mod plan;
 pub use css_binding::{PieMermaidCss, PieTextRole};
+pub use plan::PieThemePlan;
 
 const MERMAID_PIE_PALETTE: [(&str, &str); 12] = [
     ("themeVariables.pie1", "#ECECFF"),

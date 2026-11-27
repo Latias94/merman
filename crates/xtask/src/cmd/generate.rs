@@ -1259,6 +1259,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     gen_upstream_svgs_impl(args, None, None)
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn gen_upstream_svgs_with_transaction_locks(
     args: Vec<String>,
     family_lock: &crate::cmd::UpstreamSvgFamilyLock,
@@ -2885,6 +2886,7 @@ const runtimeSource = runtimeBytes.toString('utf8');
     )
 }
 
+#[cfg(feature = "render-parity")]
 fn export_svg_fixtures<F>(
     fixtures_dir: &Path,
     out_dir: &Path,
@@ -2971,6 +2973,7 @@ where
     Err(XtaskError::DebugSvgFailed(failures.join("\n")))
 }
 
+#[cfg(feature = "render-parity")]
 fn render_family_fixture_svg(
     engine: &merman_core::MermaidEngine,
     mmd_path: &Path,
@@ -3013,6 +3016,7 @@ fn render_family_fixture_svg(
         .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
 }
 
+#[cfg(feature = "render-parity")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DebugSvgFamily {
     fixture_dir: &'static str,
@@ -3022,6 +3026,7 @@ struct DebugSvgFamily {
     deterministic_diagram_id: bool,
 }
 
+#[cfg(feature = "render-parity")]
 fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
     let standard = |fixture_dir, family| DebugSvgFamily {
         fixture_dir,
@@ -3077,6 +3082,7 @@ fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
     }
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "class".to_string();
     let mut out_root: Option<PathBuf> = None;
@@ -3358,11 +3364,11 @@ mod tests {
         PINNED_DOMPURIFY_VERSION, PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE,
         UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots,
         absolutize_workspace_path, captures_parse_error_svg, create_upstream_svg_check_output_root,
-        debug_svg_family, ensure_content_addressed_js_script,
-        ensure_fresh_upstream_svg_output_is_empty, ensure_seeded_upstream_svg_renderer_script,
+        ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
+        ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
         parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
-        promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
+        promote_upstream_svg_batch, render_dompurify_defaults_rs,
         scripted_renderer_background_color, scripted_renderer_container_width,
         scripted_renderer_page_viewport_width, select_upstream_svg_diagrams,
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
@@ -3373,6 +3379,8 @@ mod tests {
         validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
         validate_upstream_svg_render_probe,
     };
+    #[cfg(feature = "render-parity")]
+    use super::{debug_svg_family, render_family_fixture_svg};
     use crate::XtaskError;
     use crate::cmd::{
         acquire_upstream_svg_family_lock, acquire_upstream_svg_family_lock_with_timeout,
@@ -3447,6 +3455,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "render-parity")]
     #[test]
     fn family_fixture_renderer_uses_the_typed_artifact_pipeline() {
         let svg = render_family_fixture_svg(
@@ -3464,6 +3473,7 @@ mod tests {
         assert!(svg.contains("</svg>"));
     }
 
+    #[cfg(feature = "render-parity")]
     #[test]
     fn family_fixture_renderer_rejects_a_mismatched_family() {
         let error = render_family_fixture_svg(
@@ -3733,6 +3743,7 @@ mod tests {
         assert!(UPSTREAM_SVG_DIAGRAMS.contains(&"xychart"));
     }
 
+    #[cfg(feature = "render-parity")]
     #[test]
     fn debug_svg_family_profiles_replace_family_specific_wrappers() {
         let flowchart = debug_svg_family("flowchart-v2").expect("flowchart alias");

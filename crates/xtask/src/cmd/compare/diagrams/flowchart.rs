@@ -1,6 +1,7 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
+#[cfg(feature = "render-parity")]
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
@@ -14,16 +15,20 @@ use crate::cmd::compare::{
     write_root_deltas_report, write_verification_policy_metadata,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+#[cfg(feature = "render-parity")]
 use std::fmt::Write as _;
 use std::fs;
+#[cfg(feature = "render-parity")]
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "render-parity")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlowchartUpstreamTrust {
     PinnedCanonical,
     UntrustedCustom,
 }
 
+#[cfg(feature = "render-parity")]
 impl FlowchartUpstreamTrust {
     fn provenance_label(self, filter: Option<&str>) -> &'static str {
         match (self, filter) {
@@ -34,6 +39,7 @@ impl FlowchartUpstreamTrust {
     }
 }
 
+#[cfg(feature = "render-parity")]
 fn classify_flowchart_upstream_dir(upstream_dir: &Path) -> FlowchartUpstreamTrust {
     let canonical_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
@@ -50,6 +56,7 @@ fn classify_flowchart_upstream_dir(upstream_dir: &Path) -> FlowchartUpstreamTrus
     }
 }
 
+#[cfg(feature = "render-parity")]
 fn write_flowchart_upstream_metadata(
     report: &mut String,
     upstream_dir: &Path,
@@ -61,6 +68,7 @@ fn write_flowchart_upstream_metadata(
     let _ = writeln!(report, "- Upstream provenance: `{provenance}`");
 }
 
+#[cfg(feature = "render-parity")]
 pub(super) fn compare_flowchart_args(
     fact: DiagramVerificationFact,
     args: Vec<String>,
@@ -160,6 +168,7 @@ pub(super) fn compare_flowchart_args(
     .map_err(CompareRunFailure::into_error)
 }
 
+#[cfg(feature = "render-parity")]
 pub(super) fn compare_flowchart_request(
     fact: DiagramVerificationFact,
     request: CompareRequest,
@@ -176,6 +185,7 @@ pub(super) fn compare_flowchart_request(
     )
 }
 
+#[cfg(feature = "render-parity")]
 struct FlowchartCompareRequest {
     common: CompareRequest,
     fixtures_root: Option<PathBuf>,
@@ -184,6 +194,7 @@ struct FlowchartCompareRequest {
     label_report_limit: LabelDeltaReportLimit,
 }
 
+#[cfg(feature = "render-parity")]
 fn run_flowchart_compare(
     fact: DiagramVerificationFact,
     request: FlowchartCompareRequest,
@@ -409,6 +420,7 @@ fn run_flowchart_compare(
     )
 }
 
+#[cfg(feature = "render-parity")]
 struct FlowchartCompareState {
     root_deltas: Vec<RootDelta>,
     root_coverage: RootCoverageSummary,
@@ -416,6 +428,7 @@ struct FlowchartCompareState {
     observed_operations: ObservedRenderOperations,
 }
 
+#[cfg(feature = "render-parity")]
 pub(crate) fn check_flowchart_elk_parity(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
@@ -991,7 +1004,7 @@ fn normalize_flowchart_elk_directive(body: &str) -> String {
     normalized
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "render-parity"))]
 mod tests {
     use super::{
         FlowchartCompareRequest, FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,

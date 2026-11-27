@@ -187,11 +187,22 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     })
 }
 
-pub(in crate::svg::parity::flowchart) fn finish_edge_route(
-    request: FlowchartEdgePathGeomRequest<'_>,
+struct PreparedEdgePaint<'a> {
+    line_data: Vec<crate::model::LayoutPoint>,
+    interpolate: &'a str,
+    points_after_intersect_for_trace: Option<Vec<crate::model::LayoutPoint>>,
+    original_label_path_points: Vec<crate::model::LayoutPoint>,
+    label_path_points: Vec<crate::model::LayoutPoint>,
+    label: Option<crate::model::LayoutLabel>,
+    is_cluster_edge: bool,
+}
+
+fn prepare_edge_paint<'a>(
+    request: FlowchartEdgePathGeomRequest<'a>,
+    le: &crate::model::LayoutEdge,
     route: ClippedEdgeRoute,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Option<FlowchartEdgePathGeom> {
+) -> PreparedEdgePaint<'a> {
     let FlowchartEdgePathGeomRequest {
         ctx,
         key,
@@ -200,7 +211,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         origin_y,
         trace_enabled,
     } = request;
-    let le = ctx.layout_edges_by_key.get(&key)?.materialized()?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     let clip_clusters = !is_elk_layout;
     let ClippedEdgeRoute {
@@ -253,7 +263,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
     // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
     let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
-    let points_for_data_points = &scratch.tmp_points_b;
 
     let interpolate = if missing_section {
         "linear"
@@ -312,7 +321,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let geometry = {
+    let line_data = {
         let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
             .iter()
             .filter(|p| !p.y.is_nan())
@@ -329,24 +338,53 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         // Mermaid shortens edge paths so markers don't render on top of the line (see
         // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-        let line_data = if is_rounded {
+        if is_rounded {
             rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
         } else {
             line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
-        };
-
-        curve_path_geometry(&line_data, interpolate, ctx.edge_corner_radius)
+        }
     };
-    if trace_enabled {
+    PreparedEdgePaint {
+        line_data,
+        interpolate,
+        points_after_intersect_for_trace,
+        original_label_path_points,
+        label_path_points,
+        label,
+        is_cluster_edge,
+    }
+}
+
+pub(in crate::svg::parity::flowchart) fn finish_edge_route(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    route: ClippedEdgeRoute,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Option<FlowchartEdgePathGeom> {
+    let ctx = request.ctx;
+    let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
+    let PreparedEdgePaint {
+        line_data,
+        interpolate,
+        points_after_intersect_for_trace,
+        original_label_path_points,
+        label_path_points,
+        label,
+        is_cluster_edge,
+    } = prepare_edge_paint(request, le, route, scratch);
+    let geometry = curve_path_geometry(&line_data, interpolate, ctx.edge_corner_radius);
+    drop(line_data);
+
+    let points_for_data_points = &scratch.tmp_points_b;
+    if request.trace_enabled {
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
-            edge,
+            edge: request.edge,
             layout_edge: Some(le),
-            origin_x,
-            origin_y,
-            base_points,
+            origin_x: request.origin_x,
+            origin_y: request.origin_y,
+            base_points: &scratch.tmp_points_a,
             points_after_intersect_for_trace: points_after_intersect_for_trace.as_deref(),
-            points_for_render,
+            points_for_render: &scratch.tmp_points_c,
             points_for_data_points,
         });
     }
@@ -368,4 +406,94 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         emitted_d_for_label: None,
         bounds_skipped_for_viewbox: false,
     })
+}
+
+/// The painted linear shaft in root-local coordinates, rounded as in the parity path.
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    any(feature = "native-compact", test)
+))]
+pub(in crate::svg::parity::flowchart) struct DagreLinearPaintedRoute {
+    pub(in crate::svg::parity::flowchart) points: Vec<crate::model::LayoutPoint>,
+    pub(in crate::svg::parity::flowchart) bounds: path_bounds::SvgPathBounds,
+}
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    any(feature = "native-compact", test)
+))]
+pub(in crate::svg::parity::flowchart) fn dagre_linear_painted_route(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Option<DagreLinearPaintedRoute> {
+    let ctx = request.ctx;
+    if !matches!(
+        ctx.layout.route_contract,
+        crate::graph_layout::RouteContract::DagreParity
+    ) || ctx.uses_elk_adapter_dom
+        || ctx.swimlane_direction.is_some()
+        || request.trace_enabled
+        || !ctx.model.subgraphs.is_empty()
+        || request.edge.from == request.edge.to
+        || request.key.self_loop_segment_order().is_some()
+        || ctx
+            .model
+            .edge_label_for_occurrence(request.key, request.edge)
+            .is_some_and(|label| !label.is_empty())
+    {
+        return None;
+    }
+    let route = prepare_edge_route(request, scratch)?;
+    let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
+    if le.from_cluster.is_some() || le.to_cluster.is_some() {
+        return None;
+    }
+    let prepared = prepare_edge_paint(request, le, route, scratch);
+    if prepared.interpolate != "linear" {
+        return None;
+    }
+    DagreLinearPaintedRoute::from_line_data(prepared.line_data)
+}
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    any(feature = "native-compact", test)
+))]
+impl DagreLinearPaintedRoute {
+    fn from_line_data(mut points: Vec<crate::model::LayoutPoint>) -> Option<Self> {
+        let (first, rest) = points.split_first_mut()?;
+        if rest.is_empty() {
+            return None;
+        }
+        round_linear_point(first)?;
+        let mut bounds = path_bounds::SvgPathBounds::at(first.x, first.y);
+        for point in rest {
+            round_linear_point(point)?;
+            bounds.include_point(point.x, point.y);
+        }
+        Some(Self { points, bounds })
+    }
+}
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    any(feature = "native-compact", test)
+))]
+fn round_linear_point(point: &mut crate::model::LayoutPoint) -> Option<()> {
+    fn coordinate(value: f64) -> Option<f64> {
+        if !value.is_finite() {
+            return None;
+        }
+        let thousandths = crate::svg::parity::util::path_coordinate_thousandths(value);
+        (thousandths.unsigned_abs() <= (1_u64 << f64::MANTISSA_DIGITS))
+            .then(|| thousandths as f64 / 1000.0)
+    }
+
+    point.x = coordinate(point.x)?;
+    point.y = coordinate(point.y)?;
+    Some(())
 }

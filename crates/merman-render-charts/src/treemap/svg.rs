@@ -5,16 +5,20 @@ use merman_render_core::{
     xml::{escape_attr, escape_attr_display},
 };
 
+mod render;
+
+pub use render::render_treemap_diagram_svg;
+
 /// Already selected paint for a leaf rectangle.
-pub struct TreemapLeafRectPaint<'a> {
-    pub fill: &'a str,
-    pub stroke: &'a str,
-    pub style: &'a str,
-    pub native_radius: Option<f64>,
+struct TreemapLeafRectPaint<'a> {
+    fill: &'a str,
+    stroke: &'a str,
+    style: &'a str,
+    native_radius: Option<f64>,
 }
 
 /// Opens a leaf group at its layout origin.
-pub fn write_treemap_leaf_group_open(
+fn write_treemap_leaf_group_open(
     out: &mut impl SvgOutput,
     group_class: &str,
     x: f64,
@@ -34,7 +38,7 @@ pub fn write_treemap_leaf_group_open(
 ///
 /// `clip_id` is the caller's already projected ID, reused in the caller's text
 /// references. This writer XML-escapes it without performing another projection.
-pub fn write_treemap_leaf_rect_and_clip(
+fn write_treemap_leaf_rect_and_clip(
     out: &mut impl SvgOutput,
     width: f64,
     height: f64,

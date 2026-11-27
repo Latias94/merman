@@ -359,6 +359,7 @@ fn renderer_from_config(
         options: svg,
         debug: Default::default(),
         pipeline: None,
+        output_profile: Default::default(),
     };
     ConfiguredRenderer {
         renderer,

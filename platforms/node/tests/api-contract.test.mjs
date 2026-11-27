@@ -1238,6 +1238,21 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
   );
 });
 
+test("asynchronous SVG methods reject invalid options instead of throwing synchronously", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const source = "flowchart TD\nA --> B";
+    await assert.rejects(engine.renderSvg(source, null), TypeError);
+    await assert.rejects(engine.svgPlanJson(source, null), TypeError);
+    assert.throws(() => engine.renderSvgSync(source, null), TypeError);
+    assert.throws(() => engine.svgPlanJsonSync(source, null), TypeError);
+    assert.deepEqual(factory.calls, []);
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test("themeCatalog returns schema 2 from the shared metadata route", async () => {
   const catalog = {
     schema_version: 2,

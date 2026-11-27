@@ -3,8 +3,56 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "text-layout")]
+mod common_dimensions;
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+pub use common_dimensions::measure_mermaid_text_dimensions_with_checkpoint;
+#[cfg(feature = "text-layout")]
+pub use common_dimensions::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidTextDimensions, measure_mermaid_text_dimensions,
+};
+#[cfg(feature = "text-layout")]
 mod create_text;
 mod css_font;
+mod measure;
+pub use measure::TextMeasurer;
+#[cfg(feature = "text-layout")]
+mod deterministic;
+#[cfg(feature = "text-layout")]
+#[doc(hidden)]
+pub mod html_wrap;
+#[cfg(all(feature = "text-layout", feature = "svg-parse"))]
+#[doc(hidden)]
+pub mod inline_html;
+#[cfg(feature = "text-layout")]
+mod svg_metrics;
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+mod svg_word_wrap;
+#[cfg(feature = "text-layout")]
+mod wrap;
+#[cfg(feature = "text-layout")]
+pub use deterministic::{
+    DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
+    try_measure_wrapped_text_with_line_metrics,
+};
+#[cfg(feature = "text-layout")]
+pub use line_break::split_html_br_lines;
+#[cfg(feature = "text-layout")]
+pub(crate) use line_break::split_mermaid_common_br_lines;
+#[cfg(feature = "text-layout")]
+pub use svg_metrics::{
+    svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
+    svg_wrapped_first_line_bbox_height_px,
+};
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+#[doc(hidden)]
+pub use svg_word_wrap::flowchart_wrap_svg_source_word_lines;
+#[cfg(all(feature = "text-layout", feature = "svg-output"))]
+pub use wrap::wrap_label_like_mermaid_lines_with_checkpoint;
+#[cfg(feature = "text-layout")]
+pub use wrap::{
+    ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even,
+    wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
+};
 #[cfg(feature = "text-layout")]
 mod css_font_stack;
 #[cfg(feature = "text-layout")]
@@ -19,13 +67,13 @@ pub mod measurement;
 mod whitespace;
 #[cfg(feature = "text-layout")]
 pub use create_text::non_markdown_svg_words;
-pub use css_font::{is_css_wide_keyword, resolve_css_font_weight};
+pub use css_font::{FontStyle, GenericFontFamily, is_css_wide_keyword, resolve_css_font_weight};
 #[cfg(feature = "text-layout")]
 pub use css_font_stack::{ParsedCssFontStack, parse_css_font_stack, xhtml_font_default};
 #[cfg(feature = "text-layout")]
 pub use fonts::{
     FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy, FontSourcePolicyError,
-    FontStack, FontStackError, FontStyle, GenericFontFamily,
+    FontStack, FontStackError,
 };
 #[cfg(feature = "text-layout")]
 #[doc(hidden)]
@@ -36,6 +84,14 @@ pub use heuristic::{
     estimate_text_width_em, is_monospace_font_family,
 };
 pub use whitespace::*;
+
+pub fn flowchart_html_line_height_px(font_size_px: f64) -> f64 {
+    font_size_px.max(0.0) * 1.5
+}
+
+pub fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * 1.1875
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum WrapMode {

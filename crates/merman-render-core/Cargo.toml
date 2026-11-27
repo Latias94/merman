@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Shared geometry and resource contracts for Merman renderers."
+documentation = "https://docs.rs/merman-render-core"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "geometry"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
@@ -17,12 +20,20 @@ default = []
 benchmark-stages = ["merman-model?/benchmark-stages"]
 css-style = ["dep:cssparser", "dep:merman-markup", "dep:merman-model", "dep:serde_json", "dep:unicode-segmentation"]
 graph-layout = ["dep:kurbo"]
+html = ["svg-output", "merman-markup/html"]
 icon-registry = ["resources", "dep:quick-xml", "dep:roxmltree", "dep:serde_json"]
 route-paint = ["dep:kurbo"]
 layout-cytoscape = ["svg-output", "dep:manatee"]
 layout-dagre = ["svg-output", "dep:dugong"]
 layout-elk = ["svg-output", "dep:merman-layout-elk"]
 layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
+math = [
+    "math-labels", "dep:kurbo", "dep:quick-xml", "dep:roxmltree",
+    "dep:ratex-font", "dep:ratex-layout", "dep:ratex-parser", "dep:ratex-svg", "dep:ratex-types",
+    "ratex-svg/embed-fonts",
+]
+math-labels = ["html", "text-layout", "dep:sha2"]
+paint-scene = ["css-style", "svg-output"]
 resources = ["dep:merman-model", "dep:thiserror"]
 resources-agentflow = ["resources", "merman-model/diagram-agentflow"]
 resources-class = ["resources", "merman-model/diagram-class"]
@@ -31,6 +42,7 @@ resources-mindmap = ["resources", "merman-model/diagram-mindmap"]
 resources-sequence = ["resources", "merman-model/diagram-sequence"]
 resources-swimlane = ["resources", "merman-model/diagram-swimlane"]
 resources-zenuml = ["resources", "merman-model/diagram-zenuml"]
+root-svg = ["svg-output", "css-style"]
 rough-svg = ["svg-output", "dep:roughr"]
 shoal-bridge = ["graph-layout", "layout-shoal", "svg-output"]
 svg-animation = ["svg-output", "dep:roxmltree", "dep:svgtypes"]
@@ -39,6 +51,8 @@ svg-parse = ["svg-output", "dep:quick-xml"]
 svg-identity = ["svg-parse", "dep:cssparser"]
 test-support = []
 text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unicode-width"]
+theme-elevation = ["theme-svg", "dep:kurbo"]
+theme-label-background = ["theme-svg", "dep:kurbo", "dep:svgtypes"]
 theme-svg = ["svg-output", "dep:merman-theme-contract"]
 
 [dependencies]
@@ -53,11 +67,17 @@ merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
+ratex-font = { workspace = true, optional = true }
+ratex-layout = { workspace = true, optional = true }
+ratex-parser = { workspace = true, optional = true }
+ratex-svg = { workspace = true, optional = true }
+ratex-types = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
 roughr = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 unicode-linebreak = { workspace = true, optional = true }

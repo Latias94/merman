@@ -188,18 +188,12 @@ fn prepare_sankey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = merman_render_charts::sankey::layout_sankey_diagram_typed(
+    let (layout, style) = merman_render_charts::sankey::prepare_sankey_diagram(
         model,
-        meta.effective_config.as_value(),
-        execution.work_meter_ref(),
-    )?;
-    let native = execution.native_family_theme();
-    let style = crate::sankey::SankeyStyle::resolve(
         &meta.effective_config,
-        &layout,
-        native,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
-        &execution.work_meter(),
+        execution.family.session().work_meter(),
     )?;
     Ok(BuiltinFamilyArtifact::Sankey(Box::new(
         SankeyFamilyArtifact {
@@ -613,32 +607,16 @@ fn prepare_pie_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::pie::PieAppearance;
-
-    if let Some(theme) = execution.native_family_theme() {
-        let (layout, style) = crate::pie::prepare_native_pie(
-            theme,
-            model,
-            meta.title.as_deref(),
-            &meta.effective_config,
-            execution.text_measurer(),
-        )?;
-        return Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            appearance: PieAppearance::Native(style),
-        })));
-    }
-    let theme = crate::pie::PieThemePlan::baseline(model, &meta.effective_config);
-    let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(
+    let (layout, appearance) = crate::pie::prepare_pie_diagram(
         model,
         meta.title.as_deref(),
         &meta.effective_config,
-        &theme,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        appearance: PieAppearance::Mermaid(theme),
+        appearance,
     })))
 }
 
@@ -696,21 +674,18 @@ fn prepare_radar_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution.native_family_theme();
-    let typography_theme =
-        crate::radar::RadarTypographyThemePlan::resolve(native, &meta.effective_config);
-    let series_paint =
-        crate::radar::RadarSeriesPaintPlan::resolve(native, &meta.effective_config, model);
-    let layout = crate::radar::layout_radar_diagram_typed_with_work_meter(
+    let fallback_c_scale = std::array::from_fn(crate::svg::render_theme::default_c_scale);
+    let (layout, style) = crate::radar::prepare_radar_diagram(
         model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
+        &meta.effective_config,
+        native,
+        &fallback_c_scale,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Radar(Box::new(
         RadarFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            series_paint,
-            typography_theme,
+            style,
         },
     )))
 }
@@ -722,19 +697,15 @@ fn prepare_treemap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
+    let fallback_c_scale = std::array::from_fn(crate::svg::render_theme::default_c_scale);
+    let (layout, style) = crate::treemap::prepare_treemap_diagram(
         model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
-        execution.work_meter_ref(),
-    )?;
-    let native = execution.native_family_theme();
-    let style = crate::treemap::TreemapStyle::resolve(
         &meta.effective_config,
-        &layout,
-        native,
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
-        &execution.work_meter(),
+        &fallback_c_scale,
+        execution.family.session().work_meter(),
     )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
@@ -1124,22 +1095,12 @@ fn prepare_ishikawa_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let mut cfg =
-        crate::ishikawa::IshikawaConfigView::new(&meta.effective_config).layout_settings();
-    let mut typography =
-        crate::ishikawa::IshikawaTypographyPlan::resolve(&meta.effective_config, cfg.font_size);
-    if let Some(theme) = native {
-        typography.apply_native(theme, &meta.effective_config, &mut cfg);
-    }
-    let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
+    let (layout, text_theme) = merman_render_structured::ishikawa::prepare_ishikawa_diagram(
         model,
-        &cfg,
-        &typography,
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
     )?;
-    let text_theme =
-        crate::ishikawa::IshikawaTextThemePlan::resolve(native, &meta.effective_config, typography);
     Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
         IshikawaFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -1221,8 +1182,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
         RenderSemanticModel::State(model) => prepare_state_family(model, meta, &execution)?,
         #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => {
+            use merman_render_sequence::preparation::prepare_sequence_diagram_typed_with_title_and_work_meter;
+
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+                prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     &meta.effective_config,

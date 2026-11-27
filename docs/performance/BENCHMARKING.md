@@ -200,6 +200,10 @@ would change if the drawing were wrong.
 | `label_widths` | The named rectangular node must contain the expected text. Chromium text ranges must fit horizontally within the node and a clipping `foreignObject` viewport. Signed left and right clearances are in CSS pixels. The report records the computed CSS font-family lists and observer environment. Physical font selection depends on the host. |
 | `sequence_messages` | In a Sequence diagram, count visible message labels with exactly the declared text. The loop workload exercises the same message at 1, 32 and 256 occurrences. Removing an occurrence fails the check even when other copies of its text survive. |
 
+The Node collector validates SVGs after sampling. `bench.py` passes its Python interpreter to the
+collector. For standalone runs of `node_runner.mjs`, set `MERMAN_BENCH_PYTHON` to the interpreter
+path if Python is not on `PATH`.
+
 The Node collector can save the actual SVG from the last warm batch after its clock stops. The SVG
 CLI already retains each rendered file. The observer verifies repeated output identity, the raw
 file size and its SHA-256 before inspecting the bytes in a sandboxed, offline Chromium frame.

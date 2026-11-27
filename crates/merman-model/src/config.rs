@@ -18,6 +18,17 @@ use std::iter::Peekable;
 use std::ops::ControlFlow;
 use std::sync::{Arc, OnceLock};
 
+/// Converts an inline configuration scalar using Mermaid's accepted value types.
+#[doc(hidden)]
+pub fn inline_config_scalar_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
 #[derive(Clone)]
 pub struct MermaidConfig {
     #[cfg(test)]

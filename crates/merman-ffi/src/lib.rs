@@ -8,7 +8,7 @@
 
 use merman::OperationControl;
 #[cfg(feature = "native-fonts")]
-use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
+use merman::svg::export::{NativeFontError, NativeFontLimits};
 use merman_bindings_core::transport_boundary::catch_transport_unwind;
 use merman_bindings_core::transport_handles::{HandleRegistry, OperationControlRegistry};
 use merman_bindings_core::{
@@ -21,7 +21,6 @@ use merman_bindings_core::{
     HostMeasurementResult, IconPack, IconRegistryResourceLimitId, build_icon_registry,
 };
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
 use std::mem::{align_of, size_of};
 use std::ptr;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -135,56 +134,16 @@ fn encode_engine_token(counter: u64) -> MermanNativeEngineToken {
     (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
 }
 
-#[derive(Default)]
-struct NativeAllocationRegistry {
-    last_counter: u64,
-    results: BTreeMap<u64, NativeResultAllocation>,
-}
+type NativeResultRegistry = HandleRegistry<NativeResultAllocation>;
 
 struct NativeResultAllocation {
     _data: Vec<u8>,
     _metadata_or_error_json: Vec<u8>,
 }
 
-impl NativeAllocationRegistry {
-    fn issue_token(&mut self) -> Result<u64, NativeFailure> {
-        issue_domain_token(
-            &mut self.last_counter,
-            MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG,
-            "native result allocation token space is exhausted",
-        )
-    }
-
-    fn publish(&mut self, token: u64, allocation: NativeResultAllocation) {
-        debug_assert!(token_has_domain(
-            token,
-            MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG
-        ));
-        let previous = self.results.insert(token, allocation);
-        debug_assert!(
-            previous.is_none(),
-            "native result allocation tokens are never reused"
-        );
-    }
-}
-
-fn issue_domain_token(
-    last_counter: &mut u64,
-    domain_tag: u64,
-    exhausted_message: &'static str,
-) -> Result<u64, NativeFailure> {
-    let counter = last_counter
-        .checked_add(1)
-        .filter(|counter| *counter <= MERMAN_NATIVE_TOKEN_COUNTER_MAX)
-        .ok_or_else(|| {
-            NativeFailure::new(MERMAN_NATIVE_STATUS_INTERNAL_ERROR, exhausted_message)
-        })?;
-    let token = (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | domain_tag;
-    debug_assert_ne!(token, 0);
-    debug_assert!(token <= i64::MAX as u64);
-    debug_assert!(token_has_domain(token, domain_tag));
-    *last_counter = counter;
-    Ok(token)
+fn encode_result_token(counter: u64) -> u64 {
+    debug_assert!((1..=MERMAN_NATIVE_TOKEN_COUNTER_MAX).contains(&counter));
+    (counter << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG
 }
 
 fn token_has_domain(token: u64, domain_tag: u64) -> bool {
@@ -193,7 +152,8 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
 
 static ENGINE_REGISTRY: Mutex<NativeEngineRegistry> =
     Mutex::new(NativeEngineRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX));
-static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
+static ALLOCATION_REGISTRY: Mutex<NativeResultRegistry> =
+    Mutex::new(NativeResultRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX));
 static OPERATION_CONTROL_REGISTRY: Mutex<OperationControlRegistry> = Mutex::new(
     OperationControlRegistry::new(MERMAN_NATIVE_TOKEN_COUNTER_MAX),
 );
@@ -302,10 +262,6 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
 
 fn native_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT
-}
-
-fn allocation_registry() -> &'static Mutex<NativeAllocationRegistry> {
-    ALLOCATION_REGISTRY.get_or_init(|| Mutex::new(NativeAllocationRegistry::default()))
 }
 
 fn operation_control_registry() -> MutexGuard<'static, OperationControlRegistry> {
@@ -427,11 +383,12 @@ fn release_result_allocation(token: u64) {
     if !token_has_domain(token, MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG) {
         return;
     }
+    let counter = token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT;
     let retired = {
-        let mut registry = allocation_registry()
+        let mut registry = ALLOCATION_REGISTRY
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        registry.results.remove(&token)
+        registry.remove(counter)
     };
     drop(retired);
 }
@@ -574,28 +531,10 @@ unsafe fn write_native_result(
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
 ) -> MermanNativeStatus {
-    // Issue first so an exhausted token space drops caller-result buffers only after the
-    // allocation-registry lock has been released.
-    let allocation_token = {
-        let mut registry = allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        registry.issue_token()
-    };
-    let allocation_token = match allocation_token {
-        Ok(token) => token,
-        Err(failure) => return failure.status,
-    };
-    let (allocation, data, metadata_or_error_json) =
-        prepare_result_allocation(data, metadata_or_error_json);
-    let mut registry = allocation_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.publish(allocation_token, allocation);
     unsafe {
-        write_registered_native_result(
+        write_native_result_with_registry(
+            &ALLOCATION_REGISTRY,
             out_result,
-            allocation_token,
             status,
             operation,
             media_type,
@@ -605,9 +544,8 @@ unsafe fn write_native_result(
     }
 }
 
-#[cfg(test)]
 unsafe fn write_native_result_with_registry(
-    registry: &mut NativeAllocationRegistry,
+    registry: &Mutex<NativeResultRegistry>,
     out_result: *mut MermanNativeResult,
     status: MermanNativeStatus,
     operation: MermanNativeOperationCode,
@@ -615,50 +553,35 @@ unsafe fn write_native_result_with_registry(
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
 ) -> MermanNativeStatus {
-    let allocation_token = match registry.issue_token() {
-        Ok(token) => token,
-        Err(failure) => return failure.status,
-    };
     let (allocation, data, metadata_or_error_json) =
         prepare_result_allocation(data, metadata_or_error_json);
-    registry.publish(allocation_token, allocation);
-    unsafe {
-        write_registered_native_result(
-            out_result,
-            allocation_token,
-            status,
-            operation,
-            media_type,
-            data,
-            metadata_or_error_json,
-        )
-    }
-}
-
-unsafe fn write_registered_native_result(
-    out_result: *mut MermanNativeResult,
-    allocation_token: u64,
-    status: MermanNativeStatus,
-    operation: MermanNativeOperationCode,
-    media_type: Option<&'static str>,
-    data: MermanNativeBuffer,
-    metadata_or_error_json: MermanNativeBuffer,
-) -> MermanNativeStatus {
-    unsafe {
-        ptr::write(
-            out_result,
-            MermanNativeResult {
-                struct_size: native_struct_size::<MermanNativeResult>(),
-                allocation_token,
-                status,
-                operation: normalized_operation(operation),
-                media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
-                data,
-                metadata_or_error_json,
-            },
-        );
-    }
-    status
+    let rejected = {
+        let mut registry = registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match registry.try_insert(allocation) {
+            Ok(counter) => {
+                unsafe {
+                    ptr::write(
+                        out_result,
+                        MermanNativeResult {
+                            struct_size: native_struct_size::<MermanNativeResult>(),
+                            allocation_token: encode_result_token(counter),
+                            status,
+                            operation: normalized_operation(operation),
+                            media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
+                            data,
+                            metadata_or_error_json,
+                        },
+                    );
+                }
+                return status;
+            }
+            Err(rejected) => rejected,
+        }
+    };
+    drop(rejected);
+    MERMAN_NATIVE_STATUS_INTERNAL_ERROR
 }
 
 unsafe fn write_native_failure(
@@ -1857,10 +1780,9 @@ unsafe fn engine_new_with_fonts_impl(
             }
             owned_fonts.append(&mut bundled);
             let control = OperationControl::new();
-            let context = NativeFontContext::from_font_bytes(owned_fonts, limits, &control)
-                .map_err(native_failure_from_font)?
-                .with_strict_glyph_coverage(true);
-            let services = BindingEngineServices::new().with_native_font_context(context);
+            let services =
+                BindingEngineServices::from_strict_native_font_bytes(owned_fonts, limits, &control)
+                    .map_err(native_failure_from_font)?;
             let options_json =
                 unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
             let engine_config = MermanNativeEngineConfig {

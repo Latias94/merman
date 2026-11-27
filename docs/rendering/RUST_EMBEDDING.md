@@ -48,12 +48,18 @@ println!("{}", svg.svg());
 `with_site_config` with a `MermaidConfig` to set a family-specific default such as
 `flowchart.layout`. Document frontmatter and directives still follow Mermaid's configuration
 precedence. A document override can request a different engine and will need that engine's feature.
+In a Shoal-only build, set `layout: tidy-tree` for Mindmap rather than relying on the global
+Shoal default. Mindmap does not use Shoal.
 
 The one-argument helpers use bounded defaults for SVG, ASCII, PNG, JPEG, and PDF. They return
 `RenderError::NoDiagram` when detection finds no diagram, without hiding errors in a recognized
 diagram. For per-call limits and cancellation, use the relevant `*_with` method with an explicit
 target request and `OperationControl`, or use `Renderer::render(RenderRequest)` to retain the
 optional-output contract.
+Start from `renderer.default_svg_request()` or `renderer.default_ascii_request()` to keep the
+builder's target settings when you supply a control or per-call override. A fresh `SvgRequest`
+or `AsciiRequest` takes its own defaults. To set a separate operation-wide input budget on an
+explicit ASCII request, use `RenderRequest::with_resource_policy`.
 
 For a defaults-off build that previously depended on Dagre, add `layout-dagre`. With a host allowlist,
 include `RenderCapabilityPolicy::deny_all().with_allowed(RenderCapability::LayoutDagre)` in the

@@ -1,3 +1,6 @@
+[graph]
+features = ["xtask/render-parity"]
+
 [advisories]
 ignore = [
   { id = "RUSTSEC-2026-0206", reason = "Native font coverage probes and Merman Krilla still resolve rustybuzz 0.20.1. The Merman usvg runtime now uses HarfRust." },

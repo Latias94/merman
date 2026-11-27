@@ -23,7 +23,7 @@ pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
     EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
-    escape_xml_raw_into, escape_xml_serialized_text_into, escaped_xml_len,
+    escape_xml_serialized_text_into, escaped_xml_len,
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 
@@ -56,10 +56,6 @@ pub(super) fn config_bool(
     path: &[&str],
 ) -> Option<bool> {
     crate::config::value_at(cfg, path).and_then(json_bool)
-}
-
-pub(super) fn normalize_css_font_family(font_family: &str) -> String {
-    crate::config::normalize_css_font_family(font_family)
 }
 
 pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
@@ -118,7 +114,7 @@ pub(super) fn fmt_path_coordinate_into(out: &mut String, v: f64) -> f64 {
     }
 }
 
-fn path_coordinate_thousandths(v: f64) -> i64 {
+pub(super) fn path_coordinate_thousandths(v: f64) -> i64 {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
@@ -219,6 +215,7 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_render_core::xml::escape_xml_raw_into;
 
     #[test]
     fn fmt_into_matches_expected() {

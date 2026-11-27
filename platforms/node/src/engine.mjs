@@ -254,7 +254,7 @@ export class MermanEngine {
     return structuredClone(this.#runtimeCatalog);
   }
 
-  renderSvg(source, options = {}) {
+  async renderSvg(source, options = {}) {
     return this.#execute(
       { operationId: "svg", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },
@@ -272,7 +272,7 @@ export class MermanEngine {
     );
   }
 
-  svgPlanJson(source, options = {}) {
+  async svgPlanJson(source, options = {}) {
     return this.#execute(
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
       { signal: options.signal, timeoutMs: options.timeoutMs },

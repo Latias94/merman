@@ -7,19 +7,23 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Layout and SVG emission for Merman's structured diagram families."
+documentation = "https://docs.rs/merman-render-structured"
 readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout"]
+categories = ["visualization"]
 
 [package.metadata.merman-legal]
 third-party-bundle = true
 
 [features]
 default = []
-diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/theme-svg"]
-diagram-ishikawa = ["dep:merman-model", "dep:merman-render-core", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/rough-svg"]
-diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet"]
+diagram-info = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "merman-render-core/root-svg", "merman-render-core/theme-svg"]
+diagram-ishikawa = ["dep:cssparser", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:roughr", "dep:serde", "dep:serde_json", "merman-model/diagram-ishikawa", "merman-render-core/root-svg", "merman-render-core/rough-svg"]
+diagram-packet = ["dep:merman-markup", "dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:ryu-js", "dep:serde", "dep:serde_json", "merman-model/diagram-packet", "merman-render-core/root-svg"]
 diagram-railroad = ["dep:merman-model", "dep:merman-render-core", "dep:merman-theme-contract", "dep:serde", "dep:serde_json", "merman-model/diagram-railroad"]
 
 [dependencies]
+cssparser = { workspace = true, optional = true }
 merman-markup = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, features = ["css-style", "svg-output"], optional = true }

@@ -1,33 +1,93 @@
 use merman_render_core::{
-    Result,
+    Error, Result,
     number_format::canonical_number as fmt,
-    svg_css::{CssSelectorDiagramId, FragmentDiagramId},
-    svg_output::{SvgOutput, XmlTextOutput},
+    resources::OperationWorkMeter,
+    root_svg::{DiagramBounds, RootChrome, RootViewportContext, RootViewportSpec, RootedSvg},
+    svg_css::SvgId,
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
     theme_svg::write_color,
     xml::{escape_attr, escape_xml},
 };
 
-use super::{InfoClassicStyle, InfoDiagramLayout, InfoNativeStyle};
+use super::{
+    INFO_BASELINE_HEIGHT_PX, InfoAppearance, InfoClassicStyle, InfoDiagramLayout, InfoNativeStyle,
+};
+
+/// Emits the complete Info SVG, before host canvas and terminal SVG admission.
+pub fn render_info_svg(
+    layout: &InfoDiagramLayout,
+    appearance: &InfoAppearance,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+) -> Result<RootedSvg> {
+    match appearance {
+        InfoAppearance::Mermaid(style) => {
+            render_classic_info_svg(layout, style, diagram_id, root_viewport, work_meter)
+        }
+        InfoAppearance::Native(style) => {
+            render_native_info_svg(layout, style, diagram_id, root_viewport, work_meter)
+        }
+    }
+}
+
+fn render_native_info_svg(
+    layout: &InfoDiagramLayout,
+    style: &InfoNativeStyle,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+) -> Result<RootedSvg> {
+    let bounds = layout.bounds.as_ref().ok_or_else(|| Error::InvalidModel {
+        message: "Info layout is missing its prepared viewport bounds".to_owned(),
+    })?;
+    let viewport = RootViewportSpec::responsive(DiagramBounds::from_extents(
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x,
+        bounds.max_y,
+        0.0,
+    ));
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let root = root_viewport.write_open(&mut out, viewport, RootChrome::new(diagram_id, "info"))?;
+    style.write_svg_tail(&mut out, layout);
+    root.complete(out.finish()?)
+}
+
+fn render_classic_info_svg(
+    layout: &InfoDiagramLayout,
+    style: &InfoClassicStyle,
+    diagram_id: SvgId<'_>,
+    root_viewport: &RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
+) -> Result<RootedSvg> {
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let bounds = layout.bounds.as_ref().ok_or_else(|| Error::InvalidModel {
+        message: "Info layout is missing its prepared viewport bounds".to_string(),
+    })?;
+    let mut root_spec =
+        RootViewportSpec::responsive_without_view_box((bounds.max_x - bounds.min_x).max(0.0));
+    let height = (bounds.max_y - bounds.min_y).max(0.0);
+    if height > INFO_BASELINE_HEIGHT_PX {
+        root_spec = root_spec.with_mermaid_responsive_height(true, height);
+    }
+    let mut root_chrome = RootChrome::new(diagram_id, "info");
+    root_chrome.dom.trailing_newline = false;
+    let root_document = root_viewport.write_open(&mut out, root_spec, root_chrome)?;
+    style.write_svg_contents(&mut out, layout, diagram_id.semantic_str())?;
+    out.push_str("</svg>\n");
+    root_document.complete(out.finish()?)
+}
 
 impl InfoClassicStyle {
-    /// Writes the Info stylesheet and version text inside an open Mermaid SVG.
-    ///
-    /// `diagram_id` is the semantic ID shared by the root, CSS selector and fragment URL.
-    pub fn write_svg_contents(
+    fn write_svg_contents(
         &self,
         out: &mut impl SvgOutput,
         layout: &InfoDiagramLayout,
         diagram_id: &str,
     ) -> Result<()> {
         out.push_str("<style>");
-        let selector = CssSelectorDiagramId(diagram_id);
-        let fragment = FragmentDiagramId(diagram_id);
-        {
-            let mut css = XmlTextOutput::new(out);
-            self.css.write_prefix(&mut css, selector)?;
-            self.css
-                .write_root(&mut css, selector, fragment, self.css.font_family())?;
-        }
+        self.css.write(&mut XmlTextOutput::new(out), diagram_id)?;
         out.push_str("</style>");
         out.checkpoint()?;
         out.push_str("<g/>");
@@ -46,10 +106,7 @@ impl InfoClassicStyle {
 }
 
 impl InfoNativeStyle {
-    /// Writes the native version text and the closing tag of an open Info SVG.
-    ///
-    /// The caller finishes the operation-owned sink and reports its error.
-    pub fn write_svg_tail(&self, out: &mut impl SvgOutput, layout: &InfoDiagramLayout) {
+    fn write_svg_tail(&self, out: &mut impl SvgOutput, layout: &InfoDiagramLayout) {
         let version = &self.version;
         let _ = write!(
             out,

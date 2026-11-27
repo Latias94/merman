@@ -523,7 +523,7 @@ fn push_flowchart_shadow_defs(
     prepared: &crate::svg::PreparedLookDefs,
 ) {
     let flood_color = prepared.flood_color();
-    let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
+    let offset = merman_render_core::theme_svg::NEO_SHADOW_OFFSET_PX;
     let _ = write!(
         out,
         r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,

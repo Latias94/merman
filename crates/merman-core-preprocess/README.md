@@ -6,3 +6,8 @@ cancellation and maps ranges in the rewritten text back to the original byte off
 It owns the shared token cursor, line-ending scanner, frontmatter and directive fences, and
 Langium string and declaration scanners. `merman-core` owns directive config admission, YAML
 evaluation, diagnostics, and editor facts.
+
+This crate exposes a workspace-internal service provider interface (SPI). It is published in
+lockstep with Merman and expects an exact version match with the Merman crates that use it.
+
+Use `merman-core` for the public parsing API.

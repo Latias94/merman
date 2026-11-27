@@ -976,7 +976,9 @@ version = "0.11.0"
 dependencies = [
  "indexmap",
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
+ "serde_json",
 ]
 
 [[package]]
@@ -990,8 +992,13 @@ dependencies = [
 name = "merman-core-sequence"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "indexmap",
  "merman-core-preprocess",
  "merman-model",
+ "rustc-hash",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1165,11 +1172,6 @@ dependencies = [
  "merman-theme-contract",
  "pulldown-cmark",
  "quick-xml",
- "ratex-font",
- "ratex-layout",
- "ratex-parser",
- "ratex-svg",
- "ratex-types",
  "roughr-merman",
  "roxmltree 0.21.2",
  "rustc-hash",
@@ -1189,6 +1191,7 @@ dependencies = [
  "cssparser",
  "indexmap",
  "libm",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
@@ -1214,11 +1217,17 @@ dependencies = [
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "quick-xml",
+ "ratex-font",
+ "ratex-layout",
+ "ratex-parser",
+ "ratex-svg",
+ "ratex-types",
  "roughr-merman",
  "roxmltree 0.21.2",
  "ryu-js",
  "serde",
  "serde_json",
+ "sha2",
  "svgtypes",
  "thiserror 2.0.21",
  "unicode-segmentation",
@@ -1231,7 +1240,9 @@ version = "0.11.0"
 dependencies = [
  "dugong",
  "kurbo",
+ "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
  "serde_json",
 ]
 
@@ -1246,16 +1257,23 @@ dependencies = [
 name = "merman-render-sequence"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
+ "kurbo",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
+ "merman-theme-contract",
  "rustc-hash",
+ "ryu-js",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "merman-render-structured"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
  "merman-markup",
  "merman-model",
  "merman-render-core",

@@ -1,6 +1,7 @@
 pub(crate) mod admission;
 pub(crate) mod artifact_profiles;
 pub(crate) mod audit;
+#[cfg(feature = "render-parity")]
 pub(crate) mod binding_contract;
 pub(crate) mod capability_surface;
 pub(crate) mod compare;
@@ -21,9 +22,11 @@ pub(crate) mod native_abi;
 pub(crate) mod parser_differential;
 pub(crate) mod paths;
 pub(crate) mod playground_ascii_capabilities;
+#[cfg(feature = "render-parity")]
 pub(crate) mod playground_catalog;
 #[cfg(feature = "wasm-host")]
 pub(crate) mod profile_budget;
+#[cfg(feature = "render-parity")]
 pub(crate) mod resource_contract;
 pub(crate) mod snapshots;
 pub(crate) mod text_measurement;
@@ -40,6 +43,7 @@ pub(crate) mod upstream_mmd_corpus;
 pub(crate) mod upstream_svg_policy;
 pub(crate) mod upstream_svg_provenance;
 pub(crate) mod upstream_svg_support;
+#[cfg(feature = "render-parity")]
 pub(crate) mod verify;
 pub(crate) mod wasm_build_lock;
 #[cfg(feature = "wasm-host")]
@@ -56,6 +60,7 @@ pub(crate) use crate::generated::mermaid_reference::*;
 pub(crate) use admission::*;
 pub(crate) use artifact_profiles::*;
 pub(crate) use audit::*;
+#[cfg(feature = "render-parity")]
 pub(crate) use binding_contract::*;
 pub(crate) use capability_surface::*;
 pub(crate) use compare::*;
@@ -63,9 +68,10 @@ pub(crate) use cypress_collector::*;
 pub(crate) use cypress_corpus::*;
 pub(crate) use debug::*;
 pub(crate) use default_config::*;
+#[cfg(feature = "render-parity")]
+pub(crate) use editor_language_contract::verify_editor_language_contract_artifacts;
 pub(crate) use editor_language_contract::{
     gen_editor_language_contract, verify_editor_language_contract,
-    verify_editor_language_contract_artifacts,
 };
 pub(crate) use feature_matrix::*;
 pub(crate) use fixtures::*;
@@ -76,7 +82,9 @@ pub(crate) use mermaid_reference::*;
 pub(crate) use native_abi::*;
 pub(crate) use paths::*;
 pub(crate) use playground_ascii_capabilities::*;
+#[cfg(feature = "render-parity")]
 pub(crate) use playground_catalog::*;
+#[cfg(feature = "render-parity")]
 pub(crate) use resource_contract::*;
 pub(crate) use snapshots::*;
 pub(crate) use text_measurement::*;
@@ -86,6 +94,7 @@ pub(crate) use upstream_mmd_corpus::*;
 pub(crate) use upstream_svg_policy::*;
 pub(crate) use upstream_svg_provenance::*;
 pub(crate) use upstream_svg_support::*;
+#[cfg(feature = "render-parity")]
 pub(crate) use verify::*;
 pub(crate) use wasm_size_matrix::*;
 pub(crate) use web_catalog::*;

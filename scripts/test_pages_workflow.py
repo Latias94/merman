@@ -143,6 +143,25 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("uses: ./.github/workflows/pages.yml", workflow_job(deployment, "build"))
         self.assertIn("needs: build", workflow_job(deployment, "deploy"))
 
+    def test_only_deployable_pages_require_render_parity_for_the_size_tool(self) -> None:
+        tools = workflow_job(PAGES.read_text(encoding="utf-8"), "size-tool")
+        steps = tools.split("\n      - name: ")
+        lean = next(step for step in steps if step.startswith("Build optimized size tool\n"))
+        deploy = next(
+            step for step in steps
+            if step.startswith("Build optimized size tool with deployable projection checks\n")
+        )
+        verify = next(
+            step for step in steps if step.startswith("Verify deployable browser projections\n")
+        )
+        deploy_condition = "if: github.event_name != 'pull_request' && inputs.ci_only != true"
+        self.assertIn("if: github.event_name == 'pull_request' || inputs.ci_only == true", lean)
+        self.assertIn("run: cargo build --locked --release -p xtask\n", lean + "\n")
+        self.assertIn(deploy_condition, deploy)
+        self.assertIn("run: cargo build --locked --release -p xtask --features render-parity", deploy)
+        self.assertIn(deploy_condition, verify)
+        self.assertLess(steps.index(deploy), steps.index(verify))
+
 
 if __name__ == "__main__":
     unittest.main()

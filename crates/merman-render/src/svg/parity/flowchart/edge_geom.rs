@@ -17,6 +17,12 @@ mod rect_clip;
 mod swimlane_points;
 mod terminal_jogs;
 mod trace;
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    any(feature = "native-compact", test)
+))]
+pub(super) use compute::{DagreLinearPaintedRoute, dagre_linear_painted_route};
 pub(super) use compute::{finish_edge_route, prepare_edge_route};
 pub(super) use terminal_jogs::{separate_edge_labels, straighten_edge_terminals};
 

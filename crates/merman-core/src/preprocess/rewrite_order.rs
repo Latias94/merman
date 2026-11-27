@@ -1,15 +1,14 @@
 use super::config_scan::max_flow_collection_depth_controlled;
 use super::directives::{MAX_DIRECTIVE_CONFIG_PARSE_BYTES, sanitize_directive_controlled};
 use super::frontmatter::frontmatter_config_routes;
-use super::{
-    PreprocessedSource, split_frontmatter_block_controlled, text::cleanup_text_controlled,
-};
+use super::split_frontmatter_block_controlled;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, SourceSpan};
+use merman_core_preprocess::MappedSource;
 use merman_core_preprocess::directives::normalize_directive_quotes_controlled;
 use merman_core_preprocess::scan::controlled::{
     ControlledScanCheckpoints, trim_whitespace_bounds_controlled,
 };
-use merman_core_preprocess::text::PreprocessMarkers;
+use merman_core_preprocess::text::{PreprocessMarkers, cleanup_text_controlled};
 use merman_model::config::values_equal_controlled;
 use merman_model::json::clone_value_nonrecursive_controlled;
 use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
@@ -275,16 +274,10 @@ fn ordered_yaml_json(json: &str) -> Option<OrderedJson> {
     OrderedJson::deserialize_with_scope(&mut parser, EveryMember).ok()
 }
 
-fn clean_construct(
-    text: &str,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessedSource> {
-    let mut source = PreprocessedSource::new_controlled(text, false, control)?;
-    cleanup_text_controlled(
-        &mut source,
-        PreprocessMarkers::scan(text, control)?,
-        control,
-    )?;
+fn clean_construct(text: &str, control: &OperationControl) -> OperationControlResult<MappedSource> {
+    let mut source = MappedSource::new_controlled(text, false, control)?;
+    let markers = PreprocessMarkers::scan(text, control)?;
+    cleanup_text_controlled(&mut source, markers, control)?;
     Ok(source)
 }
 

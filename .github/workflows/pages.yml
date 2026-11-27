@@ -98,7 +98,12 @@ jobs:
           shared-key: pages-web-size-tool
 
       - name: Build optimized size tool
+        if: github.event_name == 'pull_request' || inputs.ci_only == true
         run: cargo build --locked --release -p xtask
+
+      - name: Build optimized size tool with deployable projection checks
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        run: cargo build --locked --release -p xtask --features render-parity
 
       - name: Setup Node for deployable browser projections
         if: github.event_name != 'pull_request' && inputs.ci_only != true

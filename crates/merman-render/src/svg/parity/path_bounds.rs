@@ -134,6 +134,11 @@ pub(super) fn svg_path_bounds_include_quadratic(
     );
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(super) fn svg_path_bounds_from_rough_ops(
     opset: &roughr::core::OpSet<f64>,
 ) -> Option<SvgPathBounds> {
@@ -787,10 +792,16 @@ pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{svg_path_bounds_from_d, svg_path_bounds_from_rough_ops, svg_path_length_from_d};
+    use super::svg_path_length_from_d;
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     #[test]
     fn rough_operation_bounds_match_serialized_path_bounds() {
+        use super::{svg_path_bounds_from_d, svg_path_bounds_from_rough_ops};
         use roughr::core::{Op, OpSet, OpSetType, OpType};
 
         let opset = OpSet {

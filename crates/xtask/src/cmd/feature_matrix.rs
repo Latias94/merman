@@ -72,6 +72,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
             "dhat-heap",
             "complete-svg",
             "complete-svg-elk",
+            "native-compact",
             "system-fonts",
             "experimental-system-font-query",
             "presentation",
@@ -136,7 +137,10 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         ],
     ),
     ("merman-markup", &["html", "url", "color"]),
-    ("merman-render", &["benchmark-stages", "markdown-labels"]),
+    (
+        "merman-render",
+        &["benchmark-stages", "markdown-labels", "native-compact"],
+    ),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     (

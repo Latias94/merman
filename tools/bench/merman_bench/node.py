@@ -2,10 +2,12 @@
 
 import json
 from math import isfinite
+import os
 from pathlib import Path
 import re
 from statistics import median
 import subprocess
+import sys
 
 from .coverage import summarize_coverage
 from .drawing import audit_drawings
@@ -405,7 +407,8 @@ def _collect_round(args, plan, raw_plan, dest, order, recipes, versions, invento
             cmd.extend(["--drawing-dir", str(dest / "drawings" / name)])
         try:
             with report_path.open("xb") as raw:
-                proc = subprocess.run(cmd, cwd=HERE / "node-reference", stdout=raw)
+                proc = subprocess.run(cmd, cwd=HERE / "node-reference", stdout=raw,
+                                      env={**os.environ, "MERMAN_BENCH_PYTHON": sys.executable})
             report = json.loads(report_path.read_bytes())
             if not isinstance(report, dict):
                 raise ValueError("collector output must be a JSON object")

@@ -2100,29 +2100,10 @@ fn foreign_object_overlay_and_measurement_share_numeric_identifier_breaks() {
 
 #[test]
 fn foreign_object_overlay_uses_incremental_builtin_html_width() {
-    use crate::environment::BuiltinHtmlLineWidth;
-    use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    struct CountedBuiltin(AtomicUsize);
-    impl TextMeasurer for CountedBuiltin {
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
-        }
-        fn measure_wrapped(
-            &self,
-            text: &str,
-            style: &TextStyle,
-            width: Option<f64>,
-            mode: WrapMode,
-        ) -> TextMetrics {
-            self.0.fetch_add(1, Ordering::Relaxed);
-            DeterministicTextMeasurer::default().measure_wrapped(text, style, width, mode)
-        }
-        fn begin_html_line_width(&self, style: &TextStyle) -> Option<BuiltinHtmlLineWidth> {
-            Some(BuiltinHtmlLineWidth::deterministic(style, 0.0))
-        }
-    }
-    let measurer = CountedBuiltin(AtomicUsize::new(0));
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
     let label = "中".repeat(1000);
     let svg = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="8000" height="48"><div style="white-space:break-spaces;width:8000px">{label}</div></foreignObject></svg>"#
@@ -2136,9 +2117,15 @@ fn foreign_object_overlay_uses_incremental_builtin_html_width() {
             .count(),
         2
     );
+    let report = session.text_measurement_report();
+    let complete_calls = report
+        .entries()
+        .iter()
+        .map(|entry| entry.count())
+        .sum::<u64>();
     assert!(
-        measurer.0.load(Ordering::Relaxed) < 16,
-        "complete measurements must scale with rows, not Unicode segments"
+        (1..16).contains(&complete_calls),
+        "complete measurements must scale with rows, not Unicode segments: {report:?}"
     );
 }
 

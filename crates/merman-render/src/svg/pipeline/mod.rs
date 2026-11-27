@@ -96,6 +96,7 @@ pub fn validate_static_inline_svg_admission(svg: &str, session: &RenderSession) 
 
 use crate::environment::RenderSession;
 use crate::math::{PreparedMathEvidenceLease, PreparedMathTerminalReceipt};
+use crate::svg::SvgOutputProfile;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -548,6 +549,18 @@ impl SvgPipeline {
 
     pub fn preset(&self) -> SvgPipelinePreset {
         self.preset
+    }
+
+    pub(crate) fn validate_output_profile(&self, profile: SvgOutputProfile) -> Result<()> {
+        if profile == SvgOutputProfile::NativeCompact
+            && (self.preset != SvgPipelinePreset::Parity || !self.postprocessors.is_empty())
+        {
+            return Err(Error::UnsupportedSvgOutputProfile {
+                profile,
+                reason: "the compact profile does not support SVG transformations",
+            });
+        }
+        Ok(())
     }
 
     /// Selects the generation policy for renderer-owned Mermaid SVG drafts.
@@ -1117,6 +1130,15 @@ impl SvgPipeline {
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "native-compact")]
+pub(super) fn validate_native_compact_svg(svg: &str, session: &RenderSession) -> Result<()> {
+    final_validation::validate_well_formed_svg_with_execution(
+        svg,
+        SvgPostprocessExecution::new(session),
+    )
+    .map(|_| ())
 }
 
 /// Finalizes arbitrary SVG for resvg/raster consumption without a family capability.

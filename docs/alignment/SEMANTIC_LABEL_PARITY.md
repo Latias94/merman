@@ -117,11 +117,11 @@ Run from the repository root:
 
 ```sh
 cargo nextest run -p xtask compare::labels::tests --no-fail-fast
-cargo run -p xtask -- compare-c4-svgs --filter upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010 --check-dom --dom-mode parity --dom-decimals 3
-cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3
-cargo run -p xtask -- compare-all-svgs --diagram class --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
-cargo run -p xtask -- compare-all-svgs --diagram flowchart --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout
-cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
+cargo run -p xtask --features render-parity -- compare-c4-svgs --filter upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010 --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask --features render-parity -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+cargo run -p xtask --features render-parity -- compare-all-svgs --diagram class --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
+cargo run -p xtask --features render-parity -- compare-all-svgs --diagram flowchart --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout
+cargo run -p xtask --features render-parity -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
 cargo nextest run -p dugong-graphlib -p dugong --no-fail-fast
 ```
 

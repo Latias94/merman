@@ -60,6 +60,7 @@ Add a **safe, strongly typed ergonomic layer directly on `Renderer`** (and a flu
   - `#[cfg(feature = "svg")] pub fn render_svg(&self, source: &str) -> Result<SvgOutput, RenderError>` (and `render_svg_with(&self, source: &str, request: SvgRequest, control: OperationControl)` for per-call overrides without matching `RenderOutput`);
   - `#[cfg(feature = "ascii")] pub fn render_ascii(&self, source: &str) -> Result<AsciiOutput, RenderError>` (and `render_ascii_with(...)`);
   - `#[cfg(feature = "png")] pub fn render_png(&self, source: &str) -> Result<RasterOutput, RenderError>`, with the corresponding `RasterOutput` for JPEG and `PdfOutput` for PDF;
+  - `default_svg_request()` and `default_ascii_request()` copy the configured target settings for callers supplying their own operation control or target overrides. Explicit requests continue to take precedence.
   - Every zero-boilerplate helper delegates directly to the same `Renderer::render` boundary with `OperationControl::new()` and the renderer's bounded input and graphical resource defaults. Passing an unbounded trusted-input policy remains an explicit expert operation.
   - Convenience helpers map an empty result for their target to the existing `RenderError::NoDiagram`. The expert operation keeps its optional-output and diagnostic behavior.
 - **No free-standing hidden-global functions**: Helpers live on `Renderer` (not global `merman::render_svg(str)`) so callers naturally reuse compiled engine, config, and theme caches across repeated renders rather than silently rebuilding an engine per call.

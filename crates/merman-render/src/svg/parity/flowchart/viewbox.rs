@@ -364,7 +364,7 @@ fn builtin_neo_paint_bounds(
         }
     };
     let builtin_shadow = ctx.compatibility.drop_shadow == "url(#drop-shadow)";
-    let shadow_offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
+    let shadow_offset = merman_render_core::theme_svg::NEO_SHADOW_OFFSET_PX;
     for cluster in ctx.layout_clusters_by_id.values() {
         ctx.work_meter.charge(1)?;
         let frame = painted_cluster_frame(ctx, cluster).bounds();

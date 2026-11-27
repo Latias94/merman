@@ -184,3 +184,108 @@ fn write_native_text(
     let _ = write!(out, ">{}</text>", escape_xml(text));
     out.checkpoint()
 }
+
+#[cfg(test)]
+mod tests {
+    use merman_model::families::pie::PieSection;
+    use merman_render_core::{
+        Error,
+        resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId},
+        svg_output::BoundedSvgOutput,
+        text::{DeterministicTextMeasurer, svg_title_bbox_vertical_extents_px},
+    };
+    use merman_theme_contract::v2::{BuiltinPreset, ThemeCompiler};
+    use svgtypes::{PathParser, PathSegment};
+
+    use super::*;
+    use crate::pie::{PieAppearance, PieConfigView, PieSliceLayout, prepare_pie_diagram};
+
+    #[test]
+    fn native_pie_body_reports_a_rejected_last_legend_close() {
+        let model = PieDiagramModel {
+            sections: vec![PieSection {
+                label: "A".into(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
+        let config = serde_json::json!({});
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Paper, None)
+            .unwrap();
+        let (layout, appearance) = prepare_pie_diagram(
+            &model,
+            None,
+            &config,
+            Some(theme.family("pie")),
+            &DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        let PieAppearance::Native(style) = appearance else {
+            panic!("expected the native Pie style");
+        };
+        let settings = PieConfigView::new(&config).render_settings();
+        let context = PieNativeSvgContext {
+            title_vertical_extents: svg_title_bbox_vertical_extents_px,
+            canvas_background: None,
+            appearance_and_backdrop: None,
+        };
+        let diagram_id = SvgId::new("merman").unwrap();
+        let mut expected = String::new();
+        write_native_svg_body(
+            &mut expected,
+            &layout,
+            &model,
+            &style,
+            settings,
+            diagram_id,
+            &context,
+        )
+        .unwrap();
+        let prefix = expected.strip_suffix("</g>").unwrap();
+        assert!(prefix.ends_with("</text>"));
+        let meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, prefix.len())
+                .unwrap(),
+        );
+        let mut bounded = BoundedSvgOutput::new(&meter);
+        let error = write_native_svg_body(
+            &mut bounded,
+            &layout,
+            &model,
+            &style,
+            settings,
+            diagram_id,
+            &context,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(error, Error::ResourceLimitExceeded(details) if details.limit == "max_svg_bytes" && details.actual == expected.len())
+        );
+        assert_eq!(bounded.as_str(), prefix);
+    }
+
+    #[test]
+    fn native_pie_retains_a_slice_narrower_than_the_gap() {
+        let slice = PieSliceLayout {
+            label: String::new(),
+            value: 1.0,
+            start_angle: 0.0,
+            end_angle: 0.02,
+            is_full_circle: false,
+            percent: 0,
+            text_x: 0.0,
+            text_y: 0.0,
+            fill: String::new(),
+        };
+        let path = native_pie_slice_path(&slice, 185.0, 0.0, 6.0);
+        let mut segments = PathParser::from(path.as_str()).map(|segment| segment.unwrap());
+        assert!(matches!(segments.next(), Some(PathSegment::MoveTo { .. })));
+        assert!(matches!(
+            segments.next(),
+            Some(PathSegment::EllipticalArc { .. })
+        ));
+    }
+}

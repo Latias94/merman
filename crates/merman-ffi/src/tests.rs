@@ -54,6 +54,14 @@ fn native_result() -> MermanNativeResult {
     initialized_native_result()
 }
 
+fn result_allocation_is_live(token: u64) -> bool {
+    ALLOCATION_REGISTRY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT)
+        .is_some()
+}
+
 fn overflowing_native_slice() -> MermanNativeSlice {
     MermanNativeSlice {
         struct_size: native_struct_size::<MermanNativeSlice>(),
@@ -812,23 +820,13 @@ fn safely_allocated_misaligned_records_are_rejected_before_typed_access() {
 
     unsafe { api.result_free.unwrap()(misaligned_live_result) };
     assert!(
-        allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&allocation_token),
+        result_allocation_is_live(allocation_token),
         "misaligned result_free must be a no-op rather than releasing an unreadable record"
     );
 
     let mut recovered = unsafe { ptr::read_unaligned(misaligned_live_result) };
     unsafe { api.result_free.unwrap()(&mut recovered) };
-    assert!(
-        !allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&allocation_token)
-    );
+    assert!(!result_allocation_is_live(allocation_token));
     unsafe { api.result_free.unwrap()(&mut live_result) };
 }
 
@@ -2271,26 +2269,14 @@ fn moving_a_result_transfers_opaque_token_ownership() {
     );
     let allocation_token = original.allocation_token;
     assert_ne!(allocation_token, 0);
-    assert!(
-        allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&allocation_token)
-    );
+    assert!(result_allocation_is_live(allocation_token));
 
     let mut moved = unsafe { ptr::read(&original) };
     original = native_result();
     let moved_data = unsafe { std::slice::from_raw_parts(moved.data.data, moved.data.len) };
     assert_eq!(moved_data, b"owned by Merman");
     unsafe { native_result_free(&mut moved) };
-    assert!(
-        !allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&allocation_token)
-    );
+    assert!(!result_allocation_is_live(allocation_token));
     assert_eq!(moved.allocation_token, 0);
     unsafe { native_result_free(&mut original) };
 }
@@ -2332,13 +2318,7 @@ fn result_free_clears_a_moved_record_before_releasing_its_backing_allocation() {
     // vectors would write through a freed pointer; Miri/ASan exercise this exact ownership
     // shape while the registry assertion verifies the normal release path.
     unsafe { native_result_free(self_buffer_result) };
-    assert!(
-        !allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&allocation_token)
-    );
+    assert!(!result_allocation_is_live(allocation_token));
     unsafe { native_result_free(&mut original) };
 }
 
@@ -2370,13 +2350,7 @@ fn result_free_trusts_only_the_token_and_ignores_buffer_fields() {
     unsafe { native_result_free(&mut current) };
     assert_eq!(foreign, b"host allocation");
     assert_eq!(current.allocation_token, 0);
-    assert!(
-        !allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&token)
-    );
+    assert!(!result_allocation_is_live(token));
 }
 
 #[test]
@@ -2417,42 +2391,62 @@ fn stale_and_random_non_live_tokens_release_nothing_and_tokens_never_reuse() {
     let mut stale = native_result();
     stale.allocation_token = first_token;
     unsafe { native_result_free(&mut stale) };
-    assert!(
-        allocation_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .results
-            .contains_key(&second.allocation_token)
-    );
+    assert!(result_allocation_is_live(second.allocation_token));
 
-    let mut random = native_result();
-    random.allocation_token = u64::MAX;
-    unsafe { native_result_free(&mut random) };
-    assert_eq!(random.allocation_token, 0);
+    for token in [
+        u64::MAX,
+        !MERMAN_NATIVE_TOKEN_DOMAIN_MASK | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG,
+    ] {
+        let mut random = native_result();
+        random.allocation_token = token;
+        unsafe { native_result_free(&mut random) };
+        assert_eq!(random.allocation_token, 0);
+        assert!(result_allocation_is_live(second.allocation_token));
+    }
     unsafe { native_result_free(&mut second) };
 }
 
 #[test]
 fn allocation_token_exhaustion_is_checked_without_reuse() {
-    let mut registry = NativeAllocationRegistry {
-        last_counter: MERMAN_NATIVE_TOKEN_COUNTER_MAX,
-        results: BTreeMap::new(),
-    };
+    let registry = Mutex::new(NativeResultRegistry::new(1));
     let mut result = native_result();
+    assert_eq!(
+        unsafe {
+            write_native_result_with_registry(
+                &registry,
+                &mut result,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        },
+        MERMAN_NATIVE_STATUS_OK
+    );
+    assert_eq!(result.allocation_token, encode_result_token(1));
+    let retired = registry.lock().unwrap().remove(1);
+    assert!(retired.is_some());
+    drop(retired);
+
+    result = native_result();
     let status = unsafe {
         write_native_result_with_registry(
-            &mut registry,
+            &registry,
             &mut result,
             MERMAN_NATIVE_STATUS_OK,
             MERMAN_NATIVE_OPERATION_NONE,
             None,
-            Vec::new(),
-            Vec::new(),
+            b"rejected data".to_vec(),
+            b"rejected metadata".to_vec(),
         )
     };
 
     assert_eq!(status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
-    assert!(registry.results.is_empty());
+    let registry = registry.lock().unwrap();
+    assert!(registry.was_issued(1));
+    assert!(registry.get(1).is_none());
+    assert!(!registry.was_issued(2));
     assert_eq!(
         result.struct_size,
         native_struct_size::<MermanNativeResult>()
@@ -2492,10 +2486,25 @@ fn publish_test_engine(registry: &Mutex<NativeEngineRegistry>) -> MermanNativeEn
 #[test]
 fn engine_and_result_tokens_are_disjoint_positive_signed_64_domains() {
     let engines = Mutex::new(NativeEngineRegistry::new(1));
-    let mut results = NativeAllocationRegistry::default();
+    let results = Mutex::new(NativeResultRegistry::new(1));
 
     let engine = publish_test_engine(&engines);
-    let result = results.issue_token().expect("first result token");
+    let mut record = native_result();
+    assert_eq!(
+        unsafe {
+            write_native_result_with_registry(
+                &results,
+                &mut record,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        },
+        MERMAN_NATIVE_STATUS_OK
+    );
+    let result = record.allocation_token;
     assert_ne!(engine, result);
     assert_eq!(
         engine >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT,
@@ -2524,13 +2533,11 @@ fn engine_and_result_tokens_are_disjoint_positive_signed_64_domains() {
         final_engine,
         last_counter_bits | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
     );
-    results.last_counter = MERMAN_NATIVE_TOKEN_COUNTER_MAX - 1;
-    let final_result = results.issue_token().expect("last result token");
+    let final_result = encode_result_token(MERMAN_NATIVE_TOKEN_COUNTER_MAX);
     assert_eq!(
         final_result,
         last_counter_bits | MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG
     );
-    assert!(results.issue_token().is_err());
 }
 
 #[test]
@@ -2724,6 +2731,12 @@ fn passing_a_token_to_the_wrong_api_never_crosses_registry_domains() {
         MERMAN_NATIVE_STATUS_OK
     );
     let result_token = catalog.allocation_token;
+    let mut wrong_domain = native_result();
+    wrong_domain.allocation_token =
+        encode_engine_token(result_token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT);
+    unsafe { api.result_free.unwrap()(&mut wrong_domain) };
+    assert_eq!(wrong_domain.allocation_token, 0);
+    assert!(result_allocation_is_live(result_token));
     assert_eq!(
         unsafe { api.engine_try_close.unwrap()(result_token) },
         MERMAN_NATIVE_STATUS_INVALID_ENGINE
@@ -2765,15 +2778,12 @@ fn result_token_exhaustion_does_not_retire_or_poison_an_engine() {
     let counter = token >> MERMAN_NATIVE_TOKEN_COUNTER_SHIFT;
     let engines = engines.get_mut().unwrap();
 
-    let mut results = NativeAllocationRegistry {
-        last_counter: MERMAN_NATIVE_TOKEN_COUNTER_MAX,
-        results: BTreeMap::new(),
-    };
+    let results = Mutex::new(NativeResultRegistry::new(0));
     let mut result = native_result();
     assert_eq!(
         unsafe {
             write_native_result_with_registry(
-                &mut results,
+                &results,
                 &mut result,
                 MERMAN_NATIVE_STATUS_OK,
                 MERMAN_NATIVE_OPERATION_NONE,
@@ -2784,7 +2794,7 @@ fn result_token_exhaustion_does_not_retire_or_poison_an_engine() {
         },
         MERMAN_NATIVE_STATUS_INTERNAL_ERROR
     );
-    assert!(results.results.is_empty());
+    assert!(!results.lock().unwrap().was_issued(1));
     assert_eq!(result.allocation_token, 0);
 
     let acquired = engines

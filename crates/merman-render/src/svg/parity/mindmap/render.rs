@@ -739,7 +739,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     capability: crate::RenderCapability::Math,
                     diagram_type: "mindmap".to_string(),
                 })?;
-            let html = crate::html::resolve_svg_fragment(
+            let html = merman_render_core::html::resolve_svg_fragment(
                 merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
                 work_meter,
             )?;

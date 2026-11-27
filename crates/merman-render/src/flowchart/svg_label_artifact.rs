@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use rustc_hash::FxHashMap;
 
-use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::environment::TextMeasurementOperation;
 use crate::math::{
     ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
     PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
@@ -20,6 +20,7 @@ use crate::resources::{
     OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use merman_render_core::text::measurement::{MeasurementReuseKey, measurement_reuse_key};
 
 use super::label::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgWidthMode,
@@ -323,8 +324,8 @@ struct FlowchartSvgLabelBinding {
     max_width_bits: Option<u64>,
     break_long_words: bool,
     width_mode: FlowchartSvgWidthMode,
-    computed_length_carrier: Option<BuiltinTextMeasurementOperationCarrier>,
-    wrapped_carrier: Option<BuiltinTextMeasurementOperationCarrier>,
+    computed_length_key: Option<MeasurementReuseKey>,
+    wrapped_key: Option<MeasurementReuseKey>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -332,7 +333,7 @@ struct FlowchartSvgLabelWrapBindingRequest<'a> {
     wrap_style: &'a TextStyle,
     max_width_bits: Option<u64>,
     break_long_words: bool,
-    computed_length_carrier: Option<BuiltinTextMeasurementOperationCarrier>,
+    computed_length_key: Option<MeasurementReuseKey>,
 }
 
 impl<'a> FlowchartSvgLabelWrapBindingRequest<'a> {
@@ -346,9 +347,10 @@ impl<'a> FlowchartSvgLabelWrapBindingRequest<'a> {
             wrap_style,
             max_width_bits: normalized_width_bits(max_width_px),
             break_long_words,
-            computed_length_carrier: Some(
-                measurer.builtin_operation_carrier(TextMeasurementOperation::ComputedLength)?,
-            ),
+            computed_length_key: Some(measurement_reuse_key(
+                measurer,
+                TextMeasurementOperation::ComputedLength,
+            )?),
         })
     }
 }
@@ -360,8 +362,8 @@ struct FlowchartSvgLabelBindingRequest<'a> {
     max_width_bits: Option<u64>,
     break_long_words: bool,
     width_mode: FlowchartSvgWidthMode,
-    computed_length_carrier: Option<BuiltinTextMeasurementOperationCarrier>,
-    wrapped_carrier: Option<BuiltinTextMeasurementOperationCarrier>,
+    computed_length_key: Option<MeasurementReuseKey>,
+    wrapped_key: Option<MeasurementReuseKey>,
 }
 
 impl<'a> FlowchartSvgLabelBindingRequest<'a> {
@@ -379,12 +381,14 @@ impl<'a> FlowchartSvgLabelBindingRequest<'a> {
             max_width_bits: normalized_width_bits(max_width_px),
             break_long_words,
             width_mode,
-            computed_length_carrier: Some(
-                measurer.builtin_operation_carrier(TextMeasurementOperation::ComputedLength)?,
-            ),
-            wrapped_carrier: Some(
-                measurer.builtin_operation_carrier(TextMeasurementOperation::Wrapped)?,
-            ),
+            computed_length_key: Some(measurement_reuse_key(
+                measurer,
+                TextMeasurementOperation::ComputedLength,
+            )?),
+            wrapped_key: Some(measurement_reuse_key(
+                measurer,
+                TextMeasurementOperation::Wrapped,
+            )?),
         })
     }
 
@@ -395,8 +399,8 @@ impl<'a> FlowchartSvgLabelBindingRequest<'a> {
             max_width_bits: self.max_width_bits,
             break_long_words: self.break_long_words,
             width_mode: self.width_mode,
-            computed_length_carrier: self.computed_length_carrier,
-            wrapped_carrier: self.wrapped_carrier,
+            computed_length_key: self.computed_length_key,
+            wrapped_key: self.wrapped_key,
         }
     }
 }
@@ -406,7 +410,7 @@ impl FlowchartSvgLabelBinding {
         self.wrap_style.matches(request.wrap_style)
             && self.max_width_bits == request.max_width_bits
             && self.break_long_words == request.break_long_words
-            && self.computed_length_carrier == request.computed_length_carrier
+            && self.computed_length_key == request.computed_length_key
     }
 
     fn matches(&self, request: &FlowchartSvgLabelBindingRequest<'_>) -> bool {
@@ -415,8 +419,8 @@ impl FlowchartSvgLabelBinding {
             && self.max_width_bits == request.max_width_bits
             && self.break_long_words == request.break_long_words
             && self.width_mode == request.width_mode
-            && self.computed_length_carrier == request.computed_length_carrier
-            && self.wrapped_carrier == request.wrapped_carrier
+            && self.computed_length_key == request.computed_length_key
+            && self.wrapped_key == request.wrapped_key
     }
 }
 
@@ -775,14 +779,11 @@ impl FlowchartSvgLabelSidecarBuilder {
         &self,
         effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> super::FlowchartLayoutSettings {
-        let mut settings = self.base_typography.as_ref().map_or_else(
-            || super::FlowchartConfigView::new(effective_config).layout_settings(),
-            |plan| plan.layout_settings(effective_config),
-        );
-        if let Some(density) = self.native_density {
-            super::native_theme::apply_density(&mut settings, density);
-        }
-        settings
+        super::FlowchartLayoutSettings::resolve(
+            effective_config,
+            self.base_typography.as_ref(),
+            self.native_density,
+        )
     }
 
     #[cfg(test)]
@@ -3188,6 +3189,19 @@ mod tests {
 
     #[test]
     fn prepared_wrapping_requires_an_exact_wrapping_binding() {
+        use crate::environment::{
+            HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer,
+            MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+        };
+
+        struct UnexpectedHost;
+
+        impl HostTextMeasurer for UnexpectedHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                panic!("prepared lookup must not call the host: {request:?}");
+            }
+        }
+
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
@@ -3273,129 +3287,177 @@ mod tests {
                 .is_none(),
             "metric reuse must retain exact width-mode binding"
         );
-    }
 
-    struct StreamingOpaqueMeasurer {
-        wrapped_calls: Cell<usize>,
-        literal_bbox_calls: Cell<usize>,
-    }
-
-    impl TextMeasurer for StreamingOpaqueMeasurer {
-        #[allow(private_interfaces)]
-        fn begin_svg_text_computed_length(
-            &self,
-            style: &TextStyle,
-        ) -> Option<crate::environment::BuiltinSvgComputedLength> {
-            Some(crate::environment::BuiltinSvgComputedLength::deterministic(
-                style,
-            ))
-        }
-
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            TextMetrics {
-                width: text.chars().count() as f64 * style.font_size * 0.5,
-                height: style.font_size,
-                line_count: 1,
-            }
-        }
-
-        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-            self.literal_bbox_calls
-                .set(self.literal_bbox_calls.get() + 1);
-            self.measure(text, style).width
-        }
-
-        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-            self.literal_bbox_calls
-                .set(self.literal_bbox_calls.get() + 1);
-            self.measure(text, style).height
-        }
-
-        fn measure_wrapped(
-            &self,
-            text: &str,
-            style: &TextStyle,
-            _max_width: Option<f64>,
-            _wrap_mode: WrapMode,
-        ) -> TextMetrics {
-            self.wrapped_calls.set(self.wrapped_calls.get() + 1);
-            self.measure(text, style)
+        let host_identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.prepared-svg-mixed-routes").unwrap(),
+            "1",
+        )
+        .unwrap();
+        for (host_phase, expect_wrapping) in [
+            (TextMeasurementPhase::Wrap, true),
+            (TextMeasurementPhase::ComputedLength, false),
+        ] {
+            let mixed = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    host_identity.clone(),
+                    Arc::new(UnexpectedHost),
+                    [host_phase],
+                ))
+                .begin_session()
+                .unwrap();
+            let measurer = mixed.text_measurer(TextMeasurementPhase::Layout);
+            let plan = FlowchartSvgLabelRenderPlan::new(
+                Some(&sidecar),
+                Some(owner),
+                "bound label",
+                &measurer,
+                &style,
+                Some(80.0),
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            );
+            assert_eq!(
+                matches!(plan, FlowchartSvgLabelRenderPlan::Prepared { .. }),
+                expect_wrapping,
+                "host phase {host_phase:?}"
+            );
+            assert!(
+                sidecar
+                    .prepared_metrics(
+                        owner,
+                        "bound label",
+                        &measurer,
+                        &style,
+                        Some(80.0),
+                        true,
+                        FlowchartSvgWidthMode::Bbox,
+                    )
+                    .is_none(),
+                "terminal metrics must not reuse a host route with a built-in fallback"
+            );
         }
     }
 
     #[test]
     fn streaming_state_without_builtin_carriers_is_not_cached() {
-        let measurer = StreamingOpaqueMeasurer {
-            wrapped_calls: Cell::new(0),
-            literal_bbox_calls: Cell::new(0),
+        use crate::environment::{
+            MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+            TextMeasurementProfileIdentity, TextMeasurementSummary,
+        };
+        use crate::text::DeterministicTextMeasurer;
+
+        let direct = DeterministicTextMeasurer::default();
+        let wrap_profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.opaque-svg-wrap").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            Arc::new(DeterministicTextMeasurer::default()),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(
+                TextMeasurementPolicy::deterministic()
+                    .with_profile_for_phase(TextMeasurementPhase::Wrap, wrap_profile),
+            )
+            .begin_session()
+            .unwrap();
+        let routed = session.text_measurer(TextMeasurementPhase::Layout);
+        assert!(measurement_reuse_key(&direct, TextMeasurementOperation::ComputedLength).is_none());
+        assert!(measurement_reuse_key(&routed, TextMeasurementOperation::ComputedLength).is_some());
+        assert!(measurement_reuse_key(&routed, TextMeasurementOperation::Wrapped).is_none());
+
+        let literal_bbox_calls = || {
+            let report = session.text_measurement_report();
+            assert!(!report.entries().iter().any(|entry| {
+                matches!(
+                    entry.provenance().operation,
+                    TextMeasurementOperation::Wrapped
+                        | TextMeasurementOperation::WrappedWithRawWidth
+                )
+            }));
+            report
+                .entries()
+                .iter()
+                .filter(|entry| {
+                    matches!(
+                        entry.provenance().operation,
+                        TextMeasurementOperation::TspanBBoxWidth
+                            | TextMeasurementOperation::TspanBBoxHeight
+                    )
+                })
+                .map(TextMeasurementSummary::count)
+                .sum::<u64>()
         };
         let config = PresentationConfig::default();
         let style = TextStyle::default();
-        let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
-        let measure = || {
-            builder.measure_for_layout(
-                owner,
-                "node",
-                FlowchartLabelMetricsRequest {
-                    measurer: &measurer,
-                    raw_label: "opaque callback contract",
-                    label_type: "text",
-                    style: &style,
-                    max_width_px: Some(100.0),
-                    wrap_mode: WrapMode::SvgLike,
-                    config: &config,
-                    math_renderer: None,
-                },
+        for (measurer, records_calls) in [(&direct as &dyn TextMeasurer, false), (&routed, true)] {
+            let builder = FlowchartSvgLabelSidecarBuilder::default();
+            let measure = || {
+                builder.measure_for_layout(
+                    owner,
+                    "node",
+                    FlowchartLabelMetricsRequest {
+                        measurer,
+                        raw_label: "opaque callback contract",
+                        label_type: "text",
+                        style: &style,
+                        max_width_px: Some(100.0),
+                        wrap_mode: WrapMode::SvgLike,
+                        config: &config,
+                        math_renderer: None,
+                    },
+                    true,
+                    FlowchartSvgWidthMode::Bbox,
+                )
+            };
+
+            let first = measure();
+            let first_bbox_calls = literal_bbox_calls();
+            let second = measure();
+            assert_eq!(
+                (first.width, first.height, first.line_count),
+                (second.width, second.height, second.line_count)
+            );
+            if records_calls {
+                assert!(
+                    first_bbox_calls > 0,
+                    "layout must measure literal SVG row bounds"
+                );
+                assert_eq!(
+                    literal_bbox_calls(),
+                    2 * first_bbox_calls,
+                    "layout must repeat bbox probes when terminal metrics cannot be reused"
+                );
+            }
+            assert_eq!(builder.prepared_count(), 0);
+            let sidecar = builder.finish();
+            let calls_before_render = literal_bbox_calls();
+            let plan = FlowchartSvgLabelRenderPlan::new(
+                Some(&sidecar),
+                Some(owner),
+                "opaque callback contract",
+                measurer,
+                &style,
+                Some(100.0),
                 true,
                 FlowchartSvgWidthMode::Bbox,
-            )
-        };
-
-        let first = measure();
-        let first_bbox_calls = measurer.literal_bbox_calls.get();
-        assert!(
-            first_bbox_calls > 0,
-            "layout must measure literal SVG row bounds"
-        );
-        let second = measure();
-        assert_eq!(
-            measurer.literal_bbox_calls.get(),
-            2 * first_bbox_calls,
-            "opaque row measurements must run again even with a computed-length streaming state"
-        );
-        assert_eq!(
-            (first.width, first.height, first.line_count),
-            (second.width, second.height, second.line_count)
-        );
-        assert_eq!(measurer.wrapped_calls.get(), 0);
-        assert_eq!(builder.prepared_count(), 0);
-        let sidecar = builder.finish();
-        let calls_before_render = measurer.literal_bbox_calls.get();
-        let plan = FlowchartSvgLabelRenderPlan::new(
-            Some(&sidecar),
-            Some(owner),
-            "opaque callback contract",
-            &measurer,
-            &style,
-            Some(100.0),
-            true,
-            FlowchartSvgWidthMode::Bbox,
-        );
-        assert!(matches!(
-            plan,
-            FlowchartSvgLabelRenderPlan::Source {
-                source: Cow::Borrowed(_),
-                ..
-            }
-        ));
-        assert!(plan.wrapped_lines().len() > 1);
-        assert_eq!(
-            measurer.literal_bbox_calls.get(),
-            calls_before_render,
-            "render wrapping uses computed length without measuring literal row bounds again"
-        );
-        assert_eq!(measurer.wrapped_calls.get(), 0);
+            );
+            assert!(matches!(
+                plan,
+                FlowchartSvgLabelRenderPlan::Source {
+                    source: Cow::Borrowed(_),
+                    ..
+                }
+            ));
+            assert!(plan.wrapped_lines().len() > 1);
+            assert_eq!(
+                literal_bbox_calls(),
+                calls_before_render,
+                "render wrapping must not repeat literal SVG bbox probes"
+            );
+        }
     }
 
     #[test]

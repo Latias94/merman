@@ -1,8 +1,15 @@
-//! Borrowed source tokens for Timeline syntax.
+//! Timeline source parsing and semantic construction.
 
 use merman_model::families::timeline::TimelineDirection;
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::{OperationControl, OperationControlResult, SourceSpan};
+
+mod parser;
+
+pub use parser::{
+    TimelineObservation, TimelineParsedSource, TimelineSourceFact, TimelineSourceIssue,
+    parse_timeline_semantic_source_controlled,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimelineSource<'source> {

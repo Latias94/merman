@@ -9,6 +9,18 @@ rust-version.workspace = true
 publish = false
 
 [features]
+default = ["contracts"]
+contracts = []
+render-parity = [
+    "dep:merman-render",
+    "merman/svg",
+    "merman-bindings-core/export-resource-metadata",
+    "merman-bindings-core/layout-cytoscape",
+    "merman-bindings-core/layout-dagre",
+    "merman-bindings-core/layout-elk",
+    "merman-bindings-core/math",
+    "merman-bindings-core/svg",
+]
 wasm-host = ["dep:wasmi"]
 
 [dependencies]
@@ -18,24 +30,18 @@ cssparser.workspace = true
 flate2.workspace = true
 fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
-merman = { path = "../merman", default-features = false, features = ["all-diagrams", "svg", "compat-json"] }
+merman = { path = "../merman", default-features = false, features = ["all-diagrams", "compat-json"] }
 merman-analysis = { workspace = true, features = ["all-diagrams"] }
 merman-bindings-core = { workspace = true, features = [
     "all-diagrams",
     "analysis",
     "ascii",
-    "export-resource-metadata",
     "fixes",
-    "layout-cytoscape",
-    "layout-dagre",
-    "layout-elk",
-    "math",
     "native-runtime",
-    "svg",
 ] }
 merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone", "presentation", "compat-json", "editor-facts"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
-merman-render = { path = "../merman-render", features = [
+merman-render = { workspace = true, optional = true, features = [
     "all-diagrams",
     "layout-cytoscape",
     "layout-dagre",
