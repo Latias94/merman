@@ -1,15 +1,7 @@
-#[cfg(feature = "compat-json")]
 use crate::{Result, SourcePresentationMetadata};
-pub(crate) use merman_model::families::zenuml::{
-    ZenumlDiagramModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup, ZenumlMessageStyle,
-    ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
-};
-#[cfg(feature = "compat-json")]
+use merman_model::families::zenuml::ZenumlDiagramModel;
 use serde_json::Value;
-#[cfg(all(test, feature = "compat-json"))]
-use serde_json::json;
 
-#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ZenumlDiagramModel,
     meta: &SourcePresentationMetadata,
@@ -18,7 +10,7 @@ pub(crate) fn render_model_to_compat_json(
         .map_err(Into::into)
 }
 
-#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ZenumlDiagramModel,
     meta: &SourcePresentationMetadata,
@@ -32,12 +24,15 @@ pub(crate) fn render_model_to_compat_json_controlled(
     .map_err(Into::into))
 }
 
-#[cfg(all(test, feature = "compat-json"))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MermaidConfig;
-    use merman_model::families::zenuml::model_to_typed_json_controlled;
+    use crate::{MermaidConfig, OperationControl};
+    use merman_model::families::zenuml::{
+        ZenumlGroup, ZenumlParticipant, ZenumlStatement, model_to_typed_json_controlled,
+    };
     use serde::Serialize;
+    use serde_json::json;
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -56,10 +51,18 @@ mod tests {
             "A.call(){\n// closing comment\n}\nnew B\nreturn okay\n",
             "ref(Label,A,B)\n== Divider ==\nif(ok){B.call()}else{A.call()}\n",
         );
-        let tokens = super::super::lexer::lex(source);
-        let parsed = super::super::parser::parse(source, &tokens);
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        let built = super::super::semantic::build(parsed);
+        let built = super::super::construct_semantic_source(
+            source,
+            #[cfg(feature = "editor-facts")]
+            crate::family::EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(
+            built.first_diagnostic.is_none(),
+            "{:?}",
+            built.first_diagnostic
+        );
         let meta = SourcePresentationMetadata {
             diagram_type: "zenuml".into(),
             config: MermaidConfig::empty_object(),

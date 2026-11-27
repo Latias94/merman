@@ -1,4 +1,4 @@
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 const KNOWN_UNITS: &[&str] = &[

@@ -1,34 +1,32 @@
-//! Grammar-derived ZenUML parser and family-owned semantic model.
-//!
-//! The Mermaid 11.16 companion matrix currently evaluates ZenUML Core 3.50.1 behavior. Its
-//! `sequenceLexer.g4` and `sequenceParser.g4` define the rules implemented by this module. The
-//! lexer, recovering recursive parser, semantic builder, editor facts, and render model form one
-//! owned pipeline; ZenUML is never translated through Mermaid Sequence JSON or actions.
+//! ZenUML source diagnostics, editor facts, and public model projections.
 
-mod ast;
-mod lexer;
+#[cfg(feature = "compat-json")]
 mod model;
-mod parser;
-mod semantic;
 
-#[cfg(feature = "editor-facts")]
-use crate::EditorSemanticFacts;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
+#[cfg(feature = "editor-facts")]
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol,
+};
 use crate::{Error, OperationControl, OperationControlResult, SemanticMetadata};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "editor-facts")]
+use merman_core_sequence::zenuml::{OccurrenceKind, SourceEvent, SourceObserver};
+use merman_core_sequence::zenuml::{SyntaxDiagnostic, parse_source_controlled};
+pub(crate) use merman_model::families::zenuml::ZenumlDiagramModel;
+#[cfg(test)]
+use merman_model::families::zenuml::ZenumlStatementKind;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
-pub(crate) use model::ZenumlDiagramModel;
-#[cfg(test)]
-use model::ZenumlStatementKind;
 struct ZenumlSemanticSource {
     model: ZenumlDiagramModel,
     #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
-    first_diagnostic: Option<ast::SyntaxDiagnostic>,
+    first_diagnostic: Option<SyntaxDiagnostic>,
 }
 
 #[cfg(feature = "compat-json")]
@@ -164,23 +162,83 @@ fn construct_semantic_source(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("zenuml");
 
-    control.checkpoint()?;
-    let tokens = lexer::lex_controlled(code, control)?;
-    let parsed = parser::parse_controlled(code, &tokens, control)?;
-    control.checkpoint()?;
-    let built = semantic::build_controlled(
-        parsed,
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut observe = |event: SourceEvent<'_>| {
+        project_source_event(&mut editor_facts, editor_demand, event);
+    };
+    let parsed = parse_source_controlled(
+        code,
         #[cfg(feature = "editor-facts")]
-        editor_demand,
+        editor_demand
+            .needs_recovery()
+            .then(|| SourceObserver::new(editor_demand.captures_rich(), &mut observe)),
         control,
     )?;
-    control.checkpoint()?;
     Ok(ZenumlSemanticSource {
-        model: built.model,
+        model: parsed.model,
         #[cfg(feature = "editor-facts")]
-        editor_facts: built.editor_facts,
-        first_diagnostic: built.diagnostics.into_iter().next(),
+        editor_facts,
+        first_diagnostic: parsed.first_diagnostic,
     })
+}
+
+#[cfg(feature = "editor-facts")]
+fn project_source_event(
+    facts: &mut EditorSemanticFacts,
+    demand: EditorFactsDemand,
+    event: SourceEvent<'_>,
+) {
+    match event {
+        SourceEvent::TitleDirective => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            facts.push_directive_prefix("title");
+        }
+        SourceEvent::Occurrence {
+            kind,
+            text,
+            detail,
+            span,
+        } => {
+            use EditorSemanticKind as Kind;
+            use EditorSemanticRole as Role;
+
+            let (kind, role) = match kind {
+                OccurrenceKind::Participant => (Kind::Event, Role::Entity),
+                OccurrenceKind::ParticipantReference => (Kind::Event, Role::Reference),
+                OccurrenceKind::Group => (Kind::Namespace, Role::Outline),
+                OccurrenceKind::String => (Kind::String, Role::Payload),
+                OccurrenceKind::Class => (Kind::Class, Role::Payload),
+                OccurrenceKind::Variable => (Kind::Variable, Role::Payload),
+                OccurrenceKind::Function => (Kind::Function, Role::Payload),
+            };
+            facts.push_symbol(EditorSemanticSymbol::with_role(
+                text,
+                Some(detail.to_string()),
+                kind,
+                role,
+                span,
+                span,
+            ));
+        }
+        SourceEvent::Diagnostic(diagnostic) => {
+            facts.mark_recovered_from_parse_error(
+                format!(
+                    "zenuml parser recovered after parse error: {}",
+                    diagnostic.message
+                ),
+                Some(diagnostic.span),
+            );
+            if demand.captures_rich() {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    diagnostic.span,
+                ));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -396,20 +454,15 @@ mod tests {
                     "opt {\n".repeat(depth),
                     "}\n".repeat(depth)
                 );
-                phase("lex-begin");
-                let tokens = lexer::lex_controlled(&source, &OperationControl::new()).unwrap();
-                phase("syntax-begin");
-                let parsed =
-                    parser::parse_controlled(&source, &tokens, &OperationControl::new()).unwrap();
-                assert!(parsed.diagnostics.is_empty());
-                phase("semantic-begin");
-                let built = semantic::build_controlled(
-                    parsed,
+                phase("parse-begin");
+                let built = construct_semantic_source(
+                    &source,
                     #[cfg(feature = "editor-facts")]
                     EditorFactsDemand::Capture,
                     &OperationControl::new(),
                 )
                 .unwrap();
+                assert!(built.first_diagnostic.is_none());
                 phase("clone-begin");
                 let cloned = built.model.clone();
                 drop(cloned);

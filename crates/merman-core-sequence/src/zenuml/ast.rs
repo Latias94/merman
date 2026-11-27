@@ -1,4 +1,4 @@
-use crate::SourceSpan;
+use merman_model::SourceSpan;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SpannedText {
@@ -142,9 +142,9 @@ pub(super) struct ReferenceSyntax {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SyntaxDiagnostic {
-    pub(super) message: String,
-    pub(super) span: SourceSpan,
+pub struct SyntaxDiagnostic {
+    pub message: String,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]

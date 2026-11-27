@@ -118,9 +118,10 @@ and applies terminal SVG policies.
 
 ### Sequence diagrams
 
-`merman-core-sequence` owns Sequence tokenization, grammar replay, and semantic model construction.
-Core captures editor facts from the same lexical stream before handing ownership to the Sequence
-parser, then maps diagnostics to the original source and applies the shared admission policies.
+`merman-core-sequence` owns Sequence and ZenUML tokenization, grammar replay, and semantic model
+construction. Core captures Sequence editor facts from the same lexical stream and ZenUML facts
+from the model builder's borrowed occurrences. It maps diagnostics to the original source and
+applies the shared admission policies.
 
 `merman-render-sequence` owns Sequence preparation, typography, layout, and complete SVG emission
 for both Mermaid parity and the opt-in NativeCompact profile. It uses the shared text, math, and

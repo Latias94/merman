@@ -16,17 +16,20 @@ categories = ["parser-implementations", "visualization"]
 third-party-bundle = true
 
 [features]
-default = []
+default = ["diagram-sequence"]
+diagram-sequence = ["dep:cssparser", "dep:indexmap", "dep:merman-core-preprocess", "dep:rustc-hash", "dep:serde", "dep:serde_json", "merman-model/diagram-sequence"]
+diagram-zenuml = ["dep:indexmap", "dep:unicode-general-category", "merman-model/diagram-zenuml"]
 editor-facts = []
 
 [dependencies]
-cssparser.workspace = true
-indexmap.workspace = true
-merman-core-preprocess.workspace = true
-merman-model = { workspace = true, features = ["diagram-sequence"] }
-rustc-hash.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+cssparser = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
+merman-core-preprocess = { workspace = true, optional = true }
+merman-model.workspace = true
+rustc-hash = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+unicode-general-category = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-model = { workspace = true, features = ["test-support"] }

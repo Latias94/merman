@@ -84,8 +84,8 @@ compatible version requirements and intentional upgrade exceptions.
 `merman-core-preprocess` provides source editing, byte-span mapping, and controlled token scanning
 behind `merman-core`. `merman-core-flow` provides Flowchart and Swimlane parsing and Agentflow's
 shared presentation lexer. `merman-core-graph` owns syntax and semantic replay for Class, ER,
-GitGraph, Mindmap, Requirement, State, and Usecase. `merman-core-sequence` owns Sequence
-syntax and semantic replay.
+GitGraph, Mindmap, Requirement, State, and Usecase. `merman-core-sequence` owns Sequence and
+ZenUML syntax and semantic replay.
 `merman-core-structured` owns source parsing and model construction for Cynefin, Gantt, Info,
 Ishikawa, Journey, Packet, Pie, Railroad, Sankey, Timeline, Treemap, and Venn.
 `merman-render-core` provides layout geometry, bounded SVG writing, and shared CSS and text

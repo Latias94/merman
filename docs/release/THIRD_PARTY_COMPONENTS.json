@@ -1693,7 +1693,7 @@
       },
       "relationships": ["behavior-reference", "copied", "modified", "translated"],
       "local_paths": [
-        "crates/merman-core/src/diagrams/zenuml",
+        "crates/merman-core-sequence/src/zenuml",
         "crates/merman-render-sequence/assets/zenuml",
         "crates/merman-render-sequence/src/zenuml"
       ],

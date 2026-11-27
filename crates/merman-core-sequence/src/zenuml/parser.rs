@@ -1,6 +1,8 @@
 use super::ast::*;
 use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
-use crate::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, SourceSpan};
+use merman_model::{
+    MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, SourceSpan,
+};
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 

@@ -1,42 +1,38 @@
 use super::ast::*;
-use super::model::*;
 #[cfg(feature = "editor-facts")]
-use crate::family::EditorFactsDemand;
-#[cfg(feature = "editor-facts")]
-use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol,
-};
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use super::{OccurrenceKind, SourceEvent, SourceObserver};
 use indexmap::IndexMap;
+use merman_model::families::zenuml::{
+    ZenumlDiagramModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup, ZenumlMessageStyle,
+    ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
+};
+use merman_model::{OperationControl, OperationControlResult, SourceSpan};
 
 pub(super) struct SemanticBuild {
     pub(super) model: ZenumlDiagramModel,
-    #[cfg(feature = "editor-facts")]
-    pub(super) editor_facts: EditorSemanticFacts,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
 }
 
 #[cfg(test)]
-pub(super) fn build(parsed: ParsedSyntax) -> SemanticBuild {
+fn build(parsed: ParsedSyntax) -> SemanticBuild {
     build_controlled(
         parsed,
         #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Capture,
+        None,
         &OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")
 }
 
-pub(super) fn build_controlled(
+pub(super) fn build_controlled<'a>(
     parsed: ParsedSyntax,
-    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-    control: &OperationControl,
+    #[cfg(feature = "editor-facts")] observer: Option<SourceObserver<'a>>,
+    control: &'a OperationControl,
 ) -> OperationControlResult<SemanticBuild> {
     SemanticBuilder::new(
         parsed,
         #[cfg(feature = "editor-facts")]
-        editor_demand,
+        observer,
         control,
     )
     .build()
@@ -46,19 +42,17 @@ struct ParticipantAccumulator {
     participant: ZenumlParticipant,
 }
 
-struct SemanticBuilder {
+struct SemanticBuilder<'a> {
     syntax: SyntaxDocument,
     diagnostics: Vec<SyntaxDiagnostic>,
     participants: IndexMap<String, ParticipantAccumulator>,
     groups: Vec<ZenumlGroup>,
     #[cfg(feature = "editor-facts")]
-    facts: Option<EditorSemanticFacts>,
-    #[cfg(feature = "editor-facts")]
-    editor_demand: EditorFactsDemand,
+    observer: Option<SourceObserver<'a>>,
     generated_statement_id: usize,
     ownable_statement_count: usize,
     some_statement_misses_from: bool,
-    control: OperationControl,
+    control: &'a OperationControl,
 }
 
 #[derive(Clone)]
@@ -68,11 +62,11 @@ struct ResolveContext {
     return_to: Option<String>,
 }
 
-impl SemanticBuilder {
+impl<'a> SemanticBuilder<'a> {
     fn new(
         parsed: ParsedSyntax,
-        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-        control: &OperationControl,
+        #[cfg(feature = "editor-facts")] observer: Option<SourceObserver<'a>>,
+        control: &'a OperationControl,
     ) -> Self {
         Self {
             syntax: parsed.document,
@@ -80,35 +74,27 @@ impl SemanticBuilder {
             participants: IndexMap::new(),
             groups: Vec::new(),
             #[cfg(feature = "editor-facts")]
-            facts: match editor_demand {
-                EditorFactsDemand::Omit | EditorFactsDemand::Recovery => None,
-                EditorFactsDemand::Capture => {
-                    #[cfg(test)]
-                    crate::editor::test_work::record_collection();
-                    Some(EditorSemanticFacts::new())
-                }
-            },
-            #[cfg(feature = "editor-facts")]
-            editor_demand,
+            observer,
             generated_statement_id: 0,
             ownable_statement_count: 0,
             some_statement_misses_from: false,
-            control: control.clone(),
+            control,
         }
     }
 
     fn build(mut self) -> OperationControlResult<SemanticBuild> {
         self.control.checkpoint()?;
         #[cfg(feature = "editor-facts")]
-        if let Some(facts) = &mut self.facts {
-            facts.push_directive_prefix("title");
-        }
-        #[cfg(feature = "editor-facts")]
-        if self.facts.is_some()
-            && let Some(title) = self.syntax.title.clone()
-        {
-            #[cfg(feature = "editor-facts")]
-            self.push_payload(&title, "zenuml title", EditorSemanticKind::String);
+        if let Some(observer) = &mut self.observer {
+            observer.capture(SourceEvent::TitleDirective);
+            if let Some(title) = &self.syntax.title {
+                observer.capture(SourceEvent::Occurrence {
+                    kind: OccurrenceKind::String,
+                    text: &title.value,
+                    detail: "zenuml title",
+                    span: title.span,
+                });
+            }
         }
 
         for (index, item) in self.syntax.head.clone().into_iter().enumerate() {
@@ -124,10 +110,10 @@ impl SemanticBuilder {
                     #[cfg(feature = "editor-facts")]
                     if let Some(name) = &group.name {
                         #[cfg(feature = "editor-facts")]
-                        self.push_outline(
+                        self.push_occurrence(
                             name,
                             "zenuml participant group",
-                            EditorSemanticKind::Namespace,
+                            OccurrenceKind::Group,
                         );
                     }
                     let mut participant_names = Vec::new();
@@ -190,29 +176,13 @@ impl SemanticBuilder {
                 .shift_insert(0, "_STARTER_".to_string(), starter);
         }
 
-        #[cfg(feature = "editor-facts")]
-        {
-            self.facts = self.editor_demand.finish_facts(self.facts);
-        }
         for (index, _diagnostic) in self.diagnostics.iter().enumerate() {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut self.facts {
-                facts.mark_recovered_from_parse_error(
-                    format!(
-                        "zenuml parser recovered after parse error: {}",
-                        _diagnostic.message
-                    ),
-                    Some(_diagnostic.span),
-                );
-                if self.editor_demand.captures_rich() {
-                    facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::Payload,
-                        _diagnostic.span,
-                    ));
-                }
+            if let Some(observer) = &mut self.observer {
+                observer.diagnostic(_diagnostic);
             }
         }
 
@@ -230,8 +200,6 @@ impl SemanticBuilder {
         self.control.checkpoint()?;
         Ok(SemanticBuild {
             model,
-            #[cfg(feature = "editor-facts")]
-            editor_facts: self.facts.unwrap_or_default(),
             diagnostics: self.diagnostics,
         })
     }
@@ -295,51 +263,43 @@ impl SemanticBuilder {
         participant.group_id = participant.group_id.take().or(group_id);
 
         #[cfg(feature = "editor-facts")]
-        self.push_entity(&syntax.name, "zenuml participant");
+        self.push_occurrence(
+            &syntax.name,
+            "zenuml participant",
+            OccurrenceKind::Participant,
+        );
         #[cfg(feature = "editor-facts")]
         if let Some(label) = &syntax.label {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
-                label,
-                "zenuml participant label",
-                EditorSemanticKind::String,
-            );
+            self.push_occurrence(label, "zenuml participant label", OccurrenceKind::String);
         }
         #[cfg(feature = "editor-facts")]
         if let Some(stereotype) = &syntax.stereotype {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
+            self.push_occurrence(
                 stereotype,
                 "zenuml participant stereotype",
-                EditorSemanticKind::Class,
+                OccurrenceKind::Class,
             );
         }
         #[cfg(feature = "editor-facts")]
         if let Some(participant_type) = &syntax.participant_type {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
+            self.push_occurrence(
                 participant_type,
                 "zenuml participant type",
-                EditorSemanticKind::Class,
+                OccurrenceKind::Class,
             );
         }
         #[cfg(feature = "editor-facts")]
         if let Some(emoji) = &syntax.emoji {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
-                emoji,
-                "zenuml participant emoji",
-                EditorSemanticKind::String,
-            );
+            self.push_occurrence(emoji, "zenuml participant emoji", OccurrenceKind::String);
         }
         #[cfg(feature = "editor-facts")]
         if let Some(color) = &syntax.color {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
-                color,
-                "zenuml participant color",
-                EditorSemanticKind::String,
-            );
+            self.push_occurrence(color, "zenuml participant color", OccurrenceKind::String);
         }
     }
 
@@ -419,10 +379,10 @@ impl SemanticBuilder {
                     #[cfg(feature = "editor-facts")]
                     if let Some(label) = &section.label {
                         #[cfg(feature = "editor-facts")]
-                        self.push_payload(
+                        self.push_occurrence(
                             label,
                             "zenuml fragment section",
-                            EditorSemanticKind::String,
+                            OccurrenceKind::String,
                         );
                     }
                     tasks.push(Task::FinishSection(section));
@@ -525,10 +485,10 @@ impl SemanticBuilder {
                 #[cfg(feature = "editor-facts")]
                 if let Some(assignment) = &message.assignment {
                     #[cfg(feature = "editor-facts")]
-                    self.push_payload(
+                    self.push_occurrence(
                         assignment,
                         "zenuml assignment target",
-                        EditorSemanticKind::Variable,
+                        OccurrenceKind::Variable,
                     );
                 }
                 let nested_context = ResolveContext {
@@ -578,18 +538,18 @@ impl SemanticBuilder {
                     "zenuml participant reference",
                 );
                 #[cfg(feature = "editor-facts")]
-                self.push_payload(
+                self.push_occurrence(
                     &creation.constructor,
                     "zenuml constructor",
-                    EditorSemanticKind::Class,
+                    OccurrenceKind::Class,
                 );
                 #[cfg(feature = "editor-facts")]
                 if let Some(assignment) = &creation.assignment {
                     #[cfg(feature = "editor-facts")]
-                    self.push_payload(
+                    self.push_occurrence(
                         assignment,
                         "zenuml assignment target",
-                        EditorSemanticKind::Variable,
+                        OccurrenceKind::Variable,
                     );
                 }
                 let nested_context = ResolveContext {
@@ -650,7 +610,7 @@ impl SemanticBuilder {
                 #[cfg(feature = "editor-facts")]
                 if let Some(value) = &ret.value {
                     #[cfg(feature = "editor-facts")]
-                    self.push_payload(value, "zenuml return value", EditorSemanticKind::String);
+                    self.push_occurrence(value, "zenuml return value", OccurrenceKind::String);
                 }
                 ZenumlStatementKind::Return {
                     explicit_from,
@@ -676,10 +636,10 @@ impl SemanticBuilder {
                 #[cfg(feature = "editor-facts")]
                 if let Some(label) = &fragment.label {
                     #[cfg(feature = "editor-facts")]
-                    self.push_payload(
+                    self.push_occurrence(
                         label,
                         "zenuml fragment condition",
-                        EditorSemanticKind::String,
+                        OccurrenceKind::String,
                     );
                 }
                 ZenumlStatementKind::Fragment {
@@ -710,7 +670,7 @@ impl SemanticBuilder {
             }
             StatementKindSyntax::Divider(label) => {
                 #[cfg(feature = "editor-facts")]
-                self.push_payload(label, "zenuml divider", EditorSemanticKind::String);
+                self.push_occurrence(label, "zenuml divider", OccurrenceKind::String);
                 ZenumlStatementKind::Divider {
                     label: label.value.clone(),
                 }
@@ -772,35 +732,24 @@ impl SemanticBuilder {
         if let Some(span) = span {
             entry.participant.occurrences.push(span);
             #[cfg(feature = "editor-facts")]
-            if let Some(facts) = &mut self.facts {
-                let symbol = if _is_implicit_definition {
-                    EditorSemanticSymbol::new(
-                        name,
-                        Some("zenuml implicit participant".to_string()),
-                        EditorSemanticKind::Event,
-                        span,
-                        span,
-                    )
+            if let Some(observer) = &mut self.observer {
+                let (kind, detail) = if _is_implicit_definition {
+                    (OccurrenceKind::Participant, "zenuml implicit participant")
                 } else {
-                    EditorSemanticSymbol::reference(
-                        name,
-                        Some(_detail.to_string()),
-                        EditorSemanticKind::Event,
-                        span,
-                        span,
-                    )
+                    (OccurrenceKind::ParticipantReference, _detail)
                 };
-                facts.push_symbol(symbol);
+                observer.capture(SourceEvent::Occurrence {
+                    kind,
+                    text: name,
+                    detail,
+                    span,
+                });
             }
         }
         #[cfg(feature = "editor-facts")]
         if let Some(emoji) = emoji {
             #[cfg(feature = "editor-facts")]
-            self.push_payload(
-                emoji,
-                "zenuml participant emoji",
-                EditorSemanticKind::String,
-            );
+            self.push_occurrence(emoji, "zenuml participant emoji", OccurrenceKind::String);
         }
     }
 
@@ -811,65 +760,37 @@ impl SemanticBuilder {
 
     #[cfg(feature = "editor-facts")]
     fn push_message_signature(&mut self, signature: &SpannedText) {
-        let Some(facts) = &mut self.facts else {
+        let Some(observer) = self
+            .observer
+            .as_mut()
+            .filter(|observer| observer.captures_rich())
+        else {
             return;
         };
         let (method, span) = signature_method(signature);
-        facts.push_symbol(EditorSemanticSymbol::with_role(
-            method,
-            Some("zenuml message".to_string()),
-            EditorSemanticKind::Function,
-            EditorSemanticRole::Payload,
+        observer.capture(SourceEvent::Occurrence {
+            kind: OccurrenceKind::Function,
+            text: method,
+            detail: "zenuml message",
             span,
-            span,
-        ));
+        });
     }
 
     #[cfg(feature = "editor-facts")]
-    fn push_entity(&mut self, value: &SpannedText, detail: &str) {
-        let Some(facts) = &mut self.facts else {
-            return;
-        };
-        facts.push_symbol(EditorSemanticSymbol::new(
-            value.value.clone(),
-            Some(detail.to_string()),
-            EditorSemanticKind::Event,
-            value.span,
-            value.span,
-        ));
-    }
-
-    #[cfg(feature = "editor-facts")]
-    fn push_outline(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
-        let Some(facts) = &mut self.facts else {
-            return;
-        };
-        facts.push_symbol(EditorSemanticSymbol::outline(
-            value.value.clone(),
-            Some(detail.to_string()),
-            kind,
-            value.span,
-            value.span,
-        ));
-    }
-
-    #[cfg(feature = "editor-facts")]
-    fn push_payload(&mut self, value: &SpannedText, detail: &str, kind: EditorSemanticKind) {
-        let Some(facts) = &mut self.facts else {
-            return;
-        };
-        facts.push_symbol(EditorSemanticSymbol::payload(
-            value.value.clone(),
-            Some(detail.to_string()),
-            kind,
-            value.span,
-            value.span,
-        ));
+    fn push_occurrence(&mut self, value: &SpannedText, detail: &str, kind: OccurrenceKind) {
+        if let Some(observer) = &mut self.observer {
+            observer.capture(SourceEvent::Occurrence {
+                kind,
+                text: &value.value,
+                detail,
+                span: value.span,
+            });
+        }
     }
 }
 
 #[cfg(feature = "editor-facts")]
-fn signature_method(signature: &SpannedText) -> (String, SourceSpan) {
+fn signature_method(signature: &SpannedText) -> (&str, SourceSpan) {
     let text = signature.value.as_str();
     let end = text
         .char_indices()
@@ -880,7 +801,7 @@ fn signature_method(signature: &SpannedText) -> (String, SourceSpan) {
         .len()
         .saturating_sub(text[..end].trim_start().len());
     (
-        method.to_string(),
+        method,
         SourceSpan::new(
             signature.span.start + leading,
             signature.span.start + leading + method.len(),
@@ -891,6 +812,30 @@ fn signature_method(signature: &SpannedText) -> (String, SourceSpan) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "editor-facts")]
+    fn participant_occurrences(source: &str) -> Vec<(String, OccurrenceKind, String)> {
+        let mut occurrences = Vec::new();
+        let mut collect = |event: SourceEvent<'_>| {
+            if let SourceEvent::Occurrence {
+                kind: kind @ (OccurrenceKind::Participant | OccurrenceKind::ParticipantReference),
+                text,
+                detail,
+                ..
+            } = event
+            {
+                occurrences.push((text.to_string(), kind, detail.to_string()));
+            }
+        };
+        let parsed = super::super::parse_source_controlled(
+            source,
+            Some(SourceObserver::new(true, &mut collect)),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.first_diagnostic.is_none());
+        occurrences
+    }
 
     #[test]
     fn nested_message_ownership_is_not_lowered_through_sequence() {
@@ -1074,55 +1019,45 @@ mod tests {
             "Declared->Implicit.call()\n",
             "Implicit->Declared.reply()\n",
         );
-        let tokens = super::super::lexer::lex(source);
-        let parsed = super::super::parser::parse(source, &tokens);
-        let built = build(parsed);
-
-        let declared: Vec<_> = built
-            .editor_facts
-            .symbols
+        let occurrences = participant_occurrences(source);
+        let declared: Vec<_> = occurrences
             .iter()
-            .filter(|symbol| symbol.name == "Declared")
+            .filter(|(name, _, _)| name == "Declared")
             .collect();
-        let implicit: Vec<_> = built
-            .editor_facts
-            .symbols
+        let implicit: Vec<_> = occurrences
             .iter()
-            .filter(|symbol| symbol.name == "Implicit")
+            .filter(|(name, _, _)| name == "Implicit")
             .collect();
         assert_eq!(declared.len(), 3);
-        assert_eq!(declared[0].role, EditorSemanticRole::Entity);
+        assert_eq!(declared[0].1, OccurrenceKind::Participant);
         assert!(
             declared[1..]
                 .iter()
-                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+                .all(|(_, kind, _)| *kind == OccurrenceKind::ParticipantReference)
         );
         assert_eq!(implicit.len(), 2);
-        assert_eq!(implicit[0].role, EditorSemanticRole::Entity);
-        assert_eq!(implicit[1].role, EditorSemanticRole::Reference);
-        assert_eq!(
-            implicit[0].detail.as_deref(),
-            Some("zenuml implicit participant")
-        );
+        assert_eq!(implicit[0].1, OccurrenceKind::Participant);
+        assert_eq!(implicit[1].1, OccurrenceKind::ParticipantReference);
+        assert_eq!(implicit[0].2, "zenuml implicit participant");
     }
 
     #[test]
     #[cfg(feature = "editor-facts")]
     fn reference_statement_participants_establish_then_reuse_implicit_entities() {
         let source = "zenuml\nref(Order, A, A)";
-        let tokens = super::super::lexer::lex(source);
-        let parsed = super::super::parser::parse(source, &tokens);
-        let built = build(parsed);
-        let occurrences: Vec<_> = built
-            .editor_facts
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == "A")
+        let occurrences: Vec<_> = participant_occurrences(source)
+            .into_iter()
+            .filter(|(name, _, _)| name == "A")
+            .map(|(_, kind, _)| kind)
             .collect();
 
-        assert_eq!(occurrences.len(), 2);
-        assert_eq!(occurrences[0].role, EditorSemanticRole::Entity);
-        assert_eq!(occurrences[1].role, EditorSemanticRole::Reference);
+        assert_eq!(
+            occurrences,
+            [
+                OccurrenceKind::Participant,
+                OccurrenceKind::ParticipantReference
+            ]
+        );
     }
 
     #[test]
