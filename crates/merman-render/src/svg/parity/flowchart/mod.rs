@@ -40,7 +40,6 @@ mod viewbox_node_bounds;
     feature = "layout-dagre"
 ))]
 pub(super) use compact::render_native_compact_flowchart_artifact;
-use css::*;
 use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
     FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom,
@@ -106,12 +105,3 @@ pub(super) use swimlane::{render_swimlane_svg_artifact, swimlane_edge_geometry};
 
 #[cfg(all(test, feature = "layout-elk"))]
 mod browser_measurement_tests;
-
-/// Shared by the title element and its stylesheet; Agentflow owns its title class.
-fn title_css_class(diagram_type: &str) -> &'static str {
-    if diagram_type == "agentflow" {
-        "agentflowTitleText"
-    } else {
-        "flowchartTitleText"
-    }
-}

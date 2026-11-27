@@ -80,10 +80,10 @@ consumes it to build the model.
 and Agentflow. It resolves family defaults, typography and density overlays, and the Agentflow
 configuration projection before layout. It also resolves shape aliases and image and icon
 dimensions, and supplies organic outlines and BPMN connector intersections. It parses authored
-styles and prepares the operation-local class styles shared by layout and paint. Its Dagre adapter
-owns compound graph assembly, cluster anchor selection and extraction, and the associated work
-accounting. `merman-render` owns diagram traversal, text measurement, asset policy, layout output
-projection, and final CSS and SVG emission.
+styles, prepares the operation-local class styles shared by layout and paint, and emits the
+complete Flow diagram stylesheet. Its Dagre adapter owns compound graph assembly, cluster anchor
+selection and extraction, and the associated work accounting. `merman-render` owns diagram
+traversal, text measurement, asset policy, layout output projection, and SVG body emission.
 
 ### Structured diagrams
 

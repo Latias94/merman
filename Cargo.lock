@@ -2803,9 +2803,12 @@ dependencies = [
  "dugong",
  "indexmap",
  "kurbo 0.13.1",
+ "memchr",
+ "merman-markup",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "quick-xml",
  "rustc-hash 2.1.3",
  "serde_json",
 ]

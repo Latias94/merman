@@ -1,439 +1,57 @@
-//! Flowchart CSS generation.
+//! Projects the facade's prepared Flowchart binding into the stylesheet inputs.
 
-use super::*;
-use indexmap::IndexMap;
-use merman_render_core::write_static_css;
-use std::borrow::Cow;
+use merman_render_flow::stylesheet::FlowchartStylesheetTheme;
 
-pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
-    declarations: &[String],
-) -> (String, String) {
-    let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
+pub(super) use merman_render_flow::stylesheet::flowchart_classdef_cssom_string;
 
-    // This is deliberately a safe headless projection, not a complete browser CSS engine:
-    // `FlowchartStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
-    (
-        flowchart_classdef_cssom_string(&styles.shape),
-        flowchart_classdef_cssom_string(&styles.text),
-    )
-}
+use super::{FlowchartEdgeAnimationResolution, SvgOutput};
 
-pub(super) fn flowchart_classdef_cssom_string(
-    cssom: &IndexMap<String, std::sync::Arc<crate::flowchart::FlowchartStyleDeclaration>>,
-) -> String {
-    let mut style = String::new();
-    for (property, declaration) in cssom {
-        let value = if !property.starts_with("--")
-            && (matches!(property.as_str(), "fill" | "stroke" | "color")
-                || property.ends_with("-color"))
-        {
-            super::super::util::cssom_color_value(declaration.value())
-        } else {
-            declaration.value().to_owned()
-        };
-        let _ = write!(&mut style, "{}:{}!important;", property, value);
-    }
-    style
-}
-
-struct ScopedFlowchartDropShadow<'a, DropShadowId, DropShadowSmallId> {
-    source: &'a str,
-    drop_shadow_id: DropShadowId,
-    drop_shadow_small_id: DropShadowSmallId,
-}
-
-impl<DropShadowId, DropShadowSmallId> std::fmt::Display
-    for ScopedFlowchartDropShadow<'_, DropShadowId, DropShadowSmallId>
-where
-    DropShadowId: std::fmt::Display,
-    DropShadowSmallId: std::fmt::Display,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const PREFIX: &str = "url(#drop-shadow";
-        const SMALL_SUFFIX: &str = "-small)";
-
-        let mut remaining = self.source;
-        loop {
-            let Some(offset) = remaining.find(PREFIX) else {
-                return f.write_str(remaining);
-            };
-
-            f.write_str(&remaining[..offset])?;
-            let suffix = &remaining[offset + PREFIX.len()..];
-            if let Some(next) = suffix.strip_prefix(SMALL_SUFFIX) {
-                f.write_str("url(#")?;
-                std::fmt::Display::fmt(&self.drop_shadow_small_id, f)?;
-                f.write_str(")")?;
-                remaining = next;
-            } else if let Some(next) = suffix.strip_prefix(')') {
-                f.write_str("url(#")?;
-                std::fmt::Display::fmt(&self.drop_shadow_id, f)?;
-                f.write_str(")")?;
-                remaining = next;
-            } else {
-                // Preserve near-matches byte-for-byte and continue after the common prefix. Each
-                // input byte therefore belongs to at most one subsequent `find` range.
-                f.write_str(PREFIX)?;
-                remaining = suffix;
-            }
-        }
+pub(super) fn stylesheet_theme(
+    theme: &crate::flowchart::FlowchartCompatibilityBinding,
+) -> FlowchartStylesheetTheme<'_> {
+    FlowchartStylesheetTheme {
+        line_color: &theme.line_color,
+        arrowhead_color: &theme.arrowhead_color,
+        node_border: &theme.node_border,
+        main_bkg: &theme.main_bkg,
+        text_color: &theme.text_color,
+        node_text_color: &theme.node_text_color,
+        title_color: &theme.title_color,
+        stroke_width: &theme.stroke_width,
+        connector_stroke_width: theme.connector_stroke_width,
+        error_bkg: &theme.error_bkg,
+        error_text: &theme.error_text,
+        edge_label_background: &theme.edge_label_background,
+        tertiary: &theme.tertiary,
+        cluster_bkg: &theme.cluster_bkg,
+        cluster_border: &theme.cluster_border,
+        border2: &theme.border2,
+        drop_shadow: &theme.drop_shadow,
+        root_font_family: &theme.root_font_family,
+        root_font_weight: theme.root_font_weight,
+        neo: &theme.neo,
+        html_labels: theme.html_labels,
+        hand_drawn: theme.look.is_hand_drawn(),
     }
 }
 
+#[cfg(all(
+    feature = "native-compact",
+    feature = "diagram-flowchart",
+    feature = "layout-dagre"
+))]
 pub(super) fn flowchart_normal_edge_css_width(
     theme: &crate::flowchart::FlowchartCompatibilityBinding,
-) -> Cow<'_, str> {
-    theme
-        .connector_stroke_width
-        .map_or(Cow::Borrowed(theme.stroke_width.as_str()), |width| {
-            Cow::Owned(width.to_string())
-        })
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The streaming CSS writer keeps independently typed SVG definition IDs and theme inputs explicit."
-)]
-pub(super) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId, GradientId>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: DiagramId,
-    diagram_type: &str,
-    drop_shadow_id: DropShadowId,
-    drop_shadow_small_id: DropShadowSmallId,
-    gradient_id: GradientId,
-    theme: &crate::flowchart::FlowchartCompatibilityBinding,
-    native_title: Option<&crate::text::TextStyle>,
-    palette: &super::agentflow::ContainerPalette<'_>,
-    font_family: &str,
-    font_size: f64,
-    class_defs: &IndexMap<String, Vec<String>>,
-    defer_palette: bool,
-) -> Result<Option<usize>>
-where
-    DiagramId: SvgDiagramIdValue,
-    DropShadowId: std::fmt::Display,
-    DropShadowSmallId: std::fmt::Display,
-    GradientId: std::fmt::Display,
-{
-    let id = css_selector_diagram_id(diagram_id);
-    let stroke = theme.line_color.as_str();
-    let arrowhead_color = theme.arrowhead_color.as_str();
-    let node_border = theme.node_border.as_str();
-    let main_bkg = theme.main_bkg.as_str();
-    let text_color = theme.text_color.as_str();
-    let node_text_color = theme.node_text_color.as_str();
-    let title_color = theme.title_color.as_str();
-    let stroke_width = theme.stroke_width.as_str();
-    let connector_width = flowchart_normal_edge_css_width(theme);
-    let connector_width: &str = connector_width.as_ref();
-    let error_bkg = theme.error_bkg.as_str();
-    let error_text = theme.error_text.as_str();
-    let edge_label_background = theme.edge_label_background.as_str();
-    let tertiary = theme.tertiary.as_str();
-    let cluster_bkg = theme.cluster_bkg.as_str();
-    let cluster_border = theme.cluster_border.as_str();
-    let tooltip_border = &theme.border2;
-    let drop_shadow = &theme.drop_shadow;
-
-    let faded_label_background;
-    let label_bkg = if native_title.is_some() {
-        // Native labels paint their own backplate, including the transparent case.
-        edge_label_background
-    } else {
-        faded_label_background = css_rgba_fade(edge_label_background, 0.5)?;
-        &faded_label_background
-    };
-    let scoped_drop_shadow = ScopedFlowchartDropShadow {
-        source: drop_shadow,
-        drop_shadow_id,
-        drop_shadow_small_id,
-    };
-
-    let _ = write!(
-        &mut *out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        text_color
-    );
-    if let Some(weight) = theme.root_font_weight {
-        let _ = write!(out, "#{id}{{font-weight:{weight};}}");
-    }
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write_static_css!(
-        out,
-        "#",
-        id => " .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#",
-        id => " .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}",
-    );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, error_bkg, id, error_text, error_text
-    );
-    let _ = write_static_css!(
-        out,
-        "#",
-        id => " .edge-thickness-normal{stroke-width:",
-        connector_width => "px;}#",
-        id => " .edge-thickness-thick{stroke-width:3.5px;}#",
-        id => " .edge-pattern-solid{stroke-dasharray:0;}#",
-        id => " .edge-thickness-invisible{stroke-width:0;fill:none;}#",
-        id => " .edge-pattern-dashed{stroke-dasharray:3;}#",
-        id => " .edge-pattern-dotted{stroke-dasharray:2;}",
-    );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, stroke, stroke, id, stroke
-    );
-    let _ = write!(
-        &mut *out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        id
-    );
-    out.checkpoint()?;
-    let palette_offset = if diagram_type == "agentflow" {
-        None
-    } else if defer_palette {
-        Some(out.len())
-    } else {
-        super::agentflow::write_flowchart_container_css(
-            out,
-            id,
-            palette,
-            0..palette.color_count(),
-        )?;
-        None
-    };
-    let _ = write!(
-        &mut *out,
-        r#"#{} .label{{font-family:{};color:{};}}"#,
-        id, font_family, node_text_color
-    );
-    let _ = write!(out, "#{id} .cluster-label text{{");
-    write_cluster_title_paint(out, title_color, false);
-    let _ = write!(out, "}}#{id} .cluster-label span{{");
-    write_cluster_title_paint(out, title_color, true);
-    let _ = write!(
-        out,
-        "}}#{id} .cluster-label span p{{background-color:transparent;}}#{id} .label text,#{id} span{{fill:{node_text_color};color:{node_text_color};}}"
-    );
-    let _ = write_static_css!(
-        out,
-        "#",
-        id => " .node rect,#",
-        id => " .node circle,#",
-        id => " .node ellipse,#",
-        id => " .node polygon,#",
-        id => " .node path{fill:",
-        main_bkg => ";stroke:",
-        node_border => ";stroke-width:",
-        stroke_width => "px;}#",
-        id => " .rough-node .label text,#",
-        id => " .node .label text,#",
-        id => " .image-shape .label,#",
-        id => " .icon-shape .label{text-anchor:middle;}#",
-        id => " .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#",
-        id => " .rough-node .label,#",
-        id => " .node .label,#",
-        id => " .image-shape .label,#",
-        id => " .icon-shape .label{text-align:center;}#",
-        id => " .node.clickable{cursor:pointer;}",
-    );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        id, stroke, stroke, id, arrowhead_color, id, stroke, connector_width, id, stroke
-    );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
-        id,
-        edge_label_background,
-        id,
-        edge_label_background,
-        id,
-        edge_label_background,
-        edge_label_background,
-        id,
-        label_bkg
-    );
-    let _ = write!(
-        out,
-        "#{id} .cluster rect{{fill:{cluster_bkg};stroke:{cluster_border};stroke-width:1px;}}#{id} .cluster text{{"
-    );
-    write_cluster_title_paint(out, title_color, false);
-    let _ = write!(out, "}}#{id} .cluster span{{");
-    write_cluster_title_paint(out, title_color, true);
-    out.push('}');
-    let _ = write!(
-        &mut *out,
-        r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
-    );
-    let _ = write_static_css!(
-        out,
-        "#",
-        id => " div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:",
-        font_family => ";font-size:12px;background:",
-        tertiary => ";border:1px solid ",
-        tooltip_border => ";border-radius:2px;pointer-events:none;z-index:100;}#",
-        id => " .",
-        title_css_class(diagram_type) => "{text-anchor:middle;",
-    );
-    if let Some(style) = native_title {
-        let _ = write!(out, "font-size:{}px;fill:{title_color};", style.font_size);
-        if let Some(family) = style.font_family.as_deref() {
-            let _ = write!(out, "font-family:{family};");
-        }
-        if let Some(weight) = style.font_weight.as_deref() {
-            let _ = write!(out, "font-weight:{weight};");
-        }
-    } else {
-        let size = super::viewbox::TITLE_FONT_SIZE_PX;
-        let _ = write!(out, "font-size:{size}px;fill:{text_color};");
-    }
-    let _ = write!(out, "}}#{id} rect.text{{fill:none;stroke-width:0;}}");
-    let _ = write_static_css!(
-        out,
-        "#",
-        id => " .icon-shape,#",
-        id => " .image-shape{background-color:",
-        edge_label_background => ";text-align:center;}#",
-        id => " .icon-shape p,#",
-        id => " .image-shape p{background-color:",
-        edge_label_background => ";padding:2px;}#",
-        id => " .icon-shape .label rect,#",
-        id => " .image-shape .label rect{opacity:0.5;background-color:",
-        edge_label_background => ";fill:",
-        edge_label_background => ";}#",
-        id => " .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#",
-        id => " .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}",
-    );
-    theme
-        .neo
-        .write_with_ids(out, id, gradient_id, scoped_drop_shadow)?;
-    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
-        &mut *out,
-        id,
-        &theme.root_font_family,
-    );
-
-    // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
-    // - HTML labels: `.classDef > *` + `.classDef span`
-    // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
-    let html_labels = theme.html_labels;
-    let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
-
-    // Flush the fixed stylesheet prefix before processing attacker-controlled class catalogs.
-    out.checkpoint()?;
-
-    for (class, decls) in class_defs {
-        if decls.is_empty() {
-            continue;
-        }
-        let (style, text_style) = flowchart_classdef_css_declarations(decls);
-        if style.is_empty() {
-            continue;
-        }
-        if html_labels {
-            let _ = write!(
-                &mut *out,
-                r#"#{} .{}>*{{{}}}#{} .{} span{{{}}}"#,
-                id,
-                crate::svg::escape_css_identifier(class),
-                style,
-                id,
-                crate::svg::escape_css_identifier(class),
-                style
-            );
-        } else if theme.look.is_hand_drawn() {
-            // Hand-drawn nodes render as `.rough-node` and bake classDef fill/stroke directly onto
-            // their RoughJS paths. Restricting SVG classDef shape selectors to `.node` and
-            // `.cluster` preserves classic/cluster styling in both browsers and `usvg` without
-            // overwriting rough hachure fill strokes or open cylinder rims.
-            for css_element in shape_elements {
-                let _ = write!(
-                    &mut *out,
-                    r#"#{} .node.{} {},#{} .cluster.{} {}{{{}}}"#,
-                    id,
-                    crate::svg::escape_css_identifier(class),
-                    css_element,
-                    id,
-                    crate::svg::escape_css_identifier(class),
-                    css_element,
-                    style
-                );
-            }
-        } else {
-            for css_element in shape_elements {
-                let _ = write!(
-                    &mut *out,
-                    r#"#{} .{} {}{{{}}}"#,
-                    id,
-                    crate::svg::escape_css_identifier(class),
-                    css_element,
-                    style
-                );
-            }
-        }
-        if !text_style.is_empty() {
-            let _ = write!(
-                &mut *out,
-                r#"#{} .{} tspan{{{}}}"#,
-                id,
-                crate::svg::escape_css_identifier(class),
-                text_style
-            );
-        }
-        out.checkpoint()?;
-    }
-
-    Ok(palette_offset)
-}
-
-fn write_cluster_title_paint(out: &mut impl std::fmt::Write, configured: &str, html: bool) {
-    let property = if html { "color" } else { "fill" };
-    let _ = write!(out, "{property}:{configured};");
-}
-
-#[cfg(test)]
-fn flowchart_css(
-    diagram_id: &str,
-    diagram_type: &str,
-    effective_config: &serde_json::Value,
-    font_family: &str,
-    font_size: f64,
-    class_defs: &IndexMap<String, Vec<String>>,
-) -> Result<String> {
-    let mut out = String::new();
-    write_flowchart_css(
-        &mut out,
-        diagram_id,
-        diagram_type,
-        format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow"),
-        format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
-        format!("{diagram_id}-merman-flowchart-document-gradient-root"),
-        &crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config),
-        None,
-        &super::agentflow::ContainerPalette::new(effective_config),
-        font_family,
-        font_size,
-        class_defs,
-        false,
-    )?;
-    Ok(out)
+) -> std::borrow::Cow<'_, str> {
+    merman_render_flow::stylesheet::flowchart_normal_edge_css_width(
+        &theme.stroke_width,
+        theme.connector_stroke_width,
+    )
 }
 
 #[inline]
 pub(super) fn write_flowchart_edge_class_attr(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     edge: &crate::flowchart::FlowEdge,
     animation: FlowchartEdgeAnimationResolution,
 ) {
@@ -471,38 +89,67 @@ pub(super) fn write_flowchart_edge_class_attr(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use indexmap::IndexMap;
+    use merman_render_core::svg_css::{SvgId, escape_css_identifier};
+    use merman_render_core::svg_output::BoundedSvgOutput;
+    use merman_render_flow::stylesheet::{
+        ContainerPalette, FlowchartStylesheetRequest, write_flowchart_stylesheet,
+    };
     use serde_json::json;
 
-    fn scoped_drop_shadow(source: &str) -> String {
-        ScopedFlowchartDropShadow {
-            source,
-            drop_shadow_id: "scope-filter-drop-shadow",
-            drop_shadow_small_id: "scope-filter-drop-shadow-small",
-        }
-        .to_string()
+    fn write_stylesheet(
+        out: &mut BoundedSvgOutput<'_>,
+        meter: &OperationWorkMeter,
+        diagram_id: &str,
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        class_defs: &IndexMap<String, Vec<String>>,
+    ) -> crate::Result<()> {
+        let binding = crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config);
+        let palette = ContainerPalette::new(effective_config);
+        let _ = write_flowchart_stylesheet(
+            out,
+            meter,
+            FlowchartStylesheetRequest {
+                diagram_id: SvgId::new(diagram_id).unwrap(),
+                diagram_type: "flowchart-v2",
+                drop_shadow_id: format!(
+                    "{diagram_id}-merman-flowchart-document-filter-drop-shadow"
+                ),
+                drop_shadow_small_id: format!(
+                    "{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"
+                ),
+                gradient_id: format!("{diagram_id}-merman-flowchart-document-gradient-root"),
+                theme: stylesheet_theme(&binding),
+                native_title: None,
+                palette: &palette,
+                font_family,
+                font_size: 16.0,
+                class_defs,
+                swimlane: None,
+                allow_deferred_palette: false,
+            },
+        )?;
+        Ok(())
     }
 
-    #[test]
-    fn scoped_drop_shadow_rewrites_repeated_exact_tokens_in_one_pass_order() {
-        let source = "url(#drop-shadow)|url(#drop-shadow-small)|url(#drop-shadow)|".repeat(64);
-        let expected = "url(#scope-filter-drop-shadow)|url(#scope-filter-drop-shadow-small)|url(#scope-filter-drop-shadow)|"
-            .repeat(64);
-
-        assert_eq!(scoped_drop_shadow(&source), expected);
-    }
-
-    #[test]
-    fn scoped_drop_shadow_preserves_near_matches_byte_for_byte() {
-        let source = concat!(
-            "url(#drop-shadowx) ",
-            "url(#drop-shadow-smallx) ",
-            "url(#drop-shadow-small ) ",
-            "url(#drop-shadow ",
-            "url(#drop-shadow-SMALL) ",
-            "URL(#drop-shadow)"
-        );
-
-        assert_eq!(scoped_drop_shadow(source), source);
+    fn flowchart_css(
+        diagram_id: &str,
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        class_defs: &IndexMap<String, Vec<String>>,
+    ) -> crate::Result<String> {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let mut out = BoundedSvgOutput::new(&meter);
+        write_stylesheet(
+            &mut out,
+            &meter,
+            diagram_id,
+            effective_config,
+            font_family,
+            class_defs,
+        )?;
+        out.finish()
     }
 
     #[test]
@@ -516,20 +163,13 @@ mod tests {
             IndexMap::from([("late-class".to_string(), vec!["fill:#123456".to_string()])]);
         let config = json!({});
 
-        let error = write_flowchart_css(
+        let error = write_stylesheet(
             &mut out,
+            &meter,
             "bounded-css",
-            "flowchart-v2",
-            "bounded-css-merman-flowchart-document-filter-drop-shadow",
-            "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
-            "bounded-css-merman-flowchart-document-gradient-root",
-            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
-            None,
-            &super::super::agentflow::ContainerPalette::new(&config),
+            &config,
             "sans-serif",
-            16.0,
             &class_defs,
-            false,
         )
         .expect_err("the fixed Flowchart CSS prefix must exceed the tiny ceiling");
 
@@ -545,24 +185,20 @@ mod tests {
         let class = "class&<:quoted\"Ω";
         let class_defs = IndexMap::from([(class.to_owned(), vec!["fill:#123456".to_owned()])]);
         let config = json!({"htmlLabels": true});
-        let mut svg = String::from("<svg><style>");
-        write_flowchart_css(
-            &mut super::super::super::output::XmlTextOutput::new(&mut svg),
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let mut out = BoundedSvgOutput::new(&meter);
+        out.push_str("<svg>");
+        write_stylesheet(
+            &mut out,
+            &meter,
             "selector-scope",
-            "flowchart-v2",
-            "shadow",
-            "shadow-small",
-            "gradient",
-            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
-            None,
-            &super::super::agentflow::ContainerPalette::new(&config),
+            &config,
             "sans-serif",
-            16.0,
             &class_defs,
-            false,
         )
         .unwrap();
-        svg.push_str("</style></svg>");
+        out.push_str("</svg>");
+        let svg = out.finish().unwrap();
         let document = crate::xml_dom::Document::parse(&svg).unwrap();
         let css = document
             .descendants()
@@ -570,7 +206,7 @@ mod tests {
             .unwrap()
             .text()
             .unwrap();
-        let escaped = crate::svg::escape_css_identifier(class);
+        let escaped = escape_css_identifier(class);
         assert!(
             css.contains(&format!("#selector-scope .{escaped}>*{{")),
             "{css}"
@@ -583,14 +219,12 @@ mod tests {
     fn khroma_named_edge_label_background_preserves_channels() {
         let css = flowchart_css(
             "theme_named_color",
-            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "rebeccapurple"
                 }
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
-            16.0,
             &IndexMap::new(),
         )
         .expect("valid khroma color");
@@ -604,14 +238,12 @@ mod tests {
     fn unsupported_edge_label_background_returns_color_error() {
         let error = flowchart_css(
             "theme_unknown_color",
-            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "not-a-css-color"
                 }
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
-            16.0,
             &IndexMap::new(),
         )
         .expect_err("unsupported khroma color must fail");
@@ -623,16 +255,76 @@ mod tests {
     fn ordinary_neo_without_profile_keeps_mermaid_common_css_only() {
         let css = flowchart_css(
             "ordinary_neo",
-            "flowchart-v2",
             &json!({"look": "neo"}),
             "\"trebuchet ms\",verdana,arial,sans-serif",
-            16.0,
             &IndexMap::new(),
         )
         .expect("valid Mermaid CSS");
 
         assert!(!css.contains(
             r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ));
+    }
+
+    #[test]
+    fn deferred_flowchart_stylesheet_preserves_bytes_and_the_svg_ceiling() {
+        use merman_render_core::svg_css::SvgDiagramIdProjection;
+
+        let config = json!({
+            "theme": "redux-color", "look": "neo",
+            "themeVariables": {"borderColorArray": ["#446688"], "bkgColorArray": ["#ccddee"]}
+        });
+        let binding = crate::flowchart::FlowchartCompatibilityBinding::resolve(&config);
+        let palette = ContainerPalette::new(&config);
+        let class_defs = IndexMap::new();
+        let render = |defer, ceiling| -> crate::Result<String> {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let policy = match ceiling {
+                Some(value) => policy
+                    .with_limit(ResourceLimitId::MaxSvgBytes, value)
+                    .unwrap(),
+                None => policy,
+            };
+            let meter = OperationWorkMeter::new(policy);
+            let projection = SvgDiagramIdProjection::new(&meter);
+            let diagram_id = SvgId::new("palette-scope")
+                .unwrap()
+                .with_projection(&projection);
+            let mut out = BoundedSvgOutput::new(&meter);
+            out.push_str("<svg>");
+            let deferred = write_flowchart_stylesheet(
+                &mut out,
+                &meter,
+                FlowchartStylesheetRequest {
+                    diagram_id,
+                    diagram_type: "flowchart-v2",
+                    drop_shadow_id: "shadow",
+                    drop_shadow_small_id: "shadow-small",
+                    gradient_id: "gradient",
+                    theme: stylesheet_theme(&binding),
+                    native_title: None,
+                    palette: &palette,
+                    font_family: "sans-serif",
+                    font_size: 16.0,
+                    class_defs: &class_defs,
+                    swimlane: None,
+                    allow_deferred_palette: defer,
+                },
+            )?;
+            assert_eq!(deferred.is_some(), defer);
+            out.push_str(r#"<g data-color-id="color-0"/></svg>"#);
+            out.checkpoint()?;
+            if let Some(deferred) = deferred {
+                deferred.insert(&mut out)?;
+            }
+            projection.finish()?;
+            out.finish()
+        };
+        let eager = render(false, None).unwrap();
+        assert_eq!(render(true, Some(eager.len())).unwrap(), eager);
+        assert!(matches!(
+            render(true, Some(eager.len() - 1)),
+            Err(crate::Error::ResourceLimitExceeded(_))
         ));
     }
 }

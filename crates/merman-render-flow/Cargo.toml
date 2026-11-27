@@ -18,33 +18,45 @@ third-party-bundle = true
 [features]
 diagram-agentflow = [
     "dep:indexmap",
+    "dep:memchr",
+    "dep:merman-markup",
     "dep:merman-model",
     "dep:merman-theme-contract",
+    "dep:quick-xml",
     "dep:rustc-hash",
     "dep:serde_json",
     "merman-model/diagram-agentflow",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/theme-svg",
 ]
 diagram-flowchart = [
     "dep:indexmap",
+    "dep:memchr",
+    "dep:merman-markup",
     "dep:merman-model",
     "dep:merman-theme-contract",
+    "dep:quick-xml",
     "dep:rustc-hash",
     "dep:serde_json",
     "merman-model/diagram-flowchart",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/theme-svg",
 ]
 diagram-swimlane = [
     "dep:indexmap",
+    "dep:memchr",
+    "dep:merman-markup",
     "dep:merman-model",
     "dep:merman-theme-contract",
+    "dep:quick-xml",
     "dep:rustc-hash",
     "dep:serde_json",
     "merman-model/diagram-swimlane",
     "merman-render-core/css-style",
     "merman-render-core/markdown-labels",
+    "merman-render-core/theme-svg",
 ]
 layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre"]
 
@@ -52,8 +64,11 @@ layout-dagre = ["dep:dugong", "dep:serde_json", "merman-render-core/layout-dagre
 dugong = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 kurbo.workspace = true
+memchr = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core.workspace = true
 merman-theme-contract = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

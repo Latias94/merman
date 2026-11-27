@@ -319,7 +319,7 @@ pub(crate) use util::escape_xml;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_xml_display,
+    config_bool, config_f64, config_string, escape_attr_display, escape_xml_display,
     escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_string, json_stringify_points,
     json_stringify_points_into, scoped_drop_shadow, scoped_svg_id, scoped_svg_url,
 };

@@ -95,10 +95,11 @@ Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, an
 Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
 `diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
 `diagram-xychart` selects XY Chart layout and plot geometry.
-`merman-render-flow` provides shape geometry through `diagram-flowchart`, `diagram-swimlane`,
-and `diagram-agentflow`.
-`merman-render-graph` provides ER relationship markers through `diagram-er`.
-`merman-render-sequence` provides participant geometry and drawing through `diagram-sequence`.
+`merman-render-flow` provides shape geometry, authored styling and document stylesheets through
+`diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`.
+`merman-render-graph` provides complete SVG writers for ER, GitGraph, Requirement, and State.
+`merman-render-sequence` provides complete layout and SVG for Sequence and ZenUML through
+`diagram-sequence` and `diagram-zenuml`.
 [Chart renderer ownership](../adr/0099-model-and-source-boundaries.md#chart-rendering)
 
 Homebrew/core owns formula publication; this repository only validates the external formula after

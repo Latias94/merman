@@ -2,7 +2,6 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
 use merman_render_core::svg_css::CssSelectorDiagramId;
 #[cfg(test)]
 use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
@@ -39,17 +38,6 @@ pub(super) fn config_bool(
     path: &[&str],
 ) -> Option<bool> {
     crate::config::value_at(cfg, path).and_then(json_bool)
-}
-
-pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
-    let color = ThemeColor::parse(color.trim())?;
-    let faded = rgba(
-        color.channel(ColorChannel::Red),
-        color.channel(ColorChannel::Green),
-        color.channel(ColorChannel::Blue),
-        opacity,
-    )?;
-    Ok(faded)
 }
 
 pub(super) fn fmt_string(v: f64) -> String {
@@ -239,38 +227,6 @@ mod tests {
         let mut escaped_attr = String::new();
         escape_attr_into(&mut escaped_attr, attr);
         assert_eq!(escaped_attr, expected_attr);
-    }
-
-    #[test]
-    fn css_rgba_fade_matches_khroma_color_semantics() {
-        assert_eq!(
-            css_rgba_fade("#8090a0", 0.5).expect("valid hex color"),
-            "rgba(128, 144, 160, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("rebeccapurple", 0.5).expect("valid named color"),
-            "rgba(102, 51, 153, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("rgb(20% 40% 60% / 25%)", 0.2).expect("valid modern RGB color"),
-            "rgba(51, 102, 153, 0.2)"
-        );
-        assert_eq!(
-            css_rgba_fade("hsl(80, 100%, 96%)", 0.5).expect("valid HSL color"),
-            "rgba(248.2, 255, 234.6, 0.5)"
-        );
-        assert_eq!(
-            css_rgba_fade("#8090a080", 0.5).expect("valid alpha hex color"),
-            "rgba(128, 144, 160, 0.5)"
-        );
-    }
-
-    #[test]
-    fn css_rgba_fade_rejects_unsupported_css_color() {
-        let error = css_rgba_fade("var(--not-runtime-resolved)", 0.5)
-            .expect_err("unresolved CSS variables are not khroma colors");
-
-        assert!(error.to_string().contains("var(--not-runtime-resolved)"));
     }
 
     #[test]

@@ -1,3 +1,7 @@
+use merman_render_flow::stylesheet::{
+    FlowchartStylesheetRequest, SwimlaneStylesheet, title_css_class, write_flowchart_stylesheet,
+};
+
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::document_ids::FlowchartDocumentIds;
@@ -215,52 +219,35 @@ pub(super) fn render_flowchart_svg_model(
 
             let root_document = document.push_root_open(&mut out)?;
             document.push_accessibility_metadata(&mut out);
-            out.push_str("<style>");
-            out.checkpoint()?;
-            let compatibility = &prepared_theme.compatibility;
-            let defer_palette = options.generation == crate::svg::SvgGeneration::Static
-                && ctx.icon_registry.is_none()
-                && super::agentflow::can_defer_palette(ctx)?;
-            let palette_offset = {
-                let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
-                let flowchart_palette_offset = write_flowchart_css(
-                    &mut css_out,
+            let swimlane = swimlane_layout.map(|_| match ctx.native {
+                Some(native) => SwimlaneStylesheet::Native {
+                    container: native.container,
+                    guide: native.guide,
+                    emphasis: native.emphasis,
+                    on_emphasis: native.on_emphasis,
+                },
+                None => SwimlaneStylesheet::Mermaid,
+            });
+            let deferred_palette = write_flowchart_stylesheet(
+                &mut out,
+                options.work_meter(),
+                FlowchartStylesheetRequest {
                     diagram_id,
                     diagram_type,
-                    document_ids.drop_shadow(),
-                    document_ids.drop_shadow_small(),
-                    document_ids.root_gradient(),
-                    compatibility,
-                    ctx.native.map(|native| &native.title_style),
-                    &ctx.palette,
+                    drop_shadow_id: document_ids.drop_shadow(),
+                    drop_shadow_small_id: document_ids.drop_shadow_small(),
+                    gradient_id: document_ids.root_gradient(),
+                    theme: super::css::stylesheet_theme(&prepared_theme.compatibility),
+                    native_title: ctx.native.map(|native| &native.title_style),
+                    palette: &ctx.palette,
                     font_family,
                     font_size,
-                    &model.class_defs,
-                    defer_palette,
-                )?;
-                let palette_offset = if diagram_type == "agentflow" {
-                    super::agentflow::write_css(
-                        &mut css_out,
-                        diagram_id,
-                        &ctx.palette,
-                        defer_palette,
-                    )?
-                } else {
-                    flowchart_palette_offset
-                };
-                if swimlane_layout.is_some() {
-                    super::swimlane::write_swimlane_css(
-                        &mut css_out,
-                        diagram_id,
-                        &compatibility.cluster_border,
-                        ctx.native,
-                    );
-                }
-                palette_offset
-            };
-            out.push_str("</style>");
-            out.checkpoint()?;
-            let body_start = out.len();
+                    class_defs: &model.class_defs,
+                    swimlane,
+                    allow_deferred_palette: options.generation == crate::svg::SvgGeneration::Static
+                        && ctx.icon_registry.is_none(),
+                },
+            )?;
             let defs = prepare_flowchart_defs(
                 document_ids.marker_scope(),
                 diagram_type,
@@ -332,42 +319,8 @@ pub(super) fn render_flowchart_svg_model(
             out.push_str("</svg>\n");
             out.checkpoint()?;
 
-            if let Some(offset) = palette_offset {
-                let slots = super::agentflow::emitted_palette_slots(
-                    out.as_str(),
-                    body_start,
-                    ctx.palette.color_count(),
-                    ctx,
-                )?;
-                if slots.as_ref().is_none_or(|slots| !slots.is_empty()) {
-                    out.write_deferred_at(offset, |out| {
-                        let mut css_out = super::super::output::XmlTextOutput::new(out);
-                        if diagram_type == "agentflow" {
-                            super::agentflow::write_agentflow_container_css(
-                                &mut css_out,
-                                diagram_id,
-                                &ctx.palette,
-                                slots.as_ref(),
-                            )
-                        } else {
-                            let id = css_selector_diagram_id(diagram_id);
-                            match slots {
-                                Some(slots) => super::agentflow::write_flowchart_container_css(
-                                    &mut css_out,
-                                    id,
-                                    &ctx.palette,
-                                    slots,
-                                ),
-                                None => super::agentflow::write_flowchart_container_css(
-                                    &mut css_out,
-                                    id,
-                                    &ctx.palette,
-                                    0..ctx.palette.color_count(),
-                                ),
-                            }
-                        }
-                    })?;
-                }
+            if let Some(palette) = deferred_palette {
+                palette.insert(&mut out)?;
             }
 
             drop(_g_render_svg);

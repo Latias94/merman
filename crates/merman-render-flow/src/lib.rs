@@ -26,6 +26,13 @@ pub mod source_style;
 ))]
 #[doc(hidden)]
 pub mod style;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod stylesheet;
 
 #[cfg(feature = "layout-dagre")]
 #[doc(hidden)]
