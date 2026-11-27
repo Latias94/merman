@@ -24,7 +24,7 @@ pub fn prepare_sankey_diagram(
     canvas: Option<Color>,
     work: &Arc<OperationWorkMeter>,
 ) -> Result<(SankeyDiagramLayout, SankeyStyle)> {
-    let layout = layout::layout_sankey_diagram_typed(model, config.as_value(), work.as_ref())?;
+    let layout = layout::layout_sankey_diagram_typed(model, config, work.as_ref())?;
     let style = SankeyStyle::resolve(config, &layout, native, canvas, work)?;
     Ok((layout, style))
 }
