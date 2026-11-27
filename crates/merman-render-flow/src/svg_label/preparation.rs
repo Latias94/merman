@@ -4,6 +4,7 @@
 use std::cell::Cell;
 use std::{borrow::Cow, cell::RefCell, sync::Arc};
 
+use merman_model::OperationPhase;
 #[cfg(any(test, feature = "test-support"))]
 use merman_model::presentation::PresentationConfig;
 use merman_render_core::{
@@ -122,6 +123,12 @@ enum PreparedMathMeasurement {
     NotApplicable,
     Prepared(TextMetrics),
     Unavailable,
+}
+
+fn render_id_retained_bytes(render_id: &str) -> usize {
+    FLOWCHART_RENDER_ID_RECORD_BYTES
+        .saturating_add(render_id.len())
+        .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES)
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
@@ -259,9 +266,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             );
             return true;
         }
-        let retained_bytes = FLOWCHART_RENDER_ID_RECORD_BYTES
-            .saturating_add(render_id.len())
-            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        let retained_bytes = render_id_retained_bytes(render_id);
         let reservation = match self
             .work_meter
             .as_ref()
@@ -447,41 +452,106 @@ impl FlowchartSvgLabelSidecarBuilder {
             width_mode,
         );
 
-        let markdown = request.label_type == "markdown";
+        match self.measure_prepared_svg(
+            owner,
+            render_id,
+            request.raw_label,
+            svg_measurement,
+            request.label_type == "markdown",
+        ) {
+            Ok(metrics) => metrics,
+            Err(error) => {
+                let error = match (error, self.work_meter.as_deref()) {
+                    (OperationWorkError::ResourceLimitExceeded(error), Some(work)) => {
+                        // This is a required cache owner. Make its refusal visible even to
+                        // layout adapters that observe the next operation checkpoint first.
+                        work.terminate_absolute_resource_error(error, OperationPhase::Layout)
+                    }
+                    (error, _) => error,
+                };
+                self.record_prepared_work_error(error);
+                failed_prepared_metrics()
+            }
+        }
+    }
 
-        let measured_from_existing_source = {
-            let pending = self.pending.borrow();
-            let source = pending
+    fn measure_prepared_svg(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        render_id: &str,
+        raw_label: &str,
+        measurement: FlowchartSvgLabelMeasurementRequest<'_>,
+        markdown: bool,
+    ) -> std::result::Result<TextMetrics, OperationWorkError> {
+        let work = self.work_meter.as_ref();
+        let (replace_id, replace_source) = {
+            let mut pending = self.pending.borrow_mut();
+            let same_id = pending
                 .render_ids
                 .get(owner)
-                .filter(|pending_render_id| pending_render_id.as_ref() == render_id)
-                .and_then(|_| pending.sources.get(owner))
-                .filter(|source| source.matches(request.raw_label));
-
-            if source.is_some()
-                && svg_measurement.has_reusable_binding()
+                .is_some_and(|id| id.as_ref() == render_id);
+            let same_source = same_id
+                && pending
+                    .sources
+                    .get(owner)
+                    .is_some_and(|source| source.matches(raw_label));
+            if same_source
+                && measurement.has_reusable_binding()
                 && let Some(metrics) = pending
                     .prepared
                     .get(owner)
-                    .and_then(|prepared| svg_measurement.matching_metrics(prepared))
+                    .and_then(|prepared| measurement.matching_metrics(prepared))
             {
                 #[cfg(any(test, feature = "test-support"))]
                 self.prepared_hits
                     .set(self.prepared_hits.get().saturating_add(1));
-                return metrics;
+                return Ok(metrics);
             }
-
-            source.map(|source| svg_measurement.measure(source.source(), markdown))
+            // New sources check the terminal during byte preflight below. A remeasurement of
+            // an existing source has no such preflight and must check before calling the host.
+            if same_source && let Some(work) = work {
+                work.checkpoint(OperationPhase::Layout)?;
+            }
+            // The slot has at most one usable value. Drop stale owners and their reservations
+            // before testing whether the replacement fits.
+            pending.prepared.remove(owner);
+            if !same_source {
+                pending.sources.remove(owner);
+            }
+            if !same_id {
+                pending.render_ids.remove(owner);
+                pending.render_id_reservations.remove(owner);
+            }
+            (!same_id, !same_source)
         };
 
-        let (new_source, measured) = measured_from_existing_source.map_or_else(
-            || {
-                let source = FlowchartSvgLabelSourceEntry::new(request.raw_label);
-                let measured = svg_measurement.measure(source.source(), markdown);
-                (Some(source), measured)
-            },
-            |measured| (None, measured),
-        );
+        let mut id_reservation = None;
+        let mut new_source = None;
+        let measured = if replace_source {
+            if let Some(work) = work {
+                let id_bytes = if replace_id {
+                    render_id_retained_bytes(render_id)
+                } else {
+                    0
+                };
+                work.preflight_prepared_text_retained_bytes(
+                    FlowchartSvgLabelSourceEntry::owner_bytes(raw_label).saturating_add(id_bytes),
+                )?;
+                if replace_id {
+                    id_reservation = Some(work.reserve_prepared_text_retained_bytes(id_bytes)?);
+                }
+            }
+            let source = FlowchartSvgLabelSourceEntry::prepare(raw_label, work)?;
+            let measured = measurement.measure(source.source(), markdown);
+            new_source = Some(source);
+            measured
+        } else {
+            let pending = self.pending.borrow();
+            let source = pending.sources.get(owner).expect("matching source entry");
+            measurement.measure(source.source(), markdown)
+        };
+        let metrics = measured.metrics();
+        let prepared = measured.into_prepared(work)?;
 
         #[cfg(any(test, feature = "test-support"))]
         if new_source.is_some() {
@@ -491,18 +561,19 @@ impl FlowchartSvgLabelSidecarBuilder {
         }
 
         let mut pending = self.pending.borrow_mut();
-        pending.render_ids.insert(owner, render_id.into());
+        if replace_id {
+            pending.render_ids.insert(owner, render_id.into());
+            if let Some(reservation) = id_reservation {
+                pending.render_id_reservations.insert(owner, reservation);
+            }
+        }
         if let Some(source) = new_source {
             pending.sources.insert(owner, source);
-            pending.prepared.remove(owner);
         }
-        let metrics = measured.metrics();
-        if let Some(prepared) = measured.into_prepared() {
+        if let Some(prepared) = prepared {
             pending.prepared.insert(owner, prepared);
-        } else {
-            pending.prepared.remove(owner);
         }
-        metrics
+        Ok(metrics)
     }
 
     fn measure_prepared_html(
@@ -1575,6 +1646,231 @@ mod tests {
                 line_count: text.lines().count().max(1),
             }
         }
+    }
+
+    fn measure_svg_quota_label(
+        builder: Option<&FlowchartSvgLabelSidecarBuilder>,
+        measurer: &dyn TextMeasurer,
+        render_id: &str,
+        raw_label: &str,
+    ) -> TextMetrics {
+        measure_flowchart_svg_label_for_layout(
+            builder,
+            Some(FlowchartSvgLabelOwner::Edge(0)),
+            Some(render_id),
+            FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label,
+                label_type: "text",
+                style: &TextStyle {
+                    font_family: Some("Arial, sans-serif".into()),
+                    ..TextStyle::default()
+                },
+                max_width_px: Some(96.0),
+                wrap_mode: WrapMode::SvgLike,
+                config: &PresentationConfig::default(),
+                math_renderer: None,
+            },
+            FlowchartSvgWidthMode::Bbox,
+        )
+    }
+
+    #[test]
+    fn svg_retained_quota_rejects_raw_source_before_measuring_or_replacing_a_work_terminal() {
+        let source = "word ".repeat(2_048);
+        let source = source.trim_end();
+        let cap = 1_350;
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, cap)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        for prior_work_failure in [false, true] {
+            let work = Arc::new(OperationWorkMeter::new(policy));
+            if prior_work_failure {
+                assert!(work.charge(2).is_err());
+            }
+            let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
+            let probe = StatefulOpaqueTraceMeasurer::new();
+            let metrics = measure_svg_quota_label(Some(&builder), &probe, "review", source);
+            assert_eq!(metrics.line_count, 0);
+            assert!(probe.snapshot().is_empty());
+            let sidecar = builder.finish();
+            assert_eq!(sidecar.row_counts(), (0, 0));
+            assert_eq!(work.prepared_text_retained_bytes(), 0);
+            assert_eq!(work.used(), 0);
+            let error = sidecar.prepared_resource_error().unwrap();
+            if prior_work_failure {
+                assert_eq!(error.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+                assert_eq!((error.actual, error.max), (2, 1));
+            } else {
+                assert_eq!(
+                    error.limit,
+                    ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
+                );
+                assert_eq!(error.max, cap);
+                assert_eq!(
+                    error.actual,
+                    FlowchartSvgLabelSourceEntry::owner_bytes(source)
+                        + render_id_retained_bytes("review"),
+                );
+            }
+            work.control().cancel();
+            assert_eq!(
+                work.checkpoint(OperationPhase::Layout),
+                Err(error.clone().into())
+            );
+        }
+    }
+
+    #[test]
+    fn svg_retained_quota_counts_source_rows_and_keys_at_the_exact_boundary() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let limit = ResourceLimitId::MaxPreparedTextRetainedBytes;
+        let source = "alpha &amp; beta<br/>gamma delta 🚀";
+        let run = |policy: RenderResourcePolicy, replace_id: bool| {
+            let work = Arc::new(OperationWorkMeter::new(policy));
+            let session = TextMeasurementSession::new(TextMeasurementPolicy::deterministic());
+            let measurer = session.routed(&work, TextMeasurementPhase::Layout, None);
+            let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
+            let first = measure_svg_quota_label(Some(&builder), &measurer, "edge-a", source);
+            let retained = work.prepared_text_retained_bytes();
+            if first.line_count > 0 {
+                let used = work.used();
+                let exact = measure_svg_quota_label(Some(&builder), &measurer, "edge-a", source);
+                assert_eq!((first.width, first.height), (exact.width, exact.height));
+                assert_eq!(builder.prepared_hit_count(), 1);
+                assert_eq!(work.used(), used);
+                assert_eq!(work.prepared_text_retained_bytes(), retained);
+                if replace_id {
+                    let replacement =
+                        measure_svg_quota_label(Some(&builder), &measurer, "edge-b", source);
+                    assert_eq!(
+                        (first.width, first.height),
+                        (replacement.width, replacement.height)
+                    );
+                    assert_eq!(work.prepared_text_retained_bytes(), retained);
+                }
+            }
+            let sidecar = builder.finish();
+            assert_eq!(work.prepared_text_retained_bytes(), retained);
+            assert_eq!(
+                sidecar.row_counts(),
+                if retained == 0 { (0, 0) } else { (1, 1) }
+            );
+            let error = sidecar.prepared_resource_error().cloned();
+            drop(sidecar);
+            assert_eq!(work.prepared_text_retained_bytes(), 0);
+            (first, retained, error, work.used())
+        };
+        let (baseline, required, error, baseline_work) = run(policy, false);
+        assert!(baseline.line_count > 1 && required > source.len());
+        assert!(error.is_none());
+
+        let (exact, retained, error, _) = run(policy.with_limit(limit, required).unwrap(), true);
+        assert_eq!(
+            (baseline.width, baseline.height),
+            (exact.width, exact.height)
+        );
+        assert_eq!(retained, required);
+        assert!(error.is_none());
+
+        let (failed, retained, error, _) =
+            run(policy.with_limit(limit, required - 1).unwrap(), false);
+        assert_eq!(failed.line_count, 0);
+        assert_eq!(retained, 0);
+        let error = error.unwrap();
+        assert_eq!(error.limit, limit.as_str());
+        assert_eq!((error.actual, error.max), (required, required - 1));
+
+        let work = Arc::new(OperationWorkMeter::new(
+            policy.with_limit(limit, 1).unwrap(),
+        ));
+        let session = TextMeasurementSession::new(TextMeasurementPolicy::deterministic());
+        let measurer = session.routed(&work, TextMeasurementPhase::Layout, None);
+        let off = measure_svg_quota_label(None, &measurer, "edge-a", source);
+        assert_eq!((baseline.width, baseline.height), (off.width, off.height));
+        assert_eq!(work.used(), baseline_work);
+        assert_eq!(work.prepared_text_retained_bytes_peak(), 0);
+    }
+
+    #[test]
+    fn svg_retained_quota_replays_a_work_terminal_before_remeasuring_an_existing_source() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let work = Arc::new(OperationWorkMeter::new(policy));
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
+        let probe = StatefulOpaqueTraceMeasurer::new();
+        let source = "label for an opaque measurer";
+        assert!(measure_svg_quota_label(Some(&builder), &probe, "edge", source).line_count > 0);
+        let before = probe.snapshot();
+        let retained = work.prepared_text_retained_bytes();
+        assert!(!before.is_empty() && retained > 0);
+        let Err(OperationWorkError::ResourceLimitExceeded(expected)) = work.charge(2) else {
+            panic!("expected a Layout work terminal");
+        };
+        let refused = measure_svg_quota_label(Some(&builder), &probe, "edge", source);
+        assert_eq!(refused.line_count, 0);
+        assert_eq!(probe.snapshot(), before);
+        assert_eq!(work.prepared_text_retained_bytes(), retained);
+        let sidecar = builder.finish();
+        assert_eq!(sidecar.prepared_resource_error(), Some(&expected));
+        drop(sidecar);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn svg_retained_quota_opaque_source_lease_and_cancelled_measurement_release_bytes() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let work = Arc::new(OperationWorkMeter::new(policy));
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
+        let probe = StatefulOpaqueTraceMeasurer::new();
+        let source = "label for an opaque measurer";
+        measure_svg_quota_label(Some(&builder), &probe, "edge", source);
+        let retained = work.prepared_text_retained_bytes();
+        assert!(retained > source.len());
+        measure_svg_quota_label(Some(&builder), &probe, "edge", source);
+        assert_eq!(work.prepared_text_retained_bytes(), retained);
+        let sidecar = builder.finish();
+        assert_eq!(sidecar.row_counts(), (1, 0));
+        drop(sidecar);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+
+        struct CancelOnBbox<'a>(&'a OperationControl);
+
+        impl TextMeasurer for CancelOnBbox<'_> {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                DeterministicTextMeasurer::default().measure(text, style)
+            }
+
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                width: Option<f64>,
+                mode: WrapMode,
+            ) -> TextMetrics {
+                DeterministicTextMeasurer::default().measure_wrapped(text, style, width, mode)
+            }
+
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.0.cancel();
+                self.measure(text, style).width
+            }
+        }
+
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(&work));
+        let probe = CancelOnBbox(work.control());
+        let metrics = measure_svg_quota_label(Some(&builder), &probe, "edge", source);
+        assert_eq!(metrics.line_count, 0);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+        let sidecar = builder.finish();
+        assert_eq!(sidecar.row_counts(), (0, 0));
+        assert!(
+            matches!(sidecar.prepared_work_error(), Some(OperationWorkError::Cancelled(error)) if error.phase == OperationPhase::Layout)
+        );
+        assert!(sidecar.prepared_resource_error().is_none());
     }
 
     #[test]

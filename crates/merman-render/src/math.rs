@@ -7,7 +7,7 @@ mod tests {
     use merman_model::presentation::PresentationConfig;
 
     use super::{MathRenderer, RatexMathRenderer};
-    use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+    use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
     use crate::text::{DeterministicTextMeasurer, TextStyle, WrapMode};
 
     #[test]

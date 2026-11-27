@@ -29,8 +29,6 @@ pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{FlowchartBaseTypographyPlan, FlowchartConfigView};
 #[cfg(any(feature = "diagram-flowchart", feature = "layout-shoal", test))]
 pub(crate) use label::flowchart_label_is_empty_for_render;
-#[cfg(test)]
-pub(crate) use label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 #[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 #[cfg(test)]
@@ -50,7 +48,10 @@ pub(crate) use merman_render_flow::node_geometry::{
 pub(crate) use merman_render_flow::shapes::FlowchartShape;
 #[cfg(test)]
 pub(crate) use merman_render_flow::svg_label::FlowchartPreparedLabelResolution;
-#[cfg(any(feature = "layout-shoal", test))]
+#[cfg(any(
+    feature = "layout-shoal",
+    all(test, any(feature = "all-diagrams", feature = "layout-elk"))
+))]
 pub(crate) use merman_render_flow::svg_label::FlowchartSvgLabelOwner;
 #[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) use merman_render_flow::svg_label::FlowchartSvgLabelRenderPlan;
