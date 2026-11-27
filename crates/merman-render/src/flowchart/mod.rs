@@ -18,21 +18,25 @@ pub(crate) use merman_model::families::flowchart::{FlowchartModel, FlowchartRend
 pub(crate) use class_style::FlowchartClassDefinitions;
 #[cfg(feature = "diagram-flowchart")]
 pub(crate) use class_style::FlowchartLabelDom;
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) use merman_render_flow::projection::FlowchartEdgeKey;
+#[cfg(feature = "layout-shoal")]
+pub(crate) use merman_render_flow::projection::ProjectedFlowchartEdge;
 pub(crate) use merman_render_flow::projection::{
-    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan, FlowchartRenderModelRef,
-    ProjectedFlowchartEdge, project_flowchart_edge,
+    FlowchartEdgeOwners, FlowchartEdgeTransportPlan, FlowchartRenderModelRef,
+    project_flowchart_edge,
 };
 pub(crate) use native_theme::FlowchartPreparedTheme;
 
 #[cfg(feature = "layout-shoal")]
 pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{FlowchartBaseTypographyPlan, FlowchartConfigView};
-#[cfg(all(test, feature = "all-diagrams"))]
-pub(crate) use label::FlowchartSvgWidthMode;
 #[cfg(any(feature = "diagram-flowchart", feature = "layout-shoal", test))]
 pub(crate) use label::flowchart_label_is_empty_for_render;
 #[cfg(test)]
 pub(crate) use label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+#[cfg(all(test, feature = "all-diagrams"))]
+pub(crate) use merman_render_core::text::literal_label::FlowchartSvgWidthMode;
 #[cfg(test)]
 pub(crate) use merman_render_core::text::{
     flowchart_wrap_svg_source_word_lines,
