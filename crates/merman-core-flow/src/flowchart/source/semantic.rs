@@ -1,13 +1,12 @@
-use crate::sanitize::sanitize_text;
-use crate::utils::format_url;
-use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 use indexmap::IndexMap;
+use merman_markup::{sanitize::sanitize_text, url::format_url};
 use merman_model::warnings::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
+use merman_model::{OperationControl, OperationControlResult, config::MermaidConfig};
 use std::collections::{HashMap, HashSet};
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowSubGraph, FlowchartAst, LinkStylePos,
-    Node, NodeAction, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
+    Node, NodeAction, Result, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
@@ -27,7 +26,6 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) tooltips: &'a mut HashMap<String, String>,
     pub(super) edge_defaults: &'a mut EdgeDefaults,
     pub(super) security_level_loose: bool,
-    pub(super) diagram_type: &'a str,
     pub(super) config: &'a MermaidConfig,
     pub(super) shape_data_documents:
         &'a HashMap<String, std::result::Result<ShapeDataDocument, String>>,
@@ -68,10 +66,9 @@ impl<'a> FlowchartSemanticContext<'a> {
                 let Some((owner, subgraph)) = owner
                     .and_then(|owner| self.subgraphs.get(owner).map(|subgraph| (owner, subgraph)))
                 else {
-                    return Ok(Err(Error::diagram_parse_fallback(
-                        self.diagram_type.to_string(),
-                        "flowchart subgraph replay diverged from the built model",
-                    )));
+                    return Ok(Err(
+                        "flowchart subgraph replay diverged from the built model".to_string(),
+                    ));
                 };
                 active_subgraphs.insert(subgraph.id.clone(), owner);
                 next_built_subgraph_index = next_built_subgraph_index.saturating_add(1);
@@ -190,12 +187,9 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= next_built_edge_index {
-                                        return Ok(Err(Error::diagram_parse_fallback(
-                                            self.diagram_type.to_string(),
-                                            format!(
-                                                "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
-                                                next_built_edge_index.saturating_sub(1)
-                                            ),
+                                        return Ok(Err(format!(
+                                            "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
+                                            next_built_edge_index.saturating_sub(1)
                                         )));
                                     }
                                     self.edges[*i].interpolate = Some(algo.clone());
@@ -215,12 +209,9 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= next_built_edge_index {
-                                        return Ok(Err(Error::diagram_parse_fallback(
-                                            self.diagram_type.to_string(),
-                                            format!(
-                                                "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
-                                                next_built_edge_index.saturating_sub(1)
-                                            ),
+                                        return Ok(Err(format!(
+                                            "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
+                                            next_built_edge_index.saturating_sub(1)
                                         )));
                                     }
                                     self.edges[*i].style = ls.styles.clone();
@@ -306,10 +297,9 @@ impl<'a> FlowchartSemanticContext<'a> {
         if next_built_edge_index != self.edges.len()
             || next_built_subgraph_index != self.subgraph_declaration_owners.len()
         {
-            return Ok(Err(Error::diagram_parse_fallback(
-                self.diagram_type.to_string(),
-                "flowchart semantic replay did not consume the built model",
-            )));
+            return Ok(Err(
+                "flowchart semantic replay did not consume the built model".to_string(),
+            ));
         }
         for (index, (id, style)) in vertex_css.into_iter().enumerate() {
             if index % 128 == 0 {
@@ -404,11 +394,10 @@ impl<'a> FlowchartSemanticContext<'a> {
         active_subgraphs: &HashMap<String, usize>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
-        let document =
-            match Self::shape_data_document(self.shape_data_documents, self.diagram_type, yaml) {
-                Ok(document) => document,
-                Err(error) => return Ok(Err(error)),
-            };
+        let document = match Self::shape_data_document(self.shape_data_documents, yaml) {
+            Ok(document) => document,
+            Err(error) => return Ok(Err(error)),
+        };
         let value = &document.value;
         // FlowDB routes metadata to an already declared subgraph before checking edge IDs.
         if active_subgraphs.get(target).is_some_and(|&subgraph_index| {
@@ -424,11 +413,10 @@ impl<'a> FlowchartSemanticContext<'a> {
 
         self.vertex_calls.push(target.to_string());
         let idx = self.ensure_authored_node(target);
-        Ok(
-            apply_shape_data_value_to_node(&mut self.nodes[idx], document).map_err(|error| {
-                Error::diagram_parse_fallback(self.diagram_type.to_string(), error)
-            }),
-        )
+        Ok(apply_shape_data_value_to_node(
+            &mut self.nodes[idx],
+            document,
+        ))
     }
 
     fn add_class_to_target(
@@ -463,16 +451,12 @@ impl<'a> FlowchartSemanticContext<'a> {
         seen_edge_indices: &mut HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
         let Some(edge_end) = next_edge_index.checked_add(count) else {
-            return Ok(Err(Error::diagram_parse_fallback(
-                self.diagram_type.to_string(),
-                "flowchart edge replay index overflow",
-            )));
+            return Ok(Err("flowchart edge replay index overflow".to_string()));
         };
         if edge_end > self.edges.len() {
-            return Ok(Err(Error::diagram_parse_fallback(
-                self.diagram_type.to_string(),
-                "flowchart edge replay diverged from the built model",
-            )));
+            return Ok(Err(
+                "flowchart edge replay diverged from the built model".to_string()
+            ));
         }
         for (index, edge_index) in (*next_edge_index..edge_end).enumerate() {
             if index % 128 == 0 {
@@ -495,7 +479,6 @@ impl<'a> FlowchartSemanticContext<'a> {
 
     fn shape_data_document<'b>(
         documents: &'b HashMap<String, std::result::Result<ShapeDataDocument, String>>,
-        diagram_type: &str,
         yaml: &str,
     ) -> Result<&'b ShapeDataDocument> {
         match documents
@@ -503,10 +486,7 @@ impl<'a> FlowchartSemanticContext<'a> {
             .expect("flowchart shape data must be prepared before semantic construction")
         {
             Ok(document) => Ok(document),
-            Err(error) => Err(Error::diagram_parse_fallback(
-                diagram_type.to_string(),
-                format!("Invalid shapeData: {error}"),
-            )),
+            Err(error) => Err(format!("Invalid shapeData: {error}")),
         }
     }
 
@@ -636,8 +616,8 @@ impl<'a> FlowchartSemanticContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{FlowchartBuildState, tests::parse_ast};
     use super::*;
-    use crate::diagrams::flowchart::{FlowchartBuildState, parse_flowchart_ast};
 
     #[test]
     fn class_and_click_lists_and_inline_classes_cancel_during_target_projection() {
@@ -651,19 +631,14 @@ mod tests {
             .map(|id| format!("{id}:::hot"))
             .collect::<Vec<_>>()
             .join(" & ");
-        let meta = crate::SemanticMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            semantic_config: MermaidConfig::empty_object(),
-            title: None,
-        };
+        let config = MermaidConfig::empty_object();
         for body in [
             format!("{declarations}\nclass {targets} hot"),
             format!("{declarations}\nclick {targets} call cb()"),
             inline,
         ] {
             let source = format!("flowchart TD\n{body}\n");
-            let ast = parse_flowchart_ast(&source, &meta).unwrap();
+            let ast = parse_ast(&source);
             let mut build = FlowchartBuildState::new(HashSet::new());
             build
                 .add_statements(&ast, &OperationControl::new())
@@ -702,14 +677,13 @@ mod tests {
                 tooltips: &mut tooltips,
                 edge_defaults: &mut edge_defaults,
                 security_level_loose: true,
-                diagram_type: "flowchart-v2",
-                config: &meta.semantic_config,
+                config: &config,
                 shape_data_documents: &shape_data_documents,
                 control: &control,
             };
             assert!(matches!(
                 apply_semantic_statements(&ast, &mut context),
-                Err(crate::OperationCancelled { .. })
+                Err(merman_model::OperationCancelled { .. })
             ));
             let styled = nodes.iter().filter(|node| !node.classes.is_empty()).count();
             assert!(styled > 0 && styled < ids.len(), "{styled}");

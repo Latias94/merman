@@ -1,4 +1,4 @@
-//! Flowchart lexical events, source grammar actions, and presentation directives.
+//! Flowchart lexical events, source grammar actions, and semantic model construction.
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod accessibility;
@@ -11,6 +11,8 @@ mod link;
 mod parser;
 #[cfg(feature = "editor-facts")]
 mod shape_value;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+mod source;
 mod text;
 mod tokens;
 

@@ -2,7 +2,7 @@ use super::{
     Edge, EdgeAction, FlowNodeProvenance, FlowchartAst, Node, NodeAction, StatementEvent, Stmt,
     TitleKind,
 };
-use crate::{OperationControl, OperationControlResult};
+use merman_model::{OperationControl, OperationControlResult};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
@@ -188,7 +188,7 @@ impl<'ast> FlowchartBuildState<'ast> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::parse_flowchart_ast;
+    use super::super::tests::parse_ast;
     use super::*;
 
     #[test]
@@ -198,20 +198,14 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" & ");
         let source = format!("flowchart TB\n{nodes}\n");
-        let meta = crate::SemanticMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            semantic_config: crate::MermaidConfig::empty_object(),
-            title: None,
-        };
-        let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
+        let ast = parse_ast(&source);
         let mut build = FlowchartBuildState::new(HashSet::new());
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
             build.add_statements(&ast, &control),
-            Err(crate::OperationCancelled { .. })
+            Err(merman_model::OperationCancelled { .. })
         ));
         assert!(build.nodes.len() < 256);
     }

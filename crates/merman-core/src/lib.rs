@@ -60,8 +60,6 @@ mod family;
 pub mod generated;
 #[cfg(any(
     test,
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
     feature = "diagram-agentflow",
     feature = "diagram-kanban",
     feature = "diagram-sequence"
@@ -113,7 +111,7 @@ use merman_model::presentation::RenderSemanticModel;
 use merman_model::semantic::{SemanticDiagramModel, SemanticMetadata};
 use merman_model::source::SourceSpan;
 use merman_model::warnings::DiagramWarningFact;
-#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(all(test, feature = "compat-json", feature = "editor-facts"))]
 use merman_model::warnings::FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID;
 #[cfg(test)]
 use operation::CancelReason;

@@ -2,8 +2,8 @@ use super::{
     FlowSubGraph, FlowchartAst, StatementEvent, Stmt, SubgraphBlock, TitleKind,
     is_ecmascript_trim_char, trim_flowdb_label_text,
 };
-use crate::{OperationControl, OperationControlResult};
 use merman_model::families::flowchart::FlowDroppedSubgraphMember;
+use merman_model::{OperationControl, OperationControlResult};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -258,17 +258,11 @@ pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::parse_ast;
     use super::*;
-    use crate::{MermaidConfig, SemanticMetadata};
 
     #[test]
     fn flowchart_claimed_members_equal_completed_canonical_membership() {
-        let meta = SemanticMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            semantic_config: MermaidConfig::empty_object(),
-            title: None,
-        };
         let control = OperationControl::new();
         let mut builder = SubgraphBuilder::new(false, Some("TB".to_string()));
         for body in [
@@ -277,8 +271,7 @@ mod tests {
             "subgraph X\nB\nend\n",
             "subgraph sibling\nX & A & B & C\nend\n",
         ] {
-            let ast =
-                super::super::parse_flowchart_ast(&format!("flowchart TB\n{body}"), &meta).unwrap();
+            let ast = parse_ast(&format!("flowchart TB\n{body}"));
             builder.visit_statements(&ast, &control).unwrap();
             let retained = builder
                 .subgraphs
@@ -299,24 +292,18 @@ mod tests {
 
     #[test]
     fn flowchart_interrupted_membership_completion_keeps_only_retained_claims() {
-        let meta = SemanticMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            semantic_config: MermaidConfig::empty_object(),
-            title: None,
-        };
         let nodes = (0..256)
             .map(|index| format!("n{index}"))
             .collect::<Vec<_>>()
             .join(" & ");
         let source = format!("flowchart TB\nsubgraph group\n{nodes}\nend\n");
-        let ast = super::super::parse_flowchart_ast(&source, &meta).unwrap();
+        let ast = parse_ast(&source);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(6);
         let mut builder = SubgraphBuilder::new(false, Some("TB".to_string()));
         assert!(matches!(
             builder.visit_statements(&ast, &control),
-            Err(crate::OperationCancelled { .. })
+            Err(merman_model::OperationCancelled { .. })
         ));
         assert_eq!(builder.subgraphs.len(), 1);
         assert_eq!(builder.subgraphs[0].nodes.len(), 128);

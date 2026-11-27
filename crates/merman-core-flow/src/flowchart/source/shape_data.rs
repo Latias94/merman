@@ -1,18 +1,30 @@
-use super::{Node, TitleKind};
-use crate::diagrams::shapes::is_valid_pinned_shape;
+use super::{FlowchartAst, Node, StatementEvent, Stmt, TitleKind};
+use merman_core_preprocess::yaml::{
+    mermaid_inline_yaml, parse_yaml_value_with_root_order_controlled,
+};
+pub(super) use merman_model::config::inline_config_scalar_to_string as value_to_string;
+use merman_model::{
+    MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult,
+    families::flowchart::shapes::is_valid_pinned_shape, number::parse_js_number,
+};
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub(super) struct ShapeDataDocument {
     pub(super) value: Value,
     pub(super) key_order: Vec<String>,
 }
 
-pub(super) fn value_to_string(v: &Value) -> Option<String> {
-    crate::inline_config::value_to_string(v)
-}
-
 pub(super) fn value_to_bool(v: &Value) -> Option<bool> {
-    crate::inline_config::value_to_bool(v)
+    match v {
+        Value::Bool(b) => Some(*b),
+        Value::String(s) => match s.trim() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn metadata_string(value: &Value) -> Option<String> {
@@ -52,9 +64,7 @@ fn asset_dimension(v: &Value) -> std::result::Result<Option<f64>, String> {
             Value::Null => return Ok(Some(0.0)),
             Value::Number(value) => return Ok(value.as_f64()),
             Value::String(value) => {
-                return Ok(Some(
-                    crate::utils::parse_js_number(value).unwrap_or(f64::NAN),
-                ));
+                return Ok(Some(parse_js_number(value).unwrap_or(f64::NAN)));
             }
             _ => return Ok(Some(f64::NAN)),
         }
@@ -168,5 +178,76 @@ pub(super) fn apply_shape_data_value_to_node(
         }
     }
 
+    Ok(())
+}
+
+pub(super) fn prepare_flowchart_shape_data(
+    ast: &FlowchartAst,
+    control: &OperationControl,
+) -> OperationControlResult<HashMap<String, std::result::Result<ShapeDataDocument, String>>> {
+    let mut documents = HashMap::new();
+    for (visited, event) in ast.walk().enumerate() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let StatementEvent::Enter(statement) = event else {
+            continue;
+        };
+
+        match statement {
+            Stmt::Chain { node_groups, .. } => {
+                for (index, node) in node_groups.iter().flatten().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
+                    if let Some(source) = node.shape_data.as_deref() {
+                        prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                    }
+                }
+            }
+            Stmt::Node(node) => {
+                if let Some(source) = node.shape_data.as_deref() {
+                    prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                }
+            }
+            Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
+            Stmt::ShapeData { yaml, .. } => {
+                prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
+            }
+            Stmt::Direction(_)
+            | Stmt::Style(_)
+            | Stmt::ClassDef(_)
+            | Stmt::ClassAssign(_)
+            | Stmt::Click(_)
+            | Stmt::LinkStyle(_) => {}
+        }
+    }
+
+    control.checkpoint()?;
+    Ok(documents)
+}
+
+fn prepare_flowchart_shape_data_document(
+    source: &str,
+    control: &OperationControl,
+    documents: &mut HashMap<String, std::result::Result<ShapeDataDocument, String>>,
+) -> OperationControlResult<()> {
+    if documents.contains_key(source) {
+        return control.checkpoint();
+    }
+    let document = parse_yaml_value_with_root_order_controlled(
+        &mermaid_inline_yaml(source),
+        MAX_DIAGRAM_NESTING_DEPTH,
+        control,
+    )?
+    .map(|(mut value, key_order)| {
+        if let Value::Object(map) = &mut value {
+            for key in ["laneRole", "laneIndex", "drawnExtent"] {
+                map.remove(key);
+            }
+        }
+        ShapeDataDocument { value, key_order }
+    });
+    documents.insert(source.to_string(), document);
     Ok(())
 }

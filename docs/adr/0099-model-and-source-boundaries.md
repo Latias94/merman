@@ -71,9 +71,10 @@ to icon fragments before they enter a diagram.
 
 ### Flow diagrams
 
-`merman-core-flow` owns Flowchart and Swimlane tokenization and predictive syntax parsing, and
-the shared presentation lexer used by Agentflow. Core owns model construction, source mapping,
-diagnostics, and editor recovery.
+`merman-core-flow` owns Flowchart and Swimlane tokenization, predictive parsing, and model
+construction, along with the shared presentation lexer used by Agentflow. `merman-core` owns
+source mapping, diagnostics, and editor recovery. It observes the syntax before the provider
+consumes it to build the model.
 
 `merman-render-flow` owns the shared layout settings and shape geometry for Flowchart, Swimlane,
 and Agentflow. It resolves family defaults, typography and density overlays, and the Agentflow
