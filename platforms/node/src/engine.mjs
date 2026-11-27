@@ -605,9 +605,16 @@ function prepareSvgDiagramId(prepared, diagramId, timeoutMs, typedTransport) {
     return true;
   }
 
-  prepared.diagramIdOptionsJson = encodeTransportJson(
-    { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
-  );
+  try {
+    prepared.diagramIdOptionsJson = encodeTransportJson(
+      { svg: { diagram_id: diagramId } }, "operation request diagramId", NODE_TRANSPORT_LIMITS.binding_options,
+    );
+  } catch (error) {
+    // The encoder can exhaust the document budget before reaching the end of the ID.
+    // Give raw ID field and UTF-16 errors the same priority as the typed input path.
+    assertUtf8Field(diagramId, "operation request diagramId.svg.diagram_id", optionsLimit);
+    throw error;
+  }
   return false;
 }
 

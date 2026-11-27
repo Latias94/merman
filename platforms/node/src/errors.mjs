@@ -546,6 +546,10 @@ function isolatedUtf16FieldError(value, label, maxUtf8Bytes) {
 }
 
 function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes, maxDocumentUtf8Bytes = Infinity) {
+  // Each UTF-16 unit contributes at least one byte, including replacement for an isolated unit.
+  if (value.length > maxUtf8Bytes) {
+    throw utf8FieldLimitError(label, maxUtf8Bytes);
+  }
   let bytes = 0;
   let escapeBytes = 0;
   for (let index = 0; index < value.length; index += 1) {
