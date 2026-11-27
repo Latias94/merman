@@ -145,25 +145,6 @@ use merman_render_core::svg_edge_parity::line_hops;
     )
 )]
 use merman_render_core::text::svg_label as label;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod look_defs;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod markers;
-pub(crate) use markers::BaseEdgeMarkerKind;
 #[cfg(any(
     all(
         feature = "layout-shoal",
@@ -184,6 +165,15 @@ pub(crate) use markers::BaseEdgeMarkerKind;
     )
 ))]
 mod canonical_rough;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod look_defs;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 #[cfg_attr(
@@ -270,14 +260,6 @@ mod zenuml;
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use merman_render_core::svg_bounds::svg_emitted_bounds_from_svg;
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
@@ -307,7 +289,7 @@ pub(crate) use util::escape_xml;
 )]
 use util::{
     escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display,
-    json_stringify_points, json_stringify_points_into,
+    json_stringify_points_into,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every

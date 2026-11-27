@@ -15,14 +15,13 @@ pub(crate) use merman_render_core::text::html_wrap::{self, HtmlWhiteSpace};
 pub(crate) use merman_render_core::text::inline_html::SvgTextEntityMode;
 pub use merman_render_core::text::inline_html::measure_html_with_inline_styles;
 pub(crate) use merman_render_core::text::inline_html::{
-    MermaidMarkdownWordType, measure_html_with_authored_width, svg_markdown_word_style,
+    MermaidMarkdownWordType, measure_html_with_authored_width,
 };
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::measure_wrapped_markdown_with_inline_styles;
-pub(crate) use merman_render_core::text::measure_xhtml_label_fragment_with_terminal_fonts;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use merman_render_core::text::mermaid_markdown_to_xhtml_label_fragment;
 pub use merman_render_core::text::replace_fontawesome_icons;

@@ -21,7 +21,7 @@ mod icon_registry;
 mod parity;
 pub(crate) use merman_render_core::svg_css::PreparedCommonCss;
 #[cfg(all(feature = "diagram-block", feature = "layout-shoal"))]
-pub(crate) use parity::BaseEdgeMarkerKind;
+pub(crate) use merman_render_core::svg_edge_parity::markers::BaseEdgeMarkerKind;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -33,18 +33,6 @@ pub(crate) use parity::PreparedLookDefs;
 pub(crate) use parity::class_canonical_marker;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use parity::er_canonical_marker;
-#[cfg(any(
-    feature = "diagram-er",
-    feature = "diagram-requirement",
-    feature = "diagram-pie",
-    feature = "diagram-treemap",
-    feature = "diagram-flowchart",
-    feature = "diagram-agentflow",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-zenuml",
-))]
-pub(crate) use parity::escape_attr;
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use parity::escape_xml;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]

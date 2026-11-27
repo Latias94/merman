@@ -30,9 +30,7 @@ pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     let _ = write!(out, "{}", crate::number_format::canonical_number(v));
 }
 
-pub(super) use merman_render_core::svg_edge_parity::path_numbers::{
-    json_stringify_points, json_stringify_points_into,
-};
+pub(super) use merman_render_core::svg_edge_parity::path_numbers::json_stringify_points_into;
 
 #[cfg(test)]
 mod tests {
