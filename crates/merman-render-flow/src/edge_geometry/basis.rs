@@ -3,9 +3,9 @@
 //! Mermaid uses Dagre routes with D3 `curveBasis`; some edge/cluster cases need a simplified
 //! route to keep the emitted command sequence aligned with upstream.
 
-pub(in crate::svg::parity::flowchart) fn maybe_remove_redundant_cluster_run_point(
-    points: &mut Vec<crate::model::LayoutPoint>,
-) {
+use merman_render_core::LayoutPoint;
+
+pub(super) fn maybe_remove_redundant_cluster_run_point(points: &mut Vec<LayoutPoint>) {
     if points.len() != 8 {
         return;
     }

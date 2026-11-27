@@ -1,6 +1,7 @@
 //! Flowchart edge path geometry computation.
 
 use super::*;
+use merman_render_flow::edge_geometry::{LegacyEdgeCurve, LegacyEdgePointProjection};
 
 pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     request: FlowchartEdgePathGeomRequest<'_>,
@@ -187,9 +188,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     })
 }
 
+fn dedup_consecutive_points(points: &mut Vec<crate::model::LayoutPoint>) {
+    const EPS: f64 = 1e-9;
+    points.dedup_by(|a, b| (a.x - b.x).abs() <= EPS && (a.y - b.y).abs() <= EPS);
+}
+
 struct PreparedEdgePaint<'a> {
-    line_data: Vec<crate::model::LayoutPoint>,
-    interpolate: &'a str,
+    curve: LegacyEdgeCurve<'a>,
     points_after_intersect_for_trace: Option<Vec<crate::model::LayoutPoint>>,
     original_label_path_points: Vec<crate::model::LayoutPoint>,
     label_path_points: Vec<crate::model::LayoutPoint>,
@@ -230,7 +235,7 @@ fn prepare_edge_paint<'a>(
     // not Dagre's toCluster/fromCluster rewrite; clipping again would discard that route.
     if clip_clusters && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
+            boundary.clip_end_into(base_points, &mut scratch.tmp_points_c);
         } else {
             scratch
                 .tmp_points_c
@@ -245,18 +250,7 @@ fn prepare_edge_paint<'a>(
         && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
-        scratch.tmp_points_rev.clear();
-        scratch
-            .tmp_points_rev
-            .extend_from_slice(&scratch.tmp_points_c);
-        scratch.tmp_points_rev.reverse();
-
-        cut_path_at_intersect_into(
-            &scratch.tmp_points_rev,
-            &boundary,
-            &mut scratch.tmp_points_c,
-        );
-        scratch.tmp_points_c.reverse();
+        boundary.clip_start_in_place(&mut scratch.tmp_points_c, &mut scratch.tmp_points_rev);
     }
     let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 
@@ -273,22 +267,6 @@ fn prepare_edge_paint<'a>(
             .as_deref()
             .unwrap_or(ctx.default_edge_interpolate.as_str())
     };
-    let is_rounded = interpolate == "rounded";
-    let is_basis = !matches!(
-        interpolate,
-        "linear"
-            | "natural"
-            | "bumpX"
-            | "bumpY"
-            | "catmullRom"
-            | "step"
-            | "stepAfter"
-            | "stepBefore"
-            | "cardinal"
-            | "monotoneX"
-            | "monotoneY"
-            | "rounded"
-    );
 
     let is_cluster_edge = clip_clusters && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
@@ -308,45 +286,19 @@ fn prepare_edge_paint<'a>(
         (Vec::new(), Vec::new())
     };
 
-    if is_basis && is_cluster_edge {
-        maybe_remove_redundant_cluster_run_point(points_for_render);
-    }
-
-    if clip_clusters && points_for_render.len() == 1 {
-        // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
-        points_for_render.clear();
-        points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
-            x: point.x + ctx.tx - origin_x,
-            y: point.y + ctx.ty - origin_y,
-        }));
-    }
-
-    let line_data = {
-        let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
-            .iter()
-            .filter(|p| !p.y.is_nan())
-            .cloned()
-            .collect();
-
-        // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
-        // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
-        // its own rounded-corner generator and skips this pre-processing upstream.
-        if !is_rounded {
-            maybe_fix_corners(&mut line_data);
-        }
-
-        // Mermaid shortens edge paths so markers don't render on top of the line (see
-        // `packages/mermaid/src/utils/lineWithOffset.ts`).
-
-        if is_rounded {
-            rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
-        } else {
-            line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
-        }
-    };
-    PreparedEdgePaint {
-        line_data,
+    let curve = LegacyEdgeCurve::prepare(
+        points_for_render,
         interpolate,
+        is_cluster_edge,
+        clip_clusters.then_some(LegacyEdgePointProjection {
+            points: &le.points,
+            translation: (ctx.tx, ctx.ty),
+            origin: (origin_x, origin_y),
+        }),
+        edge.edge_type.as_deref(),
+    );
+    PreparedEdgePaint {
+        curve,
         points_after_intersect_for_trace,
         original_label_path_points,
         label_path_points,
@@ -364,8 +316,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let ctx = request.ctx;
     let le = ctx.layout_edges_by_key.get(&request.key)?.materialized()?;
     let PreparedEdgePaint {
-        line_data,
-        interpolate,
+        curve,
         points_after_intersect_for_trace,
         original_label_path_points,
         label_path_points,
@@ -383,13 +334,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             .edge_style_plan
             .animation_for(request.key)
             .is_ok_and(|animation| !animation.is_active());
-    let geometry = curve_path_geometry(
-        &line_data,
-        interpolate,
-        ctx.edge_corner_radius,
-        measure_length,
-    );
-    drop(line_data);
+    let geometry = curve.into_geometry(ctx.edge_corner_radius, measure_length);
 
     let points_for_data_points = &scratch.tmp_points_b;
     if request.trace_enabled {
@@ -468,10 +413,7 @@ pub(in crate::svg::parity::flowchart) fn dagre_linear_painted_route(
         return None;
     }
     let prepared = prepare_edge_paint(request, le, route, scratch);
-    if prepared.interpolate != "linear" {
-        return None;
-    }
-    DagreLinearPaintedRoute::from_line_data(prepared.line_data)
+    DagreLinearPaintedRoute::from_line_data(prepared.curve.into_linear_points()?)
 }
 
 #[cfg(all(

@@ -1,12 +1,6 @@
 use super::super::*;
 
-#[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct BoundaryNode {
-    pub(in crate::svg::parity::flowchart) x: f64,
-    pub(in crate::svg::parity::flowchart) y: f64,
-    pub(in crate::svg::parity::flowchart) width: f64,
-    pub(in crate::svg::parity::flowchart) height: f64,
-}
+pub(in crate::svg::parity::flowchart) use merman_render_flow::edge_geometry::EdgeClipRect as BoundaryNode;
 
 pub(in crate::svg::parity::flowchart) fn boundary_for_node(
     ctx: &FlowchartRenderCtx<'_>,

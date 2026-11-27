@@ -32,6 +32,13 @@ pub mod document;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod edge_geometry;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod edge_labels;
 #[cfg(any(
     feature = "diagram-agentflow",

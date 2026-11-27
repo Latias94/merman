@@ -1,6 +1,15 @@
-use super::BoundaryNode;
+use merman_render_core::LayoutPoint;
 
-fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
+/// Center and size of the rectangle used by Mermaid cluster clipping.
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeClipRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+fn outside_node(node: &EdgeClipRect, point: &LayoutPoint) -> bool {
     let dx = (point.x - node.x).abs();
     let dy = (point.y - node.y).abs();
     let w = node.width / 2.0;
@@ -9,10 +18,10 @@ fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool 
 }
 
 fn rect_intersection(
-    node: &BoundaryNode,
-    outside_point: &crate::model::LayoutPoint,
-    inside_point: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
+    node: &EdgeClipRect,
+    outside_point: &LayoutPoint,
+    inside_point: &LayoutPoint,
+) -> LayoutPoint {
     let x = node.x;
     let y = node.y;
 
@@ -33,7 +42,7 @@ fn rect_intersection(
         } else {
             (r_abs * q) / q_abs
         };
-        let mut res = crate::model::LayoutPoint {
+        let mut res = LayoutPoint {
             x: if inside_point.x < outside_point.x {
                 inside_point.x + r
             } else {
@@ -91,47 +100,54 @@ fn rect_intersection(
         iy = outside_point.y;
     }
 
-    crate::model::LayoutPoint { x: ix, y: iy }
+    LayoutPoint { x: ix, y: iy }
 }
 
-pub(in crate::svg::parity::flowchart) fn cut_path_at_intersect_into(
-    input: &[crate::model::LayoutPoint],
-    boundary: &BoundaryNode,
-    out: &mut Vec<crate::model::LayoutPoint>,
-) {
-    out.clear();
-    if input.is_empty() {
-        return;
-    }
-    out.reserve(input.len() + 1);
+impl EdgeClipRect {
+    /// Clips a terminal run into the existing forward point buffer.
+    pub fn clip_end_into(&self, input: &[LayoutPoint], out: &mut Vec<LayoutPoint>) {
+        out.clear();
+        if input.is_empty() {
+            return;
+        }
+        out.reserve(input.len() + 1);
 
-    let mut last_point_outside = input[0].clone();
-    let mut is_inside = false;
-    const EPS: f64 = 1e-9;
+        let mut last_point_outside = input[0].clone();
+        let mut is_inside = false;
+        const EPS: f64 = 1e-9;
 
-    for point in input {
-        if !outside_node(boundary, point) && !is_inside {
-            let inter = rect_intersection(boundary, &last_point_outside, point);
-            if !out
-                .iter()
-                .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
-            {
-                out.push(inter);
-            }
-            is_inside = true;
-        } else {
-            last_point_outside = point.clone();
-            if !is_inside {
-                out.push(crate::model::LayoutPoint {
-                    x: point.x,
-                    y: point.y,
-                });
+        for point in input {
+            if !outside_node(self, point) && !is_inside {
+                let inter = rect_intersection(self, &last_point_outside, point);
+                if !out
+                    .iter()
+                    .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
+                {
+                    out.push(inter);
+                }
+                is_inside = true;
+            } else {
+                last_point_outside = point.clone();
+                if !is_inside {
+                    out.push(LayoutPoint {
+                        x: point.x,
+                        y: point.y,
+                    });
+                }
             }
         }
     }
-}
 
-pub(super) fn dedup_consecutive_points(points: &mut Vec<crate::model::LayoutPoint>) {
-    const EPS: f64 = 1e-9;
-    points.dedup_by(|a, b| (a.x - b.x).abs() <= EPS && (a.y - b.y).abs() <= EPS);
+    /// Clips the start with the same terminal rules, restoring the forward point order.
+    pub fn clip_start_in_place(
+        &self,
+        points: &mut Vec<LayoutPoint>,
+        reversed: &mut Vec<LayoutPoint>,
+    ) {
+        reversed.clear();
+        reversed.extend_from_slice(points);
+        reversed.reverse();
+        self.clip_end_into(reversed, points);
+        points.reverse();
+    }
 }
