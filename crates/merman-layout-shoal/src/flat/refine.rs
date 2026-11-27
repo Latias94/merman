@@ -91,6 +91,7 @@ struct GeometryScratch {
     span: Vec<f64>,
     free: Vec<[usize; 2]>,
     role: [Vec<Role>; 2],
+    marker_width: [Vec<f64>; 2],
     // For an incidence, the opposite end of its original chain and the first attachment
     // beyond consecutive bend-only ranks. Neither lookup depends on the route's length.
     terminal: [Vec<usize>; 2],
@@ -112,6 +113,7 @@ impl GeometryScratch {
             + capacity_bytes(&self.span)
             + capacity_bytes(&self.free)
             + self.role.iter().map(capacity_bytes).sum::<usize>()
+            + self.marker_width.iter().map(capacity_bytes).sum::<usize>()
             + self.terminal.iter().map(capacity_bytes).sum::<usize>()
             + self.follow.iter().map(capacity_bytes).sum::<usize>()
             + capacity_bytes(&self.direct_end)
@@ -142,7 +144,7 @@ impl<'a> Geometry<'a> {
         let n = x.len();
         let m = g.from.len();
         work.charge(n.checked_mul(12).ok_or(WorkError::ArithmeticOverflow)?)?;
-        work.charge(m.checked_mul(8).ok_or(WorkError::ArithmeticOverflow)?)?;
+        work.charge(m.checked_mul(10).ok_or(WorkError::ArithmeticOverflow)?)?;
         copy_into(&mut geometry.x, x)?;
         copy_into(&mut geometry.dx[TOP], &g.target_offset)?;
         copy_into(&mut geometry.dx[BOTTOM], &g.source_offset)?;
@@ -154,6 +156,8 @@ impl<'a> Geometry<'a> {
         fill(&mut geometry.free, n, [0; 2])?;
         fill(&mut geometry.role[TOP], m, Role::Arrives)?;
         fill(&mut geometry.role[BOTTOM], m, Role::Leaves)?;
+        fill(&mut geometry.marker_width[TOP], m, 0.0)?;
+        fill(&mut geometry.marker_width[BOTTOM], m, 0.0)?;
         for side in [TOP, BOTTOM] {
             fill(&mut geometry.terminal[side], m, 0)?;
             fill(&mut geometry.follow[side], m, 0)?;
@@ -211,11 +215,23 @@ impl<'a> Geometry<'a> {
             let last = start + chain.len() - 2;
             let reversed = orientation.reversed[i];
             let spec = &graph.edges[c.links[i].edge as usize];
-            let (src, dst) = if reversed {
-                (spec.target_port, spec.source_port)
+            let (src, dst, start_marker_w, end_marker_w) = if reversed {
+                (
+                    spec.target_port,
+                    spec.source_port,
+                    spec.end_marker.width,
+                    spec.start_marker.width,
+                )
             } else {
-                (spec.source_port, spec.target_port)
+                (
+                    spec.source_port,
+                    spec.target_port,
+                    spec.start_marker.width,
+                    spec.end_marker.width,
+                )
             };
+            s.data.marker_width[BOTTOM][start] = start_marker_w;
+            s.data.marker_width[TOP][last] = end_marker_w;
             for e in start..=last {
                 s.data.terminal[TOP][e] = start;
                 s.data.terminal[BOTTOM][e] = last;
@@ -886,13 +902,78 @@ fn port_runs(
                             break;
                         }
                     }
-                    for step in gap {
+                    for step in gap.iter_mut() {
                         *step *= pitch;
                     }
-                    let bounds = Interval {
-                        lo: left.map_or(-half, |x| (x + pitch).max(-half)),
-                        hi: right.map_or(half, |x| (x - pitch).min(half)),
+                    let marker_clear = |a: usize, b: usize| {
+                        let wa = s.data.marker_width[side][a];
+                        let wb = s.data.marker_width[side][b];
+                        if wa > 0.0 || wb > 0.0 {
+                            0.5 * (wa + wb) + 4.0
+                        } else {
+                            0.0
+                        }
                     };
+                    let mut lo_gap = pitch;
+                    let mut hi_gap = pitch;
+                    if let Some(left_edge) = start.checked_sub(1).map(|i| edges[i]) {
+                        let clear = marker_clear(left_edge, free[0]);
+                        if clear > requested {
+                            lo_gap = lo_gap.max(clear);
+                        }
+                    }
+                    if let Some(&right_edge) = edges.get(end) {
+                        let clear = marker_clear(free[free.len() - 1], right_edge);
+                        if clear > requested {
+                            hi_gap = hi_gap.max(clear);
+                        }
+                    }
+                    // Keep held-port bounds feasible before applying expanded marker gaps.
+                    let base_lo = left.map_or(-half, |x| (x + pitch).max(-half));
+                    let base_hi = right.map_or(half, |x| (x - pitch).min(half));
+                    let want_lo = left.map_or(-half, |x| (x + lo_gap).max(-half));
+                    let want_hi = right.map_or(half, |x| (x - hi_gap).min(half));
+                    let base_sum: f64 = gap[1..].iter().sum();
+                    let bounds = if want_hi - want_lo >= base_sum {
+                        Interval {
+                            lo: want_lo,
+                            hi: want_hi,
+                        }
+                    } else {
+                        Interval {
+                            lo: base_lo,
+                            hi: base_hi,
+                        }
+                    };
+                    let avail = (bounds.hi - bounds.lo).max(0.0);
+                    if free.len() >= 2 && avail > 0.0 {
+                        let mut target_sum = 0.0;
+                        for (pair, &base) in free.windows(2).zip(&gap[1..]) {
+                            let clear = marker_clear(pair[0], pair[1]);
+                            let need = if base > 0.0 && clear > requested {
+                                base.max(clear)
+                            } else {
+                                base
+                            };
+                            target_sum += need;
+                        }
+                        if target_sum > base_sum {
+                            let scale = if target_sum > avail {
+                                ((avail - base_sum).max(0.0) / (target_sum - base_sum))
+                                    .clamp(0.0, 1.0)
+                            } else {
+                                1.0
+                            };
+                            for (pair, step) in free.windows(2).zip(&mut gap[1..]) {
+                                if *step > 0.0 {
+                                    let clear = marker_clear(pair[0], pair[1]);
+                                    if clear > requested {
+                                        *step += scale * (clear - *step).max(0.0);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     crate::work::push(
                         runs,
                         PortRun {
@@ -1117,18 +1198,25 @@ fn port_accepts(
     x: f64,
 ) -> bool {
     let want = x - s.data.x[v];
-    let Ok(run_idx) = ports
-        .runs
-        .binary_search_by_key(&(v, side), |r| (r.v, r.side))
-    else {
+    let first = ports.runs.partition_point(|r| (r.v, r.side) < (v, side));
+    let matching = &ports.runs[first..];
+    let matching_len = matching
+        .iter()
+        .take_while(|r| r.v == v && r.side == side)
+        .count();
+    if matching_len == 0 {
         return s.data.free[v][side] >= 2 && want.abs() <= s.data.span[v] * 0.5;
-    };
-    let f = &ports.runs[run_idx];
-    let edges = &ports.edges[f.edges.clone()];
-    let gaps = &ports.gaps[f.edges.clone()];
-    let Some(i) = edges.iter().position(|&e| e == edge) else {
+    }
+    let Some((f, i)) = matching[..matching_len].iter().find_map(|f| {
+        ports.edges[f.edges.clone()]
+            .iter()
+            .position(|&e| e == edge)
+            .map(|i| (f, i))
+    }) else {
         return false;
     };
+    let edges = &ports.edges[f.edges.clone()];
+    let gaps = &ports.gaps[f.edges.clone()];
     let lo = if i == 0 {
         f.bounds.lo
     } else {

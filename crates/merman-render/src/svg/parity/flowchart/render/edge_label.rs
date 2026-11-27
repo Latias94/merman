@@ -297,6 +297,56 @@ fn html_edge_label_div_style(prefix: &str, width: f64, inset: f64) -> String {
     }
 }
 
+fn has_explicit_css_color(style: &str) -> bool {
+    let mut found = false;
+    crate::mermaid_style::visit_parsed_style_declarations(style, |decl| {
+        if decl.property() == "color" {
+            found = true;
+        }
+    });
+    found
+}
+
+fn flowchart_svg_edge_label_text_style<'a>(
+    base_label_style: &'a str,
+    adaptive_ink: Option<&'static str>,
+    source_label_empty: bool,
+) -> Cow<'a, str> {
+    if source_label_empty {
+        return Cow::Borrowed(base_label_style);
+    }
+    let has_color = has_explicit_css_color(base_label_style);
+    if !has_color && adaptive_ink.is_none() {
+        return Cow::Borrowed(base_label_style);
+    }
+    let mut out = String::with_capacity(base_label_style.len() + 16);
+    for raw in base_label_style.split(';') {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(';');
+        }
+        if let Some((prop, val)) = trimmed.split_once(':')
+            && prop.trim().eq_ignore_ascii_case("color")
+        {
+            out.push_str("fill:");
+            out.push_str(val);
+        } else {
+            out.push_str(trimmed);
+        }
+    }
+    if let Some(ink) = adaptive_ink {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str("fill:");
+        out.push_str(ink);
+    }
+    Cow::Owned(out)
+}
+
 pub(in crate::svg::parity) fn render_flowchart_edge_label(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -349,7 +399,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     };
     let base_label_style = compiled_label_styles.label_style.as_str();
     let adaptive_label_ink = sampled_backdrop
-        .filter(|_| !base_label_style.contains("color:"))
+        .filter(|_| !has_explicit_css_color(base_label_style))
         .and_then(|backdrop| {
             let default_ink =
                 crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.text_color)?;
@@ -360,16 +410,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         Some(ink) => Cow::Owned(format!("{base_label_style};color:{ink} !important;")),
         None => Cow::Borrowed(base_label_style),
     };
-    let svg_edge_label_text_style: Cow<'_, str> =
-        if !source_label_empty && effective_label_style.contains("color:") {
-            Cow::Owned(
-                effective_label_style
-                    .replace(" !important", "")
-                    .replace("color:", "fill:"),
-            )
-        } else {
-            Cow::Borrowed(effective_label_style.as_ref())
-        };
+    let svg_edge_label_text_style = flowchart_svg_edge_label_text_style(
+        base_label_style,
+        adaptive_label_ink,
+        source_label_empty,
+    );
     let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::Edge(
         key.semantic_index(),
     ));
@@ -454,7 +499,8 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         ctx.measurer,
                         edge_metrics_style,
                         Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
-                        None,
+                        (!svg_edge_label_text_style.is_empty())
+                            .then_some(svg_edge_label_text_style.as_ref()),
                     );
                 } else {
                     write_flowchart_svg_label_plan_centered_with_style(
@@ -511,7 +557,8 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         ctx.measurer,
                         edge_metrics_style,
                         Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
-                        None,
+                        (!svg_edge_label_text_style.is_empty())
+                            .then_some(svg_edge_label_text_style.as_ref()),
                     );
                 } else {
                     write_flowchart_svg_label_plan_centered_with_style(
@@ -732,9 +779,30 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let y = position.y;
     let width = label.width.max(0.0);
     let height = label.height.max(0.0);
-    if ctx.native.is_some() {
-        render_native_label_background(out, ctx, position, (origin_x, origin_y), (width, height))?;
-    }
+    let sampled_backdrop = if ctx.native.is_some() {
+        render_native_label_background(out, ctx, position, (origin_x, origin_y), (width, height))?
+    } else {
+        None
+    };
+    let mut has_swimlane_fg = false;
+    crate::mermaid_style::visit_parsed_style_declarations(first_label_style, |decl| {
+        if matches!(decl.property(), "color" | "fill") {
+            has_swimlane_fg = true;
+        }
+    });
+    let swimlane_adaptive_ink =
+        sampled_backdrop
+            .filter(|_| !has_swimlane_fg)
+            .and_then(|backdrop| {
+                let default_ink =
+                    crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.text_color)?;
+                crate::theme::edge_label_bg::adaptive_text_ink(backdrop, default_ink)
+            });
+    let swimlane_group_style: Cow<'_, str> = match swimlane_adaptive_ink {
+        Some(ink) if first_label_style.is_empty() => Cow::Owned(format!("fill:{ink}")),
+        Some(ink) => Cow::Owned(format!("{first_label_style};fill:{ink}")),
+        None => Cow::Borrowed(first_label_style),
+    };
     let edge_label_dom_id =
         ctx.document_ids()
             .synthetic_label(node_id)
@@ -749,7 +817,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         escape_xml_display(&edge.id),
         fmt_display(x),
         fmt_display(y),
-        OptionalStyleXmlAttr(first_label_style),
+        if swimlane_adaptive_ink.is_some() {
+            OptionalStyleAttr(swimlane_group_style.as_ref()).to_string()
+        } else {
+            OptionalStyleXmlAttr(first_label_style).to_string()
+        },
         fmt_display(-width / 2.0),
         fmt_display(-height / 2.0),
     );
@@ -794,7 +866,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
         // the copied label style to the HTML span and div. Later fixed declarations override the
         // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.
-        let html_label_style = first_label_style.replacen("fill:", "color:", 1);
+        let mut html_label_style = first_label_style.replacen("fill:", "color:", 1);
+        if let Some(ink) = swimlane_adaptive_ink {
+            if !html_label_style.is_empty() && !html_label_style.ends_with(';') {
+                html_label_style.push(';');
+            }
+            let _ = write!(&mut html_label_style, "color:{ink} !important;");
+        }
         let mut div_style = String::new();
         if !html_label_style.trim().is_empty() {
             div_style.push_str(html_label_style.trim());
@@ -819,8 +897,16 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             fmt_display(width),
             fmt_display(height),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            escape_xml_display(&div_style),
-            OptionalStyleXmlAttr(&html_label_style),
+            if swimlane_adaptive_ink.is_some() {
+                escape_attr_display(&div_style).to_string()
+            } else {
+                escape_xml_display(&div_style).to_string()
+            },
+            if swimlane_adaptive_ink.is_some() {
+                OptionalStyleAttr(&html_label_style).to_string()
+            } else {
+                OptionalStyleXmlAttr(&html_label_style).to_string()
+            },
             label_html,
         );
         return Ok(());
@@ -1134,5 +1220,63 @@ style Inner fill:#88CCCC80,fill-opacity:0.5";
         );
         let positioned = position_flowchart_edge_label(anchor, &polyline, true);
         assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    #[test]
+    fn adaptive_edge_label_ink_ignores_background_color_and_styles_svg_markdown_labels() {
+        let source = "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\n\
+            subgraph Dark[Dark Zone]\n\
+                A plain@-->|Plain text| B\n\
+                B md@-->|\"`**Bold** edge`\"| C\n\
+            end\n\
+            style Dark fill:#0b1120,stroke:#334155\n\
+            linkStyle 0 background-color:transparent\n";
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"studio","form":{"edge_label_bg":"auto"}}"#,
+                None,
+            )
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(crate::theme::NativeTheme::new(theme))
+            .unwrap();
+        let svg = crate::family::prepare(
+            parsed.presentation(),
+            &crate::LayoutOptions::default(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+        let out = svg.svg();
+        assert!(
+            !out.contains("background-fill:"),
+            "background-color must never be rewritten into background-fill: {out}"
+        );
+        let doc = crate::xml_dom::Document::parse(out).unwrap();
+        for id in ["plain", "md"] {
+            let label = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some(id)
+                })
+                .unwrap_or_else(|| panic!("missing edge label {id}"));
+            let text = label
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap_or_else(|| panic!("missing SVG <text> for {id}"));
+            let style = text.attribute("style").unwrap_or("");
+            assert!(
+                style.contains("fill:#FFFFFF"),
+                "expected adaptive white fill on {id} over dark subgraph, got style={style:?}"
+            );
+        }
     }
 }

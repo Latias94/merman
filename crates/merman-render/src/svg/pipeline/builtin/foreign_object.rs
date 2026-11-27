@@ -212,7 +212,9 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
                 attr_cursor = attr.full_end;
             }
             out.push('>');
-            if !fo_tag.trim_end().ends_with("/>") {
+            if fo_tag.trim_end().ends_with("/>") {
+                out.push_str(&svg[open_end + 1..switch_close_start]);
+            } else {
                 let fo_close_start = open_end + 1;
                 if let Some(fo_close_rel) =
                     find_with_checkpoints(&svg[fo_close_start..], "</foreignObject>", checkpoint)?
@@ -743,6 +745,19 @@ mod tests {
 
         assert!(!out.contains("<foreignObject"), "{out}");
         assert!(out.contains("<text>World</text>"), "{out}");
+    }
+
+    #[test]
+    fn strip_foreign_objects_preserves_switch_fallback_for_self_closing_foreign_object() {
+        let svg = r#"<svg><switch><foreignObject width="80" height="24"/><text x="10" y="20">Fallback</text></switch></svg>"#;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<switch"), "{out}");
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(
+            out.contains(r#"<g><text x="10" y="20">Fallback</text></g>"#),
+            "native SVG fallback after self-closing foreignObject must be preserved: {out}"
+        );
     }
 
     #[test]

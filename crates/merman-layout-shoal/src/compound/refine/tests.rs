@@ -814,17 +814,18 @@ fn monotone_sweep_matches_bands_across_star_fans_tricky_crossings_and_limits() {
     assert_equivalent(&graph, &out, RoutingStyle::Polyline, u64::MAX);
 
     // 2. Triple intersections, coincident vertices, and double-crossing lens (>= 32 primitives).
-    let mut tricky = Vec::new();
-    // Three edges meeting at (200, 200) outside any shared endpoint fan.
-    tricky.push(route(&[(100.0, 0.0), (300.0, 400.0)], Axis::Vertical));
-    tricky.push(route(&[(200.0, 0.0), (200.0, 400.0)], Axis::Vertical));
-    tricky.push(route(&[(300.0, 0.0), (100.0, 400.0)], Axis::Vertical));
-    // Double-crossing lens: short early-bend cubic vs long late-bend cubic.
-    tricky.push(route(
-        &[(350.0, 0.0), (430.0, 120.0), (350.0, 400.0)],
-        Axis::Vertical,
-    ));
-    tricky.push(route(&[(390.0, 0.0), (390.0, 400.0)], Axis::Vertical));
+    let mut tricky = vec![
+        // Three edges meeting at (200, 200) outside any shared endpoint fan.
+        route(&[(100.0, 0.0), (300.0, 400.0)], Axis::Vertical),
+        route(&[(200.0, 0.0), (200.0, 400.0)], Axis::Vertical),
+        route(&[(300.0, 0.0), (100.0, 400.0)], Axis::Vertical),
+        // Double-crossing lens: short early-bend cubic vs long late-bend cubic.
+        route(
+            &[(350.0, 0.0), (430.0, 120.0), (350.0, 400.0)],
+            Axis::Vertical,
+        ),
+        route(&[(390.0, 0.0), (390.0, 400.0)], Axis::Vertical),
+    ];
     // Pad past MIN_SWEEP_PRIMITIVES with overlapping curves so the sweep path activates.
     for i in 0..34 {
         let x0 = 50.0 + (i as f64) * 11.0;
@@ -934,4 +935,95 @@ fn monotone_sweep_handles_cancelling_coords_large_horiz_and_non_x_monotone_cubic
     let (g3, o3) = drawing(bulge);
     let c3 = assert_equivalent(&g3, &o3, RoutingStyle::Curved);
     assert!(c3 >= 1, "non-x-monotone curve crossing must match Bands");
+
+    // 4. Mixed-endpoint coincident-`x` bundle where two distinct endpoints both sit within
+    // `FAN = 24.0` of the shared coordinate: fan peers from endpoint A must not shield chains
+    // from endpoint B during coincident-`x` neighbor walks.
+    let mut mixed_routes = Vec::new();
+    // 4 edges from endpoint A starting at (100, 100) fanning right and crossing at y > 160.
+    for i in 0..4 {
+        let xb = 120.0 + (i as f64) * 15.0;
+        mixed_routes.push(route(&[(100.0, 100.0), (xb, 240.0)], Axis::Vertical));
+    }
+    // 3 edges from endpoint B starting at (100, 100) fanning wider right (crossing A's edges
+    // below the fan radius via a bend) and one passing straight through (100, 100) from above.
+    mixed_routes.push(route(
+        &[(85.0, 60.0), (100.0, 100.0), (190.0, 240.0)],
+        Axis::Vertical,
+    ));
+    mixed_routes.push(route(&[(100.0, 100.0), (180.0, 240.0)], Axis::Vertical));
+    mixed_routes.push(route(&[(100.0, 100.0), (110.0, 240.0)], Axis::Vertical));
+    // Add transverse horizontal/sloped lines crossing the fan well outside FAN.
+    mixed_routes.push(route(
+        &[(100.0, 100.0), (150.0, 200.0), (90.0, 260.0)],
+        Axis::Vertical,
+    ));
+    for i in 0..34 {
+        let x = 300.0 + (i as f64) * 6.0;
+        mixed_routes.push(route(&[(x, 60.0), (x + 5.0, 260.0)], Axis::Vertical));
+    }
+    let (mut g4, mut o4) = drawing(mixed_routes);
+    // Assign edges 0..4 to shared endpoint NodeId(0) at (100, 100), edges 4..8 to NodeId(2) at (100, 110).
+    o4.nodes[0] = Rect {
+        x: 96.0,
+        y: 96.0,
+        width: 8.0,
+        height: 8.0,
+    };
+    o4.nodes[2] = Rect {
+        x: 96.0,
+        y: 106.0,
+        width: 8.0,
+        height: 8.0,
+    };
+    for edge in &mut g4.edges[0..4] {
+        edge.source = NodeId(0).into();
+    }
+    for edge in &mut g4.edges[4..8] {
+        edge.source = NodeId(2).into();
+    }
+    let c4 = assert_equivalent(&g4, &o4, RoutingStyle::Polyline);
+    assert!(c4 >= 1, "mixed-endpoint coincident fan must match Bands");
+
+    // 5. Subnormal `dy` produces infinite slope `dx / dy`: must never false-reject crossings.
+    let mut subnormal = vec![
+        route(&[(0.0, 0.0), (100.0, 1e-320)], Axis::Vertical),
+        route(&[(50.0, -10.0), (50.0, 10.0)], Axis::Vertical),
+    ];
+    for i in 0..34 {
+        let x = 200.0 + (i as f64) * 5.0;
+        subnormal.push(route(&[(x, -10.0), (x + 2.0, 10.0)], Axis::Vertical));
+    }
+    let (g5, o5) = drawing(subnormal);
+    let c5 = assert_equivalent(&g5, &o5, RoutingStyle::Polyline);
+    assert_eq!(c5, 1, "subnormal-dy segment crossing must match Bands");
+
+    // 6. Multi-chord EV_CROSS chord-boundary graze followed by a downstream crossing:
+    // two curved primitives sharing a touching knot/chord graze before crossing on a later chord.
+    let mut graze_curves = vec![
+        route(&[(0.0, 0.0), (100.0, 100.0)], Axis::Vertical),
+        route(&[(100.0, 0.0), (100.0, 100.0)], Axis::Vertical),
+        // Two opposite-curvature S-curves whose chord interpolants touch near mid-height and cross.
+        route(&[(0.0, 0.0), (500.0, 40.0)], Axis::Vertical),
+        route(&[(0.0, 0.0), (501.0, 40.0)], Axis::Vertical),
+        // Multi-segment curved double-bend touching then crossing.
+        route(
+            &[(0.0, 0.0), (60.0, 100.0), (0.0, 200.0), (120.0, 300.0)],
+            Axis::Vertical,
+        ),
+        route(
+            &[(60.0, 0.0), (60.0, 100.0), (80.0, 200.0), (20.0, 300.0)],
+            Axis::Vertical,
+        ),
+    ];
+    for i in 0..34 {
+        let x = 600.0 + (i as f64) * 8.0;
+        graze_curves.push(route(&[(x, 0.0), (x + 20.0, 300.0)], Axis::Vertical));
+    }
+    let (g6, o6) = drawing(graze_curves);
+    let c6 = assert_equivalent(&g6, &o6, RoutingStyle::Curved);
+    assert!(
+        c6 >= 1,
+        "chord-boundary graze followed by crossing must match Bands"
+    );
 }

@@ -237,7 +237,7 @@ impl crate::er::ErBoxLabel {
         let _ = write!(
             out,
             r#"<div xmlns="http://www.w3.org/1999/xhtml" style="{}display: {}; white-space: {}; line-height: 1.5; max-width: {}px; text-align: {};"#,
-            escape_xml(style_prefix),
+            escape_attr(style_prefix),
             display,
             whitespace,
             layout.width_budget,

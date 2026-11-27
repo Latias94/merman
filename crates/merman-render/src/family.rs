@@ -2679,7 +2679,8 @@ fn prepare_for<'parsed>(
     if plan.backend() == GraphLayoutBackend::Shoal
         && matches!(
             expected_family,
-            DiagramFamilyId::CLASS
+            DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::CLASS
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::STATE

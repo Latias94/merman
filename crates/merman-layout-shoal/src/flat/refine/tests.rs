@@ -804,3 +804,52 @@ fn refine_capacity_obeys_frame_retention_and_optional_paths() {
         assert_eq!(zero.retained_bytes(), 0);
     }
 }
+
+#[test]
+fn port_accepts_finds_free_edges_in_every_split_run_around_a_held_port() {
+    let mut case = Case::new(4, &[&[0], &[1, 2, 3]], &[&[0, 1], &[0, 2], &[0, 3]]);
+    case.g.width[0] = 120.0;
+    case.c.nodes[0].size.width = 120.0;
+    case.graph.nodes[0].size.width = 120.0;
+    // Pin the middle edge (edge 1) so the bottom face of node 0 splits into two separate
+    // free runs `[edge 0]` and `[edge 2]` with identical `(v = 0, side = BOTTOM)` keys.
+    case.graph.edges[1].source_port = PortSideHint::FixedOffset {
+        side: Side::Bottom,
+        offset: 0.0,
+    };
+    case.g.source_offset.copy_from_slice(&[-30.0, 0.0, 30.0]);
+    let x = [0.0, -40.0, 0.0, 40.0];
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut geometry_scratch = GeometryScratch::default();
+    let s = case.geom(&x, &mut geometry_scratch, &mut work);
+    let mut ports = PortRuns::default();
+    let mut edges_scratch = Vec::new();
+    port_runs(
+        &s,
+        4,
+        &case.options,
+        &mut ports,
+        &mut edges_scratch,
+        &mut work,
+    )
+    .unwrap();
+    let matching_runs = ports
+        .runs
+        .iter()
+        .filter(|r| r.v == 0 && r.side == BOTTOM)
+        .count();
+    assert_eq!(matching_runs, 2, "expected two split runs around held port");
+    assert!(
+        port_accepts(&s, &ports, 0, BOTTOM, 0, -25.0),
+        "first split run must accept valid alignment"
+    );
+    assert!(
+        port_accepts(&s, &ports, 0, BOTTOM, 2, 25.0),
+        "second split run must accept valid alignment"
+    );
+    assert!(
+        !port_accepts(&s, &ports, 0, BOTTOM, 2, -25.0),
+        "second split run must reject crossing across the held port"
+    );
+}

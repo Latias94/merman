@@ -11,6 +11,7 @@ use crate::{
 use std::ops::{ControlFlow, Range};
 
 mod sweep;
+pub(crate) use sweep::PairSet;
 
 const FAN: f64 = 24.0;
 const TURN_HANDLE: f64 = 0.62;
@@ -1104,22 +1105,35 @@ pub(super) fn bounds_in_shared_fan(
     })
 }
 
+pub(super) fn endpoint_in_fan(at: Point, end: Endpoint, out: &LayoutOutput) -> bool {
+    let rect = match end {
+        Endpoint::Node(id) => out.nodes[id.0 as usize],
+        Endpoint::Group(id) => out.groups[id.0 as usize].rect,
+    };
+    in_fan(at, rect)
+}
+
+pub(super) fn endpoint_in_fan_interior(at: Point, end: Endpoint, out: &LayoutOutput) -> bool {
+    const SAFE_FAN: f64 = FAN - 1e-6;
+    let rect = match end {
+        Endpoint::Node(id) => out.nodes[id.0 as usize],
+        Endpoint::Group(id) => out.groups[id.0 as usize].rect,
+    };
+    rect.x - at.x < SAFE_FAN
+        && at.x - (rect.x + rect.width) < SAFE_FAN
+        && rect.y - at.y < SAFE_FAN
+        && at.y - (rect.y + rect.height) < SAFE_FAN
+}
+
 pub(super) fn shared_fan(
     at: Point,
     first: [Endpoint; 2],
     second: [Endpoint; 2],
     out: &LayoutOutput,
 ) -> bool {
-    first.into_iter().any(|end| {
-        if !second.contains(&end) {
-            return false;
-        }
-        let rect = match end {
-            Endpoint::Node(id) => out.nodes[id.0 as usize],
-            Endpoint::Group(id) => out.groups[id.0 as usize].rect,
-        };
-        in_fan(at, rect)
-    })
+    first
+        .into_iter()
+        .any(|end| second.contains(&end) && endpoint_in_fan(at, end, out))
 }
 
 pub(crate) fn crossings(
@@ -1383,9 +1397,8 @@ pub(super) fn port_hints(
         work.sort(&mut sorted, |&a, &b| {
             let (left, right) = (positions[a], positions[b]);
             left.0
-                .partial_cmp(&right.0)
-                .unwrap()
-                .then_with(|| left.1.partial_cmp(&right.1).unwrap())
+                .total_cmp(&right.0)
+                .then_with(|| left.1.total_cmp(&right.1))
                 .then(left.2.cmp(&right.2))
         })?;
         work.visit(sorted.len().saturating_sub(1))?;

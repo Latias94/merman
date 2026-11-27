@@ -79,7 +79,9 @@ impl<'a> Face<'a> {
             if let Some(&head) = edges.first() {
                 let mut count = 1;
                 if edges.iter().any(|&e| offset[e] != offset[head]) {
-                    work.sort(edges, |&a, &b| numeric_cmp(offset[a], offset[b]))?;
+                    work.sort(edges, |&a, &b| {
+                        numeric_cmp(offset[a], offset[b]).then(a.cmp(&b))
+                    })?;
                     let mut previous = offset[edges[0]];
                     for &e in edges.iter() {
                         if offset[e] != previous {

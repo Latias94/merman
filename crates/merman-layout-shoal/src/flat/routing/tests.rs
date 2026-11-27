@@ -1488,3 +1488,21 @@ fn compound_proxy_gap_does_not_charge_shared_runway_on_adjacent_label_band() {
         "proxy_top={proxy_top} end_y={end_y} lead={lead}"
     );
 }
+
+#[test]
+fn wide_marker_guards_do_not_crush_curved_gap_into_pancake_slit() {
+    let mut g = gap(&[(0.0, 620.0)]);
+    g.upper_guard = 36.0;
+    g.lower_guard = 36.0;
+    g.grade(&Options::default(), &mut Work::new(&mut NoopWorkControl))
+        .unwrap();
+    let net_room = g.height - (g.upper_guard + g.lower_guard);
+    assert!(
+        net_room >= 50.0,
+        "large ER marker runways must not crush curved net room to 2*LEAD (12px), got {net_room}"
+    );
+    assert_eq!(
+        g.tracks, 1,
+        "isolated realistic-span pancake curve should promote to a clean horizontal track"
+    );
+}

@@ -1,6 +1,8 @@
 //! Deterministic text measurement and wrapping fallback.
 
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
+use super::is_monospace_font_family;
 #[cfg(feature = "svg-output")]
 use super::measurement::BuiltinSvgComputedLength;
 use super::measurement::{BuiltinHtmlLineWidth, TrustedMeasurementQuery};
@@ -8,7 +10,7 @@ use super::measurement::{BuiltinHtmlLineWidth, TrustedMeasurementQuery};
 use super::wrap::GraphemeSplitStats as LongWordSplitStats;
 use super::wrap::visit_grapheme_lines_to_width;
 use super::{
-    HeuristicTextWidth, TextMeasurer, TextMetrics, TextStyle, WrapMode, is_monospace_font_family,
+    HeuristicTextWidth, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use std::convert::Infallible;
@@ -38,20 +40,20 @@ enum LineWidthSource<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeterministicMode {
     Compatibility,
-    #[cfg(feature = "layout-shoal")]
+    #[cfg(all(feature = "layout-shoal", feature = "resources"))]
     Calibrated,
 }
 
 impl DeterministicMode {
     pub(crate) fn width_model(self, style: &TextStyle) -> (HeuristicTextWidth, f64) {
         let size = style.font_size.max(0.0);
-        if is_monospace_font_family(style.font_family.as_deref()) {
-            return (HeuristicTextWidth::Monospace, size);
-        }
         match self {
             Self::Compatibility => (HeuristicTextWidth::Compatibility, size),
-            #[cfg(feature = "layout-shoal")]
+            #[cfg(all(feature = "layout-shoal", feature = "resources"))]
             Self::Calibrated => {
+                if is_monospace_font_family(style.font_family.as_deref()) {
+                    return (HeuristicTextWidth::Monospace, size);
+                }
                 let bold = style
                     .font_weight
                     .as_deref()
@@ -349,10 +351,10 @@ impl DeterministicProfile for DeterministicTextMeasurer {
     }
 }
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
 pub(crate) struct CalibratedTextMeasurer;
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(feature = "layout-shoal", feature = "resources"))]
 impl DeterministicProfile for CalibratedTextMeasurer {
     fn settings(&self) -> DeterministicSettings {
         DeterministicSettings {

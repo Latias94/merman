@@ -204,15 +204,23 @@ fn anchor(a: RoutePoint, b: RoutePoint, t: f64, style: RoutingStyle, fraction: f
         }
     }
     let len = vx.hypot(vy);
+    let tangent = if len > 0.0 && len.is_finite() {
+        Point {
+            x: vx / len,
+            y: vy / len,
+        }
+    } else {
+        Point {
+            x: dx / straight_len,
+            y: dy / straight_len,
+        }
+    };
     Anchor {
         at: Point {
             x: dx.mul_add(sx, a.x),
             y: dy.mul_add(sy, a.y),
         },
-        tangent: Point {
-            x: vx / len,
-            y: vy / len,
-        },
+        tangent,
         fraction,
         bend_room: t.min(1.0 - t) * straight_len,
     }
@@ -378,6 +386,7 @@ impl Label<'_> {
             let score = (anchor.fraction - 0.5).abs() * 32.0
                 + (along - anchor.bend_room).clamp(0.0, 12.0) / 24.0;
             if !padded.finite()
+                || !score.is_finite()
                 || padded.y[0] < top_limit
                 || padded.y[1] > bottom_limit
                 || best.is_some_and(|winner| score >= winner.0)

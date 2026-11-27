@@ -36,7 +36,11 @@ fn partition_indexed(
         };
         let half = entries.len() / 2;
         work.check()?;
-        entries.select_nth_unstable_by(half, |a, b| midpoint(a.0).total_cmp(&midpoint(b.0)));
+        entries.select_nth_unstable_by(half, |a, b| {
+            midpoint(a.0)
+                .total_cmp(&midpoint(b.0))
+                .then_with(|| a.1.cmp(&b.1))
+        });
         work.check()?;
         let (left, right) = entries.split_at_mut(half);
         // Halving the item count bounds the build's recursion by usize::BITS.

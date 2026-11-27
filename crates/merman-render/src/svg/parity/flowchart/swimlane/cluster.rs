@@ -302,6 +302,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
                 fmt_display(width.max(label_width)),
             )
         };
+        let overflow_attr = if label_width > 0.0 || label_height > 0.0 {
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
+        } else {
+            ""
+        };
         let _ = write!(
             out,
             r#"<g class="cluster-label {}" transform="{}"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
@@ -309,7 +314,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             escape_xml_display(&transform),
             fmt_display(label_width),
             fmt_display(label_height),
-            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+            overflow_attr,
             escape_xml_display(&div_style),
             OptionalStyleAttr(label_style),
             title_html,

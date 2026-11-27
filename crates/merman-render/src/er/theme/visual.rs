@@ -126,7 +126,7 @@ fn source_text_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
         span_style_attr: if text.is_empty() {
             String::new()
         } else {
-            format!(r#" style="{}""#, crate::svg::escape_xml(&text))
+            format!(r#" style="{}""#, crate::svg::escape_attr(&text))
         },
         ..Default::default()
     }
@@ -136,8 +136,8 @@ pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     let rect = declarations(&source.rect_declarations, true, "; ");
     let text = declarations(&source.text_declarations, true, "; ");
     ErSourceVisual {
-        rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&rect)),
-        source_text_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&text)),
+        rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_attr(&rect)),
+        source_text_attr: format!(r#"style="{}""#, crate::svg::escape_attr(&text)),
         svg_source_text_attr: attr(""),
         ..Default::default()
     }
@@ -188,7 +188,7 @@ impl ErEntityThemePlan {
                 .collect();
             output.group_style_attr = format!(
                 r#"style="{}""#,
-                crate::svg::escape_xml(&declarations(&group, false, ";"))
+                crate::svg::escape_attr(&declarations(&group, false, ";"))
             );
             let redux = self.css_binding.source_fill_owns_odd_rows();
             let overrides: Vec<_> = source

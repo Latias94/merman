@@ -1,7 +1,7 @@
 //! Count distinct pairs of crossing routing centerlines before interpolation by a painter.
 use super::*;
 use crate::RoutePoint;
-use std::collections::BTreeSet;
+use crate::compound::PairSet;
 
 mod index;
 
@@ -143,9 +143,9 @@ fn edge_pairs(
     edges: &[(u32, EdgeGeometry)],
     compress_shared: bool,
     work: &mut Work<'_>,
-) -> LayoutResult<BTreeSet<(u32, u32)>> {
+) -> LayoutResult<PairSet> {
     if edges.len() < 2 {
-        return Ok(BTreeSet::new());
+        return Ok(PairSet::new());
     }
     let count = edges
         .iter()
@@ -271,8 +271,8 @@ fn sweep<'a>(
     mut groups: impl Iterator<Item = Group<'a>> + Clone,
     group_count: usize,
     work: &mut Work<'_>,
-) -> LayoutResult<BTreeSet<(u32, u32)>> {
-    let mut pairs = BTreeSet::new();
+) -> LayoutResult<PairSet> {
+    let mut pairs = PairSet::new();
     let mut active: Vec<Group<'_>> = Vec::new();
     let mut previous_start = None;
     // Build only at a separately admitted work batch and after enough second-axis
@@ -339,7 +339,7 @@ fn sweep<'a>(
 fn record_crossings(
     group: Group<'_>,
     other: Group<'_>,
-    pairs: &mut BTreeSet<(u32, u32)>,
+    pairs: &mut PairSet,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     for owners in group.runs() {
@@ -354,9 +354,12 @@ fn record_crossings(
             }
             for first in owners {
                 for second in neighbors {
-                    work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
+                    work.visit(1)?;
                     if first.edge != second.edge {
-                        pairs.insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+                        pairs.insert(
+                            (first.edge.min(second.edge), first.edge.max(second.edge)),
+                            work,
+                        )?;
                     }
                 }
             }
@@ -523,7 +526,7 @@ mod tests {
             .iter()
             .map(|(id, edge)| Segment::new(edge.points[0], edge.points[1], *id))
             .collect();
-        let mut expected = BTreeSet::new();
+        let mut expected = std::collections::BTreeSet::new();
         for (i, a) in segments.iter().enumerate() {
             for b in &segments[i + 1..] {
                 if a.straddles(b) && b.straddles(a) {
@@ -536,7 +539,9 @@ mod tests {
             let mut control = NoopWorkControl;
             let mut work = Work::new(&mut control);
             assert_eq!(
-                edge_pairs(&edges, compress_shared, &mut work).unwrap(),
+                edge_pairs(&edges, compress_shared, &mut work)
+                    .unwrap()
+                    .to_btree_set(),
                 expected
             );
             work.finish().unwrap();
@@ -567,12 +572,18 @@ mod tests {
             // Widen the sweep domain without raising the active front or adding a crossing.
             let far = width.powi(3);
             edges.push((count * 2, oriented(&[(far, 0.), (far, 2.)])));
-            let expected = (0..count).map(|i| (i * 2, i * 2 + 1)).collect();
+            let expected: std::collections::BTreeSet<_> =
+                (0..count).map(|i| (i * 2, i * 2 + 1)).collect();
 
             for shared in [false, true] {
                 let mut control = NoopWorkControl;
                 let mut work = Work::new(&mut control);
-                assert_eq!(edge_pairs(&edges, shared, &mut work).unwrap(), expected);
+                assert_eq!(
+                    edge_pairs(&edges, shared, &mut work)
+                        .unwrap()
+                        .to_btree_set(),
+                    expected
+                );
                 work.finish().unwrap();
             }
         }
@@ -582,7 +593,7 @@ mod tests {
     fn indexed_fans_keep_distinct_owners_at_equal_numeric_starts() {
         let count = 128u32;
         let mut edges = Vec::new();
-        let mut expected = BTreeSet::new();
+        let mut expected = std::collections::BTreeSet::new();
         for band in 0..count {
             let id = band * 5;
             let y = f64::from(band) * 4.;
@@ -603,7 +614,12 @@ mod tests {
         for shared in [false, true] {
             let mut control = NoopWorkControl;
             let mut work = Work::new(&mut control);
-            assert_eq!(edge_pairs(&edges, shared, &mut work).unwrap(), expected);
+            assert_eq!(
+                edge_pairs(&edges, shared, &mut work)
+                    .unwrap()
+                    .to_btree_set(),
+                expected
+            );
             work.finish().unwrap();
         }
     }

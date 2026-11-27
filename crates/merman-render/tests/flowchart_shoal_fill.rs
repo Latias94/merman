@@ -235,3 +235,43 @@ fn flowchart_parity_backends_keep_the_original_edge_paint_with_the_same_theme() 
         );
     }
 }
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_flowchart_default_theme_cases_solid_crossing_into_dark_cluster_without_canvas_flag() {
+    for theme_line in ["", "  theme: default\n"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n{theme_line}  htmlLabels: false\n---\nflowchart LR\n\
+            subgraph Dark[Dark Zone]\nA inside@--> B\nend\nX cross@--> A\n\
+            style Dark fill:#0b1120,stroke:#334155\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let doc = Document::parse(svg.svg()).unwrap();
+        let casings = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-edge-casings"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected cross-boundary casing under default theme ({theme_line:?}) without explicit canvas flag"
+                )
+            });
+        let casing = casings.first_element_child().unwrap();
+        assert_eq!(casing.attribute("stroke"), Some("#FFFFFF"));
+        assert_eq!(casing.attribute("d"), edge(&doc, "cross").attribute("d"));
+        assert!(
+            edge(&doc, "inside")
+                .attribute("style")
+                .unwrap()
+                .contains("stroke:#FFFFFF")
+        );
+    }
+}

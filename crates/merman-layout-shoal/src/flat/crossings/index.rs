@@ -1,7 +1,8 @@
 use super::{Bounds, Group, record_crossings};
 use crate::WorkError;
+use crate::compound::PairSet;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
-use std::{collections::BTreeSet, ops::Range};
+use std::ops::Range;
 
 const NO_ROW: usize = usize::MAX;
 
@@ -110,7 +111,7 @@ impl<'a> ActiveIntervals<'a> {
     pub(super) fn sweep(
         mut self,
         carried: usize,
-        pairs: &mut BTreeSet<(u32, u32)>,
+        pairs: &mut PairSet,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let mut hits = Vec::new();
@@ -333,7 +334,12 @@ mod tests {
             index.insert(row);
         }
 
-        let mut pairs = BTreeSet::from([(1, 3), (4, 5), (6, 7)]);
+        let mut pairs = PairSet::new();
+        let mut noop = crate::NoopWorkControl;
+        let mut setup = Work::new(&mut noop);
+        for pair in [(1, 3), (4, 5), (6, 7)] {
+            pairs.insert(pair, &mut setup).unwrap();
+        }
         let mut hits = Vec::new();
         let mut metered = Meter::default();
         let mut work = Work::new(&mut metered);
@@ -350,7 +356,10 @@ mod tests {
         work.finish().unwrap();
         assert_eq!(misses_before_retry, 0);
         assert_eq!(hits, [128, 129]);
-        assert_eq!(pairs, BTreeSet::from([(1, 3), (2, 3), (4, 5), (6, 7)]));
+        assert_eq!(
+            pairs.to_btree_set(),
+            std::collections::BTreeSet::from([(1, 3), (2, 3), (4, 5), (6, 7)])
+        );
         assert!(metered.0 < carried, "{} visits", metered.0);
     }
 }

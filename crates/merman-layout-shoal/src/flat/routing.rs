@@ -571,11 +571,19 @@ fn reaches(points: &[Point], line: &[Point], limit: f64) -> bool {
     false
 }
 
+/// Maximum horizontal-to-vertical aspect ratio allowed for an unpromoted single cubic S-curve
+/// within realistic diagram spans (`<= MAX_PROMOTABLE_SPAN_RANKS * spacing.rank`).
+/// Sweeps flatter than this threshold squash into "pancake" S-curves and are promoted to a clean
+/// rounded-orthogonal horizontal track even when isolated or part of a non-clashing shared-port fan.
+const MAX_SWEEP_ASPECT: f64 = 6.0;
+const MAX_PROMOTABLE_SPAN_RANKS: f64 = 16.0;
+
 fn curved_levels(
     pieces: &[Piece],
     ids: &[usize],
     height: f64,
     room: f64,
+    max_promotable_span: f64,
     promoted: &mut [bool],
     work: &mut Work<'_>,
 ) -> LayoutResult<bool> {
@@ -588,7 +596,10 @@ fn curved_levels(
     for &id in ids {
         curves.push(sample(pieces[id].span, room));
     }
+    let mut has_peer = filled(ids.len(), false)?;
     meetings(pieces, ids, work, |left, right, work| {
+        has_peer[left] = true;
+        has_peer[right] = true;
         let (a, b) = (pieces[ids[left]].span, pieces[ids[right]].span);
         if !a.clashes(b) {
             return Ok(());
@@ -616,6 +627,18 @@ fn curved_levels(
         }
         Ok(())
     })?;
+    // A spatially isolated extreme sweep (disjoint in `[lo, hi]` from every peer in this gap)
+    // can safely promote to a rounded-orthogonal track without crossing any unpromoted curve.
+    if room > 0.0 {
+        for (slot, &id) in ids.iter().enumerate() {
+            if !has_peer[slot] {
+                let width = pieces[id].span.width();
+                if width > room * MAX_SWEEP_ASPECT && width <= max_promotable_span {
+                    promoted[slot] = true;
+                }
+            }
+        }
+    }
     let (mut crossed, mut alongside) = (0u64, 0u64);
     meetings(pieces, ids, work, |left, right, _| {
         if promoted[left] && promoted[right] {
@@ -962,20 +985,21 @@ impl Gap {
         }
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
+        let max_promotable_span = options.spacing.rank * MAX_PROMOTABLE_SPAN_RANKS;
         if curved && !ids.is_empty() {
             let widest = ids
                 .iter()
                 .map(|&i| self.pieces[i].span.width())
                 .fold(0.0, f64::max);
-            // Guarantee enough net vertical room for wide curved sweeps when guards or
-            // inserted-label slits squeeze a gap below healthy curvature, without inflating
-            // ordinary flat rank gaps or extreme synthetic spans.
+            // Guarantee enough net vertical room for wide curved sweeps when guards (such as
+            // ER crow's-foot runways) or inserted-label slits squeeze a gap below healthy
+            // curvature, without inflating ordinary flat rank gaps or extreme synthetic spans.
             let min_room = (widest * 0.35).min(options.spacing.rank * 0.75);
             let mut target = finite(guard + min_room)?.min(options.spacing.rank);
             let nominal_room = (self.height - guard).max(0.0);
-            if !self.allow_local_sweeps
-                && widest > nominal_room * 4.0
-                && widest <= options.spacing.rank * 8.0
+            if widest > nominal_room * 4.0
+                && widest <= max_promotable_span
+                && (!self.allow_local_sweeps || widest > nominal_room * MAX_SWEEP_ASPECT)
             {
                 let wide_room = (widest / 3.2).min(options.spacing.rank * 1.15);
                 target = target.max(finite(guard + wide_room)?);
@@ -983,13 +1007,27 @@ impl Gap {
             self.minimum = self.minimum.max(target);
         }
         self.height = self.height.max(self.minimum);
-        if isolated_curve || ids.is_empty() || options.routing == RoutingStyle::Polyline {
+        if ids.is_empty() || options.routing == RoutingStyle::Polyline {
+            return Ok(());
+        }
+        let room = (self.height - guard).max(0.0);
+        let widest = ids
+            .iter()
+            .map(|&i| self.pieces[i].span.width())
+            .fold(0.0, f64::max);
+        let has_extreme_sweep = curved
+            && room > 0.0
+            && widest > room * MAX_SWEEP_ASPECT
+            && widest <= max_promotable_span;
+        if (isolated_curve || (curved && ids.len() == 1)) && !has_extreme_sweep {
             return Ok(());
         }
         if curved && ids.len() == 1 {
-            return Ok(());
-        }
-        if ids.len() > options.caps.max_weighed_gap_pieces {
+            // An isolated ultra-wide sweep promotes straight to a single horizontal track rather
+            // than flattening into a pancake cubic.
+            self.pieces[ids[0]].track = Some(0);
+            self.tracks = 1;
+        } else if ids.len() > options.caps.max_weighed_gap_pieces {
             if curved {
                 return Ok(());
             }
@@ -1008,19 +1046,23 @@ impl Gap {
                     &self.pieces,
                     ids,
                     self.height,
-                    self.height - guard,
+                    room,
+                    max_promotable_span,
                     &mut promoted,
                     work,
                 )? {
-                    let widest = ids
-                        .iter()
-                        .map(|&i| self.pieces[i].span.width())
-                        .fold(0.0, f64::max);
-                    self.minimum = self
+                    let inflated_min = self
                         .minimum
                         .max((3.0 * options.spacing.rank).min(widest * 0.5));
-                    self.height = self.height.max(self.minimum);
-                    return Ok(());
+                    let inflated_room = (self.height.max(inflated_min) - guard).max(0.0);
+                    if inflated_room > 0.0
+                        && (widest <= inflated_room * MAX_SWEEP_ASPECT
+                            || widest > max_promotable_span)
+                    {
+                        self.minimum = inflated_min;
+                        self.height = self.height.max(self.minimum);
+                        return Ok(());
+                    }
                 }
                 let mut flags = promoted.into_iter();
                 ids.retain(|_| flags.next() == Some(true));

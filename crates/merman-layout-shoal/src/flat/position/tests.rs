@@ -58,9 +58,11 @@ fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
         (10.0, [-5.0, 0.0, 0.0, 0.0, 0.0, 5.0]),
     ] {
         let mut offsets = [0.0; 6];
+        let markers = [0.0; 6];
         spread_face(
             &ids,
             &role,
+            &markers,
             &mut offsets,
             span,
             &Spacing::default(),
@@ -68,6 +70,33 @@ fn spread_uses_all_three_pitch_tiers_and_preserves_a_held_zero() {
         )
         .unwrap();
         assert_eq!(offsets, expected);
+    }
+}
+
+#[test]
+fn wide_crows_foot_markers_separate_adjacent_ports_through_full_layout() {
+    use crate::{MarkerMetrics, Options, layout};
+    let mut g = graph(4);
+    g.nodes[0].size = Size {
+        width: 140.0,
+        height: 60.0,
+    };
+    for target in 1..4 {
+        let mut e = edge(0, target);
+        e.start_marker = MarkerMetrics {
+            length: 18.0,
+            width: 24.0,
+        };
+        g.edges.push(e);
+    }
+    let out = layout(&g, &Options::default()).unwrap();
+    let mut xs: Vec<f64> = out.edges.iter().map(|e| e.points[0].x).collect();
+    xs.sort_by(f64::total_cmp);
+    for pair in xs.windows(2) {
+        assert!(
+            pair[1] - pair[0] >= 25.0,
+            "adjacent 24px markers must stay separated beyond default 16px port_pitch: {xs:?}"
+        );
     }
 }
 

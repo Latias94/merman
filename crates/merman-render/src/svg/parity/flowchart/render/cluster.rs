@@ -599,7 +599,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
             out.push_str("<switch>");
         }
         let halo_style = halo.map(|color| {
-            format!("{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
+            if label_style.is_empty() {
+                format!("-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill")
+            } else {
+                format!(
+                    "{label_style};-webkit-text-stroke:{TITLE_HALO_WIDTH}px {color};paint-order:stroke fill"
+                )
+            }
         });
         // CSS color hex tokens like `#1F2335;` must not run through Mermaid `#entity;` text
         // decoding (which turns `#1F2335;` into `&amp;1F2335;` and drops the browser halo).

@@ -10,7 +10,7 @@
 
 use super::{
     Centerlines, Chord, Endpoint, LayoutOutput, LayoutResult, Point, Primitive, Work,
-    bounds_in_shared_fan, shared_fan,
+    bounds_in_shared_fan, endpoint_in_fan_interior, shared_fan,
 };
 use crate::work::{filled, push, reserved};
 use crate::{LayoutError, WorkError};
@@ -22,13 +22,13 @@ use std::collections::BinaryHeap;
 ///
 /// Only membership (`contains`), insertion (`insert`), and cardinality (`len`) are exposed;
 /// the table is never iterated, so layout decisions remain 100% deterministic.
-pub(super) struct PairSet {
+pub(crate) struct PairSet {
     slots: Vec<u64>,
     len: usize,
 }
 
 impl PairSet {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             slots: Vec::new(),
             len: 0,
@@ -36,7 +36,7 @@ impl PairSet {
     }
 
     #[inline]
-    pub(super) fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.len
     }
 
@@ -57,7 +57,7 @@ impl PairSet {
     }
 
     #[inline]
-    pub(super) fn contains(&self, pair: (u32, u32)) -> bool {
+    pub(crate) fn contains(&self, pair: (u32, u32)) -> bool {
         let cap = self.slots.len();
         if cap == 0 {
             return false;
@@ -77,7 +77,7 @@ impl PairSet {
         }
     }
 
-    pub(super) fn insert(&mut self, pair: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
+    pub(crate) fn insert(&mut self, pair: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
         let key = Self::encode(pair);
         if self.slots.is_empty() || (self.len + 1) * 10 >= self.slots.len() * 7 {
             self.grow(work)?;
@@ -96,6 +96,16 @@ impl PairSet {
             }
             idx = (idx + 1) & mask;
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn to_btree_set(&self) -> std::collections::BTreeSet<(u32, u32)> {
+        self.slots
+            .iter()
+            .copied()
+            .filter(|&k| k != 0)
+            .map(|k| ((k >> 32) as u32, k as u32))
+            .collect()
     }
 
     fn grow(&mut self, work: &mut Work<'_>) -> LayoutResult<()> {
@@ -841,9 +851,13 @@ impl MonotonePartition {
             }
             let rev = points[0].y > points[points.len() - 1].y;
             let strict = if rev {
-                points.windows(2).all(|w| w[0].y > w[1].y)
+                points
+                    .windows(2)
+                    .all(|w| w[0].y > w[1].y && ((w[0].x - w[1].x) / (w[0].y - w[1].y)).is_finite())
             } else {
-                points.windows(2).all(|w| w[0].y < w[1].y)
+                points
+                    .windows(2)
+                    .all(|w| w[0].y < w[1].y && ((w[1].x - w[0].x) / (w[1].y - w[0].y)).is_finite())
             };
             if !strict {
                 push(&mut other, index)?;
@@ -1350,7 +1364,7 @@ fn inspect_chain_pair(
         if ax_max >= bx_min {
             let ov_lo = ord_a[0].y.max(ord_b[0].y);
             let ov_hi = ord_a[1].y.min(ord_b[1].y);
-            let separated = if ov_lo < ov_hi {
+            let separated = if ov_lo < ov_hi && slope_a.is_finite() && slope_b.is_finite() {
                 let ax_ov_lo = if ov_lo == ord_a[0].y {
                     ord_a[0].x
                 } else {
@@ -1439,6 +1453,61 @@ fn coincident_eps(scale: f64) -> f64 {
     COINCIDENT_EPS * scale.abs().max(1.0)
 }
 
+#[inline]
+fn sole_fan_endpoint(at: Point, edge_ends: [Endpoint; 2], out: &LayoutOutput) -> Option<Endpoint> {
+    let a_in = endpoint_in_fan_interior(at, edge_ends[0], out);
+    let b_in = edge_ends[1] != edge_ends[0] && endpoint_in_fan_interior(at, edge_ends[1], out);
+    match (a_in, b_in) {
+        (true, false) => Some(edge_ends[0]),
+        (false, true) => Some(edge_ends[1]),
+        _ => None,
+    }
+}
+
+struct CoincidentTracker {
+    epoch: u32,
+    last_y: f64,
+    steps: usize,
+    pure_left_epoch: Vec<u32>,
+    pure_left_end: Vec<Option<Endpoint>>,
+    pure_right_epoch: Vec<u32>,
+    pure_right_end: Vec<Option<Endpoint>>,
+}
+
+impl CoincidentTracker {
+    fn new(n: usize, work: &mut Work<'_>) -> LayoutResult<Self> {
+        work.charge(n.saturating_mul(4))?;
+        Ok(Self {
+            epoch: 0,
+            last_y: f64::NAN,
+            steps: 0,
+            pure_left_epoch: filled(n, 0)?,
+            pure_left_end: filled(n, None)?,
+            pure_right_epoch: filled(n, 0)?,
+            pure_right_end: filled(n, None)?,
+        })
+    }
+
+    #[inline]
+    fn advance_y(&mut self, cur_y: f64) {
+        if cur_y != self.last_y {
+            self.last_y = cur_y;
+            self.epoch = self.epoch.wrapping_add(1);
+            if self.epoch == 0 {
+                self.pure_left_epoch.fill(0);
+                self.pure_right_epoch.fill(0);
+                self.epoch = 1;
+            }
+        }
+    }
+
+    #[inline]
+    fn invalidate(&mut self, id: usize) {
+        self.pure_left_epoch[id] = 0;
+        self.pure_right_epoch[id] = 0;
+    }
+}
+
 /// Runs the exact whole-primitive `y`-monotone sweep over `partition.chains` and
 /// `partition.horizontals`.
 ///
@@ -1474,6 +1543,7 @@ pub(super) fn run_monotone_sweep(
     let mut active = ActiveTree::new(n, work)?;
     let mut crossed = PairSet::new();
     let mut schedule = PairSchedule::new();
+    let mut tracker = CoincidentTracker::new(n, work)?;
     let cross_cap = partition
         .total_chords
         .saturating_mul(CROSS_EVENT_MULTIPLIER)
@@ -1521,11 +1591,15 @@ pub(super) fn run_monotone_sweep(
         Ok(true)
     };
 
-    // Always test immediate left and right neighbors; only walk further across a coincident-`x`
-    // bundle when the contact lies outside `shared_fan` so star fans stay `O(1)` per insertion.
+    // Always test immediate left and right neighbors; across a coincident-`x` bundle only stop
+    // early when every remaining chain on that side is proven to share one common fan endpoint
+    // with `target_id`. Pure single-endpoint star fans remain `O(1)` per event, while mixed
+    // multi-endpoint coincident bundles walk every foreign peer (bounded by `cross_cap`).
     let check_neighbors = |target_id: usize,
                            cur_y: f64,
+                           is_removal: bool,
                            active: &ActiveTree,
+                           tracker: &mut CoincidentTracker,
                            crossed: &mut PairSet,
                            schedule: &mut PairSchedule,
                            heap: &mut BinaryHeap<Event>,
@@ -1533,57 +1607,169 @@ pub(super) fn run_monotone_sweep(
                            work: &mut Work<'_>|
      -> LayoutResult<bool> {
         let xt = chain_x_at_y(centerlines, &chains[target_id], cur_y);
+        let eps = coincident_eps(xt);
         let at = Point { x: xt, y: cur_y };
-        let target_edge = chains[target_id].edge;
+        let target_ends = ends[chains[target_id].edge];
+        let epoch = tracker.epoch;
 
+        let mut common_left = sole_fan_endpoint(at, target_ends, out);
+        let mut pure_left = common_left.is_some();
+        let mut left_steps = 0usize;
+        let mut last_left = None;
         let mut left = active.prev_chain(target_id);
         while let Some(left_id) = left {
             work.visit(1)?;
-            if !check_pair(
-                left_id,
-                target_id,
-                cur_y,
-                false,
-                crossed,
-                schedule,
-                heap,
-                cross_events,
-                work,
-            )? {
+            let xl = chain_x_at_y(centerlines, &chains[left_id], cur_y);
+            let coincident = (xl - xt).abs() <= eps;
+            if (!is_removal || coincident)
+                && !check_pair(
+                    left_id,
+                    target_id,
+                    cur_y,
+                    false,
+                    crossed,
+                    schedule,
+                    heap,
+                    cross_events,
+                    work,
+                )?
+            {
                 return Ok(false);
             }
-            let xl = chain_x_at_y(centerlines, &chains[left_id], cur_y);
-            if (xl - xt).abs() > coincident_eps(xt)
-                || shared_fan(at, ends[chains[left_id].edge], ends[target_edge], out)
-            {
+            if !coincident {
                 break;
+            }
+            tracker.steps = tracker.steps.saturating_add(1);
+            if tracker.steps > cross_cap {
+                return Ok(false);
+            }
+            left_steps += 1;
+            last_left = Some(left_id);
+            if !is_removal
+                && tracker.pure_right_epoch[left_id] == epoch
+                && !tracker.pure_right_end[left_id].is_some_and(|ep| target_ends.contains(&ep))
+            {
+                tracker.pure_right_epoch[left_id] = 0;
+            }
+            if tracker.pure_left_epoch[left_id] == epoch
+                && let Some(ep) = tracker.pure_left_end[left_id]
+                && target_ends.contains(&ep)
+                && endpoint_in_fan_interior(at, ep, out)
+            {
+                if pure_left && common_left.is_none_or(|c| c == ep) {
+                    common_left = Some(ep);
+                } else {
+                    pure_left = false;
+                }
+                break;
+            }
+            let left_ends = ends[chains[left_id].edge];
+            if let Some(ep) = common_left {
+                if !left_ends.contains(&ep) {
+                    common_left = None;
+                    pure_left = false;
+                }
+            } else {
+                pure_left = false;
             }
             left = active.prev_chain(left_id);
         }
+        if pure_left && let Some(ep) = common_left {
+            if !is_removal {
+                tracker.pure_left_epoch[target_id] = epoch;
+                tracker.pure_left_end[target_id] = Some(ep);
+            }
+            if left_steps > 1 {
+                let mut cur = last_left;
+                while let Some(cid) = cur {
+                    if cid == target_id {
+                        break;
+                    }
+                    tracker.pure_left_epoch[cid] = epoch;
+                    tracker.pure_left_end[cid] = Some(ep);
+                    cur = active.next_chain(cid);
+                }
+            }
+        }
 
+        let mut common_right = sole_fan_endpoint(at, target_ends, out);
+        let mut pure_right = common_right.is_some();
+        let mut right_steps = 0usize;
+        let mut last_right = None;
         let mut right = active.next_chain(target_id);
         while let Some(right_id) = right {
             work.visit(1)?;
-            if !check_pair(
-                target_id,
-                right_id,
-                cur_y,
-                false,
-                crossed,
-                schedule,
-                heap,
-                cross_events,
-                work,
-            )? {
+            let xr = chain_x_at_y(centerlines, &chains[right_id], cur_y);
+            let coincident = (xr - xt).abs() <= eps;
+            if (!is_removal || coincident)
+                && !check_pair(
+                    target_id,
+                    right_id,
+                    cur_y,
+                    false,
+                    crossed,
+                    schedule,
+                    heap,
+                    cross_events,
+                    work,
+                )?
+            {
                 return Ok(false);
             }
-            let xr = chain_x_at_y(centerlines, &chains[right_id], cur_y);
-            if (xr - xt).abs() > coincident_eps(xt)
-                || shared_fan(at, ends[target_edge], ends[chains[right_id].edge], out)
-            {
+            if !coincident {
                 break;
             }
+            tracker.steps = tracker.steps.saturating_add(1);
+            if tracker.steps > cross_cap {
+                return Ok(false);
+            }
+            right_steps += 1;
+            last_right = Some(right_id);
+            if !is_removal
+                && tracker.pure_left_epoch[right_id] == epoch
+                && !tracker.pure_left_end[right_id].is_some_and(|ep| target_ends.contains(&ep))
+            {
+                tracker.pure_left_epoch[right_id] = 0;
+            }
+            if tracker.pure_right_epoch[right_id] == epoch
+                && let Some(ep) = tracker.pure_right_end[right_id]
+                && target_ends.contains(&ep)
+                && endpoint_in_fan_interior(at, ep, out)
+            {
+                if pure_right && common_right.is_none_or(|c| c == ep) {
+                    common_right = Some(ep);
+                } else {
+                    pure_right = false;
+                }
+                break;
+            }
+            let right_ends = ends[chains[right_id].edge];
+            if let Some(ep) = common_right {
+                if !right_ends.contains(&ep) {
+                    common_right = None;
+                    pure_right = false;
+                }
+            } else {
+                pure_right = false;
+            }
             right = active.next_chain(right_id);
+        }
+        if pure_right && let Some(ep) = common_right {
+            if !is_removal {
+                tracker.pure_right_epoch[target_id] = epoch;
+                tracker.pure_right_end[target_id] = Some(ep);
+            }
+            if right_steps > 1 {
+                let mut cur = last_right;
+                while let Some(cid) = cur {
+                    if cid == target_id {
+                        break;
+                    }
+                    tracker.pure_right_epoch[cid] = epoch;
+                    tracker.pure_right_end[cid] = Some(ep);
+                    cur = active.prev_chain(cid);
+                }
+            }
         }
         Ok(true)
     };
@@ -1594,6 +1780,7 @@ pub(super) fn run_monotone_sweep(
             return Ok(Some(crossed));
         }
         let cur_y = ev.y.0;
+        tracker.advance_y(cur_y);
         match ev.kind() {
             EV_START => {
                 let id = ev.a();
@@ -1612,7 +1799,9 @@ pub(super) fn run_monotone_sweep(
                 if !check_neighbors(
                     id,
                     cur_y,
+                    false,
                     &active,
+                    &mut tracker,
                     &mut crossed,
                     &mut schedule,
                     &mut heap,
@@ -1697,70 +1886,19 @@ pub(super) fn run_monotone_sweep(
                 }
                 let left_neighbor = active.prev_chain(id);
                 let right_neighbor = active.next_chain(id);
-                // Immediate neighbors were already checked across their full overlap when they
-                // became adjacent; only check non-adjacent coincident-`x` bundle peers outside
-                // `shared_fan`.
-                let xt = chain_x_at_y(centerlines, &chains[id], cur_y);
-                let eps = coincident_eps(xt);
-                let at = Point { x: xt, y: cur_y };
-                let id_edge = chains[id].edge;
-                if let Some(l0) = left_neighbor
-                    && (chain_x_at_y(centerlines, &chains[l0], cur_y) - xt).abs() <= eps
-                    && !shared_fan(at, ends[chains[l0].edge], ends[id_edge], out)
-                {
-                    let mut left = active.prev_chain(l0);
-                    while let Some(left_id) = left {
-                        work.visit(1)?;
-                        if (chain_x_at_y(centerlines, &chains[left_id], cur_y) - xt).abs() > eps {
-                            break;
-                        }
-                        if !check_pair(
-                            left_id,
-                            id,
-                            cur_y,
-                            false,
-                            &mut crossed,
-                            &mut schedule,
-                            &mut heap,
-                            &mut cross_events,
-                            work,
-                        )? {
-                            return Ok(None);
-                        }
-                        if shared_fan(at, ends[chains[left_id].edge], ends[id_edge], out) {
-                            break;
-                        }
-                        left = active.prev_chain(left_id);
-                    }
-                }
-                if let Some(r0) = right_neighbor
-                    && (chain_x_at_y(centerlines, &chains[r0], cur_y) - xt).abs() <= eps
-                    && !shared_fan(at, ends[id_edge], ends[chains[r0].edge], out)
-                {
-                    let mut right = active.next_chain(r0);
-                    while let Some(right_id) = right {
-                        work.visit(1)?;
-                        if (chain_x_at_y(centerlines, &chains[right_id], cur_y) - xt).abs() > eps {
-                            break;
-                        }
-                        if !check_pair(
-                            id,
-                            right_id,
-                            cur_y,
-                            false,
-                            &mut crossed,
-                            &mut schedule,
-                            &mut heap,
-                            &mut cross_events,
-                            work,
-                        )? {
-                            return Ok(None);
-                        }
-                        if shared_fan(at, ends[id_edge], ends[chains[right_id].edge], out) {
-                            break;
-                        }
-                        right = active.next_chain(right_id);
-                    }
+                if !check_neighbors(
+                    id,
+                    cur_y,
+                    true,
+                    &active,
+                    &mut tracker,
+                    &mut crossed,
+                    &mut schedule,
+                    &mut heap,
+                    &mut cross_events,
+                    work,
+                )? {
+                    return Ok(None);
                 }
                 active.remove(id, work)?;
                 if let (Some(l), Some(r)) = (left_neighbor, right_neighbor)
@@ -1804,11 +1942,30 @@ pub(super) fn run_monotone_sweep(
                 let d_lo = x_at_y(ord_a, cur_y) - x_at_y(ord_b, cur_y);
                 let d_hi = x_at_y(ord_a, y_hi) - x_at_y(ord_b, y_hi);
                 if d_hi < 0.0 || (d_hi == 0.0 && d_lo <= 0.0) {
+                    // A multi-chord chain can graze or remain collinear at a chord boundary while
+                    // still crossing later chords; re-schedule strictly below `cur_y`.
+                    if (ca.chord_count > 1 || cb.chord_count > 1)
+                        && !check_pair(
+                            a_id,
+                            b_id,
+                            cur_y,
+                            true,
+                            &mut crossed,
+                            &mut schedule,
+                            &mut heap,
+                            &mut cross_events,
+                            work,
+                        )?
+                    {
+                        return Ok(None);
+                    }
                     continue;
                 }
 
                 // Swap `a` and `b` in `O(1)` (`b` moves left, `a` moves right).
                 active.swap_adjacent(a_id, b_id);
+                tracker.invalidate(a_id);
+                tracker.invalidate(b_id);
 
                 // Re-check `(b, a)` strictly below `cur_y` when either curve has multiple chords
                 // so a double-crossing lens between two curves still triggers its second swap.

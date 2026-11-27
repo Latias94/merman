@@ -165,8 +165,7 @@ mod shoal {
                 && !ctx.compatibility.look.is_hand_drawn()
                 && ctx.recursive_clusters.is_empty()
                 && !ctx.layout.clusters.is_empty()
-                && (ctx.native.is_some()
-                    || (ctx.diagram_type != "agentflow" && ctx.palette.color_count() == 0))
+                && (ctx.native.is_some() || ctx.diagram_type != "agentflow")
                 && !ctx
                     .config
                     .get_str("themeCSS")
@@ -202,7 +201,7 @@ mod shoal {
             else {
                 return Ok(plan);
             };
-            let canvas = solid_canvas(options);
+            let canvas = solid_canvas(ctx, options);
             let groups = &ctx.layout.clusters;
             ctx.work_meter.charge(groups.len())?;
             let indices: FxHashMap<_, _> = groups
@@ -217,9 +216,12 @@ mod shoal {
                 let index = indices[cluster.id.as_str()];
                 let bounds =
                     super::super::cluster_geometry::painted_cluster_frame(ctx, cluster).bounds();
-                let radius = ctx
+                let raw_radius = ctx
                     .native
                     .map_or(0.0, |native| native.form.container_radius);
+                let radius = raw_radius
+                    .min(bounds.width().min(bounds.height()) * 0.5)
+                    .max(0.0);
                 let frame = RoundedRect::from_rect(bounds, radius);
                 let Some((fill, opacity)) = surface_paint(ctx, &cluster.id)? else {
                     // A CSS geometry or compositing override can put paint outside the layout box.
@@ -401,7 +403,7 @@ mod shoal {
         }
     }
 
-    fn solid_canvas(options: &SvgExecution<'_>) -> Option<Color> {
+    fn solid_canvas(ctx: &FlowchartRenderCtx<'_>, options: &SvgExecution<'_>) -> Option<Color> {
         let session = options.family.session();
         if session.native_theme().is_some_and(|theme| {
             theme
@@ -415,9 +417,25 @@ mod shoal {
         }
         session
             .canvas_background()
-            .or_else(|| match &options.native_family_theme()?.roles.canvas {
-                Paint::Solid(color) => Some(*color),
-                Paint::LinearGradient(_) => None,
+            .or_else(|| {
+                if let Some(native) = options.native_family_theme() {
+                    match &native.roles.canvas {
+                        Paint::Solid(color) => Some(*color),
+                        Paint::LinearGradient(_) => None,
+                    }
+                } else {
+                    let configured =
+                        crate::config::value_at(ctx.config, &["themeVariables", "background"])
+                            .and_then(serde_json::Value::as_str)
+                            .and_then(literal_fill);
+                    configured.or_else(|| {
+                        let fallback = match ctx.config.get_str("theme") {
+                            Some("dark" | "redux-dark" | "redux-dark-color") => "#1F2020",
+                            _ => "#FFFFFF",
+                        };
+                        literal_fill(fallback)
+                    })
+                }
             })
             .filter(|color| color.channels()[3] == u8::MAX)
     }
@@ -429,7 +447,9 @@ mod shoal {
         let terminal = ctx.prepared_nodes.cluster(id)?;
         ctx.work_meter
             .charge(terminal.rect_style.len().div_ceil(64) + 1)?;
-        let mut fill = literal_fill(&terminal.fill);
+        let palette_fill = super::agentflow::container_color_slot(ctx, id)
+            .and_then(|slot| ctx.palette.background_color(slot));
+        let mut fill = literal_fill(palette_fill.unwrap_or(&terminal.fill));
         let mut opacity = Some(1.0);
         let mut fill_opacity = Some(1.0);
         let mut proven_frame = true;

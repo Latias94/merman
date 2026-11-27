@@ -121,6 +121,7 @@ fn order_lanes(
             .cmp(&orientation.reversed[a])
             .then(g.chains[b].len().cmp(&g.chains[a].len()))
             .then(ends(a).cmp(&ends(b)))
+            .then(a.cmp(&b))
     })?;
 
     let n = g.rank.len();
