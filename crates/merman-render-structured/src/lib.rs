@@ -18,3 +18,7 @@ pub mod packet;
 #[cfg(feature = "diagram-railroad")]
 #[doc(hidden)]
 pub mod railroad;
+
+#[cfg(feature = "diagram-timeline")]
+#[doc(hidden)]
+pub mod timeline;

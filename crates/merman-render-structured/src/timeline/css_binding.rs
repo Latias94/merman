@@ -1,4 +1,4 @@
-use crate::config::{config_css_number_or_string, config_string, value_at};
+use merman_render_core::config::{config_css_number_or_string, config_string, value_at};
 
 #[derive(Debug)]
 pub(crate) struct TimelineSectionCssBinding {
@@ -32,34 +32,38 @@ impl TimelineCssBinding {
         (self.is_redux_theme && !self.sections.is_empty()).then_some(self.font_weight.as_str())
     }
 
-    pub(crate) fn node_text_style(&self, base: &crate::text::TextStyle) -> crate::text::TextStyle {
+    pub(crate) fn node_text_style(
+        &self,
+        base: &merman_render_core::text::TextStyle,
+    ) -> merman_render_core::text::TextStyle {
         Self::node_style_for_weight(base, self.section_font_weight())
     }
 
     pub(super) fn node_style_for_weight(
-        base: &crate::text::TextStyle,
+        base: &merman_render_core::text::TextStyle,
         weight: Option<&str>,
-    ) -> crate::text::TextStyle {
+    ) -> merman_render_core::text::TextStyle {
         let Some(weight) = weight else {
             return base.clone();
         };
-        let measurable =
-            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
-                .is_some_and(|declaration| {
-                    declaration.inherits_property_value()
-                        || crate::mermaid_style::is_supported_css_font_weight_value(
-                            declaration.value(),
-                        )
-                });
+        let measurable = merman_render_core::mermaid_style::parse_style_declaration(&format!(
+            "font-weight:{weight}"
+        ))
+        .is_some_and(|declaration| {
+            declaration.inherits_property_value()
+                || merman_render_core::mermaid_style::is_supported_css_font_weight_value(
+                    declaration.value(),
+                )
+        });
         if measurable {
-            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            let mut cascade = merman_render_core::mermaid_style::TextStyleCascade::new(
                 base,
-                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+                merman_render_core::mermaid_style::CssFontSizeContext::uniform(base.font_size),
             );
             cascade.observe("font-weight", weight, false);
             cascade.finish().into_owned()
         } else {
-            crate::text::TextStyle {
+            merman_render_core::text::TextStyle {
                 font_weight: Some(weight.to_owned()),
                 ..base.clone()
             }
@@ -90,7 +94,7 @@ impl TimelineCssBinding {
         let sections = (0..section_count)
             .map(|index| {
                 let [fill, label, inverse] =
-                    crate::svg::render_theme::timeline_default_section_colors(index);
+                    merman_render_core::svg_css::default_section_colors(index);
                 TimelineSectionCssBinding {
                     c_scale: color(&format!("cScale{index}"), fill),
                     c_scale_label: color(&format!("cScaleLabel{index}"), label),

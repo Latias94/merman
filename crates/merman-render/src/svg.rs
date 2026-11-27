@@ -74,6 +74,12 @@ pub use merman_render_core::svg_output::SvgOutputProfile;
 pub(crate) use parity::render_architecture_family_artifact;
 #[cfg(feature = "native-compact")]
 pub(crate) use parity::render_native_compact_family_artifact;
+#[cfg(any(
+    feature = "diagram-kanban",
+    feature = "diagram-mindmap",
+    feature = "diagram-radar",
+    feature = "diagram-treemap"
+))]
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;
 #[cfg(any(

@@ -9,6 +9,8 @@ mod id;
 #[cfg(feature = "svg-identity")]
 mod id_suffix;
 #[cfg(feature = "css-style")]
+mod palette;
+#[cfg(feature = "css-style")]
 mod prepared;
 #[cfg(feature = "svg-identity")]
 mod resource_urls;
@@ -19,6 +21,8 @@ pub use id::{
 };
 #[cfg(feature = "svg-identity")]
 pub use id_suffix::lower_id_suffix_selectors;
+#[cfg(feature = "css-style")]
+pub use palette::{default_c_scale, default_section_colors};
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 #[cfg(feature = "svg-identity")]

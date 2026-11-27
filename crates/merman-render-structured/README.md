@@ -18,6 +18,9 @@ selection, and root context, then applies canvas and terminal output policies.
 The `diagram-cynefin` feature provides typed layout, presentation binding, and complete SVG
 emission. Measurement, viewport, and work limits come from the rendering operation.
 
+The `diagram-timeline` feature provides typed layout and complete SVG for horizontal and vertical
+Timeline diagrams. The rendering operation supplies its measurement, viewport, and work policies.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

@@ -617,11 +617,10 @@ fn prepare_timeline_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::timeline::TimelineStyle::resolve(&meta.effective_config, native);
-    let layout = crate::timeline::layout_timeline_diagram_typed_with_binding(
+    let (layout, style) = crate::timeline::prepare_timeline_diagram(
         model,
-        style.layout_settings(),
+        &meta.effective_config,
+        execution.native_family_theme(),
         execution.text_measurer(),
         execution.work_meter_ref(),
     )?;

@@ -1,13 +1,26 @@
-use super::super::*;
-use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
-use crate::timeline::{TimelineCssBinding, TimelineNativeStyle, TimelineStyle};
-use merman_model::families::timeline::TimelineDirection;
+use std::fmt::Write as _;
+
+use merman_model::{OperationPhase, families::timeline::TimelineDirection};
+use merman_render_core::{
+    Bounds, Result,
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::{CssSelectorDiagramId, PreparedCommonCss, SvgId, scoped_svg_id, scoped_svg_url},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::{escape_attr, escape_attr_display, escape_xml},
+};
+
+use super::{
+    MERMAID_EVENT_RADIUS_PX, MERMAID_EVENT_RADIUS_TOKEN, TimelineCssBinding, TimelineDiagramLayout,
+    TimelineLineLayout, TimelineNativeStyle, TimelineNodeLayout, TimelineStyle, TimelineTaskLayout,
+};
 
 fn write_timeline_css(
     out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
     theme: &TimelineCssBinding,
-    common: &crate::svg::PreparedCommonCss,
+    common: &PreparedCommonCss,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     common.write_prefix(out, diagram_id)?;
@@ -134,7 +147,7 @@ fn write_timeline_css(
 fn write_timeline_connector(
     out: &mut impl SvgOutput,
     connector: &TimelineLineLayout,
-    diagram_id: Option<SvgDiagramId<'_>>,
+    diagram_id: Option<SvgId<'_>>,
     native: Option<&TimelineNativeStyle>,
 ) -> Result<()> {
     fn write_connector(
@@ -192,12 +205,14 @@ fn write_timeline_activity_line(
     out.checkpoint()
 }
 
-pub(crate) fn render_timeline_diagram_svg_model(
+/// Emits a balanced Timeline document for the host SVG pipeline.
+pub fn render_timeline_svg(
     layout: &TimelineDiagramLayout,
     style: &TimelineStyle,
-    options: &SvgExecution<'_>,
+    diagram_id: SvgId<'_>,
+    viewport: &root_svg::RootViewportContext<'_>,
+    work_meter: &OperationWorkMeter,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
     let mermaid = style.css_binding();
     let native = style.native();
     let is_redux_theme = mermaid.is_some_and(|theme| theme.is_redux_theme);
@@ -223,23 +238,23 @@ pub(crate) fn render_timeline_diagram_svg_model(
     )]
     fn render_node(
         out: &mut impl SvgOutput,
-        diagram_id: SvgDiagramId<'_>,
+        diagram_id: SvgId<'_>,
         node_count: &mut usize,
-        n: &crate::model::TimelineNodeLayout,
+        n: &TimelineNodeLayout,
         ordinal: usize,
         direction: TimelineDirection,
         is_redux_theme: bool,
         is_neo: bool,
         is_event: bool,
         native: Option<&TimelineNativeStyle>,
-        options: &SvgExecution<'_>,
+        work_meter: &OperationWorkMeter,
     ) -> Result<()> {
         let node_local_id = format!("node-{node_count}");
         let node_id = scoped_svg_id(diagram_id, &node_local_id);
         *node_count += 1;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
-        let rd = crate::timeline::MERMAID_EVENT_RADIUS_PX;
+        let rd = MERMAID_EVENT_RADIUS_PX;
         let mermaid_path = || {
             if is_redux_theme {
                 format!(
@@ -254,7 +269,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                     "M0 {y0} v{v1} q0,-{radius} {radius},-{radius} h{hw} q{radius},0 {radius},{radius} v{v2} H0 Z",
                     y0 = fmt(h - rd),
                     v1 = fmt(-h + 2.0 * rd),
-                    radius = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN,
+                    radius = MERMAID_EVENT_RADIUS_TOKEN,
                     hw = fmt(w - 2.0 * rd),
                     v2 = fmt(h - rd),
                 )
@@ -375,7 +390,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         }
         out.push_str("</text></g></g>");
         out.checkpoint()?;
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         Ok(())
     }
 
@@ -385,7 +400,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     )]
     fn render_event(
         out: &mut impl SvgOutput,
-        diagram_id: SvgDiagramId<'_>,
+        diagram_id: SvgId<'_>,
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         ordinal: usize,
@@ -393,7 +408,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         is_redux_theme: bool,
         is_neo: bool,
         native: Option<&TimelineNativeStyle>,
-        options: &SvgExecution<'_>,
+        work_meter: &OperationWorkMeter,
     ) -> Result<()> {
         let _ = write!(
             out,
@@ -413,7 +428,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             is_neo,
             true,
             native,
-            options,
+            work_meter,
         )?;
         out.push_str("</g>");
         out.checkpoint()?;
@@ -426,7 +441,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     )]
     fn render_task(
         out: &mut impl SvgOutput,
-        diagram_id: SvgDiagramId<'_>,
+        diagram_id: SvgId<'_>,
         node_count: &mut usize,
         task: &TimelineTaskLayout,
         ordinal: usize,
@@ -434,7 +449,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         is_redux_theme: bool,
         is_neo: bool,
         native: Option<&TimelineNativeStyle>,
-        options: &SvgExecution<'_>,
+        work_meter: &OperationWorkMeter,
     ) -> Result<()> {
         let node = &task.node;
         let _ = write!(
@@ -455,7 +470,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             is_neo,
             false,
             native,
-            options,
+            work_meter,
         )?;
         out.push_str("</g>");
         out.checkpoint()?;
@@ -463,7 +478,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         match direction {
             TimelineDirection::LeftToRight => {
                 for connector in &task.connectors {
-                    options.checkpoint_emit()?;
+                    work_meter.checkpoint(OperationPhase::Emit)?;
                     write_timeline_connector(out, connector, Some(diagram_id), native)?;
                 }
                 for event in &task.events {
@@ -477,7 +492,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                         is_redux_theme,
                         is_neo,
                         native,
-                        options,
+                        work_meter,
                     )?;
                 }
             }
@@ -494,15 +509,15 @@ pub(crate) fn render_timeline_diagram_svg_model(
                         is_redux_theme,
                         is_neo,
                         native,
-                        options,
+                        work_meter,
                     )?;
                     if let Some(connector) = task.connectors.get(index) {
-                        options.checkpoint_emit()?;
+                        work_meter.checkpoint(OperationPhase::Emit)?;
                         write_timeline_connector(out, connector, marker_id, native)?;
                     }
                 }
                 for connector in task.connectors.iter().skip(task.events.len()) {
-                    options.checkpoint_emit()?;
+                    work_meter.checkpoint(OperationPhase::Emit)?;
                     write_timeline_connector(out, connector, marker_id, native)?;
                 }
             }
@@ -520,29 +535,27 @@ pub(crate) fn render_timeline_diagram_svg_model(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::TIMELINE, diagram_id)
-        .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                dom: root_svg::RootDomProfile {
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
-                },
-                ..root_svg::RootChrome::new(diagram_id, "timeline")
+    let mut out = BoundedSvgOutput::new(work_meter);
+    let root_document = viewport.write_open(
+        &mut out,
+        root_spec,
+        root_svg::RootChrome {
+            dom: root_svg::RootDomProfile {
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                trailing_newline: false,
+                ..Default::default()
             },
-        )?;
+            ..root_svg::RootChrome::new(diagram_id, "timeline")
+        },
+    )?;
     out.checkpoint()?;
     let arrowhead_id = if layout.direction == TimelineDirection::TopDown && native.is_none() {
         "undefined-arrowhead".to_string()
     } else {
         scoped_svg_id(diagram_id, "arrowhead").to_string()
     };
-    options.checkpoint_emit()?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
 
     // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
     // marker initialization without a diagram id. Preserve both observable source behaviors.
@@ -554,13 +567,13 @@ pub(crate) fn render_timeline_diagram_svg_model(
         write_timeline_activity_line(&mut out, &layout.activity_line, marker_end, native)?;
     }
 
-    options.checkpoint_emit()?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
     out.push_str("<style>");
     out.checkpoint()?;
     {
         let mut css = String::new();
         if let Some(native) = native {
-            let id = super::super::util::css_selector_diagram_id(diagram_id);
+            let id = CssSelectorDiagramId(diagram_id);
             style.common_css().write_prefix(&mut css, id)?;
             let _ = write!(
                 &mut css,
@@ -570,7 +583,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         } else if let Some(mermaid) = mermaid {
             write_timeline_css(&mut css, diagram_id, mermaid, style.common_css())?;
         }
-        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+        XmlTextOutput::new(&mut out).push_str(&css);
     }
     out.checkpoint()?;
     out.push_str("</style>");
@@ -629,7 +642,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     }
 
     for (ordinal, section) in layout.sections.iter().enumerate() {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         let node = &section.node;
         let _ = write!(
             &mut out,
@@ -649,13 +662,13 @@ pub(crate) fn render_timeline_diagram_svg_model(
             is_neo,
             false,
             native,
-            options,
+            work_meter,
         )?;
         out.push_str("</g>");
         out.checkpoint()?;
 
         for task in &section.tasks {
-            options.checkpoint_emit()?;
+            work_meter.checkpoint(OperationPhase::Emit)?;
             render_task(
                 &mut out,
                 diagram_id,
@@ -666,13 +679,13 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 is_redux_theme,
                 is_neo,
                 native,
-                options,
+                work_meter,
             )?;
         }
     }
 
     for (index, task) in layout.orphan_tasks.iter().enumerate() {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         let ordinal = if style.layout_settings().disable_multicolor {
             0
         } else {
@@ -688,12 +701,12 @@ pub(crate) fn render_timeline_diagram_svg_model(
             is_redux_theme,
             is_neo,
             native,
-            options,
+            work_meter,
         )?;
     }
 
     if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         let title_style = style.layout_settings().title_style.as_ref();
         let title_size = title_style
             .filter(|_| style.used_font_size_px().is_some())
@@ -721,7 +734,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     }
 
     if layout.direction == TimelineDirection::LeftToRight {
-        options.checkpoint_emit()?;
+        work_meter.checkpoint(OperationPhase::Emit)?;
         write_timeline_activity_line(
             &mut out,
             &layout.activity_line,
@@ -731,15 +744,18 @@ pub(crate) fn render_timeline_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
-    options.checkpoint_emit()?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
     root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
+    use crate::timeline::tests::presentation_config;
+    use merman_model::{family::DiagramFamilyId, presentation::PresentationConfig};
+    use merman_render_core::{
+        Error, resources::RenderResourcePolicy, svg_css::SvgDiagramIdProjection,
+    };
     use std::fmt;
     use std::ops::Range;
 
@@ -786,14 +802,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -816,7 +832,7 @@ mod tests {
         let error = write_timeline_connector(&mut out, &connector, None, None)
             .expect_err("the rejecting sink must stop Timeline connector emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "Timeline connector emission must stop at the first failed sink checkpoint"
@@ -831,14 +847,14 @@ mod tests {
             None,
         );
         let error = write_timeline_css(
-            &mut super::super::super::output::XmlTextOutput::new(&mut out),
+            &mut XmlTextOutput::new(&mut out),
             "timelineCssFailure",
             style.css_binding().unwrap(),
             style.common_css(),
         )
         .expect_err("the rejecting sink must stop Timeline stylesheet emission");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(error, Error::InvalidModel { .. }));
         assert_eq!(out.write_attempts, 1);
     }
 
@@ -871,30 +887,31 @@ mod tests {
         }
     }
 
+    fn render_test_svg(
+        layout: &TimelineDiagramLayout,
+        style: &TimelineStyle,
+        id: &str,
+    ) -> root_svg::RootedSvg {
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let projection = SvgDiagramIdProjection::new(&work_meter);
+        let id = SvgId::new(id)
+            .expect("valid fixture diagram ID")
+            .with_projection(&projection);
+        let viewport = root_svg::RootViewportContext::new(DiagramFamilyId::TIMELINE, id);
+        let svg = render_timeline_svg(layout, style, id, &viewport, &work_meter);
+        projection.finish().expect("projected IDs admitted");
+        svg.expect("render Timeline SVG")
+    }
+
     #[test]
     fn timeline_root_honors_disabled_max_width() {
         let layout = test_axis_layout();
-        let options = SvgRenderOptions {
-            diagram_id: Some("timelineFixed".to_string()),
-            ..Default::default()
-        };
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .expect("render session");
-        let debug = SvgDebugOptions::default();
-        let execution =
-            SvgExecution::unthemed_for_test(&options, &debug, &session, DiagramFamilyId::TIMELINE)
-                .expect("SVG execution");
-
-        let svg = render_timeline_diagram_svg_model(
+        let svg = render_test_svg(
             &layout,
-            &TimelineStyle::resolve(
-                &merman_model::presentation::PresentationConfig::default(),
-                None,
-            ),
-            &execution,
-        )
-        .unwrap();
+            &TimelineStyle::resolve(&PresentationConfig::default(), None),
+            "timelineFixed",
+        );
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
         assert!(root_open.contains(r#"width="320""#), "{root_open}");
@@ -935,26 +952,13 @@ mod tests {
             let effective_config = serde_json::json!({
                 "theme": "redux", "look": "neo", "themeVariables": variables,
             });
-            let config = crate::test_support::presentation_config(effective_config.clone());
-            let options = SvgRenderOptions::default();
-            let debug = SvgDebugOptions::default();
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .expect("render session");
-            let execution = SvgExecution::unthemed_for_test(
-                &options,
-                &debug,
-                &session,
-                DiagramFamilyId::TIMELINE,
-            )
-            .expect("SVG execution");
-            let svg = render_timeline_diagram_svg_model(
+            let config = presentation_config(effective_config);
+            let svg = render_test_svg(
                 &test_axis_layout(),
                 &TimelineStyle::resolve(&config, None),
-                &execution,
-            )
-            .expect("raw effective-config Timeline SVG");
-            let document = crate::xml_dom::Document::parse(&svg).expect("valid Timeline SVG");
+                "merman",
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
             let stops = document
                 .descendants()
                 .filter(|node| node.has_tag_name("stop"))

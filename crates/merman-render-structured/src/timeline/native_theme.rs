@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
 use merman_model::presentation::PresentationConfig;
-use merman_theme_contract::v2::DataPalette;
-
-use crate::theme::FamilyTheme;
+use merman_theme_contract::v2::{DataPalette, FamilyTheme};
 
 use super::TimelineConfigView;
 
@@ -77,7 +75,7 @@ impl TimelineNativeStyle {
             connector_width: theme.form.connector_width,
             border: border.unwrap_or_else(|| roles.stroke_border.first_color().to_string()),
             border_width: if config.explicit_config_owns_path("themeVariables.strokeWidth") {
-                crate::config::config_css_number_or_string(
+                merman_render_core::config::config_css_number_or_string(
                     config,
                     &["themeVariables", "strokeWidth"],
                 )
@@ -92,8 +90,9 @@ impl TimelineNativeStyle {
             gradient_stops: (config.explicit_config_owns_path("themeVariables.useGradient")
                 && config_view.uses_neo_gradient())
             .then(|| {
-                ["gradientStart", "gradientStop"]
-                    .map(|key| crate::config::config_string(config, &["themeVariables", key]))
+                ["gradientStart", "gradientStop"].map(|key| {
+                    merman_render_core::config::config_string(config, &["themeVariables", key])
+                })
             }),
             event_fill: source("themeVariables.mainBkg")
                 .unwrap_or_else(|| roles.surface_node.first_color().to_string()),

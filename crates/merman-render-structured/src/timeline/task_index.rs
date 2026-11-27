@@ -1,7 +1,7 @@
-use crate::resources::OperationWorkMeter;
-use crate::{Error, Result};
 use merman_model::OperationPhase;
 use merman_model::families::timeline::{TimelineDiagramModel, TimelineTask};
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::{Error, Result};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
@@ -149,7 +149,7 @@ impl<'model> TimelineTaskIndex<'model> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::RenderResourcePolicy;
+    use merman_render_core::resources::RenderResourcePolicy;
 
     fn task(id: i64, section: &str, section_index: Option<usize>, label: &str) -> TimelineTask {
         TimelineTask {

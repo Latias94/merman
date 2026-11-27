@@ -1,10 +1,10 @@
-use crate::config::{config_bool, config_f64, config_f64_css_px};
-use crate::text::TextStyle;
+use merman_render_core::config::{config_bool, config_f64, config_f64_css_px};
+use merman_render_core::text::TextStyle;
 use serde_json::Value;
 
 const DEFAULT_LEFT_MARGIN: f64 = 150.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
-const DEFAULT_USE_MAX_WIDTH: bool = false;
+pub(super) const DEFAULT_USE_MAX_WIDTH: bool = false;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
 
@@ -53,7 +53,7 @@ impl<'a> TimelineConfigView<'a> {
 
     /// Neo's gradient stylesheet replaces both Classic and Redux section paint owners.
     pub(crate) fn uses_neo_gradient(&self) -> bool {
-        crate::config::config_diagram_look(self.effective_config).is_neo()
+        merman_render_core::config::config_diagram_look(self.effective_config).is_neo()
             && config_bool(self.effective_config, &["themeVariables", "useGradient"])
                 .unwrap_or(false)
             && self.effective_config.get("theme").and_then(Value::as_str) != Some("neutral")
@@ -72,7 +72,7 @@ impl<'a> TimelineConfigView<'a> {
             title_style,
             layout_font_size,
             theme_color_limit: timeline_theme_color_limit(self.effective_config),
-            is_neo: crate::config::config_diagram_look(self.effective_config).is_neo(),
+            is_neo: merman_render_core::config::config_diagram_look(self.effective_config).is_neo(),
             left_margin: config_f64(self.timeline_config, &["leftMargin"])
                 .unwrap_or(DEFAULT_LEFT_MARGIN)
                 .max(0.0),
@@ -88,23 +88,8 @@ impl<'a> TimelineConfigView<'a> {
 
     #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
-        self.layout_settings_with_resolved_typography(None, None)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn layout_settings_with_resolved_typography(
-        &self,
-        resolved_font_family_css: Option<&str>,
-        resolved_font_size_px: Option<f64>,
-    ) -> TimelineLayoutSettings {
-        let mut text_style = self.text_style();
+        let text_style = self.text_style();
         let layout_font_size = self.root_font_size_px().unwrap_or(text_style.font_size);
-        if let Some(font_family_css) = resolved_font_family_css {
-            text_style.font_family = Some(font_family_css.to_owned());
-        }
-        if let Some(font_size_px) = resolved_font_size_px {
-            text_style.font_size = font_size_px.max(0.0);
-        }
         let node_text_style =
             super::TimelineCssBinding::resolve(self.effective_config).node_text_style(&text_style);
         self.layout_settings_for(text_style, node_text_style, None, layout_font_size)
@@ -124,11 +109,11 @@ impl<'a> TimelineConfigView<'a> {
         }
         let raw = value.as_str()?.trim();
         let declaration = format!("font-size:{raw}");
-        let parsed = crate::mermaid_style::parse_style_declaration(&declaration);
+        let parsed = merman_render_core::mermaid_style::parse_style_declaration(&declaration);
         // This value enters an ordinary stylesheet declaration, not CSSOM setProperty.
         // Parse its optional terminator before applying the single-value ownership boundary.
         let css = parsed.as_ref().map_or(raw, |parsed| parsed.source_value());
-        crate::mermaid_style::css_font_size_value_override(css)?;
+        merman_render_core::mermaid_style::css_font_size_value_override(css)?;
         // Relative root sizes need the receiving ancestor. Literal zero is independent of
         // that ancestor; expressions and unrepresentable sizes retain unknown visibility.
         let used_px = parsed.as_ref().and_then(|parsed| {
@@ -167,10 +152,15 @@ impl<'a> TimelineConfigView<'a> {
 
     #[cfg(test)]
     fn font_family(&self) -> Option<String> {
-        crate::config::config_string(self.effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| crate::config::config_string(self.effective_config, &["fontFamily"]))
-            .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-            .filter(|s| !s.is_empty())
+        merman_render_core::config::config_string(
+            self.effective_config,
+            &["themeVariables", "fontFamily"],
+        )
+        .or_else(|| {
+            merman_render_core::config::config_string(self.effective_config, &["fontFamily"])
+        })
+        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        .filter(|s| !s.is_empty())
     }
 }
 

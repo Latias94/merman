@@ -1,9 +1,9 @@
 use merman_model::presentation::PresentationConfig;
-
-use crate::config::config_font_family_css;
-use crate::svg::PreparedCommonCss;
-use crate::text::TextStyle;
-use crate::theme::{FamilyTheme, font_family_css};
+use merman_render_core::{
+    config::config_font_family_css, mermaid_style::font_family_css, svg_css::PreparedCommonCss,
+    text::TextStyle,
+};
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::config::TimelineFontSize;
 use super::{TimelineCssBinding, TimelineNativeStyle};
@@ -14,8 +14,9 @@ enum TimelineAppearance {
     Native(TimelineNativeStyle),
 }
 
+/// Resolved Timeline layout and SVG presentation.
 #[derive(Debug)]
-pub(crate) struct TimelineStyle {
+pub struct TimelineStyle {
     appearance: TimelineAppearance,
     common_css: PreparedCommonCss,
     layout_settings: super::config::TimelineLayoutSettings,
@@ -70,7 +71,7 @@ impl TimelineStyle {
             .find_map(|path| {
                 config
                     .get_str(path)
-                    .and_then(crate::config::normalized_config_font_family)
+                    .and_then(merman_render_core::config::normalized_config_font_family)
             });
         let body_family = source_family
             .clone()
@@ -105,7 +106,7 @@ impl TimelineStyle {
             && config.explicit_config_owns_path("themeVariables.fontWeight")
             && super::timeline_theme_color_limit(config.as_value()) != 0)
             .then(|| {
-                crate::config::config_css_number_or_string(
+                merman_render_core::config::config_css_number_or_string(
                     config,
                     &["themeVariables", "fontWeight"],
                 )
@@ -176,7 +177,7 @@ impl TimelineStyle {
         }
     }
 
-    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+    pub(crate) fn common_css(&self) -> &PreparedCommonCss {
         &self.common_css
     }
 
@@ -192,18 +193,20 @@ impl TimelineStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::timeline::tests::presentation_config;
+    use merman_theme_contract::v2::{BuiltinPreset, ThemeCompiler};
 
     #[test]
     fn native_timeline_projects_authored_gradient_and_redux_font_weight() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "theme": "redux", "look": "neo", "fontSize": "18px",
             "themeVariables": {
                 "fontSize": "24px", "fontWeight": "bold !important",
                 "useGradient": true, "gradientStop": "#112233"
             }
         }));
-        let theme = crate::theme::ThemeCompiler::new()
-            .compile_preset(crate::theme::BuiltinPreset::Studio, None)
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Studio, None)
             .unwrap();
         let plan = TimelineStyle::resolve(&config, Some(theme.family("timeline")));
         let settings = plan.layout_settings();
@@ -220,7 +223,7 @@ mod tests {
 
     #[test]
     fn prepared_layout_preserves_independent_root_font_offset() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
+        let config = presentation_config(serde_json::json!({
             "theme": "redux", "fontSize": "18px",
             "themeVariables": {"fontSize": "24px", "fontWeight": 900, "textColor": "var(--text)"}
         }));
@@ -246,7 +249,7 @@ mod tests {
             plan.layout_settings().text_style.font_family
         );
         for size in [0.0, 0.5] {
-            let config = crate::test_support::presentation_config(serde_json::json!({
+            let config = presentation_config(serde_json::json!({
                 "fontSize": "18px", "themeVariables": {"fontSize": format!("{size}px")}
             }));
             let plan = TimelineStyle::resolve(&config, None);

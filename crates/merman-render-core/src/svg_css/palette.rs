@@ -1,4 +1,16 @@
-pub(crate) fn default_c_scale(index: usize) -> &'static str {
+//! Mermaid's default section colors shared by diagram stylesheets.
+
+/// Returns the default section fill, label, and inverse colors for a slot.
+pub fn default_section_colors(index: usize) -> [&'static str; 3] {
+    [
+        default_c_scale(index),
+        default_c_scale_label(index),
+        default_c_scale_inv(index),
+    ]
+}
+
+/// Returns the Mermaid default fill for a section color slot.
+pub fn default_c_scale(index: usize) -> &'static str {
     match index {
         0 => "hsl(240, 100%, 76.2745098039%)",
         1 => "hsl(60, 100%, 73.5294117647%)",
@@ -15,7 +27,7 @@ pub(crate) fn default_c_scale(index: usize) -> &'static str {
     }
 }
 
-pub(super) fn default_c_scale_inv(index: usize) -> &'static str {
+fn default_c_scale_inv(index: usize) -> &'static str {
     match index {
         0 => "hsl(60, 100%, 86.2745098039%)",
         1 => "hsl(240, 100%, 83.5294117647%)",
@@ -32,7 +44,7 @@ pub(super) fn default_c_scale_inv(index: usize) -> &'static str {
     }
 }
 
-pub(super) fn default_c_scale_label(index: usize) -> &'static str {
+fn default_c_scale_label(index: usize) -> &'static str {
     match index {
         0 | 3 => "#ffffff",
         _ => "black",
