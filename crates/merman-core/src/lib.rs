@@ -48,7 +48,7 @@ use merman_markup::style;
 use merman_markup::theme_color;
 #[cfg(feature = "diagram-class")]
 use merman_model::text as common;
-#[cfg(any(test, feature = "presentation", feature = "diagram-gantt"))]
+#[cfg(any(test, feature = "presentation"))]
 use merman_model::time;
 use merman_model::{baseline, json as json_value, operation, text as entities};
 mod common_db;

@@ -1,15 +1,6 @@
 use super::*;
-use crate::{OperationControl, OperationControlResult};
 use merman_model::text::is_ecmascript_whitespace;
-
-pub(crate) fn sanitize_common_db_fields<Task>(
-    model: &mut GanttDiagramModel<Task>,
-    config: &crate::MermaidConfig,
-) {
-    crate::common_db::sanitize_optional_title(&mut model.title, config);
-    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
-    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
+use merman_model::{OperationControl, OperationControlResult};
 
 #[derive(Debug, Clone)]
 pub(super) enum StartTimeRaw {
@@ -187,7 +178,7 @@ impl GanttDb {
     pub(super) fn set_link(&mut self, ids: &str, link_str: &str) {
         let mut link_str = link_str.to_string();
         if self.security_level != "loose" {
-            link_str = utils::sanitize_url(&link_str);
+            link_str = merman_markup::url::sanitize_url(&link_str);
         }
         for id in ids.split(',') {
             if self.find_task_by_id(id).is_some() {
@@ -274,6 +265,7 @@ impl GanttDb {
 
     fn compile_tasks_controlled(
         &mut self,
+        runtime: &OperationContext,
         control: &OperationControl,
     ) -> OperationControlResult<Result<bool>> {
         let mut all_processed = true;
@@ -281,7 +273,7 @@ impl GanttDb {
             if i % 128 == 0 {
                 control.checkpoint()?;
             }
-            let processed = match self.compile_task(i) {
+            let processed = match self.compile_task(i, runtime) {
                 Ok(processed) => processed,
                 Err(error) => return Ok(Err(error)),
             };
@@ -290,7 +282,7 @@ impl GanttDb {
         Ok(Ok(all_processed))
     }
 
-    fn compile_task(&mut self, pos: usize) -> Result<bool> {
+    fn compile_task(&mut self, pos: usize, runtime: &OperationContext) -> Result<bool> {
         let start_spec = self.raw_tasks.get(pos).map(|t| t.raw.start_time.clone());
         let Some(start_spec) = start_spec else {
             return Ok(false);
@@ -306,7 +298,7 @@ impl GanttDb {
                 }
             }
             StartTimeRaw::GetStartDate { start_data } => {
-                let start_time = get_start_date(self, &self.date_format, &start_data)?;
+                let start_time = get_start_date(self, &self.date_format, &start_data, runtime)?;
                 if let Some(start_time) = start_time {
                     self.raw_tasks[pos].start_time = Some(start_time);
                 }
@@ -324,19 +316,20 @@ impl GanttDb {
             &self.date_format,
             &end_data,
             self.inclusive_end_dates,
+            runtime,
         )?;
         self.raw_tasks[pos].end_time = end_time;
         self.raw_tasks[pos].processed = self.raw_tasks[pos].end_time.is_some();
 
         if self.raw_tasks[pos].processed {
             self.raw_tasks[pos].manual_end_time = is_strict_yyyy_mm_dd(&end_data);
-            self.check_task_dates(pos)?;
+            self.check_task_dates(pos, runtime)?;
         }
 
         Ok(self.raw_tasks[pos].processed)
     }
 
-    fn check_task_dates(&mut self, pos: usize) -> Result<()> {
+    fn check_task_dates(&mut self, pos: usize, runtime: &OperationContext) -> Result<()> {
         if self.excludes.is_empty() || self.raw_tasks[pos].manual_end_time {
             return Ok(());
         }
@@ -347,11 +340,11 @@ impl GanttDb {
             return Ok(());
         };
 
-        let Some(start_time) = add_days_local(start_time, 1) else {
+        let Some(start_time) = add_days_local(start_time, 1, runtime) else {
             return Ok(());
         };
         let (fixed_end_time, render_end_time) =
-            fix_task_dates(self, start_time, end_time, &self.date_format)?;
+            fix_task_dates(self, start_time, end_time, &self.date_format, runtime)?;
         self.raw_tasks[pos].end_time = Some(fixed_end_time);
         self.raw_tasks[pos].render_end_time = render_end_time;
 
@@ -360,10 +353,11 @@ impl GanttDb {
 
     pub(super) fn finalize_tasks_controlled(
         &mut self,
+        runtime: &OperationContext,
         control: &OperationControl,
     ) -> OperationControlResult<Result<()>> {
         control.checkpoint()?;
-        let mut all = match self.compile_tasks_controlled(control)? {
+        let mut all = match self.compile_tasks_controlled(runtime, control)? {
             Ok(all) => all,
             Err(error) => return Ok(Err(error)),
         };
@@ -371,7 +365,7 @@ impl GanttDb {
         let mut iters = 0;
         while !all && iters < max_depth {
             control.checkpoint()?;
-            all = match self.compile_tasks_controlled(control)? {
+            all = match self.compile_tasks_controlled(runtime, control)? {
                 Ok(all) => all,
                 Err(error) => return Ok(Err(error)),
             };

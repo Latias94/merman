@@ -1,38 +1,33 @@
 #[cfg(any(
     feature = "diagram-c4",
-    feature = "diagram-gantt",
     feature = "diagram-journey",
     feature = "diagram-requirement"
 ))]
 pub(crate) use merman_core_preprocess::scan::LineCursor;
+#[cfg(any(
+    test,
+    feature = "diagram-event-modeling",
+    feature = "diagram-tree-view",
+    feature = "diagram-wardley"
+))]
+pub(crate) use merman_core_preprocess::scan::physical_line_at;
+#[cfg(any(test, feature = "diagram-journey"))]
+pub(crate) use merman_core_preprocess::scan::split_statement_suffix_hash_or_semi;
+#[cfg(any(
+    test,
+    feature = "diagram-journey",
+    feature = "diagram-kanban",
+    feature = "diagram-mindmap",
+    feature = "diagram-requirement"
+))]
+pub(crate) use merman_core_preprocess::scan::starts_with_case_insensitive;
+#[cfg(any(
+    feature = "diagram-architecture",
+    feature = "diagram-cynefin",
+    feature = "diagram-kanban"
+))]
 pub(crate) use merman_core_preprocess::scan::strip_line_ending;
 pub(crate) use merman_model::text::is_ecmascript_whitespace;
-
-pub(crate) fn physical_line_at(source: &str, offset: usize) -> (&str, usize) {
-    let rest = &source[offset..];
-    let (segment, next_offset) = match rest.find('\n') {
-        Some(relative_newline) => (&rest[..=relative_newline], offset + relative_newline + 1),
-        None => (rest, source.len()),
-    };
-    (strip_line_ending(segment), next_offset)
-}
-
-pub(crate) fn starts_with_case_insensitive(haystack: &str, needle: &str) -> bool {
-    if haystack.len() < needle.len() {
-        return false;
-    }
-    haystack
-        .as_bytes()
-        .iter()
-        .take(needle.len())
-        .copied()
-        .map(|b| b.to_ascii_lowercase())
-        .eq(needle
-            .as_bytes()
-            .iter()
-            .copied()
-            .map(|b| b.to_ascii_lowercase()))
-}
 
 pub(crate) fn split_indent_by<F>(line: &str, mut is_indent_char: F) -> (usize, &str)
 where
@@ -69,17 +64,6 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
         .take_while(|ch| ch.is_whitespace())
         .map(char::len_utf8)
         .sum()
-}
-
-pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
-    let mut end = s.len();
-    for (i, c) in s.char_indices() {
-        if c == '#' || c == ';' {
-            end = i;
-            break;
-        }
-    }
-    &s[..end]
 }
 
 #[cfg(test)]

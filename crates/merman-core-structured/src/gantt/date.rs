@@ -154,7 +154,11 @@ fn split_at_char_boundary(s: &str, byte_idx: usize) -> (&str, &str) {
     s.split_at(idx)
 }
 
-pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<OffsetDateTime> {
+pub(super) fn parse_dayjs_like_strict(
+    date_format: &str,
+    s: &str,
+    runtime: &OperationContext,
+) -> Option<OffsetDateTime> {
     let fmt = date_format.trim();
     if fmt.is_empty() {
         return None;
@@ -569,7 +573,7 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Offs
         return js_date_from_unix_millis(ms);
     }
 
-    let base_date = crate::runtime::today_local();
+    let base_date = runtime.today_local();
 
     // Dayjs strict parsing defaults missing calendar fields to the *start* of the larger unit:
     // - `YYYY` => Jan 1st
@@ -609,50 +613,44 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Offs
     if let Some(mins) = parts.offset_minutes {
         OffsetDateTime::from_local(local, UtcOffset::from_minutes(mins)?)
     } else {
-        local_from_civil(local)
+        local_from_civil(local, runtime)
     }
 }
 
-pub(super) fn parse_js_date_fallback(s: &str) -> Result<OffsetDateTime> {
+pub(super) fn parse_js_date_fallback(
+    s: &str,
+    runtime: &OperationContext,
+) -> Result<OffsetDateTime> {
     let s = s.trim();
 
-    if let Some(dt) = parse_js_like_ymd_datetime(s).or_else(|| parse_js_like_mdy_hm_datetime(s)) {
+    if let Some(dt) =
+        parse_js_like_ymd_datetime(s, runtime).or_else(|| parse_js_like_mdy_hm_datetime(s, runtime))
+    {
         let year = dt.year();
         if !(-10000..=10000).contains(&year) {
-            return Err(Error::diagram_parse_fallback(
-                "gantt".to_string(),
-                format!("Invalid date:{s}"),
-            ));
+            return Err(GanttSourceIssue::fallback(format!("Invalid date:{s}")));
         }
         return Ok(dt);
     }
 
     if is_ascii_digits(s) {
-        let n: i32 = s.parse().map_err(|_| {
-            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
-        })?;
+        let n: i32 = s
+            .parse()
+            .map_err(|_| GanttSourceIssue::fallback(format!("Invalid date:{s}")))?;
         let year = if s.len() <= 2 { 2000 + n } else { n };
         if !(-10000..=10000).contains(&year) {
-            return Err(Error::diagram_parse_fallback(
-                "gantt".to_string(),
-                format!("Invalid date:{s}"),
-            ));
+            return Err(GanttSourceIssue::fallback(format!("Invalid date:{s}")));
         }
-        let date = CivilDate::new(year, 1, 1).ok_or_else(|| {
-            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
-        })?;
-        return local_from_civil(date.at_midnight()).ok_or_else(|| {
-            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
-        });
+        let date = CivilDate::new(year, 1, 1)
+            .ok_or_else(|| GanttSourceIssue::fallback(format!("Invalid date:{s}")))?;
+        return local_from_civil(date.at_midnight(), runtime)
+            .ok_or_else(|| GanttSourceIssue::fallback(format!("Invalid date:{s}")));
     }
 
-    Err(Error::diagram_parse_fallback(
-        "gantt".to_string(),
-        format!("Invalid date:{s}"),
-    ))
+    Err(GanttSourceIssue::fallback(format!("Invalid date:{s}")))
 }
 
-fn parse_js_like_ymd_datetime(s: &str) -> Option<OffsetDateTime> {
+fn parse_js_like_ymd_datetime(s: &str, runtime: &OperationContext) -> Option<OffsetDateTime> {
     fn parse_u32(s: &str) -> Option<u32> {
         if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
             return None;
@@ -759,7 +757,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<OffsetDateTime> {
         if sep == '-' && js_date_only_is_iso_utc(year_str, month_str, day_str) {
             return OffsetDateTime::from_local(local, UtcOffset::UTC);
         }
-        return local_from_civil(local);
+        return local_from_civil(local, runtime);
     }
 
     if let Some(r) = rest.strip_prefix(['T', 't']) {
@@ -820,10 +818,10 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<OffsetDateTime> {
         return OffsetDateTime::from_local(local, UtcOffset::from_minutes(mins)?);
     }
 
-    local_from_civil(local)
+    local_from_civil(local, runtime)
 }
 
-fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<OffsetDateTime> {
+fn parse_js_like_mdy_hm_datetime(s: &str, runtime: &OperationContext) -> Option<OffsetDateTime> {
     // V8 parses strings like `08-08-09-01:00` as local time using an `MM-DD-YY-HH:mm` heuristic.
     // Mermaid gantt falls back to `new Date(str)` when dayjs strict parsing fails, so we mirror
     // that behavior for parity (see `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.js`).
@@ -900,7 +898,7 @@ fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<OffsetDateTime> {
     };
 
     let local = CivilDate::new(year, month, day)?.at_hms_milli(hour, minute, second, millis)?;
-    local_from_civil(local)
+    local_from_civil(local, runtime)
 }
 
 fn is_ascii_digits(s: &str) -> bool {
@@ -968,6 +966,7 @@ pub(super) fn get_start_date(
     db: &GanttDb,
     date_format: &str,
     raw: &str,
+    runtime: &OperationContext,
 ) -> Result<Option<OffsetDateTime>> {
     let s = raw.trim_matches(is_ecmascript_whitespace);
 
@@ -997,7 +996,7 @@ pub(super) fn get_start_date(
         }
         return Ok(match latest {
             Some(end) => end,
-            None => today_midnight_local(),
+            None => today_midnight_local(runtime),
         });
     }
 
@@ -1013,17 +1012,14 @@ pub(super) fn get_start_date(
         return Ok(Some(dt));
     }
 
-    if let Some(dt) = parse_dayjs_like_strict(date_format, s) {
+    if let Some(dt) = parse_dayjs_like_strict(date_format, s, runtime) {
         return Ok(Some(dt));
     }
 
-    let dt = parse_js_date_fallback(s)?;
+    let dt = parse_js_date_fallback(s, runtime)?;
     let year = dt.year();
     if !(-10000..=10000).contains(&year) {
-        return Err(Error::diagram_parse_fallback(
-            "gantt".to_string(),
-            format!("Invalid date:{s}"),
-        ));
+        return Err(GanttSourceIssue::fallback(format!("Invalid date:{s}")));
     }
     Ok(Some(dt))
 }
@@ -1079,7 +1075,12 @@ fn add_milliseconds(dt: OffsetDateTime, value: f64, scale: f64) -> Option<Offset
     dt.checked_add_millis(milliseconds)
 }
 
-fn add_duration(dt: OffsetDateTime, value: f64, unit: &str) -> Option<OffsetDateTime> {
+fn add_duration(
+    dt: OffsetDateTime,
+    value: f64,
+    unit: &str,
+    runtime: &OperationContext,
+) -> Option<OffsetDateTime> {
     if !value.is_finite() {
         return None;
     }
@@ -1089,28 +1090,28 @@ fn add_duration(dt: OffsetDateTime, value: f64, unit: &str) -> Option<OffsetDate
         "m" => add_milliseconds(dt, value, 60_000.0),
         "h" => add_milliseconds(dt, value, 3_600_000.0),
         // Day.js rounds calendar days/weeks with Math.round before the local date setter.
-        "d" => add_days_local(dt, trunc_f64_to_i64((value + 0.5).floor())?),
-        "w" => add_days_local(dt, trunc_f64_to_i64((value * 7.0 + 0.5).floor())?),
+        "d" => add_days_local(dt, trunc_f64_to_i64((value + 0.5).floor())?, runtime),
+        "w" => add_days_local(dt, trunc_f64_to_i64((value * 7.0 + 0.5).floor())?, runtime),
         "M" => {
             // Native setMonth truncates the target field, then clamps the original day.
-            let month = i64::from(crate::runtime::datetime_to_local_civil(dt).month0());
+            let month = i64::from(datetime_to_local_civil(dt, runtime).month0());
             let target = trunc_f64_to_i64(month as f64 + value)?;
-            add_months_local(dt, target.checked_sub(month)?)
+            add_months_local(dt, target.checked_sub(month)?, runtime)
         }
         "y" => {
-            let year = i64::from(crate::runtime::datetime_to_local_civil(dt).year());
+            let year = i64::from(datetime_to_local_civil(dt, runtime).year());
             let target = trunc_f64_to_i64(year as f64 + value)?;
-            add_years_local(dt, target.checked_sub(year)?)
+            add_years_local(dt, target.checked_sub(year)?, runtime)
         }
         _ => None,
     }?;
     if matches!(unit, "M" | "y") {
         // Day.js clamps through daysInMonth(), which computes the target month's end first.
-        let local = crate::runtime::datetime_to_local_civil(result);
-        let last_day = crate::time::days_in_month(local.year(), local.month());
+        let local = datetime_to_local_civil(result, runtime);
+        let last_day = merman_model::time::days_in_month(local.year(), local.month());
         let month_end =
             CivilDate::new(local.year(), local.month(), last_day)?.at_hms_milli(23, 59, 59, 999)?;
-        let month_end = local_from_civil(month_end)?;
+        let month_end = local_from_civil(month_end, runtime)?;
         if !(-JS_MAX_TIME_MILLIS..=JS_MAX_TIME_MILLIS).contains(&month_end.timestamp_millis()) {
             return None;
         }
@@ -1126,6 +1127,7 @@ pub(super) fn get_end_date(
     date_format: &str,
     raw: &str,
     inclusive: bool,
+    runtime: &OperationContext,
 ) -> Result<Option<OffsetDateTime>> {
     let s = raw.trim_matches(is_ecmascript_whitespace);
 
@@ -1155,20 +1157,20 @@ pub(super) fn get_end_date(
         }
         return Ok(match earliest {
             Some(start) => start,
-            None => today_midnight_local(),
+            None => today_midnight_local(runtime),
         });
     }
 
-    if let Some(mut dt) = parse_dayjs_like_strict(date_format, s) {
+    if let Some(mut dt) = parse_dayjs_like_strict(date_format, s, runtime) {
         if inclusive {
-            dt = add_days_local(dt, 1).unwrap_or(dt);
+            dt = add_days_local(dt, 1, runtime).unwrap_or(dt);
         }
         return Ok(Some(dt));
     }
 
     let (value, unit) = parse_duration(s);
     if value.is_finite()
-        && let Some(new_dt) = add_duration(prev_time, value, &unit)
+        && let Some(new_dt) = add_duration(prev_time, value, &unit, runtime)
     {
         return Ok(Some(new_dt));
     }
@@ -1240,14 +1242,18 @@ pub(super) fn ordinal_suffix(n: u32) -> &'static str {
     }
 }
 
-pub(super) fn format_dayjs_like(dt: OffsetDateTime, fmt: &str) -> String {
+pub(super) fn format_dayjs_like(
+    dt: OffsetDateTime,
+    fmt: &str,
+    runtime: &OperationContext,
+) -> String {
     let fmt = fmt.trim();
     if fmt.is_empty() {
         return String::new();
     }
 
     let items = tokenize_dayjs_format(fmt);
-    let local = crate::runtime::datetime_to_local(dt);
+    let local = datetime_to_local(dt, runtime);
     let civil = local.local_datetime();
 
     let mut out = String::new();

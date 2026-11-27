@@ -7,8 +7,6 @@
     feature = "diagram-swimlane"
 ))]
 pub(crate) use merman_markup::url::format_url;
-#[cfg(feature = "diagram-gantt")]
-pub(crate) use merman_markup::url::sanitize_url;
 
 #[cfg(any(
     feature = "diagram-block",

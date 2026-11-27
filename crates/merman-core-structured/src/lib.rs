@@ -2,6 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "diagram-gantt")]
+#[doc(hidden)]
+pub mod gantt;
+
 #[cfg(feature = "diagram-info")]
 #[doc(hidden)]
 pub mod info;

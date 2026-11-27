@@ -11,10 +11,8 @@ use merman_model::runtime::OperationContext;
 use merman_model::runtime::RuntimePolicy;
 #[cfg(test)]
 use merman_model::runtime::{RuntimeCapability, RuntimePolicyError, compiled_system_adapter_ids};
-#[cfg(any(test, feature = "diagram-gantt"))]
+#[cfg(test)]
 use merman_model::time::CivilDate;
-#[cfg(feature = "diagram-gantt")]
-use merman_model::time::{CivilDateTime, OffsetDateTime};
 use std::cell::RefCell;
 
 thread_local! {
@@ -42,29 +40,9 @@ pub(crate) fn with_operation_context<R>(context: &OperationContext, f: impl FnOn
     })
 }
 
-#[cfg(any(test, feature = "diagram-gantt"))]
+#[cfg(test)]
 pub(crate) fn today_local() -> CivilDate {
     active_operation_context().today_local()
-}
-
-#[cfg(feature = "diagram-gantt")]
-pub(crate) fn resolve_local_datetime(local: CivilDateTime) -> Option<OffsetDateTime> {
-    active_operation_context()
-        .local_time_zone()
-        .resolve_local(local)
-}
-
-#[cfg(feature = "diagram-gantt")]
-pub(crate) fn datetime_to_local(datetime: OffsetDateTime) -> OffsetDateTime {
-    active_operation_context()
-        .local_time_zone()
-        .at_instant(datetime.timestamp_millis())
-        .unwrap_or(datetime)
-}
-
-#[cfg(feature = "diagram-gantt")]
-pub(crate) fn datetime_to_local_civil(datetime: OffsetDateTime) -> CivilDateTime {
-    datetime_to_local(datetime).local_datetime()
 }
 
 #[cfg(any(

@@ -16,7 +16,7 @@ categories = ["parser-implementations", "visualization"]
 artifact-profile-required = true
 
 [features]
-presentation = ["merman-markup/color", "merman-model/presentation-data", "merman-core-graph?/presentation", "serde_json/raw_value"]
+presentation = ["merman-markup/color", "merman-model/presentation-data", "merman-core-graph?/presentation", "merman-core-structured?/presentation", "serde_json/raw_value"]
 editor-facts = ["merman-core-preprocess/yaml-editor", "merman-core-flow?/editor-facts", "merman-core-graph?/editor-facts", "merman-core-sequence?/editor-facts", "merman-core-structured?/editor-facts"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
@@ -67,7 +67,7 @@ diagram-event-modeling = ["merman-model/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "dep:rustc-hash", "dep:indexmap", "dep:merman-core-flow", "merman-core-flow/diagram-agentflow"]
 diagram-usecase = ["merman-model/diagram-usecase", "dep:indexmap"]
 diagram-flowchart = ["merman-model/diagram-flowchart", "dep:rustc-hash", "dep:indexmap", "dep:merman-core-flow", "merman-core-flow/diagram-flowchart"]
-diagram-gantt = ["merman-model/diagram-gantt"]
+diagram-gantt = ["merman-model/diagram-gantt", "dep:merman-core-structured", "merman-core-structured/diagram-gantt"]
 diagram-git-graph = ["merman-model/diagram-git-graph", "dep:merman-core-graph", "merman-core-graph/diagram-git-graph"]
 diagram-info = ["merman-model/diagram-info", "dep:merman-core-structured", "merman-core-structured/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa", "dep:merman-core-structured", "merman-core-structured/diagram-ishikawa"]
@@ -121,6 +121,7 @@ unicode-general-category = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-core-structured = { workspace = true, features = ["test-support"] }
 merman-core-preprocess = { workspace = true, features = ["test-support"] }
 merman-model = { workspace = true, features = ["test-support"] }
 futures = { workspace = true, features = ["executor"] }

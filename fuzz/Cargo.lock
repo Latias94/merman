@@ -1007,6 +1007,7 @@ name = "merman-core-structured"
 version = "0.11.0"
 dependencies = [
  "merman-core-preprocess",
+ "merman-markup",
  "merman-model",
  "serde_json",
 ]

@@ -17,6 +17,7 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-gantt = ["dep:merman-core-preprocess", "dep:merman-markup", "merman-model/diagram-gantt"]
 diagram-info = ["dep:merman-core-preprocess"]
 diagram-ishikawa = []
 diagram-packet = ["merman-model/diagram-packet"]
@@ -25,9 +26,13 @@ diagram-sankey = ["merman-model/diagram-sankey", "dep:serde_json"]
 diagram-timeline = ["dep:merman-core-preprocess", "merman-model/diagram-timeline"]
 diagram-treemap = ["dep:merman-core-preprocess", "dep:serde_json", "merman-model/diagram-treemap"]
 editor-facts = []
+presentation = ["merman-model/presentation-data"]
+system-timezone = ["merman-model/system-timezone"]
+test-support = []
 
 [dependencies]
 merman-core-preprocess = { workspace = true, optional = true }
+merman-markup = { workspace = true, features = ["url"], optional = true }
 merman-model.workspace = true
 serde_json = { workspace = true, optional = true }
 

@@ -513,8 +513,8 @@ boundaries. Exclusion shading retains the scan's initial time of day when matchi
 then snaps only the painted range to calendar-day boundaries.
 `gantt.useMaxWidth` selects responsive or intrinsic SVG dimensions from the prepared layout size.
 
-Owners: [date parsing/formatting](../../crates/merman-core/src/diagrams/gantt/date.rs),
-[date tests](../../crates/merman-core/src/diagrams/gantt/tests.rs), and
+Owners: [date parsing/formatting](../../crates/merman-core-structured/src/gantt/date.rs),
+[date tests](../../crates/merman-core-structured/src/gantt/tests.rs), and
 [SVG regressions](../../crates/merman-render/tests/gantt_svg_test.rs). The
 [comparison runtime policy](../../crates/xtask/src/cmd/compare/diagrams/gantt.rs) owns snapshot time inputs.
 
