@@ -21,6 +21,7 @@ mod tests {
     #[test]
     fn rough_operation_bounds_match_serialized_path_bounds() {
         use super::{svg_path_bounds_from_d, svg_path_bounds_from_rough_ops};
+        use merman_render_core::rough_svg::ops_to_svg_path_d;
         use roughr::core::{Op, OpSet, OpSetType, OpType};
 
         let opset = OpSet {
@@ -46,9 +47,7 @@ mod tests {
             size: None,
             path: None,
         };
-        let expected =
-            svg_path_bounds_from_d(&super::super::roughjs_common::ops_to_svg_path_d(&opset))
-                .unwrap();
+        let expected = svg_path_bounds_from_d(&ops_to_svg_path_d(&opset)).unwrap();
         let actual = svg_path_bounds_from_rough_ops(&opset).unwrap();
         let coordinates = |bounds: super::SvgPathBounds| {
             [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)

@@ -13,14 +13,6 @@ use crate::model::*;
 )]
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use base64::Engine as _;
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
@@ -287,10 +279,7 @@ pub(crate) use util::escape_xml;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use util::{
-    escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display,
-    json_stringify_points_into,
-};
+use util::{escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.

@@ -1,9 +1,11 @@
 //! Flowchart node shape dispatch.
 
-use crate::flowchart::{FlowchartShape, resolve_flowchart_shape};
+use crate::flowchart::{FlowchartShape, LeanGeometry, LeanKind, resolve_flowchart_shape};
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
 use crate::{Error, Result};
+
+use super::{OuterPathShape, body_svg, node_body};
 
 pub(in super::super) fn render_flowchart_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -39,9 +41,9 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Browser => {
             super::render_browser(out, ctx, common, label, details);
         }
-        FlowchartShape::BowTieRectangle => {
-            super::render_bow_tie_rect(out, ctx, common, label, details);
-        }
+        FlowchartShape::BowTieRectangle => OuterPathShape::BowTieRectangle
+            .prepare(ctx, common, label)
+            .write(out, body_svg(common, details)),
         FlowchartShape::BraceLeft | FlowchartShape::BraceRight | FlowchartShape::Braces => {
             // The shared renderer uses the original spelling to select left/right/both braces.
             super::render_curly_brace_comment(out, ctx, common, label, details);
@@ -63,18 +65,18 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Console => {
             super::render_console(out, ctx, common, label, details);
         }
-        FlowchartShape::CurvedTrapezoid => {
-            super::render_curved_trapezoid(out, ctx, common, label, details);
-        }
+        FlowchartShape::CurvedTrapezoid => OuterPathShape::CurvedTrapezoid
+            .prepare(ctx, common, label)
+            .write(out, body_svg(common, details)),
         FlowchartShape::Cylinder => {
             super::render_cylinder(out, ctx, common, label, details);
         }
         FlowchartShape::Datastore => {
-            super::render_datastore(out, common, details);
+            node_body::write_datastore(out, body_svg(common, details));
         }
-        FlowchartShape::Delay => {
-            super::render_delay(out, ctx, common, label, details);
-        }
+        FlowchartShape::Delay => OuterPathShape::Delay
+            .prepare(ctx, common, label)
+            .write(out, body_svg(common, details)),
         FlowchartShape::Diamond => {
             super::render_diamond(out, common, details);
         }
@@ -106,7 +108,7 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Hourglass => {
             // Mermaid clears `node.label` but still emits an empty label group.
             label.text = "";
-            super::render_hourglass_collate(out, common, details);
+            node_body::write_hourglass(out, body_svg(common, details));
         }
         FlowchartShape::Icon => {
             super::render_icon(out, ctx, common, label, details)?;
@@ -131,13 +133,13 @@ pub(in super::super) fn render_flowchart_shape(
             return missing_asset_error(common.shape, "image");
         }
         FlowchartShape::InvertedTrapezoid => {
-            super::render_inv_trapezoid(out, common, details);
+            render_lean(out, common, details, LeanKind::InvertedTrapezoid);
         }
         FlowchartShape::LeanLeft => {
-            super::render_lean_left(out, common, details);
+            render_lean(out, common, details, LeanKind::Left);
         }
         FlowchartShape::LeanRight => {
-            super::render_lean_right(out, common, details);
+            render_lean(out, common, details, LeanKind::Right);
         }
         FlowchartShape::LinedCylinder => {
             super::render_lined_cylinder(out, ctx, common, label, details);
@@ -151,11 +153,16 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::ManualInput => {
             super::render_manual_input(out, ctx, common, label, details);
         }
-        FlowchartShape::NotchedPentagon => {
-            super::render_notched_pentagon(out, ctx, common, label, details);
-        }
+        FlowchartShape::NotchedPentagon => OuterPathShape::NotchedPentagon
+            .prepare(ctx, common, label)
+            .write(out, body_svg(common, details)),
         FlowchartShape::NotchedRectangle => {
-            super::render_notched_rectangle(out, common);
+            node_body::write_notched_rectangle(
+                out,
+                common.layout_node.width,
+                common.layout_node.height,
+                common.style,
+            );
         }
         FlowchartShape::Note => {
             super::render_note(out, ctx, common, details);
@@ -188,7 +195,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_stadium(out, ctx, common, label, details);
         }
         FlowchartShape::Subroutine => {
-            super::render_subroutine(out, common, details);
+            node_body::write_subroutine(out, body_svg(common, details));
         }
         FlowchartShape::TaggedDocument => {
             super::render_tagged_wave_document(out, ctx, common, label, details);
@@ -210,7 +217,7 @@ pub(in super::super) fn render_flowchart_shape(
             );
         }
         FlowchartShape::Trapezoid => {
-            super::render_trapezoid(out, common, details);
+            render_lean(out, common, details, LeanKind::Trapezoid);
         }
         FlowchartShape::Triangle => {
             super::render_triangle_extract(out, ctx, common, label, details);
@@ -221,6 +228,23 @@ pub(in super::super) fn render_flowchart_shape(
     }
 
     Ok(false)
+}
+
+fn render_lean(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+    kind: LeanKind,
+) {
+    let geometry =
+        LeanGeometry::from_bounds(kind, common.layout_node.width, common.layout_node.height);
+    node_body::write_lean(
+        out,
+        body_svg(common, details),
+        &geometry.points,
+        geometry.translate_x,
+        geometry.translate_y,
+    );
 }
 
 fn missing_asset_error<T>(shape: &str, asset: &str) -> Result<T> {

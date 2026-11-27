@@ -7,29 +7,7 @@ use crate::svg::parity::edge_path::{
     line_with_offset_points, rounded_line_with_marker_offsets_points,
 };
 
-pub(in crate::svg::parity::flowchart) fn arrow_types_for_edge(
-    edge_type: Option<&str>,
-) -> (Option<&'static str>, Option<&'static str>) {
-    let arrow_type_start = match edge_type {
-        Some("double_arrow_point") => Some("arrow_point"),
-        Some("double_arrow_circle") => Some("arrow_circle"),
-        Some("double_arrow_cross") => Some("arrow_cross"),
-        _ => None,
-    };
-    let arrow_type_end = match edge_type {
-        Some("arrow_open") => None,
-        Some("arrow_cross") => Some("arrow_cross"),
-        Some("arrow_circle") => Some("arrow_circle"),
-        Some("arrow_open_head") => Some("arrow_open_head"),
-        Some("arrow_hollow_circle") => Some("arrow_hollow_circle"),
-        Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
-        Some("double_arrow_circle") => Some("arrow_circle"),
-        Some("double_arrow_cross") => Some("arrow_cross"),
-        _ => Some("arrow_point"),
-    };
-
-    (arrow_type_start, arrow_type_end)
-}
+pub(in crate::svg::parity::flowchart) use merman_render_flow::edge_svg::arrow_types_for_edge;
 
 pub(in crate::svg::parity::flowchart) fn line_with_offset_for_edge_type(
     input: &[crate::model::LayoutPoint],

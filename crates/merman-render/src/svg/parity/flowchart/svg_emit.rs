@@ -1,6 +1,4 @@
-use merman_render_flow::document::{
-    FlowchartDocumentScope, FlowchartSvgDocumentRequest, prepare_flowchart_svg_document,
-};
+use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
 
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
@@ -200,6 +198,7 @@ pub(super) fn render_flowchart_svg_model(
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
                 root_viewport: options.root_viewport(options.family_id(), diagram_id),
                 document_scope,
+                uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
                 use_max_width,
                 diagram_padding,
                 source_paint_bounds,
@@ -264,36 +263,16 @@ pub(super) fn render_flowchart_svg_model(
                         edge_labels: &mut edge_labels,
                         step_badges: &step_badges,
                     };
-                    if layout.route_contract.is_elk_parity() {
-                        out.push_str("<g>");
+                    if ctx.uses_elk_adapter_dom {
                         defs.push_base_markers(out)?;
                         out.checkpoint()?;
                         defs.push_extra_markers(out)?;
                         out.checkpoint()?;
                         render_flowchart_elk_root_groups(out, ctx, &mut root_session)?;
-                        out.push_str("</g>");
-                        // The shadow filters are siblings of Mermaid's marker/root wrapper,
-                        // rather than children of the wrapper that owns the painted graph.
-                        push_flowchart_shadow_defs(
-                            out,
-                            document_scope,
-                            &prepared_theme.compatibility.look_defs,
-                        );
-                        out.checkpoint()?;
                     } else {
-                        push_flowchart_shadow_defs(
-                            out,
-                            document_scope,
-                            &prepared_theme.compatibility.look_defs,
-                        );
-                        out.checkpoint()?;
-                        out.push_str("<g>");
                         defs.push_base_markers(out)?;
                         render_flowchart_root(out, ctx, None, 0.0, 0.0, &mut root_session)?;
-
                         defs.push_extra_markers(out)?;
-                        out.push_str("</g>");
-                        out.checkpoint()?;
                     }
                     Ok(ctx.steps.emitted())
                 },
@@ -444,23 +423,6 @@ mod tests {
         assert!(!elk.contains_key("group"));
         assert!(!elk.contains_key("empty"));
     }
-}
-
-fn push_flowchart_shadow_defs(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    document_scope: &FlowchartDocumentScope,
-    prepared: &crate::svg::PreparedLookDefs,
-) {
-    let flood_color = prepared.flood_color();
-    let offset = merman_render_core::theme_svg::NEO_SHADOW_OFFSET_PX;
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        document_scope.drop_shadow(),
-        flood_color,
-        document_scope.drop_shadow_small(),
-        flood_color
-    );
 }
 
 #[cfg(all(test, feature = "diagram-flowchart"))]

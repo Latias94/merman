@@ -97,8 +97,9 @@ Modeling, Gantt, Info, Ishikawa, Journey, Kanban, Packet, Railroad, Timeline, an
 Quadrant Chart, Radar, Sankey, Treemap, and Venn layout through `diagram-quadrant-chart`,
 `diagram-radar`, `diagram-sankey`, `diagram-treemap`, and `diagram-venn`.
 `diagram-xychart` selects XY Chart layout and plot geometry.
-`merman-render-flow` provides shape geometry, authored styling and the parity SVG document through
-`diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`.
+`merman-render-flow` provides shape geometry, authored styling, hierarchy indexes, and the
+parity SVG document, markers, and edge paths through `diagram-flowchart`, `diagram-swimlane`,
+and `diagram-agentflow`.
 `merman-render-graph` provides complete SVG writers for Architecture, C4, Class, ER, GitGraph,
 Mindmap, Requirement, State, and Usecase.
 `merman-render-sequence` provides complete layout and SVG for Sequence and ZenUML through

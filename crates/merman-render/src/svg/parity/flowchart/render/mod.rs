@@ -13,7 +13,8 @@ pub(in crate::svg::parity::flowchart) use cluster::{
     cluster_base_fill, compat_theme_canvas_fallback,
 };
 pub(super) use edge_label::{render_flowchart_edge_label, resolve_flowchart_edge_label_position};
-pub(super) use edge_path::{flowchart_neo_marker_mask_offset, render_flowchart_edge_path};
+pub(super) use edge_path::render_flowchart_edge_path;
+pub(super) use merman_render_core::svg_edge_parity::edge_path::neo_marker_mask_offset as flowchart_neo_marker_mask_offset;
 pub(super) use node::render_flowchart_node;
 pub(super) use root::{
     FlowchartRootRenderSession, flowchart_elk_renders_empty_subgraph_as_cluster,

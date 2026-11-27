@@ -1158,7 +1158,6 @@ dependencies = [
 name = "merman-render"
 version = "0.11.0"
 dependencies = [
- "base64 0.23.1",
  "cssparser",
  "dugong",
  "euclid",
@@ -1166,7 +1165,6 @@ dependencies = [
  "indexmap",
  "kurbo",
  "manatee",
- "memchr",
  "merman-layout-elk",
  "merman-markup",
  "merman-model",
@@ -1188,7 +1186,6 @@ dependencies = [
  "sha2",
  "svgtypes",
  "thiserror 2.0.21",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -1251,6 +1248,7 @@ dependencies = [
 name = "merman-render-flow"
 version = "0.11.0"
 dependencies = [
+ "base64 0.23.1",
  "dugong",
  "indexmap",
  "kurbo",
@@ -1260,8 +1258,11 @@ dependencies = [
  "merman-render-core",
  "merman-theme-contract",
  "quick-xml",
+ "roughr-merman",
  "rustc-hash",
+ "ryu-js",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
