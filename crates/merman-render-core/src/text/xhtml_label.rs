@@ -1,5 +1,7 @@
 //! Text extraction from rendered XHTML label fragments.
 
+use super::inline_html::measure_html_with_document_root;
+use super::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use std::borrow::Cow;
 
 /// Returns the rendered text when an XHTML label fragment is structurally plain.
@@ -9,7 +11,7 @@ use std::borrow::Cow;
 /// case without guessing from Markdown punctuation. Any nested element, additional root node, or
 /// malformed fragment remains on the structured HTML path.
 /// Borrowed text is the literal content of one paragraph and needs no XML normalization.
-pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<Cow<'_, str>> {
+pub fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<Cow<'_, str>> {
     if let Some(text) = fragment
         .strip_prefix("<p>")
         .and_then(|text| text.strip_suffix("</p>"))
@@ -24,7 +26,7 @@ pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<Cow<'_, s
     }
 
     let wrapped = format!("<merman-fragment>{fragment}</merman-fragment>");
-    let document = crate::xml_dom::Document::parse(&wrapped).ok()?;
+    let document = roxmltree::Document::parse(&wrapped).ok()?;
     let root = document.root_element();
 
     let mut children = root.children();
@@ -45,9 +47,9 @@ pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<Cow<'_, s
     ))
 }
 
-pub(crate) fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String> {
+pub fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String> {
     let wrapped = format!("<merman-fragment>{fragment}</merman-fragment>");
-    let document = crate::xml_dom::Document::parse(&wrapped).ok()?;
+    let document = roxmltree::Document::parse(&wrapped).ok()?;
     Some(
         document
             .root_element()
@@ -55,6 +57,22 @@ pub(crate) fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String>
             .filter_map(|node| node.text().filter(|_| node.is_text()))
             .collect(),
     )
+}
+
+pub fn measure_xhtml_label_fragment_with_terminal_fonts(
+    measurer: &dyn TextMeasurer,
+    fragment: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    root_font_size: f64,
+) -> TextMetrics {
+    if fragment.starts_with("<p>")
+        && let Some(plain) = mermaid_xhtml_label_plain_text(fragment)
+        && !plain.contains('<')
+    {
+        return measurer.measure_wrapped(&plain, style, max_width, WrapMode::HtmlLike);
+    }
+    measure_html_with_document_root(measurer, fragment, style, max_width, root_font_size)
 }
 
 #[cfg(test)]

@@ -148,12 +148,11 @@ mod kanban;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
-        dead_code,
         unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
+        reason = "The shared label writer serves selected families."
     )
 )]
-mod label;
+use merman_render_core::text::svg_label as label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

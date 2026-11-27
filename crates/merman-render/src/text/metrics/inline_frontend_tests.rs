@@ -1,6 +1,3 @@
-#[cfg(feature = "markdown-labels")]
-use super::measure_markdown_with_inline_styles;
-use super::measure_xhtml_label_fragment_with_terminal_fonts;
 #[cfg(feature = "diagram-er")]
 use crate::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -8,6 +5,9 @@ use crate::environment::{
     TextMeasurementProfileIdentity,
 };
 use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+#[cfg(feature = "markdown-labels")]
+use crate::text::measure_markdown_with_inline_styles;
+use crate::text::measure_xhtml_label_fragment_with_terminal_fonts;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     measure_html_with_inline_styles,

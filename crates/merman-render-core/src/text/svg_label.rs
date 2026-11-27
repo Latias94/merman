@@ -1,21 +1,21 @@
 //! Shared Mermaid `createText` SVG label emission.
 
-use super::*;
-use crate::svg::parity::util::escape_xml_serialized_text_into;
-
+use crate::number_format::canonical_number;
+use crate::svg_output::SvgOutput;
 #[cfg(feature = "markdown-labels")]
-use crate::text::MermaidMarkdownWordType;
-use crate::text::SvgTextEntityMode;
+use crate::text::inline_html::MermaidMarkdownWordType;
+use crate::text::inline_html::SvgTextEntityMode;
+use crate::xml::{escape_attr_display, escape_xml_into, escape_xml_serialized_text_into};
 
 #[cfg(feature = "markdown-labels")]
 #[derive(Clone, Copy)]
-pub(in crate::svg::parity) struct SvgTextFirstRowStyle<'a> {
+pub struct SvgTextFirstRowStyle<'a> {
     pub style: &'a str,
     pub first_row_start: bool,
 }
 
 fn write_svg_text_inner_word(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     word_index: usize,
     word: &str,
     entity_mode: SvgTextEntityMode,
@@ -40,11 +40,7 @@ fn write_svg_text_inner_word(
     out.push_str("</tspan>");
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    text: &str,
-    include_style: bool,
-) {
+pub fn write_svg_text_centered(out: &mut impl SvgOutput, text: &str, include_style: bool) {
     write_svg_text_impl(
         out,
         text,
@@ -55,8 +51,8 @@ pub(in crate::svg::parity) fn write_svg_text_centered(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_centered_with_style<'a>(
+    out: &mut impl SvgOutput,
     text: &str,
     style: &'a str,
 ) -> Option<&'a str> {
@@ -70,8 +66,8 @@ pub(in crate::svg::parity) fn write_svg_text_centered_with_style<'a>(
     )
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_centered_from_create_text_source(
+    out: &mut impl SvgOutput,
     text: &str,
     include_style: bool,
 ) {
@@ -85,8 +81,8 @@ pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_source_word_lines(
+    out: &mut impl SvgOutput,
     lines: &[Vec<String>],
     include_style: bool,
     center_text: bool,
@@ -101,8 +97,8 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_source_word_lines_with_style(
+    out: &mut impl SvgOutput,
     lines: &[Vec<String>],
     style: &str,
     center_text: bool,
@@ -111,8 +107,8 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, font_weight, None);
 }
 
-pub(in crate::svg::parity) fn write_measured_svg_title(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_measured_svg_title(
+    out: &mut impl SvgOutput,
     lines: &[Vec<String>],
     style: &str,
     font_weight: Option<u16>,
@@ -125,7 +121,7 @@ pub(in crate::svg::parity) fn write_measured_svg_title(
 }
 
 fn write_svg_text_source_word_lines_impl(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     lines: &[Vec<String>],
     style: Option<&str>,
     center_text: bool,
@@ -158,14 +154,26 @@ fn write_svg_text_source_word_lines_impl(
     out.push_str("</text>");
 }
 
+/// Returns only the style attribute accepted by the output sink.
+/// Final document checkpoints still own failures in subsequent writes.
+pub fn write_style_attribute<'a>(
+    out: &mut impl SvgOutput,
+    style: Option<&'a str>,
+) -> Option<&'a str> {
+    let style = style?;
+    write!(out, r#" style="{}""#, escape_attr_display(style))
+        .ok()
+        .map(|()| style)
+}
+
 fn open_svg_text<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     style: Option<&'a str>,
     center_text: bool,
     text_length: Option<f64>,
 ) -> Option<&'a str> {
     out.push_str(r#"<text y="-10.1""#);
-    let emitted_style = super::util::write_style_attribute(out, style);
+    let emitted_style = write_style_attribute(out, style);
     if center_text {
         out.push_str(r#" text-anchor="middle""#);
     }
@@ -173,7 +181,7 @@ fn open_svg_text<'a>(
         let _ = write!(
             out,
             r#" textLength="{}" lengthAdjust="spacingAndGlyphs""#,
-            fmt_display(length)
+            canonical_number(length)
         );
     }
     out.push('>');
@@ -193,7 +201,7 @@ fn normalized_em(value: f64) -> f64 {
 }
 
 fn write_empty_tspan(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     center_text: bool,
     include_row_class: bool,
     line_height_em: f64,
@@ -205,22 +213,22 @@ fn write_empty_tspan(
             out,
             r#"<tspan class="{}" x="0" y="{}em" dy="{}em" text-anchor="middle"/>"#,
             outer_class,
-            fmt_display(normalized_em(initial_y_em)),
-            fmt_display(normalized_em(line_height_em)),
+            canonical_number(normalized_em(initial_y_em)),
+            canonical_number(normalized_em(line_height_em)),
         );
     } else {
         let _ = write!(
             out,
             r#"<tspan class="{}" x="0" y="{}em" dy="{}em"/>"#,
             outer_class,
-            fmt_display(normalized_em(initial_y_em)),
-            fmt_display(normalized_em(line_height_em)),
+            canonical_number(normalized_em(initial_y_em)),
+            canonical_number(normalized_em(line_height_em)),
         );
     }
 }
 
 fn open_tspan(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     index: usize,
     center_text: bool,
     include_row_class: bool,
@@ -241,8 +249,8 @@ fn open_tspan(
             out,
             r#"<tspan class="{}" x="0" y="{}em" dy="{}em"{}>"#,
             outer_class,
-            fmt_display(normalized_em(initial_y_em)),
-            fmt_display(normalized_em(line_height_em)),
+            canonical_number(normalized_em(initial_y_em)),
+            canonical_number(normalized_em(line_height_em)),
             text_anchor,
         );
     } else {
@@ -251,15 +259,15 @@ fn open_tspan(
             out,
             r#"<tspan class="{}" x="0" y="{}em" dy="{}em"{}>"#,
             outer_class,
-            fmt_display(normalized_em(y_em)),
-            fmt_display(normalized_em(line_height_em)),
+            canonical_number(normalized_em(y_em)),
+            canonical_number(normalized_em(line_height_em)),
             text_anchor,
         );
     }
 }
 
 fn write_svg_text_impl<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     text: &str,
     style: Option<&'a str>,
     center_text: bool,
@@ -287,11 +295,7 @@ fn write_svg_text_impl<'a>(
     emitted_style
 }
 
-fn write_svg_text_word(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    word: &str,
-    entity_mode: SvgTextEntityMode,
-) {
+fn write_svg_text_word(out: &mut impl SvgOutput, word: &str, entity_mode: SvgTextEntityMode) {
     match entity_mode {
         SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
         SvgTextEntityMode::CreateTextSource => {
@@ -327,7 +331,7 @@ fn markdown_to_wrapped_svg_word_lines(
 
 #[cfg(feature = "markdown-labels")]
 fn write_svg_text_markdown_lines(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     css: Option<&str>,
     center_text: bool,
@@ -347,7 +351,7 @@ fn write_svg_text_markdown_lines(
 
 #[cfg(feature = "markdown-labels")]
 fn write_svg_text_markdown_lines_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+    out: &mut impl SvgOutput,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: Option<&'a str>,
     center_text: bool,
@@ -408,8 +412,8 @@ fn write_svg_text_markdown_lines_with_style<'a>(
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_with_style<'a>(
+    out: &mut impl SvgOutput,
     markdown: &str,
     style: Option<&'a str>,
 ) -> Option<&'a str> {
@@ -426,8 +430,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_with_style<'a>(
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_markdown_word_lines_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_markdown_word_lines_with_style<'a>(
+    out: &mut impl SvgOutput,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: Option<&'a str>,
     entity_mode: SvgTextEntityMode,
@@ -436,8 +440,8 @@ pub(in crate::svg::parity) fn write_svg_markdown_word_lines_with_style<'a>(
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_markdown_word_lines_centered_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_markdown_word_lines_centered_with_style<'a>(
+    out: &mut impl SvgOutput,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: Option<&'a str>,
     entity_mode: SvgTextEntityMode,
@@ -446,8 +450,8 @@ pub(in crate::svg::parity) fn write_svg_markdown_word_lines_centered_with_style<
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_from_create_text_source(
+    out: &mut impl SvgOutput,
     markdown: &str,
     include_style: bool,
 ) {
@@ -459,8 +463,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_from_create_text_source_with_style(
+    out: &mut impl SvgOutput,
     markdown: &str,
     style: Option<&str>,
 ) {
@@ -477,8 +481,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source_wi
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_wrapped_with_first_row_style(
+    out: &mut impl SvgOutput,
     markdown: &str,
     style: &str,
     row_style: SvgTextFirstRowStyle<'_>,
@@ -504,8 +508,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_sty
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_create_text_source(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_wrapped_centered_from_create_text_source(
+    out: &mut impl SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,
@@ -529,8 +533,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_crea
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_wrapped_from_create_text_source(
+    out: &mut impl SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,
@@ -553,16 +557,16 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_centered_from_create_text_source_with_style(
+    out: &mut impl SvgOutput,
     text: &str,
     css: &str,
 ) {
     write_svg_text_from_create_text_source_with_style(out, text, css, true);
 }
 
-pub(in crate::svg::parity) fn write_svg_text_from_create_text_source_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_from_create_text_source_with_style(
+    out: &mut impl SvgOutput,
     text: &str,
     css: &str,
     centered: bool,
@@ -578,8 +582,8 @@ pub(in crate::svg::parity) fn write_svg_text_from_create_text_source_with_style(
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_wrapped_centered_with_style(
+    out: &mut impl SvgOutput,
     markdown: &str,
     css: &str,
     measurer: &dyn crate::text::TextMeasurer,
@@ -598,8 +602,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
 }
 
 #[cfg(feature = "markdown-labels")]
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
+pub fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+    out: &mut impl SvgOutput,
     markdown: &str,
     css: &str,
     measurer: &dyn crate::text::TextMeasurer,

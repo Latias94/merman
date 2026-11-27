@@ -114,7 +114,7 @@ fn mermaid_markdown_top_level_blocks(markdown: &str) -> Vec<MermaidMarkdownBlock
     blocks
 }
 
-pub(crate) fn mermaid_markdown_contains_raw_blocks(markdown: &str) -> bool {
+pub fn mermaid_markdown_contains_raw_blocks(markdown: &str) -> bool {
     let markdown = markdown.replace("\r\n", "\n");
     mermaid_markdown_top_level_blocks(&markdown)
         .iter()
@@ -520,7 +520,7 @@ fn mermaid_markdown_to_label_fragment(
         // XHTML byte-for-byte, and recover HTML only after the complete projection so tags
         // spanning blocks remain connected. Code and escaped HTML are already literal text.
         let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{out}</div>"#);
-        if crate::xml_dom::Document::parse(&wrapped).is_err() {
+        if roxmltree::Document::parse(&wrapped).is_err() {
             return merman_markup::sanitize::html_fragment_to_xhtml(&out).unwrap_or_else(|| {
                 // A rejected conversion remains visible as literal projection text.
                 let mut literal = String::with_capacity(out.len());
@@ -537,10 +537,7 @@ fn mermaid_markdown_to_label_fragment(
 /// Unsupported code tokens retain node.raw, including backticks, and escaped text retains
 /// node.text without the backslash. Their angle brackets may therefore become HTML elements
 /// when the fragment is inserted with innerHTML, matching the pinned markdownToHTML source.
-pub(crate) fn mermaid_markdown_to_html_label_fragment(
-    markdown: &str,
-    markdown_auto_wrap: bool,
-) -> String {
+pub fn mermaid_markdown_to_html_label_fragment(markdown: &str, markdown_auto_wrap: bool) -> String {
     mermaid_markdown_to_label_fragment(markdown, markdown_auto_wrap, false)
 }
 fn escape_xml_segment(out: &mut String, raw: &str) {
@@ -589,7 +586,7 @@ fn escape_xml_text_preserving_entities(raw: &str) -> String {
 /// Code retains its raw Markdown spelling, including backticks, as literal text. Escaped angle
 /// brackets stay text; only parsed raw HTML events can introduce elements. This differs from
 /// Mermaid's HTML projection, which may reinterpret code and escaped text through innerHTML.
-pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
+pub fn mermaid_markdown_to_xhtml_label_fragment(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> String {
@@ -607,7 +604,7 @@ pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
 /// This function projects pulldown-cmark's CommonMark/GFM block parser down to only the top-level
 /// paragraph decision. Inline rendering remains owned by the pinned Marked-compatible interpreter;
 /// its ambiguous delimiter-run path may use pulldown-cmark events while preserving source slices.
-pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
+pub fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
     let markdown = markdown.replace("\r\n", "\n");
     mermaid_markdown_top_level_blocks(&markdown)
         .first()
@@ -772,7 +769,7 @@ mod tests {
         ] {
             let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
             let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{fragment}</div>"#);
-            let document = crate::xml_dom::Document::parse(&wrapped)
+            let document = roxmltree::Document::parse(&wrapped)
                 .expect("raw HTML block must produce well-formed XHTML");
             assert!(document.descendants().any(|node| node.has_tag_name("br")));
             if input.contains("data-theme") {
@@ -799,7 +796,7 @@ mod tests {
         let input = "<br>\n\n`<img src=x>` and \\<span>literal\\</span>";
         let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
         let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{fragment}</div>"#);
-        let document = crate::xml_dom::Document::parse(&wrapped).unwrap();
+        let document = roxmltree::Document::parse(&wrapped).unwrap();
         assert!(document.descendants().any(|node| node.has_tag_name("br")));
         assert!(!document.descendants().any(|node| node.has_tag_name("img")));
         assert!(!document.descendants().any(|node| node.has_tag_name("span")));
@@ -818,7 +815,7 @@ mod tests {
         assert!(merman_markup::sanitize::html_fragment_to_xhtml(input).is_none());
         let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
         let wrapped = format!("<root>{fragment}</root>");
-        let document = crate::xml_dom::Document::parse(&wrapped).unwrap();
+        let document = roxmltree::Document::parse(&wrapped).unwrap();
         assert_eq!(document.root_element().text(), Some(input));
         assert!(
             !document
@@ -1039,7 +1036,7 @@ mod tests {
         );
         // These balanced HTML tags are also XML-compatible: parsing them demonstrates the
         // elements produced by insertion without adding another Markdown interpreter.
-        let html_document = crate::xml_dom::Document::parse(&html).unwrap();
+        let html_document = roxmltree::Document::parse(&html).unwrap();
         let html_spans: Vec<_> = html_document
             .descendants()
             .filter(|node| node.has_tag_name("span"))
@@ -1056,7 +1053,7 @@ mod tests {
         );
 
         let fragment = mermaid_markdown_to_xhtml_label_fragment(&input, true);
-        let document = crate::xml_dom::Document::parse(&fragment).unwrap();
+        let document = roxmltree::Document::parse(&fragment).unwrap();
         let spans: Vec<_> = document
             .descendants()
             .filter(|node| node.has_tag_name("span"))

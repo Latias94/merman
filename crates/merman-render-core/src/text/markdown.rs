@@ -1,21 +1,22 @@
 //! Mermaid-like Markdown tokenization helpers.
 
-use super::{MermaidMarkdownWordType, is_ecmascript_whitespace, trim_ecmascript_whitespace};
+use super::inline_html::MermaidMarkdownWordType;
+use super::{is_ecmascript_whitespace, trim_ecmascript_whitespace};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MermaidMarkdownAnalysis {
-    pub(crate) lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
-    pub(crate) has_styled_runs: bool,
-    pub(crate) line_count: usize,
+pub struct MermaidMarkdownAnalysis {
+    pub lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
+    pub has_styled_runs: bool,
+    pub line_count: usize,
 }
 
 impl MermaidMarkdownAnalysis {
-    pub(crate) fn all_runs_normal(&self) -> bool {
+    pub fn all_runs_normal(&self) -> bool {
         !self.has_styled_runs
     }
 }
 
-pub(crate) fn analyze_mermaid_markdown(
+pub fn analyze_mermaid_markdown(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> MermaidMarkdownAnalysis {
@@ -36,7 +37,7 @@ pub(crate) fn analyze_mermaid_markdown(
 ///
 /// This aims to match Mermaid's token boundaries for emphasis/strong delimiters (including `_`
 /// behavior) well enough to reproduce upstream SVG-label layout and baseline DOM.
-pub(crate) fn mermaid_markdown_to_lines(
+pub fn mermaid_markdown_to_lines(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
@@ -838,7 +839,7 @@ fn markdown_to_lines(
     out
 }
 
-pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
+pub fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
     pulldown_cmark::Parser::new_ext(
         markdown,
         pulldown_cmark::Options::ENABLE_TABLES
@@ -853,7 +854,7 @@ pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
     })
 }
 
-pub(crate) fn mermaid_markdown_is_plain_text(markdown: &str) -> bool {
+pub fn mermaid_markdown_is_plain_text(markdown: &str) -> bool {
     pulldown_cmark::Parser::new_ext(
         markdown,
         pulldown_cmark::Options::ENABLE_TABLES

@@ -95,7 +95,7 @@ diagram-wardley = ["merman-model/diagram-wardley", "dep:merman-render-charts", "
 diagram-xychart = ["merman-model/diagram-xychart", "merman-render-core/theme-elevation", "dep:merman-render-charts", "merman-render-charts/diagram-xychart"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "merman-render-core/resources-zenuml", "merman-render-core/theme-elevation", "cssparser/fast_match_color", "dep:pulldown-cmark"]
 default = []
-markdown-labels = ["dep:pulldown-cmark"]
+markdown-labels = ["dep:pulldown-cmark", "merman-render-core/markdown-labels"]
 native-compact = ["merman-render-core/paint-scene", "merman-render-sequence?/native-compact"]
 system-clock = ["merman-model/system-clock"]
 system-timezone = ["merman-model/system-timezone"]
@@ -112,7 +112,7 @@ math = ["merman-render-core/math", "merman-render-sequence?/math"]
 merman-markup = { workspace = true, features = ["html", "url", "color"] }
 merman-model = { workspace = true, features = ["presentation-data", "compat-json", "html-entities"] }
 merman-render-charts = { workspace = true, optional = true }
-merman-render-core = { workspace = true, features = ["icon-registry", "math-labels", "root-svg", "svg-animation", "svg-identity", "theme-svg"] }
+merman-render-core = { workspace = true, features = ["icon-registry", "math-labels", "root-svg", "svg-animation", "svg-identity", "theme-svg", "xhtml-labels"] }
 merman-render-flow = { workspace = true, optional = true }
 merman-render-graph = { workspace = true, optional = true }
 merman-render-sequence = { workspace = true, optional = true }

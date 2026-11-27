@@ -1219,6 +1219,7 @@ dependencies = [
  "merman-model",
  "merman-theme-contract",
  "merman-unicode-linebreak",
+ "pulldown-cmark",
  "quick-xml",
  "ratex-font",
  "ratex-layout",

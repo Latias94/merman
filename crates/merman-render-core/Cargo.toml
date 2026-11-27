@@ -27,6 +27,7 @@ layout-cytoscape = ["svg-output", "dep:manatee"]
 layout-dagre = ["svg-output", "dep:dugong"]
 layout-elk = ["svg-output", "dep:merman-layout-elk"]
 layout-shoal = ["route-paint", "dep:merman-layout-shoal"]
+markdown-labels = ["html", "xhtml-labels", "dep:pulldown-cmark"]
 math = [
     "math-labels", "dep:kurbo", "dep:quick-xml", "dep:roxmltree",
     "dep:ratex-font", "dep:ratex-layout", "dep:ratex-parser", "dep:ratex-svg", "dep:ratex-types",
@@ -54,6 +55,7 @@ text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unico
 theme-elevation = ["theme-svg", "dep:kurbo"]
 theme-label-background = ["theme-svg", "dep:kurbo", "dep:svgtypes"]
 theme-svg = ["svg-output", "dep:merman-theme-contract"]
+xhtml-labels = ["svg-parse", "text-layout", "dep:roxmltree"]
 
 [dependencies]
 cssparser = { workspace = true, optional = true }
@@ -66,6 +68,7 @@ merman-layout-shoal = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+pulldown-cmark = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 ratex-font = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
