@@ -104,8 +104,7 @@ mod elk_options;
         any(
             feature = "diagram-class",
             feature = "diagram-requirement",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
+            feature = "diagram-state"
         )
     )
 ))]
