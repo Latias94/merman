@@ -1004,8 +1004,69 @@ fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
         };
         check(rendered.svg(), html_labels);
         let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+        assert!(
+            !finalized.svg().as_str().contains("<switch"),
+            "resvg_safe should unwrap struck-title switch fallback"
+        );
         check(finalized.svg().as_str(), false);
     }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_dark_struck_title_preserves_authored_color_in_resvg_safe() {
+    use merman_render::svg::SvgPipeline;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = "\
+---
+config:
+  layout: shoal
+---
+flowchart TD
+  req([Pull Request]) --> gate{CI Gate}
+  subgraph ci[Verification]
+    direction TB
+    unit[Unit Tests]
+    lint[Static Checks]
+  end
+  subgraph prod[Production Deploy]
+    rollout[Canary Rollout]
+  end
+  gate -->|Fast Path| unit
+  gate -->|Policy| lint
+  unit --> rollout
+  lint --> rollout
+  style prod fill:#1e3a5f,stroke:#60a5fa,color:#ffffff
+";
+    let parsed = parse(source);
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+    let svg = finalized.svg().as_str();
+    assert!(!svg.contains("<switch"), "resvg_safe must unwrap <switch>");
+    let doc = roxmltree::Document::parse(svg).unwrap();
+    let title = doc
+        .descendants()
+        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
+        .expect("struck dark cluster title");
+    let text = title
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .expect("native SVG <text> fallback");
+    let style = text.attribute("style").unwrap_or_default();
+    assert!(
+        style.contains("fill:#ffffff !important"),
+        "dark struck cluster title fallback must carry authored fill: {style}"
+    );
 }
 
 #[cfg(feature = "layout-shoal")]

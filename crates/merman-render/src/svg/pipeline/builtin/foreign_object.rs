@@ -322,10 +322,17 @@ fn find_wrapping_switch<E>(
             tail_start = end;
             continue;
         }
-        if !tail.starts_with("<text") {
-            return Ok(None);
+        if tail.starts_with("<text") {
+            break;
         }
-        break;
+        if is_start_g_tag(tail)
+            && let Some((_, g_end)) = find_matching_g_end(svg, tail_start, checkpoint)?
+            && g_end <= switch_close_start
+            && find_with_checkpoints(&svg[tail_start..g_end], "<text", checkpoint)?.is_some()
+        {
+            break;
+        }
+        return Ok(None);
     }
 
     Ok(Some((
@@ -620,6 +627,33 @@ mod tests {
         assert!(
             out.contains(r#"<text x="60" y="45">Make tea</text>"#),
             "text fallback should be preserved: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_unwraps_switch_with_grouped_text_fallback() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel" style="color:#ffffff !important">Production Deploy</span></div></foreignObject><g><rect class="background" style="stroke: none"/><text y="-10.1" style="color:#ffffff !important;fill:#ffffff !important"><tspan>Production Deploy</tspan></text></g></switch></svg>"##;
+        let session = render_session();
+        let out = SvgPipeline::resvg_safe()
+            .process_to_string(svg, &session)
+            .unwrap();
+
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(
+            !out.contains("<switch"),
+            "switch should be unwrapped: {out}"
+        );
+        assert!(
+            !out.contains("</switch>"),
+            "switch close tag should be removed: {out}"
+        );
+        assert!(
+            out.contains("fill:#ffffff !important"),
+            "authored text fill should survive resvg_safe: {out}"
+        );
+        assert!(
+            !out.contains(r#"data-merman-foreignobject="fallback""#),
+            "native grouped fallback should not trigger duplicate fallback: {out}"
         );
     }
 

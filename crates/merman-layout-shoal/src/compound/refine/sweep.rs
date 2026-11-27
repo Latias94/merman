@@ -850,11 +850,7 @@ impl MonotonePartition {
                 continue;
             }
             let chord_count = points.len() - 1;
-            let x_monotone = if let Some(cubic) = &centerlines.primitives[index].cubic {
-                cubic.ordered[0]
-            } else {
-                true
-            };
+            let x_monotone = centerlines.primitives[index].ordered(crate::Axis::Horizontal);
             let (top_pt, second_pt, bot_pt) = if rev {
                 (
                     points[points.len() - 1],
@@ -1375,11 +1371,12 @@ fn inspect_chain_pair(
                 } else {
                     ord_b[0].x + (ov_hi - ord_b[0].y) * slope_b
                 };
-                let scale = ax_ov_lo
+                let scale = ord_a[0]
+                    .x
                     .abs()
-                    .max(bx_ov_lo.abs())
-                    .max(ax_ov_hi.abs())
-                    .max(bx_ov_hi.abs())
+                    .max(ord_a[1].x.abs())
+                    .max(ord_b[0].x.abs())
+                    .max(ord_b[1].x.abs())
                     .max(1.0);
                 let tol = 1e-9 * scale;
                 ax_ov_lo + tol < bx_ov_lo && ax_ov_hi + tol < bx_ov_hi
@@ -1435,6 +1432,11 @@ fn inspect_chain_pair(
     }
 
     Ok(None)
+}
+
+#[inline]
+fn coincident_eps(scale: f64) -> f64 {
+    COINCIDENT_EPS * scale.abs().max(1.0)
 }
 
 /// Runs the exact whole-primitive `y`-monotone sweep over `partition.chains` and
@@ -1551,7 +1553,7 @@ pub(super) fn run_monotone_sweep(
                 return Ok(false);
             }
             let xl = chain_x_at_y(centerlines, &chains[left_id], cur_y);
-            if (xl - xt).abs() > COINCIDENT_EPS
+            if (xl - xt).abs() > coincident_eps(xt)
                 || shared_fan(at, ends[chains[left_id].edge], ends[target_edge], out)
             {
                 break;
@@ -1576,7 +1578,7 @@ pub(super) fn run_monotone_sweep(
                 return Ok(false);
             }
             let xr = chain_x_at_y(centerlines, &chains[right_id], cur_y);
-            if (xr - xt).abs() > COINCIDENT_EPS
+            if (xr - xt).abs() > coincident_eps(xt)
                 || shared_fan(at, ends[target_edge], ends[chains[right_id].edge], out)
             {
                 break;
@@ -1627,8 +1629,9 @@ pub(super) fn run_monotone_sweep(
             }
             EV_HORIZ => {
                 let h = &horizontals[ev.a()];
-                let x_lo = h.x_min - COINCIDENT_EPS;
-                let x_hi = h.x_max + COINCIDENT_EPS;
+                let eps = coincident_eps(h.x_min.abs().max(h.x_max.abs()));
+                let x_lo = h.x_min - eps;
+                let x_hi = h.x_max + eps;
                 let chord_h = centerlines.chord(h.primitive, 0);
                 let h_bounds = chord_h.bounds();
                 let mut cur = active.lower_bound_x(x_lo, cur_y, centerlines, chains, work)?;
@@ -1698,18 +1701,17 @@ pub(super) fn run_monotone_sweep(
                 // became adjacent; only check non-adjacent coincident-`x` bundle peers outside
                 // `shared_fan`.
                 let xt = chain_x_at_y(centerlines, &chains[id], cur_y);
+                let eps = coincident_eps(xt);
                 let at = Point { x: xt, y: cur_y };
                 let id_edge = chains[id].edge;
                 if let Some(l0) = left_neighbor
-                    && (chain_x_at_y(centerlines, &chains[l0], cur_y) - xt).abs() <= COINCIDENT_EPS
+                    && (chain_x_at_y(centerlines, &chains[l0], cur_y) - xt).abs() <= eps
                     && !shared_fan(at, ends[chains[l0].edge], ends[id_edge], out)
                 {
                     let mut left = active.prev_chain(l0);
                     while let Some(left_id) = left {
                         work.visit(1)?;
-                        if (chain_x_at_y(centerlines, &chains[left_id], cur_y) - xt).abs()
-                            > COINCIDENT_EPS
-                        {
+                        if (chain_x_at_y(centerlines, &chains[left_id], cur_y) - xt).abs() > eps {
                             break;
                         }
                         if !check_pair(
@@ -1732,15 +1734,13 @@ pub(super) fn run_monotone_sweep(
                     }
                 }
                 if let Some(r0) = right_neighbor
-                    && (chain_x_at_y(centerlines, &chains[r0], cur_y) - xt).abs() <= COINCIDENT_EPS
+                    && (chain_x_at_y(centerlines, &chains[r0], cur_y) - xt).abs() <= eps
                     && !shared_fan(at, ends[id_edge], ends[chains[r0].edge], out)
                 {
                     let mut right = active.next_chain(r0);
                     while let Some(right_id) = right {
                         work.visit(1)?;
-                        if (chain_x_at_y(centerlines, &chains[right_id], cur_y) - xt).abs()
-                            > COINCIDENT_EPS
-                        {
+                        if (chain_x_at_y(centerlines, &chains[right_id], cur_y) - xt).abs() > eps {
                             break;
                         }
                         if !check_pair(

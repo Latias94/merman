@@ -34,6 +34,34 @@ struct Caption {
     prefix_bottom: f64,
 }
 
+/// Returns `true` if the straight tether segment `from -> to` crosses `bounds` strictly
+/// after its anchor `from` (`t > 1e-6`), separating a caption candidate from its own route.
+fn segment_crosses_bounds(from: Point, to: Point, bounds: Bounds) -> bool {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    if dx == 0.0 && dy == 0.0 {
+        return false;
+    }
+    let mut t_min = 0.0_f64;
+    let mut t_max = 1.0_f64;
+    for (origin, delta, [lo, hi]) in [(from.x, dx, bounds.x), (from.y, dy, bounds.y)] {
+        if delta == 0.0 {
+            if origin < lo || origin > hi {
+                return false;
+            }
+        } else {
+            let t0 = (lo - origin) / delta;
+            let t1 = (hi - origin) / delta;
+            t_min = t_min.max(t0.min(t1));
+            t_max = t_max.min(t0.max(t1));
+            if t_min > t_max {
+                return false;
+            }
+        }
+    }
+    t_max > 1e-6 && t_min <= 1.0
+}
+
 impl Scene {
     fn add_caption(&mut self, ink: Bounds, work: &mut Work<'_>) -> LayoutResult<()> {
         work.visit(self.labels.len().checked_ilog2().unwrap_or(0) as usize + 1)?;
@@ -59,12 +87,14 @@ impl Scene {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fits(
         &self,
         at: Point,
         size: Size,
         scope: Option<Bounds>,
         own_route: usize,
+        tether: Option<Point>,
         tier: ClearanceTier,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
@@ -104,10 +134,15 @@ impl Scene {
                 }
             }
         }
+        let query = tether.map_or(ink, |origin| ink.union(Bounds::between(origin, at)));
         let hit = self.obstacles.visit(|entry| -> LayoutResult<_> {
             work.visit(1)?;
             Ok(match entry {
-                BvhEntry::Node(node) => Continue(ink.overlaps_strictly(node)),
+                BvhEntry::Node(node) => Continue(if tether.is_some() {
+                    query.overlaps(node)
+                } else {
+                    ink.overlaps_strictly(node)
+                }),
                 BvhEntry::Item(obs) => {
                     let blocks = match obs.kind {
                         ObstacleKind::Solid => true,
@@ -117,6 +152,12 @@ impl Scene {
                         }
                     };
                     if blocks && ink.overlaps_strictly(obs.bounds) {
+                        Break(())
+                    } else if let ObstacleKind::Route(edge) = obs.kind
+                        && edge != own_route
+                        && tether
+                            .is_some_and(|origin| segment_crosses_bounds(origin, at, obs.bounds))
+                    {
                         Break(())
                     } else {
                         Continue(true)
@@ -207,10 +248,14 @@ impl Scene {
             }
             let [x, y] = candidate;
             let at = Point { x, y };
+            let anchor = Point {
+                x: sample[0],
+                y: sample[1],
+            };
             let distance = (x - sample[0]).hypot(y - sample[1]);
             if distance > radius
                 || best.is_some_and(|best| distance >= best)
-                || !self.fits(at, size, scope, route_index, tier, work)?
+                || !self.fits(at, size, scope, route_index, Some(anchor), tier, work)?
             {
                 return Ok(None);
             }
@@ -422,7 +467,15 @@ pub(super) fn place(
                 if seat.is_none() {
                     for x in [lo.midpoint(hi), lo + inset, hi - inset] {
                         let at = Point { x, y };
-                        if scene.fits(at, size, constraint, edge, ClearanceTier::OffAll, work)? {
+                        if scene.fits(
+                            at,
+                            size,
+                            constraint,
+                            edge,
+                            None,
+                            ClearanceTier::OffAll,
+                            work,
+                        )? {
                             seat = Some(at);
                             break;
                         }
@@ -443,4 +496,120 @@ pub(super) fn place(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{KnotKind, NoopWorkControl};
+
+    #[test]
+    fn parallel_route_captions_do_not_jump_across_foreign_wires() {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        // Two closely spaced parallel horizontal routes: edge 0 at y=160.4, edge 1 at y=167.4.
+        // Place a solid blocker above the center of edge 0 so probe 0's upper candidate is blocked,
+        // and ensure edge 0 does not jump below edge 1 (and edge 1 does not jump above edge 0).
+        let obstacles = vec![
+            Obstacle {
+                bounds: Bounds {
+                    x: [200.0, 500.0],
+                    y: [160.4, 160.4],
+                },
+                kind: ObstacleKind::Route(0),
+            },
+            Obstacle {
+                bounds: Bounds {
+                    x: [200.0, 500.0],
+                    y: [167.4, 167.4],
+                },
+                kind: ObstacleKind::Route(1),
+            },
+            Obstacle {
+                bounds: Bounds {
+                    x: [310.0, 390.0],
+                    y: [100.0, 155.0],
+                },
+                kind: ObstacleKind::Solid,
+            },
+        ];
+        let mut scene = Scene {
+            obstacles: Bvh::build_with_work(obstacles, |obs| obs.bounds, &mut work).unwrap(),
+            labels: Vec::new(),
+            clearance: 8.0,
+        };
+        let route0 = [
+            RoutePoint {
+                x: 200.0,
+                y: 160.4,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+            RoutePoint {
+                x: 500.0,
+                y: 160.4,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+        ];
+        let route1 = [
+            RoutePoint {
+                x: 200.0,
+                y: 167.4,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+            RoutePoint {
+                x: 500.0,
+                y: 167.4,
+                axis: Axis::Horizontal,
+                kind: KnotKind::Free,
+            },
+        ];
+        let size = Size {
+            width: 80.0,
+            height: 20.0,
+        };
+        let mut lengths = Vec::new();
+        let seat0 = scene
+            .near_route(
+                &route0,
+                0,
+                0.5,
+                [0.0, 0.0],
+                size,
+                None,
+                &mut lengths,
+                &mut work,
+            )
+            .unwrap()
+            .expect("edge 0 should seat on its own side");
+        assert!(
+            seat0.y < 160.4,
+            "edge 0 caption jumped across edge 1 (y=167.4) to y={}",
+            seat0.y
+        );
+        scene
+            .add_caption(Bounds::centered(seat0, size), &mut work)
+            .unwrap();
+
+        let seat1 = scene
+            .near_route(
+                &route1,
+                1,
+                0.5,
+                [0.0, 0.0],
+                size,
+                None,
+                &mut lengths,
+                &mut work,
+            )
+            .unwrap()
+            .expect("edge 1 should seat on its own side");
+        assert!(
+            seat1.y > 167.4,
+            "edge 1 caption jumped across edge 0 (y=160.4) to y={}",
+            seat1.y
+        );
+    }
 }

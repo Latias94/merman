@@ -938,11 +938,20 @@ impl Gap {
         let isolated_curve = curved && self.pieces.len() == 1 && ids.len() == 1;
         if !ids.is_empty() && (!curved || !self.allow_local_sweeps && !isolated_curve) {
             let lead = LEAD.max(options.spacing.edge * 0.5);
+            let dense_clearance = if dense_curves {
+                options.spacing.edge * 0.25
+            } else {
+                0.0
+            };
             if !curved || !self.upper_free_band {
                 self.upper_guard = advance(self.upper_guard, lead)?;
+            } else if dense_clearance > 0.0 {
+                self.upper_guard = self.upper_guard.max(dense_clearance);
             }
             if !curved || !self.lower_free_band {
                 self.lower_guard = advance(self.lower_guard, lead)?;
+            } else if dense_clearance > 0.0 {
+                self.lower_guard = self.lower_guard.max(dense_clearance);
             }
         } else if dense_curves {
             // On a shallow, wide fan the sweep otherwise reaches neighboring boxes
@@ -1769,7 +1778,7 @@ fn route_ranked(
             (first, ports.0)
         };
         let across = points[1].x - points[0].x;
-        let offset = points[0].x - x[source];
+        let offset = points[0].x - nodes[source].center().x;
         let contour = c.nodes[source].contour;
         let contour_center = super::diamond_offset(contour, graph.direction)
             .map(|offset| offset.x)

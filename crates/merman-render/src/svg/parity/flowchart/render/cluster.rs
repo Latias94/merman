@@ -134,6 +134,44 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
         .unwrap_or(fallback)
 }
 
+fn cluster_svg_text_style(label_style: &str) -> String {
+    if label_style.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    let mut color_value: Option<&str> = None;
+    let mut has_fill = false;
+    for decl in label_style.split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue;
+        }
+        if let Some((key, val)) = decl.split_once(':') {
+            let key_trim = key.trim();
+            if key_trim.eq_ignore_ascii_case("fill") {
+                has_fill = true;
+            } else if key_trim.eq_ignore_ascii_case("color") {
+                let val_trim = val.trim();
+                if !val_trim.is_empty() {
+                    color_value = Some(val_trim);
+                }
+            }
+        }
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str(decl);
+    }
+    if !has_fill && let Some(val) = color_value {
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str("fill:");
+        out.push_str(val);
+    }
+    out
+}
+
 fn cluster_base_fill<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     terminal: &'a super::super::node_inventory::FlowchartPreparedCluster,
@@ -593,17 +631,29 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         );
     }
     if !ctx.edge_html_labels || svg_fallback {
+        let svg_text_style = cluster_svg_text_style(label_style);
         out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
         if label_type == "markdown" {
             if ctx.uses_elk_adapter_dom || svg_fallback {
-                write_flowchart_svg_text_markdown_wrapped(
-                    out,
-                    render_title,
-                    true,
-                    ctx.measurer,
-                    title_text_style,
-                    Some(markdown_wrap_width),
-                );
+                if !svg_text_style.is_empty() {
+                    write_flowchart_svg_text_markdown_wrapped_with_style(
+                        out,
+                        render_title,
+                        &svg_text_style,
+                        ctx.measurer,
+                        title_text_style,
+                        Some(markdown_wrap_width),
+                    );
+                } else {
+                    write_flowchart_svg_text_markdown_wrapped(
+                        out,
+                        render_title,
+                        true,
+                        ctx.measurer,
+                        title_text_style,
+                        Some(markdown_wrap_width),
+                    );
+                }
             } else {
                 write_flowchart_svg_text_markdown(out, render_title, true);
             }
@@ -624,12 +674,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
                 crate::svg::parity::label::write_measured_svg_title(
                     out,
                     &prepared.wrapped_lines(),
-                    "",
+                    &svg_text_style,
                     None,
                     cluster.title_label.width,
                 );
             } else {
-                write_flowchart_svg_label_plan(out, &prepared, true);
+                write_flowchart_svg_label_plan_with_style(
+                    out,
+                    &prepared,
+                    true,
+                    (!svg_text_style.is_empty()).then_some(svg_text_style.as_str()),
+                );
             }
         }
         out.push_str("</g>");

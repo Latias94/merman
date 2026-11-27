@@ -867,3 +867,71 @@ fn monotone_sweep_matches_bands_across_star_fans_tricky_crossings_and_limits() {
     assert_equivalent(&graph3, &out3, RoutingStyle::Curved, 7);
     assert_equivalent(&graph3, &out3, RoutingStyle::Polyline, u64::MAX);
 }
+
+#[test]
+fn monotone_sweep_handles_cancelling_coords_large_horiz_and_non_x_monotone_cubics() {
+    let assert_equivalent = |graph: &Graph, out: &LayoutOutput, style: RoutingStyle| -> u64 {
+        let mut noop = NoopWorkControl;
+        let mut work = Work::new(&mut noop);
+        let sweep_count = count_crossings_impl(graph, out, style, u64::MAX, true, &mut work)
+            .expect("sweep count");
+        let band_count = count_crossings_impl(graph, out, style, u64::MAX, false, &mut work)
+            .expect("bands count");
+        assert_eq!(sweep_count, band_count, "sweep vs bands mismatch");
+        sweep_count
+    };
+
+    // 1. Cancelling opposite-sign large coordinates crossing near 0:
+    // `ord_a = [(-1e8, -49e8), (1e8, 49e8)]` crosses `ord_b = [(1e-8, 0.0), (-1e-8, 1e-7)]`.
+    // Include extra overlapping vertical chains to trigger the monotone sweep (>= 32 primitives).
+    let mut cancelling = vec![
+        route(&[(-1e8, -49e8), (1e8, 49e8)], Axis::Vertical),
+        route(&[(1e-8, 0.0), (-1e-8, 1e-7)], Axis::Vertical),
+    ];
+    for i in 0..34 {
+        let x = 200.0 + (i as f64) * 5.0;
+        cancelling.push(route(&[(x, -100.0), (x + 10.0, 100.0)], Axis::Vertical));
+    }
+    let (g1, o1) = drawing(cancelling);
+    let c1 = assert_equivalent(&g1, &o1, RoutingStyle::Polyline);
+    assert!(c1 >= 1, "cancelling-coordinate crossing must be detected");
+
+    // 2. Large-coordinate horizontal segment (`>= 1e9`) where unscaled `1e-9` vanishes in f64:
+    // the L-shaped route turns at `(base, 50.0)` and the sloped chain crosses cleanly through
+    // the vertex from top-right to bottom-left right at `h.x_min`.
+    let base = 1.0e9_f64;
+    let mut large_horiz = vec![
+        route(&[(base + 20.0, 0.0), (base - 20.0, 100.0)], Axis::Vertical),
+        route(
+            &[(base, 10.0), (base, 50.0), (base + 500.0, 50.0)],
+            Axis::Horizontal,
+        ),
+    ];
+    for i in 0..34 {
+        let x = base + 50.0 + (i as f64) * 10.0;
+        large_horiz.push(route(&[(x, 0.0), (x + 5.0, 100.0)], Axis::Vertical));
+    }
+    let (g2, o2) = drawing(large_horiz);
+    let c2 = assert_equivalent(&g2, &o2, RoutingStyle::Polyline);
+    assert!(
+        c2 >= 35,
+        "large-coordinate EV_HORIZ crossings must match Bands (got {c2})"
+    );
+
+    // 3. Strictly `y`-monotone but non-`x`-monotone curved corner (`(0,0) -> (100,100) -> (0,200)`
+    // via right-angle corner) whose interior `x`-bulge crosses a vertical line at `x = 80`.
+    let mut bulge = vec![
+        route(
+            &[(0.0, 0.0), (100.0, 0.0), (100.0, 200.0), (0.0, 200.0)],
+            Axis::Vertical,
+        ),
+        route(&[(80.0, -20.0), (80.0, 220.0)], Axis::Vertical),
+    ];
+    for i in 0..34 {
+        let x = 200.0 + (i as f64) * 6.0;
+        bulge.push(route(&[(x, 0.0), (x + 12.0, 200.0)], Axis::Vertical));
+    }
+    let (g3, o3) = drawing(bulge);
+    let c3 = assert_equivalent(&g3, &o3, RoutingStyle::Curved);
+    assert!(c3 >= 1, "non-x-monotone curve crossing must match Bands");
+}
