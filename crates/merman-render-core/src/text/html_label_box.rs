@@ -7,19 +7,19 @@ use crate::mermaid_style::{
 use crate::text::trim_html_collapsible_ascii_whitespace;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct HtmlLabelBox {
-    pub(crate) width: Option<f64>,
-    pub(crate) height: Option<f64>,
+pub struct HtmlLabelBox {
+    pub width: Option<f64>,
+    pub height: Option<f64>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct HtmlLabelWidth {
-    pub(crate) outer: f64,
-    pub(crate) wrap: Option<f64>,
+pub struct HtmlLabelWidth {
+    pub outer: f64,
+    pub wrap: Option<f64>,
 }
 
 impl HtmlLabelBox {
-    pub(crate) fn width_in_label(self, wrapping_width: Option<f64>) -> Option<HtmlLabelWidth> {
+    pub fn width_in_label(self, wrapping_width: Option<f64>) -> Option<HtmlLabelWidth> {
         let authored = self.width?;
         let Some(limit) = wrapping_width.filter(|limit| limit.is_finite() && *limit > 0.0) else {
             return Some(HtmlLabelWidth {
@@ -41,7 +41,7 @@ impl HtmlLabelBox {
         })
     }
 
-    pub(crate) fn from_xhtml<E>(
+    pub fn from_xhtml<E>(
         xhtml: &str,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<Self>, E> {

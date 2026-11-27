@@ -17,6 +17,9 @@ pub use common_dimensions::{
 #[cfg(feature = "text-layout")]
 mod create_text;
 mod css_font;
+#[cfg(feature = "xhtml-labels")]
+#[doc(hidden)]
+pub mod html_label_box;
 #[cfg(feature = "text-layout")]
 mod icons;
 #[cfg(all(feature = "text-layout", feature = "svg-parse"))]
