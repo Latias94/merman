@@ -177,20 +177,18 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
     let mut undirected: Vec<Vec<usize>> = vec![Vec::new(); n_total];
     let mut present: Vec<bool> = vec![false; n_total];
     for r in rel {
-        let (a, b) = if let (Some(left), Some(right)) = (r.left, r.right) {
-            (left, right)
-        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-            (top, bottom)
-        } else {
-            continue;
-        };
-        if a >= n_total || b >= n_total {
-            continue;
+        for (a, b) in [r.left.zip(r.right), r.top.zip(r.bottom)]
+            .into_iter()
+            .flatten()
+        {
+            if a >= n_total || b >= n_total {
+                continue;
+            }
+            undirected[a].push(b);
+            undirected[b].push(a);
+            present[a] = true;
+            present[b] = true;
         }
-        undirected[a].push(b);
-        undirected[b].push(a);
-        present[a] = true;
-        present[b] = true;
     }
 
     let present_count = present.iter().filter(|&&v| v).count();
@@ -320,26 +318,34 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
     let mut in_comp_constraints: Vec<RelConstraint> = Vec::new();
     let mut dag_h: Vec<Vec<Edge>> = vec![Vec::new(); n_total];
     let mut dag_v: Vec<Vec<Edge>> = vec![Vec::new(); n_total];
+    let in_component = |&(from, to): &(usize, usize)| {
+        from < n_total && to < n_total && in_comp[from] && in_comp[to]
+    };
     for r in rel {
-        if let (Some(left), Some(right)) = (r.left, r.right) {
-            if left < n_total && right < n_total && in_comp[left] && in_comp[right] {
-                dag_h[left].push(Edge {
-                    id: right,
-                    gap: r.gap,
-                });
-                in_comp_constraints.push(*r);
-            }
-        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom)
-            && top < n_total
-            && bottom < n_total
-            && in_comp[top]
-            && in_comp[bottom]
-        {
+        let horizontal = r.left.zip(r.right).filter(in_component);
+        let vertical = r.top.zip(r.bottom).filter(in_component);
+        if let Some((left, right)) = horizontal {
+            dag_h[left].push(Edge {
+                id: right,
+                gap: r.gap,
+            });
+        }
+        if let Some((top, bottom)) = vertical {
             dag_v[top].push(Edge {
                 id: bottom,
                 gap: r.gap,
             });
-            in_comp_constraints.push(*r);
+        }
+        if horizontal.is_some() || vertical.is_some() {
+            let (left, right) = horizontal.unzip();
+            let (top, bottom) = vertical.unzip();
+            in_comp_constraints.push(RelConstraint {
+                left,
+                right,
+                top,
+                bottom,
+                gap: r.gap,
+            });
         }
     }
     apply_reflection_for_relative_placement(x, y, &in_comp_constraints);
@@ -512,7 +518,8 @@ pub(super) fn apply_reflection_for_relative_placement(
             } else {
                 not_reflect_on_y += 1;
             }
-        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+        }
+        if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
             if y[top] - y[bottom] >= 0.0 {
                 reflect_on_x += 1;
             } else {

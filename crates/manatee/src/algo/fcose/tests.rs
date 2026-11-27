@@ -1928,6 +1928,74 @@ fn zero_gap_cycle_unifies_overlapping_authored_alignment_groups() {
 }
 
 #[test]
+fn dual_axis_relative_placement_votes_on_both_axes() {
+    let mut x = [3.0, 1.0];
+    let mut y = [4.0, 2.0];
+    let both = RelConstraint {
+        left: Some(0),
+        right: Some(1),
+        top: Some(0),
+        bottom: Some(1),
+        gap: 10.0,
+    };
+    apply_reflection_for_relative_placement(&mut x, &mut y, &[both]);
+    assert_eq!(x, [-3.0, -1.0]);
+    assert_eq!(y, [-4.0, -2.0]);
+}
+
+#[test]
+fn relative_only_transform_matches_separate_horizontal_and_vertical_rows() {
+    let both = RelConstraint {
+        left: Some(0),
+        right: Some(1),
+        top: Some(2),
+        bottom: Some(3),
+        gap: 12.0,
+    };
+    let bridge = RelConstraint {
+        left: Some(1),
+        right: Some(2),
+        top: None,
+        bottom: None,
+        gap: 8.0,
+    };
+    let prepare = |relative| {
+        let mut nodes = [
+            node_at(40.0, 15.0, 10.0, 10.0),
+            node_at(0.0, 5.0, 10.0, 10.0),
+            node_at(0.0, 30.0, 10.0, 10.0),
+            node_at(20.0, -30.0, 10.0, 10.0),
+        ];
+        let constraints = Constraints {
+            align_horizontal: Vec::new(),
+            align_vertical: Vec::new(),
+            relative,
+        };
+        super::constraint_projection::handle_constraints_pre_layout(
+            &mut nodes,
+            &constraints,
+            &mut NoopWorkControl,
+        )
+        .unwrap();
+        nodes.map(|node| (node.center_x(), node.center_y()))
+    };
+    let split = vec![
+        RelConstraint {
+            top: None,
+            bottom: None,
+            ..both
+        },
+        RelConstraint {
+            left: None,
+            right: None,
+            ..both
+        },
+        bridge,
+    ];
+    assert_eq!(prepare(vec![both, bridge]), prepare(split));
+}
+
+#[test]
 fn zero_gap_alignment_does_not_drop_vertical_projection_for_dual_axis_rows() {
     let mut constraints = Constraints {
         align_horizontal: Vec::new(),
