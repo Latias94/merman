@@ -22,6 +22,8 @@ paint. The writer does not select an output profile or replace terminal SVG admi
 `svg-parse` provides lexical scanning, XML stylesheet decoding, and SVG structure
 validation for postprocessing. `svg-safety` provides the bounded CSS and attribute sanitizers
 and the inline raster URL policy used by terminal SVG validation.
+`svg-validation` checks native and known-host inline SVG using the operation's resource meter.
+The facade owns pipeline selection, prepared-math verification, and sealing the selected bytes.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.
 `svg-identity` rewrites Mermaid marker selectors for the native SVG CSS engine.

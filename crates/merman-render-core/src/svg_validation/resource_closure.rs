@@ -1,4 +1,4 @@
-use merman_render_core::svg_css::{CssResourceUrl, visit_css_resource_urls};
+use crate::svg_css::{CssResourceUrl, visit_css_resource_urls};
 use std::collections::BTreeSet;
 
 /// Terminal inventory of same-document and inline resources referenced by a sealed SVG.
@@ -45,7 +45,7 @@ impl SvgResourceClosure {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct SvgResourceClosureBuilder {
+pub(super) struct SvgResourceClosureBuilder {
     parsed_fragment_ids: BTreeSet<String>,
     parsed_fragment_references: BTreeSet<String>,
     raw_use_fragment_ids: BTreeSet<String>,
@@ -55,31 +55,31 @@ pub(crate) struct SvgResourceClosureBuilder {
 }
 
 impl SvgResourceClosureBuilder {
-    pub(crate) fn observe_parsed_fragment_id(&mut self, id: &str) {
+    pub(super) fn observe_parsed_fragment_id(&mut self, id: &str) {
         self.parsed_fragment_ids.insert(id.to_owned());
     }
 
-    pub(crate) fn observe_parsed_fragment_reference(&mut self, id: &str) {
+    pub(super) fn observe_parsed_fragment_reference(&mut self, id: &str) {
         self.parsed_fragment_references.insert(id.to_owned());
     }
 
-    pub(crate) fn observe_raw_use_fragment_id(&mut self, id: &str) {
+    pub(super) fn observe_raw_use_fragment_id(&mut self, id: &str) {
         self.raw_use_fragment_ids.insert(id.to_owned());
     }
 
-    pub(crate) fn observe_raw_use_fragment_reference(&mut self, id: &str) {
+    pub(super) fn observe_raw_use_fragment_reference(&mut self, id: &str) {
         self.raw_use_fragment_references.insert(id.to_owned());
     }
 
-    pub(crate) fn observe_inline_data_resource(&mut self) {
+    pub(super) fn observe_inline_data_resource(&mut self) {
         self.inline_data_resources = self.inline_data_resources.saturating_add(1);
     }
 
-    pub(crate) fn observe_inline_css_urls(&mut self, css: &str) -> Result<(), String> {
+    pub(super) fn observe_inline_css_urls(&mut self, css: &str) -> Result<(), String> {
         self.observe_css_urls(css, CssReferenceScope::Concrete)
     }
 
-    pub(crate) fn observe_stylesheet_urls(&mut self, css: &str) -> Result<(), String> {
+    pub(super) fn observe_stylesheet_urls(&mut self, css: &str) -> Result<(), String> {
         self.observe_css_urls(css, CssReferenceScope::ConditionalStylesheet)
     }
 
@@ -103,7 +103,7 @@ impl SvgResourceClosureBuilder {
         })
     }
 
-    pub(crate) fn finish(self) -> Result<SvgResourceClosure, String> {
+    pub(super) fn finish(self) -> Result<SvgResourceClosure, String> {
         if let Some(unresolved) = self
             .parsed_fragment_references
             .difference(&self.parsed_fragment_ids)

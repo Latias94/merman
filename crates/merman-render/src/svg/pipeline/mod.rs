@@ -1,14 +1,10 @@
 mod builtin;
 mod context;
 mod embedding;
-mod final_validation;
 mod policy;
 mod preset;
-mod resource_closure;
 mod standalone;
-mod static_validation;
 mod step_animation;
-mod text_tracking;
 
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
@@ -18,52 +14,23 @@ pub use builtin::{
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_with_controls};
 pub(crate) use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
     escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
     find_tag_end_with_checkpoints, find_with_checkpoints, next_svg_quoted_attr_with_checkpoints,
     rfind_with_checkpoints, start_tag_name,
 };
+#[cfg(test)]
+use merman_render_core::svg_validation::test_support;
+use merman_render_core::svg_validation::{InlineRasterSources, SvgFontSeal, TerminalSvgValidation};
+pub use merman_render_core::svg_validation::{SvgReferencePlan, SvgResourceClosure};
+pub(crate) use merman_render_core::svg_validation::{
+    is_css_value_attribute, is_svg_idref_attribute, validate_well_formed_svg_with_controls,
+};
+pub(crate) use merman_render_core::svg_xml::SvgStructureMetrics;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
-pub use resource_closure::SvgResourceClosure;
 pub use standalone::{StandaloneSvgArtifact, StandaloneSvgTerminalStatus};
-pub(crate) use text_tracking::SvgFontSeal;
-
-pub(crate) fn is_css_value_attribute(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "style"
-            | "background"
-            | "background-image"
-            | "fill"
-            | "stroke"
-            | "filter"
-            | "clip-path"
-            | "mask"
-            | "marker"
-            | "marker-start"
-            | "marker-mid"
-            | "marker-end"
-            | "cursor"
-            | "color-profile"
-    )
-}
-
-pub(crate) fn is_svg_idref_attribute(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "aria-activedescendant"
-            | "aria-controls"
-            | "aria-describedby"
-            | "aria-details"
-            | "aria-errormessage"
-            | "aria-flowto"
-            | "aria-labelledby"
-            | "aria-owns"
-    )
-}
 
 /// Internal cross-crate adapter for rebasing ids in Merman-produced SVG.
 #[doc(hidden)]
@@ -84,13 +51,17 @@ pub fn rebase_svg_ids(
 /// changes how fragment-only references resolve.
 #[doc(hidden)]
 pub fn validate_static_inline_svg(svg: &str, session: &RenderSession) -> Result<()> {
-    static_validation::validate_rustdoc_static_svg(svg, SvgPostprocessExecution::new(session))
+    SvgPostprocessExecution::new(session)
+        .validation()
+        .validate_static_inline(svg)
 }
 
 /// Validates renderer output before static-inline fallback and compatibility transformations.
 #[doc(hidden)]
 pub fn validate_static_inline_svg_admission(svg: &str, session: &RenderSession) -> Result<()> {
-    static_validation::validate_rustdoc_admission_svg(svg, SvgPostprocessExecution::new(session))
+    SvgPostprocessExecution::new(session)
+        .validation()
+        .validate_static_inline_admission(svg)
 }
 
 use crate::environment::RenderSession;
@@ -109,7 +80,7 @@ enum PipelineTerminalValidation {
 
 struct PipelineRunResult<'a> {
     svg: Cow<'a, str>,
-    terminal: Option<final_validation::TerminalSvgValidation>,
+    terminal: Option<TerminalSvgValidation>,
 }
 
 pub trait SvgPostprocessor: Send + Sync {
@@ -142,7 +113,7 @@ pub trait SvgPostprocessor: Send + Sync {
 #[derive(Clone)]
 pub struct ResvgCompatibleSvg {
     svg: String,
-    inline_raster_sources: Box<[(usize, final_validation::InlineRasterHref)]>,
+    inline_raster_sources: InlineRasterSources,
 
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
@@ -150,35 +121,6 @@ pub struct ResvgCompatibleSvg {
     finalization_report: SvgFinalizationReport,
     font_catalog: crate::text::FontCatalog,
     font_source_policy: crate::text::FontSourcePolicy,
-}
-
-/// Reference-expansion work retained by a sealed resvg-compatible SVG.
-///
-/// The occurrence slice is ordered by source-document element encounter order. Exporters use it
-/// to charge each inline resource once for every `<use>`-expanded instance before asking usvg to
-/// decode that resource.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SvgReferencePlan {
-    expanded_elements: usize,
-    max_tree_depth: usize,
-    raw_element_occurrences: Box<[usize]>,
-}
-
-impl SvgReferencePlan {
-    /// Returns the element count after same-document `<use>` expansion.
-    pub const fn expanded_elements(&self) -> usize {
-        self.expanded_elements
-    }
-
-    /// Returns the maximum resolved XML-tree depth after `<use>` expansion.
-    pub const fn max_tree_depth(&self) -> usize {
-        self.max_tree_depth
-    }
-
-    /// Returns expanded instance counts for source elements in document encounter order.
-    pub fn raw_element_occurrences(&self) -> &[usize] {
-        &self.raw_element_occurrences
-    }
 }
 
 /// Immutable evidence produced by the terminal SVG finalizer.
@@ -237,10 +179,7 @@ impl SvgFinalizationReport {
         &self.font_seal
     }
 
-    fn from_pipeline(
-        pipeline: &SvgPipeline,
-        terminal: final_validation::TerminalSvgValidation,
-    ) -> Self {
+    fn from_pipeline(pipeline: &SvgPipeline, terminal: TerminalSvgValidation) -> Self {
         Self {
             preset: pipeline.preset,
             postprocessor_names: pipeline
@@ -262,7 +201,7 @@ impl SvgFinalizationReport {
 impl ResvgCompatibleSvg {
     fn seal(
         svg: String,
-        terminal: Option<final_validation::TerminalSvgValidation>,
+        terminal: Option<TerminalSvgValidation>,
 
         prepared_math_evidence: PreparedMathEvidenceLease,
         prepared_math_evidence_valid: bool,
@@ -286,9 +225,7 @@ impl ResvgCompatibleSvg {
         };
         let mut terminal = match terminal {
             Some(terminal) => terminal,
-            None => {
-                final_validation::validate_resvg_compatible_svg_with_execution(&svg, execution)?
-            }
+            None => execution.validation().validate_native(&svg)?,
         };
         execution.checkpoint()?;
         let font_catalog = session.font_catalog().clone();
@@ -343,12 +280,14 @@ impl ResvgCompatibleSvg {
     /// Yields each effective inline raster href with its reference-expanded occurrence count.
     #[doc(hidden)]
     pub fn inline_raster_sources(&self) -> impl Iterator<Item = (&str, usize)> {
-        self.inline_raster_sources.iter().map(|(element, href)| {
-            (
-                href.as_str(self.as_str()),
-                self.reference_plan().raw_element_occurrences()[*element],
-            )
-        })
+        self.inline_raster_sources
+            .iter(self.as_str())
+            .map(|(element, href)| {
+                (
+                    href,
+                    self.reference_plan().raw_element_occurrences()[element],
+                )
+            })
     }
 
     /// Returns the exact font catalog authorized by the render session.
@@ -780,10 +719,9 @@ impl SvgPipeline {
         execution.preflight_svg_byte_count(current.len())?;
         if self.is_identity_for(metadata) {
             // Raw SVG enters through admission once; generated identity output bypasses run.
-            final_validation::check_svg_resource_budget_with_execution(
-                current.as_ref(),
-                execution,
-            )?;
+            execution
+                .validation()
+                .check_resource_budget(current.as_ref())?;
             execution.checkpoint()?;
             return Ok(PipelineRunResult {
                 svg: current,
@@ -791,10 +729,7 @@ impl SvgPipeline {
             });
         }
 
-        let mut structure = match final_validation::validate_well_formed_svg_with_execution(
-            current.as_ref(),
-            execution,
-        ) {
+        let mut structure = match execution.validation().validate_xml(current.as_ref()) {
             Ok(structure) => structure,
             Err(initial_error) if self.preset == SvgPipelinePreset::ResvgSafe => {
                 // Browser-facing SVG may contain HTML named entities in serialized attribute
@@ -811,10 +746,7 @@ impl SvgPipeline {
                     return Err(initial_error);
                 }
                 current = sanitized;
-                final_validation::validate_well_formed_svg_with_execution(
-                    current.as_ref(),
-                    execution,
-                )?
+                execution.validation().validate_xml(current.as_ref())?
             }
             Err(error) => return Err(error),
         };
@@ -834,10 +766,7 @@ impl SvgPipeline {
             execution.checkpoint()?;
             execution.preflight_svg_byte_count(current.len())?;
             if changed {
-                structure = final_validation::validate_well_formed_svg_with_execution(
-                    current.as_ref(),
-                    execution,
-                )?;
+                structure = execution.validation().validate_xml(current.as_ref())?;
             }
         }
         if self.inline_contract == Some(InlineContract::Static) {
@@ -860,7 +789,9 @@ impl SvgPipeline {
             current = embedding::normalize_renderer_ids(current, metadata, execution)?;
         }
         if self.inline_contract.is_some() {
-            static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
+            execution
+                .validation()
+                .validate_static_inline_admission(current.as_ref())?;
         }
 
         let mut opaque_output = false;
@@ -903,10 +834,7 @@ impl SvgPipeline {
                 crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(current, || {
                     execution.checkpoint()
                 })?;
-            structure = final_validation::validate_well_formed_svg_with_execution(
-                current.as_ref(),
-                execution,
-            )?;
+            structure = execution.validation().validate_xml(current.as_ref())?;
         }
         execution.checkpoint()?;
         let (finalized, _) = preset::apply_preset_cow(
@@ -925,10 +853,14 @@ impl SvgPipeline {
         execution.preflight_svg_byte_count(finalized.len())?;
         match self.inline_contract {
             Some(InlineContract::Static) => {
-                static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
+                execution
+                    .validation()
+                    .validate_static_inline(finalized.as_ref())?;
             }
             Some(InlineContract::Browser) => {
-                static_validation::validate_rustdoc_admission_svg(finalized.as_ref(), execution)?;
+                execution
+                    .validation()
+                    .validate_static_inline_admission(finalized.as_ref())?;
             }
             None => {}
         }
@@ -947,18 +879,12 @@ impl SvgPipeline {
                         )
                     })?;
             }
-            Some(
-                final_validation::validate_resvg_compatible_svg_with_execution(
-                    finalized.as_ref(),
-                    execution,
-                )?,
-            )
+            Some(execution.validation().validate_native(finalized.as_ref())?)
         } else {
             if self.preset != SvgPipelinePreset::ResvgSafe && self.inline_contract.is_none() {
-                final_validation::check_svg_resource_budget_with_execution(
-                    finalized.as_ref(),
-                    execution,
-                )?;
+                execution
+                    .validation()
+                    .check_resource_budget(finalized.as_ref())?;
             }
             None
         };
@@ -1133,11 +1059,10 @@ impl SvgPipeline {
 
 #[cfg(feature = "native-compact")]
 pub(super) fn validate_native_compact_svg(svg: &str, session: &RenderSession) -> Result<()> {
-    final_validation::validate_well_formed_svg_with_execution(
-        svg,
-        SvgPostprocessExecution::new(session),
-    )
-    .map(|_| ())
+    SvgPostprocessExecution::new(session)
+        .validation()
+        .validate_xml(svg)
+        .map(|_| ())
 }
 
 /// Finalizes arbitrary SVG for resvg/raster consumption without a family capability.

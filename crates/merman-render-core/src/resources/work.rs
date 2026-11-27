@@ -152,6 +152,11 @@ impl OperationWorkMeter {
         self.policy
     }
 
+    #[cfg(feature = "svg-validation")]
+    pub(crate) const fn policy_ref(&self) -> &RenderResourcePolicy {
+        &self.policy
+    }
+
     pub fn control(&self) -> &OperationControl {
         &self.control
     }

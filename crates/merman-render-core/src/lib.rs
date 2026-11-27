@@ -95,6 +95,9 @@ pub mod svg_scan;
 #[cfg(feature = "html")]
 #[doc(hidden)]
 pub mod svg_security;
+#[cfg(feature = "svg-validation")]
+#[doc(hidden)]
+pub mod svg_validation;
 #[cfg(feature = "svg-parse")]
 #[doc(hidden)]
 pub mod svg_xml;

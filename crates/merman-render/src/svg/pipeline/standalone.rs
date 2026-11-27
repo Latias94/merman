@@ -6,7 +6,7 @@ use crate::theme::ThemePortabilityRequirement;
 
 use super::{
     ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelinePreset,
-    SvgPostprocessExecution, final_validation,
+    SvgPostprocessExecution,
 };
 
 /// Native compatibility of the exact selected standalone SVG bytes.
@@ -74,9 +74,9 @@ impl StandaloneSvgArtifact {
             (StandaloneSvgTerminalStatus::Unverified, None)
         } else {
             let validation = if pipeline.preset() == SvgPipelinePreset::ResvgSafe {
-                final_validation::validate_resvg_compatible_svg_with_execution(&svg, execution)
+                execution.validation().validate_native(&svg)
             } else {
-                final_validation::observe_resvg_compatibility_with_execution(&svg, execution)
+                execution.validation().observe_native_compatibility(&svg)
             };
             execution.checkpoint()?;
             match validation {
@@ -87,14 +87,14 @@ impl StandaloneSvgArtifact {
                 Err(crate::Error::SvgPostprocess { .. })
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe =>
                 {
-                    final_validation::check_svg_resource_budget_with_execution(&svg, execution)?;
+                    execution.validation().check_resource_budget(&svg)?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit))
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe
                         && limit.is_svg_backend_compatibility_ceiling() =>
                 {
-                    final_validation::check_svg_resource_budget_with_execution(&svg, execution)?;
+                    execution.validation().check_resource_budget(&svg)?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit)) => {
@@ -186,6 +186,8 @@ impl AsRef<str> for StandaloneSvgArtifact {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "diagram-journey")]
+    use super::super::test_support;
     use super::*;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 
@@ -225,8 +227,8 @@ mod tests {
             )
             .unwrap();
             let ((svg, terminal_work), xml_work) =
-                final_validation::measure_xml_validation_work(|| {
-                    final_validation::measure_terminal_validation_work(|| {
+                test_support::measure_xml_validation_work(|| {
+                    test_support::measure_terminal_validation_work(|| {
                         artifact
                             .render_svg(
                                 &crate::svg::SvgRenderOptions::default(),

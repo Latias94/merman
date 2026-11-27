@@ -14,10 +14,6 @@ pub use merman_render_core::resources::{
 
 #[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
 pub(crate) use merman_render_core::resources::PreparedTextRetainedReservation;
-#[cfg(test)]
-pub(crate) use merman_render_core::resources::{
-    MAX_SVG_BACKEND_COORDINATE_MAGNITUDE, SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID,
-};
 pub(crate) use merman_render_core::resources::{OperationWorkError, OperationWorkMeter};
 
 #[cfg(feature = "diagram-class")]

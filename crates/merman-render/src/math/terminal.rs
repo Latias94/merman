@@ -195,7 +195,7 @@ impl PreparedMathTerminalReceipt {
             ));
         }
 
-        let plan = crate::svg::SvgReferencePlan::for_occurrence_receipt(svg)
+        let plan = merman_render_core::svg_validation::plan_svg_occurrences_for_receipt(svg)
             .map_err(|error| format!("prepared-math reference expansion is invalid: {error}"))?;
         if instance_indices
             .into_iter()

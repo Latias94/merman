@@ -12,7 +12,7 @@ mod id_suffix;
 mod palette;
 #[cfg(feature = "css-style")]
 mod prepared;
-#[cfg(feature = "svg-identity")]
+#[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 mod resource_urls;
 
 pub use id::{
@@ -30,7 +30,7 @@ pub use look_defs::PreparedLookDefs;
 
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
-#[cfg(feature = "svg-identity")]
+#[cfg(any(feature = "svg-identity", feature = "svg-validation"))]
 pub use resource_urls::{CssResourceScanError, CssResourceUrl, visit_css_resource_urls};
 
 /// Emits alternating literal pieces and ordinary `Display` values, in format order.

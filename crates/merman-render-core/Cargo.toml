@@ -58,6 +58,7 @@ svg-output = ["resources", "dep:memchr", "dep:merman-markup", "dep:ryu-js", "dep
 svg-parse = ["svg-output", "dep:quick-xml"]
 svg-identity = ["svg-parse", "dep:cssparser"]
 svg-safety = ["css-style", "html", "svg-parse", "dep:data-url"]
+svg-validation = ["svg-animation", "svg-safety"]
 test-support = []
 text-layout = ["css-style", "dep:thiserror", "dep:unicode-linebreak", "dep:unicode-width"]
 theme-elevation = ["theme-svg", "dep:kurbo"]

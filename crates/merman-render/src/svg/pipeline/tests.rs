@@ -21,11 +21,10 @@ fn finalization_report_moves_terminal_owned_allocations() {
     let session = render_session();
     let svg =
         r##"<svg><defs><path id="shape"/></defs><use href="#shape"/><text>label</text></svg>"##;
-    let terminal = final_validation::validate_resvg_compatible_svg_with_execution(
-        svg,
-        SvgPostprocessExecution::new(&session),
-    )
-    .unwrap();
+    let terminal = SvgPostprocessExecution::new(&session)
+        .validation()
+        .validate_native(svg)
+        .unwrap();
     let occurrences = terminal.reference_plan.raw_element_occurrences().as_ptr();
     let available_ids = terminal.resource_closure.available_fragment_ids().as_ptr();
     let referenced_ids = terminal.resource_closure.referenced_fragment_ids().as_ptr();
@@ -65,7 +64,7 @@ fn resvg_seal_reuses_supplied_terminal_validation() {
     let metadata =
         SvgPostprocessMetadata::from_svg(&svg).with_family_id(crate::DiagramFamilyId::STATE);
 
-    let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
+    let (sealed, work) = test_support::measure_terminal_validation_work(|| {
         let result = pipeline
             .run(
                 Cow::Owned(svg),
@@ -105,7 +104,7 @@ fn fallback_css_diagnostics_are_sealed_without_granting_resource_admission() {
         let svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><g data-merman-fallback-css-residual="{marker}"><path d="M0 0h1v1z"/></g></svg>"#
         );
-        let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
+        let (sealed, work) = test_support::measure_terminal_validation_work(|| {
             SvgPipeline::resvg_safe()
                 .process_resvg_compatible(&svg, &session)
                 .unwrap()
@@ -170,11 +169,10 @@ fn resvg_seal_moves_owned_terminal_reference_and_resource_inventories() {
     let session = render_session();
     let pipeline = SvgPipeline::resvg_safe();
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"><stop stop-color="#123456"/></linearGradient></defs><path fill="url(#paint)" d="M0 0h1"/></svg>"##.to_owned();
-    let terminal = final_validation::validate_resvg_compatible_svg_with_execution(
-        &svg,
-        SvgPostprocessExecution::new(&session),
-    )
-    .unwrap();
+    let terminal = SvgPostprocessExecution::new(&session)
+        .validation()
+        .validate_native(&svg)
+        .unwrap();
     let reference_allocation = terminal.reference_plan.raw_element_occurrences().as_ptr();
     let available_allocation = terminal.resource_closure.available_fragment_ids().as_ptr();
     let referenced_allocation = terminal.resource_closure.referenced_fragment_ids().as_ptr();
@@ -485,7 +483,7 @@ fn inline_pipelines_reuse_unchanged_math_structure_but_revalidate_opaque_output(
             }
             for generated in [false, true] {
                 let session = render_session();
-                let (output, work) = final_validation::measure_xml_validation_work(|| {
+                let (output, work) = test_support::measure_xml_validation_work(|| {
                     if generated {
                         pipeline.process_generated_with_metadata_and_math_evidence(
                             svg.to_owned(),
@@ -562,7 +560,7 @@ fn inline_pipelines_project_renderer_owned_math_before_admission() {
             6,
         ),
     ] {
-        let (result, work) = final_validation::measure_xml_validation_work(|| {
+        let (result, work) = test_support::measure_xml_validation_work(|| {
             pipeline.run(
                 Cow::Borrowed(&svg),
                 &metadata,
@@ -787,11 +785,10 @@ fn ordinary_postprocessors_do_not_inherit_native_backend_limits() {
         assert!(output.contains("Hello"));
     }
     assert!(
-        final_validation::validate_resvg_compatible_svg_with_execution(
-            &svg,
-            SvgPostprocessExecution::new(&render_session()),
-        )
-        .is_err()
+        SvgPostprocessExecution::new(&render_session())
+            .validation()
+            .validate_native(&svg)
+            .is_err()
     );
 
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="1e308" height="48"><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject></svg>"#;
@@ -800,11 +797,10 @@ fn ordinary_postprocessors_do_not_inherit_native_backend_limits() {
         .expect("readable SVG has its own bounded work and a finite numeric domain");
     assert!(output.contains(">Hello</text>"));
     assert!(
-        final_validation::validate_resvg_compatible_svg_with_execution(
-            &output,
-            SvgPostprocessExecution::new(&render_session()),
-        )
-        .is_err()
+        SvgPostprocessExecution::new(&render_session())
+            .validation()
+            .validate_native(&output)
+            .is_err()
     );
 }
 

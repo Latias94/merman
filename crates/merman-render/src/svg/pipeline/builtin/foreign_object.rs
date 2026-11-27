@@ -6,8 +6,7 @@ use std::borrow::Cow;
 #[cfg(test)]
 use std::convert::Infallible;
 
-use crate::svg::pipeline::final_validation::SvgStructureMetrics;
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor, SvgStructureMetrics};
 use merman_render_core::svg_scan::{
     extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
     next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
@@ -27,11 +26,7 @@ impl SvgPostprocessor for ForeignObjectFallbackPostprocessor {
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
         let measurer = ctx.controlled_text_measurer(TextMeasurementPhase::Wrap);
-        let structure =
-            crate::svg::pipeline::final_validation::validate_well_formed_svg_with_execution(
-                &svg,
-                ctx.execution(),
-            )?;
+        let structure = ctx.execution().validation().validate_xml(&svg)?;
         apply_foreign_object_fallback(svg, &measurer, ctx.execution(), structure)
     }
 }

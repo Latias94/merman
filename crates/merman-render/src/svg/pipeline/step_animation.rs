@@ -1,15 +1,6 @@
 use super::SvgPostprocessExecution;
 use crate::Result;
-use crate::xml_dom::{Document, NodeId};
 use std::borrow::Cow;
-use std::collections::HashSet;
-
-pub(super) fn validate(
-    document: &Document<'_>,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<HashSet<NodeId>> {
-    merman_render_core::step_animation::validate(document, &mut || execution.checkpoint())
-}
 
 pub(super) fn project_static<'a>(
     svg: Cow<'a, str>,
