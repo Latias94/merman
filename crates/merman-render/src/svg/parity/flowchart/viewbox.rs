@@ -10,7 +10,6 @@ use super::*;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderedBoundsRequest<'view, 'data> {
     pub ctx: &'view FlowchartRenderCtx<'data>,
-    pub layout: &'view FlowchartLayout,
     pub subgraph_title_y_shift: f64,
 }
 
@@ -48,9 +47,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
 ) -> Result<Bounds> {
     let FlowchartRenderedBoundsRequest {
         ctx,
-        layout,
         subgraph_title_y_shift,
     } = request;
+    let layout = ctx.layout;
     let y_offset_for_root = |root: Option<&str>| -> f64 {
         if root.is_some() && subgraph_title_y_shift.abs() >= 1e-9 {
             -subgraph_title_y_shift
@@ -81,7 +80,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
         }
     };
 
-    for c in &layout.clusters {
+    for c in layout.clusters {
         let root = if ctx.recursive_clusters.contains(c.id.as_str()) {
             Some(c.id.as_str())
         } else {
@@ -117,7 +116,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
     let effective_parent_for_id = |id: &str| hierarchy_plan.effective_parent(id);
     include_flowchart_node_rendered_bounds(
         ctx,
-        &layout.nodes,
+        layout.nodes,
         subgraph_title_y_shift,
         &effective_parent_for_id,
         &mut include_rect,
@@ -126,7 +125,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
     if let Some(native) = ctx.native.filter(|style| style.has_depth()) {
         use kurbo::Shape;
 
-        for node in &layout.nodes {
+        for node in layout.nodes {
             if let Some(silhouette) = super::render::node::native_silhouette(ctx, node) {
                 let y = node.y + y_offset_for_root(hierarchy_plan.effective_parent(&node.id));
                 let bounds = crate::theme::elevation_svg::bounds(

@@ -1,5 +1,7 @@
 use super::*;
-use merman_render_flow::svg::FlowchartSvgServices;
+use merman_render_flow::svg::{
+    FlowchartSvgLayout, FlowchartSvgRoute, FlowchartSvgServices, SwimlaneSvgLayout,
+};
 use merman_render_flow::{document as document_ids, layout_config as render_config};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -64,6 +66,49 @@ pub(crate) fn flowchart_marker_metrics(
 
 use render::{render_flowchart_edge_label, render_flowchart_edge_path, render_flowchart_node};
 use types::*;
+
+fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
+    use crate::graph_layout::RouteContract;
+
+    let route_contract = match &layout.route_contract {
+        RouteContract::DagreParity => FlowchartSvgRoute::DagreParity,
+        #[cfg(feature = "layout-elk")]
+        RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
+        RouteContract::Swimlane => FlowchartSvgRoute::Swimlane,
+        #[cfg(any(feature = "layout-shoal", test))]
+        RouteContract::CanonicalAxis(routes) => FlowchartSvgRoute::CanonicalAxis(routes),
+        #[cfg(all(
+            feature = "layout-shoal",
+            any(
+                feature = "diagram-class",
+                feature = "diagram-er",
+                feature = "diagram-requirement",
+                feature = "diagram-state",
+                feature = "diagram-usecase"
+            )
+        ))]
+        RouteContract::CanonicalGraph(_) => FlowchartSvgRoute::Legacy,
+    };
+    FlowchartSvgLayout {
+        nodes: &layout.nodes,
+        edges: &layout.edges,
+        edge_owners: &layout.edge_owners,
+        clusters: &layout.clusters,
+        dom_node_order_by_root: &layout.dom_node_order_by_root,
+        route_contract,
+    }
+}
+
+fn swimlane_svg_layout(layout: &SwimlaneLayout) -> SwimlaneSvgLayout<'_> {
+    SwimlaneSvgLayout {
+        direction: layout.direction,
+        nodes: &layout.nodes,
+        lanes: &layout.lanes,
+        edges: &layout.edges,
+        edge_owners: &layout.edge_owners,
+        has_canonical_routes: layout.has_canonical_routes(),
+    }
+}
 
 fn svg_services<'a>(options: &'a SvgExecution<'_>) -> FlowchartSvgServices<'a> {
     let session = options.family.session();

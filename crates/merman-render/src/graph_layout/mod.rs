@@ -147,31 +147,6 @@ pub(crate) enum RouteContract {
 ))]
 impl RouteContract {
     #[cfg(any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    ))]
-    pub(crate) fn is_canonical_axis(&self) -> bool {
-        #[cfg(any(feature = "layout-shoal", test))]
-        return matches!(self, Self::CanonicalAxis(_));
-        #[cfg(not(any(feature = "layout-shoal", test)))]
-        false
-    }
-
-    #[cfg(any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    ))]
-    pub(crate) fn struck_group_titles(&self) -> Option<&rustc_hash::FxHashSet<String>> {
-        #[cfg(any(feature = "layout-shoal", test))]
-        if let Self::CanonicalAxis(routes) = self {
-            return Some(&routes.struck_group_titles);
-        }
-        None
-    }
-
-    #[cfg(any(
         feature = "diagram-agentflow",
         feature = "diagram-class",
         feature = "diagram-er",

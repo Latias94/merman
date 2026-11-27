@@ -9,6 +9,9 @@ use merman_render_core::{
 };
 use merman_theme_contract::v2::{Canvas, Color, FamilyTheme};
 
+mod layout;
+pub use layout::{FlowchartSvgLayout, FlowchartSvgRoute, SwimlaneSvgLayout};
+
 /// Services borrowed from the same admitted render operation as the layout and label sidecars.
 pub struct FlowchartSvgServices<'a> {
     pub diagram_id: SvgId<'a>,

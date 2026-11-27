@@ -220,7 +220,7 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
 
 pub(super) fn apply_swimlane_edge_curves<'a>(
     render_edges: &mut [super::render_input::FlowchartRenderEdge<'a>],
-    layout: &SwimlaneLayout,
+    layout: SwimlaneSvgLayout<'_>,
 ) {
     let curve_by_owner: FxHashMap<crate::flowchart::FlowchartEdgeKey, &str> = layout
         .edges

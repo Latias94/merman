@@ -326,10 +326,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let measure_length = measure_neo_length
         && ctx.compatibility.look.is_neo()
         && !request.trace_enabled
-        && matches!(
-            ctx.layout.route_contract,
-            crate::graph_layout::RouteContract::DagreParity
-        )
+        && matches!(ctx.layout.route_contract, FlowchartSvgRoute::DagreParity)
         && ctx
             .edge_style_plan
             .animation_for(request.key)
@@ -391,10 +388,8 @@ pub(in crate::svg::parity::flowchart) fn dagre_linear_painted_route(
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Option<DagreLinearPaintedRoute> {
     let ctx = request.ctx;
-    if !matches!(
-        ctx.layout.route_contract,
-        crate::graph_layout::RouteContract::DagreParity
-    ) || ctx.uses_elk_adapter_dom
+    if !matches!(ctx.layout.route_contract, FlowchartSvgRoute::DagreParity)
+        || ctx.uses_elk_adapter_dom
         || ctx.swimlane_direction.is_some()
         || request.trace_enabled
         || !ctx.model.subgraphs.is_empty()

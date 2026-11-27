@@ -10,7 +10,7 @@ use crate::graph_layout::{
 };
 use std::borrow::Cow;
 
-fn obstacles(layout: &FlowchartLayout) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
+fn obstacles(layout: FlowchartSvgLayout<'_>) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
     use route_paint::ObstacleOwner;
 
     let mut boxes = Vec::with_capacity(layout.nodes.len() + layout.clusters.len());

@@ -72,7 +72,7 @@ pub(super) fn render_flowchart_svg_model(
         render_config,
         prepared_nodes: _,
         prepared_theme,
-        layout,
+        layout: _,
         swimlane_layout,
         model,
         render_context: _,
@@ -121,7 +121,6 @@ pub(super) fn render_flowchart_svg_model(
             let bounds = prepare_flowchart_rendered_bounds(
                 FlowchartRenderedBoundsRequest {
                     ctx,
-                    layout,
                     subgraph_title_y_shift,
                 },
                 hierarchy_plan,

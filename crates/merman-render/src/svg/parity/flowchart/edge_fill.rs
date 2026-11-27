@@ -125,7 +125,6 @@ impl FlowchartEdgeFillPlan {
 #[cfg(feature = "layout-shoal")]
 mod shoal {
     use super::*;
-    use crate::graph_layout::RouteContract;
     use crate::graph_layout::ir::{BorderStitch, Endpoint, Side};
     use crate::theme::edge_label_bg::{literal_fill, literal_opacity};
     use kurbo::{Point, RoundedRect, Shape, Vec2};
@@ -154,8 +153,10 @@ mod shoal {
 
     impl FlowchartEdgeFillPlan {
         pub(in crate::svg::parity::flowchart) fn applies(ctx: &FlowchartRenderCtx<'_>) -> bool {
-            matches!(ctx.layout.route_contract, RouteContract::CanonicalAxis(_))
-                && ctx.swimlane_layout.is_none()
+            matches!(
+                ctx.layout.route_contract,
+                FlowchartSvgRoute::CanonicalAxis(_)
+            ) && ctx.swimlane_layout.is_none()
                 && !ctx.compatibility.look.is_hand_drawn()
                 && ctx.recursive_clusters.is_empty()
                 && !ctx.layout.clusters.is_empty()
@@ -185,7 +186,7 @@ mod shoal {
             cache: &FxHashMap<FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
             services: &FlowchartSvgServices<'_>,
         ) -> Result<Self> {
-            let RouteContract::CanonicalAxis(axis) = &ctx.layout.route_contract else {
+            let FlowchartSvgRoute::CanonicalAxis(axis) = ctx.layout.route_contract else {
                 return Ok(Self::default());
             };
             let mut plan = Self::default();
@@ -195,7 +196,7 @@ mod shoal {
                 return Ok(plan);
             };
             let canvas = solid_canvas(ctx, services);
-            let groups = &ctx.layout.clusters;
+            let groups = ctx.layout.clusters;
             ctx.work_meter.charge(groups.len())?;
             let indices: FxHashMap<_, _> = groups
                 .iter()

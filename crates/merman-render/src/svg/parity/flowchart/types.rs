@@ -8,6 +8,7 @@ use super::FlowchartEdgeStylePlan;
 use super::render_input::FlowchartRenderEdgeRef;
 use indexmap::IndexMap;
 pub(in crate::svg::parity::flowchart) use merman_render_flow::graph::FlowchartRootOffsets;
+use merman_render_flow::svg::{FlowchartSvgLayout, SwimlaneSvgLayout};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone, Copy)]
@@ -19,7 +20,7 @@ pub(super) enum FlowchartLayoutEdgeRef<'a> {
 
 impl<'a> FlowchartLayoutEdgeRef<'a> {
     pub(super) fn in_layout_order(
-        layout: &'a FlowchartLayout,
+        layout: FlowchartSvgLayout<'a>,
     ) -> impl ExactSizeIterator<Item = (crate::flowchart::FlowchartEdgeKey, Self)> + 'a {
         #[cfg(feature = "layout-shoal")]
         let projected = layout.route_contract.flowchart_svg_edges();
@@ -97,8 +98,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) steps: merman_render_flow::edge_svg::FlowchartSteps,
     pub(in crate::svg::parity::flowchart) document_ids:
         std::cell::OnceCell<super::document_ids::FlowchartDocumentIds>,
-    pub(in crate::svg::parity::flowchart) layout: &'a FlowchartLayout,
-    pub(in crate::svg::parity::flowchart) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
+    pub(in crate::svg::parity::flowchart) layout: FlowchartSvgLayout<'a>,
+    pub(in crate::svg::parity::flowchart) swimlane_layout: Option<SwimlaneSvgLayout<'a>>,
     pub(in crate::svg::parity::flowchart) node_border_color: &'a String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
@@ -182,9 +183,9 @@ impl<'a> FlowchartRenderCtx<'a> {
                     edge_order: &self.edge_order,
                     node_dom_index: &self.node_dom_index,
                     subgraph_index_by_id: &self.subgraph_indices_by_id,
-                    layout_nodes: &self.layout.nodes,
-                    swimlane_nodes: self.swimlane_layout.map(|layout| layout.nodes.as_slice()),
-                    swimlane_lanes: self.swimlane_layout.map(|layout| layout.lanes.as_slice()),
+                    layout_nodes: self.layout.nodes,
+                    swimlane_nodes: self.swimlane_layout.map(|layout| layout.nodes),
+                    swimlane_lanes: self.swimlane_layout.map(|layout| layout.lanes),
                 },
             )
         })

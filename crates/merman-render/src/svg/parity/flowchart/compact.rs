@@ -482,7 +482,6 @@ fn render_scene(
     let bounds = prepare_flowchart_rendered_bounds(
         FlowchartRenderedBoundsRequest {
             ctx,
-            layout: request.layout,
             subgraph_title_y_shift: 0.0,
         },
         hierarchy,

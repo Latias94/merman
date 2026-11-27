@@ -31,6 +31,8 @@ pub(super) fn with_flowchart_paint_context<T>(
         svg_label_sidecar,
         edge_style_plan,
     } = request;
+    let layout = svg_layout(layout);
+    let swimlane_layout = swimlane_layout.map(swimlane_svg_layout);
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
     if model.nodes.iter().any(|node| {
@@ -44,7 +46,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
     #[cfg(feature = "layout-shoal")]
     let svg_edges = layout.route_contract.flowchart_svg_edges();
-    let validate_layout_edges = || layout.edge_owners.validate(&layout.edges, &model.edges);
+    let validate_layout_edges = || layout.edge_owners.validate(layout.edges, &model.edges);
     #[cfg(feature = "layout-shoal")]
     let owner_occurrences = match svg_edges {
         Some(edges) => layout
@@ -72,7 +74,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     } = prepare_flowchart_render_inputs(
         model,
         render_context,
-        &layout.edge_owners,
+        layout.edge_owners,
         owner_occurrences,
         layout.route_contract.uses_projected_edges(),
     );
@@ -168,13 +170,13 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
     apply_solved_group_parents(
-        &layout.clusters,
+        layout.clusters,
         layout.route_contract.group_parents(),
         &mut parent,
         &mut subgraph_ids_with_children,
     );
-    if let Some(swimlane) = swimlane_layout.filter(|layout| layout.has_canonical_routes()) {
-        for node in &swimlane.nodes {
+    if let Some(swimlane) = swimlane_layout.filter(|layout| layout.has_canonical_routes) {
+        for node in swimlane.nodes {
             if let Some(owner) = &node.parent_id {
                 parent.insert(&node.id, owner);
             }
@@ -202,7 +204,7 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let mut layout_nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
-    for n in &layout.nodes {
+    for n in layout.nodes {
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
@@ -212,7 +214,7 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
         FxHashMap::with_capacity_and_hasher(layout.clusters.len(), Default::default());
-    for c in &layout.clusters {
+    for c in layout.clusters {
         layout_clusters_by_id.insert(c.id.as_str(), c);
     }
 
@@ -428,10 +430,7 @@ pub(super) fn prepare_edge_routes(
             }
         }
     }
-    if matches!(
-        ctx.layout.route_contract,
-        crate::graph_layout::RouteContract::Swimlane
-    ) || ctx.uses_elk_adapter_dom
+    if matches!(ctx.layout.route_contract, FlowchartSvgRoute::Swimlane) || ctx.uses_elk_adapter_dom
     {
         super::swimlane::apply_line_hops_to_edge_geometries(
             &mut cache,
@@ -473,7 +472,7 @@ pub(super) fn prepare_rough_edge_paths(
         #[cfg(any(feature = "layout-shoal", test))]
         if matches!(
             ctx.layout.route_contract,
-            crate::graph_layout::RouteContract::CanonicalAxis(_)
+            FlowchartSvgRoute::CanonicalAxis(_)
         ) {
             entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
                 &entry.geom.d,

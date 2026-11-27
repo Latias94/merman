@@ -56,9 +56,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     measure_neo_length: bool,
 ) -> Result<Option<FlowchartEdgePathGeom>> {
     #[cfg(any(feature = "layout-shoal", test))]
-    if let crate::graph_layout::RouteContract::CanonicalAxis(axis) =
-        &request.ctx.layout.route_contract
-    {
+    if let FlowchartSvgRoute::CanonicalAxis(axis) = request.ctx.layout.route_contract {
         let occurrence = request.key.semantic_index();
         let first = axis
             .border_stitches
