@@ -7,7 +7,7 @@ use euclid::{
 use merman_model::{OperationPhase, families::git_graph::GitGraphDiagramModel};
 use merman_render_core::{
     Bounds, Error, Result,
-    config::{config_bool, config_f64},
+    config::{config_f64, json_bool, value_at},
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg,
@@ -681,7 +681,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_title_id = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_desc_id = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
-    let use_max_width = config_bool(effective_config, &["gitGraph", "useMaxWidth"]).unwrap_or(true);
+    let use_max_width = value_at(effective_config, &["gitGraph", "useMaxWidth"])
+        .and_then(json_bool)
+        .unwrap_or(true);
     let diagram_padding =
         config_f64(effective_config, &["gitGraph", "diagramPadding"]).unwrap_or(8.0);
     let mut out = BoundedSvgOutput::new(context.work_meter);
