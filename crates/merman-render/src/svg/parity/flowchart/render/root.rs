@@ -1,7 +1,7 @@
 //! Flow graph paint adapter for facade-owned services.
 
 use merman_render_flow::graph::{
-    FlowchartClusterPass, FlowchartGraph, FlowchartGraphPaint, FlowchartGraphTimings,
+    FlowchartClusterPass, FlowchartGraph, FlowchartGraphPaint, FlowchartGraphTimings, StepBadges,
 };
 
 use super::super::edge_fill::FlowchartEdgeFillPlan;
@@ -25,7 +25,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootPaint<'a, 'data> {
     pub marker_plan: &'a FlowchartMarkerEmissionPlan<'a>,
     pub edge_fills: &'a FlowchartEdgeFillPlan,
     pub edge_labels: &'a mut FlowchartEdgeLabels,
-    pub step_badges: &'a super::super::step::StepBadges,
+    pub step_badges: &'a StepBadges<'a>,
 }
 
 impl FlowchartRootPaint<'_, '_> {
@@ -42,6 +42,8 @@ impl FlowchartRootPaint<'_, '_> {
             model: ctx.model,
             work_meter: ctx.work_meter,
             markers: self.marker_plan,
+            step_badges: self.step_badges,
+            struck_group_titles: ctx.layout.route_contract.struck_group_titles(),
             subgraphs_by_id: &ctx.subgraphs_by_id,
             subgraph_ids_with_children: &ctx.subgraph_ids_with_children,
             recursive_clusters: &ctx.recursive_clusters,
@@ -58,10 +60,6 @@ impl FlowchartRootPaint<'_, '_> {
 
 impl<S: SvgOutput> FlowchartGraphPaint<S> for FlowchartRootPaint<'_, '_> {
     type EdgeScratch = FlowchartEdgeDataPointsScratch;
-
-    fn group_title_is_struck(&self, id: &str) -> bool {
-        self.ctx.layout.route_contract.group_title_is_struck(id)
-    }
 
     fn write_cluster(
         &self,
@@ -157,9 +155,5 @@ impl<S: SvgOutput> FlowchartGraphPaint<S> for FlowchartRootPaint<'_, '_> {
                 &mut self.node_label_div_style,
             )
         }
-    }
-
-    fn write_step_badges(&self, out: &mut S, root: Option<&str>) -> Result<()> {
-        self.step_badges.write_root(out, self.ctx, root)
     }
 }

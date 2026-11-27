@@ -357,7 +357,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         .map(|slot| format!(r#" data-color-id="color-{slot}""#))
         .unwrap_or_default();
     let data_look = ctx.compatibility.look.as_str();
-    let struck = ctx.layout.route_contract.group_title_is_struck(&cluster.id);
+    let struck = ctx
+        .layout
+        .route_contract
+        .struck_group_titles()
+        .is_some_and(|titles| titles.contains(cluster.id.as_str()));
 
     if pass == FlowchartClusterPass::Background {
         let _ = write!(

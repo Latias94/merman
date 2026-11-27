@@ -206,12 +206,12 @@ impl RouteContract {
         feature = "diagram-swimlane",
         feature = "diagram-agentflow"
     ))]
-    pub(crate) fn group_title_is_struck(&self, _id: &str) -> bool {
+    pub(crate) fn struck_group_titles(&self) -> Option<&rustc_hash::FxHashSet<String>> {
         #[cfg(any(feature = "layout-shoal", test))]
         if let Self::CanonicalAxis(routes) = self {
-            return routes.struck_group_titles.contains(_id);
+            return Some(&routes.struck_group_titles);
         }
-        false
+        None
     }
 
     #[cfg(any(

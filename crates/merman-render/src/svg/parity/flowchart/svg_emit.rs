@@ -177,7 +177,7 @@ pub(super) fn render_flowchart_svg_model(
             }
             let mut edge_labels =
                 super::paint::FlowchartEdgeLabels::prepare(ctx, hierarchy_plan, &edge_path_cache)?;
-            let step_badges = super::step::StepBadges::prepare(
+            let step_badges = super::step::prepare_step_badges(
                 ctx,
                 hierarchy_plan,
                 &edge_path_cache,

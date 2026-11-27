@@ -10,6 +10,7 @@ use merman_render_core::{
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::plan::FlowchartHierarchyPlan;
+use super::step_badges::StepBadges;
 use crate::edge_labels::{write_edge_labels, write_elk_edge_labels};
 use crate::markers::FlowchartMarkerEmissionPlan;
 use crate::projection::{FlowchartRenderEdgeRef, FlowchartRenderModelRef};
@@ -42,7 +43,6 @@ pub struct FlowchartGraphTimings {
 pub trait FlowchartGraphPaint<S: SvgOutput> {
     type EdgeScratch: Default;
 
-    fn group_title_is_struck(&self, id: &str) -> bool;
     fn write_cluster(
         &self,
         out: &mut S,
@@ -73,7 +73,6 @@ pub trait FlowchartGraphPaint<S: SvgOutput> {
         origin: (f64, f64),
     ) -> Result<()>;
     fn write_node(&mut self, out: &mut S, id: &str, origin: (f64, f64), depth: bool) -> Result<()>;
-    fn write_step_badges(&self, out: &mut S, root: Option<&str>) -> Result<()>;
 }
 
 /// The admitted Flow graph and borrowed render facts used by its parity traversal.
@@ -84,6 +83,8 @@ pub struct FlowchartGraph<'plan, 'data> {
     pub model: &'plan FlowchartRenderModelRef<'data>,
     pub work_meter: &'plan OperationWorkMeter,
     pub markers: &'plan FlowchartMarkerEmissionPlan<'plan>,
+    pub step_badges: &'plan StepBadges<'plan>,
+    pub struck_group_titles: Option<&'plan FxHashSet<String>>,
     pub subgraphs_by_id: &'plan FxHashMap<&'data str, &'data FlowSubgraph>,
     pub subgraph_ids_with_children: &'plan FxHashSet<&'data str>,
     pub recursive_clusters: &'plan FxHashSet<&'data str>,
@@ -245,7 +246,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
 
             out.push_str("</g>");
             if pass != RootPass::Depth {
-                emission.paint.write_step_badges(out, frame.cluster_id)?;
+                self.step_badges.write_root(out, frame.cluster_id)?;
             }
             out.push_str("</g>");
             out.checkpoint()?;
@@ -298,7 +299,10 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
                 self.checkpoint_emit()?;
                 let cluster_pass = match pass {
                     RootPass::Depth => FlowchartClusterPass::Background,
-                    _ if emission.paint.group_title_is_struck(&cluster.id) => {
+                    _ if self
+                        .struck_group_titles
+                        .is_some_and(|titles| titles.contains(cluster.id.as_str())) =>
+                    {
                         struck_titles.push(cluster);
                         if pass == RootPass::Foreground {
                             continue;
@@ -470,7 +474,7 @@ impl<'plan, 'data> FlowchartGraph<'plan, 'data> {
         drop(edge_labels_timer);
 
         self.write_elk_nodes(out, emission)?;
-        emission.paint.write_step_badges(out, None)?;
+        self.step_badges.write_root(out, None)?;
         out.push_str("</g>");
         out.checkpoint()
     }
