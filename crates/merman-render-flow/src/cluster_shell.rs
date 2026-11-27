@@ -157,14 +157,23 @@ fn write_agentflow_shell(
             if rough.solid_backing {
                 let _ = write!(
                     out,
-                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" rx="10" style="fill:{};{};stroke:none !important"/>"#,
+                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" rx="10" style=""#,
                     number(origin.x),
                     number(origin.y),
                     number(size.width),
                     number(size.height),
-                    escape_attr_display(paint.fill),
-                    escape_attr_display(paint.style),
                 );
+                if let Some((fill, opacity)) = canonical_fill {
+                    let _ = write!(
+                        out,
+                        "fill:{};fill-opacity:{};",
+                        escape_attr_display(fill),
+                        number(opacity)
+                    );
+                } else {
+                    let _ = write!(out, "fill:{};", escape_attr_display(paint.fill));
+                }
+                write_backing_style(out, paint.style);
             }
             let _ = write!(
                 out,
@@ -223,14 +232,14 @@ fn write_flowchart_shell(
                 // The fill is the surface used by the contrast pass before emission.
                 let _ = write!(
                     out,
-                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" style="fill:{};{};stroke:none !important"/>"#,
+                    r#"<rect class="merman-rough-backing" x="{}" y="{}" width="{}" height="{}" style="fill:{};"#,
                     number(origin.x),
                     number(origin.y),
                     number(size.width),
                     number(size.height),
                     escape_attr_display(paint.fill),
-                    escape_attr_display(paint.style),
                 );
+                write_backing_style(out, paint.style);
             } else {
                 let background_style = rough_background_style(paint.style);
                 let _ = write!(
@@ -329,15 +338,15 @@ fn write_swimlane_rect(
             if rough.solid_backing {
                 let _ = write!(
                     out,
-                    r#"<rect class="{} merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" style="{};stroke:none !important"/>"#,
+                    r#"<rect class="{} merman-rough-backing" x="{}" y="{}" width="{}" height="{}" fill="{}" style=""#,
                     escape_attr_display(class_name),
                     number(origin.x),
                     number(origin.y),
                     number(size.width),
                     number(size.height),
                     escape_attr_display(fill.unwrap_or("none")),
-                    escape_attr_display(paint.style),
                 );
+                write_backing_style(out, paint.style);
             } else if let Some(fill) = fill {
                 let background_style = rough_background_style(paint.style);
                 let _ = write!(
@@ -375,6 +384,14 @@ fn write_swimlane_rect(
         escape_attr_display(fill.unwrap_or("none")),
         escape_attr_display(paint.stroke),
     );
+}
+
+fn write_backing_style(out: &mut impl SvgOutput, style: &str) {
+    let style = style.trim_matches(|ch: char| ch == ';' || ch.is_ascii_whitespace());
+    if !style.is_empty() {
+        let _ = write!(out, "{};", escape_attr_display(style));
+    }
+    out.push_str(r#"stroke:none !important"/>"#);
 }
 
 fn rounded_rect_path_d(

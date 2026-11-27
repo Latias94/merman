@@ -1793,7 +1793,7 @@ fn mermaid_theme_matte(
         return None;
     }
     let theme = MermaidThemeId::parse(config.get_str("theme")?).ok()?;
-    let paint = config.get_str("themeVariables.background")?;
+    let paint = config.get_str("themeVariables.background")?.trim();
     if !theme.is_dark()
         && !(theme == MermaidThemeId::Base
             && config.get_bool("themeVariables.darkMode") == Some(true)
@@ -1802,7 +1802,7 @@ fn mermaid_theme_matte(
         return None;
     }
     let [r, g, b, a] = ThemeColor::parse(paint).ok()?.rgba_channels().to_rgba8();
-    Some(crate::theme::Color::rgba(r, g, b, a))
+    (a != 0).then_some(crate::theme::Color::rgba(r, g, b, a))
 }
 
 #[cfg(feature = "svg")]
@@ -2031,6 +2031,40 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::RenderError;
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn mermaid_matte_uses_trimmed_visible_backgrounds() {
+        use merman_model::presentation::{PresentationConfig, PresentationMetadata};
+
+        let background = |paint| {
+            let config = crate::MermaidConfig::from_value(serde_json::json!({
+                "theme": "dark",
+                "themeVariables": { "background": paint }
+            }));
+            let effective_config = PresentationConfig::from_config_controlled(
+                config.clone(),
+                &Default::default(),
+                &super::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            super::mermaid_theme_matte(
+                &PresentationMetadata {
+                    config,
+                    effective_config,
+                    diagram_type: "info".to_string(),
+                    title: None,
+                },
+                &super::SvgEnvironment::default(),
+            )
+        };
+        assert_eq!(
+            background(" #1238 "),
+            crate::theme::Color::parse("#1238").ok()
+        );
+        assert_eq!(background(" #1230 "), None);
+    }
 
     #[cfg(feature = "diagram-flowchart")]
     #[test]

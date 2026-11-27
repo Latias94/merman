@@ -328,6 +328,47 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     })
 }
 
+#[cfg(feature = "layout-shoal")]
+pub(super) fn include_sketch_shafts(
+    ctx: &FlowchartRenderCtx<'_>,
+    mut bounds: Option<Bounds>,
+    paths: &FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
+) -> Result<Option<Bounds>> {
+    if !super::paint::uses_theme_sketch(ctx) {
+        return Ok(bounds);
+    }
+    ctx.work_meter.charge(paths.len())?;
+    for (&key, entry) in paths {
+        let Some(shaft) = entry
+            .geom
+            .pb
+            .filter(|_| entry.geom.emitted_d_for_label.is_some())
+        else {
+            continue;
+        };
+        let outset = ctx
+            .edge_style_plan
+            .stroke_outset_for(key)?
+            .unwrap_or_default();
+        let drawn = Bounds {
+            min_x: shaft.min_x + entry.origin_x - outset,
+            min_y: shaft.min_y + entry.abs_top_transform - outset,
+            max_x: shaft.max_x + entry.origin_x + outset,
+            max_y: shaft.max_y + entry.abs_top_transform + outset,
+        };
+        bounds = Some(match bounds {
+            Some(old) => Bounds {
+                min_x: old.min_x.min(drawn.min_x),
+                min_y: old.min_y.min(drawn.min_y),
+                max_x: old.max_x.max(drawn.max_x),
+                max_y: old.max_y.max(drawn.max_y),
+            },
+            None => drawn,
+        });
+    }
+    Ok(bounds)
+}
+
 // Union known source paint after diagram padding, so ordinary padded outputs retain their
 // existing viewport. Font-dependent title ink remains owned by the host measurement seam.
 fn builtin_neo_paint_bounds(

@@ -826,7 +826,8 @@ fn flowchart_compile_prepared_styles_for_class_names<'a>(
             let decl = &decl.prepared;
             let property = decl.property();
             match property {
-                "stroke" | "stroke-width" => true,
+                "stroke" | "stroke-width" | "stroke-dasharray" | "stroke-dashoffset"
+                | "stroke-linecap" | "stroke-linejoin" | "stroke-miterlimit" => true,
                 // Mermaid adds `fill:none` to indexed link styles, including width-only styles.
                 "fill" => decl.value().eq_ignore_ascii_case("none"),
                 "opacity" | "stroke-opacity" => {

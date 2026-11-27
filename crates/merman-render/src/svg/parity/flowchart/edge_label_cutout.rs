@@ -3,20 +3,34 @@
 use super::*;
 use crate::flowchart::FlowchartEdgeKey;
 use kurbo::{Rect, Vec2};
+use merman_theme_contract::v2::{EdgeLabelBackground, Paint};
 
 // A clip affects the shaft and its marker paint. The viewport may exclude off-canvas ink.
 const CUTOUT_FRAME_OUTSET: f64 = 32.0;
 
 pub(super) fn applies(ctx: &FlowchartRenderCtx<'_>, options: &SvgExecution<'_>) -> bool {
-    ctx.layout.route_contract.is_canonical_axis()
-        && ctx.swimlane_layout.is_none()
-        && ctx.diagram_type != "agentflow"
-        && options
-            .family
-            .session()
-            .canvas_background()
-            .or_else(|| ctx.native.map(|native| native.canvas))
-            .is_some_and(|canvas| canvas.channels()[3] == 0)
+    if !ctx.layout.route_contract.is_canonical_axis() || ctx.diagram_type == "agentflow" {
+        return false;
+    }
+    if let Some(native) = ctx.native {
+        if native.form.edge_label_bg == EdgeLabelBackground::Transparent {
+            return true;
+        }
+    } else if crate::theme::edge_label_bg::literal_fill(&ctx.compatibility.edge_label_background)
+        .is_some_and(|color| color.channels()[3] == 0)
+    {
+        return true;
+    }
+
+    options
+        .family
+        .session()
+        .canvas_background()
+        .or_else(|| match &options.native_family_theme()?.roles.canvas {
+            Paint::Solid(color) => Some(*color),
+            Paint::LinearGradient(_) => None,
+        })
+        .is_some_and(|canvas| canvas.channels()[3] == 0)
 }
 
 pub(super) fn write_definitions(

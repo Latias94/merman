@@ -233,17 +233,19 @@ fn write_line_hops(
     for &(center, radius) in intervals {
         let before = start + unit * (center - radius);
         let after = start + unit * (center + radius);
-        let _ = write!(out, "L{},{}", before.x, before.y);
+        let _ = write!(out, "L{},{}", fmt_display(before.x), fmt_display(before.y));
         match style {
             LineHopStyle::Arc => {
                 let _ = write!(
                     out,
-                    "A{radius},{radius} 0 0 {sweep} {},{}",
-                    after.x, after.y
+                    "A{0},{0} 0 0 {sweep} {1},{2}",
+                    fmt_display(radius),
+                    fmt_display(after.x),
+                    fmt_display(after.y)
                 );
             }
             LineHopStyle::Gap => {
-                let _ = write!(out, "M{},{}", after.x, after.y);
+                let _ = write!(out, "M{},{}", fmt_display(after.x), fmt_display(after.y));
             }
         }
     }

@@ -165,6 +165,9 @@ pub(super) fn render_flowchart_svg_model(
                     &mut edge_path_cache,
                 )?;
             }
+            #[cfg(feature = "layout-shoal")]
+            let source_paint_bounds =
+                super::viewbox::include_sketch_shafts(ctx, source_paint_bounds, &edge_path_cache)?;
 
             let marker_plan = match marker_plan {
                 Some(plan) => plan,

@@ -499,6 +499,25 @@ pub(super) fn prepare_rough_edge_paths(
             ctx.layout.route_contract,
             crate::graph_layout::RouteContract::CanonicalAxis(_)
         ) {
+            #[cfg(feature = "layout-shoal")]
+            if theme_sketch {
+                let (path, shaft) =
+                    merman_render_core::rough_svg::constrained_rough_edge_with_geometry(
+                        &entry.geom.d,
+                        flowchart_marker_metrics(edge.edge),
+                        ctx.work_meter,
+                        &ctx.hand_drawn_seed,
+                    )?;
+                let bounds = kurbo::Shape::bounding_box(&shaft);
+                entry.geom.pb = Some(path_bounds::SvgPathBounds {
+                    min_x: bounds.x0,
+                    min_y: bounds.y0,
+                    max_x: bounds.x1,
+                    max_y: bounds.y1,
+                });
+                entry.geom.emitted_d_for_label = Some(path);
+                continue;
+            }
             entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
                 &entry.geom.d,
                 flowchart_marker_metrics(edge.edge),

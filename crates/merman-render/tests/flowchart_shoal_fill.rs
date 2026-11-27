@@ -104,7 +104,14 @@ fn surface_layer<'a, 'input>(
     assert_eq!(path.attribute("d"), base.attribute("d"));
     assert_eq!(path.attribute("class"), base.attribute("class"));
     assert_eq!(path.attribute("data-edge"), None);
-    for property in ["stroke-width", "stroke-dasharray", "stroke-dashoffset"] {
+    for property in [
+        "stroke-width",
+        "stroke-dasharray",
+        "stroke-dashoffset",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-miterlimit",
+    ] {
         assert_eq!(paint(path, property), paint(base, property), "{property}");
     }
     let clip_id = layer
@@ -455,33 +462,70 @@ fn shoal_node_to_nested_subgraph_edges_get_adaptive_ink_in_dark_and_light_cluste
 #[cfg(feature = "diagram-flowchart")]
 #[test]
 fn shoal_nested_crossings_repaint_in_surface_order() {
+    for inner in ["#F8FAFC", "var(--local-fill)"] {
+        let svg = render(
+            "flowchart",
+            "shoal",
+            "classic",
+            &format!(
+                "subgraph Outer\nA[Dark]\nsubgraph Inner\nB[Inner]\nend\nA cross@--> B\nend\n\
+                 style Outer fill:#0B1120\nstyle Inner fill:{inner}\n"
+            ),
+            false,
+        );
+        let doc = Document::parse(&svg).unwrap();
+        let base = edge(&doc, "cross");
+        let base_ink = paint(base, "stroke").unwrap_or("#202938");
+        assert_ink(base_ink, "#0B1120");
+        if inner.starts_with('#') {
+            let (path, _) = surface_layer(&doc, base);
+            assert_ink(paint(path, "stroke").unwrap(), inner);
+        } else {
+            assert!(!svg.contains(SURFACE_INK));
+        }
+    }
+
     let svg = render(
         "flowchart",
         "shoal",
         "classic",
-        "subgraph Outer\nA[Dark]\nsubgraph Inner\nB[Light]\nend\nA cross@--> B\nend\n\
-         style Outer fill:#0B1120\nstyle Inner fill:#F8FAFC\n",
+        "subgraph Outer\nsubgraph Inner\nA inside@--> B\nend\nend\n\
+         style Outer fill:#0B1120\nstyle Inner fill:var(--local-fill)\n",
         false,
     );
     let doc = Document::parse(&svg).unwrap();
-    let base = edge(&doc, "cross");
-    assert_ink(paint(base, "stroke").unwrap_or("#202938"), "#0B1120");
-    let (path, _) = surface_layer(&doc, base);
-    assert_ink(paint(path, "stroke").unwrap(), "#F8FAFC");
+    assert_eq!(paint(edge(&doc, "inside"), "stroke"), Some("#FFFFFF"));
+    assert!(!svg.contains(SURFACE_INK));
 
-    // The authored white is legible on the destination but needs adapting on the canvas.
+    // The authored stroke remains legible on the destination after adapting to the canvas.
     let svg = render(
         "flowchart",
         "shoal",
         "classic",
-        "subgraph Dark\nA[Inside]\nend\nX cross@--> A\nstyle Dark fill:#0B1120\nlinkStyle 0 stroke:#FFFFFF\n",
+        "subgraph Dark\nA[Inside]\nend\nX cross@--> A\nstyle Dark fill:#0B1120\nlinkStyle 0 stroke:#CBD5E1\n",
         false,
     );
     let doc = Document::parse(&svg).unwrap();
     let base = edge(&doc, "cross");
     assert_ink(paint(base, "stroke").unwrap(), "#FAF7EC");
     let (path, _) = surface_layer(&doc, base);
-    assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
+    use merman_theme_contract::v2::Color;
+    let authored = Color::parse("#CBD5E1").unwrap();
+    assert_eq!(
+        Color::parse(paint(path, "stroke").unwrap()).unwrap(),
+        authored
+    );
+    for property in ["fill", "stroke"] {
+        assert_eq!(
+            Color::parse(
+                marker_shape(&doc, path, "marker-end")
+                    .attribute(property)
+                    .unwrap()
+            )
+            .unwrap(),
+            authored
+        );
+    }
 
     let svg = render(
         "flowchart",
@@ -499,6 +543,60 @@ fn shoal_nested_crossings_repaint_in_surface_order() {
             .contains("stroke:#FFFFFF"),
         "similarly dark nested crossing must emit adaptive white ink: {svg}"
     );
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_edge_ink_skips_restoring_on_disjoint_surfaces() {
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        "subgraph Light\nB[To]\nend\nsubgraph Dark\nA[From]\nend\nA cross@--> B\n\
+         style Dark fill:#0B1120\nstyle Light fill:#F8FAFC\n",
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let base = edge(&doc, "cross");
+    let (path, _) = surface_layer(&doc, base);
+    assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
+    assert_eq!(
+        base.next_siblings()
+            .skip(1)
+            .filter(Node::is_element)
+            .take_while(|node| node.attribute("class") == Some(SURFACE_INK))
+            .count(),
+        1,
+        "the light surface owns separate ink"
+    );
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn shoal_edge_ink_keeps_authored_dash_cap_and_join() {
+    let svg = render(
+        "flowchart",
+        "shoal",
+        "classic",
+        concat!(
+            "subgraph Dark\nA[Inside]\nend\nX cross@--> A\nstyle Dark fill:#0B1120\n",
+            "linkStyle 0 stroke:#202938,stroke-width:2px,stroke-dasharray:5 2,",
+            "stroke-dashoffset:1,stroke-linecap:round,stroke-linejoin:bevel,stroke-miterlimit:4\n",
+        ),
+        false,
+    );
+    let doc = Document::parse(&svg).unwrap();
+    let base = edge(&doc, "cross");
+    let (path, _) = surface_layer(&doc, base);
+    assert_ink(paint(path, "stroke").unwrap(), "#0B1120");
+    for (property, expected) in [
+        ("stroke-dasharray", "5 2"),
+        ("stroke-dashoffset", "1"),
+        ("stroke-linecap", "round"),
+        ("stroke-linejoin", "bevel"),
+    ] {
+        assert_eq!(paint(path, property), Some(expected));
+    }
 }
 
 #[cfg(feature = "diagram-flowchart")]

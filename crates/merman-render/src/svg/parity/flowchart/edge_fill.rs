@@ -93,7 +93,7 @@ mod shoal {
     use merman_layout_shoal::geom::{Bounds as SpatialBounds, Bvh, BvhEntry};
     use merman_model::families::flowchart::FlowEdgeVisibility;
     use merman_theme_contract::v2::{Paint, Texture};
-    use std::ops::ControlFlow::Continue;
+    use std::ops::ControlFlow::{Break, Continue};
 
     const EDGE_CONTRAST: f64 = 3.0;
     const WHITE: Color = Color::rgb(255, 255, 255);
@@ -229,32 +229,10 @@ mod shoal {
             let _ = self.index.visit(|entry| -> Result<_> {
                 ctx.work_meter.charge(1)?;
                 Ok(match entry {
-                    BvhEntry::Node(node) => Continue(
-                        ink.bounds
-                            .overlaps(Rect::new(node.x[0], node.y[0], node.x[1], node.y[1])),
-                    ),
+                    BvhEntry::Node(node) => Continue(ink.bounds.overlaps(bounds_rect(node))),
                     BvhEntry::Item(surface) => {
-                        if ink.bounds.overlaps(surface.frame.rect()) {
-                            if ink.markers.iter().flatten().any(|marker| {
-                                rounded_rect_overlaps(surface.frame, *marker + ink.offset)
-                            }) {
-                                hits.push(*surface);
-                                return Ok(Continue(true));
-                            }
-                            let rect = surface.frame.rect().inflate(ink.half_width, ink.half_width)
-                                - ink.offset;
-                            let radius = surface.frame.radii().top_left;
-                            let frame = rect.to_rounded_rect(if radius > 0.0 {
-                                radius + ink.half_width
-                            } else {
-                                0.0
-                            });
-                            for segment in ink.shaft.segments() {
-                                if segment_enters_surface(segment, frame, 0, ctx.work_meter)? {
-                                    hits.push(*surface);
-                                    break;
-                                }
-                            }
+                        if ink.touches(surface.frame, ctx.work_meter)? {
+                            hits.push(*surface);
                         }
                         Continue(true)
                     }
@@ -265,14 +243,41 @@ mod shoal {
                     .saturating_mul(hits.len().checked_ilog2().unwrap_or(0) as usize + 1),
             )?;
             hits.sort_unstable_by_key(|a| a.order);
-            if let Some(first) = hits
-                .iter()
-                .rposition(|surface| contains_rect(surface.frame, ink.bounds))
-            {
-                // A later painted surface fully enclosing the ink occludes every earlier one.
+            if let Some(first) = hits.iter().rposition(|surface| {
+                surface.fill.is_some() && contains_rect(surface.frame, ink.bounds)
+            }) {
+                // An enclosing surface with resolved paint supplies a base for the whole edge.
                 hits.drain(..first);
             }
             Ok(())
+        }
+
+        fn overlaps_recolored_ink(
+            &self,
+            ink: &EdgeInk<'_>,
+            frame: RoundedRect,
+            recolored: &FxHashSet<usize>,
+            work: &crate::resources::OperationWorkMeter,
+        ) -> Result<bool> {
+            if recolored.is_empty() {
+                return Ok(false);
+            }
+            let query = frame.rect().intersect(ink.bounds);
+            let hit = self.index.visit(|entry| -> Result<_> {
+                work.charge(1)?;
+                Ok(match entry {
+                    BvhEntry::Node(node) => Continue(query.overlaps(bounds_rect(node))),
+                    BvhEntry::Item(surface) => {
+                        if recolored.contains(&surface.order)
+                            && ink.touches_overlap(frame, surface.frame, work)?
+                        {
+                            return Ok(Break(()));
+                        }
+                        Continue(true)
+                    }
+                })
+            })?;
+            Ok(hit.is_break())
         }
     }
 
@@ -315,6 +320,7 @@ mod shoal {
                 return Ok(plan);
             };
             let mut hits = Vec::new();
+            let mut recolored = FxHashSet::default();
             let surfaces =
                 OccludingSurfaceStack::prepare(ctx, hierarchy, solid_canvas(ctx, options))?;
             let default_checks_surface = (&surfaces.index)
@@ -365,26 +371,30 @@ mod shoal {
                 let offset = Vec2::new(cached.origin_x - ctx.tx, cached.origin_y - ctx.ty);
                 let ink = EdgeInk::new(&shaft, edge.edge, &cached.geom, offset, half_width);
                 surfaces.touches(&ink, &mut hits, ctx)?;
-                let covers = hits
+                let background = hits
                     .first()
-                    .is_some_and(|surface| contains_rect(surface.frame, ink.bounds));
-                let background = if covers {
-                    hits[0].fill
-                } else {
-                    surfaces.canvas
-                };
-                let base = adapt(source_ink, background);
+                    .filter(|surface| contains_rect(surface.frame, ink.bounds))
+                    .and_then(|surface| surface.fill)
+                    .or(surfaces.canvas);
+                let base = background.map_or(source_ink, |fill| adapt(source_ink, fill));
                 if base != source_ink {
                     plan.inks
                         .insert(edge.key, if base == WHITE { "#FFFFFF" } else { "#000000" });
                 }
-                let mut layers: Vec<SurfaceInk> = Vec::new();
+                let mut layers = Vec::new();
+                recolored.clear();
                 for surface in &hits {
                     ctx.work_meter.charge(1)?;
-                    let ink = adapt(base, surface.fill);
-                    // Replay a later surface at the base color when its frame overlaps an
-                    // earlier recolored layer. Clipping applies the same paint order as the shells.
-                    if ink == base && layers.is_empty() {
+                    let Some(fill) = surface.fill else { continue };
+                    let color = adapt(source_ink, fill);
+                    if color != base {
+                        recolored.insert(surface.order);
+                    } else if !surfaces.overlaps_recolored_ink(
+                        &ink,
+                        surface.frame,
+                        &recolored,
+                        ctx.work_meter,
+                    )? {
                         continue;
                     }
                     if plan.clips.is_empty() {
@@ -395,7 +405,7 @@ mod shoal {
                     plan.clips[surface.order] = Some(frame.to_rounded_rect(surface.frame.radii()));
                     layers.push(SurfaceInk {
                         clip: surface.order,
-                        color: ink,
+                        color,
                     });
                 }
                 if !layers.is_empty() {
@@ -406,10 +416,10 @@ mod shoal {
         }
     }
 
-    fn adapt(ink: Color, fill: Option<Color>) -> Color {
-        let Some(fill) = fill.filter(|fill| ink.contrast(*fill) < EDGE_CONTRAST) else {
+    fn adapt(ink: Color, fill: Color) -> Color {
+        if ink.contrast(fill) >= EDGE_CONTRAST {
             return ink;
-        };
+        }
         if WHITE.contrast(fill) >= BLACK.contrast(fill) {
             WHITE
         } else {
@@ -438,12 +448,12 @@ mod shoal {
                         Paint::LinearGradient(_) => None,
                     }
                 } else {
-                    let configured =
-                        crate::config::value_at(ctx.config, &["themeVariables", "background"])
-                            .and_then(serde_json::Value::as_str)
-                            .and_then(literal_fill);
-                    configured
-                        .or_else(|| Some(super::super::render::compat_theme_canvas_fallback(ctx)))
+                    crate::config::value_at(ctx.config, &["themeVariables", "background"])
+                        .and_then(serde_json::Value::as_str)
+                        .map_or_else(
+                            || Some(super::super::render::compat_theme_canvas_fallback(ctx)),
+                            literal_fill,
+                        )
                 }
             })
             .filter(|color| color.channels()[3] == u8::MAX)
@@ -544,6 +554,88 @@ mod shoal {
                 half_width,
             }
         }
+
+        fn touches(
+            &self,
+            frame: RoundedRect,
+            work: &crate::resources::OperationWorkMeter,
+        ) -> Result<bool> {
+            if !self.bounds.overlaps(frame.rect()) {
+                return Ok(false);
+            }
+            if self
+                .markers
+                .iter()
+                .flatten()
+                .any(|marker| rounded_rect_overlaps(frame, *marker + self.offset))
+            {
+                return Ok(true);
+            }
+            let rect = frame.rect().inflate(self.half_width, self.half_width) - self.offset;
+            let radius = frame.radii().top_left;
+            let frame = rect.to_rounded_rect(if radius > 0.0 {
+                radius + self.half_width
+            } else {
+                0.0
+            });
+            for segment in self.shaft.segments() {
+                if segment_enters_surface(segment, frame, 0, work)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+
+        fn touches_overlap(
+            &self,
+            first: RoundedRect,
+            second: RoundedRect,
+            work: &crate::resources::OperationWorkMeter,
+        ) -> Result<bool> {
+            let overlap = first.rect().intersect(second.rect()).intersect(self.bounds);
+            if overlap.area() <= 0.0 {
+                return Ok(false);
+            }
+            self.touches_shared_rect(overlap, [first, second], 0, work)
+        }
+
+        fn touches_shared_rect(
+            &self,
+            rect: Rect,
+            frames: [RoundedRect; 2],
+            depth: u8,
+            work: &crate::resources::OperationWorkMeter,
+        ) -> Result<bool> {
+            work.charge(1)?;
+            if frames.iter().all(|frame| contains_rect(*frame, rect)) {
+                return self.touches(rect.to_rounded_rect(0.0), work);
+            }
+            if !frames
+                .iter()
+                .all(|frame| rounded_rect_overlaps(*frame, rect))
+                || !self.touches(rect.to_rounded_rect(0.0), work)?
+            {
+                return Ok(false);
+            }
+            // Only the partially covered corner boxes need finer inspection.
+            if depth == 32 || rect.width().max(rect.height()) <= 1e-3 {
+                return Ok(false);
+            }
+            let center = rect.center();
+            let (left, right) = if rect.width() >= rect.height() {
+                (
+                    Rect::new(rect.x0, rect.y0, center.x, rect.y1),
+                    Rect::new(center.x, rect.y0, rect.x1, rect.y1),
+                )
+            } else {
+                (
+                    Rect::new(rect.x0, rect.y0, rect.x1, center.y),
+                    Rect::new(rect.x0, center.y, rect.x1, rect.y1),
+                )
+            };
+            Ok(self.touches_shared_rect(left, frames, depth + 1, work)?
+                || self.touches_shared_rect(right, frames, depth + 1, work)?)
+        }
     }
 
     fn rounded_rect_overlaps(frame: RoundedRect, rect: Rect) -> bool {
@@ -552,6 +644,10 @@ mod shoal {
             center.x.clamp(rect.x0, rect.x1),
             center.y.clamp(rect.y0, rect.y1),
         ))
+    }
+
+    fn bounds_rect(bounds: SpatialBounds) -> Rect {
+        Rect::new(bounds.x[0], bounds.y[0], bounds.x[1], bounds.y[1])
     }
 
     pub(in crate::svg::parity::flowchart) fn spatial_bounds(rect: Rect) -> SpatialBounds {
@@ -643,6 +739,30 @@ mod shoal {
             let corner = PathSeg::Line(Line::new((0.0, 3.0), (3.0, 0.0)));
             let rounded = Rect::new(0.0, 0.0, 40.0, 40.0).to_rounded_rect(10.0);
             assert!(!segment_enters_surface(corner, rounded, 0, &work).unwrap());
+        }
+
+        #[test]
+        fn restoration_requires_common_shaft_or_marker_ink() {
+            let work = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let shaft = BezPath::from_svg("M0,0H20V20").unwrap();
+            let mut ink = EdgeInk {
+                shaft: &shaft,
+                markers: [None, None],
+                offset: Vec2::ZERO,
+                bounds: Rect::new(-0.5, -0.5, 20.5, 20.5),
+                half_width: 0.5,
+            };
+            let first = Rect::new(0.0, -1.0, 15.0, 15.0).to_rounded_rect(0.0);
+            let second = Rect::new(10.0, 5.0, 22.0, 18.0).to_rounded_rect(0.0);
+            assert!(ink.touches(first, &work).unwrap());
+            assert!(ink.touches(second, &work).unwrap());
+            assert!(!ink.touches_overlap(first, second, &work).unwrap());
+            let crosses_shaft = Rect::new(10.0, -1.0, 22.0, 18.0).to_rounded_rect(0.0);
+            assert!(ink.touches_overlap(first, crosses_shaft, &work).unwrap());
+            ink.markers[1] = Some(Rect::new(11.0, 6.0, 12.0, 7.0));
+            assert!(ink.touches_overlap(first, second, &work).unwrap());
         }
 
         #[test]
