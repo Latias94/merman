@@ -9,7 +9,7 @@ use serde_json::Value;
 fn stroke_width(plan: &UsecaseEdgePlan) -> f64 {
     plan.source_style
         .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
+        .filter_map(merman_render_core::mermaid_style::parse_style_declaration)
         .rfind(|declaration| declaration.property() == "stroke-width")
         .and_then(|declaration| declaration.svg_number_or_px())
         .unwrap_or(1.0)

@@ -10,33 +10,33 @@ mod css;
 mod html;
 mod transform;
 
-use crate::svg::pipeline::{
-    SvgPostprocessExecution, SvgStructureMetrics, SvgTagScanner, checkpoint_loop, end_tag_name,
-    escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
-    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
+use crate::resources::{OperationWorkMeter, ResourceLimitPhase};
+use crate::svg_scan::{
+    SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
+    escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
+    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
 };
+use crate::svg_xml::SvgStructureMetrics;
 use crate::text::TextMeasurer;
+use merman_model::OperationPhase;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fmt::{self, Write};
 
-use attr::is_self_closing;
-use context::{SourceFrame, attribute, source_class_attr_tokens};
-use html::{foreign_object_html_wrapping, standalone_node_label_box};
-use merman_render_core::text::styled_html::{
+use crate::text::styled_html::{
     cascade::{self, CascadeIndex, Namespace, SourceElement},
     normalized_foreign_object_text,
 };
+use attr::is_self_closing;
+use context::{SourceFrame, attribute, source_class_attr_tokens};
+use html::{foreign_object_html_wrapping, standalone_node_label_box};
 
 /// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
-pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
+const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
 
-pub(crate) use merman_render_core::svg_output::{
-    FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR,
-};
+use crate::svg_output::{FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR};
 /// Advisory compatibility evidence; this never grants native or portable admission.
-pub(crate) const FALLBACK_CSS_RESIDUAL_DATA_ATTR: &str = "data-merman-fallback-css-residual";
+const FALLBACK_CSS_RESIDUAL_DATA_ATTR: &str = "data-merman-fallback-css-residual";
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -70,21 +70,43 @@ pub fn foreign_object_label_fallback_svg_text(
 /// The public helper above remains infallible for compatibility. Pipeline callers provide the
 /// operation-owned Postprocess checkpoint so a host measurement that declines, fails, or returns
 /// an invalid value cannot enter its fallback backend after cancellation.
-pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
+pub fn foreign_object_label_fallback_svg_text_controlled(
     svg: &str,
     text_measurer: &dyn TextMeasurer,
-    execution: SvgPostprocessExecution<'_>,
+    meter: &OperationWorkMeter,
     structure: SvgStructureMetrics,
 ) -> crate::Result<String> {
     foreign_object_label_fallback_svg_text_with_checkpoints(
         svg,
         text_measurer,
-        &mut || execution.checkpoint(),
-        &mut |actual, maximum| Err(execution.selector_index_limit(actual, maximum)),
+        &mut || {
+            meter
+                .checkpoint(OperationPhase::Postprocess)
+                .map_err(Into::into)
+        },
+        &mut |actual, maximum| {
+            Err(meter
+                .policy()
+                .ceiling_error(
+                    ResourceLimitPhase::SvgPostprocess,
+                    "svg_fallback_selector_index",
+                    actual,
+                    maximum,
+                )
+                .into())
+        },
         &mut |projected_bytes, generated_elements| {
-            execution.preflight_svg_byte_count(projected_bytes)?;
-            execution
-                .preflight_svg_element_count(structure.elements.saturating_add(generated_elements))
+            meter.preflight_svg_byte_count(
+                projected_bytes,
+                ResourceLimitPhase::SvgPostprocess,
+                OperationPhase::Postprocess,
+            )?;
+            meter
+                .preflight_svg_element_count(
+                    structure.elements.saturating_add(generated_elements),
+                    OperationPhase::Postprocess,
+                )
+                .map_err(Into::into)
         },
         &mut |message| {
             Err(crate::Error::SvgPostprocess {
@@ -949,7 +971,7 @@ fn writer_owned_fallback_text_filter<'a, E>(
     // The annotation requests projection, not admission. Require its real HTML application;
     // the downstream exporter still verifies the actual SVG definition and filtered glyphs.
     checkpoint()?;
-    let Ok(document) = crate::xml_dom::Document::parse(inner) else {
+    let Ok(document) = roxmltree::Document::parse(inner) else {
         return Ok(None);
     };
     checkpoint()?;
@@ -1177,7 +1199,6 @@ fn find_foreign_object_end_tag<E>(
 }
 
 #[cfg(test)]
-#[path = "fallback/switch_search_tests.rs"]
 mod switch_search_tests;
 
 #[cfg(test)]

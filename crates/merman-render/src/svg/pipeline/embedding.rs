@@ -1,6 +1,7 @@
-use super::{SvgPostprocessExecution, SvgPostprocessMetadata, checkpoint_loop};
+use super::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use crate::DiagramFamilyId;
 use crate::{Error, Result};
+use merman_render_core::svg_scan::checkpoint_loop;
 use std::borrow::Cow;
 
 /// Removes the redundant background ID emitted by Mermaid's default Mindmap node shape.

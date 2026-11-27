@@ -83,6 +83,9 @@ pub mod svg_css;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_edge_parity;
+#[cfg(feature = "svg-fallback")]
+#[doc(hidden)]
+pub mod svg_fallback;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_output;

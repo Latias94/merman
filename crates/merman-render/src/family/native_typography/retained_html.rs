@@ -31,7 +31,7 @@ pub(super) fn unsupported_style(
         let style = merman_model::text::decode_html_entities_to_unicode(style.value.as_ref());
         let mut unsupported = None;
         let mut font_size: Option<(bool, bool)> = None;
-        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        merman_render_core::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
             &style,
             &mut || control.checkpoint(),
             |boundary| {
@@ -52,15 +52,15 @@ pub(super) fn unsupported_style(
                     unsupported = Some(property);
                     return Ok(false);
                 }
-                if let Some(size) = crate::mermaid_style::css_font_size_override(raw)
+                if let Some(size) = merman_render_core::mermaid_style::css_font_size_override(raw)
                     && font_size.is_none_or(|(important, _)| size.important() || !important)
                 {
-                    let measured = crate::mermaid_style::parse_style_declaration(raw).is_some_and(
+                    let measured = merman_render_core::mermaid_style::parse_style_declaration(raw).is_some_and(
                         |declaration| {
                             declaration.inherits_property_value()
                                 || declaration
                                     .resolve_font_size_px(
-                                        crate::mermaid_style::CssFontSizeContext::uniform(16.0),
+                                        merman_render_core::mermaid_style::CssFontSizeContext::uniform(16.0),
                                     )
                                     .is_some()
                         },
@@ -88,7 +88,9 @@ pub(super) fn unsupported_style(
             return Ok(unsupported);
         }
         // Font longhands are measured, but rem still needs an independent document root.
-        if crate::mermaid_style::root_dependent_font_size([style.as_ref()], control)?.is_some() {
+        if merman_render_core::mermaid_style::root_dependent_font_size([style.as_ref()], control)?
+            .is_some()
+        {
             return Ok(Some(
                 "font-size (rem requires a document-root font size)".into(),
             ));

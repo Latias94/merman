@@ -1,12 +1,12 @@
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
-use crate::svg::fallback::foreign_object_label_fallback_svg_text_controlled;
 use crate::text::TextMeasurer;
 use std::borrow::Cow;
 #[cfg(test)]
 use std::convert::Infallible;
 
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor, SvgStructureMetrics};
+use merman_render_core::svg_fallback::foreign_object_label_fallback_svg_text_controlled;
 use merman_render_core::svg_scan::{
     extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
     next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
@@ -51,8 +51,13 @@ pub(crate) fn apply_foreign_object_fallback_with_outcome<'a>(
     if find_with_checkpoints(&svg, "<foreignObject", &mut || execution.checkpoint())?.is_none() {
         return Ok((svg, false));
     }
-    foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, execution, structure)
-        .map(|svg| (Cow::Owned(svg), true))
+    foreign_object_label_fallback_svg_text_controlled(
+        &svg,
+        text_measurer,
+        execution.work_meter(),
+        structure,
+    )
+    .map(|svg| (Cow::Owned(svg), true))
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -606,6 +611,32 @@ mod tests {
 
     fn render_session() -> crate::environment::RenderSession {
         RenderEnvironment::deterministic().begin_session().unwrap()
+    }
+
+    #[test]
+    fn svg_pipeline_preserves_the_fallback_selector_stylesheet_limit() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitCause, ResourceLimitPhase};
+        use merman_render_core::text::styled_html::cascade::MAX_SELECTOR_STYLESHEET_BYTES;
+
+        let stylesheet = " ".repeat(MAX_SELECTOR_STYLESHEET_BYTES + 1);
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{stylesheet}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let error = SvgPipeline::resvg_safe()
+            .process_to_string(&svg, &session)
+            .expect_err("the public pipeline must preserve the selector resource error");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(limit.limit, "svg_fallback_selector_index");
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.actual, MAX_SELECTOR_STYLESHEET_BYTES + 1);
+        assert_eq!(limit.max, MAX_SELECTOR_STYLESHEET_BYTES);
     }
 
     struct CancellingMissingHost {

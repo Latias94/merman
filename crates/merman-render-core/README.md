@@ -24,6 +24,8 @@ validation for postprocessing. `svg-safety` provides the bounded CSS and attribu
 and the inline raster URL policy used by terminal SVG validation.
 `svg-validation` checks native and known-host inline SVG and rebases document IDs using the
 operation's resource meter.
+`svg-fallback` uses the shared text measurement and CSS rules to draw SVG text overlays for
+HTML labels, using the same operation meter as the caller's standalone pipeline.
 The facade selects the pipeline and seals the selected bytes.
 `svg-animation` validates and removes Mermaid Step animations for static SVG output.
 `svg-bounds` measures emitted SVG shape and path bounds for parity viewports.

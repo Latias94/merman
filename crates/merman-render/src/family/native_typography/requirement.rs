@@ -38,7 +38,7 @@ pub(super) fn unsupported_text_style(
     {
         for raw in styles {
             control.checkpoint()?;
-            if crate::mermaid_style::parse_style_declaration(raw)
+            if merman_render_core::mermaid_style::parse_style_declaration(raw)
                 .is_some_and(|declaration| declaration.property() == "font-size")
             {
                 continue;
@@ -116,7 +116,7 @@ fn label_style(
         control.clone(),
     );
     let parse_work = std::cell::Cell::new(0);
-    let sink = crate::html::HtmlSanitizeSink::new(
+    let sink = merman_render_core::html::HtmlSanitizeSink::new(
         usize::MAX,
         &work,
         &parse_work,
@@ -126,7 +126,7 @@ fn label_style(
         match crate::requirement::sanitize_label_with_sink(source, config.as_config(), &sink) {
             Ok(source) => source,
             Err(merman_markup::sanitize::SanitizeFailure::Output(
-                crate::html::HtmlOutputError::Operation(
+                merman_render_core::html::HtmlOutputError::Operation(
                     crate::resources::OperationWorkError::Cancelled(error),
                 ),
             )) => return Err(error),

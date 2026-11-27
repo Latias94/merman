@@ -1,5 +1,5 @@
 use super::transform::{Affine, nested_viewport, root_mapping, root_viewport};
-use crate::svg::pipeline::{
+use crate::svg_scan::{
     checkpoint_loop, escape_xml_attr_with_checkpoints, next_svg_quoted_attr_with_checkpoints,
 };
 use std::borrow::Cow;
