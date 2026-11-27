@@ -2,8 +2,8 @@ use merman_model::families::gantt::GanttDiagramRenderModel;
 use merman_model::presentation::PresentationConfig;
 use merman_model::{OperationControl, OperationControlResult};
 
-use crate::config::ConfigLookup;
-use crate::theme::FamilyTheme;
+use merman_render_core::config::ConfigLookup;
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::GanttNativeStyle;
 
@@ -11,7 +11,8 @@ mod css_binding;
 mod font_size;
 pub(crate) use css_binding::GanttCssBinding;
 
-pub(crate) fn unsupported_native_font_size(
+/// Reports a consumed Gantt font size that the host cannot resolve for native output.
+pub fn unsupported_native_font_size(
     model: &GanttDiagramRenderModel,
     config: &PresentationConfig,
     control: &OperationControl,
@@ -36,7 +37,8 @@ pub(crate) fn unsupported_native_font_size(
             } else {
                 &task.task_type
             };
-            let text = crate::text::mermaid_html_breaks_to_newlines(section);
+            let text =
+                merman_render_core::text::line_break::mermaid_html_breaks_to_newlines(section);
             if native_text_is_nonempty(&text, control)? {
                 return Ok(Some(
                     "gantt.sectionFontSize (unresolved CSS value)".to_owned(),
@@ -63,8 +65,9 @@ fn native_text_is_nonempty(text: &str, control: &OperationControl) -> OperationC
     Ok(false)
 }
 
+/// Resolved Gantt layout typography and SVG presentation.
 #[derive(Debug)]
-pub(crate) struct GanttStyle {
+pub struct GanttStyle {
     css: GanttCssBinding,
     native: Option<GanttNativeStyle>,
 }
@@ -108,6 +111,6 @@ fn gantt_config_font_family_css(config: &dyn ConfigLookup) -> String {
         .get("gantt")
         .and_then(|gantt| gantt.get("fontFamily"))
         .and_then(serde_json::Value::as_str)
-        .and_then(crate::config::normalized_config_font_family);
-    value.unwrap_or_else(|| crate::config::config_font_family_css(config))
+        .and_then(merman_render_core::config::normalized_config_font_family);
+    value.unwrap_or_else(|| merman_render_core::config::config_font_family_css(config))
 }

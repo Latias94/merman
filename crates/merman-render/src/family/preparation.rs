@@ -569,17 +569,17 @@ fn prepare_gantt_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme();
-    let style = crate::gantt::GanttStyle::resolve(&meta.effective_config, native);
-    let (layout, task_source_indices) = crate::gantt::layout_gantt_diagram_typed(
+    let (layout, style, task_source_indices) = crate::gantt::prepare_gantt_diagram(
         model,
         meta.title.as_deref(),
         &meta.effective_config,
-        &style,
-        execution.text_measurer(),
-        execution.container_width,
-        execution.local_time_zone(),
-        execution.work_meter_ref(),
+        execution.native_family_theme(),
+        crate::gantt::GanttLayoutContext {
+            text_measurer: execution.text_measurer(),
+            container_width: execution.container_width,
+            local_time_zone: execution.local_time_zone(),
+            work_meter: execution.work_meter_ref(),
+        },
     )?;
     Ok(BuiltinFamilyArtifact::Gantt(Box::new(
         GanttFamilyArtifact {

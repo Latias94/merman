@@ -1,7 +1,8 @@
-use crate::config::{ConfigLookup, config_f64, config_string};
-use crate::svg::PreparedCommonCss;
-use crate::theme::{FamilyTheme, font_family_css};
 use merman_model::presentation::PresentationConfig;
+use merman_render_core::config::{ConfigLookup, config_f64, config_string};
+use merman_render_core::mermaid_style::font_family_css;
+use merman_render_core::svg_css::PreparedCommonCss;
+use merman_theme_contract::v2::FamilyTheme;
 
 use super::super::{GanttNativeStyle, gantt_section_or_root};
 use super::font_size::GanttFontSize;
@@ -48,7 +49,7 @@ impl GanttCssBinding {
             .find_map(|path| {
                 config
                     .get_str(path)
-                    .and_then(crate::config::normalized_config_font_family)
+                    .and_then(merman_render_core::config::normalized_config_font_family)
             })
             .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
         let base_size = [
@@ -60,7 +61,7 @@ impl GanttCssBinding {
         ]
         .into_iter()
         .filter(|(path, _)| config.explicit_config_owns_path(path))
-        .find_map(|(_, path)| crate::config::config_f64_css_absolute_px(config, path))
+        .find_map(|(_, path)| merman_render_core::config::config_f64_css_absolute_px(config, path))
         .filter(|size| *size >= 0.0)
         .unwrap_or(typography.base_size_px);
         let native = GanttNativeStyle::new(theme, config, &font, base_size);
@@ -89,9 +90,9 @@ impl GanttCssBinding {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         let common = PreparedCommonCss::new(config, Some(font_family));
-        let inherited_font_size = crate::mermaid_style::resolve_mermaid_font_size_px(
+        let inherited_font_size = merman_render_core::mermaid_style::resolve_mermaid_font_size_px(
             common.font_size_css(),
-            crate::mermaid_style::CssFontSizeContext::uniform(16.0),
+            merman_render_core::mermaid_style::CssFontSizeContext::uniform(16.0),
         )
         .expect("prepared common CSS has an absolute root font size");
         let text_color = common.text_color().to_owned();

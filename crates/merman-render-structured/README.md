@@ -21,6 +21,10 @@ emission. Measurement, viewport, and work limits come from the rendering operati
 The `diagram-timeline` feature provides typed layout and complete SVG for horizontal and vertical
 Timeline diagrams. The rendering operation supplies its measurement, viewport, and work policies.
 
+The `diagram-gantt` feature provides time and task layout, presentation binding, and complete
+Gantt SVG emission. The rendering operation supplies the text measurer, clock, time-zone resolver,
+viewport, and work meter.
+
 This crate exposes a workspace-internal service provider interface (SPI). It is published in
 lockstep with Merman and expects an exact version match with the Merman crates that use it.
 

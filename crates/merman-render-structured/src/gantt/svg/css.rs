@@ -1,12 +1,14 @@
-use super::super::SvgDiagramIdValue;
-use super::super::util::css_selector_diagram_id;
 use std::fmt::Write as _;
 
-pub(super) fn gantt_css<I>(diagram_id: I, theme: &crate::gantt::GanttCssBinding) -> String
+use merman_render_core::svg_css::{CssSelectorDiagramId, SvgDiagramIdValue};
+
+use super::super::GanttCssBinding;
+
+pub(super) fn gantt_css<I>(diagram_id: I, theme: &GanttCssBinding) -> String
 where
     I: SvgDiagramIdValue,
 {
-    let id = css_selector_diagram_id(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let label_priority = "!important";
     let mut out = String::new();
     theme
@@ -231,7 +233,22 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_model::{
+        MermaidConfig, OperationControl,
+        presentation::PresentationConfig,
+        resources::{InputResourcePolicy, ResourceProfile},
+    };
     use serde_json::json;
+
+    fn presentation_config(value: serde_json::Value) -> PresentationConfig {
+        PresentationConfig::from_config_controlled(
+            MermaidConfig::from_value(value),
+            &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap()
+    }
 
     #[test]
     fn gantt_css_honors_mermaid_11_15_theme_options() {
@@ -262,7 +279,7 @@ mod tests {
             }
         });
 
-        let config = crate::test_support::presentation_config(cfg);
+        let config = presentation_config(cfg);
         let style = crate::gantt::GanttStyle::resolve(&config, None);
         let css = gantt_css("g", style.css_binding());
 
@@ -316,7 +333,7 @@ mod tests {
             }
         });
 
-        let config = crate::test_support::presentation_config(cfg);
+        let config = presentation_config(cfg);
         let style = crate::gantt::GanttStyle::resolve(&config, None);
         let gantt = style.css_binding();
 
@@ -358,7 +375,7 @@ mod tests {
             }
         });
 
-        let config = crate::test_support::presentation_config(cfg);
+        let config = presentation_config(cfg);
         let style = crate::gantt::GanttStyle::resolve(&config, None);
         let gantt = style.css_binding();
 

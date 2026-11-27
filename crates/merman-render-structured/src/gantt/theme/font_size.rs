@@ -1,4 +1,4 @@
-use crate::mermaid_style::{
+use merman_render_core::mermaid_style::{
     CssFontSizeContext, css_font_size_value_override, parse_style_declaration,
 };
 
@@ -15,7 +15,7 @@ impl GanttFontSize {
             Some(serde_json::Value::String(raw)) => raw.clone(),
             Some(serde_json::Value::Number(number)) => number
                 .as_f64()
-                .map(|size| crate::number_format::canonical_number(size).to_string())
+                .map(|size| merman_render_core::number_format::canonical_number(size).to_string())
                 .unwrap_or_else(|| "11".to_owned()),
             _ => "11".to_owned(),
         };

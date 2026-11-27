@@ -1,9 +1,24 @@
-use super::super::*;
-use super::css::gantt_css;
-use crate::gantt::{GanttNativeStyle, GanttStyle};
-use merman_model::families::gantt::GanttDiagramRenderModel;
+use std::fmt::Write as _;
 
-// Gantt diagram SVG renderer implementation (split from parity.rs).
+use merman_model::{OperationPhase, families::gantt::GanttDiagramRenderModel, time::LocalTimeZone};
+use merman_render_core::{
+    Result,
+    config::{ConfigLookup, json_bool, value_at},
+    number_format::canonical_number as fmt,
+    resources::OperationWorkMeter,
+    root_svg,
+    svg_css::{CssSelectorDiagramId, SvgId},
+    svg_output::{BoundedSvgOutput, SvgOutput, XmlTextOutput},
+    xml::{escape_attr, escape_xml},
+};
+
+mod css;
+
+use self::css::gantt_css;
+use super::{
+    GanttAxisTickLayout, GanttDiagramLayout, GanttNativeStyle, GanttStyle,
+    gantt_section_class_suffix, label_state_classes, start_of_day_ms,
+};
 
 fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     if max_ms <= min_ms {
@@ -18,10 +33,10 @@ fn fmt_allow_nan(v: f64) -> String {
     if v.is_nan() {
         return "NaN".to_string();
     }
-    fmt_string(v)
+    fmt(v).to_string()
 }
 
-fn gantt_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+fn gantt_dom_id(diagram_id: SvgId<'_>, raw_id: &str) -> String {
     format!("{diagram_id}-{raw_id}")
 }
 
@@ -46,7 +61,7 @@ fn gantt_insert_before_width(base: &str, insert: &str) -> String {
 
 fn render_gantt_axis_ticks(
     out: &mut impl SvgOutput,
-    ticks: &[crate::model::GanttAxisTickLayout],
+    ticks: &[GanttAxisTickLayout],
     left_padding: f64,
     tick_size: f64,
     with_dy: bool,
@@ -87,8 +102,8 @@ fn render_gantt_axis_ticks(
 
 fn render_gantt_axis_group(
     out: &mut impl SvgOutput,
-    layout: &crate::model::GanttDiagramLayout,
-    ticks: &[crate::model::GanttAxisTickLayout],
+    layout: &GanttDiagramLayout,
+    ticks: &[GanttAxisTickLayout],
     y: f64,
     with_dy: bool,
 ) -> Result<()> {
@@ -129,12 +144,8 @@ fn render_gantt_axis_group(
     out.checkpoint()
 }
 
-fn gantt_native_css(
-    diagram_id: SvgDiagramId<'_>,
-    native: &GanttNativeStyle,
-    body_family: &str,
-) -> String {
-    let id = super::super::util::css_selector_diagram_id(diagram_id);
+fn gantt_native_css(diagram_id: SvgId<'_>, native: &GanttNativeStyle, body_family: &str) -> String {
+    let id = CssSelectorDiagramId(diagram_id);
     let grid_stroke = if native.show_grid {
         &native.guide
     } else {
@@ -205,15 +216,25 @@ fn render_gantt_rows(
     out.checkpoint()
 }
 
-pub(crate) fn render_gantt_diagram_svg_model(
-    layout: &crate::model::GanttDiagramLayout,
+/// Host-owned SVG, clock, and resource inputs for Gantt emission.
+pub struct GanttSvgContext<'a> {
+    pub diagram_id: SvgId<'a>,
+    pub viewport: root_svg::RootViewportContext<'a>,
+    pub local_time_zone: &'a LocalTimeZone,
+    pub unix_ms: i64,
+    pub work_meter: &'a OperationWorkMeter,
+}
+
+/// Emits a complete Gantt document for the shared terminal SVG pipeline.
+pub fn render_gantt_svg(
+    layout: &GanttDiagramLayout,
     model: &GanttDiagramRenderModel,
     style: &GanttStyle,
     task_source_indices: &[usize],
-    effective_config: &dyn crate::config::ConfigLookup,
-    options: &SvgExecution<'_>,
+    effective_config: &dyn ConfigLookup,
+    context: GanttSvgContext<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id = context.diagram_id;
     let native = style.native();
 
     let w = layout.width.max(1.0);
@@ -222,7 +243,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let acc_title = model.acc_title.as_deref().filter(|s| !s.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|s| !s.is_empty());
 
-    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut out = BoundedSvgOutput::new(context.work_meter);
     let aria_labelledby = acc_title
         .as_ref()
         .map(|_| format!("chart-title-{diagram_id}"));
@@ -242,7 +263,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
             )
         },
     );
-    let use_max_width = config_bool(effective_config, &["gantt", "useMaxWidth"]).unwrap_or(true);
+    let use_max_width = value_at(effective_config, &["gantt", "useMaxWidth"])
+        .and_then(json_bool)
+        .unwrap_or(true);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
@@ -250,8 +273,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document = options
-        .root_viewport(crate::DiagramFamilyId::GANTT, diagram_id)
+    let root_document = context
+        .viewport
         .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
@@ -278,7 +301,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         Some(native) => gantt_native_css(diagram_id, native, style.font_family_css()),
         None => gantt_css(diagram_id, style.css_binding()),
     };
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    XmlTextOutput::new(&mut out).push_str(&css);
     drop(css);
     out.checkpoint()?;
     out.push_str(r#"</style><g/>"#);
@@ -299,8 +322,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
         .get("securityLevel")
         .and_then(serde_json::Value::as_str)
         == Some("loose");
-    let local_time_zone = options.local_time_zone();
-    let min_day_start_ms = crate::gantt::start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
+    let local_time_zone = context.local_time_zone;
+    let min_day_start_ms = start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
     let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
 
     if native.is_some() {
@@ -323,10 +346,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 //
                 // This matters when date-only inputs are parsed with a timezone-derived offset
                 // (e.g. `YYYY-MM-DD` treated as UTC midnight and shifted when rendered locally).
-                let start_day_start_ms = crate::gantt::start_of_day_ms(r.start_ms, local_time_zone)
-                    .unwrap_or(r.start_ms);
+                let start_day_start_ms =
+                    start_of_day_ms(r.start_ms, local_time_zone).unwrap_or(r.start_ms);
                 let end_day_start_ms =
-                    crate::gantt::start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
+                    start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
                 let start_raw_ms = start_day_start_ms.saturating_add(min_in_day_offset_ms);
                 let end_raw_ms = end_day_start_ms.saturating_add(min_in_day_offset_ms);
 
@@ -443,12 +466,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let mut task_type_class = String::new();
             let semantic_task = source_task(task_index);
             if let Some(task) = semantic_task {
-                let section_suffix = crate::gantt::gantt_section_class_suffix(
+                let section_suffix = gantt_section_class_suffix(
                     &task.task_type,
                     &layout.categories,
                     layout.number_section_styles,
                 );
-                task_type_class = crate::gantt::label_state_classes(task, &section_suffix);
+                task_type_class = label_state_classes(task, &section_suffix);
                 if task.milestone {
                     if !task_type_class.is_empty() {
                         task_type_class.push(' ');
@@ -479,7 +502,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     escape_attr(native.task_ink(task, &class))
                 );
             }
-            options.checkpoint_emit()?;
+            context.work_meter.checkpoint(OperationPhase::Emit)?;
             if preserve_task_text_height {
                 let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
             }
@@ -541,7 +564,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
-            let now_ms = options.unix_ms();
+            let now_ms = context.unix_ms;
             gantt_scale_time_round(now_ms, min_ms, max_ms, range) + layout.left_padding
         };
         let y1 = layout.title_top_margin;
@@ -631,14 +654,14 @@ mod tests {
             self.retained.as_str()
         }
 
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> Result<()> {
             self.retained.replace_range(range, replacement);
             Ok(())
         }
 
-        fn checkpoint(&mut self) -> crate::Result<()> {
+        fn checkpoint(&mut self) -> Result<()> {
             if self.rejected {
-                Err(crate::Error::InvalidModel {
+                Err(merman_render_core::Error::InvalidModel {
                     message: "test SVG sink rejected the first write".to_string(),
                 })
             } else {
@@ -650,7 +673,7 @@ mod tests {
     #[test]
     fn gantt_axis_stops_after_the_first_svg_sink_failure() {
         let ticks = (0..4)
-            .map(|index| crate::model::GanttAxisTickLayout {
+            .map(|index| GanttAxisTickLayout {
                 time_ms: index,
                 x: 100.0 + (index as f64) * 50.0,
                 label: format!("tick-{index}"),
@@ -661,7 +684,10 @@ mod tests {
         let error = render_gantt_axis_ticks(&mut out, &ticks, 75.0, -115.0, true)
             .expect_err("the rejecting sink must stop Gantt axis rendering");
 
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(matches!(
+            error,
+            merman_render_core::Error::InvalidModel { .. }
+        ));
         assert_eq!(
             out.write_attempts, 1,
             "Gantt axis rendering must stop after the first failed tick write"
