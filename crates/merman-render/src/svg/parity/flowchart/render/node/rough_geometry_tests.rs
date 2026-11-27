@@ -136,7 +136,7 @@ fn with_context<T>(
         &model,
         &render_context,
         &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-        flow::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+        layout.node_layout_view(),
         &sidecar,
         &metadata.effective_config,
         &theme,

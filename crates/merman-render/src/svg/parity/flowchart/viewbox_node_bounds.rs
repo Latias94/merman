@@ -651,7 +651,7 @@ mod tests {
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-            super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            layout.node_layout_view(),
             &sidecar,
             &metadata.effective_config,
             &prepared_theme,

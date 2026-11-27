@@ -11,9 +11,7 @@ mod tests {
     fn actual_swimlane_renderer_clips_two_point_routes_when_config_names_elk() {
         use crate::environment::RenderEnvironment;
         use crate::model::{FlowchartLayout, LayoutNode, SwimlaneDirection, SwimlaneLayout};
-        use crate::svg::parity::flowchart::node_inventory::{
-            FlowchartNodeLayoutView, FlowchartPreparedNodes,
-        };
+        use crate::svg::parity::flowchart::node_inventory::FlowchartPreparedNodes;
         use crate::svg::parity::flowchart::render_config::prepare_flowchart_render_config;
         use crate::svg::parity::flowchart::svg_emit::FlowchartSvgModelRequest;
         use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
@@ -131,7 +129,7 @@ mod tests {
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-            FlowchartNodeLayoutView::Flowchart(&layout),
+            layout.node_layout_view(),
             &sidecar,
             &metadata.effective_config,
             &prepared_theme,

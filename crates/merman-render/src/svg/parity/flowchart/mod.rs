@@ -22,7 +22,7 @@ pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes}
 mod render;
 mod render_input;
 mod step;
-use merman_render_flow::style::{compiled as style, node as node_style};
+use merman_render_flow::style::compiled as style;
 mod swimlane;
 mod types;
 mod util;

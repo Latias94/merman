@@ -13,7 +13,6 @@ use crate::graph_label as label;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 mod node;
-mod self_loop;
 mod shape_validation;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
@@ -66,12 +65,15 @@ pub(crate) use merman_render_flow::node_geometry::{
     FlowchartRectangleGeometry, ImageSquareGeometry, ImageSquareSizing,
     PreparedFlowchartNodeGeometry,
 };
+pub(crate) use merman_render_flow::projection::flowchart_dagre_merges_self_loop_segments;
+#[cfg(feature = "layout-dagre")]
+pub(crate) use merman_render_flow::projection::flowchart_self_loop_helper_edges;
 pub(crate) use merman_render_flow::shapes::{
     FlowchartShape, bang_geometry, cloud_geometry, is_flowchart_process_shape,
 };
 pub(crate) use merman_render_flow::svg_label::{
-    FlowchartNodeSourceTypography, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar,
+    FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
+    FlowchartSvgLabelSidecar,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::NodeLayoutDimensionsRequest;
@@ -79,9 +81,6 @@ pub(crate) use node::{
     CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, DoubleCircleGeometry, HexagonGeometry,
     LeanGeometry, LeanKind, OddGeometry, StadiumGeometry, flowchart_brace_content_dimensions,
     flowchart_node_render_dimensions, flowchart_stacked_document_geometry,
-};
-pub(crate) use self_loop::{
-    flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
 };
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 pub(crate) use shape_validation::validate_flowchart_model_shapes;

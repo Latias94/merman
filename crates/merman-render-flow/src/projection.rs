@@ -7,6 +7,18 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
+mod render_input;
+mod self_loop;
+
+pub(crate) use render_input::flowchart_helper_node_ids;
+pub use render_input::{
+    FlowchartRenderEdge, FlowchartRenderInputs, prepare_flowchart_render_inputs,
+};
+pub use self_loop::{
+    FlowchartSelfLoopHelperEdges, flowchart_dagre_merges_self_loop_segments,
+    flowchart_self_loop_helper_edges,
+};
+
 /// Operation-local identity for one rendered Flowchart edge occurrence.
 ///
 /// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout

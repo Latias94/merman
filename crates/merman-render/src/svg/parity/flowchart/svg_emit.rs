@@ -285,113 +285,6 @@ pub(super) fn render_flowchart_svg_model(
     )
 }
 
-pub(super) fn flowchart_node_theme_ordinals<'a>(
-    nodes: &'a [crate::flowchart::FlowNode],
-    subgraphs: &'a [crate::flowchart::FlowSubgraph],
-    render_context: &crate::flowchart::FlowchartRenderContext,
-    uses_elk_adapter_dom: bool,
-) -> FxHashMap<&'a str, usize> {
-    let subgraph_ids: FxHashSet<&str> = subgraphs
-        .iter()
-        .map(|subgraph| subgraph.id.as_str())
-        .collect();
-    let mut ordinals = FxHashMap::default();
-    let mut next_ordinal = 1usize;
-
-    // Theme ordinals describe surfaces that reach the Node emitter, not Graphlib/ELK vertices.
-    // ELK materializes every subgraph as a node in the semantic model, but renders it as a
-    // cluster. Collapsed groups are nodes in either backend; hidden descendants own no slot.
-    for node in nodes {
-        if subgraph_ids.contains(node.id.as_str())
-            || render_context
-                .collapsed_replacement(node.id.as_str())
-                .is_some()
-        {
-            continue;
-        }
-        if let std::collections::hash_map::Entry::Vacant(entry) = ordinals.entry(node.id.as_str()) {
-            entry.insert(next_ordinal);
-            next_ordinal += 1;
-        }
-    }
-
-    for subgraph in subgraphs.iter().filter(|subgraph| {
-        render_context.collapsed_replacement(&subgraph.id).is_none()
-            && (render_context.is_subgraph_collapsed(&subgraph.id)
-                || !uses_elk_adapter_dom && subgraph.nodes.is_empty())
-    }) {
-        if let std::collections::hash_map::Entry::Vacant(entry) =
-            ordinals.entry(subgraph.id.as_str())
-        {
-            entry.insert(next_ordinal);
-            next_ordinal += 1;
-        }
-    }
-
-    ordinals
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn node(id: &str) -> crate::flowchart::FlowNode {
-        crate::flowchart::FlowNode {
-            id: id.to_string(),
-            provenance: Default::default(),
-            label: None,
-            label_type: None,
-            layout_shape: None,
-            shape: None,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            link: None,
-            link_target: None,
-            have_callback: false,
-        }
-    }
-
-    fn subgraph(id: &str, nodes: &[&str]) -> crate::flowchart::FlowSubgraph {
-        crate::flowchart::FlowSubgraph {
-            id: id.to_string(),
-            title: id.to_string(),
-            dir: None,
-            has_explicit_dir: false,
-            label_type: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            nodes: nodes.iter().map(|node| (*node).to_string()).collect(),
-            metadata: Default::default(),
-        }
-    }
-
-    #[test]
-    fn node_theme_ordinals_follow_actual_node_emitter_surfaces() {
-        let nodes = vec![node("A"), node("group"), node("A"), node("empty")];
-        let subgraphs = vec![subgraph("group", &["A"]), subgraph("empty", &[])];
-
-        let context = crate::flowchart::FlowchartRenderContext::default();
-        let dagre = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, false);
-        assert_eq!(dagre.len(), 2);
-        assert_eq!(dagre.get("A"), Some(&1));
-        assert_eq!(dagre.get("empty"), Some(&2));
-        assert!(!dagre.contains_key("group"));
-
-        let elk = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, true);
-        assert_eq!(elk.len(), 1);
-        assert_eq!(elk.get("A"), Some(&1));
-        assert!(!elk.contains_key("group"));
-        assert!(!elk.contains_key("empty"));
-    }
-}
-
 #[cfg(all(test, feature = "diagram-flowchart"))]
 mod integration_tests {
     use super::super::render_input::prepare_flowchart_render_inputs;
@@ -444,8 +337,13 @@ mod integration_tests {
             .unwrap()
         });
         let coverage = owners.validate(&layout_edges, &model.edges).unwrap();
-        let inputs =
-            prepare_flowchart_render_inputs(&model, &render_context, &owners, coverage, false);
+        let inputs = prepare_flowchart_render_inputs(
+            &model,
+            &render_context,
+            owners.keys(),
+            coverage,
+            false,
+        );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(&model, &render_context);
         assert_eq!(
             inputs
@@ -568,7 +466,7 @@ mod integration_tests {
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-            super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            layout.node_layout_view(),
             &sidecar,
             &metadata.effective_config,
             &prepared_theme,
@@ -731,7 +629,7 @@ mod integration_tests {
                 &model,
                 &render_context,
                 &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-                super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+                layout.node_layout_view(),
                 &sidecar,
                 &metadata.effective_config,
                 &prepared_theme,

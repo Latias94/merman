@@ -22,6 +22,10 @@ impl FlowchartEdgeOwners {
         self.0.len()
     }
 
+    pub(crate) fn keys(&self) -> &[FlowchartEdgeKey] {
+        &self.0
+    }
+
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = FlowchartEdgeKey> + '_ {
         self.0.iter().copied()
     }
@@ -266,7 +270,7 @@ mod tests {
         let mut semantic = semantic_edge("loop");
         semantic.from = "A".to_owned();
         semantic.to = "A".to_owned();
-        let helpers = super::super::flowchart_self_loop_helper_edges(&semantic);
+        let helpers = merman_render_flow::projection::flowchart_self_loop_helper_edges(&semantic);
         let layout = [helpers.edge1, helpers.edge_mid, helpers.edge2]
             .into_iter()
             .map(|helper| {

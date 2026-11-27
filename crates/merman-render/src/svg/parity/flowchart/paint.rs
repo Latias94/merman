@@ -73,7 +73,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     } = prepare_flowchart_render_inputs(
         model,
         render_context,
-        &layout.edge_owners,
+        layout.edge_owners.keys(),
         owner_occurrences,
         layout.route_contract.uses_projected_edges(),
     );
@@ -168,7 +168,12 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
 
     let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
-    apply_solved_group_parents(layout, &mut parent, &mut subgraph_ids_with_children);
+    apply_solved_group_parents(
+        &layout.clusters,
+        layout.route_contract.group_parents(),
+        &mut parent,
+        &mut subgraph_ids_with_children,
+    );
     if let Some(swimlane) = swimlane_layout.filter(|layout| layout.has_canonical_routes()) {
         for node in &swimlane.nodes {
             if let Some(owner) = &node.parent_id {
@@ -875,7 +880,7 @@ mod tests {
             model,
             context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-            super::super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            layout.node_layout_view(),
             &sidecar,
             &parsed.metadata().effective_config,
             &theme,
