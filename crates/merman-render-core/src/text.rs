@@ -17,6 +17,12 @@ pub use common_dimensions::{
 #[cfg(feature = "text-layout")]
 mod create_text;
 mod css_font;
+#[cfg(feature = "xhtml-labels")]
+#[doc(hidden)]
+pub mod html_label_box;
+#[cfg(feature = "styled-html-labels")]
+#[doc(hidden)]
+pub mod html_label_layout;
 #[cfg(feature = "text-layout")]
 mod icons;
 #[cfg(all(feature = "text-layout", feature = "svg-parse"))]
@@ -29,6 +35,9 @@ mod markdown;
 #[cfg(feature = "markdown-labels")]
 mod markdown_label;
 mod measure;
+#[cfg(feature = "styled-html-labels")]
+#[doc(hidden)]
+pub mod styled_html;
 #[cfg(all(feature = "text-layout", feature = "svg-parse"))]
 #[doc(hidden)]
 pub mod svg_label;

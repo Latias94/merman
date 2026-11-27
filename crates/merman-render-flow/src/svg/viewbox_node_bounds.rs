@@ -1,0 +1,554 @@
+//! Flowchart node rendered-bounds preparation for final viewBox calculation.
+
+use super::*;
+use crate::node_body::document_shapes::generate_full_sine_wave_points;
+use crate::svg::path_bounds::{SvgPathBounds, svg_path_bounds_from_rough_ops};
+
+fn rough_svg_path_bounds(
+    randomness: &roughr::core::RoughRandomness,
+    path_data: &str,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
+) -> Option<SvgPathBounds> {
+    merman_render_core::rough_svg::paths::roughjs_prepare_paths_for_svg_path(
+        merman_render_core::rough_svg::paths::RoughGeometryTarget::Query,
+        path_data,
+        1.3,
+        "0 0",
+        work_meter,
+        randomness,
+    )?
+    .query_bounds()
+}
+
+fn rough_stroke_svg_path_bounds(
+    randomness: &roughr::core::RoughRandomness,
+    path_data: &str,
+    work_meter: &merman_render_core::resources::OperationWorkMeter,
+) -> Option<SvgPathBounds> {
+    let stroke = merman_render_core::rough_svg::paths::roughjs_prepare_stroke_path_for_svg_path(
+        merman_render_core::rough_svg::paths::RoughGeometryTarget::Query,
+        path_data,
+        1.3,
+        "0 0",
+        work_meter,
+        randomness,
+    )?;
+    svg_path_bounds_from_rough_ops(&stroke)
+}
+
+fn measure_flowchart_layout_node_label(
+    ctx: &FlowchartRenderCtx<'_>,
+    n: &LayoutNode,
+) -> Option<merman_render_core::text::TextMetrics> {
+    let flow_node = ctx.nodes_by_id.get(n.id.as_str())?;
+    let label = ctx.model.node_label_for_render(flow_node).unwrap_or("");
+    let label_type = flow_node
+        .label_type
+        .as_deref()
+        .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+    let node_text_style = super::render::node::helpers::node_source_text_style(
+        ctx,
+        Some(n.id.as_str()),
+        &flow_node.classes,
+        &flow_node.styles,
+    );
+    let metrics = crate::svg::label::flowchart_label_metrics_for_layout(
+        merman_render_core::text::create_text_html::FlowchartLabelMetricsRequest {
+            measurer: ctx.measurer,
+            raw_label: label,
+            label_type,
+            style: &node_text_style,
+            max_width_px: Some(crate::bpmn::wrapping_width(
+                flow_node.layout_shape.as_deref(),
+                ctx.wrapping_width,
+            )),
+            wrap_mode: ctx.node_wrap_mode,
+            config: ctx.config,
+            math_renderer: ctx.math_renderer,
+        },
+    );
+    let min_width = if ctx.subgraphs_by_id.contains_key(n.id.as_str()) {
+        0.0
+    } else {
+        crate::node_geometry::flowchart_node_label_min_width(
+            label,
+            flow_node.layout_shape.as_deref(),
+            ctx.config,
+        )
+    };
+    Some(metrics.with_label_min_width(label, min_width, None))
+}
+
+fn layout_node_metrics_or_zero(
+    ctx: &FlowchartRenderCtx<'_>,
+    n: &LayoutNode,
+) -> merman_render_core::text::TextMetrics {
+    if let (Some(width), Some(height)) = (n.label_width, n.label_height) {
+        return merman_render_core::text::TextMetrics {
+            width,
+            height,
+            line_count: 0,
+        };
+    }
+    measure_flowchart_layout_node_label(ctx, n).unwrap_or(merman_render_core::text::TextMetrics {
+        width: 0.0,
+        height: 0.0,
+        line_count: 0,
+    })
+}
+
+fn layout_node_label_size_or_zero(ctx: &FlowchartRenderCtx<'_>, n: &LayoutNode) -> (f64, f64) {
+    let metrics = layout_node_metrics_or_zero(ctx, n);
+    (metrics.width, metrics.height)
+}
+
+fn layout_node_label_width_if_known(ctx: &FlowchartRenderCtx<'_>, n: &LayoutNode) -> Option<f64> {
+    n.label_width
+        .or_else(|| measure_flowchart_layout_node_label(ctx, n).map(|metrics| metrics.width))
+}
+
+pub(in crate::svg) fn include_flowchart_node_rendered_bounds<'data, F>(
+    ctx: &FlowchartRenderCtx<'data>,
+    nodes: &[LayoutNode],
+    subgraph_title_y_shift: f64,
+    effective_parent_for_id: &F,
+    include_rect: &mut impl FnMut(f64, f64, f64, f64),
+) where
+    F: Fn(&str) -> Option<&'data str>,
+{
+    let node_padding = ctx.node_padding;
+    // ViewBox estimation rebuilds RoughJS geometry but does not emit it. Keep that work on an
+    // isolated stream so it cannot advance the operation-owned stream used by actual SVG nodes.
+    let bounds_randomness = ctx.hand_drawn_seed.isolated_copy();
+
+    let y_offset_for_root = |root: Option<&str>| -> f64 {
+        if root.is_some() && subgraph_title_y_shift.abs() >= 1e-9 {
+            -subgraph_title_y_shift
+        } else {
+            0.0
+        }
+    };
+
+    for n in nodes {
+        if n.is_cluster
+            && ctx.layout_clusters_by_id.contains_key(n.id.as_str())
+            && super::cluster_geometry::cluster_css_size(ctx, &n.id).is_some()
+        {
+            // The cluster pass already included the painted frame and title.
+            continue;
+        }
+        let is_empty_subgraph_node = ctx.subgraphs_by_id.contains_key(n.id.as_str())
+            && !ctx.subgraph_has_children(n.id.as_str());
+        let root = if n.is_cluster && ctx.recursive_clusters.contains(n.id.as_str()) {
+            Some(n.id.as_str())
+        } else {
+            effective_parent_for_id(&n.id)
+        };
+        let y_off = y_offset_for_root(root);
+        if !n.is_cluster
+            && let Some(rectangle) = ctx.node_rectangle(&n.id)
+        {
+            let bounds = rectangle.group;
+            include_rect(
+                n.x + bounds.x0,
+                n.y + y_off + bounds.y0,
+                n.x + bounds.x1,
+                n.y + y_off + bounds.y1,
+            );
+            continue;
+        }
+        if n.is_cluster
+            || ctx.node_dom_index.contains_key(n.id.as_str())
+            || is_empty_subgraph_node
+            || ctx.is_subgraph_collapsed(n.id.as_str())
+        {
+            let mut left_hw = n.width / 2.0;
+            let mut right_hw = left_hw;
+            let mut top_hh = n.height / 2.0;
+            let mut bottom_hh = top_hh;
+            if !n.is_cluster
+                && let Some(shape) = ctx
+                    .nodes_by_id
+                    .get(n.id.as_str())
+                    .and_then(|node| node.layout_shape.as_deref())
+            {
+                if matches!(shape, "bang" | "cloud") {
+                    let (label_width, label_height) = layout_node_label_size_or_zero(ctx, n);
+                    let geometry = if shape == "bang" {
+                        crate::shapes::bang_geometry(label_width, label_height, node_padding)
+                    } else {
+                        crate::shapes::cloud_geometry(label_width, label_height, node_padding)
+                    };
+                    left_hw = (-geometry.rendered_min_x()).max(0.0);
+                    right_hw = geometry.rendered_max_x().max(0.0);
+                    top_hh = (-geometry.rendered_min_y()).max(0.0);
+                    bottom_hh = geometry.rendered_max_y().max(0.0);
+                }
+
+                // Mermaid's flowchart-v2 rhombus node renderer offsets the polygon by
+                // `(-width/2 + 0.5, height/2)` so the diamond outline stays on the same
+                // pixel lattice as other nodes. This makes the DOM bbox slightly asymmetric
+                // around the node center and affects the root `getBBox()` width.
+                if shape == "diamond" || shape == "diam" || shape == "rhombus" {
+                    left_hw = (left_hw - 0.5).max(0.0);
+                    right_hw += 0.5;
+                }
+
+                // Mermaid `curvedTrapezoid.ts` draws its rough path from the
+                // "theoretical" text+padding width, but Dagre uses the
+                // `updateNodeBounds(...)` bbox which can be slightly narrower.
+                if matches!(shape, "curv-trap" | "display" | "curved-trapezoid")
+                    && let Some(label_w) = layout_node_label_width_if_known(ctx, n)
+                {
+                    let geometry = crate::node_geometry::DisplayGeometry::from_label(
+                        label_w,
+                        layout_node_label_size_or_zero(ctx, n).1,
+                        node_padding,
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo(),
+                    );
+                    left_hw = geometry.width / 2.0;
+                    right_hw = (n.width - left_hw).max(0.0);
+                }
+
+                // Mermaid `waveEdgedRectangle.ts` (document) stores Dagre dimensions from
+                // `updateNodeBounds(...)`, but the final root viewport comes from the rendered
+                // RoughJS path bbox. Rebuild that bbox directly.
+                if matches!(shape, "doc" | "document") {
+                    let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
+                    let look_is_neo =
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = (label_w + 2.0 * padding_x).max(0.0);
+                    let h = (label_h + 2.0 * padding_y).max(0.0);
+                    let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
+                    let final_h = h + wave_amplitude;
+                    let extra_w = ((14.0 - w).max(0.0)) / 2.0;
+                    let mut points: Vec<(f64, f64)> = Vec::new();
+                    points.push((-w / 2.0 - extra_w, final_h / 2.0));
+                    points.extend(generate_full_sine_wave_points(
+                        -w / 2.0 - extra_w,
+                        final_h / 2.0,
+                        w / 2.0 + extra_w,
+                        final_h / 2.0,
+                        wave_amplitude,
+                        0.8,
+                    ));
+                    points.push((w / 2.0 + extra_w, -final_h / 2.0));
+                    points.push((-w / 2.0 - extra_w, -final_h / 2.0));
+
+                    let path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&points);
+                    if let Some(pb) =
+                        rough_svg_path_bounds(&bounds_randomness, &path_data, ctx.work_meter)
+                    {
+                        let y_shift = -wave_amplitude / 2.0;
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                        bottom_hh = (pb.max_y + y_shift).max(0.0);
+                    }
+                }
+
+                // Mermaid `linedWaveEdgedRect.ts` follows the same split as the other wave
+                // document shapes: Dagre uses the post-`updateNodeBounds(...)` dimensions,
+                // while the rendered root bbox comes from the original label-box path.
+                if matches!(shape, "lin-doc" | "lined-document") {
+                    let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
+                    let look_is_neo =
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = (label_w + 2.0 * padding_x).max(0.0);
+                    let h = (label_h + 2.0 * padding_y).max(0.0);
+                    let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
+                    let final_h = h + wave_amplitude;
+                    let extra = (w / 2.0) * 0.1;
+                    let mut points: Vec<(f64, f64)> = Vec::new();
+                    points.push((-w / 2.0 - extra, -final_h / 2.0));
+                    points.push((-w / 2.0 - extra, final_h / 2.0));
+                    points.extend(generate_full_sine_wave_points(
+                        -w / 2.0 - extra,
+                        final_h / 2.0,
+                        w / 2.0 + extra,
+                        final_h / 2.0,
+                        wave_amplitude,
+                        0.8,
+                    ));
+                    points.push((w / 2.0 + extra, -final_h / 2.0));
+                    points.push((-w / 2.0 - extra, -final_h / 2.0));
+                    points.push((-w / 2.0, -final_h / 2.0));
+                    points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+                    points.push((-w / 2.0, -final_h / 2.0));
+
+                    let path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&points);
+                    if let Some(pb) =
+                        rough_svg_path_bounds(&bounds_randomness, &path_data, ctx.work_meter)
+                    {
+                        let y_shift = -wave_amplitude / 2.0;
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                        bottom_hh = (pb.max_y + y_shift).max(0.0);
+                    }
+                }
+
+                // Mermaid `taggedWaveEdgedRectangle.ts` (tagged-document) renders from the
+                // base label box, then `updateNodeBounds(...)` stores a slightly shorter outer
+                // bbox. The rendered wave is also vertically asymmetric.
+                if matches!(shape, "tag-doc" | "tagged-document") {
+                    let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
+                    let w = (label_w + 2.0 * node_padding).max(0.0);
+                    let h = (label_h + 2.0 * node_padding).max(0.0);
+                    let wave_amplitude = h / 8.0;
+                    let final_h = h + wave_amplitude;
+                    let extra = (w / 2.0) * 0.1;
+                    let tag_width = 0.2 * w;
+                    let tag_height = 0.2 * h;
+
+                    let mut wave_points: Vec<(f64, f64)> = Vec::new();
+                    wave_points.push((-w / 2.0 - extra, final_h / 2.0));
+                    wave_points.extend(generate_full_sine_wave_points(
+                        -w / 2.0 - extra,
+                        final_h / 2.0,
+                        w / 2.0 + extra,
+                        final_h / 2.0,
+                        wave_amplitude,
+                        0.8,
+                    ));
+                    wave_points.push((w / 2.0 + extra, -final_h / 2.0));
+                    wave_points.push((-w / 2.0 - extra, -final_h / 2.0));
+
+                    let x = -w / 2.0 + extra;
+                    let y = -final_h / 2.0 - tag_height * 0.4;
+                    let mut tag_points: Vec<(f64, f64)> = Vec::new();
+                    tag_points.push((x + w - tag_width, (y + h) * 1.3));
+                    tag_points.push((x + w, y + h - tag_height));
+                    tag_points.push((x + w, (y + h) * 0.9));
+                    tag_points.extend(generate_full_sine_wave_points(
+                        x + w,
+                        (y + h) * 1.25,
+                        x + w - tag_width,
+                        (y + h) * 1.3,
+                        -h * 0.02,
+                        0.5,
+                    ));
+
+                    let wave_path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&wave_points);
+                    let tag_path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&tag_points);
+                    let mut bounds: Option<crate::svg::path_bounds::SvgPathBounds> = None;
+                    for pb in [
+                        rough_svg_path_bounds(&bounds_randomness, &wave_path_data, ctx.work_meter),
+                        rough_svg_path_bounds(&bounds_randomness, &tag_path_data, ctx.work_meter),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        bounds = Some(match bounds {
+                            Some(mut acc) => {
+                                acc.min_x = acc.min_x.min(pb.min_x);
+                                acc.min_y = acc.min_y.min(pb.min_y);
+                                acc.max_x = acc.max_x.max(pb.max_x);
+                                acc.max_y = acc.max_y.max(pb.max_y);
+                                acc
+                            }
+                            None => pb,
+                        });
+                    }
+                    if let Some(pb) = bounds {
+                        let y_shift = -wave_amplitude / 2.0;
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                        bottom_hh = (pb.max_y + y_shift).max(0.0);
+                    }
+                }
+
+                // Mermaid computes the root viewport from the rendered DOM bbox. Curly
+                // brace/comment shapes emit narrow RoughJS stroke paths plus an invisible
+                // path; using the inflated Dagre `node.width / 2` keeps a phantom edge.
+                if matches!(
+                    shape,
+                    "comment" | "brace" | "brace-l" | "brace-r" | "braces"
+                ) {
+                    let metrics = layout_node_metrics_or_zero(ctx, n);
+                    let geometry = crate::svg::render::node::shapes::curly_brace_comment_geometry(
+                        shape,
+                        metrics.width,
+                        metrics.height,
+                        node_padding,
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo(),
+                    );
+                    // Root getBBox includes the separately translated label,
+                    // which can extend beyond Neo's fixed shape padding.
+                    include_rect(
+                        n.x + geometry.label_dx - metrics.width / 2.0,
+                        n.y + y_off + geometry.label_dy - metrics.height / 2.0,
+                        n.x + geometry.label_dx + metrics.width / 2.0,
+                        n.y + y_off + geometry.label_dy + metrics.height / 2.0,
+                    );
+                    let mut bounds: Option<crate::svg::path_bounds::SvgPathBounds> = None;
+                    for path in geometry.paths {
+                        if let Some(mut pb) = rough_stroke_svg_path_bounds(
+                            &bounds_randomness,
+                            &path.d,
+                            ctx.work_meter,
+                        ) {
+                            pb.min_x += geometry.group_tx;
+                            pb.max_x += geometry.group_tx;
+                            bounds = Some(match bounds {
+                                Some(mut acc) => {
+                                    acc.min_x = acc.min_x.min(pb.min_x);
+                                    acc.min_y = acc.min_y.min(pb.min_y);
+                                    acc.max_x = acc.max_x.max(pb.max_x);
+                                    acc.max_y = acc.max_y.max(pb.max_y);
+                                    acc
+                                }
+                                None => pb,
+                            });
+                        }
+                    }
+                    if let Some(pb) = bounds {
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-pb.min_y).max(0.0);
+                        bottom_hh = pb.max_y.max(0.0);
+                    }
+                }
+
+                // Mermaid `forkJoin.ts` inflates Dagre dimensions but the rendered bar
+                // remains `70x10` (or `10x70` for LR).
+                if matches!(shape, "fork" | "join") {
+                    if n.width >= n.height {
+                        left_hw = 35.0;
+                        right_hw = 35.0;
+                        top_hh = 5.0;
+                        bottom_hh = 5.0;
+                    } else {
+                        left_hw = 5.0;
+                        right_hw = 5.0;
+                        top_hh = 35.0;
+                        bottom_hh = 35.0;
+                    }
+                }
+
+                // Root getBBox includes both painted paths and the displaced label;
+                // the unshifted outer polygon remains the layout/intersection boundary.
+                if matches!(shape, "docs" | "documents" | "st-doc" | "stacked-document") {
+                    let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
+                    let geometry = crate::node_geometry::flowchart_stacked_document_geometry(
+                        label_w,
+                        label_h,
+                        node_padding,
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo(),
+                    );
+                    let outer = merman_render_core::rough_svg::closed_path_d_from_points(
+                        &geometry.outer_points,
+                    );
+                    let inner = merman_render_core::rough_svg::closed_path_d_from_points(
+                        &geometry.inner_points,
+                    );
+                    let mut bounds: Option<crate::svg::path_bounds::SvgPathBounds> = None;
+                    for path in [&outer, &inner] {
+                        if let Some(pb) =
+                            rough_svg_path_bounds(&bounds_randomness, path, ctx.work_meter)
+                        {
+                            bounds = Some(match bounds {
+                                Some(mut acc) => {
+                                    acc.min_x = acc.min_x.min(pb.min_x);
+                                    acc.min_y = acc.min_y.min(pb.min_y);
+                                    acc.max_x = acc.max_x.max(pb.max_x);
+                                    acc.max_y = acc.max_y.max(pb.max_y);
+                                    acc
+                                }
+                                None => pb,
+                            });
+                        }
+                    }
+                    if let Some(pb) = bounds {
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-(pb.min_y + geometry.group_dy)).max(0.0);
+                        bottom_hh = (pb.max_y + geometry.group_dy).max(0.0);
+                    }
+                    include_rect(
+                        n.x + geometry.label_dx - label_w / 2.0,
+                        n.y + y_off + geometry.label_dy - label_h / 2.0,
+                        n.x + geometry.label_dx + label_w / 2.0,
+                        n.y + y_off + geometry.label_dy + label_h / 2.0,
+                    );
+                }
+
+                if matches!(shape, "delay" | "half-rounded-rectangle") {
+                    let label_w = n.label_width.unwrap_or(0.0);
+                    let label_h = n.label_height.unwrap_or(0.0);
+                    let geometry = crate::node_geometry::DelayGeometry::from_label(
+                        label_w,
+                        label_h,
+                        node_padding,
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo(),
+                    );
+                    let points = geometry.points;
+
+                    let path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&points);
+                    if let Some(pb) =
+                        rough_svg_path_bounds(&bounds_randomness, &path_data, ctx.work_meter)
+                    {
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-pb.min_y).max(0.0);
+                        bottom_hh = pb.max_y.max(0.0);
+                    }
+                }
+
+                if matches!(shape, "notch-pent" | "loop-limit" | "notched-pentagon") {
+                    let label_w = n.label_width.unwrap_or(0.0);
+                    let label_h = n.label_height.unwrap_or(0.0);
+                    let look_is_neo =
+                        merman_render_core::config::mermaid_config_diagram_look(ctx.config)
+                            .is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = label_w + 2.0 * padding_x;
+                    let h = label_h + 2.0 * padding_y;
+                    let points = vec![
+                        ((-w / 2.0) * 0.8, -h / 2.0),
+                        ((w / 2.0) * 0.8, -h / 2.0),
+                        (w / 2.0, (-h / 2.0) * 0.6),
+                        (w / 2.0, h / 2.0),
+                        (-w / 2.0, h / 2.0),
+                        (-w / 2.0, (-h / 2.0) * 0.6),
+                    ];
+                    let path_data =
+                        merman_render_core::rough_svg::closed_path_d_from_points(&points);
+                    if let Some(pb) =
+                        rough_svg_path_bounds(&bounds_randomness, &path_data, ctx.work_meter)
+                    {
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-pb.min_y).max(0.0);
+                        bottom_hh = pb.max_y.max(0.0);
+                    }
+                }
+            }
+            include_rect(
+                n.x - left_hw,
+                n.y + y_off - top_hh,
+                n.x + right_hw,
+                n.y + y_off + bottom_hh,
+            );
+        } else {
+            include_rect(n.x, n.y + y_off, n.x + n.width, n.y + y_off + n.height);
+        }
+    }
+}

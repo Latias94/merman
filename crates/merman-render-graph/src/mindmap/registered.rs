@@ -1,7 +1,5 @@
 //! Mindmap projections for Mermaid's registered graph layout loaders.
 
-#[cfg(feature = "layout-elk")]
-use super::MindmapElkSolver;
 #[cfg(any(
     feature = "layout-cytoscape",
     feature = "layout-dagre",
@@ -153,10 +151,12 @@ pub(super) fn elk(
     model: &MindmapModel,
     mut nodes: Vec<LayoutNode>,
     config: &Value,
+    algorithm: merman_layout_elk::Algorithm,
+    operation_seed: merman_layout_elk::ElkOperationSeed,
     work: &mut OperationLayoutWorkControl,
-    solve: &MindmapElkSolver<'_>,
 ) -> Result<MindmapDiagramLayout> {
     use merman_layout_elk as elk;
+    use merman_render_core::elk_adapter::{feedback_edges, options};
     let mut graph = elk::Graph {
         id: "mindmap".into(),
         direction: elk::Direction::Down,
@@ -191,9 +191,20 @@ pub(super) fn elk(
             })
             .collect(),
         spacing: elk::Spacing::default(),
-        options: elk::LayoutOptions::default(),
+        options: options::layout_options(config, algorithm),
     };
-    let placed = solve(&mut graph, config, work)?;
+    let oriented =
+        feedback_edges::orient_feedback_edges(&mut graph, config, &mut Some(&mut *work))?;
+    let solved = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::LayoutSolve,
+        );
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+    };
+    let mut placed =
+        solved.map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
     let indices: rustc_hash::FxHashMap<_, _> = nodes
         .iter()
         .enumerate()

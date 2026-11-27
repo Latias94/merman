@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_controlled;
 use merman_model::{
     OperationControl, OperationControlResult,
     config::inline_config_scalar_to_string,
@@ -16,7 +17,6 @@ use std::collections::BTreeMap;
 
 use super::ast::Action;
 use super::json_object::parse_json_object;
-use super::semantic::SequenceInlineConfigParser;
 
 #[derive(Debug, Clone)]
 struct ParsedText {
@@ -341,17 +341,12 @@ impl SequenceDb {
     pub(super) fn apply_controlled(
         &mut self,
         action: Action,
-        parse_inline_config: SequenceInlineConfigParser,
         control: &OperationControl,
     ) -> OperationControlResult<std::result::Result<(), String>> {
         control.checkpoint()?;
         let participant_meta = match &action {
             Action::AddParticipant { config, .. } => {
-                match parse_participant_meta_controlled(
-                    config.as_deref(),
-                    parse_inline_config,
-                    control,
-                )? {
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
                     Ok(meta) => meta,
                     Err(error) => return Ok(Err(error)),
                 }
@@ -360,11 +355,7 @@ impl SequenceDb {
                 if self.actors.contains_key(id) {
                     return Ok(Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string()));
                 }
-                match parse_participant_meta_controlled(
-                    config.as_deref(),
-                    parse_inline_config,
-                    control,
-                )? {
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
                     Ok(meta) => meta,
                     Err(error) => return Ok(Err(error)),
                 }
@@ -723,13 +714,12 @@ impl SequenceDb {
 
 fn parse_participant_meta_controlled(
     input: Option<&str>,
-    parse_inline_config: SequenceInlineConfigParser,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Option<Value>, String>> {
     let Some(input) = input else {
         return Ok(Ok(None));
     };
-    Ok(parse_inline_config(input, control)?.map(Some))
+    Ok(parse_mermaid_inline_yaml_controlled(input, control)?.map(Some))
 }
 
 #[derive(Debug, Clone)]
@@ -810,14 +800,6 @@ fn is_css_color_value(input: &str) -> bool {
 }
 
 #[cfg(test)]
-pub(super) fn unexpected_inline_config(
-    _input: &str,
-    _control: &OperationControl,
-) -> OperationControlResult<Result<Value, String>> {
-    panic!("unexpected participant configuration")
-}
-
-#[cfg(test)]
 mod activation_tests;
 
 #[cfg(test)]
@@ -835,57 +817,65 @@ mod tests {
                 draw: "participant".to_string(),
                 config: None,
             },
-            unexpected_inline_config,
             &control,
         )
         .unwrap()
         .unwrap();
 
+        control.cancel_after_checkpoints(1);
         let error = db
             .apply_controlled(
                 Action::CreateParticipant {
                     id: "A".to_string(),
                     description: None,
                     draw: "participant".to_string(),
-                    config: Some(r#"{ "type" "control" }"#.to_string()),
+                    config: Some("type: &pending [*pending]".to_string()),
                 },
-                unexpected_inline_config,
                 &control,
             )
             .unwrap()
             .unwrap_err();
 
         assert!(error.contains("same id"), "{error}");
+        assert_eq!(
+            control.checkpoint().unwrap_err().reason,
+            merman_model::CancelReason::Requested
+        );
     }
 
     #[test]
     fn cancellation_after_inline_config_leaves_the_participant_unapplied() {
-        fn parse_and_cancel(
-            input: &str,
-            control: &OperationControl,
-        ) -> OperationControlResult<Result<Value, String>> {
-            assert_eq!(input, "alias: Customer");
-            control.cancel();
-            Ok(Ok(json!({"alias": "Customer"})))
-        }
-
-        let control = OperationControl::new();
-        let mut db = SequenceDb::new(None);
-        let error = db
-            .apply_controlled(
-                Action::AddParticipant {
+        // This mapping uses eight YAML checkpoints plus the initial DB checkpoint.
+        // A successful replay needs one more checkpoint before mutating either DB record.
+        for successful_checkpoints in [9, 10] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(successful_checkpoints);
+            let mut db = SequenceDb::new(None);
+            let result = db.apply_controlled(
+                Action::CreateParticipant {
                     id: "A".to_owned(),
                     description: None,
                     draw: "participant".to_owned(),
                     config: Some("alias: Customer".to_owned()),
                 },
-                parse_and_cancel,
                 &control,
-            )
-            .expect_err("the pre-mutation checkpoint preserves cancellation");
-
-        assert_eq!(error.reason, merman_model::CancelReason::Requested);
-        assert!(db.actors.is_empty());
-        assert!(db.actor_order.is_empty());
+            );
+            if successful_checkpoints == 9 {
+                let error = result.expect_err("the pre-mutation checkpoint preserves cancellation");
+                assert_eq!(error.reason, merman_model::CancelReason::Requested);
+                assert!(db.actors.is_empty());
+                assert!(db.actor_order.is_empty());
+                assert!(db.created_actors.is_empty());
+                assert!(db.last_created.is_none());
+            } else {
+                result.unwrap().unwrap();
+                assert_eq!(db.actors["A"].description, "Customer");
+                assert_eq!(db.created_actors["A"], 0);
+                assert_eq!(
+                    control.checkpoint().unwrap_err().reason,
+                    merman_model::CancelReason::Requested
+                );
+            }
+        }
     }
 }

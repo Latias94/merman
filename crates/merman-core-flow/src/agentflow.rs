@@ -3,7 +3,7 @@
 //! Agentflow shares presentation tokens with Flowchart and replays its own shapes,
 //! containers, metadata, and edge operators.
 
-use merman_core_preprocess::yaml::{mermaid_inline_yaml, parse_yaml_value_controlled};
+use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_controlled;
 use merman_model::families::agentflow::{
     ALLOWED_SHAPES, AgentflowAuthoredStyles, AgentflowConnector, AgentflowDiagnostic,
     AgentflowDiagnosticPosition, AgentflowDiagramModel, AgentflowEdge, AgentflowEdgeSemantic,
@@ -13,8 +13,7 @@ use merman_model::families::flowchart::shapes;
 use merman_model::text::is_ecmascript_whitespace;
 use merman_model::warnings::DiagramWarningFact;
 use merman_model::{
-    MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, OperationCancelled, OperationControl,
-    OperationControlResult, SourceSpan,
+    MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, SourceSpan,
 };
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -1860,19 +1859,11 @@ fn parse_metadata(
 ) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
     let normalized = normalize_metadata_quoted_newlines(body);
     let body = normalized.as_str();
-    let mut result = parse_yaml_value_controlled(
-        &mermaid_inline_yaml(body),
-        MAX_DIAGRAM_NESTING_DEPTH,
-        control,
-    )?;
+    let mut result = parse_mermaid_inline_yaml_controlled(body, control)?;
     if result.is_err() && body.contains('\n') {
         let stripped = strip_line_trailing_commas(body);
         if stripped != body
-            && let Ok(value) = parse_yaml_value_controlled(
-                &mermaid_inline_yaml(&stripped),
-                MAX_DIAGRAM_NESTING_DEPTH,
-                control,
-            )?
+            && let Ok(value) = parse_mermaid_inline_yaml_controlled(&stripped, control)?
         {
             result = Ok(value);
         }

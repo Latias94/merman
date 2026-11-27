@@ -1,4 +1,3 @@
-use super::input::parent_by_id;
 use super::projection::{align_degenerate_node_to_anchor, mermaid_elk_paint_order};
 use super::*;
 use crate::elk_options::layout_options as elk_layout_options;
@@ -10,6 +9,8 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::families::flowchart::{
     FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
 };
+use merman_render_core::elk_adapter::hierarchy::HierarchyIndex;
+use merman_render_flow::elk::parent_by_id;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
@@ -270,7 +271,7 @@ fn elk_cluster_title_keeps_complete_prepared_math_height() {
     ));
     let builder =
         FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         &model,
         &config,
         false,
@@ -283,7 +284,7 @@ fn elk_cluster_title_keeps_complete_prepared_math_height() {
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -329,14 +330,16 @@ A -->|boundary| D
         .position(|edge| edge.from == "C" && edge.to == "D")
         .unwrap();
     let render_context = parsed.render_context().flowchart_render_context().unwrap();
-    let mut projected_edges = projected_flowchart_edges(model, render_context).into_iter();
-    let (owner_index, unchanged) = projected_edges.next().expect("unchanged edge");
+    let mut projected_edges = FlowchartRenderModelRef::new(model, render_context).projected_edges();
+    let (owner, unchanged) = projected_edges.next().expect("unchanged edge");
+    let owner_index = owner.semantic_index();
     assert_eq!(owner_index, edge_index);
     assert!(matches!(
         unchanged.into_render_edge(),
         std::borrow::Cow::Borrowed(edge) if std::ptr::eq(edge, &model.edges[owner_index])
     ));
-    let (owner_index, boundary) = projected_edges.next().expect("boundary edge");
+    let (owner, boundary) = projected_edges.next().expect("boundary edge");
+    let owner_index = owner.semantic_index();
     let semantic = &model.edges[owner_index];
     assert_eq!((semantic.from.as_str(), semantic.to.as_str()), ("A", "D"));
     assert!(std::ptr::eq(boundary.semantic, semantic));
@@ -358,7 +361,7 @@ A -->|boundary| D
     ));
     let builder =
         FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         model,
         &config,
         false,
@@ -370,7 +373,7 @@ A -->|boundary| D
         render_context,
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -450,7 +453,7 @@ fn elk_adapter_binds_prepared_labels_to_original_semantic_indices() {
     let session = environment.begin_session().expect("deterministic session");
     let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
     let builder = FlowchartSvgLabelSidecarBuilder::default();
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+    let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
         &model,
         &config,
         false,
@@ -463,7 +466,7 @@ fn elk_adapter_binds_prepared_labels_to_original_semantic_indices() {
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         &config,
-        ElkRootAlgorithm::for_diagnostic(&config),
+        ElkRootAlgorithm::for_diagnostic(&config).algorithm(),
         &measurer,
         None,
         Some(&builder),
@@ -1107,33 +1110,61 @@ fn flowchart_elk_kernel_interruption_maps_to_layout_work_resource_error() {
         ],
         vec![edge("L-A-B", "A", "B", None)],
     );
-    // Keep this threshold at the provider boundary, not the optional feedback pre-pass.
     let config = crate::test_support::presentation_config(serde_json::json!({
         "elk": { "orientFeedbackEdges": false }
     }));
-    let (_, adapter_work) = adapter_graph_and_work(&model, &config);
-    let meter = Arc::new(OperationWorkMeter::new(
-        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, adapter_work)
-            .unwrap(),
-    ));
+    let (graph, graph_work) = adapter_graph_and_work(&model, &config);
+    let style_meter =
+        OperationWorkMeter::new(crate::RenderResourcePolicy::unbounded_for_trusted_input());
+    crate::test_support::prepare_flowchart_edge_style_plan(&model, &config, false, &style_meter)
+        .unwrap();
+    let prepared_work = style_meter.used() + graph_work;
+    // Even a flat graph with feedback reversal disabled pays the submission-order scan.
+    let provider_boundary = prepared_work + graph.nodes.len() + graph.edges.len();
 
-    let error = layout_flowchart_elk_typed_with_operation_seed(
-        &model,
-        &config,
-        &crate::text::DeterministicTextMeasurer::default(),
-        None,
-        operation_seed(),
-        meter,
-    )
-    .unwrap_err();
-
-    let Error::ResourceLimitExceeded(limit) = error else {
-        panic!("expected ResourceLimitExceeded");
-    };
-    assert_eq!(limit.limit, "max_layout_work_units");
-    assert_eq!(limit.max, adapter_work);
-    assert!(limit.actual > limit.max);
+    for budget in [provider_boundary - 1, provider_boundary] {
+        let meter = Arc::new(OperationWorkMeter::new(
+            crate::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, budget)
+                .unwrap(),
+        ));
+        let render = || {
+            layout_flowchart_elk_typed_with_operation_seed(
+                &model,
+                &config,
+                &crate::text::DeterministicTextMeasurer::default(),
+                None,
+                operation_seed(),
+                Arc::clone(&meter),
+            )
+        };
+        #[cfg(feature = "benchmark-stages")]
+        let result = {
+            use merman_model::benchmark_stages::{Stage, capture};
+            let (result, timing) = capture(false, render);
+            assert_eq!(
+                timing.stages[Stage::LayoutSolve as usize].calls,
+                usize::from(budget == provider_boundary),
+            );
+            result
+        };
+        #[cfg(not(feature = "benchmark-stages"))]
+        let result = render();
+        let Error::ResourceLimitExceeded(limit) = result.unwrap_err() else {
+            panic!("expected ResourceLimitExceeded");
+        };
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert_eq!(limit.max, budget);
+        assert!(limit.actual > limit.max);
+        assert_eq!(
+            meter.used(),
+            if budget == provider_boundary {
+                provider_boundary
+            } else {
+                prepared_work
+            },
+        );
+    }
 }
 
 #[test]
@@ -1352,7 +1383,7 @@ fn flowchart_elk_lca_matches_mermaid_endpoint_inclusive_semantics() {
     ));
     let mut no_work_control = None;
     let parent_by_id = parent_by_id(&model, &mut no_work_control).unwrap();
-    let hierarchy = crate::elk_hierarchy::HierarchyIndex::build(
+    let hierarchy = HierarchyIndex::build(
         model
             .nodes
             .iter()

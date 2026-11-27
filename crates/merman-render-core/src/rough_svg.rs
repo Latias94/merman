@@ -1,5 +1,10 @@
 use std::fmt::Write as _;
 
+#[cfg(feature = "route-paint")]
+mod canonical_edge;
+#[cfg(feature = "route-paint")]
+pub use canonical_edge::constrained_rough_edge_path;
+
 pub mod controlled;
 #[cfg(feature = "svg-edge-parity")]
 #[doc(hidden)]

@@ -1,4 +1,4 @@
-//! Usecase label preparation, Dagre placement, and complete Mermaid-compatible SVG.
+//! Usecase label preparation, Dagre and ELK placement, and complete Mermaid-compatible SVG.
 
 use merman_model::{
     families::usecase::{UsecaseDiagramModel, UsecaseLabelType},
@@ -18,6 +18,8 @@ use std::{collections::HashMap, sync::Arc};
 pub mod actor;
 #[cfg(feature = "layout-dagre")]
 mod dagre;
+#[cfg(feature = "layout-elk")]
+mod elk;
 #[cfg(any(
     feature = "layout-dagre",
     feature = "layout-elk",
@@ -27,9 +29,13 @@ pub mod layout;
 #[cfg(feature = "layout-shoal")]
 mod marker;
 mod measure;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+mod parity_routes;
 mod svg;
 mod theme;
 
+#[cfg(feature = "layout-elk")]
+pub use elk::prepare as prepare_elk;
 #[cfg(feature = "layout-shoal")]
 pub use marker::UsecaseMarker;
 pub use measure::number as configured_usecase_number;
@@ -216,6 +222,25 @@ pub fn layout_dagre(
         work,
     )?;
     dagre::layout(model, config, &measured.nodes, &mut measured.edges, work)
+}
+
+#[cfg(feature = "layout-dagre")]
+pub fn prepare_dagre(
+    model: &UsecaseDiagramModel,
+    config: &Value,
+    mut measured: UsecaseMeasured,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<UsecasePrepared> {
+    let mut layout = layout_dagre(model, config, &mut measured, work)?;
+    let edge_paths = parity_routes::prepare_edge_paths(
+        &mut layout,
+        &measured.nodes,
+        &measured.edges,
+        config,
+        false,
+        work,
+    )?;
+    Ok(UsecasePrepared::new(measured, layout, edge_paths, false))
 }
 
 /// The literal source Mermaid passes to createText, before selecting its math branch.

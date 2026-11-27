@@ -1,5 +1,5 @@
 use crate::class::{ClassDiagramModel, ClassRenderConfig, normalize_dir};
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, TitlePosition, direction_from_rank,
@@ -279,7 +279,7 @@ fn leaf_geometry(
     (
         MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq,
             parent,
             port_span: Some(profile.port_span(face)),

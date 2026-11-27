@@ -32,6 +32,13 @@ pub mod document;
     feature = "diagram-swimlane"
 ))]
 #[doc(hidden)]
+pub mod edge_geometry;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
 pub mod edge_labels;
 #[cfg(any(
     feature = "diagram-agentflow",
@@ -40,6 +47,13 @@ pub mod edge_labels;
 ))]
 #[doc(hidden)]
 pub mod edge_svg;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod graph;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -68,10 +82,34 @@ pub mod style;
 ))]
 #[doc(hidden)]
 pub mod stylesheet;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod svg;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod svg_label;
 
 #[cfg(feature = "layout-dagre")]
 #[doc(hidden)]
 pub mod dagre;
+#[cfg(all(
+    feature = "layout-elk",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod elk;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -86,6 +124,16 @@ pub mod lane_title;
 ))]
 #[doc(hidden)]
 pub mod layout_config;
+#[cfg(all(
+    any(feature = "layout-elk", feature = "layout-shoal"),
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod measured;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -95,6 +143,9 @@ pub mod layout_config;
 pub mod projection;
 #[doc(hidden)]
 pub mod shapes;
+#[cfg(feature = "layout-swimlane")]
+#[doc(hidden)]
+pub mod swimlane;
 
 #[cfg(any(
     feature = "diagram-agentflow",
@@ -111,3 +162,27 @@ pub mod markers;
 ))]
 #[doc(hidden)]
 pub mod node_body;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod node_geometry;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod node_inventory;
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+#[doc(hidden)]
+pub mod theme;

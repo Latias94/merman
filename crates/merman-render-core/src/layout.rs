@@ -1,6 +1,6 @@
 //! Shared graph layout projections for renderer families.
 
-use crate::LayoutPoint;
+use crate::{Bounds, LayoutPoint};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +75,24 @@ pub struct LayoutEdge {
     pub stroke_dasharray: Option<String>,
 }
 
+/// Edge geometry prepared by the same family-local route and label decisions as SVG.
+///
+/// `LayoutEdge::points` precedes endpoint clipping. This projection reports the `data-points`
+/// polyline in layout coordinates before later cluster path clipping.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgePaintGeometry {
+    /// Matches `LayoutEdge::id`.
+    pub id: String,
+    /// Edge polyline after clipping to the endpoint shapes' ink, and after any swimlane line
+    /// hops. This is the exact point list emitted as the `data-points` attribute.
+    ///
+    /// `None` when the renderer produced no path for this edge (for example an edge with fewer
+    /// than two layout points).
+    pub points: Option<Vec<LayoutPoint>>,
+    /// Center of the edge label in layout coordinates, when the renderer positioned a label.
+    pub label_position: Option<LayoutPoint>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SwimlaneDirection {
     #[serde(rename = "TB")]
@@ -127,4 +145,84 @@ pub struct SwimlaneLaneLayout {
     pub title_rect: Option<SwimlaneTitleRect>,
     #[serde(default)]
     pub requested_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneNodeLayout {
+    pub id: String,
+    pub label: String,
+    pub label_type: String,
+    pub shape: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub top_lane_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub label_width: f64,
+    pub label_height: f64,
+    pub layer: usize,
+    pub order: usize,
+    pub is_edge_label: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneEdgeLayout {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub points: Vec<LayoutPoint>,
+    #[serde(default)]
+    pub label_node_id: Option<String>,
+    pub reversed_for_layout: bool,
+    pub curve: String,
+}
+
+/// Bound measured nodes and edge paths in traversal order, charging each retained part.
+pub fn measure_layout_bounds<E>(
+    nodes: &[LayoutNode],
+    edges: &[LayoutEdge],
+    mut charge: impl FnMut(usize) -> std::result::Result<(), E>,
+) -> std::result::Result<Option<Bounds>, E> {
+    fn include(bounds: &mut Option<Bounds>, x: f64, y: f64) {
+        let Some(bounds) = bounds.as_mut() else {
+            *bounds = Some(Bounds {
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            });
+            return;
+        };
+        bounds.min_x = bounds.min_x.min(x);
+        bounds.min_y = bounds.min_y.min(y);
+        bounds.max_x = bounds.max_x.max(x);
+        bounds.max_y = bounds.max_y.max(y);
+    }
+
+    let mut bounds = None;
+    for n in nodes {
+        charge(2)?;
+        let hw = n.width / 2.0;
+        let hh = n.height / 2.0;
+        include(&mut bounds, n.x - hw, n.y - hh);
+        include(&mut bounds, n.x + hw, n.y + hh);
+    }
+    for e in edges {
+        charge(1)?;
+        charge(e.points.len())?;
+        for p in &e.points {
+            include(&mut bounds, p.x, p.y);
+        }
+        if let Some(l) = &e.label {
+            charge(2)?;
+            let hw = l.width / 2.0;
+            let hh = l.height / 2.0;
+            include(&mut bounds, l.x - hw, l.y - hh);
+            include(&mut bounds, l.x + hw, l.y + hh);
+        }
+    }
+    Ok(bounds)
 }

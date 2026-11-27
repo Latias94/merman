@@ -5,7 +5,7 @@ use crate::architecture_metrics::{ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX
 use crate::config::config_f64;
 use crate::graph_layout::Marker;
 use crate::graph_layout::canonical::CanonicalRoutes;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Axis, Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Point,
     Rect, RoutingStyle, Side, Size, SolvedGroup, TitlePosition,
@@ -436,7 +436,7 @@ pub(crate) fn layout_architecture_shoal(
             width: 2.0 * w,
             height: 2.0 * h,
         };
-        let contour = profile.shoal_contour(size);
+        let contour = shoal_contour(&profile, size);
         profiles.push(profile);
         nodes.push(MeasuredNode {
             size,

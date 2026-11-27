@@ -1,10 +1,6 @@
-#[cfg(test)]
-use super::directive_config::{Directive, detect_init_controlled};
 use super::{DirectiveRecoveryMode, PreprocessResult, preprocess_source_capture_controlled};
 #[cfg(feature = "editor-facts")]
 use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
-#[cfg(test)]
-use crate::MermaidConfig;
 use crate::presentation::SourcePresentationConfig;
 use crate::{DetectorRegistry, OperationControl, OperationControlResult, Result};
 
@@ -78,28 +74,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_evidence
 }
 
 #[cfg(test)]
-pub(super) fn detect_init(
-    directives: &[Directive],
-    input: &str,
-    registry: &DetectorRegistry,
-) -> Result<MermaidConfig> {
-    let control = OperationControl::new();
-    detect_init_controlled(
-        directives,
-        input,
-        &registry_detector(registry),
-        #[cfg(feature = "editor-facts")]
-        &mut super::source_config::SourceAppearanceCapture::default(),
-        #[cfg(feature = "editor-facts")]
-        &mut None,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-#[cfg(test)]
 mod tests {
-    use super::super::directive_config::detect_directives;
     use super::super::preprocess_builtin_semantic_controlled;
     use super::*;
     use crate::SourceSpan;
@@ -166,11 +141,12 @@ mod tests {
             "%%{initialize: {\"flowchart\": {\"htmlLabels\": false}}}%%\n",
             "flowchart TD\nA-->B\n",
         );
-        let directives = detect_directives(input).expect("directives parse");
         let mut registry = DetectorRegistry::new();
         registry.add_fn("flowchart-v2", counting_flowchart_detector);
 
-        let config = detect_init(&directives, input, &registry).expect("init merges");
+        let config = preprocess_diagram(input, &registry)
+            .expect("init merges")
+            .config;
 
         assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 0);
         assert_eq!(

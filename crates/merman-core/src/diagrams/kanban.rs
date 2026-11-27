@@ -1,11 +1,12 @@
+use crate::Error;
+#[cfg(any(test, feature = "presentation"))]
+use crate::MermaidConfig;
 #[cfg(any(test, feature = "editor-facts"))]
 use crate::SourceSpan;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-use crate::inline_config::parse_mermaid_inline_object_with_text_controlled;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
-use crate::{Error, MermaidConfig};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "presentation")]
@@ -17,7 +18,6 @@ use merman_core_structured::kanban::{KanbanSourceIssue, KanbanSourceOptions, Par
 use merman_core_structured::kanban::{
     kanban_syntax_construction_count, reset_kanban_syntax_construction_count,
 };
-use merman_model::ManagedJson;
 use merman_model::families::kanban::KanbanDiagramModel;
 #[cfg(feature = "presentation")]
 use merman_model::families::kanban::KanbanDiagramRenderModel;
@@ -58,16 +58,6 @@ impl KanbanParseFailure {
         );
         (*self.error, facts)
     }
-}
-
-fn kanban_source_options(config: &MermaidConfig) -> KanbanSourceOptions<'_> {
-    KanbanSourceOptions::new(config, |input, collection_text_keys, control| {
-        let parsed =
-            parse_mermaid_inline_object_with_text_controlled(input, collection_text_keys, control)?;
-        Ok(parsed.map(|(document, collection_text)| {
-            (ManagedJson::from_value(document), collection_text)
-        }))
-    })
 }
 
 fn construct_kanban_semantic_source_controlled<'config>(
@@ -218,7 +208,7 @@ pub(crate) fn parse_kanban_semantic_model_controlled(
     let construction = construct_kanban_semantic_source_controlled(
         code,
         &metadata.diagram_type,
-        kanban_source_options(&metadata.semantic_config),
+        KanbanSourceOptions::new(&metadata.semantic_config),
         #[cfg(feature = "editor-facts")]
         editor_demand,
         control,
@@ -266,7 +256,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
         construct_kanban_semantic_source_controlled(
             code,
             &meta.diagram_type,
-            kanban_source_options(meta.effective_config.as_config()).with_presentation(),
+            KanbanSourceOptions::new(meta.effective_config.as_config()).with_presentation(),
             EditorFactsDemand::Capture,
             control,
         )?,
@@ -311,7 +301,7 @@ pub(crate) fn parse_kanban_model_for_render_controlled(
     let construction = construct_kanban_semantic_source_controlled(
         code,
         &meta.diagram_type,
-        kanban_source_options(meta.effective_config.as_config()).with_presentation(),
+        KanbanSourceOptions::new(meta.effective_config.as_config()).with_presentation(),
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         control,

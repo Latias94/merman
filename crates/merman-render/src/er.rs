@@ -1,7 +1,5 @@
 use crate::layout_work::OperationLayoutWorkControl;
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-use crate::model::LayoutPoint;
-use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutNode};
+use crate::model::ErDiagramLayout;
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
@@ -10,10 +8,6 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-#[cfg(feature = "layout-dagre")]
-mod dagre;
-#[cfg(feature = "layout-elk")]
-mod elk;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod swimlane;
@@ -25,13 +19,14 @@ pub(crate) use merman_render_graph::er::{
     ErSwimlanePaintLayout, swimlane_relationship_html_source,
 };
 use merman_render_graph::er::{
-    ErPreparedRelationshipLabel, er_subgraph_title_metrics, er_swimlane_title_metrics,
+    ErPreparedRelationshipLabel, er_layout_bounds, er_subgraph_title_metrics,
+    er_swimlane_title_metrics,
 };
 
 pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 #[cfg(all(test, feature = "layout-shoal"))]
 type ErRelationship = merman_model::families::er::ErRelationship;
-#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+#[cfg(feature = "layout-shoal")]
 pub(crate) type ErSubgraph = merman_model::families::er::ErSubgraph;
 
 #[cfg(test)]
@@ -67,60 +62,6 @@ pub(crate) fn prepare_er_labels(
         )
         .expect("prepare ER labels"),
     )
-}
-
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
-    let rest = name.strip_prefix("er-rel-")?;
-    let mut end = 0usize;
-    for (idx, ch) in rest.char_indices() {
-        if !ch.is_ascii_digit() {
-            break;
-        }
-        end = idx + ch.len_utf8();
-    }
-    if end == 0 {
-        return None;
-    }
-    rest[..end].parse::<usize>().ok()
-}
-
-// Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
-// parity layer: rendered-path change detection and five-decimal placement belong to
-// `svg::parity::edge_label_geometry`, while this function only supplies a missing Dagre/ELK anchor.
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
-    if points.is_empty() {
-        return None;
-    }
-    if points.len() == 1 {
-        return Some((points[0].x, points[0].y));
-    }
-
-    let mut total = 0.0;
-    for i in 1..points.len() {
-        let dx = points[i].x - points[i - 1].x;
-        let dy = points[i].y - points[i - 1].y;
-        total += (dx * dx + dy * dy).sqrt();
-    }
-    let mut remaining = total / 2.0;
-    for i in 1..points.len() {
-        let p0 = &points[i - 1];
-        let p1 = &points[i];
-        let dx = p1.x - p0.x;
-        let dy = p1.y - p0.y;
-        let seg = (dx * dx + dy * dy).sqrt();
-        if seg == 0.0 {
-            continue;
-        }
-        if seg < remaining {
-            remaining -= seg;
-            continue;
-        }
-        let t = (remaining / seg).clamp(0.0, 1.0);
-        return Some((p0.x + t * dx, p0.y + t * dy));
-    }
-    Some((points.last()?.x, points.last()?.y))
 }
 
 pub(crate) struct ErPreparedLayout {
@@ -161,17 +102,27 @@ pub(crate) fn layout_er_diagram_typed(
 
     match backend {
         #[cfg(feature = "layout-dagre")]
-        GraphLayoutBackend::Dagre => dagre::layout(
-            model,
-            measurer,
-            settings,
-            prepared_labels,
-            &mut work_control,
-        )
-        .map(|layout| ErPreparedLayout {
-            layout,
-            route_contract: RouteContract::DagreParity,
-        }),
+        GraphLayoutBackend::Dagre => {
+            let layout = merman_render_graph::er::layout_dagre(
+                model,
+                measurer,
+                settings,
+                &prepared_labels,
+                &mut work_control,
+            )?;
+            Ok(ErPreparedLayout {
+                layout: ErDiagramLayout {
+                    nodes: layout.nodes,
+                    edges: layout.edges,
+                    render_edges: layout.render_edges,
+                    swimlane: None,
+                    clusters: layout.clusters,
+                    bounds: layout.bounds,
+                    prepared_labels,
+                },
+                route_contract: RouteContract::DagreParity,
+            })
+        }
         #[cfg(feature = "layout-shoal")]
         GraphLayoutBackend::Shoal => shoal::layout(
             model,
@@ -195,20 +146,31 @@ pub(crate) fn layout_er_diagram_typed(
             route_contract: RouteContract::Swimlane,
         }),
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => elk::layout(
-            model,
-            effective_config,
-            algorithm,
-            measurer,
-            settings,
-            prepared_labels,
-            operation_seed,
-            &mut work_control,
-        )
-        .map(|layout| ErPreparedLayout {
-            layout,
-            route_contract: RouteContract::ElkParity,
-        }),
+        GraphLayoutBackend::Elk(algorithm) => {
+            let layout = merman_render_graph::er::layout_elk(
+                model,
+                effective_config,
+                algorithm.algorithm(),
+                measurer,
+                settings,
+                &prepared_labels,
+                operation_seed,
+                &mut work_control,
+            )?;
+            Ok(ErPreparedLayout {
+                layout: ErDiagramLayout {
+                    nodes: layout.nodes,
+                    // ELK's canonical edges already form the SVG-facing projection.
+                    render_edges: Vec::new(),
+                    swimlane: None,
+                    edges: layout.edges,
+                    clusters: layout.clusters,
+                    bounds: layout.bounds,
+                    prepared_labels,
+                },
+                route_contract: RouteContract::ElkParity,
+            })
+        }
         _ => Err(backend.unavailable_for("er")),
     }
 }
@@ -266,26 +228,6 @@ fn er_layout_adapter_work(
             subgraph_work,
         )?,
     )
-}
-
-fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    for node in nodes {
-        let half_width = node.width / 2.0;
-        let half_height = node.height / 2.0;
-        points.push((node.x - half_width, node.y - half_height));
-        points.push((node.x + half_width, node.y + half_height));
-    }
-    for edge in edges {
-        points.extend(edge.points.iter().map(|point| (point.x, point.y)));
-        if let Some(label) = &edge.label {
-            let half_width = label.width / 2.0;
-            let half_height = label.height / 2.0;
-            points.push((label.x - half_width, label.y - half_height));
-            points.push((label.x + half_width, label.y + half_height));
-        }
-    }
-    Bounds::from_points(points)
 }
 
 #[cfg(all(test, feature = "layout-shoal"))]

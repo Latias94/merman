@@ -134,11 +134,13 @@ pub enum Error {
         family_id: DiagramFamilyId,
         message: &'static str,
     },
+    #[cfg(feature = "svg-output")]
     #[error("SVG output profile `{profile}` is unsupported: {reason}")]
     UnsupportedSvgOutputProfile {
         profile: crate::svg_output::SvgOutputProfile,
         reason: &'static str,
     },
+    #[cfg(feature = "svg-output")]
     #[error(transparent)]
     SemanticProjection(merman_model::presentation::compat::CompatProjectionError),
     #[error(transparent)]
@@ -169,8 +171,10 @@ pub enum Error {
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
     OperationResourceTerminal(merman_model::OperationLedgerError),
+    #[cfg(feature = "svg-output")]
     #[error(transparent)]
     Color(#[from] merman_markup::theme_color::ColorError),
+    #[cfg(feature = "svg-output")]
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]

@@ -1,4 +1,19 @@
-//! Byte-level directive boundaries and quote normalization, without config interpretation.
+//! Mermaid directive boundaries, quote normalization, and bounded argument decoding.
+
+#[cfg(feature = "directive-config")]
+mod config;
+#[cfg(feature = "directive-config")]
+pub use config::{
+    DecodedDirective, DirectiveCapture, decode_directive_controlled,
+    remove_directive_blocks_controlled,
+};
+#[cfg(all(feature = "directive-config", feature = "yaml-editor"))]
+pub use config::{
+    Json5ConfigKeyEvidence, decode_directive_with_evidence_controlled,
+    read_ordered_init_directive_controlled,
+};
+
+pub const MAX_DIRECTIVE_CONFIG_PARSE_BYTES: usize = 1024 * 1024;
 
 use crate::scan::controlled::{
     ControlledScanCheckpoints, find_ascii_pattern_controlled, find_line_break_controlled,

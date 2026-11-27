@@ -8,7 +8,7 @@ use crate::flowchart::{
     FlowchartSvgLabelSidecarBuilder, ProjectedFlowchartEdge, resolve_flowchart_shape,
 };
 use crate::graph_layout::axis_clearance::AxisClearance;
-use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::contour::{ShapePortProfile, shoal_contour};
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGraph, TitlePosition,
@@ -20,6 +20,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::node_geometry::contour as flow_contour;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
@@ -256,9 +257,9 @@ fn measure(
             _ => None,
         };
         let profile = if shape == FlowchartShape::Diamond {
-            ShapePortProfile::decision(node.width, node.height)
+            flow_contour::decision(node.width, node.height)
         } else {
-            ShapePortProfile::flowchart_with_paint_metrics(
+            flow_contour::from_paint_metrics(
                 source,
                 &LayoutNode {
                     id: String::new(),
@@ -282,7 +283,7 @@ fn measure(
         };
         graph.nodes.push(MeasuredNode {
             size,
-            contour: profile.shoal_contour(size),
+            contour: shoal_contour(&profile, size),
             seq: index(slot, work)?,
             parent,
             port_span: Some(profile.port_span(faces[0])),

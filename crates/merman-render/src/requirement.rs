@@ -19,8 +19,6 @@ pub(crate) use graph::{
     element_node_label_sources, requirement_node_label_sources, sanitize_label_with_sink,
 };
 
-#[cfg(feature = "layout-elk")]
-mod elk;
 #[cfg(all(test, feature = "layout-dagre"))]
 mod native_theme;
 #[cfg(feature = "layout-shoal")]
@@ -122,12 +120,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             graph::measure_requirement(model, config, text_measurer, settings, work_meter)?;
         let prepared = match backend {
             #[cfg(feature = "layout-elk")]
-            GraphLayoutBackend::Elk(algorithm) => elk::layout(
+            GraphLayoutBackend::Elk(algorithm) => graph::layout_elk(
                 &model.relationships,
                 measured,
                 config.as_value(),
                 text_measurer,
-                algorithm,
+                algorithm.algorithm(),
                 execution.map_or_else(
                     || {
                         merman_layout_elk::ElkOperationSeed::from_operation_seed(

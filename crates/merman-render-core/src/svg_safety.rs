@@ -14,3 +14,6 @@ pub use css::{
     validate_resvg_css_stylesheet_with_checkpoints,
 };
 pub use raster_url::{inline_raster_url, is_data_url};
+
+#[cfg(feature = "inline-raster-size")]
+pub use raster_url::intrinsic_raster_size;

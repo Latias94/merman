@@ -1,29 +1,13 @@
-use merman_render_flow::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
-use merman_render_flow::stylesheet::{FlowchartStylesheetRequest, SwimlaneStylesheet};
+use merman_render_flow::svg::{self, FlowchartSvgModelRequest};
 
-use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
-use super::edge_fill::FlowchartEdgeFillPlan;
-use super::render_config::FlowchartRenderConfig;
-use super::viewbox::{
-    FlowchartRenderedBoundsRequest, FlowchartViewboxBounds, FlowchartViewboxBoundsRequest,
-    prepare_flowchart_rendered_bounds, prepare_flowchart_viewbox_bounds,
-};
 use super::*;
 
-pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
-    artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &merman_model::presentation::PresentationMetadata,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    render_flowchart_svg_model(flowchart_request(artifact, metadata)?, options)
-}
-
-pub(super) fn flowchart_request<'a>(
+fn flowchart_request<'a>(
     artifact: &'a crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &'a merman_model::presentation::PresentationMetadata,
 ) -> Result<FlowchartSvgModelRequest<'a>> {
     Ok(FlowchartSvgModelRequest {
-        layout: artifact.pair().layout(),
+        layout: svg_layout(artifact.pair().layout()),
         swimlane_layout: None,
         model: artifact.pair().semantic(),
         render_context: artifact.render_context(),
@@ -38,396 +22,98 @@ pub(super) fn flowchart_request<'a>(
     })
 }
 
+pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
+    artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
+    metadata: &merman_model::presentation::PresentationMetadata,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let request = flowchart_request(artifact, metadata)?;
+    svg::render_parity(request, &svg_services(options))
+}
+
 pub(in crate::svg::parity) fn flowchart_edge_geometry(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
-) -> Result<Vec<crate::model::EdgePaintGeometry>> {
-    super::paint::edge_geometry(flowchart_request(artifact, metadata)?, options)
+) -> Result<Vec<EdgePaintGeometry>> {
+    let request = flowchart_request(artifact, metadata)?;
+    svg::edge_geometry(request, &svg_services(options))
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct FlowchartSvgModelRequest<'a> {
-    pub(super) render_config: &'a FlowchartRenderConfig,
-    pub(super) prepared_nodes: &'a super::node_inventory::FlowchartPreparedNodes,
-    pub(super) prepared_theme: &'a crate::flowchart::FlowchartPreparedTheme,
-    pub(super) layout: &'a FlowchartLayout,
-    pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
-    pub(super) model: &'a crate::flowchart::FlowchartModel,
-    pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
-    pub(super) effective_config: &'a merman_model::presentation::PresentationConfig,
-    pub(super) diagram_type: &'a str,
-    pub(super) diagram_title: Option<&'a str>,
-    pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
-
-    pub(super) edge_style_plan: &'a FlowchartEdgeStylePlan,
-}
-
-pub(super) fn render_flowchart_svg_model(
-    request: FlowchartSvgModelRequest<'_>,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let FlowchartSvgModelRequest {
-        render_config,
-        prepared_nodes: _,
-        prepared_theme,
-        layout,
-        swimlane_layout,
-        model,
-        render_context: _,
-        effective_config,
-        diagram_type,
-        diagram_title,
-        svg_label_sidecar: _,
-        edge_style_plan: _,
-    } = request;
-    super::paint::with_flowchart_paint_context(
-        request,
-        options,
-        |ctx, render_edges, hierarchy_plan| {
-            let render_timing = options.timing();
-            let mut timings = timing::RenderTimings::default();
-            let total_timer = render_timing.start();
-            let document_ids = ctx.document_ids();
-            let document_scope = document_ids.scope();
-            let diagram_id = ctx.diagram_id;
-            let font_family = &render_config.font_family;
-            let font_size = render_config.font_size;
-            let diagram_padding = render_config.diagram_padding;
-            let use_max_width = render_config.use_max_width;
-            let title_top_margin = render_config.title_top_margin;
-            let mut edge_fills = FlowchartEdgeFillPlan::default();
-            let marker_plan = if FlowchartEdgeFillPlan::applies(ctx) {
-                // Route painting consumes stroke widths before fill-aware marker colors are known.
-                for edge in hierarchy_plan.ordered_edges() {
-                    FlowchartMarkerEmissionPlan::bind_path_sources_for(
-                        ctx,
-                        hierarchy_plan,
-                        edge.key,
-                    )?;
-                }
-                None
-            } else {
-                Some(FlowchartMarkerEmissionPlan::prepare(
-                    ctx,
-                    hierarchy_plan,
-                    &edge_fills,
-                )?)
-            };
-
-            let subgraph_title_y_shift =
-                crate::flowchart::FlowchartConfigView::new(effective_config)
-                    .render_subgraph_title_y_shift();
-
-            let mut detail = FlowchartRenderDetails::default();
-            let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
-            let _g_viewbox = render_timing.section(&mut timings.viewbox);
-
-            let bounds = prepare_flowchart_rendered_bounds(
-                FlowchartRenderedBoundsRequest {
-                    ctx,
-                    layout,
-                    subgraph_title_y_shift,
-                },
-                hierarchy_plan,
-            )?;
-            let FlowchartViewboxBounds {
-                diagram_title,
-                title_anchor_x,
-                source_paint_bounds,
-                mut bbox_min_x,
-                mut bbox_min_y,
-                mut bbox_max_x,
-                mut bbox_max_y,
-                mut edge_path_cache,
-            } = prepare_flowchart_viewbox_bounds(
-                FlowchartViewboxBoundsRequest {
-                    ctx,
-                    render_edges,
-                    base_bounds: bounds,
-                    diagram_title,
-                    font_family,
-                    title_top_margin,
-                    timing: render_timing,
-                    viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
-                    detail: &mut detail,
-                },
-                hierarchy_plan,
-            )?;
-
-            let marker_plan = match marker_plan {
-                Some(plan) => plan,
-                None => {
-                    edge_fills = FlowchartEdgeFillPlan::prepare(
-                        ctx,
-                        hierarchy_plan,
-                        &edge_path_cache,
-                        options,
-                    )?;
-                    if let Some(bounds) = edge_fills.casing_bounds() {
-                        bbox_min_x = bbox_min_x.min(bounds.x0);
-                        bbox_min_y = bbox_min_y.min(bounds.y0);
-                        bbox_max_x = bbox_max_x.max(bounds.x1);
-                        bbox_max_y = bbox_max_y.max(bounds.y1);
-                    }
-                    FlowchartMarkerEmissionPlan::prepare(ctx, hierarchy_plan, &edge_fills)?
-                }
-            };
-
-            if !ctx.hand_drawn_seed.seed().may_use_math_random() {
-                super::paint::prepare_rough_edge_paths(
-                    ctx,
-                    hierarchy_plan.ordered_edges(),
-                    &mut edge_path_cache,
-                )?;
-            }
-            let mut edge_labels =
-                super::paint::FlowchartEdgeLabels::prepare(ctx, hierarchy_plan, &edge_path_cache)?;
-            let step_badges = super::step::StepBadges::prepare(
-                ctx,
-                hierarchy_plan,
-                &edge_path_cache,
-                &edge_labels,
-            )?;
-            step_badges.include_bounds(
-                &mut bbox_min_x,
-                &mut bbox_min_y,
-                &mut bbox_max_x,
-                &mut bbox_max_y,
-            );
-            let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
-                root_viewport: options.root_viewport(options.family_id(), diagram_id),
-                document_scope,
-                uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
-                use_max_width,
-                diagram_padding,
-                source_paint_bounds,
-                bbox_min_x,
-                bbox_min_y,
-                bbox_max_x,
-                bbox_max_y,
-                acc_title: model.acc_title.as_deref(),
-                acc_descr: model.acc_descr.as_deref(),
-                diagram_title: diagram_title.as_deref(),
-                title_anchor_x,
-                title_top_margin,
-            });
-
-            drop(_g_viewbox);
-            let _g_render_svg = render_timing.section(&mut timings.render_svg);
-
-            let swimlane = swimlane_layout.map(|_| match ctx.native {
-                Some(native) => SwimlaneStylesheet::Native {
-                    container: native.container,
-                    guide: native.guide,
-                    emphasis: native.emphasis,
-                    on_emphasis: native.on_emphasis,
-                },
-                None => SwimlaneStylesheet::Mermaid,
-            });
-            let document = document.write(
-                options.work_meter(),
-                FlowchartStylesheetRequest {
-                    diagram_id,
-                    diagram_type,
-                    drop_shadow_id: document_scope.drop_shadow(),
-                    drop_shadow_small_id: document_scope.drop_shadow_small(),
-                    gradient_id: document_scope.root_gradient(),
-                    theme: super::css::stylesheet_theme(&prepared_theme.compatibility),
-                    native_title: ctx.native.map(|native| &native.title_style),
-                    palette: &ctx.palette,
-                    font_family,
-                    font_size,
-                    class_defs: &model.class_defs,
-                    swimlane,
-                    allow_deferred_palette: options.generation == crate::svg::SvgGeneration::Static
-                        && ctx.icon_registry.is_none(),
-                },
-                &prepared_theme.compatibility.look_defs,
-                |out| {
-                    let defs = prepare_flowchart_defs(
-                        document_ids.marker_scope(),
-                        diagram_type,
-                        ctx,
-                        &marker_plan,
-                    );
-
-                    let mut root_session = FlowchartRootRenderSession {
-                        timing: render_timing,
-                        details: &mut detail,
-                        node_label_div_style: String::new(),
-                        edge_cache: &mut edge_path_cache,
-                        hierarchy_plan,
-                        marker_plan: &marker_plan,
-                        edge_fills: &edge_fills,
-                        edge_labels: &mut edge_labels,
-                        step_badges: &step_badges,
-                    };
-                    if ctx.uses_elk_adapter_dom {
-                        defs.push_base_markers(out)?;
-                        out.checkpoint()?;
-                        defs.push_extra_markers(out)?;
-                        out.checkpoint()?;
-                        render_flowchart_elk_root_groups(out, ctx, &mut root_session)?;
-                    } else {
-                        defs.push_base_markers(out)?;
-                        render_flowchart_root(out, ctx, None, 0.0, 0.0, &mut root_session)?;
-                        defs.push_extra_markers(out)?;
-                    }
-                    Ok(ctx.steps.emitted())
-                },
-            )?;
-
-            drop(_g_render_svg);
-            timings.total = total_timer
-                .map(merman_model::runtime::OperationTimer::elapsed)
-                .unwrap_or_default();
-            if render_timing.is_enabled() {
-                eprintln!(
-                    "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_root_lookup={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
-                    timings.total,
-                    timings.deserialize_model,
-                    timings.build_ctx,
-                    timings.viewbox,
-                    viewbox_edge_curve_bounds,
-                    detail.viewbox_edge_root_lookup,
-                    detail.viewbox_edge_curve_offsets,
-                    detail.viewbox_edge_curve_geom,
-                    detail.viewbox_edge_curve_bbox_union,
-                    detail.viewbox_edge_curve_geom_calls,
-                    detail.viewbox_edge_curve_geom_skipped_bounds,
-                    timings.render_svg,
-                    timings.finalize_svg,
-                    detail.root_calls,
-                    detail.clusters,
-                    detail.edges_select,
-                    detail.edge_paths,
-                    detail.edge_labels,
-                    detail.dom_order,
-                    detail.nodes,
-                    detail.node_style_compile,
-                    detail.node_roughjs,
-                    detail.node_roughjs_calls,
-                    detail.node_label_html,
-                    detail.node_label_html_calls,
-                    detail.nested_roots,
-                );
-            }
-            document.finish()
-        },
-    )
-}
-
-pub(super) fn flowchart_node_theme_ordinals<'a>(
-    nodes: &'a [crate::flowchart::FlowNode],
-    subgraphs: &'a [crate::flowchart::FlowSubgraph],
-    render_context: &crate::flowchart::FlowchartRenderContext,
-    uses_elk_adapter_dom: bool,
-) -> FxHashMap<&'a str, usize> {
-    let subgraph_ids: FxHashSet<&str> = subgraphs
-        .iter()
-        .map(|subgraph| subgraph.id.as_str())
-        .collect();
-    let mut ordinals = FxHashMap::default();
-    let mut next_ordinal = 1usize;
-
-    // Theme ordinals describe surfaces that reach the Node emitter, not Graphlib/ELK vertices.
-    // ELK materializes every subgraph as a node in the semantic model, but renders it as a
-    // cluster. Collapsed groups are nodes in either backend; hidden descendants own no slot.
-    for node in nodes {
-        if subgraph_ids.contains(node.id.as_str())
-            || render_context
-                .collapsed_replacement(node.id.as_str())
-                .is_some()
-        {
-            continue;
-        }
-        if let std::collections::hash_map::Entry::Vacant(entry) = ordinals.entry(node.id.as_str()) {
-            entry.insert(next_ordinal);
-            next_ordinal += 1;
-        }
-    }
-
-    for subgraph in subgraphs.iter().filter(|subgraph| {
-        render_context.collapsed_replacement(&subgraph.id).is_none()
-            && (render_context.is_subgraph_collapsed(&subgraph.id)
-                || !uses_elk_adapter_dom && subgraph.nodes.is_empty())
-    }) {
-        if let std::collections::hash_map::Entry::Vacant(entry) =
-            ordinals.entry(subgraph.id.as_str())
-        {
-            entry.insert(next_ordinal);
-            next_ordinal += 1;
-        }
-    }
-
-    ordinals
+#[cfg(all(
+    feature = "native-compact",
+    feature = "diagram-flowchart",
+    feature = "layout-dagre"
+))]
+pub(in crate::svg::parity) fn render_native_compact_flowchart_artifact(
+    artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
+    metadata: &merman_model::presentation::PresentationMetadata,
+    execution: &SvgExecution<'_>,
+) -> Result<String> {
+    let request = flowchart_request(artifact, metadata)?;
+    let debug = execution.debug;
+    let standard_debug = debug.include_edges
+        && debug.include_nodes
+        && debug.include_clusters
+        && !debug.include_cluster_debug_markers
+        && !debug.include_edge_id_labels
+        && !debug.include_timing_diagnostics
+        && debug.flowchart_edge_trace.is_none();
+    let services = svg_services(execution);
+    let trusted_theme_css = execution.family.session().allows_trusted_theme_css();
+    svg::render_native_compact(request, &services, standard_debug, trusted_theme_css)
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod test_support {
     use super::*;
 
-    fn node(id: &str) -> crate::flowchart::FlowNode {
-        crate::flowchart::FlowNode {
-            id: id.to_string(),
-            provenance: Default::default(),
-            label: None,
-            label_type: None,
-            layout_shape: None,
-            shape: None,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            link: None,
-            link_target: None,
-            have_callback: false,
+    #[derive(Clone, Copy)]
+    pub(in crate::svg::parity::flowchart) struct FlowchartSvgModelRequest<'a> {
+        pub layout: &'a FlowchartLayout,
+        pub swimlane_layout: Option<&'a SwimlaneLayout>,
+        pub model: &'a crate::flowchart::FlowchartModel,
+        pub render_context: &'a crate::flowchart::FlowchartRenderContext,
+        pub effective_config: &'a merman_model::presentation::PresentationConfig,
+        pub diagram_type: &'a str,
+        pub diagram_title: Option<&'a str>,
+        pub svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
+        pub edge_style_plan: &'a FlowchartEdgeStylePlan,
+        pub prepared_theme: &'a crate::flowchart::FlowchartPreparedTheme,
+        pub prepared_nodes: &'a FlowchartPreparedNodes,
+        pub render_config: &'a FlowchartRenderConfig,
+    }
+
+    impl<'a> From<FlowchartSvgModelRequest<'a>> for svg::FlowchartSvgModelRequest<'a> {
+        fn from(request: FlowchartSvgModelRequest<'a>) -> Self {
+            Self {
+                layout: svg_layout(request.layout),
+                swimlane_layout: request.swimlane_layout.map(swimlane_svg_layout),
+                model: request.model,
+                render_context: request.render_context,
+                effective_config: request.effective_config,
+                diagram_type: request.diagram_type,
+                diagram_title: request.diagram_title,
+                svg_label_sidecar: request.svg_label_sidecar,
+                edge_style_plan: request.edge_style_plan,
+                prepared_theme: request.prepared_theme,
+                prepared_nodes: request.prepared_nodes,
+                render_config: request.render_config,
+            }
         }
     }
 
-    fn subgraph(id: &str, nodes: &[&str]) -> crate::flowchart::FlowSubgraph {
-        crate::flowchart::FlowSubgraph {
-            id: id.to_string(),
-            title: id.to_string(),
-            dir: None,
-            has_explicit_dir: false,
-            label_type: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            nodes: nodes.iter().map(|node| (*node).to_string()).collect(),
-            metadata: Default::default(),
-        }
-    }
-
-    #[test]
-    fn node_theme_ordinals_follow_actual_node_emitter_surfaces() {
-        let nodes = vec![node("A"), node("group"), node("A"), node("empty")];
-        let subgraphs = vec![subgraph("group", &["A"]), subgraph("empty", &[])];
-
-        let context = crate::flowchart::FlowchartRenderContext::default();
-        let dagre = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, false);
-        assert_eq!(dagre.len(), 2);
-        assert_eq!(dagre.get("A"), Some(&1));
-        assert_eq!(dagre.get("empty"), Some(&2));
-        assert!(!dagre.contains_key("group"));
-
-        let elk = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, true);
-        assert_eq!(elk.len(), 1);
-        assert_eq!(elk.get("A"), Some(&1));
-        assert!(!elk.contains_key("group"));
-        assert!(!elk.contains_key("empty"));
+    pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model(
+        request: FlowchartSvgModelRequest<'_>,
+        options: &SvgExecution<'_>,
+    ) -> Result<root_svg::RootedSvg> {
+        svg::render_parity(request.into(), &svg_services(options))
     }
 }
 
 #[cfg(all(test, feature = "diagram-flowchart"))]
 mod integration_tests {
-    use super::super::render_input::prepare_flowchart_render_inputs;
+    use super::test_support::{FlowchartSvgModelRequest, render_flowchart_svg_model};
     use super::*;
     use crate::environment::RenderEnvironment;
     use crate::model::{FlowchartLayout, LayoutNode};
@@ -435,6 +121,7 @@ mod integration_tests {
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::presentation::RenderSemanticModel;
+    use merman_render_flow::projection::prepare_flowchart_render_inputs;
 
     #[test]
     fn unmerged_self_loop_occurrences_keep_source_owner_label_and_first_slot() {
@@ -573,14 +260,14 @@ mod integration_tests {
             None,
             None,
         );
-        let render_config = super::render_config::prepare_flowchart_render_config(
+        let render_config = prepare_flowchart_render_config(
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
             layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
         );
-        let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+        let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
             &model,
             &metadata.effective_config,
             false,
@@ -597,11 +284,11 @@ mod integration_tests {
         edge_style_plan
             .bind_terminal_typography(&render_config.text_style, false)
             .expect("terminal edge typography");
-        let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
+        let prepared_nodes = FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-            super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            layout.node_layout_view(),
             &sidecar,
             &metadata.effective_config,
             &prepared_theme,
@@ -736,14 +423,14 @@ mod integration_tests {
                 None,
                 None,
             );
-            let render_config = super::render_config::prepare_flowchart_render_config(
+            let render_config = prepare_flowchart_render_config(
                 &model,
                 &metadata.effective_config,
                 &prepared_theme.compatibility,
                 layout.route_contract.is_elk_parity(),
                 sidecar.base_typography(),
             );
-            let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+            let edge_style_plan = crate::test_support::prepare_flowchart_edge_style_plan(
                 &model,
                 &metadata.effective_config,
                 false,
@@ -760,11 +447,11 @@ mod integration_tests {
             edge_style_plan
                 .bind_terminal_typography(&render_config.text_style, false)
                 .expect("terminal edge typography");
-            let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
+            let prepared_nodes = FlowchartPreparedNodes::prepare(
                 &model,
                 &render_context,
                 &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
-                super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+                layout.node_layout_view(),
                 &sidecar,
                 &metadata.effective_config,
                 &prepared_theme,

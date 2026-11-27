@@ -94,7 +94,7 @@ local signatures must be verified from the catalog on each refresh. Candidate ex
 cannot admit a change or establish pixel parity. The executable owners are the
 [Class HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs),
 [Class SVG tests](../../crates/merman-render/tests/class_svg_test.rs), shared
-[ELK endpoint geometry](../../crates/merman-render/src/elk_edge_geometry.rs) and
+[ELK endpoint geometry](../../crates/merman-render-core/src/elk_edge_geometry.rs) and
 [terminal-channel rules](../../crates/merman-render-core/src/graph_layout/elk_terminal_jogs.rs), and the
 [semantic-label comparator and mutation tests](../../crates/xtask/src/cmd/compare/labels.rs).
 

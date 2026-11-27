@@ -176,8 +176,8 @@ pub struct BindingOperationRequest<'a> {
 impl<'a> BindingOperationRequest<'a> {
     /// Creates a request with no document URI and no request-local option overlay.
     ///
-    /// Validation deliberately remains at execution time so operation resolution and URI-shape
-    /// errors keep their documented precedence over malformed option JSON.
+    /// The constructor defers validation so operation resolution and URI-shape errors keep
+    /// their documented precedence over malformed option JSON.
     #[must_use]
     pub const fn new(operation_id: &'a str, source: &'a [u8]) -> Self {
         Self {
@@ -219,6 +219,29 @@ impl<'a> BindingOperationRequest<'a> {
     pub fn with_control(mut self, control: OperationControl) -> Self {
         self.operation_control = Some(control);
         self
+    }
+
+    /// Resolves the operation ID and checks document URI presence.
+    ///
+    /// Transports can call this at their existing request validation boundary.
+    #[doc(hidden)]
+    pub fn resolve_operation(&self) -> Result<BindingOperationKind, BindingError> {
+        let operation = BindingOperationKind::from_id(self.operation_id)?;
+        if operation.requires_uri() != self.uri.is_some() {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "operation `{}` {} a document URI",
+                    operation.operation_id(),
+                    if operation.requires_uri() {
+                        "requires"
+                    } else {
+                        "does not accept"
+                    }
+                ),
+            ));
+        }
+        Ok(operation)
     }
 
     #[must_use]
@@ -1677,7 +1700,7 @@ impl BindingEngine {
         )
             -> Result<crate::engine::PreparedRequestOverlay, BindingError>,
     ) -> Result<BindingOperationExecution, BindingError> {
-        let operation = resolve_operation_request(&request)?;
+        let operation = request.resolve_operation()?;
         let control = request.control_or_default();
         control
             .checkpoint_at(OperationPhase::Admission)
@@ -1821,33 +1844,12 @@ pub(crate) fn operation_result(
 fn resolve_one_shot_request(
     request: &BindingOperationRequest<'_>,
 ) -> Result<(BindingOperationKind, OperationControl), BindingError> {
-    let operation = resolve_operation_request(request)?;
+    let operation = request.resolve_operation()?;
     let control = request.control_or_default();
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
     Ok((operation, control))
-}
-
-fn resolve_operation_request(
-    request: &BindingOperationRequest<'_>,
-) -> Result<BindingOperationKind, BindingError> {
-    let operation = BindingOperationKind::from_id(request.operation_id)?;
-    if operation.requires_uri() != request.uri.is_some() {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!(
-                "operation `{}` {} a document URI",
-                operation.operation_id(),
-                if operation.requires_uri() {
-                    "requires"
-                } else {
-                    "does not accept"
-                }
-            ),
-        ));
-    }
-    Ok(operation)
 }
 
 pub fn compiled_operation_kind_ids() -> Vec<&'static str> {

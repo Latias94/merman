@@ -1,5 +1,6 @@
-use crate::svg::PreparedCommonCss;
-use merman_render_core::svg_css::{FragmentDiagramId, PreparedCommonNeoCss, SvgDiagramIdValue};
+use merman_render_core::svg_css::{
+    FragmentDiagramId, PreparedCommonCss, PreparedCommonNeoCss, SvgDiagramIdValue,
+};
 use merman_render_core::svg_output::SvgOutput;
 use merman_render_graph::er::er_css_with_resolved_typography;
 use std::collections::BTreeMap;
@@ -147,7 +148,7 @@ fn logical_css_fragment_ids_survive_one_terminal_xml_encoding() {
     );
     assert!(css.contains(merman_render_core::svg_css::escape_css_identifier(diagram_id).as_ref()));
     let mut serialized = String::from("<svg><style>");
-    super::super::output::XmlTextOutput::new(&mut serialized).push_str(&css);
+    merman_render_core::svg_output::XmlTextOutput::new(&mut serialized).push_str(&css);
     serialized.push_str("</style></svg>");
     let document = crate::xml_dom::Document::parse(&serialized).unwrap();
     let decoded = document

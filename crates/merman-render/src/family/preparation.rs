@@ -95,12 +95,8 @@ fn prepare_flowchart_artifact<'parsed, L>(
     if let Some(error) = svg_label_sidecar.prepared_resource_error().cloned() {
         return Err(error.into());
     }
-    let uses_elk = match layout_view(&layout) {
-        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => {
-            layout.route_contract.is_elk_parity()
-        }
-        crate::svg::FlowchartNodeLayoutView::Swimlane(_) => false,
-    };
+    let node_layout = layout_view(&layout);
+    let uses_elk = node_layout.uses_elk_adapter_dom();
     let mut render_config = crate::svg::prepare_flowchart_render_config(
         &semantic,
         effective_config,
@@ -111,19 +107,14 @@ fn prepare_flowchart_artifact<'parsed, L>(
     if let Some(native) = &prepared_theme.native {
         render_config.apply_native(native, &semantic, effective_config, uses_elk);
     }
-    edge_style_plan.bind_terminal_typography(
-        &render_config.text_style,
-        matches!(
-            layout_view(&layout),
-            crate::svg::FlowchartNodeLayoutView::Swimlane(_)
-        ),
-    )?;
+    edge_style_plan
+        .bind_terminal_typography(&render_config.text_style, node_layout.is_swimlane())?;
     let prepare_node_paint = preparation != FamilyPreparation::Layout;
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
         &render_context,
         &class_defs,
-        layout_view(&layout),
+        node_layout,
         &svg_label_sidecar,
         effective_config,
         &prepared_theme,
@@ -244,12 +235,11 @@ fn prepare_error_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let typography_theme = crate::error::ErrorTypographyThemePlan::resolve_with_message(
+    let (layout, typography_theme) = crate::error::prepare_error_diagram(
         &meta.effective_config,
         execution.text_measurer(),
         model.error_message.as_deref(),
     );
-    let layout = crate::error::layout_error_diagram_typed(model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Error(Box::new(
         ErrorFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -371,7 +361,7 @@ fn prepare_flowchart_family<'parsed>(
                 &meta.effective_config,
                 true,
                 preparation,
-                |layout| crate::svg::FlowchartNodeLayoutView::Swimlane(layout),
+                crate::model::SwimlaneLayout::node_layout_view,
                 |model, render_context, _, svg_label_sidecar, edge_style_plan| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
@@ -392,7 +382,7 @@ fn prepare_flowchart_family<'parsed>(
                 &meta.effective_config,
                 false,
                 preparation,
-                |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
+                crate::model::FlowchartLayout::node_layout_view,
                 |model, render_context, class_defs, svg_label_sidecar, edge_style_plan| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         model,
@@ -1207,7 +1197,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 config,
                 false,
                 preparation,
-                |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
+                crate::model::FlowchartLayout::node_layout_view,
                 |model, render_context, class_defs, sidecar, edge_style_plan| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         model,

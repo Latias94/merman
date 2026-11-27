@@ -4,9 +4,10 @@ use crate::LayoutLabel;
 
 #[cfg(all(feature = "route-paint", feature = "svg-output"))]
 pub mod axis_clearance;
-#[cfg(feature = "svg-output")]
+pub mod contour;
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_geometry;
-#[cfg(feature = "svg-output")]
+#[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_terminal_jogs;
 #[cfg(feature = "shoal-bridge")]
 pub mod shoal;
@@ -14,6 +15,8 @@ pub mod shoal;
 // Share plain geometry so a solver can transfer entire rectangle and route buffers to the IR.
 #[cfg(feature = "shoal-bridge")]
 use merman_layout_shoal::ShapeContourHint;
+#[cfg(feature = "layout-shoal")]
+pub use merman_layout_shoal::geom as spatial;
 #[cfg(feature = "layout-shoal")]
 pub use merman_layout_shoal::{Direction, Point, Rect, RoutingStyle, Size, TitlePosition};
 
@@ -93,6 +96,18 @@ pub fn direction_from_rank(rank: &str) -> Direction {
         Direction::Left
     } else {
         Direction::Down
+    }
+}
+
+#[cfg(feature = "layout-dagre")]
+pub fn dagre_rankdir(direction: Direction) -> dugong::RankDir {
+    use dugong::RankDir;
+
+    match direction {
+        Direction::Down => RankDir::TB,
+        Direction::Up => RankDir::BT,
+        Direction::Right => RankDir::LR,
+        Direction::Left => RankDir::RL,
     }
 }
 

@@ -1,6 +1,9 @@
 //! Kanban syntax, hierarchy, and family model construction.
 
 use merman_core_preprocess::scan::{starts_with_case_insensitive, strip_line_ending};
+use merman_core_preprocess::yaml::{
+    YamlCollectionText, parse_mermaid_inline_yaml_with_collection_text_controlled,
+};
 use merman_markup::sanitize::sanitize_text;
 use merman_model::families::kanban::{
     KanbanDiagramModel, KanbanNodeModel, NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD,
@@ -16,7 +19,6 @@ use merman_model::{
 use serde_json::Value;
 #[cfg(any(test, feature = "test-support"))]
 use std::cell::Cell;
-use std::collections::BTreeMap;
 
 #[cfg(any(test, feature = "test-support"))]
 thread_local! {
@@ -72,7 +74,6 @@ impl KanbanSourceIssue {
 }
 
 type SyntaxResult<T> = Result<T, KanbanSourceIssue>;
-type CollectionText = BTreeMap<&'static str, String>;
 
 #[cfg(feature = "editor-facts")]
 pub enum KanbanObservation<'source> {
@@ -110,19 +111,9 @@ impl SpannedText {
     }
 }
 
-/// The existing controlled decoder for a Kanban metadata block.
-pub type KanbanInlineMetadataParser = fn(
-    input: &str,
-    collection_text_keys: &[&'static str],
-    control: &OperationControl,
-) -> OperationControlResult<
-    Result<(ManagedJson, BTreeMap<&'static str, String>), String>,
->;
-
 /// Configuration shared by source and presentation construction.
 pub struct KanbanSourceOptions<'config> {
     config: &'config MermaidConfig,
-    parse_inline_metadata: KanbanInlineMetadataParser,
     #[cfg(feature = "presentation")]
     presentation: Option<KanbanPresentationPolicy>,
 }
@@ -140,13 +131,9 @@ impl ParsedKanban<'_> {
 }
 
 impl<'config> KanbanSourceOptions<'config> {
-    pub fn new(
-        config: &'config MermaidConfig,
-        parse_inline_metadata: KanbanInlineMetadataParser,
-    ) -> Self {
+    pub fn new(config: &'config MermaidConfig) -> Self {
         Self {
             config,
-            parse_inline_metadata,
             #[cfg(feature = "presentation")]
             presentation: None,
         }
@@ -371,7 +358,7 @@ struct KanbanShapeData {
 struct ParsedKanbanShapeData {
     span: SourceSpan,
     document: ManagedJson,
-    collection_text: CollectionText,
+    collection_text: YamlCollectionText,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -547,7 +534,7 @@ impl KanbanDb {
 fn apply_shape_data(
     node: &mut KanbanNode,
     document: &Value,
-    mut collection_text: CollectionText,
+    mut collection_text: YamlCollectionText,
     span: SourceSpan,
 ) -> SyntaxResult<()> {
     let Some(obj) = document.as_object() else {
@@ -1571,7 +1558,7 @@ fn parse_kanban_statement(
     }
     let shape_data = match shape_data {
         Some(shape_data) => {
-            let parsed_metadata = (options.parse_inline_metadata)(
+            let parsed_metadata = parse_mermaid_inline_yaml_with_collection_text_controlled(
                 &shape_data.text,
                 &["icon", "assigned", "ticket", "priority"],
                 control,
@@ -1584,7 +1571,7 @@ fn parse_kanban_statement(
             };
             Some(ParsedKanbanShapeData {
                 span: shape_data.span,
-                document,
+                document: ManagedJson::from_value(document),
                 collection_text,
             })
         }
@@ -1681,42 +1668,28 @@ pub fn project_kanban_render_model(
 mod tests {
     use super::*;
 
-    fn no_inline_metadata(
-        _: &str,
-        _: &[&'static str],
-        _: &OperationControl,
-    ) -> OperationControlResult<Result<(ManagedJson, CollectionText), String>> {
-        panic!("fixture does not contain metadata")
-    }
-
     #[test]
-    fn invalid_node_syntax_does_not_call_the_inline_decoder() {
+    fn invalid_node_syntax_precedes_invalid_inline_metadata() {
         let config = MermaidConfig::empty_object();
-        let source = "kanban\n  section\n    invalid[Open @{ticket: 1}\n";
-        let result = KanbanSourceOptions::new(&config, no_inline_metadata)
+        let source =
+            "kanban\n  section\n    invalid[Open] unexpected @{ticket: &pending [*pending]}\n";
+        let result = KanbanSourceOptions::new(&config)
             .parse_controlled(source, &OperationControl::new())
             .unwrap();
-        assert!(result.is_err());
+        let start = source.find("unexpected").unwrap();
+        assert!(
+            matches!(result, Err(KanbanSourceIssue::Exact { message, span })
+            if message == "unexpected trailing input" && span == SourceSpan::new(start, start + "unexpected".len()))
+        );
     }
 
     #[cfg(feature = "editor-facts")]
     #[test]
     fn requested_metadata_facts_precede_decoder_failure_and_later_recovery() {
-        fn reject(
-            text: &str,
-            keys: &[&'static str],
-            control: &OperationControl,
-        ) -> OperationControlResult<Result<(ManagedJson, CollectionText), String>> {
-            control.checkpoint()?;
-            assert_eq!(text.trim(), "ticket: \"X\"");
-            assert_eq!(keys, ["icon", "assigned", "ticket", "priority"]);
-            Ok(Err("decode rejected".into()))
-        }
-
         let config = MermaidConfig::empty_object();
-        let source = "kanban\n  section\n    card@{ticket: \"X\"}\n    later\n";
+        let source = "kanban\n  section\n    card@{ticket: \"X\", assigned: &pending [*pending]}\n    later\n";
         let mut observed = Vec::new();
-        let result = KanbanSourceOptions::new(&config, reject)
+        let result = KanbanSourceOptions::new(&config)
             .parse_with_observer_controlled(
                 source,
                 &mut |observation| {
@@ -1731,14 +1704,21 @@ mod tests {
         let end = source.find('}').unwrap() + 1;
         assert!(
             matches!(result, Err(KanbanSourceIssue::Exact { message, span })
-            if message == "decode rejected" && span == SourceSpan::new(start, end))
+            if message == "unsupported forward YAML alias" && span == SourceSpan::new(start, end))
         );
         assert_eq!(
             observed
                 .iter()
                 .map(|(text, _)| text.as_str())
                 .collect::<Vec<_>>(),
-            ["section", "ticket", "X", "later"]
+            [
+                "section",
+                "ticket",
+                "X",
+                "assigned",
+                "&pending [*pending]",
+                "later"
+            ]
         );
         for (text, span) in observed {
             assert_eq!(text, source[span.start..span.end]);
@@ -1754,7 +1734,7 @@ mod tests {
             );
             KANBAN_NODE_SCAN_STEPS.set(0);
             let config = MermaidConfig::empty_object();
-            let parsed = KanbanSourceOptions::new(&config, no_inline_metadata)
+            let parsed = KanbanSourceOptions::new(&config)
                 .parse_controlled(&source, &OperationControl::new())
                 .unwrap();
             assert!(parsed.is_err());

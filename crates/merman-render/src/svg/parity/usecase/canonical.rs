@@ -1,6 +1,7 @@
 use super::*;
 use crate::usecase::{UsecaseEdgePlan, UsecaseMarker, canonical_route_style};
 use kurbo::{Rect, Vec2};
+use merman_render_core::svg_bounds::svg_path_bounds_from_d;
 use merman_render_graph::usecase::UsecasePaintedEdge;
 use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
 use serde_json::Value;

@@ -17,6 +17,7 @@ third-party-bundle = true
 
 [features]
 default = []
+directive-config = ["dep:json5", "dep:serde", "dep:serde_json"]
 mermaid-unicode = []
 yaml = ["dep:granit-parser", "dep:serde_json"]
 yaml-editor = ["yaml", "granit-parser/comments"]
@@ -24,7 +25,9 @@ test-support = []
 
 [dependencies]
 granit-parser = { workspace = true, optional = true }
+json5 = { workspace = true, optional = true }
 merman-model.workspace = true
+serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]

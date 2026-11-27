@@ -1,13 +1,8 @@
 use merman_model::{
     OperationControl, OperationControlResult, families::sequence::SequenceDiagramModel,
 };
-use serde_json::Value;
 
 use super::{SequenceSyntax, SequenceSyntaxDiagnostic, ast::Action, db::SequenceDb};
-
-/// Canonical inline configuration parser supplied by the source orchestrator.
-pub type SequenceInlineConfigParser =
-    fn(&str, &OperationControl) -> OperationControlResult<Result<Value, String>>;
 
 /// A grammar or database failure in the preprocessed source coordinate space.
 #[derive(Debug)]
@@ -21,14 +16,13 @@ impl SequenceSyntax {
     pub fn into_model(
         self,
         wrap_enabled: Option<bool>,
-        parse_inline_config: SequenceInlineConfigParser,
         control: &OperationControl,
     ) -> OperationControlResult<Result<SequenceDiagramModel, SequenceModelError>> {
         let actions = match self.into_actions(control)? {
             Ok(actions) => actions,
             Err(diagnostic) => return Ok(Err(SequenceModelError::Grammar(diagnostic))),
         };
-        let db = match build_sequence_db(actions, wrap_enabled, parse_inline_config, control)? {
+        let db = match build_sequence_db(actions, wrap_enabled, control)? {
             Ok(db) => db,
             Err(message) => return Ok(Err(SequenceModelError::Db(message))),
         };
@@ -40,7 +34,6 @@ impl SequenceSyntax {
 fn build_sequence_db(
     actions: Vec<Action>,
     wrap_enabled: Option<bool>,
-    parse_inline_config: SequenceInlineConfigParser,
     control: &OperationControl,
 ) -> OperationControlResult<Result<SequenceDb, String>> {
     let mut db = SequenceDb::new(wrap_enabled);
@@ -48,7 +41,7 @@ fn build_sequence_db(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        if let Err(error) = db.apply_controlled(action, parse_inline_config, control)? {
+        if let Err(error) = db.apply_controlled(action, control)? {
             return Ok(Err(error));
         }
     }
@@ -58,7 +51,6 @@ fn build_sequence_db(
 #[cfg(test)]
 mod tests {
     use super::{SequenceSyntax, build_sequence_db};
-    use crate::sequence::db::unexpected_inline_config;
     use merman_model::{CancelReason, OperationControl};
 
     #[test]
@@ -71,7 +63,7 @@ mod tests {
         let control = OperationControl::new();
         let model = SequenceSyntax::lex(source, &control)
             .unwrap()
-            .into_model(None, unexpected_inline_config, &control)
+            .into_model(None, &control)
             .unwrap()
             .unwrap();
         let links: Vec<_> = model.actors["A"]
@@ -99,8 +91,7 @@ mod tests {
             .unwrap()
             .expect("Sequence parser accepts the workload");
         control.cancel_after_checkpoints(16);
-        let Err(error) = build_sequence_db(actions, None, unexpected_inline_config, &control)
-        else {
+        let Err(error) = build_sequence_db(actions, None, &control) else {
             panic!("replay returns cancellation through the outer result");
         };
         assert_eq!(error.reason, CancelReason::Requested);

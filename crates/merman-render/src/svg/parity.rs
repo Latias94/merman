@@ -4,20 +4,11 @@ use super::pipeline::{
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
 use crate::model::*;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use merman_model::OperationPhase;
 use merman_render_core::root_svg;
 use merman_render_core::svg_css::{SvgDiagramIdProjection, SvgId};
-use merman_render_core::svg_output as output;
-use std::fmt::Write as _;
 
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
 pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
@@ -35,62 +26,20 @@ mod c4;
 mod class;
 #[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
 pub(crate) use class::class_canonical_marker;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod css;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use css::PreparedCommonNeoCss;
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
 pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
-pub(crate) use look_defs::PreparedLookDefs;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-use merman_render_core::svg_edge_parity::curve;
 #[cfg(feature = "diagram-cynefin")]
 mod cynefin;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-use merman_render_core::svg_edge_parity::edge_label_geometry;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-use merman_render_core::svg_edge_parity::edge_path;
 #[cfg(feature = "diagram-er")]
 mod er;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use er::er_canonical_marker;
-mod error;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -120,62 +69,19 @@ mod gantt;
 mod info;
 #[cfg(feature = "diagram-journey")]
 mod journey;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-use merman_render_core::svg_edge_parity::line_hops;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "The shared label writer serves selected families."
-    )
-)]
-use merman_render_core::text::svg_label as label;
-#[cfg(any(
-    all(
-        feature = "layout-shoal",
-        any(
-            feature = "diagram-class",
-            feature = "diagram-er",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
-        )
-    ),
-    all(
-        any(feature = "layout-shoal", test),
-        any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        )
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
     )
 ))]
-mod canonical_rough;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod look_defs;
+use merman_render_core::rough_svg as canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(test)]
 mod path_bounds;
 #[cfg(feature = "diagram-pie")]
 mod pie;
@@ -183,23 +89,18 @@ mod pie;
 mod quadrantchart;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-state",
-    feature = "diagram-swimlane",
-    feature = "diagram-usecase"
-))]
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane",
+        feature = "diagram-usecase"
     )
-)]
+))]
 mod roughjs_common;
 #[cfg(feature = "diagram-sequence")]
 mod sequence;
@@ -207,15 +108,6 @@ mod sequence;
 mod state;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
 pub(crate) use state::state_canonical_marker;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod style;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -238,49 +130,13 @@ mod timeline;
 use merman_render_core::svg_output::timing;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
+#[cfg(test)]
 mod util;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-use output::{BoundedSvgOutput, SvgOutput};
-use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-
 pub use merman_render_core::svg_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use style::is_text_style_key;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-pub(crate) use util::escape_attr;
-pub(crate) use util::escape_xml;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use util::{escape_attr_display, escape_xml_display, escape_xml_into, fmt, fmt_display};
-
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
 ///
@@ -569,71 +425,9 @@ pub(crate) fn normalize_svg_render_options(
 
 pub(super) type SvgDiagramId<'a> = SvgId<'a>;
 
-/// A point captured while diagnosing one flowchart edge route.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct FlowchartEdgeTracePoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-/// An in-memory diagnostic record for one flowchart edge route.
-///
-/// The renderer never serializes this value or writes it to a host filesystem. Callers that need
-/// a file own that I/O boundary and can serialize a drained record themselves.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct FlowchartEdgeTrace {
-    pub fixture_diagram_id: String,
-    pub edge_id: String,
-    pub from: String,
-    pub to: String,
-    pub layout_from: String,
-    pub layout_to: String,
-    pub from_cluster: Option<String>,
-    pub to_cluster: Option<String>,
-    pub origin_x: f64,
-    pub origin_y: f64,
-    pub tx: f64,
-    pub ty: f64,
-    pub base_points: Vec<FlowchartEdgeTracePoint>,
-    pub points_after_intersect: Vec<FlowchartEdgeTracePoint>,
-    pub points_for_render: Vec<FlowchartEdgeTracePoint>,
-    pub points_for_data_points: Vec<FlowchartEdgeTracePoint>,
-}
-
-/// Explicit, caller-owned storage for flowchart route diagnostics.
-///
-/// Clones share one collection so a caller can retain a handle while a render owns a clone. A
-/// poisoned lock is recovered because trace collection is diagnostic-only and must not turn a
-/// completed render into an ambient host failure.
-#[derive(Debug, Clone, Default)]
-pub struct FlowchartEdgeTraceCollector(std::sync::Arc<std::sync::Mutex<Vec<FlowchartEdgeTrace>>>);
-
-impl FlowchartEdgeTraceCollector {
-    pub(crate) fn record(&self, trace: FlowchartEdgeTrace) {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(trace);
-    }
-
-    /// Returns a snapshot without consuming the collected records.
-    pub fn snapshot(&self) -> Vec<FlowchartEdgeTrace> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Drains all records collected so far.
-    pub fn drain(&self) -> Vec<FlowchartEdgeTrace> {
-        std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )
-    }
-}
+pub use merman_render_core::svg_edge_parity::trace::{
+    FlowchartEdgeTrace, FlowchartEdgeTraceCollector, FlowchartEdgeTracePoint,
+};
 
 /// An opaque flowchart trace request created by [`SvgDebugOptions::with_flowchart_edge_trace`].
 #[derive(Debug, Clone)]
@@ -895,6 +689,7 @@ impl<'a> SvgExecution<'a> {
     ///
     /// Family emitters call this at bounded loop boundaries so an early SVG-byte rejection or
     /// cancellation stops the tail of a high-fanout render instead of waiting for finalization.
+    #[cfg(any(test, all(feature = "diagram-usecase", feature = "layout-shoal")))]
     pub(crate) fn checkpoint_emit(&self) -> Result<()> {
         self.work_meter()
             .checkpoint(OperationPhase::Emit)
@@ -1108,11 +903,16 @@ fn render_builtin_family_artifact_raw(
     let title = metadata.title.as_deref();
 
     match family {
-        BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.typography_theme(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Error(artifact) => {
+            let diagram_id = options.diagram_id_or("merman");
+            crate::error::render_error_diagram_svg(
+                artifact.pair().layout(),
+                artifact.typography_theme(),
+                diagram_id,
+                &options.root_viewport(crate::DiagramFamilyId::ERROR, diagram_id),
+                options.work_meter(),
+            )
+        }
         #[cfg(all(
             feature = "diagram-architecture",
             any(feature = "layout-cytoscape", feature = "layout-shoal")

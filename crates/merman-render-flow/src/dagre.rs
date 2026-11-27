@@ -6,6 +6,19 @@ use merman_render_core::{Result, layout_work::OperationLayoutWorkControl};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+mod layout;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub use layout::{DagreFlowchartLayout, layout};
+
 pub fn rank_dir_from_flow(direction: &str) -> RankDir {
     let direction = direction.trim();
     if direction.eq_ignore_ascii_case("BT") {

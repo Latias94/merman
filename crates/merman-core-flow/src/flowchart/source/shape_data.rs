@@ -1,11 +1,9 @@
 use super::{FlowchartAst, Node, StatementEvent, Stmt, TitleKind};
-use merman_core_preprocess::yaml::{
-    mermaid_inline_yaml, parse_yaml_value_with_root_order_controlled,
-};
+use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_with_root_order_controlled;
 pub(super) use merman_model::config::inline_config_scalar_to_string as value_to_string;
 use merman_model::{
-    MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult,
-    families::flowchart::shapes::is_valid_pinned_shape, number::parse_js_number,
+    OperationControl, OperationControlResult, families::flowchart::shapes::is_valid_pinned_shape,
+    number::parse_js_number,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -235,19 +233,16 @@ fn prepare_flowchart_shape_data_document(
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let document = parse_yaml_value_with_root_order_controlled(
-        &mermaid_inline_yaml(source),
-        MAX_DIAGRAM_NESTING_DEPTH,
-        control,
-    )?
-    .map(|(mut value, key_order)| {
-        if let Value::Object(map) = &mut value {
-            for key in ["laneRole", "laneIndex", "drawnExtent"] {
-                map.remove(key);
+    let document = parse_mermaid_inline_yaml_with_root_order_controlled(source, control)?.map(
+        |(mut value, key_order)| {
+            if let Value::Object(map) = &mut value {
+                for key in ["laneRole", "laneIndex", "drawnExtent"] {
+                    map.remove(key);
+                }
             }
-        }
-        ShapeDataDocument { value, key_order }
-    });
+            ShapeDataDocument { value, key_order }
+        },
+    );
     documents.insert(source.to_string(), document);
     Ok(())
 }

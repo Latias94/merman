@@ -14,21 +14,35 @@ use merman_render_core::{
 };
 use roughr::core::RoughRandomness;
 
+mod basic;
 mod cylinders;
 mod datastore;
+mod depth;
 pub mod document_shapes;
 mod label_container;
 mod lean_trapezoids;
+mod no_label;
 mod outer_path;
+mod rectangle;
 mod rectangle_with_divider;
+mod shapes;
 mod subroutine;
 
+pub use basic::{
+    advance_basic_rough_geometry, advance_hexagon_rough_geometry, advance_odd_rough_geometry,
+    advance_stadium_rough_geometry, write_circle, write_diamond, write_double_circle,
+    write_hexagon, write_odd, write_stadium,
+};
 pub use cylinders::CylinderBody;
 pub use datastore::{advance_datastore, write_datastore};
+pub use depth::{native_node_silhouette, write_native_node_depth};
 pub use label_container::{advance_hourglass, write_hourglass, write_notched_rectangle};
 pub use lean_trapezoids::{advance_lean_hand_drawn, write_lean};
+pub use no_label::{NoLabelStyle, advance_no_label_rough_geometry, try_write_no_label};
 pub use outer_path::{OuterPathBody, OuterPathTranslation};
+pub use rectangle::{RectangleBody, RectangleStyle};
 pub use rectangle_with_divider::RectangleWithDivider;
+pub use shapes::{LayoutNodeBody, MeasuredNodeBody};
 pub use subroutine::{advance_subroutine, write_subroutine};
 
 /// Layout dimensions and the operation's existing RoughJS inputs.
