@@ -103,12 +103,14 @@ let svg = Renderer::new().render_svg_with(
   participants, plain notes, activation bars, and supported straight messages. Classic Mermaid
   diagrams can also use `loop` and `alt`/`else` frames with prepared bounds and plain headings.
 - With `diagram-flowchart`, the producer supports classic, ungrouped diagrams with rectangular
-  nodes and unlabeled edges. Plain node labels may wrap between whole words. Disable `htmlLabels`
-  for either backend.
+  nodes and unlabeled edges. Plain node labels may wrap between whole words. Set `htmlLabels`
+  to `false`.
   - With `layout-dagre`, select `layout: dagre` and set `flowchart.curve: linear` to reuse clipped
     linear routes.
   - With `layout-elk`, select `layout: elk`, keep the default `rounded` curve, and set
     `elk.lineHops: false`. The producer reuses clipped, straight edges from two-point ELK sections.
+  - With `layout-shoal`, select `layout: shoal` and set `flowchart.curve: linear`. The compact
+    writer consumes the canonical shaft commands, including bends and marker setback.
 
 The compact writer emits native SVG without Mermaid compatibility styles or `<foreignObject>`
 labels. Unsupported families, constructs, or transforms return an explicit error. The profile is

@@ -9,6 +9,7 @@ use crate::route_types::{
 };
 use crate::{Bounds, LayoutPoint};
 use kurbo::{CubicBez, ParamCurveArclen, Point, Shape, Vec2};
+use std::convert::Infallible;
 use std::fmt::Write as _;
 
 /// Straight shaft beyond the marker setback, in layout units (v13 `shared/svg/route.ts`).
@@ -63,6 +64,37 @@ pub struct PaintedRoute {
     pub d: String,
     /// Tight geometric bounds of `d`, excluding stroke width, markers and effects.
     pub bounds: Bounds,
+}
+
+/// A final shaft command in the coordinate space supplied to the painter.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RouteCommand {
+    MoveTo(Point),
+    LineTo(Point),
+    CubicTo {
+        control1: Point,
+        control2: Point,
+        end: Point,
+    },
+    QuarterArcTo {
+        radius: f64,
+        clockwise: bool,
+        end: Point,
+    },
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteCommandError<E> {
+    Geometry(RoutePaintError),
+    Sink(E),
+}
+
+impl<E> From<RoutePaintError> for RouteCommandError<E> {
+    fn from(error: RoutePaintError) -> Self {
+        Self::Geometry(error)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,8 +316,63 @@ fn sweep_curve(from: Point, end: RoutePoint, contour_departure: bool, scale: f64
     CubicBez::new(from, from + departure, to - arrival, to)
 }
 
-struct Pen {
-    d: String,
+enum RouteOutput<'a, E> {
+    Svg(&'a mut String),
+    Commands(&'a mut dyn FnMut(RouteCommand) -> Result<(), E>),
+}
+
+impl<E> RouteOutput<'_, E> {
+    fn reserve_start(&mut self, points: usize, style: RouteStyle) {
+        let Self::Svg(d) = self else {
+            return;
+        };
+        // Size the first allocation from the simplified section, with room for controls on
+        // curves. Later sections and unusually long coordinates can grow it as they are emitted.
+        const MAX_INITIAL_BYTES: usize = 384;
+        let bytes_per_point = match style {
+            RouteStyle::Curved | RouteStyle::Rounded(_) => 48,
+            _ => 24,
+        };
+        let capacity = points
+            .checked_mul(bytes_per_point)
+            .unwrap_or(MAX_INITIAL_BYTES)
+            .min(MAX_INITIAL_BYTES);
+        let _ = d.try_reserve_exact(capacity);
+    }
+
+    fn write_command(&mut self, command: RouteCommand) -> Result<(), RouteCommandError<E>> {
+        match self {
+            Self::Svg(d) => {
+                let _ = match command {
+                    RouteCommand::MoveTo(p) => write!(d, "M{},{}", p.x, p.y),
+                    RouteCommand::LineTo(p) => write!(d, "L{},{}", p.x, p.y),
+                    RouteCommand::CubicTo {
+                        control1: a,
+                        control2: b,
+                        end,
+                    } => write!(d, "C{},{} {},{} {},{}", a.x, a.y, b.x, b.y, end.x, end.y),
+                    RouteCommand::QuarterArcTo {
+                        radius,
+                        clockwise,
+                        end,
+                    } => write!(
+                        d,
+                        "A{radius},{radius} 0 0,{} {},{}",
+                        u8::from(clockwise),
+                        end.x,
+                        end.y
+                    ),
+                };
+                Ok(())
+            }
+            Self::Commands(write) => write(command).map_err(RouteCommandError::Sink),
+        }
+    }
+}
+
+struct Pen<'a, E> {
+    output: RouteOutput<'a, E>,
+    started: bool,
     bounds: Bounds,
     at: Point,
     finite: bool,
@@ -295,10 +382,16 @@ struct Pen {
     detour_budget: clearance::DetourBudget,
 }
 
-impl Pen {
-    fn new(p: Point, compact_lines: bool, measure_length: bool) -> Self {
+impl<'a, E> Pen<'a, E> {
+    fn new(
+        p: Point,
+        compact_lines: bool,
+        measure_length: bool,
+        output: RouteOutput<'a, E>,
+    ) -> Self {
         Self {
-            d: String::new(),
+            output,
+            started: false,
             bounds: Bounds {
                 min_x: p.x,
                 min_y: p.y,
@@ -314,23 +407,13 @@ impl Pen {
         }
     }
 
-    fn start_path(&mut self, points: usize, style: RouteStyle) {
-        if !self.d.is_empty() {
-            return;
+    fn start_path(&mut self, points: usize, style: RouteStyle) -> Result<(), RouteCommandError<E>> {
+        if !self.started {
+            self.output.reserve_start(points, style);
+            self.output.write_command(RouteCommand::MoveTo(self.at))?;
+            self.started = true;
         }
-        // Size the first allocation from the simplified section, with room for controls on
-        // curves. Later sections and unusually long coordinates can grow it as they are emitted.
-        const MAX_INITIAL_BYTES: usize = 384;
-        let bytes_per_point = match style {
-            RouteStyle::Curved | RouteStyle::Rounded(_) => 48,
-            _ => 24,
-        };
-        let capacity = points
-            .checked_mul(bytes_per_point)
-            .unwrap_or(MAX_INITIAL_BYTES)
-            .min(MAX_INITIAL_BYTES);
-        let _ = self.d.try_reserve_exact(capacity);
-        let _ = write!(self.d, "M{},{}", self.at.x, self.at.y);
+        Ok(())
     }
 
     fn include(&mut self, p: Point) {
@@ -341,44 +424,46 @@ impl Pen {
         self.bounds.max_y = self.bounds.max_y.max(p.y);
     }
 
-    fn line(&mut self, p: Point) {
+    fn line(&mut self, p: Point) -> Result<(), RouteCommandError<E>> {
         if (p - self.at).hypot() > ALIGN_EPS {
             if let Some(start) = self.line_start {
                 let (previous, next) = (self.at - start, p - self.at);
                 let scale = previous.hypot().max(next.hypot());
                 if previous.cross(next).abs() > ALIGN_EPS * scale || previous.dot(next) <= 0.0 {
-                    self.flush_line();
+                    self.flush_line()?;
                 }
             }
             self.line_start.get_or_insert(self.at);
             self.include(p);
             self.at = p;
             if !self.compact_lines {
-                self.flush_line();
+                self.flush_line()?;
             }
         }
+        Ok(())
     }
 
-    fn flush_line(&mut self) {
+    fn flush_line(&mut self) -> Result<(), RouteCommandError<E>> {
         if let Some(start) = self.line_start.take() {
-            let _ = write!(self.d, "L{},{}", self.at.x, self.at.y);
+            self.output.write_command(RouteCommand::LineTo(self.at))?;
             if let Some(length) = &mut self.length {
                 *length += (self.at - start).hypot();
             }
         }
+        Ok(())
     }
 
-    fn cubic(&mut self, a: Point, b: Point, end: Point) {
+    fn cubic(&mut self, a: Point, b: Point, end: Point) -> Result<(), RouteCommandError<E>> {
         if !a.is_finite() || !b.is_finite() || !end.is_finite() {
             self.finite = false;
-            return;
+            return Ok(());
         }
-        self.flush_line();
-        let _ = write!(
-            self.d,
-            "C{},{} {},{} {},{}",
-            a.x, a.y, b.x, b.y, end.x, end.y
-        );
+        self.flush_line()?;
+        self.output.write_command(RouteCommand::CubicTo {
+            control1: a,
+            control2: b,
+            end,
+        })?;
         let curve = CubicBez::new(self.at, a, b, end);
         if let Some(length) = &mut self.length {
             *length += curve.arclen(SVG_LENGTH_ACCURACY);
@@ -387,6 +472,7 @@ impl Pen {
         self.include(Point::new(bounds.x0, bounds.y0));
         self.include(Point::new(bounds.x1, bounds.y1));
         self.at = end;
+        Ok(())
     }
 
     fn sweep(
@@ -394,7 +480,7 @@ impl Pen {
         end: RoutePoint,
         contour_departure: bool,
         clearance: Option<EdgeClearance<'_>>,
-    ) -> Result<(), RoutePaintError> {
+    ) -> Result<(), RouteCommandError<E>> {
         let target = position(end);
         let curve = |scale| sweep_curve(self.at, end, contour_departure, scale);
         let full = curve(1.0);
@@ -409,43 +495,42 @@ impl Pen {
                 }
             }) else {
                 for point in guard.detour(self.at, target, &mut self.detour_budget)? {
-                    self.line(point);
+                    self.line(point)?;
                 }
                 return Ok(());
             };
             if scale == 0.0 {
-                self.line(target);
-                return Ok(());
+                return self.line(target);
             }
             curve(scale)
         } else {
             full
         };
-        self.cubic(sweep.p1, sweep.p2, sweep.p3);
-        Ok(())
+        self.cubic(sweep.p1, sweep.p2, sweep.p3)
     }
 
-    fn quarter_arc(&mut self, radius: f64, clockwise: bool, end: Point) {
-        self.flush_line();
+    fn quarter_arc(
+        &mut self,
+        radius: f64,
+        clockwise: bool,
+        end: Point,
+    ) -> Result<(), RouteCommandError<E>> {
+        self.flush_line()?;
         // The SVG arc parser measures a cubic approximation of its rounded parameters.
         self.length = None;
-        let _ = write!(
-            self.d,
-            "A{radius},{radius} 0 0,{} {},{}",
-            u8::from(clockwise),
-            end.x,
-            end.y
-        );
+        self.output.write_command(RouteCommand::QuarterArcTo {
+            radius,
+            clockwise,
+            end,
+        })?;
         // Each coordinate is monotone on an axis-aligned quarter circle.
         self.include(end);
         self.at = end;
+        Ok(())
     }
 
-    fn finish(self) -> Option<PaintedRoute> {
-        self.finite.then_some(PaintedRoute {
-            d: self.d,
-            bounds: self.bounds,
-        })
+    fn finish(self) -> Option<Bounds> {
+        self.finite.then_some(self.bounds)
     }
 }
 
@@ -485,13 +570,13 @@ fn shrink_smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
     (safe > 0.0 || !blocked(0.0)).then_some(safe)
 }
 
-fn draw_body(
-    pen: &mut Pen,
+fn draw_body<E>(
+    pen: &mut Pen<'_, E>,
     body: &[RoutePoint],
     style: RouteStyle,
     terminals: (Option<&Terminal>, Option<&Terminal>),
     clearance: Option<EdgeClearance<'_>>,
-) -> Result<(), RoutePaintError> {
+) -> Result<(), RouteCommandError<E>> {
     for i in 1..body.len() {
         let p = position(body[i]);
         if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_)) && right_angle(body, i) {
@@ -518,10 +603,10 @@ fn draw_body(
                     .unwrap_or(0.)
                 });
                 if r > 1e-6 {
-                    pen.line(p - u * r);
-                    pen.quarter_arc(r, u.cross(v) > 0.0, p + v * r);
+                    pen.line(p - u * r)?;
+                    pen.quarter_arc(r, u.cross(v) > 0.0, p + v * r)?;
                 } else {
-                    pen.line(p);
+                    pen.line(p)?;
                 }
             } else {
                 // A side terminal can turn onto a rail before it leaves the rank. Use
@@ -571,12 +656,12 @@ fn draw_body(
                     smoothing_scale(|scale| guard.blocks_cubic(curve(scale))).unwrap_or(0.)
                 });
                 if scale == 0. {
-                    pen.line(p);
+                    pen.line(p)?;
                     continue;
                 }
                 let safe = curve(scale);
-                pen.line(safe.p0);
-                pen.cubic(safe.p1, safe.p2, safe.p3);
+                pen.line(safe.p0)?;
+                pen.cubic(safe.p1, safe.p2, safe.p3)?;
             }
         } else if style == RouteStyle::Curved && !aligned(position(body[i - 1]), p) {
             pen.sweep(
@@ -585,7 +670,7 @@ fn draw_body(
                 clearance,
             )?;
         } else {
-            pen.line(p);
+            pen.line(p)?;
         }
     }
     Ok(())
@@ -716,89 +801,155 @@ pub fn build_svg_path_with_scratch(
     clearance: Option<EdgeClearance<'_>>,
     scratch: &mut RoutePaintScratch,
 ) -> Result<PaintedRoute, RoutePaintError> {
-    let measure_length = std::mem::take(&mut scratch.measure_length);
-    scratch.measured_length = None;
-    if points.len() < 2
-        || [markers.0, markers.1]
-            .iter()
-            .any(|m| !m.trim.is_finite() || m.trim < 0.0 || !m.depth.is_finite() || m.depth < 0.0)
-        || matches!(style, RouteStyle::Rounded(radius) if !radius.is_finite())
-    {
-        return Err(RoutePaintError::InvalidGeometry);
+    RoutePaintRequest {
+        points,
+        sides,
+        style,
+        markers,
+        curve_terminals,
+        stitches,
+        clearance,
     }
-    let last = points.len() - 1;
-    let smooth = style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth);
-    let start = Terminal {
-        tip: position(points[0]),
-        normal: outward(sides.0),
-        marker: markers.0,
-        smooth,
-    };
-    let end = Terminal {
-        tip: position(points[last]),
-        normal: outward(sides.1),
-        marker: markers.1,
-        smooth,
-    };
-    let mut pen = Pen::new(
-        start.shaft_end(),
-        smooth,
-        measure_length && !matches!(style, RouteStyle::Rounded(_)),
-    );
-    let RoutePaintScratch { knots, body, .. } = scratch;
-    let mut begin = 0;
-    for finish in stitches
-        .iter()
-        .map(|stitch| stitch.point)
-        .chain(std::iter::once(last))
-    {
-        if finish == begin {
-            continue;
-        }
-        draw_section(
-            &mut pen,
-            points
-                .get(begin..=finish)
-                .ok_or(RoutePaintError::InvalidGeometry)?,
-            (
-                (begin == 0).then_some(&start),
-                (finish == last).then_some(&end),
-            ),
-            style,
-            knots,
-            body,
-            clearance,
-        )?;
-        pen.flush_line();
-        begin = finish;
-    }
-    let length = pen.length.filter(|length| length.is_finite());
-    let painted = pen.finish().ok_or(RoutePaintError::InvalidGeometry)?;
-    scratch.measured_length = length;
-    Ok(painted)
+    .paint_svg(scratch)
 }
 
-fn draw_section(
-    pen: &mut Pen,
+/// Bound route inputs shared by the SVG formatter and typed command sink.
+#[doc(hidden)]
+pub struct RoutePaintRequest<'a> {
+    pub points: &'a [RoutePoint],
+    pub sides: (Side, Side),
+    pub style: RouteStyle,
+    pub markers: (Marker, Marker),
+    pub curve_terminals: CurveTerminals,
+    pub stitches: &'a [BorderStitch],
+    pub clearance: Option<EdgeClearance<'a>>,
+}
+
+impl RoutePaintRequest<'_> {
+    pub fn paint_svg(
+        self,
+        scratch: &mut RoutePaintScratch,
+    ) -> Result<PaintedRoute, RoutePaintError> {
+        let mut d = String::new();
+        let bounds = self
+            .paint(scratch, RouteOutput::<Infallible>::Svg(&mut d))
+            .map_err(|error| match error {
+                RouteCommandError::Geometry(error) => error,
+                RouteCommandError::Sink(never) => match never {},
+            })?;
+        Ok(PaintedRoute { d, bounds })
+    }
+
+    /// Writes the final shaft commands and returns their tight centerline bounds.
+    /// The sink may receive a prefix on error. Publish the route only on success.
+    pub fn paint_commands<E>(
+        self,
+        scratch: &mut RoutePaintScratch,
+        mut write: impl FnMut(RouteCommand) -> Result<(), E>,
+    ) -> Result<Bounds, RouteCommandError<E>> {
+        self.paint(scratch, RouteOutput::Commands(&mut write))
+    }
+
+    fn paint<E>(
+        self,
+        scratch: &mut RoutePaintScratch,
+        output: RouteOutput<'_, E>,
+    ) -> Result<Bounds, RouteCommandError<E>> {
+        let Self {
+            points,
+            sides,
+            style,
+            markers,
+            curve_terminals,
+            stitches,
+            clearance,
+        } = self;
+        let measure_length = std::mem::take(&mut scratch.measure_length);
+        scratch.measured_length = None;
+        if points.len() < 2
+            || [markers.0, markers.1].iter().any(|m| {
+                !m.trim.is_finite() || m.trim < 0.0 || !m.depth.is_finite() || m.depth < 0.0
+            })
+            || matches!(style, RouteStyle::Rounded(radius) if !radius.is_finite())
+        {
+            return Err(RoutePaintError::InvalidGeometry.into());
+        }
+        let last = points.len() - 1;
+        let smooth =
+            style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth);
+        let start = Terminal {
+            tip: position(points[0]),
+            normal: outward(sides.0),
+            marker: markers.0,
+            smooth,
+        };
+        let end = Terminal {
+            tip: position(points[last]),
+            normal: outward(sides.1),
+            marker: markers.1,
+            smooth,
+        };
+        let mut pen = Pen::new(
+            start.shaft_end(),
+            smooth,
+            measure_length && !matches!(style, RouteStyle::Rounded(_)),
+            output,
+        );
+        let RoutePaintScratch { knots, body, .. } = scratch;
+        let mut begin = 0;
+        for finish in stitches
+            .iter()
+            .map(|stitch| stitch.point)
+            .chain(std::iter::once(last))
+        {
+            if finish == begin {
+                continue;
+            }
+            draw_section(
+                &mut pen,
+                points
+                    .get(begin..=finish)
+                    .ok_or(RoutePaintError::InvalidGeometry)?,
+                (
+                    (begin == 0).then_some(&start),
+                    (finish == last).then_some(&end),
+                ),
+                style,
+                knots,
+                body,
+                clearance,
+            )?;
+            pen.flush_line()?;
+            begin = finish;
+        }
+        let length = pen.length.filter(|length| length.is_finite());
+        let bounds = pen.finish().ok_or(RoutePaintError::InvalidGeometry)?;
+        scratch.measured_length = length;
+        Ok(bounds)
+    }
+}
+
+fn draw_section<E>(
+    pen: &mut Pen<'_, E>,
     points: &[RoutePoint],
     terminals: (Option<&Terminal>, Option<&Terminal>),
     style: RouteStyle,
     route: &mut Vec<RoutePoint>,
     body: &mut Vec<RoutePoint>,
     clearance: Option<EdgeClearance<'_>>,
-) -> Result<(), RoutePaintError> {
+) -> Result<(), RouteCommandError<E>> {
     route.clear();
     route.reserve(points.len());
     for &point in points {
         if !point.x.is_finite() || !point.y.is_finite() {
-            return Err(RoutePaintError::InvalidGeometry);
+            return Err(RoutePaintError::InvalidGeometry.into());
         }
         push_knot(route, point);
     }
     if route.len() < 2 {
         return (terminals.0.is_none() && terminals.1.is_none())
             .then_some(())
-            .ok_or(RoutePaintError::InvalidGeometry);
+            .ok_or(RoutePaintError::InvalidGeometry.into());
     }
     if style.stepped() {
         let markers = (
@@ -828,16 +979,15 @@ fn draw_section(
         // The two marker footprints consume the same runway. A reversed shaft would put both
         // SVG markers on the wrong side of their reference points.
         if gap < 0.0 {
-            return Err(RoutePaintError::InvalidGeometry);
+            return Err(RoutePaintError::InvalidGeometry.into());
         }
         if aligned(start.tip, end.tip) && (end.tip - start.tip).dot(start.normal) > 0.0 {
             // Opposed markers can share this one straight segment up to its full length.
             if gap < start.lead().max(end.lead()) {
-                return Err(RoutePaintError::InvalidGeometry);
+                return Err(RoutePaintError::InvalidGeometry.into());
             }
-            pen.start_path(2, RouteStyle::Linear);
-            pen.line(end.shaft_end());
-            return Ok(());
+            pen.start_path(2, RouteStyle::Linear)?;
+            return pen.line(end.shaft_end());
         }
     }
 
@@ -870,11 +1020,11 @@ fn draw_section(
         steps(route, style, body, (None, None));
         std::mem::swap(route, body);
     }
-    pen.start_path(body.len(), style);
-    pen.line(position(body[0]));
+    pen.start_path(body.len(), style)?;
+    pen.line(position(body[0]))?;
     draw_body(pen, body, style, terminals, clearance)?;
     if let Some(end) = terminals.1 {
-        pen.line(end.shaft_end());
+        pen.line(end.shaft_end())?;
     }
     Ok(())
 }
@@ -1528,7 +1678,7 @@ mod tests {
 
     #[test]
     fn linear_preserves_an_interior_diagonal_and_discards_duplicate_contacts() {
-        let p = [
+        let points = [
             v(0.0, 0.0),
             v(0.0, 0.0),
             v(0.0, 20.0),
@@ -1536,27 +1686,83 @@ mod tests {
             h(120.0, 45.0),
             h(120.0, 45.0),
         ];
-        let path = build_svg_path(
-            &p,
-            (Side::Bottom, Side::Left),
-            RouteStyle::Linear,
-            (marker(4.0, 12.0), marker(2.0, 8.0)),
-            CurveTerminals::Fixed,
-            &[],
-            None,
-        )
-        .unwrap();
-        let segs = segments(&path);
-        assert!(
-            segs.iter()
-                .all(|s| matches!(s, PathSeg::Line(_)) && s.arclen(1e-6) > 0.0)
+        let request = || RoutePaintRequest {
+            points: &points,
+            sides: (Side::Bottom, Side::Left),
+            style: RouteStyle::Linear,
+            markers: (marker(4.0, 12.0), marker(2.0, 8.0)),
+            curve_terminals: CurveTerminals::Fixed,
+            stitches: &[],
+            clearance: None,
+        };
+        let mut scratch = RoutePaintScratch::default();
+        let mut commands = Vec::new();
+        let bounds = request()
+            .paint_commands(&mut scratch, |command| {
+                commands.push(command);
+                Ok::<_, Infallible>(())
+            })
+            .unwrap();
+        assert_eq!(
+            commands,
+            [
+                RouteCommand::MoveTo(Point::new(0.0, 4.0)),
+                RouteCommand::LineTo(Point::new(0.0, 16.0)),
+                RouteCommand::LineTo(Point::new(0.0, 20.0)),
+                RouteCommand::LineTo(Point::new(70.0, 45.0)),
+                RouteCommand::LineTo(Point::new(110.0, 45.0)),
+                RouteCommand::LineTo(Point::new(118.0, 45.0)),
+            ]
         );
-        assert!(
-            segs.iter()
-                .any(|s| s.start() == Point::new(0.0, 20.0) && s.end() == Point::new(70.0, 45.0))
+        assert_eq!(
+            bounds,
+            Bounds {
+                min_x: 0.0,
+                min_y: 4.0,
+                max_x: 118.0,
+                max_y: 45.0,
+            }
         );
-        assert_eq!(segs[0].start(), Point::new(0.0, 4.0));
-        assert_eq!(segs.last().unwrap().end(), Point::new(118.0, 45.0));
+        let svg = request().paint_svg(&mut scratch).unwrap();
+        assert_eq!(svg.d, "M0,4L0,16L0,20L70,45L110,45L118,45");
+        assert_eq!(svg.bounds, bounds);
+    }
+
+    #[test]
+    fn command_sink_failure_stops_at_the_failed_command_and_resets_scratch() {
+        let points = [h(0.0, 0.0), h(20.0, 0.0), h(80.0, 40.0)];
+        let request = || RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Linear,
+            markers: (Marker::default(), Marker::default()),
+            curve_terminals: CurveTerminals::Fixed,
+            stitches: &[],
+            clearance: None,
+        };
+        let mut scratch = RoutePaintScratch::default();
+        scratch.measure_length();
+        let expected = request().paint_svg(&mut scratch).unwrap();
+        assert!(scratch.measured_length().is_some());
+
+        scratch.measure_length();
+        let mut offered = Vec::new();
+        let result = request().paint_commands(&mut scratch, |command| {
+            offered.push(command);
+            match command {
+                RouteCommand::MoveTo(_) => Ok(()),
+                _ => Err(command),
+            }
+        });
+        let failed = RouteCommand::LineTo(Point::new(LEAD, 0.0));
+        assert_eq!(result, Err(RouteCommandError::Sink(failed)));
+        assert_eq!(offered, [RouteCommand::MoveTo(Point::ORIGIN), failed]);
+        assert_eq!(scratch.measured_length(), None);
+
+        let recovered = request().paint_svg(&mut scratch).unwrap();
+        assert_eq!(recovered.d, expected.d);
+        assert_eq!(recovered.bounds, expected.bounds);
+        assert_eq!(scratch.measured_length(), None);
     }
 
     #[test]
@@ -1712,13 +1918,20 @@ mod tests {
 
     #[test]
     fn tight_bounds_use_bezier_extrema_not_control_points() {
-        let mut p = Pen::new(Point::new(-1.0, 0.0), false, false);
-        p.start_path(2, RouteStyle::Curved);
+        let mut write = |_| Ok::<_, Infallible>(());
+        let mut p = Pen::new(
+            Point::new(-1.0, 0.0),
+            false,
+            false,
+            RouteOutput::Commands(&mut write),
+        );
+        p.start_path(2, RouteStyle::Curved).unwrap();
         p.cubic(
             Point::new(-1.0, 10.0),
             Point::new(3.0, 10.0),
             Point::new(3.0, 0.0),
-        );
+        )
+        .unwrap();
         assert_eq!(
             p.bounds,
             Bounds {

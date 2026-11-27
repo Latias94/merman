@@ -2,11 +2,11 @@
 
 use super::edge_paint_error;
 use super::*;
-use crate::graph::RouteTopology;
+use crate::graph::AxisRoutes;
 use merman_render_core::{
-    graph_layout::{axis_clearance::AxisClearance, contour},
+    graph_layout::contour,
     route_paint,
-    route_types::{BorderStitch, Endpoint, RoutePoint},
+    route_types::{Endpoint, RoutePoint},
 };
 use std::borrow::Cow;
 
@@ -44,29 +44,44 @@ fn obstacles(layout: FlowchartSvgLayout<'_>) -> Vec<(kurbo::Rect, route_paint::O
     boxes
 }
 
-pub(super) fn paint(
-    request: FlowchartEdgePathGeomRequest<'_>,
-    profiles: &[contour::ShapePortProfile],
-    route: &RouteTopology,
-    stitches: &[BorderStitch],
-    clearance: &AxisClearance,
-    scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Result<FlowchartEdgePathGeom> {
+struct CanonicalEdgePaint<'a> {
+    route: route_paint::RoutePaintRequest<'a>,
+    solved: FlowchartLayoutEdgeRef<'a>,
+}
+
+fn prepare<'a>(
+    request: FlowchartEdgePathGeomRequest<'a>,
+    axis: &'a AxisRoutes,
+    points: &'a mut Vec<RoutePoint>,
+) -> Result<Option<CanonicalEdgePaint<'a>>> {
     let FlowchartEdgePathGeomRequest {
         ctx,
         key,
         edge,
         origin_x,
         origin_y,
-        trace_enabled,
+        ..
     } = request;
+    let occurrence = key.semantic_index();
+    let first = axis
+        .border_stitches
+        .partition_point(|stitch| stitch.edge < occurrence);
+    let tail = &axis.border_stitches[first..];
+    let count = tail.partition_point(|stitch| stitch.edge == occurrence);
+    let stitches = &tail[..count];
+    let Some(route) = axis.routes.get(occurrence).and_then(Option::as_ref) else {
+        return Ok(None);
+    };
     let invalid = || edge_paint_error(&edge.id, route_paint::RoutePaintError::InvalidGeometry);
-    let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
+    let solved = ctx
+        .layout_edges_by_key
+        .get(&key)
+        .copied()
+        .ok_or_else(invalid)?;
     let solved_points = solved.points();
     if route.knots.len() != solved_points.len() || solved_points.len() < 2 {
         return Err(invalid());
     }
-    let points = &mut scratch.canonical_points;
     points.clear();
     points.reserve_exact(solved_points.len());
     points.extend(
@@ -101,7 +116,7 @@ pub(super) fn paint(
             Endpoint::Node(id) => {
                 let node = ctx.layout.nodes.get(id as usize)?;
                 (
-                    Cow::Borrowed(profiles.get(id as usize)?),
+                    Cow::Borrowed(axis.nodes.get(id as usize)?),
                     center(node.x, node.y),
                     side,
                 )
@@ -152,7 +167,7 @@ pub(super) fn paint(
         None
     } else {
         Some(
-            clearance
+            axis.clearance
                 .resolve_with(ctx.work_meter, || obstacles(ctx.layout))?
                 .for_edge(
                     key.semantic_index(),
@@ -162,26 +177,52 @@ pub(super) fn paint(
                 ),
         )
     };
+    Ok(Some(CanonicalEdgePaint {
+        route: route_paint::RoutePaintRequest {
+            points,
+            sides: (source_lead, target_lead),
+            style,
+            markers: super::super::flowchart_marker_metrics(edge),
+            curve_terminals: route_paint::CurveTerminals::Smooth,
+            stitches,
+            clearance,
+        },
+        solved,
+    }))
+}
+
+pub(super) fn paint(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    axis: &AxisRoutes,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Result<Option<FlowchartEdgePathGeom>> {
+    let Some(CanonicalEdgePaint { route, solved }) =
+        prepare(request, axis, &mut scratch.canonical_points)?
+    else {
+        return Ok(None);
+    };
+    let FlowchartEdgePathGeomRequest {
+        ctx,
+        key,
+        edge,
+        origin_x,
+        origin_y,
+        trace_enabled,
+    } = request;
     if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {
         scratch.canonical_paint.measure_length();
     }
-    let painted = route_paint::build_svg_path_with_scratch(
-        points,
-        (source_lead, target_lead),
-        style,
-        super::super::flowchart_marker_metrics(edge),
-        route_paint::CurveTerminals::Smooth,
-        stitches,
-        clearance,
-        &mut scratch.canonical_paint,
-    )
-    .map_err(|error| edge_paint_error(&edge.id, error))?;
+    let points = route.points;
+    let painted = route
+        .paint_svg(&mut scratch.canonical_paint)
+        .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points
         .iter()
         .map(|p| merman_render_core::LayoutPoint { x: p.x, y: p.y })
         .collect();
     if trace_enabled {
-        let base_points: Vec<_> = solved_points
+        let base_points: Vec<_> = solved
+            .points()
             .iter()
             .map(|p| merman_render_core::LayoutPoint {
                 x: p.x + ctx.tx - origin_x,
@@ -200,7 +241,7 @@ pub(super) fn paint(
             points_for_data_points: &data_points,
         });
     }
-    Ok(FlowchartEdgePathGeom {
+    Ok(Some(FlowchartEdgePathGeom {
         d: painted.d,
         neo_length: scratch
             .canonical_paint
@@ -225,5 +266,31 @@ pub(super) fn paint(
         label_path_was_explicitly_updated: false,
         emitted_d_for_label: None,
         bounds_skipped_for_viewbox: false,
-    })
+    }))
+}
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "layout-shoal",
+    feature = "native-compact"
+))]
+pub(in crate::svg) fn paint_commands(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    axis: &AxisRoutes,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+    write: impl FnMut(route_paint::RouteCommand) -> Result<()>,
+) -> Result<Option<merman_render_core::Bounds>> {
+    let Some(prepared) = prepare(request, axis, &mut scratch.canonical_points)? else {
+        return Ok(None);
+    };
+    let bounds = prepared
+        .route
+        .paint_commands(&mut scratch.canonical_paint, write)
+        .map_err(|error| match error {
+            route_paint::RouteCommandError::Geometry(error) => {
+                edge_paint_error(&request.edge.id, error)
+            }
+            route_paint::RouteCommandError::Sink(error) => error,
+        })?;
+    Ok(Some(bounds))
 }

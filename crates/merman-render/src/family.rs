@@ -47,7 +47,11 @@ pub fn validate_svg_output_profile(
     let sequence = cfg!(feature = "diagram-sequence") && family == Some(DiagramFamilyId::SEQUENCE);
     let flowchart = cfg!(all(
         feature = "diagram-flowchart",
-        any(feature = "layout-dagre", feature = "layout-elk")
+        any(
+            feature = "layout-dagre",
+            feature = "layout-elk",
+            feature = "layout-shoal"
+        )
     )) && family == Some(DiagramFamilyId::FLOWCHART);
     if cfg!(feature = "native-compact") && (sequence || flowchart) {
         Ok(())

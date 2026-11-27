@@ -5,8 +5,10 @@ use merman_model::{
     OperationPhase,
     families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility},
 };
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::route_paint::RouteCommand;
 use merman_render_core::{
-    Error, Result,
+    Bounds, Error, Result,
     math::contains_delimited_math,
     paint_scene::{
         self, PaintScene, SceneBox, SceneColor, SceneFontFamily, SceneGroup, SceneItem,
@@ -34,6 +36,8 @@ use crate::{
     svg_label::FlowchartSvgLabelRenderPlan,
 };
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use super::edge_geom::LinearPaintedRoute;
 #[cfg(feature = "layout-dagre")]
 use super::paint::prepare_dagre_linear_edge_route;
 use super::{
@@ -45,6 +49,8 @@ use super::{
 };
 #[cfg(feature = "layout-elk")]
 use super::{edge_geom::elk_straight_painted_route, paint::prepare_elk_clipped_routes};
+#[cfg(feature = "layout-shoal")]
+use super::{edge_geom::paint_canonical_edge_commands, paint::charged_edge_route_request};
 
 const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
@@ -158,6 +164,11 @@ fn admit_request(
             "rounded",
             "flowchart-requires-classic-elk-rounded-svg-labels",
         ),
+        #[cfg(feature = "layout-shoal")]
+        FlowchartSvgRoute::CanonicalAxis(_) => (
+            "linear",
+            "flowchart-requires-classic-shoal-linear-svg-labels",
+        ),
         _ => {
             return Err(unsupported(
                 meter,
@@ -249,20 +260,28 @@ fn admit_edge(
     let layout = ctx
         .layout_edges_by_key
         .get(&render_edge.key)
-        .and_then(|edge| edge.materialized())
+        .copied()
         .ok_or_else(|| invalid("missing Flowchart layout edge"))?;
+    let materialized = layout.materialized();
+    let canonical_axis = ctx.layout.route_contract.is_canonical_axis();
+    if materialized.is_none() && !canonical_axis {
+        return Err(invalid("missing Flowchart layout edge"));
+    }
     if style.edge_marker_color(false).is_some()
         || ctx
             .edge_style_plan
             .animation_for(render_edge.key)?
             .is_active()
-        || layout.start_label_left.is_some()
-        || layout.start_label_right.is_some()
-        || layout.end_label_left.is_some()
-        || layout.end_label_right.is_some()
-        || layout.start_marker.is_some()
-        || layout.end_marker.is_some()
-        || layout.stroke_dasharray.is_some()
+        || (canonical_axis && layout.label().is_some())
+        || materialized.is_some_and(|layout| {
+            layout.start_label_left.is_some()
+                || layout.start_label_right.is_some()
+                || layout.end_label_left.is_some()
+                || layout.end_label_right.is_some()
+                || layout.start_marker.is_some()
+                || layout.end_marker.is_some()
+                || layout.stroke_dasharray.is_some()
+        })
     {
         return Err(unsupported(meter, "flowchart-edge-style"));
     }
@@ -451,6 +470,49 @@ fn reserve(items: &mut Vec<impl Sized>, additional: usize) -> Result<()> {
         .map_err(|_| invalid("Flowchart compact scene capacity"))
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+fn append_linear_route(
+    route: LinearPaintedRoute,
+    commands: &mut Vec<ScenePathCommand>,
+    meter: &OperationWorkMeter,
+) -> Result<Bounds> {
+    meter.charge_emit_work(route.points.len())?;
+    reserve(commands, route.points.len())?;
+    for (index, point) in route.points.into_iter().enumerate() {
+        let point = [point.x, point.y];
+        commands.push(if index == 0 {
+            ScenePathCommand::MoveTo(point)
+        } else {
+            ScenePathCommand::LineTo(point)
+        });
+    }
+    Ok(Bounds {
+        min_x: route.bounds.min_x,
+        min_y: route.bounds.min_y,
+        max_x: route.bounds.max_x,
+        max_y: route.bounds.max_y,
+    })
+}
+
+#[cfg(feature = "layout-shoal")]
+fn append_shoal_command(
+    command: RouteCommand,
+    commands: &mut Vec<ScenePathCommand>,
+    meter: &OperationWorkMeter,
+) -> Result<()> {
+    let command = match command {
+        RouteCommand::MoveTo(point) => ScenePathCommand::MoveTo([point.x, point.y]),
+        RouteCommand::LineTo(point) => ScenePathCommand::LineTo([point.x, point.y]),
+        RouteCommand::CubicTo { .. } | RouteCommand::QuarterArcTo { .. } => {
+            return Err(unsupported(meter, "flowchart-shoal-linear-painted-route"));
+        }
+    };
+    meter.charge_emit_work(1)?;
+    reserve(commands, 1)?;
+    commands.push(command);
+    Ok(())
+}
+
 fn render_scene(
     request: FlowchartSvgModelRequest<'_>,
     ctx: &FlowchartRenderCtx<'_>,
@@ -556,38 +618,45 @@ fn render_scene(
     };
     for edge in edges {
         let edge = edge.as_ref();
-        let route = match ctx.layout.route_contract {
+        let start = commands.len();
+        let route_bounds: Bounds = match ctx.layout.route_contract {
             #[cfg(feature = "layout-dagre")]
             FlowchartSvgRoute::DagreParity => {
-                prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
-                    .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?
+                let route = prepare_dagre_linear_edge_route(ctx, edge, hierarchy, &mut scratch)?
+                    .ok_or_else(|| unsupported(meter, "flowchart-linear-painted-route"))?;
+                append_linear_route(route, &mut commands, meter)?
             }
             #[cfg(feature = "layout-elk")]
-            FlowchartSvgRoute::ElkParity => elk_routes
-                .as_mut()
-                .and_then(Iterator::next)
-                .filter(|(request, _, _)| request.key == edge.key)
-                .and_then(|(request, _, route)| {
-                    elk_straight_painted_route(request, route, &mut scratch)
-                })
-                .ok_or_else(|| unsupported(meter, "flowchart-elk-straight-painted-route"))?,
+            FlowchartSvgRoute::ElkParity => {
+                let route = elk_routes
+                    .as_mut()
+                    .and_then(Iterator::next)
+                    .filter(|(request, _, _)| request.key == edge.key)
+                    .and_then(|(request, _, route)| {
+                        elk_straight_painted_route(request, route, &mut scratch)
+                    })
+                    .ok_or_else(|| unsupported(meter, "flowchart-elk-straight-painted-route"))?;
+                append_linear_route(route, &mut commands, meter)?
+            }
+            #[cfg(feature = "layout-shoal")]
+            FlowchartSvgRoute::CanonicalAxis(axis) => {
+                let (request, _) = charged_edge_route_request(ctx, edge, hierarchy)?;
+                let bounds =
+                    paint_canonical_edge_commands(request, axis, &mut scratch, |command| {
+                        append_shoal_command(command, &mut commands, meter)
+                    })?
+                    .ok_or_else(|| invalid("missing Flowchart canonical route"))?;
+                if commands.len() - start < 2 {
+                    return Err(unsupported(meter, "flowchart-shoal-linear-painted-route"));
+                }
+                bounds
+            }
             _ => return Err(invalid("unadmitted Flowchart compact route contract")),
         };
-        min_x = min_x.min(route.bounds.min_x);
-        min_y = min_y.min(route.bounds.min_y);
-        max_x = max_x.max(route.bounds.max_x);
-        max_y = max_y.max(route.bounds.max_y);
-        meter.charge_emit_work(route.points.len())?;
-        reserve(&mut commands, route.points.len())?;
-        let start = commands.len();
-        for (index, point) in route.points.into_iter().enumerate() {
-            let point = [point.x, point.y];
-            commands.push(if index == 0 {
-                ScenePathCommand::MoveTo(point)
-            } else {
-                ScenePathCommand::LineTo(point)
-            });
-        }
+        min_x = min_x.min(route_bounds.min_x);
+        min_y = min_y.min(route_bounds.min_y);
+        max_x = max_x.max(route_bounds.max_x);
+        max_y = max_y.max(route_bounds.max_y);
         ranges.push((
             start..commands.len(),
             flowchart_edge_marker_end_base(edge.edge).is_some(),
@@ -677,4 +746,81 @@ pub fn render_native_compact(
             &services.root_viewport,
         )
     })
+}
+
+#[cfg(all(test, feature = "layout-shoal"))]
+mod tests {
+    use super::*;
+    use merman_model::OperationLedgerError;
+    use merman_render_core::{
+        resources::{RenderResourcePolicy, ResourceLimitId},
+        route_paint::{CurveTerminals, RouteCommandError, RoutePaintRequest, RouteStyle},
+        route_types::{Axis, RoutePoint, Side},
+    };
+
+    #[test]
+    fn shoal_compact_command_sink_keeps_the_admitted_work_prefix_and_phase() {
+        let points = [
+            RoutePoint::new(0.0, 0.0, Axis::Horizontal),
+            RoutePoint::new(64.0, 0.0, Axis::Horizontal),
+        ];
+        let route = || RoutePaintRequest {
+            points: &points,
+            sides: (Side::Right, Side::Left),
+            style: RouteStyle::Linear,
+            markers: Default::default(),
+            curve_terminals: CurveTerminals::Smooth,
+            stitches: &[],
+            clearance: None,
+        };
+        let render = |meter: &OperationWorkMeter, cancel: bool| {
+            let mut commands = Vec::new();
+            let result = route().paint_commands(&mut Default::default(), |command| {
+                append_shoal_command(command, &mut commands, meter)?;
+                if cancel {
+                    meter.control().cancel();
+                }
+                Ok::<_, Error>(())
+            });
+            (result, commands.len())
+        };
+        let meter = |maximum| {
+            OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+                    .unwrap(),
+            )
+        };
+
+        let exact = meter(2);
+        let (result, commands) = render(&exact, false);
+        assert!(result.is_ok());
+        assert_eq!((commands, exact.used()), (2, 2));
+
+        let limited = meter(1);
+        let (result, commands) = render(&limited, false);
+        assert!(matches!(
+            result,
+            Err(RouteCommandError::Sink(Error::ResourceLimitExceeded(limit)))
+                if limit.limit == "max_layout_work_units" && limit.actual == 2 && limit.max == 1
+        ));
+        assert_eq!((commands, limited.used()), (1, 1));
+        assert!(matches!(
+            limited.control().terminal_checkpoint_at(OperationPhase::Layout),
+            Err(OperationLedgerError::ResourceLimitExceeded(error))
+                if error.phase == OperationPhase::Emit
+        ));
+
+        let cancelled = meter(2);
+        let (result, commands) = render(&cancelled, true);
+        assert!(matches!(
+            result,
+            Err(RouteCommandError::Sink(Error::Cancelled(error))) if error.phase == OperationPhase::Emit
+        ));
+        assert_eq!((commands, cancelled.used()), (1, 1));
+        assert!(matches!(
+            cancelled.control().terminal_checkpoint_at(OperationPhase::Layout),
+            Err(OperationLedgerError::Cancelled(error)) if error.phase == OperationPhase::Emit
+        ));
+    }
 }

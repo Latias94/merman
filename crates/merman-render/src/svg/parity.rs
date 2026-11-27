@@ -727,7 +727,11 @@ pub(crate) fn render_native_compact_family_artifact(
         }
         #[cfg(all(
             feature = "diagram-flowchart",
-            any(feature = "layout-dagre", feature = "layout-elk")
+            any(
+                feature = "layout-dagre",
+                feature = "layout-elk",
+                feature = "layout-shoal"
+            )
         ))]
         crate::family::BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_native_compact_flowchart_artifact(artifact, metadata, &execution)

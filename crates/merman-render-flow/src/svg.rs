@@ -35,7 +35,11 @@ mod cluster_geometry;
 #[cfg(all(
     feature = "native-compact",
     feature = "diagram-flowchart",
-    any(feature = "layout-dagre", feature = "layout-elk")
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
 ))]
 mod compact;
 mod defs;
@@ -81,7 +85,11 @@ pub mod test_support {
 #[cfg(all(
     feature = "native-compact",
     feature = "diagram-flowchart",
-    any(feature = "layout-dagre", feature = "layout-elk")
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
 ))]
 pub use compact::render_native_compact;
 pub use layout::{FlowchartSvgLayout, FlowchartSvgRoute, SwimlaneSvgLayout};

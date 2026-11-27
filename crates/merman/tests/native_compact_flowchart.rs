@@ -1,6 +1,10 @@
 #![cfg(all(
     feature = "diagram-flowchart",
-    any(feature = "layout-dagre", feature = "layout-elk"),
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ),
     feature = "native-compact",
     feature = "svg"
 ))]
@@ -32,6 +36,18 @@ config:
     htmlLabels: false
   elk:
     lineHops: false
+---
+"#;
+
+#[cfg(feature = "layout-shoal")]
+const SHOAL_CONFIG: &str = r#"---
+config:
+  layout: shoal
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    curve: linear
 ---
 "#;
 
@@ -70,6 +86,7 @@ fn shaft_nodes<'a, 'input>(
     })
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn shafts(root: roxmltree::Node<'_, '_>) -> Vec<Vec<f64>> {
     shaft_nodes(root)
         .map(|node| {
@@ -405,4 +422,115 @@ fn compact_flowchart_elk_checks_exact_output_limits() {
         };
         assert_eq!(error.id, id);
     }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn compact_flowchart_shoal_keeps_scoped_markers_and_viewport_in_all_directions() {
+    for direction in ["LR", "TB", "RL", "BT"] {
+        let body = format!("flowchart {direction}\nA[Plan] --> B[Ship] --- C[Done]");
+        let parity = render_with_config(SHOAL_CONFIG, &body, SvgRequest::default()).unwrap();
+        let compact = render_with_config(SHOAL_CONFIG, &body, compact_request()).unwrap();
+        let parity = roxmltree::Document::parse(&parity).unwrap();
+        let compact = roxmltree::Document::parse(&compact).unwrap();
+        let root = compact.root_element();
+        assert_eq!(
+            root.attribute("viewBox"),
+            parity.root_element().attribute("viewBox")
+        );
+        let shafts: Vec<_> = shaft_nodes(root).collect();
+        assert_eq!(shafts.len(), 2, "{direction}");
+        for shaft in &shafts {
+            assert!(shaft.attribute("marker-start").is_none(), "{direction}");
+        }
+        let marker = root
+            .descendants()
+            .find(|node| node.has_tag_name("marker"))
+            .unwrap();
+        let marker_id = marker.attribute("id").unwrap();
+        assert!(marker_id.starts_with("compact-flow-"));
+        let marker_ref = format!("url(#{marker_id})");
+        assert_eq!(shafts[0].attribute("marker-end"), Some(marker_ref.as_str()));
+        assert!(shafts[1].attribute("marker-end").is_none(), "{direction}");
+        assert!(!root.descendants().any(|node| {
+            node.has_tag_name("foreignObject")
+                || node.has_tag_name("style")
+                || node.attribute("data-points").is_some()
+        }));
+        for label in ["Plan", "Ship", "Done"] {
+            assert!(
+                root.descendants()
+                    .any(|node| { node.has_tag_name("text") && node.text() == Some(label) })
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn compact_flowchart_shoal_keeps_parallel_occurrences_and_bent_shafts() {
+    let body = "flowchart LR\nA[Plan] --> B[Ship]\nA --- B\nB --> C[Done]\nC --- A";
+    let compact = render_with_config(SHOAL_CONFIG, body, compact_request()).unwrap();
+    let compact = roxmltree::Document::parse(&compact).unwrap();
+    let shafts: Vec<_> = shaft_nodes(compact.root_element()).collect();
+    assert_eq!(shafts.len(), 4);
+    assert_eq!(
+        shafts
+            .iter()
+            .map(|shaft| shaft.attribute("marker-end").is_some())
+            .collect::<Vec<_>>(),
+        [true, false, true, false]
+    );
+    assert_ne!(shafts[0].attribute("d"), shafts[1].attribute("d"));
+    assert!(shafts[3].attribute("d").unwrap().matches('L').count() > 1);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn compact_flowchart_shoal_keeps_output_limits_and_rejects_rounded() {
+    let body = "flowchart LR\nA[Plan] --> B[Ship] --- C[Done]";
+    let expected = render_with_config(SHOAL_CONFIG, body, compact_request()).unwrap();
+    let elements = roxmltree::Document::parse(&expected)
+        .unwrap()
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .count();
+    for (limit, maximum, id) in [
+        (
+            ResourceLimitId::MaxSvgBytes,
+            expected.len(),
+            "max_svg_bytes",
+        ),
+        (
+            ResourceLimitId::MaxSvgElements,
+            elements,
+            "max_svg_elements",
+        ),
+    ] {
+        let render_capped = |maximum| {
+            let mut request = compact_request();
+            request.environment = request.environment.with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(limit, maximum)
+                    .unwrap(),
+            );
+            render_with_config(SHOAL_CONFIG, body, request)
+        };
+        assert_eq!(render_capped(maximum).unwrap(), expected);
+        let RenderError::ResourceLimitExceeded(error) = render_capped(maximum - 1).unwrap_err()
+        else {
+            panic!("expected {id}");
+        };
+        assert_eq!(error.id, id);
+    }
+
+    let rounded = SHOAL_CONFIG.replace("curve: linear", "curve: rounded");
+    let error = render_with_config(&rounded, body, compact_request()).unwrap_err();
+    assert!(matches!(
+        error,
+        RenderError::Svg(merman_render::Error::UnsupportedSvgOutputProfile {
+            profile: SvgOutputProfile::NativeCompact,
+            reason: "flowchart-requires-classic-shoal-linear-svg-labels",
+        })
+    ));
 }

@@ -23,7 +23,11 @@ pub(crate) use merman_render_flow::svg::flowchart_marker_metrics;
 #[cfg(all(
     feature = "native-compact",
     feature = "diagram-flowchart",
-    any(feature = "layout-dagre", feature = "layout-elk")
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
 ))]
 pub(super) use svg_emit::render_native_compact_flowchart_artifact;
 pub(super) use svg_emit::{flowchart_edge_geometry, render_flowchart_svg_artifact};

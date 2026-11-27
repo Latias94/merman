@@ -301,7 +301,7 @@ pub fn with_flowchart_paint_context<T>(
 }
 
 #[inline]
-fn charged_edge_route_request<'a>(
+pub(super) fn charged_edge_route_request<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     edge: FlowchartRenderEdgeRef<'a>,
     hierarchy: &FlowchartHierarchyPlan<'_>,
