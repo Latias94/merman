@@ -51,7 +51,7 @@ pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 pub use metrics::unsupported_html_label_style;
 
 pub(crate) use merman_render_core::text::{
-    ParsedCssFontStack, non_markdown_svg_words, parse_css_font_stack, xhtml_font_default,
+    non_markdown_svg_words, parse_css_font_stack, xhtml_font_default,
 };
 
 #[cfg(feature = "diagram-c4")]
@@ -66,7 +66,7 @@ pub use merman_render_core::text::{
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
 pub(crate) use merman_render_core::text::{
-    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
+    is_html_collapsible_ascii_whitespace, resolve_css_font_weight,
     trim_html_collapsible_ascii_whitespace,
 };
 pub(crate) use merman_render_core::text::{

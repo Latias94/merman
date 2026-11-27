@@ -4,6 +4,7 @@
 
 use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
 use merman_render_core::svg_css::CssSelectorDiagramId;
+use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
 use super::SvgOutput;
 
@@ -73,10 +74,6 @@ pub(super) fn fmt_path(v: f64) -> String {
     fmt_path_into(&mut out, v);
     out
 }
-
-pub(super) use merman_render_core::svg_edge_parity::path_numbers::{
-    fmt_path_into, path_coordinate_thousandths,
-};
 
 pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
     // Mermaid encodes `data-points` as Base64(JSON.stringify(points)).

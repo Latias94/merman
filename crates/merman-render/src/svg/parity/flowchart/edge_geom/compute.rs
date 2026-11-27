@@ -486,7 +486,8 @@ fn round_linear_point(point: &mut crate::model::LayoutPoint) -> Option<()> {
         if !value.is_finite() {
             return None;
         }
-        let thousandths = crate::svg::parity::util::path_coordinate_thousandths(value);
+        let thousandths =
+            merman_render_core::svg_edge_parity::path_numbers::path_coordinate_thousandths(value);
         (thousandths.unsigned_abs() <= (1_u64 << f64::MANTISSA_DIGITS))
             .then(|| thousandths as f64 / 1000.0)
     }

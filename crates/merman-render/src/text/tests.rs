@@ -182,7 +182,7 @@ fn html_break_spaces_uses_decoded_entity_whitespace() {
 #[test]
 fn ecmascript_and_html_whitespace_helpers_preserve_next_line_control() {
     let nel = '\u{0085}';
-    assert!(!is_ecmascript_whitespace(nel));
+    assert!(!merman_render_core::text::is_ecmascript_whitespace(nel));
     assert!(!is_html_collapsible_ascii_whitespace(nel));
     assert_eq!(
         trim_ecmascript_whitespace("\u{0085}A\u{0085}"),
