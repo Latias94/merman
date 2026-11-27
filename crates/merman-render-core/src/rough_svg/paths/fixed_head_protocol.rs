@@ -4,7 +4,7 @@ use roughr::core::{
 };
 use roughr::{PathParser, PathSegment};
 
-pub(in crate::svg::parity) const SOURCE_COMMIT: &str = "bd1ef5b8c6e5ada9bbe544a54cd85e11e62e727a";
+pub const SOURCE_COMMIT: &str = "bd1ef5b8c6e5ada9bbe544a54cd85e11e62e727a";
 
 type Point = [f64; 2];
 
@@ -17,11 +17,7 @@ fn opset(kind: OpSetType, operations: Vec<Op<f64>>) -> OpSet<f64> {
     }
 }
 
-pub(in crate::svg::parity) fn zero_roughness_line(
-    start: Point,
-    end: Point,
-    options: &mut Options,
-) -> OpSet<f64> {
+pub fn zero_roughness_line(start: Point, end: Point, options: &mut Options) -> OpSet<f64> {
     assert_eq!(options.roughness, Some(0.0));
     let mut operations = Vec::new();
     let strokes = if options.disable_multi_stroke == Some(true) {
@@ -257,7 +253,7 @@ fn sampled_sets(segments: &[PathSegment]) -> Vec<Vec<Point>> {
         .collect()
 }
 
-pub(in crate::svg::parity) fn outline_first_paths(
+pub fn outline_first_paths(
     path: &str,
     randomness: &RoughRandomness,
     force_single_set: bool,

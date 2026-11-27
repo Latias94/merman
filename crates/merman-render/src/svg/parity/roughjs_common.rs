@@ -9,7 +9,7 @@ pub(in crate::svg::parity) use merman_render_core::rough_svg::{controlled, ops_t
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(in crate::svg::parity) mod paths;
+pub(in crate::svg::parity) use merman_render_core::rough_svg::paths;
 
 pub(in crate::svg::parity) use merman_render_core::rough_svg::{
     RoughRectSpec, closed_path_d_from_points, mermaid_arc_points, roughjs_circle_operations,
