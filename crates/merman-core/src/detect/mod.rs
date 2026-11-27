@@ -6,6 +6,7 @@ pub use full::{ConfigDetectorFn, Detector, DetectorConfig, DetectorFn, DetectorR
 
 use crate::family::DetectorFact;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, Result};
+use merman_core_preprocess::detection_comments::strip_detection_comments_controlled;
 use merman_model::text::is_ecmascript_whitespace;
 use std::borrow::Cow;
 
@@ -51,7 +52,7 @@ pub(crate) fn detect_builtin_controlled(
     text: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Result<DetectorFact>> {
-    let cleaned = clean_detection_input_controlled(text, control)?;
+    let cleaned = strip_detection_frontmatter_and_directives_controlled(text, control)?;
     detect_builtin_cleaned_controlled(cleaned.as_ref(), control)
 }
 
@@ -67,8 +68,9 @@ fn detect_builtin_cleaned_controlled(
     text: &str,
     control: &OperationControl,
 ) -> OperationControlResult<Result<DetectorFact>> {
+    let text = strip_detection_comments_controlled(text, control)?;
     Ok(detect_precleaned_controlled(
-        text,
+        text.as_ref(),
         crate::family::detector_facts(),
         |fact, text| (fact.detector)(text),
         control,
@@ -98,7 +100,7 @@ fn detect_precleaned_controlled<'a, T>(
     .into()))
 }
 
-fn clean_detection_input_controlled<'a>(
+fn strip_detection_frontmatter_and_directives_controlled<'a>(
     text: &'a str,
     control: &OperationControl,
 ) -> OperationControlResult<Cow<'a, str>> {
@@ -107,13 +109,7 @@ fn clean_detection_input_controlled<'a>(
     let no_frontmatter = crate::preprocess::locate_frontmatter_block_controlled(text, control)?
         .map_or(text, |block| block.stripped);
     control.checkpoint()?;
-    let no_directives = remove_directives_controlled(no_frontmatter, control)?;
-    control.checkpoint()?;
-    let cleaned = match crate::utils::cleanup_mermaid_comments(no_directives.as_ref()) {
-        Cow::Borrowed(_) => no_directives,
-        Cow::Owned(cleaned) => Cow::Owned(cleaned),
-    };
-    Ok(cleaned)
+    remove_directives_controlled(no_frontmatter, control)
 }
 
 #[cfg(test)]

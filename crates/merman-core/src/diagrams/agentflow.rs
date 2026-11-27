@@ -448,6 +448,7 @@ mod semantic_tests {
             for suffix in [
                 "; A",
                 "\u{00a0}; A",
+                "%% comment\nA",
                 " %% comment\nA",
                 " LR extra\nA",
                 " LR; direction TB; A\nB",
@@ -464,6 +465,10 @@ mod semantic_tests {
                 );
             }
         }
+        assert!(matches!(
+            parser.parse_diagram_sync("\u{0085}agentflow\nA"),
+            Err(Error::DetectType(_))
+        ));
     }
 
     #[test]
