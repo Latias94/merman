@@ -538,7 +538,7 @@ Repeated scalar options keep only their winning binding occurrence in editor fac
 remain cumulative. Merge validation follows the selected DB's head-ownership order, including its
 distinct self-merge diagnostics.
 
-Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
+Owners: [parser and semantic model construction](../../crates/merman-core-graph/src/git_graph/mod.rs),
 [color binding](../../crates/merman-render-graph/src/gitgraph/css_binding.rs), and
 [12.3 regressions](../../crates/merman-render/tests/gitgraph_mermaid_12_3_regression_test.rs).
 
@@ -1020,7 +1020,7 @@ bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as sep
 operations. A uniform lattice correction or emoji-specific geometry would not represent those
 inputs. Parser diagnostics are Rust-native rather than exact Langium messages and offsets.
 
-Owners: [TreeView layout](../../crates/merman-render/src/tree_view.rs) and
+Owners: [Tree View layout and SVG](../../crates/merman-render-structured/src/tree_view/mod.rs) and
 [SVG/root tests](../../crates/merman-render/tests/tree_view_svg_test.rs).
 
 ## Wardley
