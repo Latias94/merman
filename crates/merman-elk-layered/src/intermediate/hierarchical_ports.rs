@@ -12,7 +12,7 @@ use crate::graph::{
 use crate::options::{Alignment, ELK_DEFAULT_EDGE_THICKNESS, PortConstraints};
 use crate::p5edges::orthogonal::{RoutingDirection, route_edges};
 
-use super::{connected_ports, first_port_on_side};
+use super::first_port_on_side;
 
 pub fn process_hierarchical_port_dummy_sizes(graph: &mut LGraph) {
     let delta = graph.options.spacing.edge_edge_between_layers * 2.0;
