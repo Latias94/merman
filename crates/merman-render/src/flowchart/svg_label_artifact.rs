@@ -9,7 +9,6 @@ use std::sync::Mutex;
 
 use rustc_hash::FxHashMap;
 
-use crate::environment::TextMeasurementOperation;
 use crate::math::{
     ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
     PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
@@ -20,7 +19,10 @@ use crate::resources::{
     OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_render_core::text::measurement::{MeasurementReuseKey, measurement_reuse_key};
+use merman_render_flow::svg_label::{
+    FlowchartSvgLabelMeasurementRequest, FlowchartSvgLabelSourceEntry,
+    FlowchartSvgLabelWrapBindingRequest, PreparedFlowchartSvgLabel, normalized_label_width_bits,
+};
 
 use super::label::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgWidthMode,
@@ -291,212 +293,6 @@ impl<T> FlowchartSvgLabelSlots<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FlowchartSvgTextStyleKey {
-    font_family: Option<String>,
-    font_size_bits: u64,
-    font_weight: Option<String>,
-    font_style: Option<String>,
-}
-
-impl FlowchartSvgTextStyleKey {
-    fn new(style: &TextStyle) -> Self {
-        Self {
-            font_family: style.font_family.clone(),
-            font_size_bits: canonical_f64_bits(style.font_size),
-            font_weight: style.font_weight.clone(),
-            font_style: style.font_style.clone(),
-        }
-    }
-
-    fn matches(&self, style: &TextStyle) -> bool {
-        self.font_family.as_deref() == style.font_family.as_deref()
-            && self.font_size_bits == canonical_f64_bits(style.font_size)
-            && self.font_weight.as_deref() == style.font_weight.as_deref()
-            && self.font_style.as_deref() == style.font_style.as_deref()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FlowchartSvgLabelBinding {
-    wrap_style: FlowchartSvgTextStyleKey,
-    metrics_style: FlowchartSvgTextStyleKey,
-    max_width_bits: Option<u64>,
-    break_long_words: bool,
-    width_mode: FlowchartSvgWidthMode,
-    computed_length_key: Option<MeasurementReuseKey>,
-    wrapped_key: Option<MeasurementReuseKey>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FlowchartSvgLabelWrapBindingRequest<'a> {
-    wrap_style: &'a TextStyle,
-    max_width_bits: Option<u64>,
-    break_long_words: bool,
-    computed_length_key: Option<MeasurementReuseKey>,
-}
-
-impl<'a> FlowchartSvgLabelWrapBindingRequest<'a> {
-    fn for_measurer(
-        measurer: &dyn TextMeasurer,
-        wrap_style: &'a TextStyle,
-        max_width_px: Option<f64>,
-        break_long_words: bool,
-    ) -> Option<Self> {
-        Some(Self {
-            wrap_style,
-            max_width_bits: normalized_width_bits(max_width_px),
-            break_long_words,
-            computed_length_key: Some(measurement_reuse_key(
-                measurer,
-                TextMeasurementOperation::ComputedLength,
-            )?),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FlowchartSvgLabelBindingRequest<'a> {
-    wrap_style: &'a TextStyle,
-    metrics_style: &'a TextStyle,
-    max_width_bits: Option<u64>,
-    break_long_words: bool,
-    width_mode: FlowchartSvgWidthMode,
-    computed_length_key: Option<MeasurementReuseKey>,
-    wrapped_key: Option<MeasurementReuseKey>,
-}
-
-impl<'a> FlowchartSvgLabelBindingRequest<'a> {
-    fn for_measurer(
-        measurer: &dyn TextMeasurer,
-        wrap_style: &'a TextStyle,
-        metrics_style: &'a TextStyle,
-        max_width_px: Option<f64>,
-        break_long_words: bool,
-        width_mode: FlowchartSvgWidthMode,
-    ) -> Option<Self> {
-        Some(Self {
-            wrap_style,
-            metrics_style,
-            max_width_bits: normalized_width_bits(max_width_px),
-            break_long_words,
-            width_mode,
-            computed_length_key: Some(measurement_reuse_key(
-                measurer,
-                TextMeasurementOperation::ComputedLength,
-            )?),
-            wrapped_key: Some(measurement_reuse_key(
-                measurer,
-                TextMeasurementOperation::Wrapped,
-            )?),
-        })
-    }
-
-    fn into_owned(self) -> FlowchartSvgLabelBinding {
-        FlowchartSvgLabelBinding {
-            wrap_style: FlowchartSvgTextStyleKey::new(self.wrap_style),
-            metrics_style: FlowchartSvgTextStyleKey::new(self.metrics_style),
-            max_width_bits: self.max_width_bits,
-            break_long_words: self.break_long_words,
-            width_mode: self.width_mode,
-            computed_length_key: self.computed_length_key,
-            wrapped_key: self.wrapped_key,
-        }
-    }
-}
-
-impl FlowchartSvgLabelBinding {
-    fn matches_wrapping(&self, request: &FlowchartSvgLabelWrapBindingRequest<'_>) -> bool {
-        self.wrap_style.matches(request.wrap_style)
-            && self.max_width_bits == request.max_width_bits
-            && self.break_long_words == request.break_long_words
-            && self.computed_length_key == request.computed_length_key
-    }
-
-    fn matches(&self, request: &FlowchartSvgLabelBindingRequest<'_>) -> bool {
-        self.wrap_style.matches(request.wrap_style)
-            && self.metrics_style.matches(request.metrics_style)
-            && self.max_width_bits == request.max_width_bits
-            && self.break_long_words == request.break_long_words
-            && self.width_mode == request.width_mode
-            && self.computed_length_key == request.computed_length_key
-            && self.wrapped_key == request.wrapped_key
-    }
-}
-
-fn canonical_f64_bits(value: f64) -> u64 {
-    if value == 0.0 {
-        0.0_f64.to_bits()
-    } else if value.is_nan() {
-        f64::NAN.to_bits()
-    } else {
-        value.to_bits()
-    }
-}
-
-fn normalized_width_bits(width: Option<f64>) -> Option<u64> {
-    width
-        .filter(|width| width.is_finite() && *width > 0.0)
-        .map(canonical_f64_bits)
-}
-
-/// A fully measured label bound to one exact style, width, wrapping mode, and built-in route.
-#[derive(Debug)]
-pub(crate) struct PreparedFlowchartSvgLabel {
-    binding: FlowchartSvgLabelBinding,
-    wrapped_lines: Vec<Vec<String>>,
-    metrics: TextMetrics,
-}
-
-#[derive(Debug)]
-struct FlowchartSvgLabelSourceEntry {
-    raw_source: Box<str>,
-    source: FlowchartSvgLabelSource,
-}
-
-impl FlowchartSvgLabelSourceEntry {
-    fn new(raw_source: &str) -> Self {
-        Self {
-            raw_source: raw_source.into(),
-            source: FlowchartSvgLabelSource::new(raw_source),
-        }
-    }
-
-    fn matches(&self, raw_source: &str) -> bool {
-        self.raw_source.as_ref() == raw_source
-    }
-}
-
-impl PreparedFlowchartSvgLabel {
-    fn new(
-        binding: FlowchartSvgLabelBinding,
-        wrapped_lines: Vec<Vec<String>>,
-        metrics: TextMetrics,
-    ) -> Self {
-        Self {
-            binding,
-            wrapped_lines,
-            metrics,
-        }
-    }
-
-    pub(crate) fn wrapped_lines(&self) -> &[Vec<String>] {
-        &self.wrapped_lines
-    }
-
-    pub(crate) fn metrics(&self) -> TextMetrics {
-        self.metrics
-    }
-
-    fn matches(&self, binding: &FlowchartSvgLabelBindingRequest<'_>) -> bool {
-        self.binding.matches(binding)
-    }
-
-    fn matches_wrapping(&self, binding: &FlowchartSvgLabelWrapBindingRequest<'_>) -> bool {
-        self.binding.matches_wrapping(binding)
-    }
-}
-
 /// Mutable preparation state used only while one Flowchart family artifact is laid out.
 ///
 /// Pure source projections are retained for every eligible label. Browser math is retained only
@@ -608,7 +404,7 @@ impl PreparedFlowchartMathLabel {
             && self.style.font_weight == style.font_weight
             && self.style.font_style == style.font_style
             && self.foreground.value() == foreground
-            && self.max_width_bits == normalized_width_bits(max_width_px)
+            && self.max_width_bits == normalized_label_width_bits(max_width_px)
             && self.wrap_mode == wrap_mode
     }
 
@@ -1061,7 +857,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             });
         }
 
-        let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+        let svg_measurement = FlowchartSvgLabelMeasurementRequest::new(
             request.measurer,
             request.style,
             metrics_style,
@@ -1070,35 +866,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             width_mode,
         );
 
-        let measure_wrapped = |source: &FlowchartSvgLabelSource, wrapped_lines: &[Vec<String>]| {
-            if request.label_type == "markdown" {
-                // Plain Markdown shares the prepared SVG rows, but retains its computed-length
-                // measurement and 1/64px width lattice rather than the non-Markdown bbox path.
-                let markdown_lines = wrapped_lines
-                    .iter()
-                    .map(|line| {
-                        line.iter()
-                            .map(|word| {
-                                (word.clone(), crate::text::MermaidMarkdownWordType::Normal)
-                            })
-                            .collect()
-                    })
-                    .collect::<Vec<_>>();
-                crate::text::measure_svg_markdown_word_lines(
-                    request.measurer,
-                    &markdown_lines,
-                    metrics_style,
-                    crate::text::SvgTextEntityMode::CreateTextSource,
-                )
-            } else {
-                source.metrics_from_wrapped(
-                    request.measurer,
-                    metrics_style,
-                    wrapped_lines,
-                    width_mode,
-                )
-            }
-        };
+        let markdown = request.label_type == "markdown";
 
         let measured_from_existing_source = {
             let pending = self.pending.borrow();
@@ -1109,12 +877,12 @@ impl FlowchartSvgLabelSidecarBuilder {
                 .and_then(|_| pending.sources.get(owner))
                 .filter(|source| source.matches(request.raw_label));
 
-            if let (Some(_), Some(binding)) = (source, binding.as_ref())
+            if source.is_some()
+                && svg_measurement.has_reusable_binding()
                 && let Some(metrics) = pending
                     .prepared
                     .get(owner)
-                    .filter(|prepared| prepared.matches(binding))
-                    .map(PreparedFlowchartSvgLabel::metrics)
+                    .and_then(|prepared| svg_measurement.matching_metrics(prepared))
             {
                 #[cfg(test)]
                 self.prepared_hits
@@ -1122,31 +890,16 @@ impl FlowchartSvgLabelSidecarBuilder {
                 return metrics;
             }
 
-            source.map(|source| {
-                let wrapped_lines = source.source.wrapped_lines(
-                    request.measurer,
-                    request.style,
-                    request.max_width_px,
-                    break_long_words,
-                );
-                let metrics = measure_wrapped(&source.source, &wrapped_lines);
-                (wrapped_lines, metrics)
-            })
+            source.map(|source| svg_measurement.measure(source.source(), markdown))
         };
 
-        let (new_source, wrapped_lines, metrics) = measured_from_existing_source.map_or_else(
+        let (new_source, measured) = measured_from_existing_source.map_or_else(
             || {
                 let source = FlowchartSvgLabelSourceEntry::new(request.raw_label);
-                let wrapped_lines = source.source.wrapped_lines(
-                    request.measurer,
-                    request.style,
-                    request.max_width_px,
-                    break_long_words,
-                );
-                let metrics = measure_wrapped(&source.source, &wrapped_lines);
-                (Some(source), wrapped_lines, metrics)
+                let measured = svg_measurement.measure(source.source(), markdown);
+                (Some(source), measured)
             },
-            |(wrapped_lines, metrics)| (None, wrapped_lines, metrics),
+            |measured| (None, measured),
         );
 
         #[cfg(test)]
@@ -1162,11 +915,9 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.sources.insert(owner, source);
             pending.prepared.remove(owner);
         }
-        if let Some(binding) = binding {
-            pending.prepared.insert(
-                owner,
-                PreparedFlowchartSvgLabel::new(binding.into_owned(), wrapped_lines, metrics),
-            );
+        let metrics = measured.metrics();
+        if let Some(prepared) = measured.into_prepared() {
+            pending.prepared.insert(owner, prepared);
         } else {
             pending.prepared.remove(owner);
         }
@@ -1417,7 +1168,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                 source: Arc::from(request.raw_label),
                 style: metrics_style.clone(),
                 foreground: foreground.clone(),
-                max_width_bits: normalized_width_bits(request.max_width_px),
+                max_width_bits: normalized_label_width_bits(request.max_width_px),
                 wrap_mode: request.wrap_mode,
                 outcome,
                 // One semantic Flowchart/Swimlane label owner maps to one terminal label.
@@ -1894,33 +1645,6 @@ impl FlowchartSvgLabelSidecar {
             })
     }
 
-    fn prepared(
-        &self,
-        owner: FlowchartSvgLabelOwner,
-        raw_source: &str,
-        binding: &FlowchartSvgLabelBindingRequest<'_>,
-    ) -> Option<(&FlowchartSvgLabelSource, &PreparedFlowchartSvgLabel)> {
-        let source = self
-            .sources
-            .get(owner)
-            .filter(|source| source.matches(raw_source));
-        let prepared = source.map(|source| &source.source).zip(
-            self.prepared
-                .get(owner)
-                .filter(|prepared| prepared.matches(binding)),
-        );
-        #[cfg(test)]
-        if prepared.is_some() {
-            let mut hits = self
-                .prepared_hits_by_owner
-                .lock()
-                .expect("prepared-hit test observer lock");
-            let owner_hits = hits.entry(owner).or_default();
-            *owner_hits = owner_hits.saturating_add(1);
-        }
-        prepared
-    }
-
     fn prepared_wrapping(
         &self,
         owner: FlowchartSvgLabelOwner,
@@ -1931,7 +1655,7 @@ impl FlowchartSvgLabelSidecar {
             .sources
             .get(owner)
             .filter(|source| source.matches(raw_source));
-        let prepared = source.map(|source| &source.source).zip(
+        let prepared = source.map(FlowchartSvgLabelSourceEntry::source).zip(
             self.prepared
                 .get(owner)
                 .filter(|prepared| prepared.matches_wrapping(binding)),
@@ -1956,7 +1680,7 @@ impl FlowchartSvgLabelSidecar {
         self.sources
             .get(owner)
             .filter(|source| source.matches(raw_source))
-            .map(|source| &source.source)
+            .map(FlowchartSvgLabelSourceEntry::source)
     }
 
     #[cfg(test)]
@@ -1990,16 +1714,29 @@ impl FlowchartSvgLabelSidecar {
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> Option<TextMetrics> {
-        let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+        let svg_measurement = FlowchartSvgLabelMeasurementRequest::new(
             measurer,
             style,
             style,
             max_width_px,
             break_long_words,
             width_mode,
-        )?;
-        self.prepared(owner, raw_source, &binding)
-            .map(|(_, prepared)| prepared.metrics())
+        );
+        if !svg_measurement.has_reusable_binding() {
+            return None;
+        }
+        self.source(owner, raw_source)?;
+        let metrics = svg_measurement.matching_metrics(self.prepared.get(owner)?)?;
+        #[cfg(test)]
+        {
+            let mut hits = self
+                .prepared_hits_by_owner
+                .lock()
+                .expect("prepared-hit test observer lock");
+            let owner_hits = hits.entry(owner).or_default();
+            *owner_hits = owner_hits.saturating_add(1);
+        }
+        Some(metrics)
     }
 }
 
@@ -3341,10 +3078,11 @@ mod tests {
     #[test]
     fn streaming_state_without_builtin_carriers_is_not_cached() {
         use crate::environment::{
-            MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
-            TextMeasurementProfileIdentity, TextMeasurementSummary,
+            MeasurementProfileId, TextMeasurementOperation, TextMeasurementPolicy,
+            TextMeasurementProfile, TextMeasurementProfileIdentity, TextMeasurementSummary,
         };
         use crate::text::DeterministicTextMeasurer;
+        use merman_render_core::text::measurement::measurement_reuse_key;
 
         let direct = DeterministicTextMeasurer::default();
         let wrap_profile = TextMeasurementProfile::new(
