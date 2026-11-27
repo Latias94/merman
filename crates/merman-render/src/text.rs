@@ -14,25 +14,21 @@ pub(crate) use merman_render_core::text::inline_html::{
 use merman_render_core::text::line_break;
 #[cfg(feature = "markdown-labels")]
 pub use merman_render_core::text::measure_markdown_with_inline_styles;
+pub(crate) use merman_render_core::text::measure_mermaid_text_dimensions_with_checkpoint;
 pub use merman_render_core::text::replace_fontawesome_icons;
 pub use merman_render_core::text::{
     DeterministicTextMeasurer, TextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
 };
-pub(crate) use merman_render_core::text::{
-    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
-    measure_mermaid_text_dimensions_with_checkpoint,
-};
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::{
-    MermaidMarkdownAnalysis, analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
+    analyze_mermaid_markdown, mermaid_markdown_contains_html_tags,
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_is_plain_text,
     mermaid_markdown_to_html_label_fragment, mermaid_markdown_to_lines,
     mermaid_markdown_to_xhtml_label_fragment,
 };
 pub(crate) use merman_render_core::text::{
-    measure_svg_markdown_word_lines, measure_svg_markdown_word_lines_with_origin,
-    measure_xhtml_label_fragment_with_terminal_fonts, wrap_markdown_word_lines,
+    measure_svg_markdown_word_lines, measure_xhtml_label_fragment_with_terminal_fonts,
 };
 #[cfg(feature = "markdown-labels")]
 pub(crate) use merman_render_core::text::{

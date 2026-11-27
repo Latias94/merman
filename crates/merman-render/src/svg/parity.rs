@@ -1602,17 +1602,6 @@ fn apply_theme_css(
         .map(|svg| (svg, true))
 }
 
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_basis_path_d(points)
-}
-
 #[cfg(test)]
 mod operation_time_tests {
     use super::*;

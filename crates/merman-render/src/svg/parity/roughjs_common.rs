@@ -1,8 +1,6 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
-pub(in crate::svg::parity) use merman_render_core::rough_svg::{
-    controlled, ops_to_svg_path_d, parse_hex_color_to_srgba,
-};
+pub(in crate::svg::parity) use merman_render_core::rough_svg::{controlled, ops_to_svg_path_d};
 
 #[cfg(any(
     feature = "diagram-c4",
@@ -20,7 +18,7 @@ pub(in crate::svg::parity) use merman_render_core::rough_svg::{
 
 #[cfg(test)]
 mod color_tests {
-    use super::parse_hex_color_to_srgba;
+    use merman_render_core::rough_svg::parse_hex_color_to_srgba;
 
     #[test]
     fn malformed_hex_color_never_slices_inside_utf8() {

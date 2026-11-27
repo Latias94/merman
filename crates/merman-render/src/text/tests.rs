@@ -1,7 +1,7 @@
 use super::*;
 use crate::graph_label::flowchart_label_metrics_for_layout;
 use crate::text::metrics::style_requests_bold_font_weight;
-use merman_render_core::text::trim_ecmascript_whitespace;
+use merman_render_core::text::{trim_ecmascript_whitespace, wrap_markdown_word_lines};
 
 fn assert_finite_positive_metrics(metrics: TextMetrics) {
     assert!(

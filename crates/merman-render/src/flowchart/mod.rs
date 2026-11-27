@@ -28,8 +28,7 @@ pub(crate) use merman_model::families::flowchart::{
 };
 
 pub(crate) use class_style::{
-    FlowchartClassDefStyles, FlowchartClassDefinitions, FlowchartLabelDom,
-    FlowchartStructuralLabelTypography,
+    FlowchartClassDefinitions, FlowchartLabelDom, FlowchartStructuralLabelTypography,
 };
 pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 pub(crate) use edge_occurrence::FlowchartEdgeOwners;

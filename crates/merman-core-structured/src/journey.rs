@@ -277,6 +277,13 @@ fn strip_comment_prefix(line: &str) -> &str {
 ///
 /// Rich observations are optional. The unterminated accessibility block observation is
 /// still delivered to a recovery-only observer. Every span is relative to `code`.
+#[cfg_attr(
+    not(feature = "editor-facts"),
+    allow(
+        clippy::needless_lifetimes,
+        reason = "The editor observer borrows from the same source lifetime."
+    )
+)]
 pub fn parse_journey_source_controlled<'source>(
     code: &'source str,
     #[cfg(feature = "editor-facts")] capture_facts: bool,

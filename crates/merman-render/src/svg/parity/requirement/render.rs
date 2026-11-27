@@ -951,7 +951,7 @@ mod tests {
             .find(|edge| edge.id == "req1-cyclic-special-1")
             .expect("middle self-loop segment");
         let middle_label = middle_edge.label.as_ref().expect("middle label geometry");
-        let middle_path = crate::svg::parity::curve_basis_path_d(&middle_edge.points);
+        let middle_path = crate::svg::parity::curve::curve_basis_path_d(&middle_edge.points);
         let final_position = crate::svg::parity::edge_label_geometry::position_edge_label(
             crate::model::LayoutPoint {
                 x: middle_label.x,

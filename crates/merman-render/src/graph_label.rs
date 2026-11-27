@@ -1,6 +1,4 @@
 use crate::html::label_box::{HtmlLabelBox, HtmlLabelWidth};
-#[cfg(feature = "markdown-labels")]
-use crate::math::MathRenderer;
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use crate::model::{Bounds, LayoutEdge, LayoutNode};

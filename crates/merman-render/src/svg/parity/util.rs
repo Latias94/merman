@@ -8,9 +8,7 @@ use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
 use super::SvgOutput;
 
-pub(super) use merman_render_core::html::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, html_label_overflow_attr,
-};
+pub(super) use merman_render_core::html::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
     EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
@@ -23,9 +21,6 @@ pub(super) use merman_render_core::svg_css::{scoped_drop_shadow, scoped_svg_id, 
 pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
     CssSelectorDiagramId(diagram_id)
 }
-
-#[cfg(feature = "diagram-class")]
-pub(super) use merman_render_core::text::svg_label::write_style_attribute;
 
 pub(super) use crate::config::config_f64;
 
