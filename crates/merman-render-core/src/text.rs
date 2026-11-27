@@ -1,5 +1,9 @@
 //! Shared text style and measurement values.
 
+#[cfg(all(feature = "markdown-labels", feature = "math-labels"))]
+#[doc(hidden)]
+pub mod create_text_html;
+
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "text-layout")]

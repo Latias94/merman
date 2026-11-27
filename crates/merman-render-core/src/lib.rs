@@ -8,6 +8,9 @@ pub mod config;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod entities;
+#[cfg(feature = "euclid-geometry")]
+#[doc(hidden)]
+pub mod euclid_box;
 mod geometry;
 #[cfg(feature = "graph-layout")]
 #[doc(hidden)]

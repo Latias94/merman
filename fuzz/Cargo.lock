@@ -1217,6 +1217,7 @@ dependencies = [
  "cssparser",
  "data-url",
  "dugong",
+ "euclid",
  "kurbo",
  "manatee",
  "memchr",

@@ -2767,6 +2767,7 @@ dependencies = [
  "cssparser",
  "data-url",
  "dugong",
+ "euclid",
  "kurbo 0.13.1",
  "manatee",
  "memchr",
