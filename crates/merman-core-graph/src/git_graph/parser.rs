@@ -1023,7 +1023,7 @@ impl<'source> GitGraphHeader<'source> {
                     emit(GitGraphSyntaxEvent::Common(&parsed.fact));
                 }
                 if let Some(diagnostic) = parsed.diagnostic {
-                    first_error.get_or_insert_with(|| GitGraphDiagnostic {
+                    first_error.get_or_insert(GitGraphDiagnostic {
                         message: diagnostic.message,
                         location: GitGraphDiagnosticLocation::CommonInsertionPoint(
                             diagnostic.span.start,
