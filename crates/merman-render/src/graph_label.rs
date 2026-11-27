@@ -1,5 +1,5 @@
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
-#[cfg(any(feature = "layout-elk", test))]
+#[cfg(test)]
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 #[cfg(all(
     test,
@@ -97,16 +97,6 @@ pub(crate) fn flowchart_html_label_metrics_with_geometry(
             feature = "diagram-agentflow"
         )),
     )
-}
-
-#[cfg(feature = "layout-elk")]
-pub(crate) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    match merman_render_core::measure_layout_bounds(nodes, edges, |_| {
-        Ok::<(), std::convert::Infallible>(())
-    }) {
-        Ok(bounds) => bounds,
-        Err(never) => match never {},
-    }
 }
 
 #[cfg(test)]

@@ -10,6 +10,9 @@ use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
 use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_render_core::elk_adapter::hierarchy::{
+    charge_adapter_work, checked_adapter_add, checked_adapter_mul,
+};
 use std::sync::Arc;
 
 use super::{FlowchartClassDefinitions, FlowchartSvgLabelSidecarBuilder};
@@ -408,54 +411,6 @@ fn build_flowchart_elk_graph_with_work_control(
         &edge_style_plan,
         work_control,
     )
-}
-
-fn charge_adapter_work(
-    work_control: &mut Option<&mut OperationLayoutWorkControl>,
-    units: usize,
-) -> Result<()> {
-    match work_control.as_deref_mut() {
-        Some(work_control) => work_control.charge_adapter(units),
-        None => Ok(()),
-    }
-}
-
-fn checked_adapter_add(
-    work_control: &Option<&mut OperationLayoutWorkControl>,
-    left: usize,
-    right: usize,
-) -> Result<usize> {
-    left.checked_add(right).ok_or_else(|| {
-        work_control
-            .as_deref()
-            .map(|work_control| work_control.arithmetic_overflow())
-            .unwrap_or_else(|| {
-                OperationWorkMeter::new(
-                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-                )
-                .arithmetic_overflow()
-            })
-            .into()
-    })
-}
-
-fn checked_adapter_mul(
-    work_control: &Option<&mut OperationLayoutWorkControl>,
-    left: usize,
-    right: usize,
-) -> Result<usize> {
-    left.checked_mul(right).ok_or_else(|| {
-        work_control
-            .as_deref()
-            .map(|work_control| work_control.arithmetic_overflow())
-            .unwrap_or_else(|| {
-                OperationWorkMeter::new(
-                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-                )
-                .arithmetic_overflow()
-            })
-            .into()
-    })
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::resources::OperationWorkMeter;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
-pub(super) fn charge_adapter_work(
+pub fn charge_adapter_work(
     work_control: &mut Option<&mut OperationLayoutWorkControl>,
     units: usize,
 ) -> Result<()> {
@@ -16,7 +16,7 @@ pub(super) fn charge_adapter_work(
     }
 }
 
-pub(super) fn checked_adapter_add(
+pub fn checked_adapter_add(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
@@ -35,7 +35,7 @@ pub(super) fn checked_adapter_add(
     })
 }
 
-pub(super) fn checked_adapter_mul(
+pub fn checked_adapter_mul(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,

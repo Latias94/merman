@@ -15,6 +15,7 @@ use crate::{Error, Result};
 use merman_layout_elk as elk;
 use merman_model::families::flowchart::{FlowSubgraph, FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
+use merman_render_flow::elk::canonical_subgraphs;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::{charge_adapter_work, checked_adapter_add, checked_adapter_mul};
@@ -385,17 +386,6 @@ struct ElkMeasureContext<'a> {
     class_html_labels: bool,
     title_padding: f64,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
-}
-
-pub(super) fn canonical_subgraphs(model: &FlowchartModel) -> Vec<(usize, &FlowSubgraph)> {
-    let mut seen = HashSet::with_capacity(model.subgraphs.len());
-    let mut canonical = Vec::with_capacity(model.subgraphs.len());
-    for (semantic_index, subgraph) in model.subgraphs.iter().enumerate() {
-        if seen.insert(subgraph.id.as_str()) {
-            canonical.push((semantic_index, subgraph));
-        }
-    }
-    canonical
 }
 
 fn dir_to_elk_direction(dir: &str) -> elk::Direction {

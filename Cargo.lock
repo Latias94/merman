@@ -2807,6 +2807,7 @@ dependencies = [
  "indexmap",
  "kurbo 0.13.1",
  "memchr",
+ "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-render-core",

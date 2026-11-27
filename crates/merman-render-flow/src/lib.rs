@@ -93,6 +93,16 @@ pub mod svg_label;
 #[cfg(feature = "layout-dagre")]
 #[doc(hidden)]
 pub mod dagre;
+#[cfg(all(
+    feature = "layout-elk",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod elk;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
