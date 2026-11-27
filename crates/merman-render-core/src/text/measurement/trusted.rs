@@ -1,6 +1,7 @@
 //! Sealed route authority and streaming width probes.
 
-use super::super::{TextStyle, append_text_width_em, estimate_text_width_em};
+use super::super::deterministic::DeterministicMode;
+use super::super::{HeuristicTextWidth, TextStyle};
 #[cfg(feature = "resources")]
 use super::{TextMeasurementOperation, TextMeasurementPhase};
 #[cfg(test)]
@@ -18,6 +19,19 @@ pub(in crate::text) const TRUSTED_MEASUREMENT: TrustedMeasurementQuery =
 #[cfg(feature = "resources")]
 pub(super) enum BuiltinTextMeasurementProfile {
     Deterministic,
+    #[cfg(feature = "layout-shoal")]
+    Calibrated,
+}
+
+#[cfg(feature = "resources")]
+impl BuiltinTextMeasurementProfile {
+    const fn mode(self) -> DeterministicMode {
+        match self {
+            Self::Deterministic => DeterministicMode::Compatibility,
+            #[cfg(feature = "layout-shoal")]
+            Self::Calibrated => DeterministicMode::Calibrated,
+        }
+    }
 }
 
 #[cfg(feature = "resources")]
@@ -76,19 +90,20 @@ impl BuiltinTextMeasurementOperationCarrier {
     ) -> Option<BuiltinSvgComputedLength> {
         match (self.0.phase, self.0.operation) {
             (TextMeasurementPhase::ComputedLength, TextMeasurementOperation::ComputedLength) => {
-                Some(BuiltinSvgComputedLength::new(style))
+                Some(BuiltinSvgComputedLength::with_mode(
+                    style,
+                    self.0.profile.mode(),
+                ))
             }
             _ => None,
         }
     }
 
     pub(super) fn into_html_line_width(self, style: &TextStyle) -> Option<BuiltinHtmlLineWidth> {
-        match (self.0.profile, self.0.phase, self.0.operation) {
-            (
-                BuiltinTextMeasurementProfile::Deterministic,
-                TextMeasurementPhase::Wrap,
-                TextMeasurementOperation::CanvasMeasureTextWidth,
-            ) => Some(BuiltinHtmlLineWidth::deterministic(style, 0.0)),
+        match (self.0.phase, self.0.operation) {
+            (TextMeasurementPhase::Wrap, TextMeasurementOperation::CanvasMeasureTextWidth) => Some(
+                BuiltinHtmlLineWidth::with_mode(style, 0.0, self.0.profile.mode()),
+            ),
             _ => None,
         }
     }
@@ -138,13 +153,14 @@ impl InlineHtmlMeasurementCarrier {
         style: &TextStyle,
     ) -> Option<BuiltinHtmlLineWidth> {
         self.builtin
-            .map(|_| BuiltinHtmlLineWidth::deterministic(style, 0.0))
+            .map(|profile| BuiltinHtmlLineWidth::with_mode(style, 0.0, profile.mode()))
     }
 }
 
 #[derive(Debug, Clone)]
 struct BuiltinInlineRawLineWidth {
     font_size: f64,
+    model: HeuristicTextWidth,
     state: RefCell<BuiltinInlineRawLineWidthState>,
 }
 
@@ -220,15 +236,33 @@ enum BuiltinHtmlLineWidthSource {
 
 impl BuiltinHtmlLineWidth {
     pub(in crate::text) fn deterministic(style: &TextStyle, char_width_factor: f64) -> Self {
-        let source = if char_width_factor == 0.0 {
-            BuiltinHtmlLineWidthSource::Heuristic(BuiltinInlineRawLineWidth::new(style))
+        Self::with_mode(style, char_width_factor, DeterministicMode::Compatibility)
+    }
+
+    pub(in crate::text) fn with_mode(
+        style: &TextStyle,
+        char_width_factor: f64,
+        mode: DeterministicMode,
+    ) -> Self {
+        if char_width_factor == 0.0 {
+            let (model, size) = mode.width_model(style);
+            Self::heuristic(model, size)
         } else {
-            BuiltinHtmlLineWidthSource::Uniform {
+            Self::with_source(BuiltinHtmlLineWidthSource::Uniform {
                 font_size: style.font_size.max(0.0),
                 char_width_factor,
                 char_count: 0,
-            }
-        };
+            })
+        }
+    }
+
+    pub(in crate::text) fn heuristic(model: HeuristicTextWidth, font_size: f64) -> Self {
+        Self::with_source(BuiltinHtmlLineWidthSource::Heuristic(
+            BuiltinInlineRawLineWidth::new(model, font_size),
+        ))
+    }
+
+    fn with_source(source: BuiltinHtmlLineWidthSource) -> Self {
         Self {
             source,
             spacing: None,
@@ -339,14 +373,16 @@ pub(in crate::text) struct BuiltinSvgComputedLength {
 
 #[cfg(feature = "svg-output")]
 impl BuiltinSvgComputedLength {
-    fn new(style: &TextStyle) -> Self {
+    pub(in crate::text) fn with_mode(style: &TextStyle, mode: DeterministicMode) -> Self {
+        let (model, size) = mode.width_model(style);
         Self {
-            line: BuiltinInlineRawLineWidth::new(style),
+            line: BuiltinInlineRawLineWidth::new(model, size),
         }
     }
 
+    #[cfg(test)]
     pub(in crate::text) fn deterministic(style: &TextStyle) -> Self {
-        Self::new(style)
+        Self::with_mode(style, DeterministicMode::Compatibility)
     }
 
     pub(in crate::text) fn push_text(&mut self, text: &str) {
@@ -374,9 +410,10 @@ impl BuiltinSvgComputedLength {
 }
 
 impl BuiltinInlineRawLineWidth {
-    fn new(style: &TextStyle) -> Self {
+    fn new(model: HeuristicTextWidth, font_size: f64) -> Self {
         Self {
-            font_size: style.font_size.max(0.0),
+            font_size,
+            model,
             state: RefCell::new(BuiltinInlineRawLineWidthState::default()),
         }
     }
@@ -390,7 +427,7 @@ impl BuiltinInlineRawLineWidth {
         state.pending_width_dirty = true;
     }
 
-    fn refresh_width(state: &mut BuiltinInlineRawLineWidthState) {
+    fn refresh_width(model: HeuristicTextWidth, state: &mut BuiltinInlineRawLineWidthState) {
         if !state.pending_width_dirty {
             return;
         }
@@ -412,19 +449,19 @@ impl BuiltinInlineRawLineWidth {
             .next_back()
             .map_or(0, |(index, _)| index);
         if last_grapheme_start > 0 {
-            append_text_width_em(
+            model.append(
                 &mut state.committed_em,
                 &state.pending_grapheme[..last_grapheme_start],
             );
             state.pending_grapheme.drain(..last_grapheme_start);
         }
-        state.pending_em = estimate_text_width_em(&state.pending_grapheme);
+        state.pending_em = model.width(&state.pending_grapheme);
         state.pending_width_dirty = false;
     }
 
     fn width_px(&self) -> f64 {
         let mut state = self.state.borrow_mut();
-        Self::refresh_width(&mut state);
+        Self::refresh_width(self.model, &mut state);
         (state.committed_em + state.pending_em) * self.font_size
     }
 
@@ -457,7 +494,8 @@ mod tests {
             font_size: 10.0,
             ..TextStyle::default()
         };
-        let mut width = BuiltinInlineRawLineWidth::new(&style);
+        let (model, size) = DeterministicMode::Compatibility.width_model(&style);
+        let mut width = BuiltinInlineRawLineWidth::new(model, size);
         for index in 1..=8192 {
             width.push_text("👩\u{200d}\u{00ad}");
             assert_eq!(width.width_px(), index as f64 * 10.0);

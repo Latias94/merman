@@ -1,6 +1,7 @@
 use super::super::*;
 use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
 use crate::model::SwimlaneLaneLayout;
+use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
 const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
@@ -288,19 +289,34 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
                 fmt_display(label_y)
             )
         };
-        let div_style = format!(
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
-            fmt_display(width),
-        );
+        let wrap_width = FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
+        let uses_wrapped_box = label_width >= wrap_width - 1e-3;
+        let div_style = if uses_wrapped_box {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+                mw = fmt_display(wrap_width),
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt_display(width.max(label_width)),
+            )
+        };
+        let overflow_attr = if label_width > 0.0 || label_height > 0.0 {
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
+        } else {
+            ""
+        };
         let _ = write!(
             out,
-            r#"<g class="cluster-label {}" transform="{}"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+            r#"<g class="cluster-label {}" transform="{}"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
             label_class,
             escape_xml_display(&transform),
             fmt_display(label_width),
             fmt_display(label_height),
+            overflow_attr,
             escape_xml_display(&div_style),
-            OptionalStyleXmlAttr(label_style),
+            OptionalStyleAttr(label_style),
             title_html,
         );
     } else {

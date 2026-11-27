@@ -12,6 +12,52 @@ use super::SvgExecution;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use merman_render_graph::state::state_canonical_marker;
 
+#[cfg(feature = "layout-shoal")]
+fn state_canonical_edge_painter<'a>(
+    routes: &'a crate::graph_layout::canonical::CanonicalRoutes,
+    work_meter: &'a crate::resources::OperationWorkMeter,
+) -> impl for<'points> Fn(
+    &crate::model::LayoutEdge,
+    kurbo::Vec2,
+    f64,
+    Option<&roughr::core::RoughRandomness>,
+    &'points mut crate::graph_layout::canonical::CanonicalPaintScratch,
+) -> Result<merman_render_graph::state::StateCanonicalEdge<'points>>
++ 'a {
+    use crate::graph_layout::route_paint::RouteStyle;
+    use merman_render_graph::state::StateCanonicalEdge;
+
+    move |edge, translation, stroke_outset, randomness, scratch| {
+        let geometry = routes.paint_with_borrowed_points(
+            edge,
+            translation,
+            stroke_outset,
+            RouteStyle::Curved,
+            work_meter,
+            scratch,
+        )?;
+        let rough_d = if let Some(randomness) = randomness {
+            work_meter.charge(geometry.path.d.len().max(1))?;
+            Some(super::canonical_rough::constrained_rough_edge_path(
+                &geometry.path.d,
+                geometry.markers,
+                work_meter,
+                randomness,
+            )?)
+        } else {
+            None
+        };
+        Ok(StateCanonicalEdge {
+            d: geometry.path.d,
+            bounds: geometry.path.bounds,
+            data_points: geometry.data_points,
+            marker_points: geometry.marker_points,
+            end_marker: geometry.markers.1,
+            rough_d,
+        })
+    }
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The prepared family inputs are borrowed separately."
@@ -28,37 +74,9 @@ pub(super) fn render_state_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<RootedSvg> {
     #[cfg(feature = "layout-shoal")]
-    let canonical_routes = route_contract.canonical_routes().map(|routes| {
-        use crate::graph_layout::route_paint::RouteStyle;
-        use merman_render_graph::state::StateCanonicalEdge;
-
-        let work_meter = options.work_meter();
-        move |edge: &crate::model::LayoutEdge,
-              translation,
-              stroke_outset,
-              randomness: Option<&roughr::core::RoughRandomness>| {
-            let geometry = routes.paint(edge, translation, stroke_outset, RouteStyle::Curved)?;
-            let rough_d = if let Some(randomness) = randomness {
-                work_meter.charge(geometry.path.d.len().max(1))?;
-                Some(super::canonical_rough::constrained_rough_edge_path(
-                    &geometry.path.d,
-                    geometry.markers,
-                    work_meter,
-                    randomness,
-                )?)
-            } else {
-                None
-            };
-            Ok(StateCanonicalEdge {
-                d: geometry.path.d,
-                bounds: geometry.path.bounds,
-                data_points: geometry.data_points,
-                marker_points: geometry.marker_points,
-                end_marker: geometry.markers.1,
-                rough_d,
-            })
-        }
-    });
+    let canonical_routes = route_contract
+        .canonical_routes()
+        .map(|routes| state_canonical_edge_painter(routes, options.work_meter()));
 
     let diagram_id = options.diagram_id_or("merman");
     let context = StateSvgContext {

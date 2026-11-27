@@ -2,11 +2,12 @@
 
 mod clearance;
 
-use super::{Drawing, Link, canonical_size};
-use crate::work::{LayoutResult, Work, filled, push, reserved};
+use super::{Component, Drawing, canonical_size, contour_inset};
+use crate::work::{LayoutResult, Work, push, reserved};
 use crate::{
-    Axis, Direction, EdgeSpec, Graph, MarkerMetrics, Options, Point, RoutePoint, RoutingStyle,
-    Size, Spacing, sweep_handle_fraction,
+    Axis, Direction, EdgeSpec, Graph, KnotKind, MarkerMetrics, NodeSpec, Options, Point,
+    PortSideHint, RoutePoint, RoutingStyle, ShapeContourHint, Side, Size, Spacing,
+    sweep_handle_fraction,
 };
 use clearance::{Bounds, Clearance, Scene};
 
@@ -23,75 +24,109 @@ pub(super) struct InlineLabel {
 pub(super) struct GapPolicy<'a> {
     pub(super) spacing: Spacing,
     pub(super) restored: &'a [u32],
+    pub(super) nodes: &'a [NodeSpec],
+    pub(super) reversed: &'a [bool],
+    pub(super) routing: RoutingStyle,
 }
 
 fn label_padding(spacing: Spacing) -> f64 {
-    spacing.edge.max(2.0)
+    (spacing.edge * 0.35).max(2.0)
+}
+
+fn along_label_padding(spacing: Spacing) -> f64 {
+    (spacing.edge * 0.2).clamp(2.0, 3.0)
 }
 
 fn marker_lengths(edge: &EdgeSpec) -> [f64; 2] {
-    [edge.start_marker, edge.end_marker].map(|MarkerMetrics { length, width }| {
-        // An unmarked end can still reserve a straight lead for painting.
-        if width > 0.0 { length } else { 0.0 }
-    })
+    [edge.start_marker.length, edge.end_marker.length]
 }
 
 impl GapPolicy<'_> {
-    pub(super) fn admits(&self, size: Size, edge: &EdgeSpec, direction: Direction) -> bool {
+    pub(super) fn admits(
+        &self,
+        size: Size,
+        edge: &EdgeSpec,
+        direction: Direction,
+        edge_index: usize,
+        from: u32,
+    ) -> bool {
         let [start, end] = marker_lengths(edge);
         let depth = canonical_size(direction, size).height;
-        // Use the unexpanded gap and budget for markers on the rank faces. The placed
-        // routes still need clearance checks against actual contacts and neighboring ink.
-        size.width > 0.0
-            && size.height > 0.0
-            && size.width <= 120.0
-            && size.height <= (self.spacing.rank * 0.75).min(30.0)
-            && depth + 2.0 * label_padding(self.spacing) + start + end < self.spacing.rank
+        if size.width <= 0.0
+            || size.height <= 0.0
+            || size.width > 120.0
+            || size.height > (self.spacing.rank * 0.75).min(30.0)
+        {
+            return false;
+        }
+        if depth + 2.0 * along_label_padding(self.spacing) + start + end < self.spacing.rank {
+            return true;
+        }
+        // A diamond shoulder can give a curved departure room inside its measured box.
+        // Admit the attempt when the label alone fits the gap. Placement still checks the
+        // actual contour, marker boxes, neighboring ink, and fallback label tier.
+        depth < self.spacing.rank
+            && self.routing == RoutingStyle::Curved
+            && !self.reversed[edge_index]
+            && edge.start_marker == MarkerMetrics::default()
+            && edge.source_port == PortSideHint::Auto
+            && matches!(
+                self.nodes[from as usize].contour,
+                ShapeContourHint::Diamond | ShapeContourHint::OffsetDiamond { .. }
+            )
     }
 }
 
-pub(super) fn protect_transit_faces(
-    labels: &[InlineLabel],
-    arcs: &[Link],
-    ranks: &[u32],
-    split: &mut [bool],
-    work: &mut Work<'_>,
-) -> LayoutResult<()> {
-    let mut transit = Vec::new();
-    for arc in arcs {
-        work.visit(1)?;
-        let (from, to) = (arc.from as usize, arc.to as usize);
-        if ranks[to] - ranks[from] > 1 {
-            if transit.is_empty() {
-                work.charge(ranks.len())?;
-                transit = filled(ranks.len(), [false; 2])?;
-            }
-            transit[from][0] = true;
-            transit[to][1] = true;
-        }
+fn inset_contact(
+    mut contact: RoutePoint,
+    local: usize,
+    side: Side,
+    drawing: &Drawing,
+    component: &Component,
+    direction: Direction,
+) -> RoutePoint {
+    let node = component.nodes[local];
+    let center = drawing.nodes[local].center();
+    let offset = match side.axis() {
+        Axis::Vertical => contact.x - center.x,
+        Axis::Horizontal => contact.y - center.y,
+    };
+    let inset = contour_inset(node, direction, side, offset);
+    match side {
+        Side::Top => contact.y += inset,
+        Side::Bottom => contact.y -= inset,
+        Side::Left => contact.x += inset,
+        Side::Right => contact.x -= inset,
     }
-    if !transit.is_empty() {
-        for label in labels {
-            work.visit(1)?;
-            let arc = arcs[label.edge];
-            // Keep a tier when a longer path shares a rank face. The order and router can
-            // then assign that path a separate channel around the label from the first solve.
-            split[label.gap as usize] |=
-                transit[arc.from as usize][0] || transit[arc.to as usize][1];
-        }
-    }
-    Ok(())
+    contact
 }
 
 fn scene(
     drawing: &Drawing,
     graph: &Graph,
+    component: &Component,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<Clearance>> {
     let mut scene = Scene::default();
-    for &rect in &drawing.nodes {
-        if !scene.area(Bounds::of(rect), work)? {
+    for (index, &rect) in drawing.nodes.iter().enumerate() {
+        let bounds = Bounds::of(rect);
+        let added = if let Some(offset) =
+            super::diamond_offset(component.nodes[index].contour, graph.direction)
+        {
+            let diamond = Bounds {
+                x: bounds.x.map(|x| x + offset.x),
+                y: bounds.y.map(|y| y + offset.y),
+            };
+            if diamond.finite() && diamond.has_area() {
+                scene.diamond(diamond, work)?
+            } else {
+                scene.area(bounds, work)?
+            }
+        } else {
+            scene.area(bounds, work)?
+        };
+        if !added {
             return Ok(None);
         }
     }
@@ -115,8 +150,30 @@ fn scene(
         let [first, .., last] = route.points.as_slice() else {
             return Ok(None);
         };
-        if !scene.marker(*first, route.ports.0, spec.start_marker, work)?
-            || !scene.marker(*last, route.ports.1, spec.end_marker, work)?
+        let (start_tip, end_tip) = if let Some(&link) = component.links.get(index) {
+            (
+                inset_contact(
+                    *first,
+                    link.from as usize,
+                    route.ports.0,
+                    drawing,
+                    component,
+                    graph.direction,
+                ),
+                inset_contact(
+                    *last,
+                    link.to as usize,
+                    route.ports.1,
+                    drawing,
+                    component,
+                    graph.direction,
+                ),
+            )
+        } else {
+            (*first, *last)
+        };
+        if !scene.marker(start_tip, route.ports.0, spec.start_marker, work)?
+            || !scene.marker(end_tip, route.ports.1, spec.end_marker, work)?
             || !scene.stroke(index, &route.points, options.routing, work)?
         {
             return Ok(None);
@@ -133,32 +190,83 @@ struct Anchor {
     bend_room: f64,
 }
 
+const ARC_STEPS: usize = 12;
+const OPTICAL_FRACTIONS: [f64; 11] = [
+    0.5, 0.475, 0.525, 0.45, 0.55, 0.425, 0.575, 0.4, 0.6, 0.35, 0.65,
+];
+const ANCHOR_COUNT: usize = OPTICAL_FRACTIONS.len() + 3;
+
+fn arc_samples(a: RoutePoint, b: RoutePoint, style: RoutingStyle) -> [f64; ARC_STEPS + 1] {
+    let mut lengths = [0.0; ARC_STEPS + 1];
+    let mut previous = Point { x: a.x, y: a.y };
+    for i in 1..=ARC_STEPS {
+        let t = i as f64 / ARC_STEPS as f64;
+        let at = anchor(a, b, t, style, t).at;
+        lengths[i] = lengths[i - 1] + (at.x - previous.x).hypot(at.y - previous.y);
+        previous = at;
+    }
+    lengths
+}
+
+fn leg_samples(
+    a: RoutePoint,
+    b: RoutePoint,
+    style: RoutingStyle,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<[f64; ARC_STEPS + 1]>> {
+    if style == RoutingStyle::Curved && a.x != b.x && a.y != b.y {
+        work.visit(ARC_STEPS)?;
+        Ok(Some(arc_samples(a, b, style)))
+    } else {
+        Ok(None)
+    }
+}
+
 fn anchor(a: RoutePoint, b: RoutePoint, t: f64, style: RoutingStyle, fraction: f64) -> Anchor {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let straight_len = dx.hypot(dy);
     let (mut sx, mut sy) = (t, t);
     let (mut vx, mut vy) = (dx, dy);
     if dx != 0.0 && dy != 0.0 && style == RoutingStyle::Curved {
-        let ease = sweep_handle_fraction(dx, dy);
+        let (across, along) = match b.axis {
+            Axis::Vertical => (dx, dy),
+            Axis::Horizontal => (dy, dx),
+        };
+        let ease = sweep_handle_fraction(across, along);
         let blend = t * t * (3.0 - 2.0 * t);
         let slope = 6.0 * t * (1.0 - t);
         let run = blend + ease * 3.0 * t * (1.0 - t) * (1.0 - 2.0 * t);
         let tangent = slope + ease * (3.0 - 3.0 * slope);
+        let shoulder = if a.kind == KnotKind::ContourDeparture {
+            (0.35 * ease * along.abs() / across.abs()).min(0.25)
+        } else {
+            0.0
+        };
+        let side = blend + 3.0 * shoulder * t * (1.0 - t).powi(2);
+        let side_tangent = slope + 3.0 * shoulder * (1.0 - t) * (1.0 - 3.0 * t);
         match b.axis {
-            Axis::Vertical => (sx, sy, vx, vy) = (blend, run, dx * slope, dy * tangent),
-            Axis::Horizontal => (sx, sy, vx, vy) = (run, blend, dx * tangent, dy * slope),
+            Axis::Vertical => (sx, sy, vx, vy) = (side, run, dx * side_tangent, dy * tangent),
+            Axis::Horizontal => (sx, sy, vx, vy) = (run, side, dx * tangent, dy * side_tangent),
         }
     }
     let len = vx.hypot(vy);
+    let tangent = if len > 0.0 && len.is_finite() {
+        Point {
+            x: vx / len,
+            y: vy / len,
+        }
+    } else {
+        Point {
+            x: dx / straight_len,
+            y: dy / straight_len,
+        }
+    };
     Anchor {
         at: Point {
             x: dx.mul_add(sx, a.x),
             y: dy.mul_add(sy, a.y),
         },
-        tangent: Point {
-            x: vx / len,
-            y: vy / len,
-        },
+        tangent,
         fraction,
         bend_room: t.min(1.0 - t) * straight_len,
     }
@@ -166,42 +274,102 @@ fn anchor(a: RoutePoint, b: RoutePoint, t: f64, style: RoutingStyle, fraction: f
 
 fn anchors(
     route: &[RoutePoint],
+    ends: [RoutePoint; 2],
     style: RoutingStyle,
     [start_marker, end_marker]: [f64; 2],
+    contour_limits: Option<[f64; 2]>,
     work: &mut Work<'_>,
-) -> LayoutResult<[Option<Anchor>; 4]> {
+) -> LayoutResult<[Option<Anchor>; ANCHOR_COUNT]> {
+    let legs = || {
+        route.windows(2).enumerate().map(|(i, leg)| {
+            let a = if i == 0 { ends[0] } else { leg[0] };
+            let b = if i + 2 == route.len() {
+                ends[1]
+            } else {
+                leg[1]
+            };
+            (a, b)
+        })
+    };
     let mut total = 0.0;
-    let mut longest = (0.0, 0.0, 0);
-    for (i, leg) in route.windows(2).enumerate() {
+    let mut longest = (0.0, 0.0, ends);
+    for (a, b) in legs() {
         work.visit(1)?;
-        let size = (leg[1].x - leg[0].x).hypot(leg[1].y - leg[0].y);
+        let size = leg_samples(a, b, style, work)?
+            .map_or_else(|| (b.x - a.x).hypot(b.y - a.y), |arc| arc[ARC_STEPS]);
         if size > longest.0 {
-            longest = (size, total, i);
+            longest = (size, total, [a, b]);
         }
         total += size;
     }
-    let mut anchors = [None; 4];
+    let mut anchors = [None; ANCHOR_COUNT];
     let shaft = total - start_marker - end_marker;
     if shaft <= 0.0 || !shaft.is_finite() {
         return Ok(anchors);
     }
-    let (size, start, i) = longest;
-    anchors[3] = Some(anchor(
-        route[i],
-        route[i + 1],
+    let (size, start, [a, b]) = longest;
+    anchors[ANCHOR_COUNT - 1] = Some(anchor(
+        a,
+        b,
         0.5,
         style,
         ((start + size * 0.5 - start_marker) / shaft).clamp(0.0, 1.0),
     ));
     let mut start = 0.0;
-    for leg in route.windows(2) {
+    for (a, b) in legs() {
         work.visit(1)?;
-        let (a, b) = (leg[0], leg[1]);
-        let size = (b.x - a.x).hypot(b.y - a.y);
-        for (slot, fraction) in anchors.iter_mut().zip([0.5, 0.35, 0.65]) {
+        let arc = leg_samples(a, b, style, work)?;
+        let size = arc.map_or_else(|| (b.x - a.x).hypot(b.y - a.y), |arc| arc[ARC_STEPS]);
+        for (slot, fraction) in anchors.iter_mut().zip(OPTICAL_FRACTIONS) {
             let distance = fraction * shaft + start_marker - start;
             if slot.is_none() && size > 0.0 && (0.0..=size).contains(&distance) {
-                *slot = Some(anchor(a, b, distance / size, style, fraction));
+                let t = if let Some(arc) = arc {
+                    let hi = arc.partition_point(|&at| at < distance).clamp(1, ARC_STEPS);
+                    let lo = hi - 1;
+                    let length = arc[hi] - arc[lo];
+                    (lo as f64
+                        + if length > 0.0 {
+                            (distance - arc[lo]) / length
+                        } else {
+                            0.0
+                        })
+                        / ARC_STEPS as f64
+                } else {
+                    distance / size
+                };
+                *slot = Some(anchor(a, b, t, style, fraction));
+            }
+        }
+        if let (Some(arc), Some(limits)) = (&arc, contour_limits) {
+            for (slot, y) in anchors[OPTICAL_FRACTIONS.len()..ANCHOR_COUNT - 1]
+                .iter_mut()
+                .zip(limits)
+            {
+                if slot.is_none() && a.y < y && y < b.y {
+                    // An optical midpoint outside the gap can be closer to this
+                    // boundary than any of the regularly spaced candidates.
+                    let (mut low, mut high) = (0.0_f64, 1.0);
+                    for _ in 0..ARC_STEPS {
+                        work.visit(1)?;
+                        let t = low.midpoint(high);
+                        if anchor(a, b, t, style, 0.0).at.y < y {
+                            low = t;
+                        } else {
+                            high = t;
+                        }
+                    }
+                    let t = low.midpoint(high);
+                    let sample = t * ARC_STEPS as f64;
+                    let i = (sample as usize).min(ARC_STEPS - 1);
+                    let length = (arc[i + 1] - arc[i]).mul_add(sample - i as f64, arc[i]);
+                    *slot = Some(anchor(
+                        a,
+                        b,
+                        t,
+                        style,
+                        (start + length - start_marker) / shaft,
+                    ));
+                }
             }
         }
         start += size;
@@ -212,6 +380,7 @@ fn anchors(
 struct Label<'a> {
     edge: usize,
     route: &'a [RoutePoint],
+    ends: [RoutePoint; 2],
     markers: [f64; 2],
     size: Size,
     gap: [f64; 2],
@@ -226,10 +395,30 @@ impl Label<'_> {
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<(Point, Bounds)>> {
         let pad = label_padding(options.spacing);
+        let contour_departure = self.ends[0].kind == KnotKind::ContourDeparture;
+        let along_pad = if contour_departure {
+            pad.min(0.25)
+        } else {
+            along_label_padding(options.spacing)
+        };
+        let half_height = self.size.height * 0.5 + along_pad;
+        let top_limit = self.gap[0].min(self.ends[0].y);
+        let bottom_limit = self.gap[1].max(self.ends[1].y);
+        let contour_limits = contour_departure.then_some([
+            self.gap[0] + half_height + 0.02,
+            self.gap[1] - half_height - 0.02,
+        ]);
         let mut best = None::<(f64, Point, Bounds)>;
-        for anchor in anchors(self.route, options.routing, self.markers, work)?
-            .into_iter()
-            .flatten()
+        for anchor in anchors(
+            self.route,
+            self.ends,
+            options.routing,
+            self.markers,
+            contour_limits,
+            work,
+        )?
+        .into_iter()
+        .flatten()
         {
             if !clearance.visit(work)? {
                 return Ok(None);
@@ -237,12 +426,15 @@ impl Label<'_> {
             let at = anchor.at;
             let along = self.size.width * 0.5 * anchor.tangent.x.abs()
                 + self.size.height * 0.5 * anchor.tangent.y.abs();
-            let padded = Bounds::label(at, self.size, pad);
-            let score =
-                (anchor.fraction - 0.5).abs() * 32.0 + (along - anchor.bend_room).clamp(0.0, 12.0);
+            // The box face below a clipped departure is already outside its outline.
+            // Keep transverse clearance while the label approaches the optical center.
+            let padded = Bounds::from_half_extents(at, self.size.width * 0.5 + pad, half_height);
+            let score = (anchor.fraction - 0.5).abs() * 32.0
+                + (along - anchor.bend_room).clamp(0.0, 12.0) / 24.0;
             if !padded.finite()
-                || padded.y[0] < self.gap[0]
-                || padded.y[1] > self.gap[1]
+                || !score.is_finite()
+                || padded.y[0] < top_limit
+                || padded.y[1] > bottom_limit
                 || best.is_some_and(|winner| score >= winner.0)
                 || !clearance.clear(padded, self.edge, work)?
             {
@@ -278,10 +470,11 @@ pub(super) fn place(
     labels: &[InlineLabel],
     gaps: &[[f64; 2]],
     graph: &Graph,
+    component: &Component,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<Placement> {
-    let Some(mut clearance) = scene(drawing, graph, options, work)? else {
+    let Some(mut clearance) = scene(drawing, graph, component, options, work)? else {
         return Ok(Placement::Legacy);
     };
     debug_assert_eq!(labels.len(), gaps.len());
@@ -292,9 +485,29 @@ pub(super) fn place(
         let (id, route) = &drawing.edges[edge];
         let spec = &graph.edges[*id as usize];
         let size = spec.label.expect("inline edge has a measured label");
+        let link = component.links[edge];
+        let ends = [
+            inset_contact(
+                route.points[0],
+                link.from as usize,
+                route.ports.0,
+                drawing,
+                component,
+                graph.direction,
+            ),
+            inset_contact(
+                *route.points.last().expect("a routed edge"),
+                link.to as usize,
+                route.ports.1,
+                drawing,
+                component,
+                graph.direction,
+            ),
+        ];
         let label = Label {
             edge,
             route: &route.points,
+            ends,
             markers: marker_lengths(spec),
             size: canonical_size(graph.direction, size),
             gap,
@@ -315,4 +528,101 @@ pub(super) fn place(
         drawing.edges[edge].1.label_center = Some(at);
     }
     Ok(Placement::Placed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flat::Link;
+    use crate::{EdgeGeometry, NodeId, NoopWorkControl, Rect};
+
+    #[test]
+    fn scene_registers_contour_inset_marker_footprints_for_diamonds() {
+        let mut diamond = NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 80.0,
+            },
+            0,
+        );
+        diamond.contour = ShapeContourHint::Diamond;
+        let target = NodeSpec::new(
+            Size {
+                width: 80.0,
+                height: 40.0,
+            },
+            1,
+        );
+        let mut spec = EdgeSpec::new(NodeId(0).into(), NodeId(1).into());
+        spec.start_marker = MarkerMetrics {
+            length: 14.0,
+            width: 12.0,
+        };
+        let graph = Graph {
+            nodes: vec![diamond, target],
+            edges: vec![spec],
+            ..Graph::default()
+        };
+        let component = Component {
+            ids: vec![0, 1],
+            nodes: graph.nodes.clone(),
+            links: vec![Link {
+                from: 0,
+                to: 1,
+                edge: 0,
+                span: 1,
+                weight: 1.0,
+            }],
+            ..Component::default()
+        };
+        // Off-center departure at x = 20 on an 80x80 diamond centered at (0, 0) has
+        // `contour_inset = 20`, placing the painted start marker along y = 20..34.
+        let drawing = Drawing {
+            nodes: vec![
+                Rect {
+                    x: -40.0,
+                    y: -40.0,
+                    width: 80.0,
+                    height: 80.0,
+                },
+                Rect {
+                    x: -40.0,
+                    y: 100.0,
+                    width: 80.0,
+                    height: 40.0,
+                },
+            ],
+            edges: vec![(
+                0,
+                EdgeGeometry {
+                    points: vec![
+                        RoutePoint::new(20.0, 40.0, Axis::Vertical),
+                        RoutePoint::new(20.0, 100.0, Axis::Vertical),
+                    ],
+                    ports: (Side::Bottom, Side::Top),
+                    label_center: None,
+                    start_label_center: None,
+                    end_label_center: None,
+                    shared_bus: false,
+                    corridor_clearance: 0.0,
+                    reversed_for_ranking: false,
+                },
+            )],
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let mut clearance = scene(&drawing, &graph, &component, &Options::default(), &mut work)
+            .unwrap()
+            .unwrap();
+        let inside_inset_marker = Bounds::from_half_extents(Point { x: 20.0, y: 27.0 }, 3.0, 3.0);
+        assert!(
+            !clearance.clear(inside_inset_marker, 1, &mut work).unwrap(),
+            "inset diamond marker footprint (y=20..34) must block overlapping labels"
+        );
+        let past_uninset_face = Bounds::from_half_extents(Point { x: 20.0, y: 47.0 }, 3.0, 3.0);
+        assert!(
+            clearance.clear(past_uninset_face, 0, &mut work).unwrap(),
+            "un-inset box face band (y=40..54) must not hold a phantom marker"
+        );
+    }
 }

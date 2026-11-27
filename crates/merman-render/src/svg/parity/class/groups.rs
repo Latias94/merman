@@ -20,6 +20,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edges: &'a [LayoutEdge],
+    pub(super) clusters: &'a [crate::model::LayoutCluster],
+    pub(super) native_style: Option<&'a crate::class::ClassNativeStyle>,
     pub(super) missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
@@ -103,6 +105,8 @@ fn local_edge_context<'a>(
 ) -> ClassEdgeGroupsRenderContext<'a> {
     ClassEdgeGroupsRenderContext {
         edges: ctx.edges,
+        clusters: ctx.clusters,
+        native_style: ctx.native_style,
         missing_section_points: ctx.missing_section_points,
         work_meter: ctx.work_meter,
         line_hop_paths: ctx.line_hop_paths,

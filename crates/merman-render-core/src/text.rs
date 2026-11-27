@@ -92,7 +92,13 @@ pub use fonts::{
     FontStack, FontStackError,
 };
 #[cfg(feature = "text-layout")]
-pub use heuristic::{append_text_width_em, estimate_text_width_em};
+#[doc(hidden)]
+pub use heuristic::HeuristicTextWidth;
+#[cfg(feature = "text-layout")]
+pub use heuristic::{
+    append_monospace_text_width_em, append_text_width_em, estimate_monospace_text_width_em,
+    estimate_text_width_em, is_monospace_font_family,
+};
 #[cfg(feature = "text-layout")]
 #[doc(hidden)]
 pub use icons::replace_fontawesome_icons;

@@ -400,7 +400,7 @@ fn grid(
         ys.extend(r.y);
     }
     for lines in [&mut xs, &mut ys] {
-        super::super::validate::charge_sort(lines.len(), work)?;
+        work.charge_sort(lines.len())?;
         lines.sort_unstable_by(f64::total_cmp);
         lines.dedup();
     }

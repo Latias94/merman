@@ -99,6 +99,7 @@ impl Coordinates {
                     parent: None,
                     rect: Rect::default(),
                     title_center: None,
+                    title_struck: false,
                 }),
         );
         let mut result = Self {
@@ -162,10 +163,10 @@ impl Coordinates {
                 }
             }
             if let Some(group) = result.groups.get_mut(id) {
-                group.title_center = frame
-                    .title
-                    .map(|point| translate(point, origin))
-                    .transpose()?;
+                if let Some(title) = &frame.title {
+                    group.title_center = Some(translate(title.center, origin)?);
+                    group.title_struck = title.struck;
+                }
                 for (&border, &point) in level.ports.iter().zip(&frame.ports) {
                     result.borders[border] =
                         on_face(translate(point, origin)?, group.rect, ctx.sides[border])?;
@@ -221,6 +222,8 @@ fn stitch(
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     };
     for &(level, slot) in path {
@@ -281,6 +284,7 @@ fn stitch(
         if leg.main {
             output.reversed_for_ranking = part.reversed_for_ranking;
         }
+        output.shared_bus |= part.shared_bus;
         append_label(&mut output.label_center, part.label_center, origin)?;
         append_label(
             &mut output.start_label_center,

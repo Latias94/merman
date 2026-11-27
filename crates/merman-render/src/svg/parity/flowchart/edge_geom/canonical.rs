@@ -10,13 +10,47 @@ use crate::graph_layout::{
 };
 use std::borrow::Cow;
 
+fn obstacles(layout: &FlowchartLayout) -> Vec<(kurbo::Rect, route_paint::ObstacleOwner)> {
+    use route_paint::ObstacleOwner;
+
+    let mut boxes = Vec::with_capacity(layout.nodes.len() + layout.clusters.len());
+    let label_box = |label: &crate::model::LayoutLabel| {
+        kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
+    };
+    boxes.extend(layout.nodes.iter().enumerate().map(|(index, node)| {
+        (
+            kurbo::Rect::from_center_size((node.x, node.y), (node.width, node.height)),
+            ObstacleOwner::Node(index as u32),
+        )
+    }));
+    boxes.extend(layout.clusters.iter().enumerate().map(|(index, group)| {
+        (
+            label_box(&group.title_label),
+            ObstacleOwner::GroupTitle(index as u32),
+        )
+    }));
+    boxes.extend(
+        super::super::types::FlowchartLayoutEdgeRef::in_layout_order(layout).filter_map(
+            |(key, edge)| {
+                edge.label().map(|label| {
+                    (
+                        label_box(label),
+                        ObstacleOwner::EdgeLabel(key.semantic_index()),
+                    )
+                })
+            },
+        ),
+    );
+    boxes
+}
+
 pub(super) fn paint(
     request: FlowchartEdgePathGeomRequest<'_>,
     profiles: &[contour::ShapePortProfile],
     route: &RouteTopology,
     stitches: &[BorderStitch],
     clearance: &AxisClearance,
-    points: &mut Vec<RoutePoint>,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Result<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -28,14 +62,15 @@ pub(super) fn paint(
     } = request;
     let invalid = || edge_paint_error(&edge.id, route_paint::RoutePaintError::InvalidGeometry);
     let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
-    if route.knots.len() != solved.points.len() || solved.points.len() < 2 {
+    let solved_points = solved.points();
+    if route.knots.len() != solved_points.len() || solved_points.len() < 2 {
         return Err(invalid());
     }
+    let points = &mut scratch.canonical_points;
     points.clear();
-    points.reserve_exact(solved.points.len());
+    points.reserve_exact(solved_points.len());
     points.extend(
-        solved
-            .points
+        solved_points
             .iter()
             .zip(&route.knots)
             .map(|(point, &(axis, kind))| RoutePoint {
@@ -45,18 +80,17 @@ pub(super) fn paint(
                 kind,
             }),
     );
-    let box_contacts = (points[0], points[points.len() - 1]);
     let center = |x, y| crate::model::LayoutPoint {
         x: x + ctx.tx - origin_x,
         y: y + ctx.ty - origin_y,
     };
     let group_contour = |id: u32| {
         let group = ctx.layout.clusters.get(id as usize)?;
-        let radius = if ctx.diagram_type == "agentflow" {
-            10.0
-        } else {
-            0.0
-        };
+        let radius = super::super::cluster_geometry::cluster_container_radius(
+            ctx,
+            group.width,
+            group.height,
+        );
         Some((
             contour::ShapePortProfile::rounded_rectangle(group.width, group.height, radius, radius),
             center(group.x, group.y),
@@ -83,6 +117,7 @@ pub(super) fn paint(
         })
     };
     let last = points.len() - 1;
+    let box_contacts = (points[0], points[last]);
     let (source_profile, source_center, source_lead) =
         terminal(route.endpoints.0, route.ports.0, points[0], points[1]).ok_or_else(invalid)?;
     let (target_profile, target_center, target_lead) = terminal(
@@ -108,48 +143,37 @@ pub(super) fn paint(
             .unwrap_or(ctx.default_edge_interpolate),
         ctx.edge_corner_radius,
     );
-    let curve_terminals = if ctx.compatibility.look.is_hand_drawn() {
-        route_paint::CurveTerminals::Fixed
+    let stroke_outset = ctx.edge_style_plan.stroke_outset_for(key)?;
+    let clearance = if style == route_paint::RouteStyle::Curved
+        && stroke_outset.is_some_and(|outset| route.corridor_clearance > outset)
+        && (points[0], points[last]) == box_contacts
+        && stitches.is_empty()
+    {
+        None
     } else {
-        let inset = |side, original: RoutePoint, contact: RoutePoint| match side {
-            crate::graph_layout::ir::Side::Top => contact.y - original.y,
-            crate::graph_layout::ir::Side::Right => original.x - contact.x,
-            crate::graph_layout::ir::Side::Bottom => original.y - contact.y,
-            crate::graph_layout::ir::Side::Left => contact.x - original.x,
-        };
-        route_paint::CurveTerminals::Smooth {
-            inset: (
-                inset(source_lead, box_contacts.0, points[0]),
-                inset(target_lead, box_contacts.1, points[last]),
-            ),
-            departure_across: match route.endpoints.0 {
-                Endpoint::Node(_) => {
-                    source_profile.departure_across(&source_center, source_lead, points[0])
-                }
-                Endpoint::Group(_) => None,
-            },
-        }
+        Some(
+            clearance
+                .resolve_with(ctx.work_meter, || obstacles(ctx.layout))?
+                .for_edge(
+                    key.semantic_index(),
+                    route.endpoints,
+                    kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
+                    stroke_outset.unwrap_or_default(),
+                ),
+        )
     };
-    let clearance = clearance.resolve(ctx.work_meter)?;
-    let painted = route_paint::build_svg_path(
+    if ctx.compatibility.look.is_neo() && !ctx.edge_style_plan.animation_for(key)?.is_active() {
+        scratch.canonical_paint.measure_length();
+    }
+    let painted = route_paint::build_svg_path_with_scratch(
         points,
         (source_lead, target_lead),
         style,
         super::super::flowchart_marker_metrics(edge),
-        curve_terminals,
+        route_paint::CurveTerminals::Smooth,
         stitches,
-        Some(
-            clearance.for_edge(
-                key.semantic_index(),
-                route.endpoints,
-                kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
-                ctx.edge_style_plan
-                    .stroke_outset_for(key)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-            ),
-        ),
+        clearance,
+        &mut scratch.canonical_paint,
     )
     .map_err(|error| edge_paint_error(&edge.id, error))?;
     let data_points: Vec<_> = points
@@ -157,8 +181,7 @@ pub(super) fn paint(
         .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })
         .collect();
     if trace_enabled {
-        let base_points: Vec<_> = solved
-            .points
+        let base_points: Vec<_> = solved_points
             .iter()
             .map(|p| crate::model::LayoutPoint {
                 x: p.x + ctx.tx - origin_x,
@@ -168,7 +191,7 @@ pub(super) fn paint(
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
-            layout_edge: solved,
+            layout_edge: solved.materialized(),
             origin_x,
             origin_y,
             base_points: &base_points,
@@ -179,6 +202,11 @@ pub(super) fn paint(
     }
     Ok(FlowchartEdgePathGeom {
         d: painted.d,
+        neo_length: scratch
+            .canonical_paint
+            .measured_length()
+            .map(|length| f64::from(length as f32))
+            .filter(|length| length.is_finite()),
         pb: Some(path_bounds::SvgPathBounds {
             min_x: painted.bounds.min_x,
             min_y: painted.bounds.min_y,
@@ -190,7 +218,7 @@ pub(super) fn paint(
         line_hop_applied: false,
         original_label_path_points: Vec::new(),
         label_path_points: Vec::new(),
-        label_anchor: solved.label.as_ref().map(|p| crate::model::LayoutPoint {
+        label_anchor: solved.label().map(|p| crate::model::LayoutPoint {
             x: p.x + ctx.tx - origin_x,
             y: p.y + ctx.ty - origin_y,
         }),

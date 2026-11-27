@@ -123,7 +123,6 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         return Ok(svg.to_string());
     }
 
-    let close_tag = "</foreignObject>";
     preflight_generated(svg.len(), 0)?;
     let mut out = String::with_capacity(svg.len());
     let mut overlays = String::new();
@@ -176,17 +175,18 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 
         let start_name = start_tag_name(tag);
         if start_name.is_some_and(|name| name.eq_ignore_ascii_case("foreignObject")) {
-            let start_end = gt;
-            let Some(close_rel) = find_with_checkpoints(&svg[start_end..], close_tag, checkpoint)?
-            else {
-                out.push_str(&svg[lt..]);
-                i = svg.len();
-                break;
+            let (inner, i_next) = if is_self_closing(tag) {
+                ("", gt)
+            } else {
+                let Some((inner_end, close_end)) =
+                    find_foreign_object_end_tag(svg, gt, checkpoint)?
+                else {
+                    out.push_str(&svg[lt..]);
+                    i = svg.len();
+                    break;
+                };
+                (&svg[gt..inner_end], close_end)
             };
-            let inner_start = start_end;
-            let inner_end = inner_start + close_rel;
-            let inner = &svg[inner_start..inner_end];
-            let i_next = inner_end + close_tag.len();
 
             out.push_str(&svg[lt..i_next]);
 
@@ -1154,6 +1154,27 @@ fn is_start_switch_tag(tag: &str) -> bool {
             .get("<switch".len())
             .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
         && !tag.trim_end().ends_with("/>")
+}
+
+fn find_foreign_object_end_tag<E>(
+    svg: &str,
+    from: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<(usize, usize)>, E> {
+    let mut cursor = from;
+    while let Some(rel) = find_with_checkpoints(&svg[cursor..], "</", checkpoint)? {
+        let start = cursor + rel;
+        let Some(end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
+            return Ok(None);
+        };
+        if end_tag_name(&svg[start..=end])
+            .is_some_and(|name| name.eq_ignore_ascii_case("foreignObject"))
+        {
+            return Ok(Some((start, end + 1)));
+        }
+        cursor = end + 1;
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

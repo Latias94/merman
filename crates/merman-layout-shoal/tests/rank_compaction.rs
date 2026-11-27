@@ -46,9 +46,9 @@ fn measured_class_lane_uses_the_space_beside_its_tall_sibling() {
             })
             .collect();
         for (style, baseline_along) in [
-            (RoutingStyle::Curved, 696.0),
-            (RoutingStyle::Orthogonal, 713.0),
-            (RoutingStyle::Polyline, 696.0),
+            (RoutingStyle::Curved, 690.0),
+            (RoutingStyle::Orthogonal, 711.0),
+            (RoutingStyle::Polyline, 690.0),
         ] {
             options.routing = style;
             for span in [1, 3] {

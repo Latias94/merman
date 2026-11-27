@@ -5,6 +5,9 @@
 #![cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 
 #[cfg(feature = "diagram-agentflow")]
+mod aesthetic_witnesses;
+
+#[cfg(feature = "diagram-agentflow")]
 mod compound;
 
 use super::{
@@ -56,6 +59,44 @@ fn engine() -> MermaidEngine {
 fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
     render_with_options(source, diagram_id, &LayoutOptions::headless_svg_defaults())
         .map(|(drawing, _)| drawing)
+}
+
+#[cfg(feature = "diagram-agentflow")]
+fn render_studio(source: &str, diagram_id: &str, html_labels: bool) -> crate::Result<Drawing> {
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        json!({"layout": "shoal", "htmlLabels": html_labels}),
+    ));
+    let diagram = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap_or_else(|e| panic!("{diagram_id}: {e}"))
+        .expect("flowchart")
+        .into_presentation();
+    let theme = crate::theme::ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .expect("studio theme preset");
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(crate::theme::NativeTheme::new(theme))
+        .expect("deterministic studio gallery render session");
+    let artifact = family::prepare(&diagram, &LayoutOptions::headless_svg_defaults(), session)?;
+    let snapshot = artifact.layout_json()?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.into()),
+            ..Default::default()
+        },
+        &Default::default(),
+    )?;
+    assert!(
+        rendered
+            .required_capabilities()
+            .contains(&RenderCapability::LayoutShoal),
+        "{diagram_id}: expected Shoal"
+    );
+    Ok(Drawing {
+        model: serde_json::from_value(snapshot["semantic"].clone())?,
+        layout: serde_json::from_value(snapshot["layout"]["FlowchartV2"].clone())?,
+        svg: rendered.svg().to_owned(),
+    })
 }
 
 fn render_with_options(
@@ -262,13 +303,17 @@ fn painted_outline(shape: Node<'_, '_>, frame: Affine) -> BezPath {
     path
 }
 
-/// HTML labels expose their measured local box on foreignObject. An unlabeled edge has a
-/// zero-sized placeholder in the same DOM position as a visible label.
+/// HTML labels expose their measured local box on foreignObject; native SVG labels expose
+/// their painted pill box on rect with explicit dimensions. Unlabeled edges return None.
 fn label_box(group: Node<'_, '_>, frame: Affine) -> Option<Rect> {
     let element = group
         .descendants()
         .find(|n| n.has_tag_name("foreignObject"))
-        .expect("gallery uses HTML labels with explicit measured extents");
+        .or_else(|| {
+            group.descendants().find(|n| {
+                n.has_tag_name("rect") && n.has_attribute("width") && n.has_attribute("height")
+            })
+        })?;
     let local = rect(element);
     assert!(local.is_finite() && local.width() >= 0. && local.height() >= 0.);
     (local.width() > 0. && local.height() > 0.)
@@ -441,9 +486,14 @@ impl Drawing {
                 .descendants()
                 .find(|n| n.has_tag_name("g") && has_class(*n, "label"))
                 .expect("node label group");
+            let label_bounds = label_box(label, frame).unwrap_or_else(|| {
+                let w = n.label_width.unwrap_or(0.0);
+                let h = n.label_height.unwrap_or(0.0);
+                body_frame.transform_rect_bbox(Rect::from_center_size((0., 0.), (w, h)))
+            });
             scene.labels.push(Label {
                 owner: LabelOwner::Body(i),
-                bounds: label_box(label, frame).expect("visible gallery node label"),
+                bounds: label_bounds,
             });
         }
         // Both SVG passes iterate the same flat render order. Pair their slots before matching
@@ -1322,6 +1372,7 @@ fn replay_aesthetic_witnesses() {
                 assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
             }
             if name.starts_with("release") {
+                aesthetic_witnesses::assert_balanced_branches(&metrics, "checks", name, direction);
                 assert!(
                     metrics
                         .marker_faces
@@ -1424,7 +1475,7 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 assert!(gap < 110.0, "{direction}: labeled gap takes {gap:.2}px");
             } else {
                 assert!(
-                    (gap - 50.0).abs() < FLATNESS,
+                    (gap - merman_layout_shoal::Spacing::default().rank).abs() < FLATNESS,
                     "{direction}: unlabeled gap takes {gap:.2}px"
                 );
             }

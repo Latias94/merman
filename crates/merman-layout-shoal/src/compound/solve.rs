@@ -20,15 +20,22 @@ pub(super) struct Frame {
     pub(super) bounds: Size,
     pub(super) items: Vec<Rect>,
     pub(super) item_ranks: Vec<u32>,
-    pub(super) title: Option<Point>,
+    pub(super) title: Option<PlacedTitle>,
     pub(super) legs: Vec<EdgeGeometry>,
     pub(super) ports: Vec<Point>,
     pub(super) stats: LayoutStats,
     pub(super) lane_shells: Vec<(Rect, Option<Point>)>,
 }
 
+#[derive(Debug)]
+pub(super) struct PlacedTitle {
+    pub(super) center: Point,
+    pub(super) struck: bool,
+}
+
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
 pub(super) const TITLE_CLEAR: f64 = 6.0;
+const NESTED_LANE_TITLE_CLEAR: f64 = 8.0;
 
 fn finite(value: f64) -> LayoutResult<f64> {
     if value.is_finite() {
@@ -189,6 +196,11 @@ impl Wire {
 
     fn flat(&self) -> bool {
         self.ends.iter().all(|end| end.node().is_some())
+    }
+
+    fn title_clearance(&self, end: usize, margin: f64) -> f64 {
+        let marker = [self.spec.start_marker, self.spec.end_marker][end];
+        margin + marker.width / 2.0
     }
 
     fn uses_caption_band(&self) -> bool {
@@ -421,9 +433,18 @@ pub(super) fn level(
     if id == ctx.graph.groups.len()
         && let Some(membership) = &ctx.hierarchy.lanes
     {
-        return lanes::root(ctx, membership, &graph, wires, expanded, work);
+        return lanes::root(ctx, membership, &graph, frames, wires, expanded, work);
     }
-    let drawing = flat::run(&graph, ctx.options, expanded, work)?;
+    // Compound assembly discards per-level `routed_crossings` and scores the stitched drawing
+    // once at the compound level, so sublevels only need geometry (while still honoring any
+    // editor hints inside `flat::run_packed`).
+    let drawing = flat::run_with_detail(
+        &graph,
+        ctx.options,
+        expanded,
+        crate::LayoutDetail::Geometry,
+        work,
+    )?;
     let mut edges = drawing.edges.into_iter();
     for wire in &mut wires {
         work.visit(1)?;
@@ -443,11 +464,26 @@ pub(super) fn level(
         work,
     )?;
     let group = ctx.graph.groups.get(id);
-    let mut fit = fit::Fit::new(group, drawing.bounds, &nodes, &wires, ctx.options, work)?;
+    let protected_title_margin = if ctx.hierarchy.lanes.is_some() {
+        NESTED_LANE_TITLE_CLEAR
+    } else {
+        0.0
+    };
+    let mut fit = fit::Fit::new(
+        group,
+        drawing.bounds,
+        &nodes,
+        &wires,
+        protected_title_margin,
+        ctx.options,
+        work,
+    )?;
     let border = |fit: &fit::Fit, work: &mut Work<'_>| -> LayoutResult<_> {
         let mut ports = ports::border(&wires, &nodes, fit, level.ports.len(), ctx.options, work)?;
-        let title = fit.title(group, &wires, &ports, ctx.options, work)?;
-        if let (Some(title), Some(group)) = (title, group) {
+        let title = fit.title(group, &wires, &ports, work)?;
+        if (!fit.adaptive_top_title || fit.protected_title_margin > 0.0)
+            && let (Some(title), Some(group)) = (title, group)
+        {
             ports::beside_title(
                 &wires,
                 &mut ports,
@@ -461,7 +497,9 @@ pub(super) fn level(
         Ok((ports, title))
     };
     let (mut ports, mut title) = border(&fit, work)?;
-    if let (Some(rect), Some(group)) = (title, group) {
+    if !fit.adaptive_top_title
+        && let (Some(rect), Some(group)) = (title, group)
+    {
         let side = fit::title_side(group.title_position);
         let extra = routes::title_room(&wires, &ports, side, &fit, rect, ctx.options, work)?;
         if extra > 0.0 {
@@ -476,11 +514,20 @@ pub(super) fn level(
         rect.y += fit.offset.y;
     }
     let legs = routes::finish(&fit, title, &nodes, &mut wires, &ports, ctx.options, work)?;
+    let title = if let (Some(rect), Some(group)) = (title, group) {
+        Some(PlacedTitle {
+            center: rect.center(),
+            struck: fit::title_side(group.title_position) == Side::Top
+                && routes::title_struck(rect, &wires, &legs, work)?,
+        })
+    } else {
+        None
+    };
     Ok(Frame {
         bounds: fit.size,
         items: nodes,
         item_ranks,
-        title: title.map(Rect::center),
+        title,
         legs,
         ports,
         stats: drawing.stats,

@@ -1,5 +1,4 @@
 use super::*;
-use crate::compound::hierarchy;
 use crate::{
     EdgeGeometry, EdgeId, EdgeSpec, GroupGeometry, GroupSpec, MarkerMetrics, NodeId, NodeSpec,
     NoopWorkControl, Options, WorkControl, WorkError,
@@ -19,6 +18,7 @@ fn group(rect: Rect, parent: Option<GroupId>) -> GroupGeometry {
         rect,
         parent,
         title_center: None,
+        title_struck: false,
         effective_direction: Default::default(),
     }
 }
@@ -33,6 +33,8 @@ fn edge(axis: Axis, ports: (Side, Side), points: &[(f64, f64)]) -> EdgeGeometry 
         label_center: None,
         start_label_center: None,
         end_label_center: None,
+        shared_bus: false,
+        corridor_clearance: 0.0,
         reversed_for_ranking: false,
     }
 }
@@ -70,6 +72,114 @@ fn seam(point: usize, group: u32, side: Side) -> BorderStitch {
     }
 }
 
+#[test]
+fn group_endpoint_and_child_stitch_follow_the_same_peer_order() {
+    let mut graph = Graph {
+        direction: crate::Direction::Right,
+        ..Graph::default()
+    };
+    for (id, (parent, title_width)) in [
+        (Some(1), 75.74),
+        (Some(3), 73.92),
+        (Some(3), 77.84),
+        (None, 79.94),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut group = GroupSpec::new(7 + id as u32);
+        group.parent = parent.map(GroupId);
+        group.title = Some(Size {
+            width: title_width,
+            height: 21.0,
+        });
+        group.title_position = crate::TitlePosition::TopAuto;
+        group.padding = crate::Insets {
+            left: 8.0,
+            right: 8.0,
+            top: 37.0,
+            bottom: 8.0,
+        };
+        graph.groups.push(group);
+    }
+    for (id, parent) in [Some(0), Some(0), Some(1), Some(2), Some(2), None, None]
+        .into_iter()
+        .enumerate()
+    {
+        let (width, height) = match id {
+            5 => (171.25, 45.0),
+            6 => (65.45, 65.45),
+            _ => (152.0, 45.0),
+        };
+        let mut node = NodeSpec::new(Size { width, height }, id as u32);
+        node.parent = parent.map(GroupId);
+        graph.nodes.push(node);
+    }
+    let node = |id| Endpoint::Node(NodeId(id));
+    let group = |id| Endpoint::Group(GroupId(id));
+    for (from, to, label) in [
+        (node(0), node(1), None),
+        (node(1), node(2), None),
+        (node(3), node(4), None),
+        (group(0), group(2), Some(57.4)),
+        (node(2), node(4), Some(60.62)),
+        (node(5), group(3), None),
+        (group(2), node(6), None),
+    ] {
+        let mut wire = EdgeSpec::new(from, to);
+        wire.end_marker = MarkerMetrics {
+            length: 4.0,
+            width: 8.0,
+        };
+        wire.label = label.map(|width| Size {
+            width,
+            height: 21.0,
+        });
+        graph.edges.push(wire);
+    }
+
+    let solved = crate::layout(&graph, &Options::default()).unwrap();
+    let child = solved
+        .border_stitches
+        .iter()
+        .find(|s| s.edge == EdgeId(1))
+        .unwrap();
+    let transit = &solved.edges[1].points;
+    let direct = &solved.edges[3].points;
+    assert_eq!(direct[0].x, transit[child.point].x);
+    assert!(
+        transit[child.point].y < direct[0].y,
+        "{transit:?}; {direct:?}"
+    );
+    assert_eq!(solved.stats.routed_crossings, 0);
+
+    graph.edges[3].source_port = PortSideHint::Side(Side::Right);
+    let pinned = crate::layout(&graph, &Options::default()).unwrap();
+    assert_eq!(pinned.stats.routed_crossings, 1);
+    assert_eq!(pinned.groups, solved.groups);
+    assert_eq!(pinned.border_stitches, solved.border_stitches);
+    for (index, (a, b)) in pinned.edges.iter().zip(&solved.edges).enumerate() {
+        if index == 3 {
+            assert_eq!(a.ports, b.ports);
+            assert_eq!(a.label_center, b.label_center);
+            assert_eq!(a.points[2..], b.points[2..]);
+        } else {
+            assert_eq!(a, b);
+        }
+    }
+    graph.edges[3].source_port = PortSideHint::FixedOffset {
+        side: Side::Right,
+        offset: -1.5,
+    };
+    let fixed = crate::layout(&graph, &Options::default()).unwrap();
+    assert_eq!(fixed.edges[3].ports.0, Side::Right);
+    assert_eq!(
+        fixed.edges[3].points[0].y,
+        fixed.groups[0].rect.center().y - 1.5
+    );
+    assert_eq!(fixed.stats.routed_crossings, 1);
+}
+
 fn run(
     graph: &Graph,
     options: &Options,
@@ -78,16 +188,7 @@ fn run(
 ) {
     let mut work = Work::new(control);
     work.charge(2_000).unwrap();
-    let hierarchy = hierarchy::build(graph, options, &mut work).unwrap();
-    let pass = Pass {
-        graph,
-        hierarchy: &hierarchy,
-        options,
-        sides: &[],
-        items: &[],
-        ports: &[],
-    };
-    relax(&pass, drawing, &mut work).unwrap();
+    relax(graph, options, drawing, &mut work).unwrap();
 }
 
 fn aligned_ports() -> (Graph, LayoutOutput) {
@@ -381,7 +482,7 @@ fn an_accepted_sweep_reserves_space_outside_its_old_edge_bounds() {
                 0,
                 [GroupId(1), GroupId(2)],
                 &output,
-                [&edit].into_iter(),
+                [(edit.edge, edit.footprint)].into_iter(),
                 &mut work
             )
             .unwrap()
@@ -650,4 +751,92 @@ fn budget_decline_keeps_both_members_of_a_corridor_at_their_original_ports() {
         &mut OptionalBudget::new(2_000 - budget.remaining - 1),
     );
     assert_eq!(drawing, original);
+}
+
+#[test]
+fn face_order_protects_mid_edge_labels_on_moved_prefix() {
+    // Group 0 sits above Group 1; edge 0 (stitched) exits bottom face at x=80 and goes straight
+    // down, while edge 1 (group-to-group, movable) exits bottom face at x=40 and bends right to
+    // x=120 — inverted on the face. Placing a mid-edge label on edge 1's moved prefix must block
+    // `face_order` from detaching the route from its label.
+    let make_scene = |with_label: bool| {
+        let mut movable = edge(
+            Axis::Vertical,
+            (Side::Bottom, Side::Top),
+            &[(40., 100.), (40., 140.), (120., 160.), (120., 200.)],
+        );
+        movable.label_center = with_label.then_some(Point { x: 80., y: 150. });
+        let output = LayoutOutput {
+            nodes: vec![rect(70., 20., 20., 20.), rect(70., 220., 20., 20.)],
+            groups: vec![
+                group(rect(0., 0., 180., 100.), None),
+                group(rect(0., 200., 180., 100.), None),
+            ],
+            edges: vec![
+                edge(
+                    Axis::Vertical,
+                    (Side::Bottom, Side::Top),
+                    &[(80., 40.), (80., 100.), (80., 200.), (80., 220.)],
+                ),
+                movable,
+            ],
+            border_stitches: vec![
+                BorderStitch {
+                    edge: EdgeId(0),
+                    group: GroupId(0),
+                    side: Side::Bottom,
+                    point: 1,
+                },
+                BorderStitch {
+                    edge: EdgeId(0),
+                    group: GroupId(1),
+                    side: Side::Top,
+                    point: 2,
+                },
+            ],
+            stats: crate::LayoutStats {
+                routed_crossings: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut model = graph(&output, [GroupId(0), GroupId(1)]);
+        let mut movable_spec = EdgeSpec::new(GroupId(0).into(), GroupId(1).into());
+        movable_spec.label = with_label.then_some(Size {
+            width: 24.,
+            height: 12.,
+        });
+        model.edges = vec![
+            EdgeSpec::new(NodeId(0).into(), NodeId(1).into()),
+            movable_spec,
+        ];
+        (model, output)
+    };
+
+    let options = Options::default();
+    let (model_unlabeled, mut drawing_unlabeled) = make_scene(false);
+    let orig_unlabeled = drawing_unlabeled.edges[1].points[0].x;
+    run(
+        &model_unlabeled,
+        &options,
+        &mut drawing_unlabeled,
+        &mut NoopWorkControl,
+    );
+    assert_eq!(
+        drawing_unlabeled.edges[1].points[0].x, 120.,
+        "unlabeled movable edge should straighten to lane 120 (was {orig_unlabeled})"
+    );
+
+    let (model_labeled, mut drawing_labeled) = make_scene(true);
+    let original = drawing_labeled.clone();
+    run(
+        &model_labeled,
+        &options,
+        &mut drawing_labeled,
+        &mut NoopWorkControl,
+    );
+    assert_eq!(
+        drawing_labeled.edges[1].points, original.edges[1].points,
+        "mid-edge label on moved prefix must prevent face_order from detaching route"
+    );
 }

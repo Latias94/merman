@@ -3,8 +3,11 @@
 use std::fmt::Write as _;
 
 use merman_model::runtime::OperationContext;
+#[cfg(feature = "layout-shoal")]
+use merman_render_core::route_paint::CanonicalPaintScratch;
 use merman_render_core::{
     Bounds, LayoutCluster, LayoutEdge, LayoutNode, LayoutPoint, Result,
+    html::html_label_overflow_attr,
     number_format::canonical_number as fmt,
     resources::OperationWorkMeter,
     root_svg,
@@ -61,22 +64,23 @@ type StateSvgEdge = merman_model::families::state::StateDiagramRenderEdge;
 
 /// One existing canonical edge projection, rendered only at its original emit site.
 #[cfg(feature = "layout-shoal")]
-pub struct StateCanonicalEdge {
+pub struct StateCanonicalEdge<'points> {
     pub d: String,
     pub bounds: Bounds,
-    pub data_points: Vec<LayoutPoint>,
+    pub data_points: &'points [LayoutPoint],
     pub marker_points: [LayoutPoint; 4],
     pub end_marker: merman_render_core::route_types::Marker,
     pub rough_d: Option<String>,
 }
 
 #[cfg(feature = "layout-shoal")]
-pub type StateCanonicalEdgePainter<'a> = dyn Fn(
+pub type StateCanonicalEdgePainter<'a> = dyn for<'points> Fn(
         &LayoutEdge,
         kurbo::Vec2,
         f64,
         Option<&roughr::core::RoughRandomness>,
-    ) -> Result<StateCanonicalEdge>
+        &'points mut CanonicalPaintScratch,
+    ) -> Result<StateCanonicalEdge<'points>>
     + 'a;
 
 /// Host-owned ID, viewport policy, and operation controls used by the complete writer.

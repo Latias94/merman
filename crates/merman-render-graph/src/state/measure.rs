@@ -6,6 +6,16 @@ use merman_render_core::graph_layout::Direction;
 use merman_render_core::text::{TextMeasurer, WrapMode};
 use merman_render_core::{Error, Result};
 
+impl super::StateStylePlan {
+    pub fn shoal_html_edge_label_inset(&self) -> f64 {
+        if self.uses_structured_typography() {
+            0.0
+        } else {
+            4.0
+        }
+    }
+}
+
 pub fn edge_label_metrics(
     edge_id: &str,
     label: &str,

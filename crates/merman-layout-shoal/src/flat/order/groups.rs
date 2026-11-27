@@ -1,5 +1,4 @@
 use super::{Expanded, Place, numeric_cmp};
-use crate::flat::validate::charge_sort;
 use crate::work::{LayoutResult, Work, filled, push};
 use crate::{GroupId, LayoutError, WorkError};
 
@@ -165,9 +164,9 @@ impl<'a> Groups<'a> {
         place: &[Place],
         key: impl Fn(usize) -> f64,
         work: &mut Work<'_>,
-    ) -> LayoutResult<()> {
+    ) -> LayoutResult<bool> {
         if row.len() < 2 {
-            return Ok(());
+            return Ok(false);
         }
         if self.children.is_empty() {
             push(&mut self.children, Vec::new())?;
@@ -199,20 +198,26 @@ impl<'a> Groups<'a> {
             if !total.sum.is_finite() {
                 return Err(WorkError::ArithmeticOverflow.into());
             }
-            charge_sort(children.len(), work)?;
+            work.charge_sort(children.len())?;
             children.sort_unstable_by(|&a, &b| {
                 let (a, b) = (summary(a), summary(b));
                 numeric_cmp(a.sum / a.count as f64, b.sum / b.count as f64)
                     .then(a.first.cmp(&b.first))
             });
+            work.check()?;
             self.means[block] = total;
         }
         push(&mut self.stack, Item::Group(0))?;
         let mut at = row.iter_mut();
+        let mut changed = false;
         while let Some(item) = self.stack.pop() {
             work.visit(1)?;
             match item {
-                Item::Vertex(v) => *at.next().unwrap() = v,
+                Item::Vertex(v) => {
+                    let slot = at.next().unwrap();
+                    changed |= *slot != v;
+                    *slot = v;
+                }
                 Item::Group(block) => {
                     work.visit(self.children[block].len())?;
                     for child in self.children[block].drain(..).rev() {
@@ -226,6 +231,6 @@ impl<'a> Groups<'a> {
         for group in self.touched.drain(..) {
             self.active[group] = UNSEEN;
         }
-        Ok(())
+        Ok(changed)
     }
 }

@@ -1254,3 +1254,154 @@ fn upstream_swimlane_ddlt_corpus_has_finite_orthogonal_layouts() {
         failures.join("\n")
     );
 }
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn swimlane_shoal_studio_has_no_sub_2px_micro_arcs() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n---\n{}",
+        include_str!("../../merman/benches/fixtures/swimlane_medium.mmd")
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let svg = merman_render::family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+    for path in doc.descendants().filter(|n| {
+        n.has_tag_name("path")
+            && n.attribute("class")
+                .is_some_and(|c| c.contains("flowchart-link"))
+    }) {
+        let d = path.attribute("d").unwrap_or_default();
+        for seg in svgtypes::PathParser::from(d) {
+            if let Ok(svgtypes::PathSegment::EllipticalArc { rx, ry, .. }) = seg {
+                assert!(
+                    rx >= 2.0 && ry >= 2.0,
+                    "swimlane edge emitted sub-2px micro-arc ({rx}, {ry}) in {d}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn swimlane_shoal_long_headers_wrap_without_clipping_and_keep_header_body_gap() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    let render_studio = |source: &str| {
+        let with_cfg = format!("---\nconfig:\n  layout: shoal\n---\n{source}");
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&with_cfg, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let theme = ThemeCompiler::new()
+            .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        merman_render::family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap()
+            .svg()
+            .to_owned()
+    };
+
+    let tb_svg = render_studio(
+        "swimlane-beta TB\n\
+subgraph Customer[Customer Experience & Onboarding]\n\
+  C1[Submit Request] --> C2[Review Quote]\n\
+end\n\
+subgraph Sales[Sales Ops]\n\
+  S1[Qualify Lead]\n\
+end\n\
+C1 -->|New Lead| S1\n",
+    );
+    let tb_doc = roxmltree::Document::parse(&tb_svg).unwrap();
+    let title_rects: Vec<_> = tb_doc
+        .descendants()
+        .filter(|n| n.has_tag_name("rect") && n.attribute("class") == Some("swimlane-title"))
+        .collect();
+    assert_eq!(title_rects.len(), 2);
+    let header_bottom = title_rects[0]
+        .attribute("height")
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
+    for rect in &title_rects {
+        let h = rect.attribute("height").unwrap().parse::<f64>().unwrap();
+        assert!((h - header_bottom).abs() < 1e-6);
+    }
+    for fo in tb_doc.descendants().filter(|n| {
+        n.has_tag_name("foreignObject")
+            && n.parent().is_some_and(|p| {
+                p.attribute("class")
+                    .is_some_and(|c| c.contains("swimlane-label"))
+            })
+    }) {
+        assert_eq!(fo.attribute("style"), Some("overflow: visible;"));
+    }
+    let first_node_top = tb_doc
+        .descendants()
+        .filter(|n| {
+            n.has_tag_name("g")
+                && n.attribute("class")
+                    .is_some_and(|c| c.split_whitespace().any(|tok| tok == "node"))
+        })
+        .filter_map(|node| {
+            let tf = node.attribute("transform")?;
+            let (_, y) = tf
+                .strip_prefix("translate(")?
+                .strip_suffix(')')?
+                .split_once(',')?;
+            let cy = y.trim().parse::<f64>().ok()?;
+            let rect = node.descendants().find(|c| c.has_tag_name("rect"))?;
+            let h = rect.attribute("height")?.parse::<f64>().ok()?;
+            Some(cy - h / 2.0)
+        })
+        .fold(f64::INFINITY, f64::min);
+    assert!(
+        first_node_top >= header_bottom + 4.0,
+        "TB first node top ({first_node_top}) must clear header bottom ({header_bottom})"
+    );
+
+    let lr_svg = render_studio(
+        "swimlane-beta LR\n\
+subgraph Client[Client Tier with Very Long Header Title]\n\
+  A[Request] --> B[Validate]\n\
+end\n\
+subgraph Core[Core]\n\
+  C[Execute]\n\
+end\n\
+B --> C\n",
+    );
+    let lr_doc = roxmltree::Document::parse(&lr_svg).unwrap();
+    let lr_titles: Vec<f64> = lr_doc
+        .descendants()
+        .filter(|n| n.has_tag_name("rect") && n.attribute("class") == Some("swimlane-title"))
+        .map(|r| r.attribute("width").unwrap().parse::<f64>().unwrap())
+        .collect();
+    assert_eq!(lr_titles.len(), 2);
+    assert!(
+        (lr_titles[0] - lr_titles[1]).abs() < 1e-6,
+        "adjacent LR lanes must share uniform header band width: {lr_titles:?}"
+    );
+    assert!(
+        lr_svg.contains("white-space: break-spaces;"),
+        "wrapped LR swimlane header must allow line breaks instead of nowrap clipping"
+    );
+}

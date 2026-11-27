@@ -313,9 +313,11 @@ fn slide(
         };
         scene.routes[i] = bounds;
         route.points[0] = start;
+        route.corridor_clearance = 0.0;
     }
     scene.routes[incoming] = approach;
     drawing.edges[incoming].1.points[1] = contact;
+    drawing.edges[incoming].1.corridor_clearance = 0.0;
     drawing.nodes[node].y = y;
 }
 

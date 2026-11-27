@@ -42,10 +42,10 @@ fn measured_disconnected_fixture_fits_the_short_island_under_the_fork() {
     // Node measurements and topology from the disconnected Flowchart gallery fixture.
     let graph = graph(&[(152.0, 45.0); 7], &[(0, 1), (1, 2), (3, 4), (3, 5)]);
     let shelf = layout(&graph, &Options::default()).unwrap();
-    assert_eq!(shelf.bounds, size(758.0, 235.0));
+    assert_eq!(shelf.bounds, size(752.0, 231.0));
     let packed = layout(&graph, &options(BALANCED, 50.0)).unwrap();
-    assert_eq!(packed.bounds, size(556.0, 235.0));
-    assert_eq!((packed.nodes[6].x, packed.nodes[6].y), (202.0, 190.0));
+    assert_eq!(packed.bounds, size(550.0, 233.0));
+    assert_eq!((packed.nodes[6].x, packed.nodes[6].y), (202.0, 188.0));
     assert_eq!(packed.stats, shelf.stats);
 }
 

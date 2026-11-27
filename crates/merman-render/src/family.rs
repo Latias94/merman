@@ -1225,10 +1225,57 @@ struct LayoutGeometryProjection<'a> {
     layout: LayoutProjection<'a>,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum FlowchartLayoutProjection<'a> {
+    Materialized(&'a FlowchartLayout),
+    #[cfg(feature = "layout-shoal")]
+    Projected {
+        nodes: &'a [LayoutNode],
+        edges: Vec<LayoutEdge>,
+        clusters: &'a [LayoutCluster],
+        bounds: &'a Option<Bounds>,
+    },
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+fn project_flowchart_layout<'a>(
+    artifact: &'a FlowchartFamilyArtifact<'_, FlowchartLayout>,
+) -> Result<FlowchartLayoutProjection<'a>> {
+    let layout = artifact.pair.layout();
+    #[cfg(feature = "layout-shoal")]
+    if let Some(geometry) = layout.route_contract.flowchart_svg_edges() {
+        let model = crate::flowchart::FlowchartRenderModelRef::new(
+            artifact.pair.semantic(),
+            artifact.render_context(),
+        );
+        return Ok(FlowchartLayoutProjection::Projected {
+            nodes: &layout.nodes,
+            edges: crate::flowchart::shoal::materialize_edges(
+                model,
+                &layout.edge_owners,
+                geometry,
+            )?,
+            clusters: &layout.clusters,
+            bounds: &layout.bounds,
+        });
+    }
+    Ok(FlowchartLayoutProjection::Materialized(layout))
+}
+
 #[derive(serde::Serialize)]
 enum LayoutProjection<'a> {
     #[cfg(feature = "diagram-agentflow")]
-    AgentflowDiagram(&'a FlowchartLayout),
+    AgentflowDiagram(FlowchartLayoutProjection<'a>),
     #[cfg(feature = "diagram-block")]
     BlockDiagram(&'a BlockDiagramLayout),
     #[cfg(feature = "diagram-requirement")]
@@ -1254,7 +1301,7 @@ enum LayoutProjection<'a> {
     QuadrantChartDiagram(&'a QuadrantChartDiagramLayout),
     #[serde(rename = "FlowchartV2")]
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Flowchart(&'a FlowchartLayout),
+    Flowchart(FlowchartLayoutProjection<'a>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     SwimlaneDiagram(&'a SwimlaneLayout),
     #[serde(rename = "StateDiagramV2")]
@@ -1600,10 +1647,12 @@ impl BuiltinFamilyArtifact<'_> {
         }
     }
 
-    fn layout_projection(&self) -> LayoutProjection<'_> {
-        match self {
+    fn layout_projection(&self) -> Result<LayoutProjection<'_>> {
+        Ok(match self {
             #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow { flow, .. } => LayoutProjection::AgentflowDiagram(flow.pair.layout()),
+            Self::Agentflow { flow, .. } => {
+                LayoutProjection::AgentflowDiagram(project_flowchart_layout(flow)?)
+            }
             Self::Error(artifact) => LayoutProjection::ErrorDiagram(artifact.pair().layout()),
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(artifact) => LayoutProjection::MindmapDiagram(artifact.pair.layout()),
@@ -1614,7 +1663,9 @@ impl BuiltinFamilyArtifact<'_> {
             #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(artifact) => LayoutProjection::ZenumlDiagram(artifact.pair().layout()),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
+            Self::Flowchart(artifact) => {
+                LayoutProjection::Flowchart(project_flowchart_layout(artifact)?)
+            }
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
@@ -1680,7 +1731,7 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Venn(artifact) => LayoutProjection::VennDiagram(artifact.pair().layout()),
             #[cfg(feature = "diagram-usecase")]
             Self::Usecase(pair) => LayoutProjection::UsecaseDiagram(pair.layout().layout()),
-        }
+        })
     }
 }
 
@@ -2240,7 +2291,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     /// Projects the versioned geometry of this prepared layout.
     pub fn layout_geometry_json(&self) -> Result<ManagedJson> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
-        let geometry = ManagedJson::from(serde_json::to_value(self.layout_geometry_projection())?);
+        let geometry = ManagedJson::from(serde_json::to_value(self.layout_geometry_projection()?)?);
         self.context.session().checkpoint(OperationPhase::Emit)?;
         Ok(geometry)
     }
@@ -2253,7 +2304,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         writer: impl std::io::Write,
         pretty: bool,
     ) -> Result<()> {
-        let projection = self.layout_geometry_projection();
+        let projection = self.layout_geometry_projection()?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         if pretty {
             serde_json::to_writer_pretty(writer, &projection)?;
@@ -2263,14 +2314,14 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         Ok(())
     }
 
-    fn layout_geometry_projection(&self) -> LayoutGeometryProjection<'_> {
-        LayoutGeometryProjection {
+    fn layout_geometry_projection(&self) -> Result<LayoutGeometryProjection<'_>> {
+        Ok(LayoutGeometryProjection {
             schema_version: 1,
             family_id: self.family_id(),
             diagram_type: &self.metadata.diagram_type,
             layout_adaptation: self.layout_adaptation(),
-            layout: self.family.layout_projection(),
-        }
+            layout: self.family.layout_projection()?,
+        })
     }
 
     /// Projects the full semantic/layout snapshot from this artifact's paired family owners.
@@ -2296,7 +2347,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     }
 
     fn assemble_layout_json(&self, semantic: ManagedJson) -> Result<ManagedJson> {
-        let layout = serde_json::to_value(self.family.layout_projection())?;
+        let layout = serde_json::to_value(self.family.layout_projection()?)?;
 
         let mut metadata = serde_json::Map::new();
         metadata.insert(
@@ -2616,6 +2667,20 @@ fn prepare_for<'parsed>(
     let _stage =
         merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutPrepare);
     let mut context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
+    #[cfg(feature = "layout-shoal")]
+    if plan.backend() == GraphLayoutBackend::Shoal
+        && matches!(
+            expected_family,
+            DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::CLASS
+                | DiagramFamilyId::ER
+                | DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::STATE
+                | DiagramFamilyId::SWIMLANE
+        )
+    {
+        context.session.use_shoal_text_widths();
+    }
     if let Some(theme) = context.session().native_theme() {
         let metadata = parsed.metadata();
         let control = context.session().work_meter().control();

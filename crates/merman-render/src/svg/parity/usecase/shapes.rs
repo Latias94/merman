@@ -423,6 +423,16 @@ pub(super) fn write_node(
             );
         }
         let label_start = out.len();
+        let canonical_ellipse_label = {
+            #[cfg(feature = "layout-shoal")]
+            {
+                context.canonical
+            }
+            #[cfg(not(feature = "layout-shoal"))]
+            {
+                false
+            }
+        };
         write_label(
             out,
             &plan.label,
@@ -433,6 +443,8 @@ pub(super) fn write_node(
                 .is_some_and(|node| node.business && plan.ellipse)
             {
                 UsecaseLabelKind::PositionedNode("label usecase-label")
+            } else if canonical_ellipse_label {
+                UsecaseLabelKind::PositionedNode("label")
             } else {
                 UsecaseLabelKind::Node("label")
             },

@@ -156,6 +156,8 @@ pub(super) fn render_state_node_svg(
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
     let effective_look = state_effective_look(ctx);
+    let overflow =
+        |width, height| html_label_overflow_attr(ctx.uses_canonical_routes(), width, height);
     let node_style = ctx.style_plan.node(node_id);
     let compatibility = ctx.style_plan.compatibility();
     let node_text_style = node_style
@@ -714,7 +716,7 @@ pub(super) fn render_state_node_svg(
                 };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
@@ -733,6 +735,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-lh / 2.0),
                     fmt_display(lw),
                     fmt_display(lh),
+                    overflow(lw, lh),
                     escape_attr(&div_style),
                     label_dom
                 );
@@ -872,7 +875,7 @@ pub(super) fn render_state_node_svg(
             if ctx.html_labels {
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
@@ -896,12 +899,14 @@ pub(super) fn render_state_node_svg(
                     fmt_display(title_w),
                     fmt_display(title_h),
                     fmt_display(geometry.title_x),
+                    overflow(title_w, title_h),
                     html_div_style,
                     title_dom,
                     fmt_display(desc_w),
                     fmt_display(desc_h),
                     fmt_display(geometry.description_x),
                     fmt_display(geometry.description_y),
+                    overflow(desc_w, desc_h),
                     html_div_style,
                     desc_dom
                 );
@@ -1049,12 +1054,13 @@ pub(super) fn render_state_node_svg(
                 if ctx.html_labels {
                     let _ = write!(
                         out,
-                        r##"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                        r##"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                         escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         fmt_display(lw),
                         fmt_display(lh),
+                        overflow(lw, lh),
                         escape_attr(&div_style),
                         label_dom,
                     );
@@ -1101,7 +1107,7 @@ pub(super) fn render_state_node_svg(
             if ctx.html_labels {
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
@@ -1120,6 +1126,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-lh / 2.0),
                     fmt_display(lw),
                     fmt_display(lh),
+                    overflow(lw, lh),
                     escape_attr(&div_style),
                     label_dom,
                 );

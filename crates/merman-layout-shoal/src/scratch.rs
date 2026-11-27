@@ -91,6 +91,11 @@ impl Drop for Frame<'_> {
         };
         self.expanded.component_cache.discard_pending();
         let mut used = self.expanded.retained_bytes();
+        let accepted = self.expanded.component_cache.retained_bytes();
+        if accepted > 0 && used.saturating_add(accepted) > limit {
+            // Drop temporary stage storage before trimming accepted editor geometry.
+            used -= self.expanded.discard_stage_scratch();
+        }
         if used > limit {
             let cache = std::mem::take(&mut self.expanded.component_cache);
             *self.expanded = Expanded::default();

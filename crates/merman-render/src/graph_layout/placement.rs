@@ -1,16 +1,25 @@
 mod anchors;
 
-use super::ir::{Direction, MeasuredGraph, Point, Size, SolvedGraph};
-pub(crate) use super::shoal_bridge::Constraints;
+use super::ir::{Axis, Direction, MeasuredGraph, Point, Size, SolvedGraph};
 use super::shoal_bridge::{self, NodeHint, OrderHint, Placement, WidthPolicy};
 use crate::layout_frame::{FrameDirection, GraphPlacement, ShoalFrameNode};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::{
-    Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result, ShoalLayoutFrame,
+    DiagramFamilyId, Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result,
+    ShoalLayoutFrame,
 };
 use merman_layout_shoal::LayoutScratch;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+pub(crate) struct Constraints<'a> {
+    pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
+    pub(crate) split_incoming_ports: &'a [usize],
+    pub(crate) lane_order: &'a [u32],
+    pub(crate) capture_ranks: bool,
+    pub(crate) allow_turn: bool,
+}
 
 /// IDs are supplied in measured node and group order so persisted hints survive reindexing.
 pub(crate) fn solve<'id>(
@@ -21,13 +30,21 @@ pub(crate) fn solve<'id>(
     constraints: Constraints<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(SolvedGraph, GraphPlacement)> {
+    let projected = shoal_bridge::Constraints {
+        flow_relative_nodes: constraints.flow_relative_nodes,
+        lane_order: constraints.lane_order,
+        capture_ranks: constraints.capture_ranks,
+        ..Default::default()
+    };
+    let split = constraints.split_incoming_ports;
     let Some(execution) = execution else {
         let solved = shoal_bridge::solve(
             graph,
             Placement {
-                constraints,
+                constraints: projected,
                 ..Placement::default()
             },
+            split,
             &mut LayoutScratch::with_max_retained_bytes(0),
             work,
         )?;
@@ -80,34 +97,36 @@ pub(crate) fn solve<'id>(
     let reuse_components = !fit_width && anchors.is_some();
     let placement = Placement {
         width,
+        spacing: spacing_for(graph, execution),
         capture_ranks: capture,
         reuse_components,
         hints: &hints,
         incident_signatures: anchors
             .as_ref()
             .map_or(&[], anchors::Components::signatures),
-        constraints,
+        constraints: projected,
     };
-    if !fit_width
-        && !capture
+    if !capture
         && execution.previous_shoal_frame.is_none()
-        && graph.groups.is_empty()
         && placement.constraints.lane_order.is_empty()
         && let Some(pool) = execution.family.session().shoal_scratch()
     {
-        let solved = pool.solve(|scratch| shoal_bridge::solve(graph, placement, scratch, work))?;
-        return Ok((solved, GraphPlacement::default()));
+        let solved =
+            pool.solve(|scratch| shoal_bridge::solve(graph, placement, split, scratch, work))?;
+        let placement = GraphPlacement {
+            adaptation: adaptation(execution, &solved),
+            frame: None,
+        };
+        return Ok((solved, placement));
     }
     let mut scratch = if reuse_components {
         execution.shoal_preview_scratch(previous)
     } else {
         LayoutScratch::with_max_retained_bytes(0)
     };
-    let solved = shoal_bridge::solve(graph, placement, &mut scratch, work)?;
+    let solved = shoal_bridge::solve(graph, placement, split, &mut scratch, work)?;
     let placement = GraphPlacement {
-        adaptation: fit_width.then(|| {
-            LayoutAdaptationObservation::fit_width(execution.container_width, solved.bounds.width)
-        }),
+        adaptation: adaptation(execution, &solved),
         frame: if capture {
             let mut frame = frame(graph, &solved, node_ids, group_ids, family, anchors, work)?;
             if scratch.retained_bytes() != 0 {
@@ -119,6 +138,96 @@ pub(crate) fn solve<'id>(
         },
     };
     Ok((solved, placement))
+}
+
+fn adaptation(
+    execution: &LayoutExecution<'_>,
+    solved: &SolvedGraph,
+) -> Option<LayoutAdaptationObservation> {
+    (execution.adaptation == LayoutAdaptation::FitWidth).then(|| {
+        LayoutAdaptationObservation::fit_width(execution.container_width, solved.bounds.width)
+    })
+}
+
+fn spacing_for(graph: &MeasuredGraph, execution: &LayoutExecution<'_>) -> Option<(f64, f64, f64)> {
+    let config = execution.presentation_config?;
+    let (sections, node_gap, rank_gap, component_is_node_gap): (&[&str], _, _, _) =
+        match execution.family_id() {
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW => {
+                (&["flowchart"], "nodeSpacing", "rankSpacing", true)
+            }
+            DiagramFamilyId::CLASS | DiagramFamilyId::STATE | DiagramFamilyId::REQUIREMENT => (
+                &["", "state", "flowchart"],
+                "nodeSpacing",
+                "rankSpacing",
+                false,
+            ),
+            DiagramFamilyId::ER => (&["er"], "nodeSpacing", "rankSpacing", false),
+            DiagramFamilyId::USECASE => (&["", "usecase"], "nodeSpacing", "rankSpacing", false),
+            _ => return None,
+        };
+    let spacing = merman_layout_shoal::Spacing::default();
+    let scale = execution.native_family_theme().map_or(1.0, |theme| {
+        use merman_theme_contract::v2::Density;
+        match theme.form.density {
+            Density::Compact => 0.85,
+            Density::Balanced => 1.0,
+            Density::Airy => 1.2,
+        }
+    });
+    let owns = |key| {
+        sections.iter().any(|section| match *section {
+            "" => config.explicit_config_owns_path(key),
+            section => config.explicit_config_owns_path(&format!("{section}.{key}")),
+        })
+    };
+    let node = if owns(node_gap) {
+        graph.node_spacing
+    } else {
+        spacing.node * scale
+    };
+    let rank = if owns(rank_gap) {
+        graph.rank_spacing
+    } else {
+        spacing.rank * scale
+    };
+    Some((
+        node,
+        rank,
+        if component_is_node_gap {
+            node
+        } else {
+            node.max(rank)
+        },
+    ))
+}
+
+#[cfg(any(feature = "diagram-architecture", feature = "diagram-c4"))]
+pub(crate) fn placement_for_solved<'id>(
+    graph: &MeasuredGraph,
+    solved: &SolvedGraph,
+    node_ids: impl ExactSizeIterator<Item = &'id str>,
+    group_ids: impl ExactSizeIterator<Item = &'id str>,
+    execution: &LayoutExecution<'_>,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<GraphPlacement> {
+    let frame = if execution.capture_shoal_frame {
+        Some(Arc::new(frame(
+            graph,
+            solved,
+            node_ids,
+            group_ids,
+            execution.family_id().as_str(),
+            None,
+            work,
+        )?))
+    } else {
+        None
+    };
+    Ok(GraphPlacement {
+        adaptation: adaptation(execution, solved),
+        frame,
+    })
 }
 
 fn hints<'id>(

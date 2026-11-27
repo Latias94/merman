@@ -7,12 +7,14 @@ use std::time::Duration;
 
 use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
+use super::super::util::html_label_overflow_attr;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
 use super::label::{
-    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
-    class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
+    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics,
+    class_html_member_div_style, class_html_title_metrics, class_svg_label_rect,
+    render_class_html_label, wrap_class_svg_text_like_mermaid,
     write_class_svg_text_markdown_with_style,
 };
 use super::rough::{
@@ -74,7 +76,7 @@ pub(super) struct ClassNodeDividerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub use_gradient: bool,
+    pub use_neo_line_class: bool,
     pub timing: RenderTiming,
 }
 
@@ -148,7 +150,8 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub use_gradient: bool,
+    pub use_neo_line_class: bool,
+    pub uses_canonical_routes: bool,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
@@ -171,7 +174,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub use_gradient: bool,
+    pub use_neo_line_class: bool,
     pub timing: RenderTiming,
     pub native: Option<&'a crate::class::ClassNativeStyle>,
     pub paint_heading: bool,
@@ -469,7 +472,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
         let _ = write!(
             out,
             r#"<g class="divider{}" style="{}">"#,
-            if ctx.look == "neo" && !ctx.use_gradient {
+            if ctx.use_neo_line_class {
                 " neo-line"
             } else {
                 ""
@@ -768,6 +771,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
             },
+            ctx.uses_canonical_routes,
         );
         out.push_str("</g>");
     } else {
@@ -807,6 +811,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             mermaid_config: ctx.mermaid_config,
             math_renderer: ctx.math_renderer,
         },
+        ctx.uses_canonical_routes,
     );
     out.push_str("</g>");
     if ctx.paint_heading {
@@ -851,7 +856,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
-                use_gradient: ctx.use_gradient,
+                use_neo_line_class: ctx.use_neo_line_class,
                 timing: ctx.timing,
             },
         )
@@ -1129,7 +1134,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
-                use_gradient: ctx.use_gradient,
+                use_neo_line_class: ctx.use_neo_line_class,
                 timing: ctx.timing,
             },
         )
@@ -1196,14 +1201,16 @@ pub(super) fn measure_class_html_node_rows<'a>(
 pub(super) fn render_class_html_node_label_group(
     out: &mut impl SvgOutput,
     spec: &ClassHtmlNodeLabelGroupSpec<'_>,
+    uses_canonical_routes: bool,
 ) {
     let _ = write!(
         out,
-        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
+        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
         escape_attr_display(spec.label_style.trim().trim_end_matches(';')),
         fmt(spec.translate_y),
         fmt(spec.width),
         fmt(spec.height),
+        html_label_overflow_attr(uses_canonical_routes, spec.width, spec.height),
         escape_attr_display(spec.div_style)
     );
     render_class_html_label(
@@ -1249,7 +1256,11 @@ fn render_class_html_node_rows_group(
         fmt(group_y)
     );
     for row in &rows_rendered.rows {
-        let div_style = class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
+        let div_style = class_html_member_div_style(
+            row.metrics.width.max(1.0),
+            row.max_width_px,
+            ctx.uses_canonical_routes,
+        );
         render_class_html_node_label_group(
             out,
             &ClassHtmlNodeLabelGroupSpec {
@@ -1266,6 +1277,7 @@ fn render_class_html_node_rows_group(
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
             },
+            ctx.uses_canonical_routes,
         );
     }
     out.push_str("</g>");
@@ -1543,7 +1555,7 @@ mod typography_tests {
             node_stroke_width: "1",
             node_stroke_dasharray: "",
             look: "classic",
-            use_gradient: false,
+            use_neo_line_class: false,
             timing: RenderTiming::disabled(),
             native: None,
             paint_heading: false,

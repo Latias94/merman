@@ -177,6 +177,74 @@ fn out_of_bounds_obstacles_do_not_add_vertices_to_a_guarded_span() {
 }
 
 #[test]
+fn scoped_events_keep_touching_rays_and_disjoint_runs_in_sweep_order() {
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let obstacles = Obstacles::new(&[], 0.0, &mut work).unwrap();
+    let h = |fixed, min, max| OrthoSegment {
+        axis: Axis::Horizontal,
+        fixed,
+        min,
+        max,
+    };
+    let v = |fixed, min, max| OrthoSegment {
+        axis: Axis::Vertical,
+        fixed,
+        min,
+        max,
+    };
+    let corridors = [
+        h(4.0, 0.0, 2.0),
+        h(4.0, 4.0, 6.0),
+        h(4.0, 8.0, 10.0),
+        h(1.0, 0.0, 10.0),
+        h(7.0, 3.0, 7.0),
+        h(8.0, 3.0, 9.0),
+        v(3.0, 0.0, 1.0),
+        v(3.0, 4.0, 7.0),
+        v(3.0, 8.0, 10.0),
+        v(9.0, 8.0, 10.0),
+    ];
+    let anchors = [Point { x: 3.0, y: 4.0 }, Point { x: 9.0, y: 7.0 }];
+    let rays = [
+        [h(4.0, 2.0, 8.0), v(3.0, 1.0, 4.0)],
+        [h(7.0, 9.0, 9.0), v(9.0, 5.0, 7.0)],
+    ];
+    let bounds = Bounds::new(rect(0.0, 0.0, 12.0, 12.0)).unwrap();
+    let mut grid = Grid::default();
+    for (cap, reverse, expected) in [
+        (12, false, None),
+        (13, false, Some([6, 9])),
+        (13, true, Some([9, 6])),
+    ] {
+        let mut query = GridQuery {
+            bounds,
+            guarded: true,
+            anchors,
+            rays,
+            cap,
+        };
+        if reverse {
+            query.anchors.reverse();
+            query.rays.reverse();
+        }
+        assert_eq!(
+            grid.build(&corridors, &obstacles, query, &mut work)
+                .unwrap(),
+            expected,
+        );
+        assert_eq!(grid.nodes.len(), cap);
+        // The source ray connects three static horizontal pieces. The zero-length
+        // target ray still intersects its vertical ray at the shared sweep position.
+        assert_eq!(grid.nodes[6].adjacent, [Some(2), None, Some(5), Some(7)]);
+        assert_eq!(grid.nodes[9].adjacent, [None; 4]);
+        // Disjoint runs on either axis do not acquire a link across their gap.
+        assert_eq!(grid.nodes[7].adjacent[1..=3], [None, Some(6), None]);
+        assert_eq!(grid.nodes[8].adjacent, [None, Some(10), None, None]);
+    }
+}
+
+#[test]
 fn bounds_and_lead_directions_are_hard_constraints() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);

@@ -1,8 +1,10 @@
 pub(super) use crate::geom::Bounds;
-use crate::work::{LayoutResult, Work, push, reserved};
-use crate::{MarkerMetrics, Point, RoutePoint, RoutingStyle, Side, Size};
+use crate::geom::{Bvh, BvhEntry};
+use crate::work::{LayoutResult, Work, push};
+use crate::{MarkerMetrics, Point, RoutePoint, RoutingStyle, Side, Size, WorkError};
+use std::num::NonZeroU32;
+use std::ops::ControlFlow::{Break, Continue};
 
-const LEAF_SIZE: usize = 8;
 const MAX_WALLS: usize = 16 * 1024;
 const MAX_KNOTS: usize = 2 * MAX_WALLS;
 const MAX_CHECKS: usize = 128 * 1024;
@@ -17,14 +19,19 @@ impl Bounds {
         self.x[0] < center.x && center.x < self.x[1] && self.y[0] < center.y && center.y < self.y[1]
     }
 
-    fn hits_segment(self, from: Point, to: Point) -> bool {
+    fn hits_segment(self, bounds: Self, [reverse_x, reverse_y]: [bool; 2]) -> bool {
         let (mut enter, mut leave) = (0.0_f64, 1.0_f64);
-        for ([low, high], a, b) in [(self.x, from.x, to.x), (self.y, from.y, to.y)] {
+        for ([low, high], [a, b], reverse) in
+            [(self.x, bounds.x, reverse_x), (self.y, bounds.y, reverse_y)]
+        {
             if a == b {
+                // Equal endpoints, including opposite signed zeros, only need comparisons.
                 if a < low || a > high {
                     return false;
                 }
             } else {
+                // Reversing a segment can change the rounding at a clipped boundary.
+                let (a, b) = if reverse { (b, a) } else { (a, b) };
                 let (p, q) = ((low - a) / (b - a), (high - a) / (b - a));
                 enter = enter.max(p.min(q));
                 leave = leave.min(p.max(q));
@@ -33,12 +40,26 @@ impl Bounds {
         enter <= leave
     }
 
-    fn hits_corner(self, bounds: Self, corner: Point) -> bool {
+    fn hits_corner(self, bounds: Self, [high_x, high_y]: [bool; 2]) -> bool {
         // The rectangle point closest to the corner also minimizes distance in the two
         // normalized axes of this right triangle. The triangle contains every rounded turn.
-        let dx = (corner.x - corner.x.clamp(self.x[0], self.x[1])).abs();
-        let dy = (corner.y - corner.y.clamp(self.y[0], self.y[1])).abs();
+        let x = bounds.x[usize::from(high_x)];
+        let y = bounds.y[usize::from(high_y)];
+        let dx = (x - x.clamp(self.x[0], self.x[1])).abs();
+        let dy = (y - y.clamp(self.y[0], self.y[1])).abs();
         dx / (bounds.x[1] - bounds.x[0]) + dy / (bounds.y[1] - bounds.y[0]) <= 1.0
+    }
+
+    fn hits_diamond(self, diamond: Self) -> bool {
+        let distance = |[a, b]: [f64; 2], [low, high]: [f64; 2]| {
+            let half = (b - a) * 0.5;
+            if half <= 0.0 {
+                return 0.0;
+            }
+            let center = a.midpoint(b);
+            (center - center.clamp(low, high)).abs() / half
+        };
+        distance(diamond.x, self.x) + distance(diamond.y, self.y) <= 1.0
     }
 }
 
@@ -57,28 +78,34 @@ fn between(a: f64, b: f64, c: f64) -> bool {
     a.min(c) <= b && b <= a.max(c)
 }
 
+fn stroke_id(edge: usize) -> Option<NonZeroU32> {
+    NonZeroU32::new(u32::try_from(edge.checked_add(1)?).ok()?)
+}
+
 #[derive(Clone, Copy)]
 enum Shape {
     Area,
-    Segment(Point, Point),
-    Corner(Point),
+    Diamond,
+    Segment { reverse: [bool; 2] },
+    Corner { high: [bool; 2] },
 }
 
 struct Wall {
     bounds: Bounds,
-    stroke: Option<usize>,
+    stroke: Option<NonZeroU32>,
     shape: Shape,
 }
 
 impl Wall {
-    fn blocks(&self, label: Bounds, own_stroke: usize) -> bool {
-        if self.stroke == Some(own_stroke) || !self.bounds.overlaps(label) {
+    fn blocks(&self, label: Bounds, own_stroke: Option<NonZeroU32>) -> bool {
+        if own_stroke.is_some() && self.stroke == own_stroke || !self.bounds.overlaps(label) {
             return false;
         }
         match self.shape {
             Shape::Area => true,
-            Shape::Segment(from, to) => label.hits_segment(from, to),
-            Shape::Corner(at) => label.hits_corner(self.bounds, at),
+            Shape::Diamond => label.hits_diamond(self.bounds),
+            Shape::Segment { reverse } => label.hits_segment(self.bounds, reverse),
+            Shape::Corner { high } => label.hits_corner(self.bounds, high),
         }
     }
 }
@@ -94,7 +121,7 @@ impl Scene {
     fn add(
         &mut self,
         bounds: Bounds,
-        stroke: Option<usize>,
+        stroke: Option<NonZeroU32>,
         shape: Shape,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
@@ -115,6 +142,10 @@ impl Scene {
 
     pub(super) fn area(&mut self, bounds: Bounds, work: &mut Work<'_>) -> LayoutResult<bool> {
         self.add(bounds, None, Shape::Area, work)
+    }
+
+    pub(super) fn diamond(&mut self, bounds: Bounds, work: &mut Work<'_>) -> LayoutResult<bool> {
+        self.add(bounds, None, Shape::Diamond, work)
     }
 
     pub(super) fn marker(
@@ -140,6 +171,7 @@ impl Scene {
         if points.len() > MAX_KNOTS - self.total_knots {
             return Ok(false);
         }
+        let stroke = Some(stroke_id(edge).ok_or(WorkError::ArithmeticOverflow)?);
         self.total_knots += points.len();
         self.knots.clear();
         for &p in points {
@@ -160,21 +192,15 @@ impl Scene {
         for i in 1..self.knots.len() {
             let (a, b) = (self.knots[i - 1], self.knots[i]);
             let bounds = Bounds::between(a, b);
-            if bends && !aligned(a, b) {
-                // Sweeps and steps are coordinate-monotone. Terminal smoothing may absorb
-                // the preceding/following collinear shaft, extending the same envelope.
-                let last = self.knots.len() - 1;
-                let mut sweep = bounds;
-                if i == 2 && aligned(self.knots[0], a) {
-                    sweep = sweep.union(Bounds::between(self.knots[0], b));
+            let shape = if bends && !aligned(a, b) {
+                // The solver supplies both ends of the monotone sweep.
+                Shape::Area
+            } else {
+                Shape::Segment {
+                    reverse: [a.x > b.x, a.y > b.y],
                 }
-                if i + 1 == last && aligned(b, self.knots[last]) {
-                    sweep = sweep.union(Bounds::between(a, self.knots[last]));
-                }
-                if !self.add(sweep, Some(edge), Shape::Area, work)? {
-                    return Ok(false);
-                }
-            } else if !self.add(bounds, Some(edge), Shape::Segment(a, b), work)? {
+            };
+            if !self.add(bounds, stroke, shape, work)? {
                 return Ok(false);
             }
             if bends
@@ -182,91 +208,29 @@ impl Scene {
                 && aligned(a, b)
                 && aligned(b, end)
                 && !aligned(a, end)
-                && !self.add(Bounds::between(a, end), Some(edge), Shape::Corner(b), work)?
             {
-                return Ok(false);
+                let bounds = Bounds::between(a, end);
+                let shape = Shape::Corner {
+                    high: [b.x > bounds.x[0], b.y > bounds.y[0]],
+                };
+                if !self.add(bounds, stroke, shape, work)? {
+                    return Ok(false);
+                }
             }
         }
         Ok(true)
     }
 
     pub(super) fn index(self, work: &mut Work<'_>) -> LayoutResult<Clearance> {
-        let mut walls = self.walls;
-        let capacity = walls.len().div_ceil(LEAF_SIZE) * 4;
-        work.charge(capacity)?;
-        let mut branches = reserved(capacity)?;
-        let root = if walls.is_empty() {
-            None
-        } else {
-            Some(Branch::build(&mut walls, 0, &mut branches, work)?)
-        };
         Ok(Clearance {
-            walls,
-            branches,
-            root,
+            walls: Bvh::build_with_work(self.walls, |wall| wall.bounds, work)?,
             remaining: MAX_CHECKS,
         })
     }
 }
 
-#[derive(Clone, Copy)]
-enum Child {
-    Range { start: usize, end: usize },
-    Pair(usize, usize),
-}
-
-#[derive(Clone, Copy)]
-struct Branch {
-    bounds: Bounds,
-    child: Child,
-}
-
-impl Branch {
-    fn build(
-        walls: &mut [Wall],
-        offset: usize,
-        branches: &mut Vec<Self>,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<usize> {
-        work.charge(walls.len())?;
-        let bounds = walls
-            .iter()
-            .skip(1)
-            .fold(walls[0].bounds, |bounds, wall| bounds.union(wall.bounds));
-        let child = if walls.len() <= LEAF_SIZE {
-            Child::Range {
-                start: offset,
-                end: offset + walls.len(),
-            }
-        } else {
-            let horizontal = bounds.x[1] - bounds.x[0] >= bounds.y[1] - bounds.y[0];
-            let center = |wall: &Wall| {
-                let axis = if horizontal {
-                    wall.bounds.x
-                } else {
-                    wall.bounds.y
-                };
-                axis[0].midpoint(axis[1])
-            };
-            let middle = walls.len() / 2;
-            work.charge(walls.len())?;
-            walls.select_nth_unstable_by(middle, |a, b| center(a).total_cmp(&center(b)));
-            let (left, right) = walls.split_at_mut(middle);
-            Child::Pair(
-                Self::build(left, offset, branches, work)?,
-                Self::build(right, offset + middle, branches, work)?,
-            )
-        };
-        let index = branches.len();
-        push(branches, Self { bounds, child })?;
-        Ok(index)
-    }
-}
-
 pub(super) struct Clearance {
-    walls: Vec<Wall>,
-    branches: Vec<Branch>,
-    root: Option<usize>,
+    walls: Bvh<Wall>,
     remaining: usize,
 }
 
@@ -276,12 +240,7 @@ impl Clearance {
     }
 
     pub(super) fn visit(&mut self, work: &mut Work<'_>) -> LayoutResult<bool> {
-        if self.exhausted() {
-            return Ok(false);
-        }
-        self.remaining -= 1;
-        work.visit(1)?;
-        Ok(true)
+        visit_check(&mut self.remaining, work)
     }
 
     pub(super) fn clear(
@@ -290,39 +249,29 @@ impl Clearance {
         own_stroke: usize,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
-        let Some(root) = self.root else {
-            return Ok(true);
-        };
-        self.clear_branch(root, label, own_stroke, work)
-    }
-
-    fn clear_branch(
-        &mut self,
-        index: usize,
-        label: Bounds,
-        own_stroke: usize,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<bool> {
-        if !self.visit(work)? {
-            return Ok(false);
-        }
-        let branch = self.branches[index];
-        if !label.overlaps(branch.bounds) {
-            return Ok(true);
-        }
-        match branch.child {
-            Child::Range { start, end } => {
-                for index in start..end {
-                    if !self.visit(work)? || self.walls[index].blocks(label, own_stroke) {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
+        let remaining = &mut self.remaining;
+        let own_stroke = stroke_id(own_stroke);
+        let result = self.walls.visit(|entry| -> LayoutResult<_> {
+            if !visit_check(remaining, work)? {
+                return Ok(Break(()));
             }
-            Child::Pair(left, right) => Ok(self.clear_branch(left, label, own_stroke, work)?
-                && self.clear_branch(right, label, own_stroke, work)?),
-        }
+            Ok(match entry {
+                BvhEntry::Node(bounds) => Continue(label.overlaps(bounds)),
+                BvhEntry::Item(wall) if wall.blocks(label, own_stroke) => Break(()),
+                BvhEntry::Item(_) => Continue(true),
+            })
+        })?;
+        Ok(result.is_continue())
     }
+}
+
+fn visit_check(remaining: &mut usize, work: &mut Work<'_>) -> LayoutResult<bool> {
+    if *remaining == 0 {
+        return Ok(false);
+    }
+    *remaining -= 1;
+    work.visit(1)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -374,6 +323,76 @@ mod tests {
                 y: [34.0, 35.0],
             };
             assert!(!clearance.clear(marker, 1, &mut work).unwrap());
+        }
+    }
+
+    #[test]
+    fn compact_shaft_clearance_preserves_direction_at_a_floating_point_contact() {
+        let (x, y) = (2.0_f64.powi(512), 2.0_f64.powi(-512));
+        let start = RoutePoint::new(-0.0, 0.0, Axis::Vertical);
+        let end = RoutePoint::new(10.0 * x, 3.0 * y, Axis::Vertical);
+        let label = Bounds {
+            x: [0.0, x],
+            y: [0.30000000000000004 * y, y],
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let edge = u32::MAX as usize - 1;
+        for (points, clear) in [([start, end], true), ([end, start], false)] {
+            let mut scene = Scene::default();
+            assert!(
+                scene
+                    .stroke(edge, &points, RoutingStyle::Polyline, &mut work)
+                    .unwrap()
+            );
+            let mut index = scene.index(&mut work).unwrap();
+            assert_eq!(index.clear(label, 0, &mut work).unwrap(), clear);
+            assert!(index.clear(label, edge, &mut work).unwrap());
+        }
+        assert!(std::mem::size_of::<Wall>() <= 48);
+    }
+
+    #[test]
+    fn an_offset_diamond_blocks_its_sloping_boundary_and_leaves_empty_corners_clear() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let mut scene = Scene::default();
+        assert!(
+            scene
+                .diamond(
+                    Bounds {
+                        x: [13., 33.],
+                        y: [-9., 3.]
+                    },
+                    &mut work
+                )
+                .unwrap()
+        );
+        let mut index = scene.index(&mut work).unwrap();
+        for (label, clear) in [
+            (
+                Bounds {
+                    x: [28., 29.],
+                    y: [0., 1.],
+                },
+                false,
+            ),
+            (
+                Bounds {
+                    x: [30., 31.],
+                    y: [0., 1.],
+                },
+                true,
+            ),
+            (
+                Bounds {
+                    x: [9., 11.],
+                    y: [0., 2.],
+                },
+                true,
+            ),
+        ] {
+            assert_eq!(index.clear(label, 0, &mut work).unwrap(), clear);
         }
     }
 

@@ -158,8 +158,65 @@ static CARDINALITIES: [Cardinality; 4] = [
     },
 ];
 
+// Canonical (Shoal) ER markers emit the visible open crow's-foot half of Mermaid's symmetric
+// lens (exact De Casteljau split at t = 0.5) with refX anchored directly on the entity wall.
+// This avoids pulling shafts 18 px off entity borders and never exposes a closed back-half loop.
+static CANONICAL_CROW_FOOT: [Cardinality; 2] = [
+    Cardinality {
+        card: "ONE_OR_MORE",
+        name: "oneOrMore",
+        ends: [
+            MarkerGlyph::new(
+                0,
+                18,
+                27,
+                36,
+                "M0,9 Q9,9 18,18 Q9,27 0,27 M24,9 L24,27",
+                None,
+            ),
+            MarkerGlyph::new(
+                27,
+                18,
+                27,
+                36,
+                "M3,9 L3,27 M27,9 Q18,9 9,18 Q18,27 27,27",
+                None,
+            ),
+        ],
+    },
+    Cardinality {
+        card: "ZERO_OR_MORE",
+        name: "zeroOrMore",
+        ends: [
+            MarkerGlyph::new(
+                0,
+                18,
+                39,
+                36,
+                "M0,9 Q9,9 18,18 Q9,27 0,27",
+                Some((30.0, 27.5)),
+            ),
+            MarkerGlyph::new(
+                39,
+                18,
+                39,
+                36,
+                "M39,9 Q30,9 21,18 Q30,27 39,27",
+                Some((9.0, 11.0)),
+            ),
+        ],
+    },
+];
+
 fn cardinality(card: &str) -> Option<&'static Cardinality> {
     CARDINALITIES.iter().find(|entry| entry.card == card)
+}
+
+fn canonical_cardinality(card: &str) -> Option<&'static Cardinality> {
+    CANONICAL_CROW_FOOT
+        .iter()
+        .find(|entry| entry.card == card)
+        .or_else(|| cardinality(card))
 }
 
 /// Projects a semantic cardinality to Mermaid's layout marker spelling.
@@ -195,7 +252,7 @@ pub fn er_unified_marker_id(diagram_id: SvgId<'_>, upstream_marker: &str) -> Str
 
 #[cfg(feature = "layout-shoal")]
 pub fn er_canonical_marker(card: &str, start: bool, neo: bool) -> Marker {
-    let Some(entry) = cardinality(card) else {
+    let Some(entry) = canonical_cardinality(card) else {
         return Marker::default();
     };
     let glyph = &entry.ends[usize::from(!start)];
@@ -223,7 +280,7 @@ pub fn er_marker_paint_bounds(
     start: bool,
 ) -> Option<Rect> {
     let (card, glyph_at_start) = marker_suffix(upstream_marker.trim())?;
-    let glyph = &cardinality(card)?.ends[usize::from(!glyph_at_start)];
+    let glyph = &canonical_cardinality(card)?.ends[usize::from(!glyph_at_start)];
     let reference = Point::new(reference.x, reference.y);
     let shoulder = Point::new(shoulder.x, shoulder.y);
     let forward = if start {
@@ -286,8 +343,13 @@ pub fn write_er_marker_definitions(out: &mut impl SvgOutput, defs: ErMarkerDefs<
     let neo_width = fmt(neo_stroke_width).to_string();
     let neo_background = escape_attr(main_bkg);
     for entry in &CARDINALITIES {
-        for (end, glyph) in ["Start", "End"].into_iter().zip(&entry.ends) {
-            let name = entry.name;
+        let active = if canonical {
+            canonical_cardinality(entry.card).unwrap_or(entry)
+        } else {
+            entry
+        };
+        for (end, glyph) in ["Start", "End"].into_iter().zip(&active.ends) {
+            let name = active.name;
             let id = format!("{diagram_id}_er-{name}{end}");
             write_marker_start(out, &id, name, glyph, neo || canonical);
             glyph.write_content(
@@ -321,4 +383,63 @@ fn write_marker_start(
         out.push_str(r#" markerUnits="userSpaceOnUse""#);
     }
     out.push('>');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn canonical_crow_foot_markers_require_zero_trim_and_emit_open_forks() {
+        for card in ["ONE_OR_MORE", "ZERO_OR_MORE"] {
+            for start in [true, false] {
+                for neo in [false, true] {
+                    let metrics = er_canonical_marker(card, start, neo);
+                    assert_eq!(
+                        metrics.trim, 0.0,
+                        "{card} start={start} neo={neo} must seat directly at entity border without line trim"
+                    );
+                    assert!(metrics.depth > 0.0 && metrics.width > 0.0);
+                }
+            }
+        }
+
+        let mut canonical_svg = String::new();
+        write_er_marker_definitions(
+            &mut canonical_svg,
+            ErMarkerDefs {
+                diagram_id: SvgId::new("er").unwrap(),
+                include_md_parent: false,
+                canonical: true,
+                neo: false,
+                neo_stroke_width: 1.5,
+                main_bkg: "#FFFFFF",
+            },
+        )
+        .unwrap();
+        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="0" refY="18" markerWidth="27""#));
+        assert!(canonical_svg.contains(r#"id="er_er-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="27""#));
+        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreStart" class="marker zeroOrMore er" refX="0" refY="18" markerWidth="39""#));
+        assert!(canonical_svg.contains(r#"id="er_er-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="39""#));
+
+        let mut legacy_svg = String::new();
+        write_er_marker_definitions(
+            &mut legacy_svg,
+            ErMarkerDefs {
+                diagram_id: SvgId::new("er").unwrap(),
+                include_md_parent: false,
+                canonical: false,
+                neo: false,
+                neo_stroke_width: 1.5,
+                main_bkg: "#FFFFFF",
+            },
+        )
+        .unwrap();
+        assert!(
+            legacy_svg
+                .contains(r#"id="er_er-oneOrMoreStart" class="marker oneOrMore er" refX="18""#)
+        );
+        assert!(legacy_svg.contains(r#"id="er_er-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45""#));
+    }
 }

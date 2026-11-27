@@ -8,10 +8,13 @@ use merman_render_core::svg_edge_parity::path_numbers::fmt_path_into;
 
 use super::SvgOutput;
 
+pub(super) use merman_render_core::html::{
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, html_label_overflow_attr,
+};
 pub(crate) use merman_render_core::theme_svg::cssom_color_value;
 pub(super) use merman_render_core::xml::{
     EscapeAttrDisplay, escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into,
-    escape_xml_serialized_text_into, escaped_xml_len,
+    escape_xml_serialized_text_into, escaped_attr_len, escaped_xml_len,
 };
 pub(crate) use merman_render_core::xml::{escape_attr, escape_xml};
 

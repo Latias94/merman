@@ -27,11 +27,31 @@ pub(super) fn constrained_rough_edge_path(
             control,
         )?;
         let (passes, _) = stroke.ops.as_chunks_mut::<2>();
-        for pass in passes.iter_mut().take(2) {
-            straighten_shaft(pass)?;
+        match segments.get(1) {
+            Some(PathSegment::LineTo { .. }) => {
+                for pass in passes.iter_mut().take(2) {
+                    straighten_shaft(pass)?;
+                }
+            }
+            Some(PathSegment::CurveTo { x1, y1, .. }) => {
+                for pass in passes.iter_mut().take(2) {
+                    align_curve_start(pass, Point::new(*x1, *y1))?;
+                }
+            }
+            _ => {}
         }
-        for pass in passes.iter_mut().rev().take(2) {
-            straighten_shaft(pass)?;
+        match segments.last() {
+            Some(PathSegment::LineTo { .. }) => {
+                for pass in passes.iter_mut().rev().take(2) {
+                    straighten_shaft(pass)?;
+                }
+            }
+            Some(PathSegment::CurveTo { x2, y2, .. }) => {
+                for pass in passes.iter_mut().rev().take(2) {
+                    align_curve_end(pass, Point::new(*x2, *y2))?;
+                }
+            }
+            _ => {}
         }
         Ok(stroke)
     })?;
@@ -90,5 +110,33 @@ fn straighten_shaft(pass: &mut [Op<f64>]) -> Result<(), WorkError> {
     let second = start.lerp(end, 2.0 / 3.0);
     (*first_x, *first_y) = (first.x, first.y);
     (*second_x, *second_y) = (second.x, second.y);
+    Ok(())
+}
+
+fn align_curve_start(pass: &mut [Op<f64>], control: Point) -> Result<(), WorkError> {
+    let [start, curve] = pass else {
+        return Err(WorkError::InvalidGeometry);
+    };
+    let [first_x, first_y, _, _, _, _] = curve.data.as_mut_slice() else {
+        return Err(WorkError::InvalidGeometry);
+    };
+    if start.op != OpType::Move || curve.op != OpType::BCurveTo {
+        return Err(WorkError::InvalidGeometry);
+    }
+    (*first_x, *first_y) = (control.x, control.y);
+    Ok(())
+}
+
+fn align_curve_end(pass: &mut [Op<f64>], control: Point) -> Result<(), WorkError> {
+    let [start, curve] = pass else {
+        return Err(WorkError::InvalidGeometry);
+    };
+    let [_, _, second_x, second_y, _, _] = curve.data.as_mut_slice() else {
+        return Err(WorkError::InvalidGeometry);
+    };
+    if start.op != OpType::Move || curve.op != OpType::BCurveTo {
+        return Err(WorkError::InvalidGeometry);
+    }
+    (*second_x, *second_y) = (control.x, control.y);
     Ok(())
 }

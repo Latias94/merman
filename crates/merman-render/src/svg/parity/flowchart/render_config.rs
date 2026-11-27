@@ -46,6 +46,9 @@ impl FlowchartRenderConfig {
         {
             self.default_edge_interpolate = curve.to_owned();
         }
+        if native.form.radius > 0.0 {
+            self.edge_corner_radius = native.form.radius.clamp(6.0, 12.0);
+        }
     }
 }
 

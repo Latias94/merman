@@ -15,7 +15,7 @@ use crate::resources::OperationWorkMeter;
 use crate::svg::BaseEdgeMarkerKind;
 use kurbo::{Point, Rect, Vec2};
 use merman_layout_shoal::{
-    OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, Spacing, route_orthogonal_spans,
+    OrthogonalSpan, Rect as Obstacle, RoutePoint, Side, route_orthogonal_spans,
 };
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
 use merman_theme_contract::v2::EdgeStyle;
@@ -509,7 +509,7 @@ pub(super) fn prepare(
         .edge_stroke_width_px
         .unwrap_or(2.0)
         .max(0.0);
-    let edge_sep = Spacing::default().edge.max(stroke_width * 2.0);
+    let edge_sep = (stroke_width * 2.0).max(4.0);
     if !edge_sep.is_finite() {
         return Ok(Vec::new());
     }

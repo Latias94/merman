@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use merman_model::config::MermaidThemeId;
 use merman_model::families::c4::C4Boundary;
 use merman_model::presentation::PresentationConfig;
 
@@ -27,7 +28,19 @@ impl C4ClusterThemePlan {
         native: Option<&FamilyTheme>,
         boundaries: &[C4Boundary],
         config: &PresentationConfig,
+        uses_shoal: bool,
     ) -> Self {
+        let dark_shoal_stroke = if uses_shoal
+            && native.is_none()
+            && config
+                .get_str("theme")
+                .and_then(|name| MermaidThemeId::parse(name).ok())
+                .is_some_and(MermaidThemeId::is_dark)
+        {
+            config.get_str("themeVariables.lineColor")
+        } else {
+            None
+        };
         let mut styles: BTreeMap<Box<str>, C4BoundaryStyle> = boundaries
             .iter()
             .filter(|boundary| boundary.alias != "global")
@@ -45,6 +58,7 @@ impl C4ClusterThemePlan {
                             .border_color
                             .as_deref()
                             .or_else(|| config.get_str("c4.boundary_border_color"))
+                            .or(dark_shoal_stroke)
                             .unwrap_or(MERMAID_BOUNDARY_STROKE)
                             .into(),
                         radius: MERMAID_BOUNDARY_RADIUS_PX.into(),

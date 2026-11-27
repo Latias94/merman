@@ -39,7 +39,7 @@ pub(super) fn composite_body_geometry(
     if canonical {
         let title_y = cluster.title_label.y - title_height / 2.0 - origin_y;
         let inner_y = title_y + title_height + 1.0;
-        (inner_y, (outer_y + cluster.height - 4.0 - inner_y).max(1.0))
+        (inner_y, (outer_y + cluster.height - inner_y).max(1.0))
     } else {
         (
             outer_y + title_height + 2.0,
@@ -96,8 +96,11 @@ pub(super) fn prepare_composite_paints<'a>(
         let fill = |color| opacity.map(|opacity| Fill { color, opacity });
         let body = literal_fill(fill_override.unwrap_or(&body_css)).and_then(fill);
         // In SVG text mode Mermaid's assigned class also targets the outer rect. In HTML mode
-        // the class targets the rect's wrapper, where fill does not override the rect's rule.
-        let header_css = if !ctx.html_labels && !compatibility.is_hand_drawn() {
+        // under native themes, apply an authored fill override to the header band too so dark
+        // or tinted composite classes never paint light title ink onto a default white header.
+        let header_css = if (!ctx.html_labels || compatibility.native_edge_label_paint.is_some())
+            && !compatibility.is_hand_drawn()
+        {
             fill_override.unwrap_or(&header_css)
         } else {
             &header_css

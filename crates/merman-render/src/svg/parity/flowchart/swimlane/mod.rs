@@ -457,9 +457,10 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             continue;
         };
         if preserve_dash_mask_length(edge) {
-            cache_entry.geom.pre_hop_dash_mask_length = svg_path_length_from_d(&cache_entry.geom.d);
+            cache_entry.geom.pre_hop_dash_mask_length = cache_entry.geom.centerline_length();
         }
         cache_entry.geom.d = path;
+        cache_entry.geom.neo_length = None;
         cache_entry.geom.pb = svg_path_bounds_from_d(&cache_entry.geom.d);
         cache_entry.geom.line_hop_applied = true;
     }
@@ -561,6 +562,7 @@ mod tests {
             geom: FlowchartEdgePathGeom {
                 pb: svg_path_bounds_from_d(d),
                 d: d.to_string(),
+                neo_length: None,
                 data_points: points,
                 pre_hop_dash_mask_length: None,
                 line_hop_applied: false,

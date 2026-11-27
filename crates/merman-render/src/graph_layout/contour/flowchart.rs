@@ -4,55 +4,11 @@ use super::{Edge, Outline, ShapePortProfile};
 use crate::flowchart::{
     self, FlowNode, FlowchartShape as S, LeanKind, PreparedFlowchartNodeGeometry, bpmn::BpmnShape,
 };
-use crate::graph_layout::ir::{RoutePoint, Side};
-use crate::model::{LayoutNode, LayoutPoint};
+use crate::model::LayoutNode;
 use kurbo::{Arc, Point, SvgArc, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 impl ShapePortProfile {
-    pub(crate) fn departure_across(
-        &self,
-        center: &LayoutPoint,
-        side: Side,
-        port: RoutePoint,
-    ) -> Option<f64> {
-        let (x, y) = match &self.outline {
-            Outline::Box {
-                cx,
-                cy,
-                hw,
-                hh,
-                rx,
-                ry,
-            } if hw == rx && hh == ry && *hw > 0.0 && *hh > 0.0 => (*cx, *cy),
-            Outline::Polygon(points) => {
-                let &[north, east, south, west] = points.as_slice() else {
-                    return None;
-                };
-                if north.0 != south.0
-                    || east.1 != west.1
-                    || north.1 >= east.1
-                    || south.1 <= east.1
-                    || west.0 >= north.0
-                    || east.0 <= north.0
-                {
-                    return None;
-                }
-                (north.0, east.1)
-            }
-            _ => return None,
-        };
-        let offset = match side {
-            Side::Top | Side::Bottom => port.x - center.x - x,
-            Side::Left | Side::Right => port.y - center.y - y,
-        };
-        Some(if offset.abs() <= 1e-8 {
-            0.0
-        } else {
-            offset.signum()
-        })
-    }
-
     pub(crate) fn fork_join(width: f64, height: f64) -> Self {
         let (width, height) = if width >= height {
             (70.0, 10.0)

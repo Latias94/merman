@@ -40,6 +40,24 @@ pub(super) fn painted_cluster_frame(
     PaintedClusterFrame { origin, size }
 }
 
+pub(super) fn cluster_container_radius(
+    ctx: &FlowchartRenderCtx<'_>,
+    width: f64,
+    height: f64,
+) -> f64 {
+    let raw_radius = ctx.native.map_or_else(
+        || {
+            if ctx.diagram_type == "agentflow" {
+                10.0
+            } else {
+                0.0
+            }
+        },
+        |native| native.form.container_radius,
+    );
+    raw_radius.min(width.min(height) * 0.5).max(0.0)
+}
+
 pub(super) fn cluster_css_size(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<[Option<f64>; 2]> {
     if ctx.compatibility.look.is_hand_drawn() || super::swimlane::is_lane_or_pool_cluster(ctx, id) {
         return None;

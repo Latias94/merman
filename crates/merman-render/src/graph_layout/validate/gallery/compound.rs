@@ -39,10 +39,20 @@ fn shoal_source(source: &str) -> String {
 }
 
 fn prepare(diagram: &PresentationDiagram) -> Result<Drawing, String> {
+    prepare_with_theme(diagram, None)
+}
+
+fn prepare_with_theme(
+    diagram: &PresentationDiagram,
+    theme: Option<crate::theme::NativeTheme>,
+) -> Result<Drawing, String> {
     let error = |e: crate::Error| e.to_string();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .map_err(|e| e.to_string())?;
+    let env = RenderEnvironment::deterministic();
+    let session = match theme {
+        Some(theme) => env.begin_session_with_native_theme(theme),
+        None => env.begin_session(),
+    }
+    .map_err(|e| e.to_string())?;
     let plan = family::plan_render(diagram, &session).map_err(error)?;
     if !plan
         .required_capabilities()
@@ -135,6 +145,7 @@ struct Capture<'a> {
     edge_knots: Vec<Vec<Point>>,
     painted_knots: Vec<Vec<Point>>,
     to_layout: Affine,
+    haloed_titles: BTreeSet<usize>,
     rough_contacts: BTreeMap<usize, [Point; 2]>,
     rough_group_frames: BTreeMap<usize, BezPath>,
     ink: ink::Deviation,
@@ -192,6 +203,51 @@ impl Capture<'_> {
             | Violation::MarkerAngle { edge: i, .. } => edge(i).clone(),
         };
         format!("{owners}: {violation:?}")
+    }
+
+    fn crosses_haloed_title(
+        &self,
+        ancestry: &[Vec<usize>],
+        edge: usize,
+        shaft: &Shaft,
+        label: usize,
+    ) -> bool {
+        let Some(group) = self.scene.labels[label].group_owner(&self.scene.bodies) else {
+            return false;
+        };
+        if !self.haloed_titles.contains(&group) {
+            return false;
+        }
+        let route = &self.scene.edges[edge];
+        let (from, to) = (route.start.body, route.end.body);
+        let from_inside = ancestry[from].contains(&group);
+        let to_inside = ancestry[to].contains(&group);
+        if from_inside == to_inside {
+            return false;
+        }
+        let on_top = |point: Point| {
+            let point = self.to_layout * point;
+            let rect = self.model_boxes[group];
+            (point.y - rect.y0).abs() <= FLATNESS
+                && (rect.x0 - FLATNESS..=rect.x1 + FLATNESS).contains(&point.x)
+        };
+        if from == group || to == group {
+            // For an own-member edge, the marker may trim the shaft away from the border.
+            let knots = &self.edge_knots[edge];
+            return on_top(if from == group {
+                knots[0]
+            } else {
+                knots[knots.len() - 1]
+            });
+        }
+        let outline = self
+            .rough_group_frames
+            .get(&group)
+            .or(self.scene.bodies[group].contour.as_ref())
+            .unwrap();
+        matches!(stitches::transitions(shaft, outline).as_slice(),
+            [(_, contact, entering)] if *entering == to_inside && on_top(*contact)
+        )
     }
 
     fn audit(&mut self) {
@@ -263,6 +319,11 @@ impl Capture<'_> {
                 self.counts.markers += report.markers_checked;
                 self.counts.stroke_passes += 1;
                 for violation in report.hard {
+                    if let Violation::ForeignLabelHit { label, .. } = violation
+                        && self.crosses_haloed_title(&ancestry, index, shaft, label)
+                    {
+                        continue;
+                    }
                     let mut description = self.describe(&violation);
                     if let Violation::ForeignLabelHit { label, .. } = violation {
                         let bounds = self.scene.labels[label].bounds;
@@ -302,7 +363,7 @@ impl Capture<'_> {
     }
 }
 
-fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
+fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> Option<BezPath> {
     let container = if group {
         owner
     } else {
@@ -322,7 +383,7 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             && (!n.has_tag_name("rect") || n.has_attribute("width") && n.has_attribute("height"))
     });
     if !container.has_tag_name("g") {
-        return painted_outline(container, frame);
+        return Some(painted_outline(container, frame));
     }
     if owner.attribute("data-look") == Some("handDrawn") {
         let stroke = candidates
@@ -330,11 +391,9 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             .unwrap_or_else(|| {
                 panic!("{}: missing RoughJS outline stroke", attr(owner, "data-id"))
             });
-        return painted_outline(stroke, frame);
+        return Some(painted_outline(stroke, frame));
     }
-    let first = candidates
-        .next()
-        .unwrap_or_else(|| panic!("{}: missing painted outline", attr(owner, "data-id")));
+    let first = candidates.next()?;
     let mut outline = painted_outline(first, frame);
     for candidate in candidates {
         let path = painted_outline(candidate, frame);
@@ -343,7 +402,7 @@ fn shape_outline(owner: Node<'_, '_>, frame: Affine, group: bool) -> BezPath {
             outline = path;
         }
     }
-    outline
+    Some(outline)
 }
 
 fn explicit_label_bounds(group: Node<'_, '_>, frame: Affine) -> Option<Rect> {
@@ -546,6 +605,83 @@ fn sibling_crossings_stay_in_their_separate_aligned_lanes_between_faces() {
     );
 }
 
+pub(super) fn assert_studio_compound_fork(source: &str) {
+    assert_studio_compound_aesthetics("studio-compound-fork", source, 3.5, None, Some(3.05));
+}
+
+pub(super) fn assert_studio_compound_aesthetics(
+    case: &str,
+    source: &str,
+    max_flatness: f64,
+    max_cubics: Option<usize>,
+    max_corner_ratio: Option<f64>,
+) {
+    use super::super::aesthetic::emit;
+    use merman_core::presentation::SourcePresentationConfig;
+    use serde_json::json;
+
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        json!({"layout": "shoal", "htmlLabels": false}),
+    ));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let theme = crate::theme::ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .expect("studio theme preset");
+    let drawing = prepare_with_theme(&parsed, Some(crate::theme::NativeTheme::new(theme))).unwrap();
+    let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
+    let capture = drawing.capture(&doc);
+    let metrics = emit(
+        case,
+        "TD",
+        &capture.scene,
+        &capture.body_names,
+        &capture.edge_names,
+        &[],
+    );
+    assert_eq!(
+        metrics.micro_kink_count, 0,
+        "{case}: must not emit <=2px wiggles"
+    );
+    assert!(
+        metrics
+            .max_s_curve_handle_ratio
+            .is_none_or(|value| value <= 0.48),
+        "{case}: {:?}",
+        metrics.max_s_curve_handle_ratio
+    );
+    assert!(
+        metrics.s_curves.iter().all(|curve| curve.ordered_controls),
+        "{case}: inverted S-curve controls"
+    );
+    assert!(
+        metrics
+            .max_s_curve_flatness
+            .is_none_or(|flatness| flatness <= max_flatness),
+        "{case}: compound sweeps exceeded flatness {max_flatness}: {:?}",
+        metrics.max_s_curve_flatness
+    );
+    if let Some(limit) = max_cubics {
+        assert!(
+            metrics.cubic_count <= limit,
+            "{case}: expected <= {limit} cubics, got {}",
+            metrics.cubic_count
+        );
+    }
+    if let Some(limit) = max_corner_ratio {
+        assert!(
+            metrics
+                .max_corner_arm_ratio
+                .is_none_or(|ratio| ratio <= limit),
+            "{case}: right-angle corner ratio exceeded {limit}: {:?}",
+            metrics.max_corner_arm_ratio
+        );
+    }
+}
+
 pub(super) fn aesthetic_witnesses() {
     use super::super::aesthetic::{Landmark, Seam, emit};
 
@@ -638,6 +774,19 @@ pub(super) fn aesthetic_witnesses() {
             );
         }
         if name.ends_with("_001") {
+            let group = body("A2");
+            let title = capture
+                .scene
+                .labels
+                .iter()
+                .find(|label| label.owner == LabelOwner::Body(group))
+                .expect("A2 has a painted title");
+            assert!(capture.haloed_titles.contains(&group));
+            assert!(seams.iter().any(|seam| {
+                Shaft::read(&capture.scene.edges[seam.edge])
+                    .unwrap()
+                    .hits(title.bounds)
+            }));
             assert_eq!(metrics.seams.len(), 2);
             for seam in metrics.seams {
                 let [outside, inside] = seam.legs.as_slice() else {
@@ -645,7 +794,10 @@ pub(super) fn aesthetic_witnesses() {
                 };
                 assert_eq!((outside.from, outside.to), ("A1.bottom", "A2.top"));
                 assert_eq!(outside.cubic_count, 1, "single sweep between groups");
-                assert_eq!(inside.cubic_count, 1, "title clearance before the marker");
+                assert_eq!(
+                    inside.cubic_count, 0,
+                    "the unpinned title yields to a straight shaft"
+                );
             }
         }
     }
@@ -841,6 +993,7 @@ impl Drawing {
         let mut bodies = BTreeMap::new();
         let mut paths = Vec::new();
         let mut labels = Vec::new();
+        let mut title_overlays = HashMap::new();
         let mut markers = HashMap::new();
         for n in doc.descendants().filter(Node::is_element) {
             match (n.tag_name().name(), n.attribute("data-et")) {
@@ -855,6 +1008,14 @@ impl Drawing {
                     assert!(markers.insert(attr(n, "id"), n).is_none());
                 }
                 ("path", Some("edge")) => paths.push(n),
+                ("g", _) if n.has_attribute("data-merman-cluster-title-for") => {
+                    let owner = attr(n, "data-merman-cluster-title-for");
+                    assert!(has_class(n, "cluster-label"), "{owner}: invalid title slot");
+                    assert!(
+                        title_overlays.insert(owner, n).is_none(),
+                        "{owner}: duplicate title overlay"
+                    );
+                }
                 ("g", _)
                     if has_class(n, "label")
                         && n.parent_element()
@@ -905,6 +1066,7 @@ impl Drawing {
             edge_knots: Vec::new(),
             painted_knots: Vec::new(),
             to_layout: graph_frame.inverse(),
+            haloed_titles: BTreeSet::new(),
             rough_contacts: BTreeMap::new(),
             rough_group_frames: BTreeMap::new(),
             ink: ink::Deviation::default(),
@@ -916,7 +1078,28 @@ impl Drawing {
             let id = ids[name];
             let is_group = groups.contains_key(name) && !view.is_subgraph_collapsed(name);
             assert_eq!(kind, if is_group { "cluster" } else { "node" }, "{name}");
-            let outline = shape_outline(owner, frame, is_group);
+            let outline = shape_outline(owner, frame, is_group).unwrap_or_else(|| {
+                if is_group {
+                    let cluster = layout_groups[name];
+                    let expected = graph_frame.transform_rect_bbox(centered(
+                        cluster.x,
+                        cluster.y,
+                        cluster.width,
+                        cluster.height,
+                    ));
+                    // Native Theme v2 hoists container backgrounds into depth layers.
+                    assert!(
+                        doc.descendants().any(|n| {
+                            n.attribute("data-merman-theme-depth") == Some("container")
+                                && has_class(n, "cluster")
+                        }),
+                        "{name}: missing painted outline"
+                    );
+                    expected.to_path(FLATNESS)
+                } else {
+                    panic!("{name}: missing painted outline");
+                }
+            });
             let measured;
             let bounds;
             let label_bounds;
@@ -947,10 +1130,43 @@ impl Drawing {
                 } else {
                     compare_bounds(bounds, expected, name, &mut capture.failures);
                 }
-                let title = owner
-                    .descendants()
-                    .find(|n| has_class(*n, "cluster-label"))
+                let inline_title = owner.descendants().find(|n| has_class(*n, "cluster-label"));
+                let overlay_title = title_overlays.remove(attr(owner, "id"));
+                assert!(
+                    inline_title.is_none() || overlay_title.is_none(),
+                    "{name}: duplicate title slot"
+                );
+                let title = inline_title
+                    .or(overlay_title)
                     .unwrap_or_else(|| panic!("group {name}: missing title slot"));
+                if overlay_title.is_some() {
+                    assert!(
+                        title.attribute("data-merman-title-struck") == Some("true")
+                            && title.attribute("paint-order") == Some("stroke")
+                            && title
+                                .attribute("stroke")
+                                .is_some_and(|stroke| stroke != "none")
+                            && title.attribute("stroke-width").is_some_and(|width| {
+                                width
+                                    .parse::<f64>()
+                                    .is_ok_and(|width| width.is_finite() && width > 0.)
+                            }),
+                        "{name}: title overlay is missing its halo"
+                    );
+                    let root = title
+                        .ancestors()
+                        .find(|n| has_class(*n, "root"))
+                        .expect("title overlay root");
+                    let paths = root
+                        .children()
+                        .find(|n| has_class(*n, "edgePaths"))
+                        .expect("edge layer");
+                    assert!(
+                        paths.range().end <= title.range().start,
+                        "{name}: title overlay is below the edge layer"
+                    );
+                    capture.haloed_titles.insert(id);
+                }
                 let anchor = &cluster.title_label;
                 label_bounds = explicit_label_bounds(title, frame).or_else(|| {
                     text_element(title).map(|text| {
@@ -1097,6 +1313,10 @@ impl Drawing {
             capture.counts.groups,
             layout_groups.len(),
             "layout group count"
+        );
+        assert!(
+            title_overlays.is_empty(),
+            "title overlays without a painted group"
         );
         let mut painted = HashMap::<_, Vec<_>>::new();
         assert_eq!(

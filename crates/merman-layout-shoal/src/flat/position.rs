@@ -1,6 +1,6 @@
 //! Port spreading and four-way Brandes-Kopf coordinate assignment on the ordered ranks.
 
-use super::{Component, Csr, Expanded, Kind, acyclic::Orientation, to_canonical_port, validate};
+use super::{Component, Csr, Expanded, Kind, acyclic::Orientation, to_canonical_port};
 use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled};
 use crate::{
@@ -48,7 +48,7 @@ pub(super) fn straighten_exterior_lanes(
 
     // The order pass reserves outer lanes first. Place the innermost lane first so each
     // outer lane can read its neighbor's final position wherever their ranks overlap.
-    let pitch = options.spacing.edge.max(12.0);
+    let pitch = options.spacing.edge;
     // A label needs the full pitch past its box. Extents already include each half-gap.
     let label_clearance = |inner: u32, outer: u32| {
         let kind = g.kind[inner as usize];
@@ -191,12 +191,24 @@ struct Ports {
     target: Vec<f64>,
     starts: Vec<End>,
     ends: Vec<End>,
+    start_markers: Vec<f64>,
+    end_markers: Vec<f64>,
     spine: SpinePorts,
+}
+
+#[inline]
+fn marker_pair_clearance(a: f64, b: f64) -> f64 {
+    if a > 0.0 || b > 0.0 {
+        0.5 * a + 0.5 * b + 4.0
+    } else {
+        0.0
+    }
 }
 
 fn spread_face(
     ids: &[u32],
     role: &[End],
+    markers: &[f64],
     offsets: &mut [f64],
     span: f64,
     spacing: &Spacing,
@@ -243,21 +255,65 @@ fn spread_face(
         spacing.port_pitch.max(spacing.min_port_pitch)
     };
     let pitch = desired.min(span / units);
-    let mut used = 0.0;
-    last = None;
+    let pair_base = |prev_e: usize, e: usize| {
+        let factor = if role[prev_e] != role[e] {
+            1.0
+        } else if role[prev_e] == End::Leaves {
+            tail_gap
+        } else {
+            head_gap
+        };
+        factor * pitch
+    };
+    let pair_need = |prev_e: usize, e: usize, base: f64| {
+        if base > 0.0 {
+            let clear = marker_pair_clearance(markers[prev_e], markers[e]);
+            if clear > desired {
+                return base.max(clear.min(span));
+            }
+        }
+        base
+    };
+    let mut base_sum = 0.0;
+    let mut target_sum = 0.0;
+    let mut prev_edge = None;
     work.visit(ids.len())?;
     for e in free() {
-        if let Some(prev) = last {
-            used += if prev != role[e] {
-                1.0
-            } else if prev == End::Leaves {
-                tail_gap
-            } else {
-                head_gap
-            };
+        if let Some(prev_e) = prev_edge {
+            let base = pair_base(prev_e, e);
+            let need = pair_need(prev_e, e, base);
+            base_sum += base;
+            target_sum += need;
         }
-        offsets[e] = (used - units * 0.5) * pitch;
-        last = Some(role[e]);
+        prev_edge = Some(e);
+    }
+    let expand = target_sum > base_sum && target_sum.is_finite();
+    let extra_scale = if expand && target_sum > span {
+        ((span - base_sum).max(0.0) / (target_sum - base_sum)).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let total_width = if expand {
+        base_sum + extra_scale * (target_sum - base_sum)
+    } else {
+        units * pitch
+    };
+    let mut used = 0.0;
+    prev_edge = None;
+    work.visit(ids.len())?;
+    for e in free() {
+        if let Some(prev_e) = prev_edge {
+            let base = pair_base(prev_e, e);
+            let step = if expand {
+                let need = pair_need(prev_e, e, base);
+                base + extra_scale * (need - base)
+            } else {
+                base
+            };
+            used += step;
+        }
+        offsets[e] = used - total_width * 0.5;
+        prev_edge = Some(e);
     }
     Ok(())
 }
@@ -273,14 +329,21 @@ fn spread(
         target,
         starts,
         ends,
+        start_markers,
+        end_markers,
         spine,
     }: &mut Ports,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     spine.clear();
     let m = g.from.len();
-    work.charge(m.checked_mul(4).ok_or(WorkError::ArithmeticOverflow)?)?;
-    for offsets in [&mut *source, &mut *target] {
+    work.charge(m.checked_mul(6).ok_or(WorkError::ArithmeticOverflow)?)?;
+    for offsets in [
+        &mut *source,
+        &mut *target,
+        &mut *start_markers,
+        &mut *end_markers,
+    ] {
         clear_reserve(offsets, m)?;
         offsets.resize(m, 0.0);
     }
@@ -296,12 +359,14 @@ fn spread(
         }
         let last = first + (chain.len() - 2);
         let spec = &graph.edges[c.links[i].edge as usize];
-        let (tail, head, tail_role, head_role) = if o.reversed[i] {
+        let (tail, head, tail_role, head_role, tail_marker_w, head_marker_w) = if o.reversed[i] {
             (
                 spec.target_port,
                 spec.source_port,
                 End::Arrives,
                 End::Leaves,
+                spec.end_marker.width,
+                spec.start_marker.width,
             )
         } else {
             (
@@ -309,8 +374,12 @@ fn spread(
                 spec.target_port,
                 End::Leaves,
                 End::Arrives,
+                spec.start_marker.width,
+                spec.end_marker.width,
             )
         };
+        start_markers[first] = tail_marker_w;
+        end_markers[last] = head_marker_w;
         for (v, side, hint, role, slot, offset) in [
             (
                 g.from[first],
@@ -346,8 +415,24 @@ fn spread(
             .port_span
             .unwrap_or((width - 2.0 * spacing.corner_clearance).max(0.0))
             .min(width);
-        spread_face(lists.succ.at(v as u32), starts, source, span, spacing, work)?;
-        spread_face(lists.pred.at(v as u32), ends, target, span, spacing, work)?;
+        spread_face(
+            lists.succ.at(v as u32),
+            starts,
+            start_markers,
+            source,
+            span,
+            spacing,
+            work,
+        )?;
+        spread_face(
+            lists.pred.at(v as u32),
+            ends,
+            end_markers,
+            target,
+            span,
+            spacing,
+            work,
+        )?;
     }
     Ok(())
 }
@@ -401,7 +486,7 @@ fn guard_inner(
             pos[g.to[e as usize] as usize],
         )
     };
-    validate::charge_sort(anchors.len(), work)?;
+    work.charge_sort(anchors.len())?;
     anchors.sort_unstable_by_key(|&e| {
         let (a, b) = slots(e);
         (a.abs_diff(b), e)
@@ -719,6 +804,8 @@ impl PositionScratch {
             + capacity_bytes(&self.ports.target)
             + capacity_bytes(&self.ports.starts)
             + capacity_bytes(&self.ports.ends)
+            + capacity_bytes(&self.ports.start_markers)
+            + capacity_bytes(&self.ports.end_markers)
             + self.ports.spine.retained_bytes()
             + capacity_bytes(&self.conflicts.blocked)
             + capacity_bytes(&self.conflicts.anchors)

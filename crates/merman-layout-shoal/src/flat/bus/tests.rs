@@ -1,5 +1,5 @@
 use super::*;
-use crate::{EdgeGeometry, EdgeSpec, NodeId, NodeSpec, NoopWorkControl, Size};
+use crate::{EdgeGeometry, EdgeSpec, NodeId, NodeSpec, NoopWorkControl, ShapeContourHint, Size};
 
 const FAN_SIZE: usize = 6;
 
@@ -78,6 +78,8 @@ fn fixture(incoming: bool, obstruction: Option<Rect>) -> (Graph, Component, Draw
                 label_center: None,
                 start_label_center: None,
                 end_label_center: None,
+                shared_bus: false,
+                corridor_clearance: 0.0,
                 reversed_for_ranking: false,
             },
         ));
@@ -109,6 +111,8 @@ fn assert_bus_points(drawing: &Drawing, edges: &[(u32, EdgeGeometry)], incoming:
     for ((id, route), (old_id, old)) in drawing.edges.iter().zip(edges) {
         assert_eq!(id, old_id);
         assert_eq!(route.ports, old.ports);
+        assert!(route.shared_bus);
+        assert_eq!(route.corridor_clearance, 0.0);
         assert_eq!(route.reversed_for_ranking, old.reversed_for_ranking);
         let points = &route.points;
         let (leaf, hub) = if incoming {
@@ -146,10 +150,9 @@ fn assert_bus_points(drawing: &Drawing, edges: &[(u32, EdgeGeometry)], incoming:
 }
 
 #[test]
-fn requires_both_orthogonal_and_opt_in() {
+fn rejects_curved_polyline_and_explicit_opt_out() {
     let (graph, c, mut drawing) = fixture(true, None);
     let before = drawing.edges.clone();
-    assert!(!Options::default().bus_routing);
     for (routing, bus_routing) in [
         (RoutingStyle::Orthogonal, false),
         (RoutingStyle::Curved, true),
@@ -166,6 +169,190 @@ fn requires_both_orthogonal_and_opt_in() {
 }
 
 #[test]
+fn default_layout_bundles_six_unlabelled_orthogonal_branches() {
+    let (mut graph, _, _) = fixture(false, None);
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    let drawing = crate::layout(&graph, &options).unwrap();
+    assert!(drawing.edges.iter().all(|edge| edge.shared_bus));
+
+    graph.edges[0].end_label = Some(Size {
+        width: 18.0,
+        height: 8.0,
+    });
+    let drawing = crate::layout(&graph, &options).unwrap();
+    assert!(drawing.edges.iter().all(|edge| !edge.shared_bus));
+
+    graph.edges[0].end_label = None;
+    graph.edges.pop();
+    let drawing = crate::layout(&graph, &options).unwrap();
+    assert!(drawing.edges.iter().all(|edge| !edge.shared_bus));
+}
+
+#[test]
+fn sparse_scene_can_exceed_the_old_wall_count_cutoff() {
+    let (mut graph, mut c, mut drawing) = fixture(false, None);
+    for i in 0..44_000 {
+        drawing.nodes.push(Rect {
+            x: 1_000.0 + f64::from(i) * 60.0,
+            y: 1_000.0,
+            width: 30.0,
+            height: 36.0,
+        });
+        let id = graph.nodes.len() as u32;
+        graph.nodes.push(NodeSpec::new(
+            Size {
+                width: 30.0,
+                height: 36.0,
+            },
+            id,
+        ));
+        c.nodes.push(graph.nodes[id as usize]);
+    }
+    let before = drawing.edges.clone();
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    work.charge(1_600_000).unwrap();
+    assert!(bundle(&mut drawing, &c, &graph, &options, &mut work).unwrap());
+    assert_bus_points(&drawing, &before, false);
+}
+
+#[test]
+fn side_turns_share_the_reach_of_marked_and_unmarked_ports() {
+    let (mut graph, c, mut drawing) = fixture(false, None);
+    for (i, offset, marker) in [
+        (0, -8.0, MarkerMetrics::default()),
+        (
+            1,
+            8.0,
+            MarkerMetrics {
+                length: 12.0,
+                width: 8.0,
+            },
+        ),
+    ] {
+        graph.edges[i].start_marker = marker;
+        graph.edges[i].source_port = PortSideHint::FixedOffset {
+            side: Side::Left,
+            offset,
+        };
+        let edge = &mut drawing.edges[i].1;
+        edge.ports.0 = Side::Left;
+        edge.points[0] = RoutePoint::new(-42.0, 18.0 + offset, Axis::Horizontal);
+    }
+    let before = drawing.edges.clone();
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    assert!(apply(&mut drawing, &c, &graph, &options));
+    let mut turns = Vec::new();
+    for (i, (_, route)) in drawing.edges[..2].iter().enumerate() {
+        let contact = route.points[0];
+        assert_eq!(contact, before[i].1.points[0]);
+        assert_eq!(route.points.last(), before[i].1.points.last());
+        let turn = route
+            .points
+            .iter()
+            .find(|point| point.y != contact.y)
+            .unwrap();
+        assert!(contact.x - turn.x > 12.0);
+        turns.push(turn.x);
+    }
+    assert_eq!(turns[0], turns[1]);
+}
+
+#[test]
+fn a_marker_on_a_translated_contour_can_seal_the_bus() {
+    let (mut graph, mut c, mut drawing) = fixture(
+        false,
+        Some(Rect {
+            x: -62.0,
+            y: 20.0,
+            width: 3.0,
+            height: 3.0,
+        }),
+    );
+    graph.edges[0].source_port = PortSideHint::FixedOffset {
+        side: Side::Left,
+        offset: 0.0,
+    };
+    drawing.edges[0].1.ports.0 = Side::Left;
+    drawing.edges[0].1.points[0] = RoutePoint::new(-42.0, 18.0, Axis::Horizontal);
+    let before = drawing.edges.clone();
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    assert!(apply(&mut drawing, &c, &graph, &options));
+
+    drawing.edges.clone_from(&before);
+    let contour = ShapeContourHint::OffsetDiamond { x: -12.0, y: 0.0 };
+    c.nodes[0].contour = contour;
+    graph.nodes[0].contour = contour;
+    assert!(!apply(&mut drawing, &c, &graph, &options));
+    assert_eq!(drawing.edges, before);
+}
+
+#[test]
+fn a_translated_foreign_contour_can_seal_the_hub_shaft() {
+    let (mut graph, mut c, mut drawing) = fixture(
+        false,
+        Some(Rect {
+            x: 5.0,
+            y: 36.0,
+            width: 8.0,
+            height: 35.0,
+        }),
+    );
+    let before = drawing.edges.clone();
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    assert!(apply(&mut drawing, &c, &graph, &options));
+
+    drawing.edges.clone_from(&before);
+    let contour = ShapeContourHint::OffsetDiamond { x: -10.0, y: 0.0 };
+    c.nodes.last_mut().unwrap().contour = contour;
+    graph.nodes.last_mut().unwrap().contour = contour;
+    assert!(!apply(&mut drawing, &c, &graph, &options));
+    assert_eq!(drawing.edges, before);
+}
+
+#[test]
+fn a_wall_inside_the_rounded_side_turn_keeps_the_old_routes() {
+    let (mut graph, c, mut drawing) = fixture(
+        false,
+        Some(Rect {
+            x: -68.0,
+            y: 19.0,
+            width: 2.0,
+            height: 3.0,
+        }),
+    );
+    graph.edges[0].source_port = PortSideHint::FixedOffset {
+        side: Side::Left,
+        offset: 0.0,
+    };
+    drawing.edges[0].1.ports.0 = Side::Left;
+    drawing.edges[0].1.points[0] = RoutePoint::new(-42.0, 18.0, Axis::Horizontal);
+    let before = drawing.edges.clone();
+    let options = Options {
+        routing: RoutingStyle::Orthogonal,
+        ..Options::default()
+    };
+    assert!(!apply(&mut drawing, &c, &graph, &options));
+    assert_eq!(drawing.edges, before);
+}
+
+#[test]
 fn bundles_both_semantic_directions_onto_one_shaft() {
     let options = Options {
         routing: RoutingStyle::Orthogonal,
@@ -174,6 +361,7 @@ fn bundles_both_semantic_directions_onto_one_shaft() {
     };
     for incoming in [false, true] {
         let (graph, c, mut drawing) = fixture(incoming, None);
+        drawing.edges[0].1.corridor_clearance = 1.0;
         let before = drawing.edges.clone();
         assert!(apply(&mut drawing, &c, &graph, &options));
         let shelf = assert_bus_points(&drawing, &before, incoming);
@@ -299,6 +487,8 @@ fn a_foreign_loop_label_can_seal_the_bus() {
             label_center: None,
             start_label_center: None,
             end_label_center: Some(Point { x: 32.0, y: 80.0 }),
+            shared_bus: false,
+            corridor_clearance: 0.0,
             reversed_for_ranking: false,
         },
     ));

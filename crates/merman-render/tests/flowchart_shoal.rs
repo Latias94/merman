@@ -458,6 +458,73 @@ fn hand_drawn_shoal_preserves_both_shafts_and_their_interior_strokes() {
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
+fn hand_drawn_shoal_paints_every_audit_shape_and_cylinder_variant() {
+    let (_, svg) = render(
+        r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: 7
+---
+flowchart LR
+  A([Stadium]) --> B{Diamond}
+  B --> C[(Cylinder)]
+  B --> D{{Hexagon}}
+  C --> E[/Parallelogram/]
+  D --> F[[Subroutine]]
+  E --> G(((Double Circle)))
+  F --> G
+  G --> H@{ shape: h-cyl, label: "Horizontal cylinder" }
+  G --> I@{ shape: lin-cyl, label: "Lined cylinder" }
+  style I fill:#ABCDEF,stroke:#123456,stroke-width:2px,stroke-dasharray:5 3
+"#,
+        "FlowchartV2",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for id in ["A", "B", "C", "D", "E", "F", "G", "H", "I"] {
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("node") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        assert!(
+            node.attribute("class")
+                .unwrap()
+                .split_whitespace()
+                .any(|class| class == "rough-node")
+        );
+        let paths: Vec<_> = node
+            .descendants()
+            .filter(|child| child.has_tag_name("path"))
+            .collect();
+        assert!(!paths.is_empty(), "missing shape geometry for {id}");
+        for path in &paths {
+            for property in ["fill", "stroke"] {
+                assert!(
+                    path.attribute(property)
+                        .is_some_and(|value| !value.is_empty()),
+                    "shape {id} lacks explicit {property} on a hand-drawn path"
+                );
+            }
+        }
+        if id == "I" {
+            assert!(
+                paths
+                    .iter()
+                    .any(|path| path.attribute("stroke") == Some("#ABCDEF"))
+            );
+            assert!(paths.iter().any(|path| {
+                path.attribute("stroke") == Some("#123456")
+                    && path.attribute("stroke-width") == Some("2")
+                    && path.attribute("stroke-dasharray") == Some("5 3")
+            }));
+        }
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
 fn shoal_paints_labeled_self_loops_and_the_semantic_return_edge() {
     use kurbo::{BezPath, ParamCurve, Rect, Shape};
     use merman_render::model::FlowchartLayout;
@@ -602,6 +669,96 @@ fn render(source: &str, variant: &str) -> (merman_render::model::FlowchartLayout
         &[RenderCapability::LayoutShoal]
     );
     (layout, svg.svg().to_owned())
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_docks_both_labeled_decision_branches_on_their_side_vertices() {
+    let (layout, svg) = render(
+        "---\nconfig:\n  layout: shoal\n  look: neo\n  htmlLabels: false\n  flowchart:\n    curve: rounded\n---\nflowchart TB\nA[Start] --> B{Condition?}\nB yes@-->|Yes| C[Approve]\nB no@-->|No| D[Reject]",
+        "FlowchartV2",
+    );
+    assert_docked_decision_branches(&layout, &svg);
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_docks_labeled_branches_on_the_native_wide_diamond() {
+    use merman_render::model::FlowchartLayout;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let parsed = parse(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    curve: rounded\n---\nflowchart TB\nA[Start] --> B{Condition?}\nB yes@-->|Yes| C[Execute]\nB no@-->|No| D[End]",
+    );
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"paper"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let snapshot = artifact.layout_json().unwrap();
+    let layout: FlowchartLayout =
+        serde_json::from_value(snapshot["layout"]["FlowchartV2"].clone()).unwrap();
+    let diamond = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+    assert!((diamond.width / diamond.height - 1.6).abs() < 1e-6);
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    assert_docked_decision_branches(&layout, svg.svg());
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+fn assert_docked_decision_branches(layout: &merman_render::model::FlowchartLayout, svg: &str) {
+    use kurbo::{BezPath, PathSeg, Rect};
+
+    let decision = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    for (id, side) in [("yes", -1.0), ("no", 1.0)] {
+        let edge = layout.edges.iter().find(|edge| edge.id == id).unwrap();
+        let [start, bend, end] = edge.points.as_slice() else {
+            panic!("{id} does not have a single elbow: {:?}", edge.points);
+        };
+        assert!(near(start.x, decision.x + side * decision.width / 2.0));
+        assert!(near(start.y, decision.y) && near(bend.y, start.y));
+        assert!(side * (bend.x - start.x) > 0.0);
+        assert!(near(bend.x, end.x) && end.y > bend.y);
+
+        let element = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("edge") && node.attribute("data-id") == Some(id)
+            })
+            .unwrap();
+        assert!(element.attribute("marker-end").is_some());
+        let path = BezPath::from_svg(element.attribute("d").unwrap()).unwrap();
+        let label = edge.label.as_ref().unwrap();
+        assert!(
+            path.segments().any(|segment| {
+                let PathSeg::Line(line) = segment else {
+                    return false;
+                };
+                (near(line.p0.x, label.x)
+                    && near(line.p1.x, label.x)
+                    && (line.p0.y.min(line.p1.y)..=line.p0.y.max(line.p1.y)).contains(&label.y))
+                    || (near(line.p0.y, label.y)
+                        && near(line.p1.y, label.y)
+                        && (line.p0.x.min(line.p1.x)..=line.p0.x.max(line.p1.x)).contains(&label.x))
+            }),
+            "{id} label must lie on its painted shaft"
+        );
+        let label = Rect::from_center_size((label.x, label.y), (label.width, label.height));
+        assert!(layout.nodes.iter().all(|node| {
+            if node.id == decision.id {
+                let dx = node.x - node.x.clamp(label.x0, label.x1);
+                let dy = node.y - node.y.clamp(label.y0, label.y1);
+                return dx.abs() / (node.width * 0.5) + dy.abs() / (node.height * 0.5) >= 1.0;
+            }
+            let node = Rect::from_center_size((node.x, node.y), (node.width, node.height));
+            label.intersect(node).area() == 0.0
+        }));
+    }
 }
 
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
@@ -753,6 +910,231 @@ fn positioned_titles_and_local_directions_reach_painted_group_frames() {
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+fn assert_struck_title_halo(keyword: &str, group_keyword: &str) {
+    use merman_render::svg::SvgPipeline;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: {html_labels}\n---\n\
+             {keyword} TB\n\
+             {group_keyword} Parent[Parent]\n\
+             {group_keyword} G[A long title with no room beside the entering route]\n\
+             A[Short]\nend\nend\n\
+             Outside trunk@--> A\n\
+             style Parent fill:#FF0000\nstyle G fill:#0000FF80\n"
+        );
+        let parsed = parse(&source);
+        let theme = ThemeCompiler::new()
+            .compile_json(
+                br#"{"schema_version":2,"extends":"paper","form":{"elevation":"flat"}}"#,
+                None,
+            )
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let check = |svg: &str, contains_html: bool| {
+            let doc = roxmltree::Document::parse(svg).unwrap();
+            let edge = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some("trunk")
+                })
+                .unwrap();
+            let titles: Vec<_> = doc
+                .descendants()
+                .filter(|node| node.attribute("data-merman-title-struck") == Some("true"))
+                .collect();
+            assert_eq!(titles.len(), 1);
+            let title = titles[0];
+            let mut groups = doc.descendants().filter(|node| {
+                node.attribute("data-et") == Some("cluster")
+                    && node.attribute("data-id") == Some("G")
+            });
+            let group = groups.next().unwrap();
+            assert!(groups.next().is_none());
+            let group_id = group.attribute("id").unwrap();
+            assert_eq!(
+                title.attribute("data-merman-cluster-title-for"),
+                Some(group_id)
+            );
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.attribute("id") == Some(group_id))
+                    .count(),
+                1
+            );
+            let outline = group
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert!(outline.range().start < edge.range().start);
+            assert!(edge.range().start < title.range().start);
+            assert_eq!(title.attribute("paint-order"), Some("stroke"));
+            assert_eq!(title.attribute("stroke"), Some("#7F0080"));
+            assert_eq!(title.attribute("stroke-width"), Some("5"));
+            assert_eq!(
+                title
+                    .descendants()
+                    .any(|node| node.has_tag_name("foreignObject")),
+                contains_html,
+            );
+            if contains_html {
+                let span = title
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
+                    })
+                    .expect("struck HTML title span");
+                let style = span.attribute("style").unwrap_or_default();
+                assert!(
+                    style.contains("-webkit-text-stroke:5px #7F0080"),
+                    "struck HTML title halo must keep raw hex color instead of entity-decoding `#`: {style}"
+                );
+                assert!(!style.contains("&7F0080"));
+            }
+            assert!(title.descendants().any(|node| node.has_tag_name("text")));
+        };
+        check(rendered.svg(), html_labels);
+        let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+        assert!(
+            !finalized.svg().as_str().contains("<switch"),
+            "resvg_safe should unwrap struck-title switch fallback"
+        );
+        check(finalized.svg().as_str(), false);
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_dark_struck_title_preserves_authored_color_in_resvg_safe() {
+    use merman_render::svg::SvgPipeline;
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let source = "\
+---
+config:
+  layout: shoal
+---
+flowchart TD
+  req([Pull Request]) --> gate{CI Gate}
+  subgraph ci[Verification]
+    direction TB
+    unit[Unit Tests]
+    lint[Static Checks]
+  end
+  subgraph prod[Production Deploy]
+    rollout[Canary Rollout]
+  end
+  gate -->|Fast Path| unit
+  gate -->|Policy| lint
+  unit --> rollout
+  lint --> rollout
+  style prod fill:#1e3a5f,stroke:#60a5fa,color:#ffffff
+";
+    let parsed = parse(source);
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let finalized = rendered.finalize_resvg(&SvgPipeline::resvg_safe()).unwrap();
+    let svg = finalized.svg().as_str();
+    assert!(!svg.contains("<switch"), "resvg_safe must unwrap <switch>");
+    let doc = roxmltree::Document::parse(svg).unwrap();
+    let title = doc
+        .descendants()
+        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
+        .expect("struck dark cluster title");
+    let text = title
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .expect("native SVG <text> fallback");
+    let style = text.attribute("style").unwrap_or_default();
+    assert!(
+        style.contains("fill:#ffffff !important"),
+        "dark struck cluster title fallback must carry authored fill: {style}"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+fn assert_compatibility_struck_title_fill(
+    keyword: &str,
+    group_keyword: &str,
+    variant: &str,
+    expected_fill: &str,
+) {
+    let source = format!(
+        "---\nconfig:\n  layout: shoal\n  theme: redux-color\n  look: neo\n  htmlLabels: false\n---\n\
+         {keyword} TB\n\
+         {group_keyword} Parent[Parent]\n\
+         {group_keyword} G[A long title with no room beside the entering route]\n\
+         A[Short]\nend\nend\n\
+         Outside trunk@--> A\n",
+    );
+    let (_, svg) = render(&source, variant);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-title-struck") == Some("true"))
+        .unwrap();
+    assert_eq!(title.attribute("stroke"), Some(expected_fill));
+    assert_eq!(title.attribute("stroke-width"), Some("5"));
+
+    let group_id = title.attribute("data-merman-cluster-title-for").unwrap();
+    let group = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(group_id))
+        .unwrap();
+    let rect = group
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert!(
+        rect.attribute("style")
+            .unwrap()
+            .split(';')
+            .filter_map(|decl| decl.split_once(':'))
+            .any(|(property, value)| property == "fill" && value == expected_fill)
+    );
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_struck_title_matches_the_compatibility_cluster_fill() {
+    assert_compatibility_struck_title_fill("flowchart", "subgraph", "FlowchartV2", "#F9F9FB");
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_struck_title_matches_the_palette_cluster_fill() {
+    assert_compatibility_struck_title_fill("agentflow-beta", "flow", "AgentflowDiagram", "#EEF2FF");
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
+    assert_struck_title_halo("flowchart", "subgraph");
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_struck_titles_keep_their_surface_halo_in_static_svg() {
+    assert_struck_title_halo("agentflow-beta", "flow");
+}
+
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn own_member_markers_point_into_the_group_from_both_semantic_ends() {
@@ -864,4 +1246,275 @@ fn agentflow_shoal_consumes_its_family_spacing() {
         large.0 > small.0 && large.1 > small.1,
         "{small:?} -> {large:?}"
     );
+}
+
+#[cfg(feature = "layout-shoal")]
+fn render_studio_shoal(source: &str) -> String {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    let parsed = parse(source);
+    let theme = ThemeCompiler::new()
+        .compile_json(br#"{"schema_version":2,"extends":"studio"}"#, None)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn flowchart_shoal_dark_container_adapts_edge_label_ink_and_multi_loops_stay_smooth() {
+    let dark_svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+flowchart TD\n\
+  subgraph DarkBox[Dark Container]\n\
+    A[Step 1] -->|transition| B[Step 2]\n\
+  end\n\
+  style DarkBox fill:#1e293b,stroke:#475569,color:#f8fafc\n",
+    );
+    assert!(
+        dark_svg.contains(r#"<span class="edgeLabel" style="color:#FFFFFF !important;">"#),
+        "edge label inside dark subgraph must switch to white ink: {dark_svg}"
+    );
+
+    let loop_svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+flowchart TD\n\
+  A[Start] --> B[Process]\n\
+  B --> B\n\
+  B -->|retry| B\n\
+  B -->|backoff| B\n\
+  B --> C[Done]\n",
+    );
+    let doc = roxmltree::Document::parse(&loop_svg).unwrap();
+    let mut loop_paths = 0usize;
+    for path in doc.descendants().filter(|n| {
+        n.has_tag_name("path")
+            && n.attribute("data-et") == Some("edge")
+            && n.attribute("data-id")
+                .is_some_and(|id| id.starts_with("L_B_B_"))
+    }) {
+        let d = path.attribute("d").unwrap();
+        assert!(
+            d.matches('C').count() >= 2,
+            "self-loop {} must curve both corners without 1-ULP collapse or sharp return: {d}",
+            path.attribute("data-id").unwrap()
+        );
+        loop_paths += 1;
+    }
+    assert_eq!(loop_paths, 3);
+}
+
+#[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
+#[test]
+fn class_shoal_namespace_edge_labels_use_container_surface_backplate() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+classDiagram\n\
+  namespace Core {\n\
+    class Repository\n\
+    class AbstractRepo\n\
+  }\n\
+  Repository <|.. AbstractRepo : implements\n",
+    );
+    assert!(
+        svg.contains("background-color:#EFF4FA !important;"),
+        "Class edge label inside namespace Core must sample container fill (#EFF4FA) instead of canvas white"
+    );
+}
+
+#[cfg(all(feature = "diagram-c4", feature = "layout-shoal"))]
+#[test]
+fn c4_shoal_wide_edge_labels_stay_near_routes_not_canvas_bottom() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+C4Context\n\
+  title System Context\n\
+  Person(customer, \"Customer\", \"Bank customer\")\n\
+  Enterprise_Boundary(b0, \"Bank\") {\n\
+    System(banking, \"Internet Banking\", \"Core app\")\n\
+    System(mail, \"E-mail\", \"Exchange\")\n\
+  }\n\
+  Rel(customer, banking, \"Views balances using\", \"HTTPS\")\n\
+  Rel(banking, mail, \"Sends mail via\", \"SMTP\")\n\
+  Rel(mail, customer, \"Sends alerts to\", \"SMTP\")\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let label_ys: Vec<f64> = doc
+        .descendants()
+        .filter(|n| {
+            n.has_tag_name("g")
+                && n.attribute("data-id")
+                    .is_some_and(|id| id.starts_with("c4-rel-"))
+        })
+        .map(|n| {
+            let tf = n.attribute("transform").unwrap();
+            let (_, y) = tf
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split_once(',')
+                .unwrap();
+            y.trim().parse::<f64>().unwrap()
+        })
+        .collect();
+    assert_eq!(label_ys.len(), 3);
+    for y in label_ys {
+        assert!(
+            y < 420.0,
+            "C4 edge label detached to bottom of canvas at y={y}"
+        );
+    }
+}
+
+#[cfg(all(feature = "diagram-architecture", feature = "layout-shoal"))]
+#[test]
+fn architecture_shoal_parallel_entries_keep_straight_border_alignment() {
+    let svg = render_studio_shoal(
+        "---\nconfig:\n  layout: shoal\n---\n\
+architecture-beta\n\
+  group cloud(cloud)[Production Cloud Platform]\n\
+  group edge(internet)[Edge & Ingress] in cloud\n\
+  group core(server)[Core Services] in cloud\n\
+  group data(database)[Data Tier] in cloud\n\
+  service cdn(internet)[Global CDN Distribution] in edge\n\
+  service waf(server)[Web Application Firewall] in edge\n\
+  service gw(server)[API Gateway] in core\n\
+  service auth(server)[Auth & Identity Service] in core\n\
+  service billing(server)[Billing Microservice] in core\n\
+  service db(database)[Primary PostgreSQL Cluster] in data\n\
+  service cache(disk)[Redis Session Cache] in data\n\
+  junction hub in core\n\
+  cdn:R --> L:waf\n\
+  waf:B --> T:gw\n\
+  gw:R <--> L:hub\n\
+  hub:T --> B:auth\n\
+  hub:R --> L:billing\n\
+  hub:B -- T:db\n\
+  auth:R --> L:cache\n\
+  billing:B --> T:db\n\
+  db:L <--> R:cache\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let hub_db = doc
+        .descendants()
+        .find(|n| {
+            n.has_tag_name("path") && n.attribute("id").is_some_and(|id| id.contains("L_hub_db"))
+        })
+        .expect("hub -> db edge path");
+    let d = hub_db.attribute("d").unwrap();
+    assert!(
+        !d.contains('A'),
+        "hub:B -- T:db should drop straight across group borders without an S-jog: {d}"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_flowchart_calibrated_widths_and_hand_drawn_cylinders_and_class_alignment() {
+    let render_any = |source: &str| -> (merman_render::model::FlowchartLayout, String) {
+        let parsed = parse(source);
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+        )
+        .unwrap();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        (layout, svg.svg().to_owned())
+    };
+
+    // B1: Shoal Flowchart uses calibrated deterministic widths (wider on identifiers above
+    // Flowchart's 152px minimum box width than Compatibility Dagre).
+    let label_source = "flowchart LR\nA[customer_account_service] --> B[Observability]";
+    let (shoal_layout, _) = render(
+        &format!("---\nconfig:\n  layout: shoal\n---\n{label_source}"),
+        "FlowchartV2",
+    );
+    let (dagre_layout, _) = render_any(&format!(
+        "---\nconfig:\n  layout: dagre\n---\n{label_source}"
+    ));
+    let shoal_w = shoal_layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .unwrap()
+        .width;
+    let dagre_w = dagre_layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .unwrap()
+        .width;
+    assert!(
+        shoal_w > dagre_w,
+        "Shoal calibrated Flowchart width ({shoal_w}) must exceed Compatibility Dagre width ({dagre_w})"
+    );
+
+    // B2: Shoal handDrawn cylinder with classDef + htmlLabels:false preserves fill & stroke !important
+    // and scopes SVG classDef path rules to `.node`/`.cluster` so `.rough-node` hatches stay clean.
+    let (_, shoal_cyl_svg) = render(
+        "---\nconfig:\n  layout: shoal\n  look: handDrawn\n  htmlLabels: false\n---\n\
+flowchart TB\n\
+  db[(Primary DB)]:::accent\n\
+  classDef accent fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px",
+        "FlowchartV2",
+    );
+    assert!(
+        shoal_cyl_svg.contains("fill:none !important;stroke:#1d4ed8 !important"),
+        "handDrawn Shoal cylinder interior rim must guard against classDef fill override"
+    );
+    assert!(
+        shoal_cyl_svg.contains(".node.accent path,")
+            && shoal_cyl_svg.contains(".cluster.accent path{"),
+        "handDrawn SVG classDef rules must scope shape selectors away from .rough-node"
+    );
+
+    // M2: Non-Shoal (Dagre) handDrawn cylinder emits explicit fill/stroke attributes on body path.
+    let (_, dagre_cyl_svg) = render_any(
+        "---\nconfig:\n  layout: dagre\n  look: handDrawn\n---\n\
+flowchart TB\n\
+  db[(Primary DB)]",
+    );
+    let doc = roxmltree::Document::parse(&dagre_cyl_svg).unwrap();
+    let db_node = doc
+        .descendants()
+        .find(|n| n.attribute("data-id") == Some("db"))
+        .expect("db node");
+    let has_styled_body = db_node.descendants().any(|n| {
+        n.has_tag_name("path") && n.attribute("fill").is_some() && n.attribute("stroke").is_some()
+    });
+    assert!(
+        has_styled_body,
+        "non-Shoal handDrawn cylinder must emit explicit fill and stroke attributes"
+    );
+
+    // M5: Shoal Class member rows include `text-align: left;` inside foreignObject.
+    #[cfg(feature = "diagram-class")]
+    {
+        let class_svg = render_studio_shoal(
+            "---\nconfig:\n  layout: shoal\n---\n\
+classDiagram\n\
+  class Ledger {\n\
+    +id: String\n\
+    +commit() bool\n\
+  }",
+        );
+        assert!(
+            class_svg.contains("text-align: left;"),
+            "Shoal Class member foreignObject divs must include explicit left alignment"
+        );
+    }
 }

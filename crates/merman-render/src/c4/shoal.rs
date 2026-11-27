@@ -5,7 +5,7 @@ use super::layout::{
 };
 use super::{C4_ROUNDED_RADIUS, C4ClusterThemePlan, C4ConfigView, C4TypographyThemePlan};
 use crate::graph_layout::Marker;
-use crate::graph_layout::canonical::CanonicalRoutes;
+use crate::graph_layout::canonical::{CanonicalPaintScratch, CanonicalRoutes};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
@@ -15,10 +15,12 @@ use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, C4DiagramLayout, LayoutEdge, LayoutPoint};
-use crate::{Error, LayoutAdaptationObservation, LayoutExecution, Result};
+use crate::model::{Bounds, C4DiagramLayout, LayoutPoint};
+use crate::{Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result};
 use kurbo::{Insets, Vec2};
+use merman_layout_shoal::{WidthPolicy, card_grid};
 use merman_model::families::c4::C4DiagramModel;
+use merman_render_core::graph_layout::shoal::{Placement, project_input, project_output};
 use merman_theme_contract::v2::EdgeStyle;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -45,7 +47,8 @@ pub(crate) struct C4ShoalRelation {
     pub(crate) id: String,
     pub(crate) path: String,
     pub(crate) points: Vec<LayoutPoint>,
-    pub(crate) label_origin: Option<LayoutPoint>,
+    pub(crate) label: Option<labels::PlacedRelationLabel>,
+    pub(crate) shaft_cutouts: Vec<kurbo::Rect>,
 }
 
 impl C4ShoalGeometry {
@@ -170,12 +173,13 @@ pub(crate) fn layout_c4_shoal(
     let node_radius = native.map_or(C4_ROUNDED_RADIUS, |theme| theme.radius);
     let stroke_outset = native.map_or(0.5, |theme| theme.connector_width / 2.0);
     let route_style = match native.map(|theme| theme.edge_style) {
-        Some(EdgeStyle::Curved) => RouteStyle::Curved,
+        // A short rounded elbow stays within the measured card-grid channels.
+        Some(EdgeStyle::Curved) => RouteStyle::Rounded(5.0),
         Some(EdgeStyle::Straight) => RouteStyle::Linear,
         Some(EdgeStyle::Orthogonal | EdgeStyle::Sketch) | None => RouteStyle::Step,
     };
     let mut graph = MeasuredGraph {
-        direction: Direction::Right,
+        direction: Direction::Down,
         routing: RoutingStyle::Orthogonal,
         node_spacing: spacing,
         rank_spacing: spacing,
@@ -210,10 +214,11 @@ pub(crate) fn layout_c4_shoal(
         );
         graph.nodes.push(MeasuredNode {
             size,
+            contour: profile.shoal_contour(size),
             seq: index(ordinal, &work)?,
             parent: parent(&shape.parent_boundary)?,
-            port_span: Some(profile.port_span(Side::Left)),
-            perpendicular_port_span: Some(profile.port_span(Side::Top)),
+            port_span: Some(profile.port_span(Side::Top)),
+            perpendicular_port_span: Some(profile.port_span(Side::Left)),
             anchor_y: profile.anchor_y(),
         });
         shapes.push(layout);
@@ -261,9 +266,15 @@ pub(crate) fn layout_c4_shoal(
     let mut relations = Vec::with_capacity(relation_count);
     let mut labels = Vec::with_capacity(relation_count);
     let mut ids = Vec::with_capacity(relation_count);
+    let measure_ink_later = merman_render_core::text::measurement::measurement_reuse_key(
+        measure.measurer,
+        crate::environment::TextMeasurementOperation::MermaidCalculateTextDimensions,
+    )
+    .is_some();
     for (ordinal, rel) in model.rels.iter().enumerate() {
-        let layout = measure_c4_relation(rel, ordinal, &model.c4_type, &measure)?;
-        let label = labels::RelationLabel::measure(&layout, &measure)?;
+        let mut layout =
+            measure_c4_relation(rel, ordinal, &model.c4_type, &measure, measure_ink_later)?;
+        let label = labels::RelationLabel::prepare(&mut layout, &measure)?;
         let (start, end) = super::c4_relation_markers(&rel.rel_type);
         graph.edges.push(MeasuredEdge {
             source: endpoint(&rel.from_alias, "from")?,
@@ -280,16 +291,33 @@ pub(crate) fn layout_c4_shoal(
         labels.push(label);
         ids.push(format!("c4-rel-{ordinal}"));
     }
-    let (solved, mut placement) = placement::solve(
+    let input = Placement {
+        width: if execution.adaptation == LayoutAdaptation::FitWidth {
+            WidthPolicy::FitWidth {
+                max_width: execution.container_width,
+                allow_turn: false,
+                turn_breakpoint: 0.0,
+                fold_wide_ranks: true,
+            }
+        } else {
+            WidthPolicy::Natural
+        },
+        capture_ranks: execution.capture_shoal_frame,
+        ..Default::default()
+    };
+    let options = input.options_for(&graph);
+    let measured = project_input(&graph, &input, &mut work)?;
+    let geometry = crate::layout_work::measure_layout_solve!(card_grid::layout_with_control(
+        &measured, &options, &mut work,
+    ))
+    .map_err(|error| work.map_shoal_error(error))?;
+    let solved = project_output(&graph, geometry, &mut work)?;
+    let mut placement = placement::placement_for_solved(
         &graph,
+        &solved,
         model.shapes.iter().map(|shape| shape.alias.as_str()),
         group_ids.iter().copied(),
-        Some(execution),
-        placement::Constraints {
-            inline_labels: true,
-            compact_ranks: true,
-            ..Default::default()
-        },
+        execution,
         &mut work,
     )?;
     let routes = CanonicalRoutes::from_solved(
@@ -354,50 +382,73 @@ pub(crate) fn layout_c4_shoal(
         max_x: solved.bounds.width,
         max_y: solved.bounds.height,
     };
-    let mut geometry = Vec::with_capacity(relation_count);
+    let mut painted_routes = Vec::with_capacity(relation_count);
+    let mut placed_labels = Vec::with_capacity(relation_count);
+    let mut label_inks = Vec::with_capacity(relation_count);
+    let mut paint_scratch = CanonicalPaintScratch::default();
     for ((rel, id), (edge, label)) in relations
         .iter_mut()
         .zip(ids)
         .zip(solved.edges.into_iter().zip(labels))
     {
         work.charge_adapter(edge.points.len())?;
-        let edge = LayoutEdge {
-            id,
-            from: rel.from.clone(),
-            to: rel.to.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points: edge
-                .points
-                .into_iter()
-                .map(|p| LayoutPoint { x: p.x, y: p.y })
-                .collect(),
-            label: edge.label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        };
-        let painted = routes.paint(&edge, Vec2::ZERO, stroke_outset, route_style)?;
+        let painted = routes.paint_points_with_scratch(
+            &id,
+            edge.points.into_iter().map(|p| (p.x, p.y)),
+            Vec2::ZERO,
+            stroke_outset,
+            route_style,
+            execution.work_meter_ref(),
+            &mut paint_scratch,
+        )?;
         let [start, .., end] = painted.data_points.as_slice() else {
             return Err(invalid("c4: missing canonical relation contacts"));
         };
         rel.start_point = start.clone();
         rel.end_point = end.clone();
         include_ink(&mut bounds, &painted.path.bounds, stroke_outset);
-        let label_origin = label
+        let placed_label = label
             .as_ref()
             .zip(edge.label.as_ref())
-            .map(|(label, placed)| label.origin(placed, &painted, stroke_outset, &mut work))
+            .map(|(prep, placed)| prep.place(placed, &painted, stroke_outset, &mut work))
             .transpose()?;
+        let label_ink = label
+            .as_ref()
+            .zip(placed_label.as_ref())
+            .map(|(prep, placed)| {
+                let ink = prep.ink_at(&placed.origin);
+                bounds.min_x = bounds.min_x.min(ink.x0);
+                bounds.min_y = bounds.min_y.min(ink.y0);
+                bounds.max_x = bounds.max_x.max(ink.x1);
+                bounds.max_y = bounds.max_y.max(ink.y1);
+                ink
+            });
+        painted_routes.push((id, painted));
+        placed_labels.push(placed_label);
+        label_inks.push(label_ink);
+    }
+    let mut geometry = Vec::with_capacity(relation_count);
+    for (route_index, ((id, painted), placed_label)) in
+        painted_routes.into_iter().zip(placed_labels).enumerate()
+    {
+        let mut shaft_cutouts = Vec::new();
+        if let Some(gap) = placed_label.as_ref().and_then(|label| label.shaft_gap) {
+            shaft_cutouts.push(gap);
+        }
+        labels::collect_foreign_shaft_cutouts(
+            route_index,
+            &painted,
+            stroke_outset,
+            &label_inks,
+            &mut shaft_cutouts,
+            &mut work,
+        )?;
         geometry.push(C4ShoalRelation {
-            id: edge.id,
+            id,
             path: painted.path.d,
             points: painted.data_points,
-            label_origin,
+            label: placed_label,
+            shaft_cutouts,
         });
     }
     let ink_width = bounds.max_x - bounds.min_x;

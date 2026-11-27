@@ -26,6 +26,58 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum FlowchartLayoutEdgeRef<'a> {
+    Materialized(&'a crate::model::LayoutEdge),
+    #[cfg(feature = "layout-shoal")]
+    Projected(&'a crate::graph_layout::FlowchartSvgEdgeGeometry),
+}
+
+impl<'a> FlowchartLayoutEdgeRef<'a> {
+    pub(super) fn in_layout_order(
+        layout: &'a FlowchartLayout,
+    ) -> impl ExactSizeIterator<Item = (crate::flowchart::FlowchartEdgeKey, Self)> + 'a {
+        #[cfg(feature = "layout-shoal")]
+        let projected = layout.route_contract.flowchart_svg_edges();
+        // Paint preparation validates the row count before iterating the owners.
+        layout
+            .edge_owners
+            .iter()
+            .enumerate()
+            .map(move |(index, key)| {
+                #[cfg(feature = "layout-shoal")]
+                if let Some(edges) = projected {
+                    return (key, Self::Projected(&edges[index]));
+                }
+                (key, Self::Materialized(&layout.edges[index]))
+            })
+    }
+
+    pub(super) fn points(self) -> &'a [crate::model::LayoutPoint] {
+        match self {
+            Self::Materialized(edge) => &edge.points,
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(edge) => &edge.points,
+        }
+    }
+
+    pub(super) fn label(self) -> Option<&'a crate::model::LayoutLabel> {
+        match self {
+            Self::Materialized(edge) => edge.label.as_ref(),
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(edge) => edge.label.as_ref(),
+        }
+    }
+
+    pub(super) fn materialized(self) -> Option<&'a crate::model::LayoutEdge> {
+        match self {
+            Self::Materialized(edge) => Some(edge),
+            #[cfg(feature = "layout-shoal")]
+            Self::Projected(_) => None,
+        }
+    }
+}
+
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) prepared_nodes:
         &'a super::node_inventory::FlowchartPreparedNodes,
@@ -41,6 +93,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         &'a crate::flowchart::FlowchartCompatibilityBinding,
     pub(in crate::svg::parity::flowchart) native:
         Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
+    pub(in crate::svg::parity::flowchart) container_label_layers:
+        std::cell::OnceCell<super::render::edge_label::ContainerLabelLayers>,
     pub(in crate::svg::parity::flowchart) palette: super::agentflow::ContainerPalette<'a>,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
@@ -84,7 +138,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
     pub(in crate::svg::parity::flowchart) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
     pub(in crate::svg::parity::flowchart) layout_edges_by_key:
-        FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::model::LayoutEdge>,
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartLayoutEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
     pub(in crate::svg::parity::flowchart) elk_cluster_geometry:
@@ -216,12 +270,17 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     #[cfg(any(feature = "layout-shoal", test))]
     pub(in crate::svg::parity::flowchart) canonical_points:
         Vec<crate::graph_layout::ir::RoutePoint>,
+    #[cfg(any(feature = "layout-shoal", test))]
+    pub(in crate::svg::parity::flowchart) canonical_paint:
+        crate::graph_layout::route_paint::RoutePaintScratch,
 }
 
 #[derive(Debug, Clone)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) d: String,
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
+    /// Centerline length rounded to the SVG DOM's float before any path rewrite.
+    pub(in crate::svg::parity::flowchart) neo_length: Option<f64>,
     /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
     pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
     /// Length of the displaced curve for an unanimated Neo dotted or dashed mask.
@@ -239,6 +298,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     /// Actual path emitted by `insertEdge`; hand-drawn edges differ from the logical curve `d`.
     pub(in crate::svg::parity::flowchart) emitted_d_for_label: Option<String>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
+}
+
+impl FlowchartEdgePathGeom {
+    pub(in crate::svg::parity::flowchart) fn centerline_length(&self) -> Option<f64> {
+        self.neo_length.or_else(|| svg_path_length_from_d(&self.d))
+    }
 }
 
 #[derive(Debug, Clone)]

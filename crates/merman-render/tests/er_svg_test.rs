@@ -1871,3 +1871,19 @@ fn er_svg_source_color_is_lowered_for_entity_and_attribute_text() {
         }
     }
 }
+
+#[test]
+fn er_hand_drawn_group_style_preserves_hex_colors_without_entity_decoding() {
+    let source = "---\nconfig:\n  look: handDrawn\n---\nerDiagram\n\
+        CUSTOMER {\n  string id PK\n}\n\
+        style CUSTOMER fill:#333,stroke:#1f2335\n";
+    let svg = render_er_svg_from_text(source, &SvgRenderOptions::default());
+    assert!(
+        svg.contains(r#"style="fill:#333;stroke:#1f2335""#),
+        "handDrawn ER group style must preserve #HEX; colors verbatim: {svg}"
+    );
+    assert!(
+        !svg.contains("&amp;1f2335;") && !svg.contains('\u{014d}'),
+        "CSS hex colors must never undergo Mermaid #entity; decoding: {svg}"
+    );
+}

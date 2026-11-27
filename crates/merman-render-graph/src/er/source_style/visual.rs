@@ -4,7 +4,7 @@ use merman_model::families::er::{ErDiagramModel, ErEntity};
 use merman_render_core::number_format::canonical_number;
 use merman_render_core::resources::{OperationWorkError, OperationWorkMeter};
 use merman_render_core::theme_svg::cssom_color_value;
-use merman_render_core::xml::{escape_attr, escape_xml};
+use merman_render_core::xml::escape_attr;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -124,7 +124,7 @@ fn source_text_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
         span_style_attr: if text.is_empty() {
             String::new()
         } else {
-            format!(r#" style="{}""#, escape_xml(&text))
+            format!(r#" style="{}""#, escape_attr(&text))
         },
         ..Default::default()
     }
@@ -134,8 +134,8 @@ fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     let rect = declarations(&source.rect_declarations, true, "; ");
     let text = declarations(&source.text_declarations, true, "; ");
     ErSourceVisual {
-        rect_style_attr: format!(r#"style="{}""#, escape_xml(&rect)),
-        source_text_attr: format!(r#"style="{}""#, escape_xml(&text)),
+        rect_style_attr: format!(r#"style="{}""#, escape_attr(&rect)),
+        source_text_attr: format!(r#"style="{}""#, escape_attr(&text)),
         svg_source_text_attr: attr(""),
         ..Default::default()
     }
@@ -199,7 +199,7 @@ fn entity_visual(
         .collect();
     output.group_style_attr = format!(
         r#"style="{}""#,
-        escape_xml(&declarations(&group, false, ";"))
+        escape_attr(&declarations(&group, false, ";"))
     );
     let redux = binding.source_fill_owns_odd_rows();
     let overrides: Vec<_> = source

@@ -3,7 +3,7 @@ use crate::model::{C4DiagramLayout, LayoutPoint};
 use crate::theme::{NativeTheme, ThemeCompiler};
 use crate::{LayoutAdaptation, LayoutOptions, family};
 use base64::Engine as _;
-use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Point};
+use kurbo::{BezPath, ParamCurve, ParamCurveNearest, Point, Rect, Shape, Vec2};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::OperationControl;
 use merman_model::families::c4::C4Text;
@@ -58,8 +58,47 @@ fn path(edge: Node<'_, '_>) -> BezPath {
     BezPath::from_svg(edge.attribute("d").unwrap()).unwrap()
 }
 
+fn relation_label<'a, 'input>(doc: &'a Document<'input>, id: &str) -> Node<'a, 'input> {
+    doc.descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label") && node.attribute("data-id") == Some(id)
+        })
+        .unwrap()
+}
+
 fn number(node: Node<'_, '_>, attr: &str) -> f64 {
     node.attribute(attr).unwrap().parse().unwrap()
+}
+
+fn rect_outline(rect: Rect, radius: f64) -> BezPath {
+    rect.to_rounded_rect(radius).to_path(1e-8)
+}
+
+fn svg_rect_outline(node: Node<'_, '_>) -> BezPath {
+    let x = number(node, "x");
+    let y = number(node, "y");
+    rect_outline(
+        Rect::new(x, y, x + number(node, "width"), y + number(node, "height")),
+        number(node, "rx"),
+    )
+}
+
+fn resolve_marker<'a, 'input>(edge: Node<'a, 'input>, url: &str) -> Node<'a, 'input> {
+    let id = url
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    edge.document()
+        .descendants()
+        .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id))
+        .unwrap()
+}
+
+fn touches_outline(outline: &BezPath, point: Point) -> bool {
+    outline
+        .segments()
+        .any(|segment| segment.nearest(point, 1e-8).distance_sq < 1e-14)
 }
 
 fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool) {
@@ -81,16 +120,7 @@ fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool)
     };
     assert!(direction.x.abs() < 1e-8 || direction.y.abs() < 1e-8);
     let tip = if let Some(marker) = marker {
-        let id = marker
-            .strip_prefix("url(#")
-            .unwrap()
-            .strip_suffix(')')
-            .unwrap();
-        let marker = edge
-            .document()
-            .descendants()
-            .find(|node| node.attribute("id") == Some(id))
-            .unwrap();
+        let marker = resolve_marker(edge, marker);
         assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
         let stroke_outset = marker
             .first_element_child()
@@ -103,6 +133,57 @@ fn check_terminal(edge: Node<'_, '_>, contact: Point, start: bool, marked: bool)
     assert!(
         tip.distance(contact) < 1e-8,
         "{name} tip {tip:?} differs from contact {contact:?}"
+    );
+}
+
+#[test]
+fn c4_shoal_dark_theme_keeps_arrow_fill_in_sync_with_each_relation() {
+    let source = r#"---
+config:
+  layout: shoal
+  theme: dark
+---
+C4Context
+Enterprise_Boundary(group, "Boundary") {
+  System(a, "First")
+  System(b, "Second")
+}
+System(c, "Third")
+BiRel(a, b, "Uses")
+Rel_Back(b, c, "Returns")
+UpdateRelStyle(b, c, $textColor="gold", $lineColor="orange")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    for (idx, stroke, text, markers) in [
+        (0, "lightgrey", "#ccc", &["marker-start", "marker-end"][..]),
+        (1, "orange", "gold", &["marker-start"][..]),
+    ] {
+        let id = format!("c4-rel-{idx}");
+        let edge = element(&doc, "edge", &id);
+        assert_eq!(edge.attribute("stroke"), Some(stroke));
+        for marker in markers {
+            let path = resolve_marker(edge, edge.attribute(*marker).unwrap())
+                .first_element_child()
+                .unwrap();
+            assert_eq!(path.attribute("fill"), Some(stroke));
+        }
+        assert_eq!(
+            relation_label(&doc, &id)
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("fill"),
+            Some(text)
+        );
+    }
+    let title = doc
+        .descendants()
+        .find(|node| node.has_tag_name("tspan") && node.text() == Some("Boundary"))
+        .unwrap();
+    assert_eq!(
+        title.parent_element().unwrap().attribute("fill"),
+        Some("#ccc")
     );
 }
 
@@ -150,23 +231,16 @@ UpdateRelStyle(user, db, $textColor="navy", $lineColor="blue", $offsetX="12", $o
                 .children()
                 .find(|child| child.has_tag_name("rect"))
                 .unwrap();
-            let left = number(frame, "x");
-            let top = number(frame, "y");
-            let height = number(frame, "height");
-            let (index, port) = knots
+            let outline = svg_rect_outline(frame);
+            let mut contacts = knots
                 .iter()
                 .enumerate()
-                .skip(previous + 1)
-                .find(|(_, port)| {
-                    (port.x - left).abs() < 1e-8 && port.y > top && port.y < top + height
-                })
-                .unwrap();
+                .filter(|(_, port)| touches_outline(&outline, **port));
+            let (index, &port) = contacts.next().expect("one boundary stitch");
+            assert!(contacts.next().is_none(), "duplicate stitch for {alias}");
+            assert!(index > previous && index + 1 < knots.len());
             previous = index;
-            assert!(
-                forward_path
-                    .segments()
-                    .any(|segment| segment.nearest(*port, 1e-6).distance_sq < 1e-12)
-            );
+            assert!(touches_outline(&forward_path, port));
         }
         assert!(
             !doc.descendants()
@@ -207,27 +281,208 @@ fn c4_shoal_uses_the_invisible_root_only_for_a_relation_that_names_it() {
         let doc = Document::parse(svg.svg()).unwrap();
         let edge = element(&doc, "edge", "c4-rel-0");
         let start = points(edge)[0];
+        assert!(
+            !doc.descendants()
+                .any(|node| node.attribute("data-et") == Some("cluster")
+                    && node.attribute("data-id") == Some("global"))
+        );
         if suffix.is_empty() {
+            assert!(
+                !doc.descendants()
+                    .any(|node| node.attribute("data-et") == Some("node")
+                        && node.attribute("data-id") == Some("global"))
+            );
             let root = layout
                 .boundaries
                 .iter()
                 .find(|boundary| boundary.alias == "global")
                 .unwrap();
-            assert_eq!(start.x, root.x);
-            assert!(start.y > root.y && start.y < root.y + root.height);
+            let rect = Rect::new(root.x, root.y, root.x + root.width, root.y + root.height);
+            assert!(touches_outline(&rect_outline(rect, 0.0), start));
         } else {
-            assert_eq!(
-                element(&doc, "node", "global").attribute("data-id"),
-                Some("global")
-            );
+            let outline = element(&doc, "node", "global")
+                .descendants()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
             let node = layout
                 .shapes
                 .iter()
                 .find(|shape| shape.alias == "global")
                 .unwrap();
-            assert!((start.x - node.x - node.width).abs() < 1e-8);
+            let translation = Vec2::new(node.x + node.width / 2.0, node.y + node.height / 2.0);
+            assert!(touches_outline(
+                &svg_rect_outline(outline),
+                start - translation
+            ));
         }
+        check_terminal(edge, start, true, false);
     }
+}
+
+#[test]
+fn c4_shoal_keeps_large_legacy_label_offsets_near_the_relationship() {
+    let source = "---\nconfig:\n  layout: shoal\n---\nC4Context\nSystem(a, \"Service\")\nSystem(b, \"Store\")\nRel(a, b, \"Reads\", \"TLS\")\n";
+    let options = LayoutOptions::headless_svg_defaults();
+    let (natural, _) = render(source, &options);
+    let (layout, svg) = render(
+        &format!("{source}UpdateRelStyle(a, b, $offsetX=\"900\", $offsetY=\"-600\")\n"),
+        &options,
+    );
+    assert!(layout.width < natural.width + 30.0);
+    assert!(layout.height < natural.height + 30.0);
+    let doc = Document::parse(svg.svg()).unwrap();
+    let shaft = path(element(&doc, "edge", "c4-rel-0"));
+    let label = doc
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("label")
+                && node.attribute("data-id") == Some("c4-rel-0")
+        })
+        .unwrap();
+    let transform: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+    let offset = Point::new(transform.e, transform.f);
+    assert!(
+        shaft
+            .segments()
+            .any(|segment| segment.nearest(offset, 1e-6).distance_sq < 80.0_f64.powi(2))
+    );
+}
+
+#[test]
+fn c4_shoal_wraps_and_seats_the_nested_audit_captions() {
+    let source = r#"C4Context
+Person(u, "Operations Engineer", "Monitors fleet health")
+Enterprise_Boundary(ent, "Global Cloud Corp") {
+  System_Boundary(reg, "US-East Region") {
+    System(api, "Control Plane API", "Coordinates cluster rollouts")
+    SystemDb(db, "State Store", "Consistent Raft metadata")
+  }
+  System(obs, "Observability Hub", "Metrics, traces, and alerts")
+}
+BiRel(u, api, "Submits deployment plans and inspects live rollout progress", "HTTPS / gRPC")
+Rel(api, db, "Reads and writes strongly consistent cluster state snapshots", "Raft<br/>TLS")
+Rel(api, obs, "Streams structured telemetry", "OTLP")
+"#;
+    let options = LayoutOptions::headless_svg_defaults();
+    let authored = format!("---\nconfig:\n  layout: shoal\n---\n{source}");
+    let (layout, svg) = render(&authored, &options);
+    let (_, again) = render(&authored, &options);
+    assert_eq!(svg.svg(), again.svg());
+    let doc = Document::parse(svg.svg()).unwrap();
+    let mut ink = Vec::new();
+    for (i, rel) in layout.rels.iter().enumerate() {
+        if i < 2 {
+            assert!(rel.label.line_count > 1);
+            assert!(rel.label.width <= 190.0);
+        }
+        let id = format!("c4-rel-{i}");
+        let label = relation_label(&doc, &id);
+        let transform: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        let rows: Vec<_> = label
+            .children()
+            .filter(|node| node.has_tag_name("text"))
+            .collect();
+        let technology = rel.techn.as_ref().unwrap();
+        let (message_rows, technology_rows) = rows.split_at(rel.label.line_count);
+        assert_eq!(technology_rows.len(), technology.line_count);
+        let y = |text: Node<'_, '_>| {
+            number(text, "y") + number(text.first_element_child().unwrap(), "dy")
+        };
+        let last_message = y(*message_rows.last().unwrap());
+        let first_technology = y(technology_rows[0]);
+        assert!(first_technology - last_message > 12.0);
+        assert!(
+            technology_rows
+                .iter()
+                .all(|text| text.attribute("font-style") == Some("italic"))
+        );
+        let half_width = rel.label.width.max(technology.width) / 2.0;
+        let label_ink = Rect::new(
+            transform.e - half_width,
+            transform.f + y(rows[0]) - 6.0,
+            transform.e + half_width,
+            transform.f + y(*rows.last().unwrap()) + 6.0,
+        );
+        for &other in &ink {
+            assert_eq!(label_ink.intersect(other).area(), 0.0);
+        }
+        ink.push(label_ink);
+        let shaft = path(element(&doc, "edge", &id));
+        assert!(shaft.segments().any(
+            |segment| segment.nearest(label_ink.center(), 1e-6).distance_sq <= 120.0_f64.powi(2)
+        ));
+    }
+
+    let (native, svg) = render(source, &options);
+    assert_eq!(native.rels[0].label.line_count, 1);
+    assert!(native.rels[0].label.width > 190.0);
+    assert!(!svg.svg().contains("-label-cutout"));
+    assert!(!svg.svg().contains("clip-path="));
+}
+
+#[test]
+fn c4_shoal_cuts_out_only_the_shaft_behind_an_on_route_caption() {
+    let source = r#"---
+config:
+  layout: shoal
+  c4:
+    c4ShapeMargin: 90
+---
+C4Context
+System_Boundary(app, "Application") {
+  System(a, "API")
+  System(b, "Database")
+}
+BiRel(a, b, "Reads widely distributed state", "TLS")
+"#;
+    let options = LayoutOptions::headless_svg_defaults()
+        .with_container_size(310.0, 600.0)
+        .with_adaptation(LayoutAdaptation::FitWidth);
+    let (_, svg) = render(source, &options);
+    let verify = |svg: &str| {
+        let doc = Document::parse(svg).unwrap();
+        let shaft = element(&doc, "edge", "c4-rel-0");
+        let reference = shaft
+            .attribute("clip-path")
+            .expect("the caption crosses the shaft");
+        let id = reference
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let clip = doc
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert!(clip.has_tag_name("clipPath"));
+        let cutout = clip.first_element_child().unwrap();
+        assert_eq!(cutout.attribute("clip-rule"), Some("evenodd"));
+        let cutout = BezPath::from_svg(cutout.attribute("d").unwrap()).unwrap();
+        let data = points(shaft);
+        check_terminal(shaft, data[0], true, true);
+        check_terminal(shaft, *data.last().unwrap(), false, true);
+        let axis = path(shaft).segments().next().unwrap();
+        assert!(cutout.contains(axis.start()));
+        assert!(cutout.contains(path(shaft).segments().last().unwrap().end()));
+        let label = relation_label(&doc, "c4-rel-0");
+        let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        assert!(!cutout.contains(Point::new(at.e, at.f)));
+        assert!(path(shaft).segments().any(|segment| {
+            let p = segment.eval(segment.nearest(Point::new(at.e, at.f), 1e-6).t);
+            !cutout.contains(p)
+        }));
+        assert_eq!(
+            doc.descendants()
+                .filter(|node| node.attribute("clip-path") == Some(reference))
+                .count(),
+            1
+        );
+    };
+    verify(svg.svg());
+    let finalized = svg
+        .finalize_resvg(&crate::svg::SvgPipeline::resvg_safe())
+        .unwrap();
+    verify(finalized.svg().as_str());
 }
 
 #[test]
@@ -332,4 +587,143 @@ BiRel(a, b, "Requests", "TLS")
         .unwrap();
     assert_eq!(marker_path.attribute("d"), Some("M 0 0 L 10 5 L 0 10"));
     assert_eq!(marker_path.attribute("fill"), Some("none"));
+}
+
+#[test]
+fn c4_shoal_hand_drawn_cylinders_dark_boundaries_and_multiline_wrap() {
+    let source = r#"---
+config:
+  layout: shoal
+  look: handDrawn
+  theme: dark
+---
+C4Context
+System_Boundary(b0, "Core Platform") {
+  SystemDb(db, "Primary Ledger", "Stores immutable journal")
+  SystemQueue(q, "Event Bus", "Streams async updates")
+}
+Rel(db, q, "Publishes<br/>replicated change capture events across regional zones", "Kafka/TLS")
+"#;
+    let options = LayoutOptions::headless_svg_defaults();
+    let (layout, svg) = render(source, &options);
+    let doc = Document::parse(svg.svg()).unwrap();
+
+    // B3: handDrawn C4 cylinders emit a split body + separate open rough-stroke rim path.
+    for alias in ["db", "q"] {
+        let node = element(&doc, "node", alias);
+        let rim = node.descendants().find(|el| {
+            el.has_tag_name("path")
+                && el.attribute("class") == Some("rough-stroke")
+                && el
+                    .attribute("style")
+                    .is_some_and(|s| s.contains("fill:none !important"))
+        });
+        assert!(
+            rim.is_some(),
+            "C4 handDrawn {alias} must emit a separate stroke-only rim path"
+        );
+    }
+
+    // M1: dark Mermaid theme under Shoal must not fall back to invisible #444444 boundary stroke.
+    let boundary_rect = doc
+        .descendants()
+        .find(|el| {
+            el.has_tag_name("rect")
+                && el.attribute("stroke-dasharray").is_some()
+                && el.attribute("stroke").is_some()
+        })
+        .expect("C4 boundary rect");
+    assert_ne!(
+        boundary_rect.attribute("stroke"),
+        Some("#444444"),
+        "dark Shoal C4 boundary must use light theme lineColor instead of #444444"
+    );
+
+    // M3: `<br/>`-separated long second line wraps independently (> 2 lines total) and stays in bounds.
+    assert!(
+        layout.rels[0].label.line_count > 2,
+        "expected wrapped <br/> relation caption to have > 2 lines, got {}",
+        layout.rels[0].label.line_count
+    );
+    let vb = doc.root_element().attribute("viewBox").unwrap();
+    let parts: Vec<f64> = vb
+        .split_whitespace()
+        .map(|s| s.parse::<f64>().unwrap())
+        .collect();
+    let label = relation_label(&doc, "c4-rel-0");
+    let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+    assert!(
+        at.e >= parts[0]
+            && at.e <= parts[0] + parts[2]
+            && at.f >= parts[1]
+            && at.f <= parts[1] + parts[3],
+        "relation label ({}, {}) must lie inside viewBox {:?}",
+        at.e,
+        at.f,
+        parts
+    );
+}
+
+#[test]
+fn c4_shoal_knocks_out_foreign_wires_and_keeps_congested_dynamic_captions_local() {
+    let source = r#"---
+config:
+  layout: shoal
+---
+C4Dynamic
+Person(shopper, "Shopper", "Mobile user")
+Container_Boundary(b1, "Checkout Services") {
+  Container(bff, "Mobile BFF", "TypeScript")
+  Container(auth, "Auth Service", "Go")
+  Container(pay, "Payment Service", "Rust")
+  ContainerDb(db, "Orders DB", "PostgreSQL")
+}
+Rel(shopper, bff, "Submit checkout with 3DS device fingerprint", "HTTPS/JSON")
+Rel(bff, auth, "Validate session token and step-up claim", "gRPC/mTLS")
+Rel(auth, bff, "Return signed identity claims", "gRPC/mTLS")
+Rel(bff, pay, "Authorize payment intent with idempotency key", "gRPC/mTLS")
+Rel(pay, bff, "Return payment confirmation receipt", "gRPC/mTLS")
+Rel(pay, db, "Mark authorization captured", "SQL/TLS")
+Rel(bff, shopper, "Display order confirmation screen", "HTTPS/JSON")
+"#;
+    let (_, svg) = render(source, &LayoutOptions::headless_svg_defaults());
+    let doc = Document::parse(svg.svg()).unwrap();
+    // Every relation caption must stay near its own edge (no 400-600px bottom-row teleport)
+    // and any relation shaft passing behind any placed caption must get a clipPath cutout.
+    let mut label_boxes = Vec::new();
+    for idx in 0..7 {
+        let id = format!("c4-rel-{idx}");
+        let edge = element(&doc, "edge", &id);
+        let label = relation_label(&doc, &id);
+        let at: svgtypes::Transform = label.attribute("transform").unwrap().parse().unwrap();
+        let center = Point::new(at.e, at.f);
+        let edge_path = path(edge);
+        let min_dist = edge_path
+            .segments()
+            .map(|seg| seg.nearest(center, 1e-3).distance_sq.sqrt())
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            min_dist <= 260.0,
+            "{id} caption teleported {min_dist:.1}px away from its own edge"
+        );
+        label_boxes.push((id, edge, edge_path, center));
+    }
+    // Check that whenever a label sits on top of a parallel foreign wire, that wire carries a cutout.
+    for (label_id, _, _, center) in &label_boxes {
+        let probe = Rect::from_center_size(*center, (24.0, 12.0));
+        for (edge_id, edge, edge_path, _) in &label_boxes {
+            if edge_id == label_id {
+                continue;
+            }
+            let crosses = edge_path
+                .segments()
+                .any(|seg| seg.bounding_box().intersect(probe).area() > 0.0);
+            if crosses {
+                assert!(
+                    edge.attribute("clip-path").is_some(),
+                    "{edge_id} crosses behind {label_id} caption without a label cutout clip-path"
+                );
+            }
+        }
+    }
 }

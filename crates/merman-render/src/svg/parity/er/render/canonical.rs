@@ -1,5 +1,8 @@
 use crate::er::ErCssBinding;
-use crate::graph_layout::{canonical::CanonicalRoutes, route_paint::RouteStyle};
+use crate::graph_layout::{
+    canonical::{CanonicalPaintScratch, CanonicalRoutes},
+    route_paint::RouteStyle,
+};
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use crate::svg::parity::{canonical_rough::constrained_rough_edge_path, svg_path_bounds_from_d};
@@ -8,20 +11,21 @@ use kurbo::{Rect, Vec2};
 use merman_render_graph::er::er_marker_paint_bounds;
 use roughr::core::RoughRandomness;
 
-pub(super) struct PaintedEdge {
+pub(super) struct PaintedEdge<'points> {
     pub(super) d: String,
-    pub(super) points: Vec<LayoutPoint>,
+    pub(super) points: &'points [LayoutPoint],
     pub(super) bounds: Rect,
 }
 
-pub(super) fn paint_edge(
+pub(super) fn paint_edge<'points>(
     routes: &CanonicalRoutes,
     edge: &LayoutEdge,
     translation: Vec2,
     binding: &ErCssBinding,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
-) -> Result<PaintedEdge> {
+    scratch: &'points mut CanonicalPaintScratch,
+) -> Result<PaintedEdge<'points>> {
     let look = binding.render_settings.diagram_look.as_str();
     let neo = look == "neo";
     let native = binding.native.as_ref();
@@ -40,7 +44,14 @@ pub(super) fn paint_edge(
         Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
         _ => RouteStyle::Curved,
     };
-    let geometry = routes.paint(edge, translation, stroke_outset, style)?;
+    let geometry = routes.paint_with_borrowed_points(
+        edge,
+        translation,
+        stroke_outset,
+        style,
+        work_meter,
+        scratch,
+    )?;
     let path = geometry.path;
     let (d, path_bounds) = if look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;

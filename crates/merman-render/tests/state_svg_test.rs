@@ -17,6 +17,177 @@ use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_mermaid_transition_label_inset_matches_layout_and_keeps_empty_container() {
+    for theme in ["default", "dark"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  theme: {theme}\n  htmlLabels: true\n---\n\
+             stateDiagram-v2\n  direction LR\n  A --> B: {}\n\
+               B --> C: A long explanation with several words that should wrap across multiple lines\n\
+               C --> D",
+            "i".repeat(42)
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact =
+            family::prepare(parsed.presentation(), &LayoutOptions::default(), session).unwrap();
+        let layout = artifact.layout_json().unwrap();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+        let labels = layout["layout"]["StateDiagramV2"]["edges"]
+            .as_array()
+            .unwrap();
+        for (id, wrapping) in [
+            ("edge0", "nowrap"),
+            ("edge1", "break-spaces"),
+            ("edge2", ""),
+        ] {
+            let box_node = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("foreignObject")
+                        && node.parent_element().unwrap().attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let style = box_node
+                .first_element_child()
+                .unwrap()
+                .attribute("style")
+                .unwrap();
+            if wrapping.is_empty() {
+                assert_eq!(box_node.attribute("width"), Some("0"));
+                assert_eq!(box_node.attribute("height"), Some("0"));
+                assert!(!style.contains("padding-inline"));
+                continue;
+            }
+            let label = labels.iter().find(|edge| edge["id"] == id).unwrap();
+            let width = label["label"]["width"].as_f64().unwrap();
+            assert!(width > 200.0 && width <= 208.0, "{theme} {id} {width}");
+            assert!(
+                (width - box_node.attribute("width").unwrap().parse::<f64>().unwrap()).abs() < 1e-9
+            );
+            assert!(style.contains("padding-inline: 4px;"));
+            assert!(style.contains("background-color:"));
+            assert!(style.contains(&format!("white-space: {wrapping};")));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_html_labels_allow_ink_overhang_and_composites_share_a_bottom_edge() {
+    let svg = render_state_svg_from_text(
+        "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n---\nstateDiagram-v2\n\
+         state Active {\n  [*] --> Waiting\n  Waiting --> Done: timeout_exceeded\n}\n\
+         Idle --> Active: start_session()\nnote right of Active: database_connection\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let labels: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .collect();
+    let dimension =
+        |node: roxmltree::Node<'_, '_>, name| node.attribute(name).unwrap().parse::<f64>().unwrap();
+    assert!(labels.iter().any(|node| {
+        node.descendants()
+            .any(|child| child.text() == Some("timeout_exceeded"))
+    }));
+    for label in labels {
+        let style = label.attribute("style").unwrap_or_default();
+        assert_eq!(
+            style.contains("overflow: visible;"),
+            dimension(label, "width") > 0.0 && dimension(label, "height") > 0.0,
+            "{label:?}"
+        );
+    }
+
+    let cluster = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("Active"))
+        .unwrap();
+    let bottom = |class| {
+        let rect = cluster
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+            .unwrap();
+        dimension(rect, "y") + dimension(rect, "height")
+    };
+    assert!((bottom("outer") - bottom("inner")).abs() < 1e-6);
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_horizontal_state_transitions_arrive_on_opposite_faces_of_one_end() {
+    for direction in ["LR", "RL"] {
+        let svg = render_state_svg_from_text(&format!(
+            "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\ndirection {direction}\n\
+             [*] --> A\nA --> B\nA --> C\nB --> [*]\nC --> [*]\n"
+        ));
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let end = doc
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("root_end"))
+            .unwrap();
+        let center: svgtypes::Transform = end.attribute("transform").unwrap().parse().unwrap();
+        let mut contacts = ["edge3", "edge4"].map(|id| {
+            let points = state_edge_data_points(&svg, id);
+            let [.., lead, contact] = points.as_slice() else {
+                panic!("expected a terminal lead for {id}");
+            };
+            assert!((contact.x - center.e).abs() < 1e-6, "{direction} {id}");
+            assert!((lead.x - contact.x).abs() < 1e-6, "{direction} {id}");
+            assert!((lead.y - center.f).abs() > (contact.y - center.f).abs());
+            contact.y - center.f
+        });
+        contacts.sort_by(f64::total_cmp);
+        assert!((contacts[0] + 7.0).abs() < 1e-6, "{direction} {contacts:?}");
+        assert!((contacts[1] - 7.0).abs() < 1e-6, "{direction} {contacts:?}");
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_state_neo_mask_matches_the_emitted_centerline_length() {
+    use kurbo::{BezPath, PathEl, Shape};
+    use merman_render_core::route_types::SVG_LENGTH_ACCURACY;
+
+    let svg = render_state_svg_from_text(
+        "---\nconfig:\n  layout: shoal\n  look: neo\n---\nstateDiagram-v2\n\
+         direction LR\n[*] --> A\nA --> B\nA --> C\nB --> [*]\nC --> [*]\n",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let mut curved = false;
+    for edge in doc
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-et") == Some("edge"))
+    {
+        let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+        curved |= path
+            .elements()
+            .iter()
+            .any(|element| matches!(element, PathEl::CurveTo(..)));
+        let length = f64::from(path.perimeter(SVG_LENGTH_ACCURACY) as f32);
+        let mask_length: f64 = edge
+            .attribute("style")
+            .unwrap()
+            .strip_prefix("stroke-dasharray: 0 0 ")
+            .unwrap()
+            .split_once(" 0;")
+            .unwrap()
+            .0
+            .parse()
+            .unwrap();
+        assert_eq!(mask_length, length);
+    }
+    assert!(curved);
+}
+
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
 fn classic_engine() -> MermaidEngine {
     MermaidEngine::new().with_site_config(

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use merman_model::config::MermaidThemeId;
 use merman_model::families::c4::C4DiagramModel;
 use merman_model::presentation::PresentationConfig;
 
@@ -9,7 +10,9 @@ use crate::model::C4DiagramLayout;
 #[derive(Debug)]
 pub(crate) struct C4TextPaintPlan {
     elements: Vec<C4ElementTerminalPaint>,
-    relations: Vec<C4RelationTerminalPaint>,
+    relations: Vec<C4RelationPaintOverride>,
+    relationship_text: String,
+    relationship_line: String,
     boundary_text: Vec<Option<String>>,
 }
 
@@ -21,9 +24,9 @@ pub(crate) struct C4ElementTerminalPaint {
 }
 
 #[derive(Debug)]
-pub(crate) struct C4RelationTerminalPaint {
-    pub(crate) text: String,
-    pub(crate) line: String,
+struct C4RelationPaintOverride {
+    text: Option<String>,
+    line: Option<String>,
 }
 
 impl C4TextPaintPlan {
@@ -48,6 +51,28 @@ impl C4TextPaintPlan {
                 .get_str(path)
                 .filter(|_| !native || config.explicit_config_owns_path(path))
         };
+        let dark_shoal = uses_shoal
+            && !native
+            && config
+                .get_str("theme")
+                .and_then(|name| MermaidThemeId::parse(name).ok())
+                .is_some_and(MermaidThemeId::is_dark);
+        let dark_color = |path| {
+            if dark_shoal {
+                config.get_str(path)
+            } else {
+                None
+            }
+        };
+        let dark_text = dark_color("themeVariables.textColor");
+        let relationship_text = config_color("c4.relationship_text_color")
+            .or(dark_text)
+            .unwrap_or(typography.relationship_text_color())
+            .to_owned();
+        let relationship_line = config_color("c4.relationship_line_color")
+            .or_else(|| dark_color("themeVariables.lineColor"))
+            .unwrap_or(typography.relationship_line_color())
+            .to_owned();
         let mut elements = Vec::with_capacity(layout.shapes.len());
         for shape in &layout.shapes {
             let source = source_shapes.get(shape.alias.as_str()).ok_or_else(|| {
@@ -103,17 +128,9 @@ impl C4TextPaintPlan {
                 } else {
                     model.rels.get(index)
                 };
-                C4RelationTerminalPaint {
-                    text: source
-                        .and_then(|source| source.text_color.as_deref())
-                        .or_else(|| config_color("c4.relationship_text_color"))
-                        .unwrap_or(typography.relationship_text_color())
-                        .to_owned(),
-                    line: source
-                        .and_then(|source| source.line_color.as_deref())
-                        .or_else(|| config_color("c4.relationship_line_color"))
-                        .unwrap_or(typography.relationship_line_color())
-                        .to_owned(),
+                C4RelationPaintOverride {
+                    text: source.and_then(|source| source.text_color.clone()),
+                    line: source.and_then(|source| source.line_color.clone()),
                 }
             })
             .collect();
@@ -131,6 +148,7 @@ impl C4TextPaintPlan {
                         .get(boundary.alias.as_str())
                         .and_then(|boundary| boundary.font_color.as_deref())
                         .or_else(|| config_color("c4.boundary_font_color"))
+                        .or(dark_text)
                         .unwrap_or_else(|| {
                             typography
                                 .native_style()
@@ -143,6 +161,8 @@ impl C4TextPaintPlan {
         Ok(Self {
             elements,
             relations,
+            relationship_text,
+            relationship_line,
             boundary_text,
         })
     }
@@ -155,8 +175,16 @@ impl C4TextPaintPlan {
         self.elements.get(index)
     }
 
-    pub(crate) fn relation_paint(&self, index: usize) -> Option<&C4RelationTerminalPaint> {
-        self.relations.get(index)
+    pub(crate) fn relation_paint(&self, index: usize) -> Option<(&str, &str)> {
+        let paint = self.relations.get(index)?;
+        Some((
+            paint.text.as_deref().unwrap_or(&self.relationship_text),
+            paint.line.as_deref().unwrap_or(&self.relationship_line),
+        ))
+    }
+
+    pub(crate) fn relationship_line(&self) -> &str {
+        &self.relationship_line
     }
 }
 
@@ -208,10 +236,10 @@ mod tests {
         assert_eq!(external.background, "");
         assert_eq!(external.border, "#8A8A8A");
         assert_eq!(external.text, "var(--label)");
-        let paint = plan
+        let (text, line) = plan
             .relation_paint(0)
             .expect("bound relationship occurrence");
-        assert_eq!(paint.text, "");
-        assert_eq!(paint.line, "#444444");
+        assert_eq!(text, "");
+        assert_eq!(line, "#444444");
     }
 }

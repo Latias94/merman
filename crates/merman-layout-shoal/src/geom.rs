@@ -1,10 +1,14 @@
+mod bvh;
+
+pub use bvh::{Bvh, BvhEntry};
+
 use crate::{MarkerMetrics, Point, Rect, Side, Size};
 
 /// Axis-aligned bounds stored as pairs of endpoints in drawing coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Bounds {
-    pub(crate) x: [f64; 2],
-    pub(crate) y: [f64; 2],
+pub struct Bounds {
+    pub x: [f64; 2],
+    pub y: [f64; 2],
 }
 
 impl Bounds {
@@ -53,6 +57,10 @@ impl Bounds {
             Side::Right => ([x, x + length], [y - half, y + half]),
         };
         Self { x, y }
+    }
+
+    pub(crate) fn marker_footprint(at: Point, side: Side, marker: MarkerMetrics) -> Option<Self> {
+        (marker.length > 0.0 && marker.width > 0.0).then(|| Self::marker(at, side, marker))
     }
 
     pub(crate) fn finite(self) -> bool {

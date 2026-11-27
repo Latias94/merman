@@ -360,6 +360,46 @@ fn interiors_overlap(a: Rect, b: Rect) -> bool {
     area.width() > BOX_EPSILON && area.height() > BOX_EPSILON
 }
 
+fn body_overlaps_rect(body: &Body, rect: Rect) -> bool {
+    if !interiors_overlap(rect, body.bounds) {
+        return false;
+    }
+    let Some(contour) = &body.contour else {
+        return true;
+    };
+    let inset = rect.inset(-BOX_EPSILON);
+    if inset.width() <= 0.0 || inset.height() <= 0.0 {
+        return false;
+    }
+    let corners = [
+        Point::new(inset.x0, inset.y0),
+        Point::new(inset.x1, inset.y0),
+        Point::new(inset.x1, inset.y1),
+        Point::new(inset.x0, inset.y1),
+    ];
+    if corners.iter().any(|&p| contour.winding(p) != 0) || contour.winding(inset.center()) != 0 {
+        return true;
+    }
+    let edges = [
+        Line::new(corners[0], corners[1]),
+        Line::new(corners[1], corners[2]),
+        Line::new(corners[2], corners[3]),
+        Line::new(corners[3], corners[0]),
+    ];
+    for seg in contour.segments() {
+        if inset.contains(seg.start()) || inset.contains(seg.end()) {
+            return true;
+        }
+        if edges
+            .iter()
+            .any(|&edge| !seg.intersect_line(edge).is_empty())
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn check_containment(
     scene: &Scene<'_>,
     item: Item,
@@ -470,9 +510,7 @@ fn check_labels(scene: &Scene<'_>, ancestry: &[Vec<usize>], report: &mut Report)
             }
         }
         for (body_id, body) in scene.bodies.iter().enumerate() {
-            if label.owner == LabelOwner::Body(body_id)
-                || !interiors_overlap(label.bounds, body.bounds)
-            {
+            if label.owner == LabelOwner::Body(body_id) || !body_overlaps_rect(body, label.bounds) {
                 continue;
             }
             if body.is_group {

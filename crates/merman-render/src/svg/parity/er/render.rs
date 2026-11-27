@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::svg::parity::util::html_label_overflow_attr;
 use merman_render_graph::er::{
     ErMarkerDefs, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_color_indices,
     er_redux_color_id, er_rel_idx_from_edge_id, er_unified_marker_id, write_er_marker_definitions,
@@ -115,7 +116,7 @@ impl crate::er::ErBoxLabel {
         let _ = write!(
             out,
             r#"<div xmlns="http://www.w3.org/1999/xhtml" style="{}display: {}; white-space: {}; line-height: 1.5; max-width: {}px; text-align: {};"#,
-            escape_xml(style_prefix),
+            escape_attr(style_prefix),
             display,
             whitespace,
             layout.width_budget,
@@ -157,6 +158,7 @@ struct ErSubgraphRenderContext<'a> {
     diagram_id: SvgDiagramId<'a>,
     data_look: &'a str,
     uses_canonical_routes: bool,
+    allow_html_label_overflow: bool,
     use_html_labels: bool,
     measurer: &'a dyn crate::text::TextMeasurer,
     label_style: &'a crate::text::TextStyle,
@@ -233,13 +235,14 @@ fn render_er_subgraph_cluster(
             })?;
         let _ = write!(
             out,
-            r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
+            r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
             fmt(title_x),
             fmt(title_y),
             fmt(-title_width / 2.0),
             fmt(-title_height / 2.0),
             fmt(title_width),
             fmt(title_height),
+            html_label_overflow_attr(context.allow_html_label_overflow, title_width, title_height),
             text_style_attr,
             prepared.fragment(),
         );
@@ -319,6 +322,161 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) ->
     format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
 }
 
+struct RoughRectBorderPath {
+    path: String,
+    fill_path: String,
+    coordinates: [String; 4],
+    ryu: ryu_js::Buffer,
+}
+
+impl Default for RoughRectBorderPath {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            fill_path: String::new(),
+            coordinates: Default::default(),
+            ryu: ryu_js::Buffer::new(),
+        }
+    }
+}
+
+#[inline]
+fn push_rough_f64(out: &mut String, ryu: &mut ryu_js::Buffer, value: f64) {
+    if value == 0.0 {
+        if value.is_sign_negative() {
+            out.push_str("-0");
+        } else {
+            out.push('0');
+        }
+    } else if value.is_finite() {
+        let abs = value.abs();
+        if (1e-6..1e15).contains(&abs) {
+            out.push_str(ryu.format_finite(value));
+        } else {
+            let _ = write!(out, "{value}");
+        }
+    } else {
+        let _ = write!(out, "{value}");
+    }
+}
+
+impl RoughRectBorderPath {
+    fn fill_path_d(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) -> &str {
+        self.fill_path.clear();
+        self.fill_path.push('M');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x0);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y0);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x1);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y0);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x1);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y1);
+        self.fill_path.push_str(" L");
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, x0);
+        self.fill_path.push(' ');
+        push_rough_f64(&mut self.fill_path, &mut self.ryu, y1);
+        &self.fill_path
+    }
+
+    fn path_d(
+        &mut self,
+        randomness: &roughr::core::RoughRandomness,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+    ) -> &str {
+        let w = (x1 - x0).max(0.0);
+        let h = (y1 - y0).max(0.0);
+        let x2 = x0 + w;
+        let y2 = y0 + h;
+        let mut options = roughr::core::OptionsBuilder::default()
+            .randomness(randomness.clone())
+            .build()
+            .expect("ER rough rectangle options must be valid");
+
+        self.path.clear();
+        for (text, value) in self.coordinates.iter_mut().zip([x0, y0, x2, y2]) {
+            text.clear();
+            push_rough_f64(text, &mut self.ryu, value);
+        }
+        let [left, top, right, bottom] = self.coordinates.each_ref().map(String::as_str);
+
+        // Rough.js v4.6.6 rectangle -> polygon -> linearPath follows the four sides in order.
+        for (horizontal, (start, start_text), (end, end_text), (fixed, fixed_text)) in [
+            (true, (x0, left), (x2, right), (y0, top)),
+            (false, (y0, top), (y2, bottom), (x2, right)),
+            (true, (x2, right), (x0, left), (y2, bottom)),
+            (false, (y2, bottom), (y0, top), (x0, left)),
+        ] {
+            let delta = end - start;
+            // The fixed-axis delta is +0 for finite coordinates. With positive d, the original
+            // addition turns -0 into +0. Subtracting a non-finite coordinate from itself yields NaN.
+            let fixed_control = if fixed == 0.0 {
+                "0"
+            } else if fixed.is_finite() {
+                fixed_text
+            } else {
+                "NaN"
+            };
+
+            // Even at roughness=0, each stroke draws a divergePoint and consumes ten
+            // more random values for midDisp, moveTo, and bcurveTo.
+            for _ in 0..2 {
+                let d = 0.2 + options.random() * 0.2;
+                for _ in 0..10 {
+                    let _ = options.random();
+                }
+                let c1 = start + delta * d;
+                let c2 = start + delta * 2.0 * d;
+                if horizontal {
+                    self.path.push('M');
+                    self.path.push_str(start_text);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_text);
+                    self.path.push_str(" C");
+                    push_rough_f64(&mut self.path, &mut self.ryu, c1);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_control);
+                    self.path.push_str(", ");
+                    push_rough_f64(&mut self.path, &mut self.ryu, c2);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_control);
+                    self.path.push_str(", ");
+                    self.path.push_str(end_text);
+                    self.path.push(' ');
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
+                } else {
+                    self.path.push('M');
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
+                    self.path.push_str(start_text);
+                    self.path.push_str(" C");
+                    self.path.push_str(fixed_control);
+                    self.path.push(' ');
+                    push_rough_f64(&mut self.path, &mut self.ryu, c1);
+                    self.path.push_str(", ");
+                    self.path.push_str(fixed_control);
+                    self.path.push(' ');
+                    push_rough_f64(&mut self.path, &mut self.ryu, c2);
+                    self.path.push_str(", ");
+                    self.path.push_str(fixed_text);
+                    self.path.push(' ');
+                    self.path.push_str(end_text);
+                    self.path.push(' ');
+                }
+            }
+        }
+
+        self.path.trim_end()
+    }
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "Layout, route metadata, and the resolved terminal theme have distinct owners."
@@ -349,6 +507,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let uses_canonical_routes = false;
     let is_elk_layout = route_contract.is_elk_parity();
     let is_swimlane_layout = matches!(route_contract, crate::graph_layout::RouteContract::Swimlane);
+    let allow_html_label_overflow = uses_canonical_routes || is_swimlane_layout;
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let route_kind = if uses_canonical_routes {
         ErSvgRouteKind::Canonical
@@ -543,6 +702,7 @@ pub(crate) fn render_er_diagram_svg_model(
         diagram_id,
         data_look,
         uses_canonical_routes,
+        allow_html_label_overflow,
         use_html_labels: edge_html_labels,
         measurer,
         label_style: &label_style,
@@ -639,6 +799,10 @@ pub(crate) fn render_er_diagram_svg_model(
     };
     out.checkpoint()?;
     if options.debug.include_edges {
+        #[cfg(feature = "layout-shoal")]
+        let mut paint_scratch = crate::graph_layout::canonical::CanonicalPaintScratch::default();
+        let mut points_json = Vec::new();
+        let mut points_base64 = String::new();
         for e in edges {
             let missing_section = geometry.is_missing_section(&e.id);
             if !uses_canonical_routes
@@ -656,6 +820,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 "edge-pattern-solid"
             };
             let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
+            let legacy_points;
             let (original_d, shifted) = 'path: {
                 #[cfg(feature = "layout-shoal")]
                 if let Some(routes) = canonical_routes {
@@ -666,6 +831,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         binding,
                         options.work_meter(),
                         &hand_drawn_seed,
+                        &mut paint_scratch,
                     )?;
                     content_bounds.min_x = content_bounds.min_x.min(painted.bounds.x0);
                     content_bounds.min_y = content_bounds.min_y.min(painted.bounds.y0);
@@ -673,19 +839,25 @@ pub(crate) fn render_er_diagram_svg_model(
                     content_bounds.max_y = content_bounds.max_y.max(painted.bounds.y1);
                     break 'path (painted.d, painted.points);
                 }
-                let shifted: Vec<_> = e
+                legacy_points = e
                     .points
                     .iter()
                     .map(|p| crate::model::LayoutPoint {
                         x: p.x + translate_x,
                         y: p.y + translate_y,
                     })
-                    .collect();
-                let d = er_edge_path_d(&shifted, rounded_layout, missing_section, native);
-                break 'path (d, shifted);
+                    .collect::<Vec<_>>();
+                let d = er_edge_path_d(&legacy_points, rounded_layout, missing_section, native);
+                break 'path (d, legacy_points.as_slice());
             };
-            let data_points = base64::engine::general_purpose::STANDARD
-                .encode(serde_json::to_vec(&shifted).unwrap_or_default());
+            points_json.clear();
+            points_json.reserve(128);
+            if serde_json::to_writer(&mut points_json, shifted).is_err() {
+                points_json.clear();
+            }
+            points_base64.clear();
+            base64::engine::general_purpose::STANDARD
+                .encode_string(&points_json, &mut points_base64);
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
 
@@ -717,6 +889,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 std::borrow::Cow::Borrowed(edge_style.as_str())
             };
 
+            // The standard Base64 alphabet is safe in a quoted XML attribute.
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
@@ -725,7 +898,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 escape_xml(&line_classes),
                 escape_attr(&edge_style),
                 escape_xml(&edge_dom_id),
-                escape_xml(&data_points),
+                points_base64,
                 escape_xml(data_look)
             );
             let start_marker_id = e
@@ -869,9 +1042,10 @@ pub(crate) fn render_er_diagram_svg_model(
                 if edge_html_labels {
                     let _ = write!(
                         &mut out,
-                        r#"<foreignObject width="{}" height="{}">"#,
+                        r#"<foreignObject width="{}" height="{}"{}>"#,
                         fmt(w),
-                        fmt(h)
+                        fmt(h),
+                        html_label_overflow_attr(allow_html_label_overflow, w, h),
                     );
                     let constrained = prepared_relationship
                         .is_some_and(crate::er::ErPreparedRelationshipLabel::html_is_constrained);
@@ -972,6 +1146,7 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str(r#"<g class="nodes">"#);
     }
     out.checkpoint()?;
+    let mut rough_border = RoughRectBorderPath::default();
     for n in nodes {
         if n.is_cluster {
             continue;
@@ -1118,12 +1293,13 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}">"#,
+                    r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"{}>"#,
                     fmt(-lw / 2.0),
                     fmt(-lh / 2.0),
                     entity_name_style_attr,
                     fmt(lw),
                     fmt(lh),
+                    html_label_overflow_attr(allow_html_label_overflow, lw, lh),
                 );
                 measure.label.emit_html_div(
                     &mut out,
@@ -1179,95 +1355,6 @@ pub(crate) fn render_er_diagram_svg_model(
                 .has_comment
                 .then_some(ox + type_col_w + name_col_w + key_col_w),
         ];
-
-        // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
-        //
-        // Even with roughness=0, Rough.js still depends on seeded randomness via `divergePoint`.
-        // For strict SVG parity we use the same Rough.js algorithm (v4.6.6) here instead of a
-        // generic sketchy-stroke renderer.
-        fn roughjs46_diverge_point(options: &mut roughr::core::Options) -> f64 {
-            0.2 + options.random() * 0.2
-        }
-
-        fn roughjs46_double_line_path_d(
-            options: &mut roughr::core::Options,
-            x0: f64,
-            y0: f64,
-            x1: f64,
-            y1: f64,
-        ) -> String {
-            let mut out = String::new();
-            let dx = x1 - x0;
-            let dy = y1 - y0;
-
-            for _ in 0..2 {
-                let d = roughjs46_diverge_point(options);
-                // Rough.js `_line()` continues to call into `_offsetOpt()` even when `roughness=0`
-                // (the random terms get multiplied by zero, but the PRNG state still advances).
-                //
-                // In Rough.js v4.6.6 `_line()` uses:
-                // - 2 random() calls for `midDispX/midDispY` offsetOpt
-                // - 2 random() calls for moveTo (x1/y1)
-                // - 6 random() calls for bcurveTo (cp1/cp2/x2/y2)
-                // Total: 10 random() calls after divergePoint.
-                for _ in 0..10 {
-                    let _ = options.random();
-                }
-                let cx1 = x0 + dx * d;
-                let cy1 = y0 + dy * d;
-                let cx2 = x0 + dx * 2.0 * d;
-                let cy2 = y0 + dy * 2.0 * d;
-                let _ = write!(
-                    &mut out,
-                    "M{} {} C{} {}, {} {}, {} {} ",
-                    x0, y0, cx1, cy1, cx2, cy2, x1, y1
-                );
-            }
-
-            out.trim_end().to_string()
-        }
-
-        fn rough_rect_border_path_d(
-            randomness: &roughr::core::RoughRandomness,
-            x0: f64,
-            y0: f64,
-            x1: f64,
-            y1: f64,
-        ) -> String {
-            let w = (x1 - x0).max(0.0);
-            let h = (y1 - y0).max(0.0);
-            let mut options = roughr::core::OptionsBuilder::default()
-                .randomness(randomness.clone())
-                .build()
-                .expect("ER rough rectangle options must be valid");
-
-            // Rough.js v4.6.6 renderer.rectangle -> polygon -> linearPath:
-            //   segments: (x,y)->(x+w,y)->(x+w,y+h)->(x,y+h)->(x,y)
-            let mut out = String::new();
-            let x2 = x0 + w;
-            let y2 = y0 + h;
-
-            let segs = [
-                (x0, y0, x2, y0),
-                (x2, y0, x2, y2),
-                (x2, y2, x0, y2),
-                (x0, y2, x0, y0),
-            ];
-            for (ax, ay, bx, by) in segs {
-                let d = roughjs46_double_line_path_d(&mut options, ax, ay, bx, by);
-                out.push_str(&d);
-                out.push(' ');
-            }
-
-            out.trim_end().to_string()
-        }
-
-        fn roughjs46_rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            format!(
-                "M{} {} L{} {} L{} {} L{} {}",
-                x0, y0, x1, y0, x1, y1, x0, y1
-            )
-        }
 
         fn thin_divider_rect_bounds(x0: f64, y0: f64, x1: f64, y1: f64) -> (f64, f64, f64, f64) {
             let half = 0.00005;
@@ -1363,14 +1450,14 @@ pub(crate) fn render_er_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                roughjs46_rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
+                rough_border.fill_path_d(box_x0, box_y0, box_x1, box_y1),
                 escape_attr(box_fill),
                 base_fill_style_attr
             );
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                rough_rect_border_path_d(&hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
+                rough_border.path_d(&hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
                 escape_attr(box_stroke),
                 stroke_width_attr,
                 override_style_attr
@@ -1378,6 +1465,7 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             // Row rectangles
+            let escaped_node_border = escape_xml(node_border);
             let mut y = sep_y;
             for (idx, row) in measure.rows.iter().enumerate() {
                 let row_h = row.height.max(1.0);
@@ -1406,7 +1494,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     let _ = write!(
                         &mut out,
                         r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                        roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
+                        rough_border.fill_path_d(box_x0, y0, box_x1, y1),
                         escape_xml(fill),
                         row_fill_style_attr
                     );
@@ -1414,8 +1502,8 @@ pub(crate) fn render_er_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                    rough_rect_border_path_d(&hand_drawn_seed, box_x0, y0, box_x1, y1),
-                    escape_xml(node_border),
+                    rough_border.path_d(&hand_drawn_seed, box_x0, y0, box_x1, y1),
+                    escaped_node_border,
                     stroke_width_attr,
                     row_override_style_attr
                 );
@@ -1442,12 +1530,13 @@ pub(crate) fn render_er_diagram_svg_model(
         if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
             let _ = write!(
                 &mut out,
-                r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
+                r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"{}>"#,
                 fmt(name_x),
                 fmt(name_y),
                 entity_name_style_attr,
                 fmt(name_w),
                 fmt(line_h),
+                html_label_overflow_attr(allow_html_label_overflow, name_w, line_h),
             );
             measure.label.emit_html_div(
                 &mut out,
@@ -1488,12 +1577,13 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
+                    r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"{}>"#,
                     fmt(type_left),
                     fmt(cell_y),
                     entity_name_style_attr,
                     fmt(type_w),
                     fmt(type_h),
+                    html_label_overflow_attr(allow_html_label_overflow, type_w, type_h),
                 );
                 row.type_label.emit_html_div(
                     &mut out,
@@ -1518,12 +1608,13 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
+                    r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"{}>"#,
                     fmt(name_left),
                     fmt(cell_y),
                     entity_name_style_attr,
                     fmt(name_w),
                     fmt(name_h),
+                    html_label_overflow_attr(allow_html_label_overflow, name_w, name_h),
                 );
                 row.name_label.emit_html_div(
                     &mut out,
@@ -1548,12 +1639,13 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
+                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"{}>"#,
                     fmt(key_left),
                     fmt(cell_y),
                     entity_name_style_attr,
                     fmt(keys_w),
                     fmt(keys_h),
+                    html_label_overflow_attr(allow_html_label_overflow, keys_w, keys_h),
                 );
                 row.key_label.emit_html_div(
                     &mut out,
@@ -1578,12 +1670,13 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
+                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"{}>"#,
                     fmt(comment_left),
                     fmt(cell_y),
                     entity_name_style_attr,
                     fmt(comment_w),
                     fmt(comment_h),
+                    html_label_overflow_attr(allow_html_label_overflow, comment_w, comment_h),
                 );
                 row.comment_label.emit_html_div(
                     &mut out,
@@ -1616,29 +1709,33 @@ pub(crate) fn render_er_diagram_svg_model(
         #[allow(clippy::too_many_arguments)]
         fn write_divider_group(
             out: &mut impl SvgOutput,
+            rough_border: &mut RoughRectBorderPath,
             hand_drawn_seed: &roughr::core::RoughRandomness,
             x0: f64,
             y0: f64,
             x1: f64,
             y1: f64,
-            fill: &str,
+            escaped_fill: &str,
             fill_style_attr: &str,
             divider_path_attrs: &str,
         ) -> Result<()> {
             let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
-            let _ = write!(
-                out,
-                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{}/><path d="{}"{} /></g>"#,
-                roughjs46_rect_fill_path_d(rx0, ry0, rx1, ry1),
-                escape_xml(fill),
-                fill_style_attr,
-                rough_rect_border_path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
-                divider_path_attrs
-            );
+            out.push_str(r#"<g class="divider"><path d=""#);
+            out.push_str(rough_border.fill_path_d(rx0, ry0, rx1, ry1));
+            out.push_str(r#"" stroke="none" stroke-width="0" fill=""#);
+            out.push_str(escaped_fill);
+            out.push_str(r#"" fill-rule="evenodd""#);
+            out.push_str(fill_style_attr);
+            out.push_str(r#"/><path d=""#);
+            out.push_str(rough_border.path_d(hand_drawn_seed, rx0, ry0, rx1, ry1));
+            out.push('"');
+            out.push_str(divider_path_attrs);
+            out.push_str(" /></g>");
             out.checkpoint()
         }
 
         if native.is_none() {
+            let escaped_box_fill = escape_xml(box_fill);
             let divider_path_attrs = format!(
                 r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
                 escape_xml(box_stroke),
@@ -1647,36 +1744,39 @@ pub(crate) fn render_er_diagram_svg_model(
             );
             write_divider_group(
                 &mut out,
+                &mut rough_border,
                 &hand_drawn_seed,
                 box_x0,
                 sep_y,
                 box_x1,
                 sep_y,
-                box_fill,
+                &escaped_box_fill,
                 base_fill_style_attr,
                 &divider_path_attrs,
             )?;
             for x in divider_xs.into_iter().flatten() {
                 write_divider_group(
                     &mut out,
+                    &mut rough_border,
                     &hand_drawn_seed,
                     x,
                     sep_y,
                     x,
                     box_y1,
-                    box_fill,
+                    &escaped_box_fill,
                     base_fill_style_attr,
                     &divider_path_attrs,
                 )?;
             }
             write_divider_group(
                 &mut out,
+                &mut rough_border,
                 &hand_drawn_seed,
                 box_x0,
                 sep_y,
                 box_x1,
                 sep_y,
-                box_fill,
+                &escaped_box_fill,
                 base_fill_style_attr,
                 &divider_path_attrs,
             )?;

@@ -226,6 +226,13 @@ impl merman_layout_shoal::WorkControl for OperationLayoutWorkControl {
         })
     }
 
+    fn charge_with_checkpoint(
+        &mut self,
+        units: usize,
+    ) -> std::result::Result<(), merman_layout_shoal::WorkError> {
+        self.charge(units)
+    }
+
     fn try_charge_optional(
         &mut self,
         units: usize,
@@ -240,6 +247,14 @@ impl merman_layout_shoal::WorkControl for OperationLayoutWorkControl {
                 *self.rejection.borrow_mut() = Some(error);
                 merman_layout_shoal::WorkError::Interrupted
             })
+    }
+
+    fn try_charge_optional_with_checkpoint(
+        &mut self,
+        units: usize,
+        headroom: usize,
+    ) -> std::result::Result<bool, merman_layout_shoal::WorkError> {
+        self.try_charge_optional(units, headroom)
     }
 }
 

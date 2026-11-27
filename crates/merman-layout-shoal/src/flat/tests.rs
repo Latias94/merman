@@ -84,7 +84,10 @@ fn sparse_selective_ranks_avoid_global_doubling_and_preserve_reused_scratch() {
         width: 35.0,
         height: 17.0,
     });
-    let o = Options::default();
+    let o = Options {
+        inline_labels: false,
+        ..Options::default()
+    };
     let mut unlimited = NoopWorkControl;
     let mut work = Work::new(&mut unlimited);
     let mut scratch = LayoutScratch::default();

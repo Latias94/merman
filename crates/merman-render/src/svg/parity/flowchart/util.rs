@@ -1,10 +1,6 @@
 //! Flowchart-specific rendering helpers.
 
-/// Flowchart HTML labels use fixed-size `foreignObject` boxes computed during headless layout.
-/// Keep those boxes non-clipping so browser-specific font fallback does not drop terminal glyphs
-/// when the actual display font is slightly wider than the headless measurement. Mermaid expresses
-/// this through the inline style only; a duplicate presentation attribute changes the SVG DOM.
-pub(super) const HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR: &str = r#" style="overflow: visible;""#;
+pub(in crate::svg::parity) use super::super::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
 pub(super) struct OptionalStyleAttr<'a>(pub(super) &'a str);
 

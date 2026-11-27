@@ -1,20 +1,25 @@
 //! Remove free elbows around opposing sibling ports after the final routing pass.
 
+mod face_order;
 mod projection;
 
-use super::Pass;
 use super::solve::TITLE_CLEAR;
 #[cfg(test)]
 use crate::Rect;
 use crate::geom::Bounds;
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Point,
-    PortSideHint, RoutePoint, RoutingStyle, Side, Size,
+    Axis, BorderStitch, Endpoint, Graph, GroupId, KnotKind, LayoutError, LayoutOutput, Options,
+    Point, PortSideHint, RoutePoint, RoutingStyle, Side, Size,
 };
 use projection::Lane;
 
 const MAX_LANE_SHIFT: f64 = 12.0;
+
+struct Scene<'a> {
+    graph: &'a Graph,
+    options: &'a Options,
+}
 
 #[derive(Clone, Copy)]
 struct Travel {
@@ -149,13 +154,13 @@ impl Obstacles {
         Ok(Self { boxes, edges })
     }
 
-    fn clear<'a>(
+    fn clear(
         &self,
         bounds: Bounds,
         edge: usize,
         groups: [GroupId; 2],
         drawing: &LayoutOutput,
-        accepted: impl Iterator<Item = &'a Edit>,
+        accepted: impl Iterator<Item = (usize, Bounds)>,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         for &obstacle in &self.boxes {
@@ -170,9 +175,9 @@ impl Obstacles {
                 return Ok(false);
             }
         }
-        for edit in accepted {
+        for (accepted_edge, footprint) in accepted {
             work.visit(1)?;
-            if edit.edge != edge && bounds.overlaps(edit.footprint) {
+            if accepted_edge != edge && bounds.overlaps(footprint) {
                 return Ok(false);
             }
         }
@@ -259,7 +264,7 @@ struct SiblingRoute<'a> {
 }
 
 fn between_siblings<'a>(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &'a LayoutOutput,
     [first, last]: [BorderStitch; 2],
     work: &mut Work<'_>,
@@ -309,7 +314,7 @@ fn between_siblings<'a>(
 }
 
 fn fixed_seams(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     route: SiblingRoute<'_>,
     work: &mut Work<'_>,
@@ -410,7 +415,7 @@ fn restrict_lane(limits: &mut (f64, f64), lane: f64, neighbor: f64, current: f64
 }
 
 fn lane_limits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     slide: Slide<'_>,
     faces: &FaceLanes,
@@ -487,7 +492,7 @@ fn keeps_anchor(
 }
 
 fn prepare_slide<'a>(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     pair: SiblingRoute<'a>,
     stitch: usize,
     work: &mut Work<'_>,
@@ -691,7 +696,7 @@ fn seam_paths(output: &LayoutOutput) -> impl Iterator<Item = (usize, &[BorderSti
 }
 
 fn fixed_edits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<Edit>> {
@@ -717,7 +722,7 @@ fn fixed_edits(
             edge,
             [first.group, last.group],
             output,
-            edits.iter(),
+            edits.iter().map(|edit: &Edit| (edit.edge, edit.footprint)),
             work,
         )? {
             continue;
@@ -728,7 +733,7 @@ fn fixed_edits(
 }
 
 fn slide_edits(
-    ctx: &Pass<'_>,
+    ctx: &Scene<'_>,
     output: &LayoutOutput,
     fixed: &[Edit],
     work: &mut Work<'_>,
@@ -753,6 +758,7 @@ fn slide_edits(
             .corridor
             .cmp(&slides[b].corridor)
             .then_with(|| slides[a].originals[0].total_cmp(&slides[b].originals[0]))
+            .then(a.cmp(&b))
     })?;
     work.charge(output.edges.len())?;
     let mut faces = FaceLanes {
@@ -813,7 +819,11 @@ fn slide_edits(
                 edge,
                 groups,
                 output,
-                fixed.iter().chain(&edits).chain(&planned),
+                fixed
+                    .iter()
+                    .chain(&edits)
+                    .chain(&planned)
+                    .map(|edit| (edit.edge, edit.footprint)),
                 work,
             )? {
                 continue 'corridors;
@@ -837,27 +847,32 @@ fn slide_edits(
     Ok(edits)
 }
 
+pub(super) fn eligible(options: &Options, output: &LayoutOutput) -> bool {
+    let caps = options.caps;
+    options.routing == RoutingStyle::Curved
+        && output.truncated_routes.is_empty()
+        && output.groups.len() >= 2
+        && (2..=caps.max_ordered_compound_ports).contains(&output.border_stitches.len())
+        && output.edges.len() <= caps.max_ordered_compound_edges
+}
+
 pub(super) fn relax(
-    ctx: &Pass<'_>,
+    graph: &Graph,
+    options: &Options,
     output: &mut LayoutOutput,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    let caps = ctx.options.caps;
-    if ctx.options.routing != RoutingStyle::Curved
-        || !output.truncated_routes.is_empty()
-        || output.groups.len() < 2
-        || output.border_stitches.len() < 2
-        || output.border_stitches.len() > caps.max_ordered_compound_ports
-        || output.edges.len() > caps.max_ordered_compound_edges
-    {
+    if !eligible(options, output) {
         return Ok(());
     }
-    let fixed = match work.compare(|trial| fixed_edits(ctx, output, trial)) {
+    let scene = Scene { graph, options };
+    face_order::relax(&scene, output, work)?;
+    let fixed = match work.compare(|trial| fixed_edits(&scene, output, trial)) {
         Ok(Some(edits)) => edits,
         Ok(None) | Err(LayoutError::AllocationLimit) => return Ok(()),
         Err(error) => return Err(error),
     };
-    let slid = match work.compare(|trial| slide_edits(ctx, output, &fixed, trial)) {
+    let slid = match work.compare(|trial| slide_edits(&scene, output, &fixed, trial)) {
         Ok(Some(edits)) => edits,
         Ok(None) | Err(LayoutError::AllocationLimit) => Vec::new(),
         Err(error) => return Err(error),

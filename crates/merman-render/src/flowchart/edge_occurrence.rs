@@ -138,28 +138,54 @@ impl FlowchartEdgeOwners {
         layout_edges: &[crate::model::LayoutEdge],
         semantic_edges: &[FlowEdge],
     ) -> crate::Result<Option<HashMap<usize, u8>>> {
+        self.validate_bindings(layout_edges.len(), semantic_edges, |index| {
+            Some(layout_edges[index].id.as_str())
+        })
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn validate_projected(
+        &self,
+        edge_count: usize,
+        semantic_edges: &[FlowEdge],
+    ) -> crate::Result<Option<HashMap<usize, u8>>> {
+        self.validate_bindings(edge_count, semantic_edges, |_| None)
+    }
+
+    fn validate_bindings<'a>(
+        &self,
+        edge_count: usize,
+        semantic_edges: &[FlowEdge],
+        layout_id: impl Fn(usize) -> Option<&'a str>,
+    ) -> crate::Result<Option<HashMap<usize, u8>>> {
         const REGULAR_OCCURRENCE: u8 = 0b1000;
 
-        if self.len() != layout_edges.len() {
+        if self.len() != edge_count {
             return Err(crate::Error::InvalidModel {
                 message: format!(
-                    "Flowchart layout edge-owner count {} does not match edge count {}",
+                    "Flowchart layout edge-owner count {} does not match edge count {edge_count}",
                     self.len(),
-                    layout_edges.len()
                 ),
             });
         }
 
         let mut owner_occurrences =
             (self.len() != semantic_edges.len()).then(|| HashMap::with_capacity(self.len()));
-        for (layout_index, (layout_edge, key)) in layout_edges.iter().zip(self.iter()).enumerate() {
+        for (layout_index, key) in self.iter().enumerate() {
+            let id = layout_id(layout_index);
             let Some(semantic_edge) = semantic_edges.get(key.semantic_index()) else {
                 return Err(crate::Error::InvalidModel {
-                    message: format!(
-                        "Flowchart layout edge `{}` references missing semantic owner {}",
-                        layout_edge.id,
-                        key.semantic_index()
-                    ),
+                    message: if let Some(id) = id {
+                        format!(
+                            "Flowchart layout edge `{id}` references missing semantic owner {}",
+                            key.semantic_index()
+                        )
+                    } else {
+                        format!(
+                            "Flowchart layout edge {layout_index} references missing semantic owner {}",
+                            key.semantic_index()
+                        )
+                    },
                 });
             };
             let (expected_id, occurrence_bit) = match key.self_loop_segment_order() {
@@ -167,7 +193,7 @@ impl FlowchartEdgeOwners {
                     std::borrow::Cow::Borrowed(semantic_edge.id.as_str()),
                     REGULAR_OCCURRENCE,
                 ),
-                Some(order @ 0..=2) if semantic_edge.from == semantic_edge.to => {
+                Some(order @ 0..=2) if id.is_some() && semantic_edge.from == semantic_edge.to => {
                     let suffix = match order {
                         0 => "1",
                         1 => "mid",
@@ -189,11 +215,12 @@ impl FlowchartEdgeOwners {
                     });
                 }
             };
-            if layout_edge.id != expected_id.as_ref() {
+            if let Some(id) = id
+                && id != expected_id.as_ref()
+            {
                 return Err(crate::Error::InvalidModel {
                     message: format!(
-                        "Flowchart layout edge `{}` is not bound to semantic owner {} (`{}`)",
-                        layout_edge.id,
+                        "Flowchart layout edge `{id}` is not bound to semantic owner {} (`{}`)",
                         key.semantic_index(),
                         expected_id
                     ),

@@ -189,7 +189,7 @@ impl RenderEnvironment {
         &self.resource_policy
     }
 
-    /// Reuses row storage on independent, flat, natural-width Shoal layouts.
+    /// Reuses row storage on independent Shoal layered layouts, including width fitting.
     ///
     /// This environment and its clones share one idle slot with at most 64 KiB of row storage.
     /// Keep an environment alive across operations to reuse it. Each operation still owns its
@@ -340,6 +340,11 @@ pub struct RenderSession {
 }
 
 impl RenderSession {
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn use_shoal_text_widths(&mut self) {
+        self.text_measurement.use_shoal_text_widths();
+    }
+
     /// Native settings selected for this operation.
     pub fn native_theme(&self) -> Option<&crate::theme::NativeTheme> {
         self.native_theme.as_ref()
@@ -602,6 +607,50 @@ mod tests {
             profile.version(),
             concat!("merman-render@", env!("CARGO_PKG_VERSION"))
         );
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn shoal_calibrates_builtin_widths_and_keeps_explicit_measurement_profiles() {
+        let custom = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.custom").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            Arc::new(DeterministicTextMeasurer::default()),
+        );
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::deterministic()
+                .with_profile_for_phase(TextMeasurementPhase::SvgBBox, custom),
+        );
+        let mut session = environment.begin_session().unwrap();
+        let explicit_route = session.text_measurement_route(TextMeasurementPhase::SvgBBox);
+        session.use_shoal_text_widths();
+        assert_eq!(
+            session.text_measurement_route(TextMeasurementPhase::SvgBBox),
+            explicit_route,
+        );
+        assert_eq!(
+            session
+                .text_measurement_route(TextMeasurementPhase::Layout)
+                .primary
+                .profile()
+                .as_str(),
+            "merman.shoal-calibrated-text"
+        );
+
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let regular = TextStyle::default();
+        let bold = TextStyle {
+            font_weight: Some("bolder".into()),
+            ..regular.clone()
+        };
+        let text = "customer_account_id";
+        let wide = measurer.measure_html_line_width_px(text, &regular);
+        assert!(wide >= 9.58 * regular.font_size);
+        let bold_width = measurer.measure_html_line_width_px(text, &bold);
+        assert!((bold_width / wide - 1.06).abs() < 1e-12);
     }
 
     #[test]
