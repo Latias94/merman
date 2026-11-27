@@ -285,7 +285,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
 - Legal file: `THIRD_PARTY_LICENSES/venn-js/LICENSE`
 
 ### ZenUML Core

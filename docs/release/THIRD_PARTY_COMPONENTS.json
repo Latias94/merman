@@ -1330,7 +1330,6 @@
       },
       "relationships": ["modified", "translated"],
       "local_paths": [
-        "crates/merman-core/src/diagrams/venn.rs",
         "crates/merman-render-charts/src/venn/solver.rs",
         "crates/merman-render-charts/src/venn/theme/css_binding.rs"
       ],

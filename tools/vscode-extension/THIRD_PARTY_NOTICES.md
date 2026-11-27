@@ -896,7 +896,7 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 - Relationship: `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src/diagrams/venn.rs`, `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
+- Local evidence: `crates/merman-render-charts/src/venn/solver.rs`, `crates/merman-render-charts/src/venn/theme/css_binding.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/venn-js/LICENSE`](THIRD_PARTY_LICENSES/venn-js/LICENSE) (license, SHA-256 `6a3508febf2cfccfee96597394543a6154a4bb0b1f91f28404be42c09e9fcb54`)
 
