@@ -1,10 +1,3 @@
-#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
-mod flat;
-
-#[cfg(feature = "diagram-mindmap")]
-pub(crate) use flat::layout_flat;
-#[cfg(feature = "diagram-er")]
-pub(crate) use flat::{MeasuredNode, layout_compound};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod prepare;
 #[cfg(all(
@@ -23,43 +16,75 @@ use crate::LayoutExecution;
 use crate::Result;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::flowchart::{FlowchartConfigView, FlowchartEdgeTransportPlan, FlowchartRenderModelRef};
-use crate::model::{
-    Bounds, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneLayout, SwimlaneNodeLayout,
-};
+#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
+use crate::model::LayoutEdge;
+#[cfg(feature = "diagram-mindmap")]
+use crate::model::LayoutNode;
+#[cfg(feature = "diagram-er")]
+use crate::model::SwimlaneDirection;
+use crate::model::SwimlaneLayout;
+#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 use crate::resources::OperationWorkMeter;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
+    feature = "diagram-swimlane"
+))]
 use merman_model::presentation::PresentationConfig;
+#[cfg(feature = "diagram-er")]
+pub(crate) use merman_render_flow::swimlane::MeasuredNode;
+use merman_render_flow::swimlane::SwimlaneLayoutParts;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_render_flow::swimlane::lanes;
-use merman_render_flow::swimlane::{admit_layout_work, config, source_layout_work_units, working};
+use merman_render_flow::swimlane::{
+    admit_layout_work, config, lanes, project_layout, solve, source_layout_work_units, working,
+};
+#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 use std::sync::Arc;
 
-fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
-    let mut points = Vec::new();
-    for node in layout
-        .nodes
-        .values()
-        .filter(|node| node.kind != working::WorkingNodeKind::Dummy)
-    {
-        let width = if node.kind == working::WorkingNodeKind::EdgeLabel {
-            node.label_width
-        } else {
-            node.width
-        };
-        let height = if node.kind == working::WorkingNodeKind::EdgeLabel {
-            node.label_height
-        } else {
-            node.height
-        };
-        points.push((node.x - width / 2.0, node.y - height / 2.0));
-        points.push((node.x + width / 2.0, node.y + height / 2.0));
-    }
-    for edge in &layout.original_edges {
-        points.extend(edge.points.iter().map(|point| (point.x, point.y)));
-    }
-    Bounds::from_points(points)
+// The facade's Flow selectors own BPMN outlines even when other crates unify Flow features.
+const USE_BPMN_DRAWN_SIZE: bool = cfg!(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+));
+
+#[cfg(feature = "diagram-mindmap")]
+pub(crate) fn layout_flat(
+    measured: &[(&LayoutNode, &str)],
+    edges: &[LayoutEdge],
+    config: &PresentationConfig,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<SwimlaneLayout> {
+    merman_render_flow::swimlane::layout_flat(
+        measured,
+        edges,
+        config,
+        USE_BPMN_DRAWN_SIZE,
+        work_meter,
+    )
+    .map(assemble_layout)
+}
+
+#[cfg(feature = "diagram-er")]
+pub(crate) fn layout_compound(
+    measured: &[MeasuredNode<'_>],
+    edges: &[LayoutEdge],
+    direction: SwimlaneDirection,
+    config: &serde_json::Value,
+    spacing: (f64, f64),
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<SwimlaneLayout> {
+    merman_render_flow::swimlane::layout_compound(
+        measured,
+        edges,
+        direction,
+        config,
+        spacing,
+        USE_BPMN_DRAWN_SIZE,
+        work_meter,
+    )
+    .map(assemble_layout)
 }
 
 /// Lays out a Swimlane model under the resource policy owned by the render operation.
@@ -123,7 +148,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         None
     };
     if !canonical {
-        run_layout_core(&mut working, config, work_meter)?;
+        solve(&mut working, config, USE_BPMN_DRAWN_SIZE, work_meter)?;
         prepare::measure_zero_width_lane_titles(
             &mut working,
             model,
@@ -158,11 +183,12 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
 
     let mut curve_by_id = std::collections::HashMap::with_capacity(visible_edges.len());
     for ((key, source), edge) in visible_edges.iter().zip(&working.original_edges) {
-        if transport_plan.id(*key) != Some(edge.id.as_str())
-            || edge.reference_id != edge.id
-            || edge.from != source.from
-            || edge.to != source.to
-        {
+        let Some(transport_id) = transport_plan.id(*key).filter(|&id| {
+            id == edge.id.as_str()
+                && edge.reference_id == edge.id
+                && edge.from == source.from
+                && edge.to == source.to
+        }) else {
             return Err(crate::Error::InvalidModel {
                 message: format!(
                     "Swimlane working edge `{}` does not match semantic owner {}",
@@ -170,16 +196,16 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                     key.semantic_index()
                 ),
             });
-        }
+        };
         let curve = source
             .semantic
             .interpolate
             .as_deref()
             .filter(|curve| !curve.is_empty())
             .unwrap_or(default_curve);
-        curve_by_id.insert(edge.id.as_str(), curve);
+        curve_by_id.insert(transport_id, curve);
     }
-    let mut layout = project_layout(&working, &curve_by_id);
+    let mut layout = assemble_layout(project_layout(working, &curve_by_id));
     #[cfg(feature = "layout-shoal")]
     {
         layout.shoal = shoal;
@@ -195,96 +221,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     Ok(layout)
 }
 
-fn run_layout_core(
-    working: &mut working::WorkingLayout,
-    config: config::SwimlaneConfig,
-    work_meter: Arc<OperationWorkMeter>,
-) -> Result<()> {
-    // Keep BPMN outlines tied to this renderer's Flowchart/Swimlane selectors, even if a
-    // different consumer enables additional features on the shared solver crate.
-    let use_bpmn_drawn_size = cfg!(any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane"
-    ));
-    merman_render_flow::swimlane::solve(working, config, use_bpmn_drawn_size, work_meter)
-}
-
-fn project_layout(
-    working: &working::WorkingLayout,
-    curve_by_id: &std::collections::HashMap<&str, &str>,
+fn assemble_layout(
+    (direction, nodes, lanes, edges, bounds): SwimlaneLayoutParts,
 ) -> SwimlaneLayout {
-    let bounds = output_bounds(working);
-    let nodes = working
-        .nodes
-        .values()
-        .filter(|node| {
-            matches!(
-                node.kind,
-                working::WorkingNodeKind::Content | working::WorkingNodeKind::EdgeLabel
-            )
-        })
-        .map(|node| SwimlaneNodeLayout {
-            id: node.id.clone(),
-            label: node.label.clone(),
-            label_type: node.label_type.clone(),
-            shape: node.shape.clone(),
-            parent_id: node.parent_id.clone(),
-            top_lane_id: node.top_lane_id.clone(),
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
-            label_width: node.label_width,
-            label_height: node.label_height,
-            layer: node.layer,
-            order: node.order,
-            is_edge_label: node.kind == working::WorkingNodeKind::EdgeLabel,
-        })
-        .collect();
-    let lanes = working
-        .nodes
-        .values()
-        .filter(|node| node.kind == working::WorkingNodeKind::Group)
-        .map(|lane| SwimlaneLaneLayout {
-            id: lane.id.clone(),
-            title: lane.label.clone(),
-            parent_id: lane.parent_id.clone(),
-            x: lane.x,
-            y: lane.y,
-            width: lane.width,
-            height: lane.height,
-            padding: lane.padding,
-            title_label_width: lane.label_width,
-            title_label_height: lane.label_height,
-            content_top: lane.content_top,
-            title_rect: lane.title_rect.clone(),
-            requested_dir: lane.requested_dir.clone(),
-        })
-        .collect();
-    let edges = working
-        .original_edges
-        .iter()
-        .map(|edge| SwimlaneEdgeLayout {
-            id: edge.id.clone(),
-            from: edge.from.clone(),
-            to: edge.to.clone(),
-            points: edge.points.clone(),
-            label_node_id: edge.label_node_id.clone(),
-            reversed_for_layout: edge.reversed_for_layout,
-            curve: match curve_by_id
-                .get(edge.id.as_str())
-                .copied()
-                .unwrap_or("basis")
-            {
-                "basis" => "rounded",
-                curve => curve,
-            }
-            .to_string(),
-        })
-        .collect();
-
     SwimlaneLayout {
-        direction: working.direction,
+        direction,
         nodes,
         lanes,
         edges,

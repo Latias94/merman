@@ -3,14 +3,19 @@
 mod bounds;
 pub mod config;
 mod direction;
+mod flat;
 mod geometry;
 pub mod lanes;
+mod projection;
 mod routing;
 mod sugiyama;
 #[cfg(test)]
 mod tests;
 mod work_budget;
 pub mod working;
+
+pub use flat::{MeasuredNode, layout_compound, layout_flat};
+pub use projection::{SwimlaneLayoutParts, project_layout};
 
 use merman_render_core::{Result, resources::OperationWorkMeter};
 use std::{cmp::Ordering, sync::Arc};

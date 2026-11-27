@@ -115,6 +115,9 @@ pub use geometry::{Bounds, LayoutPoint};
 pub use layout::measure_layout_bounds;
 pub use layout::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[doc(hidden)]
-pub use layout::{SwimlaneDirection, SwimlaneLaneLayout, SwimlaneNodeLayout, SwimlaneTitleRect};
+pub use layout::{
+    SwimlaneDirection, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneNodeLayout,
+    SwimlaneTitleRect,
+};
 #[cfg(feature = "resources")]
 pub use render_error::{Error, RenderCapability, RenderCapabilityPolicy, Result};

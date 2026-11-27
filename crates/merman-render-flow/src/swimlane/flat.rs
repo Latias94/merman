@@ -2,20 +2,20 @@
 
 use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, SwimlaneConfig};
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
-use crate::model::{LayoutEdge, LayoutNode, SwimlaneDirection, SwimlaneLayout};
-use crate::resources::OperationWorkMeter;
-use crate::{Error, Result};
+use super::{SwimlaneLayoutParts, project_layout, solve};
 use indexmap::IndexMap;
-#[cfg(feature = "diagram-mindmap")]
 use merman_model::presentation::PresentationConfig;
-#[cfg(feature = "diagram-er")]
+use merman_render_core::resources::OperationWorkMeter;
+use merman_render_core::{
+    Error, LayoutEdge, LayoutNode, Result, SwimlaneDirection, config::config_bool,
+};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Geometry and containment are supplied by the owning family, after its label preparation.
 /// `LayoutNode::is_cluster` distinguishes groups without a Flowchart semantic projection.
-pub(crate) struct MeasuredNode<'a> {
+pub struct MeasuredNode<'a> {
     pub node: &'a LayoutNode,
     pub shape: &'a str,
     pub label: &'a str,
@@ -25,13 +25,13 @@ pub(crate) struct MeasuredNode<'a> {
     pub padding: f64,
 }
 
-#[cfg(feature = "diagram-mindmap")]
-pub(crate) fn layout_flat(
+pub fn layout_flat(
     measured: &[(&LayoutNode, &str)],
     edges: &[LayoutEdge],
     config: &PresentationConfig,
+    use_bpmn_drawn_size: bool,
     work_meter: Arc<OperationWorkMeter>,
-) -> Result<SwimlaneLayout> {
+) -> Result<SwimlaneLayoutParts> {
     let measured = measured
         .iter()
         .map(|&(node, shape)| MeasuredNode {
@@ -49,23 +49,22 @@ pub(crate) fn layout_flat(
         edges,
         SwimlaneDirection::Tb,
         SwimlaneConfig::from_config(config),
+        use_bpmn_drawn_size,
         work_meter,
     )
 }
 
 /// `spacing` is the family's renderer projection of (node gap, layer gap). ER's unified
 /// renderer supplies its ER spacing here before the upstream Swimlane core reads Flowchart.
-#[cfg(feature = "diagram-er")]
-pub(crate) fn layout_compound(
+pub fn layout_compound(
     measured: &[MeasuredNode<'_>],
     edges: &[LayoutEdge],
     direction: SwimlaneDirection,
     config: &Value,
     spacing: (f64, f64),
+    use_bpmn_drawn_size: bool,
     work_meter: Arc<OperationWorkMeter>,
-) -> Result<SwimlaneLayout> {
-    use crate::config::config_bool;
-
+) -> Result<SwimlaneLayoutParts> {
     let settings = SwimlaneConfig {
         node_gap: spacing.0,
         layer_gap: spacing.1,
@@ -76,7 +75,14 @@ pub(crate) fn layout_compound(
         automatic_lane_ordering: config_bool(config, &["swimlane", "automaticLaneOrdering"])
             .unwrap_or(false),
     };
-    layout_measured(measured, edges, direction, settings, work_meter)
+    layout_measured(
+        measured,
+        edges,
+        direction,
+        settings,
+        use_bpmn_drawn_size,
+        work_meter,
+    )
 }
 
 fn layout_measured(
@@ -84,8 +90,9 @@ fn layout_measured(
     edges: &[LayoutEdge],
     direction: SwimlaneDirection,
     settings: SwimlaneConfig,
+    use_bpmn_drawn_size: bool,
     work_meter: Arc<OperationWorkMeter>,
-) -> Result<SwimlaneLayout> {
+) -> Result<SwimlaneLayoutParts> {
     let source_work = super::source_layout_work_units(measured.len(), edges.len());
     super::admit_layout_work(&work_meter, source_work, edges.len())?;
     let mut nodes = IndexMap::new();
@@ -267,11 +274,8 @@ fn layout_measured(
         original_edges,
     };
     working.refresh_top_lane_ids();
-    super::run_layout_core(&mut working, settings, work_meter)?;
-    Ok(super::project_layout(
-        &working,
-        &std::collections::HashMap::new(),
-    ))
+    solve(&mut working, settings, use_bpmn_drawn_size, work_meter)?;
+    Ok(project_layout(working, &HashMap::new()))
 }
 
 /// Validate the final parent forest once, before any core phase walks ancestors. The indexed

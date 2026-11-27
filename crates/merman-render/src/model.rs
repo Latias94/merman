@@ -218,27 +218,9 @@ pub struct FlowchartLayout {
     feature = "diagram-mindmap"
 ))]
 pub use merman_render_core::{
-    SwimlaneDirection, SwimlaneLaneLayout, SwimlaneNodeLayout, SwimlaneTitleRect,
+    SwimlaneDirection, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneNodeLayout,
+    SwimlaneTitleRect,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-mindmap"
-))]
-pub struct SwimlaneEdgeLayout {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub points: Vec<LayoutPoint>,
-    #[serde(default)]
-    pub label_node_id: Option<String>,
-    pub reversed_for_layout: bool,
-    pub curve: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(any(

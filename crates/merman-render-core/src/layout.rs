@@ -150,6 +150,18 @@ pub struct SwimlaneNodeLayout {
     pub is_edge_label: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneEdgeLayout {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub points: Vec<LayoutPoint>,
+    #[serde(default)]
+    pub label_node_id: Option<String>,
+    pub reversed_for_layout: bool,
+    pub curve: String,
+}
+
 /// Bound measured nodes and edge paths in traversal order, charging each retained part.
 pub fn measure_layout_bounds<E>(
     nodes: &[LayoutNode],
