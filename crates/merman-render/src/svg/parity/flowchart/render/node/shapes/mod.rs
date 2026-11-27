@@ -15,7 +15,6 @@ mod console;
 mod curly_braces;
 mod cylinders;
 mod dispatch;
-mod divided_rect;
 mod document_shapes;
 mod folder;
 mod hexagon;
@@ -34,7 +33,6 @@ mod paper_tape;
 mod person;
 mod process;
 mod rounded_rect;
-mod shaded_process;
 mod stacked_rectangle;
 mod stadium;
 mod tag_rect;
@@ -53,7 +51,6 @@ pub(in crate::svg::parity::flowchart) use curly_braces::{
 };
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
 pub(super) use dispatch::render_flowchart_shape;
-pub(super) use divided_rect::render_divided_rect;
 pub(super) use document_shapes::{
     render_lined_wave_document, render_stacked_document, render_tagged_wave_document,
     render_wave_document,
@@ -74,7 +71,6 @@ pub(super) use paper_tape::render_paper_tape;
 pub(super) use person::render_person;
 pub(super) use process::render_process_rectangle;
 pub(super) use rounded_rect::render_rounded_rect;
-pub(super) use shaded_process::render_shaded_process;
 pub(super) use stacked_rectangle::render_stacked_rectangle;
 pub(super) use stadium::render_stadium;
 pub(super) use tag_rect::render_tag_rect;
@@ -176,9 +172,11 @@ pub(super) fn advance_rough_geometry(
         FlowchartShape::Delay => OuterPathShape::Delay
             .prepare(ctx, common, label)
             .advance_rough_geometry(body_geometry(common)),
-        FlowchartShape::DividedRectangle => {
-            divided_rect::advance_divided_rect_rough_geometry(ctx, common, label)
+        FlowchartShape::DividedRectangle => node_body::RectangleWithDivider::Divided {
+            authored_padding: ctx.node_padding,
+            neo: common.look_is_neo(),
         }
+        .advance_rough_geometry(body_geometry(common), &mut label.dx, &mut label.dy),
         FlowchartShape::Folder => folder::advance_folder_rough_geometry(ctx, common, label),
         FlowchartShape::Document => {
             document_shapes::advance_wave_document_rough_geometry(ctx, common, label)
@@ -219,9 +217,8 @@ pub(super) fn advance_rough_geometry(
         FlowchartShape::Person => person::advance_person_rough_geometry(ctx, common, label),
         FlowchartShape::Process => process::advance_rough_geometry(common),
         FlowchartShape::RoundedRectangle => rounded_rect::advance_rough_geometry(ctx, common),
-        FlowchartShape::ShadedProcess => {
-            shaded_process::advance_shaded_process_rough_geometry(ctx, common, label)
-        }
+        FlowchartShape::ShadedProcess => node_body::RectangleWithDivider::Shaded
+            .advance_rough_geometry(body_geometry(common), &mut label.dx, &mut label.dy),
         FlowchartShape::StackedDocument => {
             document_shapes::advance_stacked_document_rough_geometry(ctx, common, label)
         }

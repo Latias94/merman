@@ -80,9 +80,11 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Diamond => {
             super::render_diamond(out, common, details);
         }
-        FlowchartShape::DividedRectangle => {
-            super::render_divided_rect(out, ctx, common, label, details);
+        FlowchartShape::DividedRectangle => node_body::RectangleWithDivider::Divided {
+            authored_padding: ctx.node_padding,
+            neo: common.look_is_neo(),
         }
+        .write(out, body_svg(common, details), &mut label.dx, &mut label.dy),
         FlowchartShape::Folder => {
             super::render_folder(out, ctx, common, label, details);
         }
@@ -182,9 +184,12 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::RoundedRectangle => {
             super::render_rounded_rect(out, ctx, common, details);
         }
-        FlowchartShape::ShadedProcess => {
-            super::render_shaded_process(out, common, label, details);
-        }
+        FlowchartShape::ShadedProcess => node_body::RectangleWithDivider::Shaded.write(
+            out,
+            body_svg(common, details),
+            &mut label.dx,
+            &mut label.dy,
+        ),
         FlowchartShape::StackedDocument => {
             super::render_stacked_document(out, ctx, common, label, details);
         }

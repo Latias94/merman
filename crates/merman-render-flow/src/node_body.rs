@@ -19,12 +19,14 @@ pub mod document_shapes;
 mod label_container;
 mod lean_trapezoids;
 mod outer_path;
+mod rectangle_with_divider;
 mod subroutine;
 
 pub use datastore::{advance_datastore, write_datastore};
 pub use label_container::{advance_hourglass, write_hourglass, write_notched_rectangle};
 pub use lean_trapezoids::{advance_lean_hand_drawn, write_lean};
 pub use outer_path::{OuterPathBody, OuterPathTranslation};
+pub use rectangle_with_divider::RectangleWithDivider;
 pub use subroutine::{advance_subroutine, write_subroutine};
 
 /// Layout dimensions and the operation's existing RoughJS inputs.
