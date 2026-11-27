@@ -14,7 +14,7 @@ use merman_render_core::{
     svg_edge_parity::line_hops::LineHopEdge,
 };
 
-use super::intersect::intersect_grid_node_outline;
+use super::intersect::intersect_node_outline;
 use super::*;
 use crate::{
     edge_geometry::LegacyEdgeCurve,
@@ -62,9 +62,14 @@ pub(super) fn paint(
     }
     let source = boundary_for_node(ctx, &layout_edge.from, origin_x, origin_y);
     let target = boundary_for_node(ctx, &layout_edge.to, origin_x, origin_y);
-    let intersect = |id, boundary, query| {
-        let point = intersect_grid_node_outline(ctx, id, boundary, query);
-        Ok(Some(Point::new(point.x, point.y)))
+    let intersect = |id, boundary, query: GridOutlineQuery| {
+        Ok(Some(intersect_node_outline(
+            ctx,
+            id,
+            boundary,
+            query.adjacent,
+            query.line_origin,
+        )))
     };
     let intersect_source = |query| match &source {
         Some(boundary) => intersect(layout_edge.from.as_str(), boundary, query),
@@ -118,7 +123,9 @@ pub(super) fn paint(
         data_points,
         pre_hop_dash_mask_length: None,
         line_hop_applied: false,
-        grid_hopped_d: None,
+        #[cfg(feature = "layout-layered")]
+        axes: None,
+        after_paint_d: None,
         // The shared label resolver starts from the materialized label anchor, as in common.
         label_anchor: None,
         label_path_was_explicitly_updated: false,
@@ -193,7 +200,7 @@ pub(in crate::svg) fn apply_grid_line_hops(
         work.charge_emit_work(path.len())?;
         if let Some(entry) = cache.get_mut(&owners[index]) {
             entry.geom.pb = svg_path_bounds_from_d(&path);
-            entry.geom.grid_hopped_d = Some(path);
+            entry.geom.after_paint_d = Some(path);
         }
     }
     Ok(())

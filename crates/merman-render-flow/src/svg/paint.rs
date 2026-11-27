@@ -63,6 +63,14 @@ pub fn with_flowchart_paint_context<T>(
     };
     #[cfg(not(feature = "layout-shoal"))]
     let owner_occurrences = validate_layout_edges()?;
+    #[cfg(feature = "layout-layered")]
+    if let FlowchartSvgRoute::Layered(layered) = layout.route_contract
+        && layered.edges.len() != layout.edge_owners.len()
+    {
+        return Err(Error::InvalidModel {
+            message: "Flowchart Layered routes do not match the prepared edge owners".to_owned(),
+        });
+    }
 
     let hand_drawn_seed = merman_render_core::rough_svg::operation_randomness(
         services.operation,
@@ -427,6 +435,8 @@ pub(super) fn edge_paint_phase(ctx: &FlowchartRenderCtx<'_>) -> merman_model::Op
     match ctx.layout.route_contract {
         #[cfg(feature = "layout-grid")]
         FlowchartSvgRoute::Grid(_) => OperationPhase::Emit,
+        #[cfg(feature = "layout-layered")]
+        FlowchartSvgRoute::Layered(_) => OperationPhase::Emit,
         _ => OperationPhase::Layout,
     }
 }
@@ -478,6 +488,12 @@ pub fn prepare_edge_routes(
     #[cfg(feature = "layout-grid")]
     if let Some(settings) = ctx.layout.route_contract.grid_paint() {
         edge_geom::apply_grid_line_hops(&mut cache, render_edges, settings, ctx.work_meter)?;
+        ctx.work_meter.checkpoint(phase)?;
+        return Ok(cache);
+    }
+    #[cfg(feature = "layout-layered")]
+    if let FlowchartSvgRoute::Layered(routes) = ctx.layout.route_contract {
+        edge_geom::apply_layered_line_hops(ctx, &mut cache, render_edges, routes.routing)?;
         ctx.work_meter.checkpoint(phase)?;
         return Ok(cache);
     }

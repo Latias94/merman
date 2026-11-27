@@ -127,6 +127,16 @@ pub mod grid;
 ))]
 #[doc(hidden)]
 pub mod lane_title;
+#[cfg(all(
+    feature = "layout-layered",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-agentflow",
+        feature = "diagram-swimlane"
+    )
+))]
+#[doc(hidden)]
+pub mod layered;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
@@ -138,6 +148,7 @@ pub mod layout_config;
     any(
         feature = "layout-elk",
         feature = "layout-grid",
+        feature = "layout-layered",
         feature = "layout-shoal"
     ),
     any(

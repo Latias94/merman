@@ -74,11 +74,11 @@ pub(in crate::svg) fn render_flowchart_edge_path(
         };
         g
     };
-    #[cfg(feature = "layout-grid")]
-    let grid_hopped_d = geom.grid_hopped_d.as_deref();
-    #[cfg(not(feature = "layout-grid"))]
-    let grid_hopped_d = None;
-    terminal.append_with_grid_hop(
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+    let after_paint_d = geom.after_paint_d.as_deref();
+    #[cfg(not(any(feature = "layout-grid", feature = "layout-layered")))]
+    let after_paint_d = None;
+    terminal.append_with_route_overrides(
         out,
         FlowchartEdgeSvgGeometry {
             d: &geom.d,
@@ -88,7 +88,9 @@ pub(in crate::svg) fn render_flowchart_edge_path(
             pre_hop_dash_mask_length: geom.pre_hop_dash_mask_length,
             line_hop_applied: geom.line_hop_applied,
         },
-        grid_hopped_d,
+        after_paint_d,
+        #[cfg(feature = "layout-layered")]
+        geom.axes.as_deref(),
         &mut scratch.terminal,
     )
 }

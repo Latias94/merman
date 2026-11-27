@@ -56,6 +56,10 @@ fn svg_layout(layout: &FlowchartLayout) -> FlowchartSvgLayout<'_> {
 
     let route_contract = match &layout.route_contract {
         RouteContract::DagreParity => FlowchartSvgRoute::DagreParity,
+        #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+        RouteContract::LayeredDagreFallback => FlowchartSvgRoute::LayeredDagreFallback,
+        #[cfg(feature = "layout-layered")]
+        RouteContract::Layered(routes) => FlowchartSvgRoute::Layered(routes),
         #[cfg(feature = "layout-elk")]
         RouteContract::ElkParity => FlowchartSvgRoute::ElkParity,
         #[cfg(feature = "layout-grid")]

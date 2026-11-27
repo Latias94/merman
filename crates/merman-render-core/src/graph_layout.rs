@@ -145,6 +145,22 @@ pub struct MeasuredNode {
     pub anchor_y: Option<f64>,
 }
 
+impl MeasuredNode {
+    /// A measured box with no provider-specific port or contour overrides.
+    pub fn new(size: Size, seq: u32, parent: Option<u32>) -> Self {
+        Self {
+            size,
+            #[cfg(feature = "shoal-bridge")]
+            contour: ShapeContourHint::default(),
+            seq,
+            parent,
+            port_span: None,
+            perpendicular_port_span: None,
+            anchor_y: None,
+        }
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(any(test, feature = "test-support"), derive(Clone))]
 pub struct MeasuredGroup {

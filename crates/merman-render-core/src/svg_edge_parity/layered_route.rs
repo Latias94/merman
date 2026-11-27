@@ -74,6 +74,27 @@ pub fn marker_trim(arrow_type: Option<&str>) -> f64 {
     }
 }
 
+pub fn line_hops(
+    edges: &[super::line_hops::LineHopEdge<'_>],
+    style: super::line_hops::LineHopStyle,
+    work: &OperationWorkMeter,
+) -> Result<Vec<(usize, String)>> {
+    use super::line_hops::{
+        LineHopConfig, curve_supports_line_hops, line_hop_overrides_with_radii,
+    };
+    line_hop_overrides_with_radii(
+        edges,
+        LineHopConfig {
+            jump_radius: 6.0,
+            jump_style: style,
+        },
+        |_, edge| Ok(curve_supports_line_hops(edge.curve)),
+        |_| RADIUS,
+        OperationPhase::Emit,
+        work,
+    )
+}
+
 /// Move a box contact onto a leaf's contour without changing its side or axis tag. The callback
 /// receives a target and an optional line origin. An origin-aware shape can find the first hit
 /// even on a non-convex outline. A ray-only shape falls back to the same inward search as Mermaid.

@@ -11,6 +11,7 @@ pub enum RenderCapability {
     LayoutShoal,
     LayoutDagre,
     LayoutGrid,
+    LayoutLayered,
 }
 
 impl RenderCapability {
@@ -22,6 +23,7 @@ impl RenderCapability {
             Self::LayoutShoal => 1 << 3,
             Self::LayoutDagre => 1 << 4,
             Self::LayoutGrid => 1 << 5,
+            Self::LayoutLayered => 1 << 6,
         }
     }
 
@@ -33,6 +35,7 @@ impl RenderCapability {
             Self::LayoutShoal => "layout-shoal",
             Self::LayoutDagre => "layout-dagre",
             Self::LayoutGrid => "layout-grid",
+            Self::LayoutLayered => "layout-layered",
         }
     }
 }
@@ -42,7 +45,8 @@ const ALL_RENDER_CAPABILITY_BITS: u8 = RenderCapability::LayoutCytoscape.bit()
     | RenderCapability::Math.bit()
     | RenderCapability::LayoutShoal.bit()
     | RenderCapability::LayoutDagre.bit()
-    | RenderCapability::LayoutGrid.bit();
+    | RenderCapability::LayoutGrid.bit()
+    | RenderCapability::LayoutLayered.bit();
 
 /// Operation-level permission for optional renderer capabilities.
 ///

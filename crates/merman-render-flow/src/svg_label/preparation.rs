@@ -125,7 +125,7 @@ enum PreparedMathMeasurement {
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
-    #[cfg(feature = "layout-grid")]
+    #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
     pub(crate) fn check_prepared_label_errors(&self) -> Result<()> {
         if let Some(error) = self.prepared_work_error.borrow().as_ref() {
             return Err(error.clone().into());

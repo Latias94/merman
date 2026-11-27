@@ -675,8 +675,11 @@ pub(crate) fn edge_geometry_family_artifact(
         crate::family::BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::swimlane_edge_geometry(artifact, metadata, &execution)
         }
-        #[cfg(all(feature = "diagram-swimlane", feature = "layout-grid"))]
-        crate::family::BuiltinFamilyArtifact::SwimlaneGrid(artifact) => {
+        #[cfg(all(
+            feature = "diagram-swimlane",
+            any(feature = "layout-grid", feature = "layout-layered")
+        ))]
+        crate::family::BuiltinFamilyArtifact::SwimlaneFlowchart(artifact) => {
             flowchart::flowchart_edge_geometry(artifact, metadata, &execution)
         }
         #[cfg(feature = "diagram-agentflow")]
@@ -894,8 +897,11 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
         }
-        #[cfg(all(feature = "diagram-swimlane", feature = "layout-grid"))]
-        BuiltinFamilyArtifact::SwimlaneGrid(artifact) => {
+        #[cfg(all(
+            feature = "diagram-swimlane",
+            any(feature = "layout-grid", feature = "layout-layered")
+        ))]
+        BuiltinFamilyArtifact::SwimlaneFlowchart(artifact) => {
             flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
         }
         #[cfg(feature = "diagram-cynefin")]

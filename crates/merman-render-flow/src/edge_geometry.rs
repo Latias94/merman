@@ -17,7 +17,7 @@ mod curve_path;
 mod endpoint;
 mod rect_clip;
 
-#[cfg(feature = "layout-grid")]
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
 pub(crate) use endpoint::{EndpointQuery, intersect_for_layout_shape_with_query};
 pub use endpoint::{
     FlowchartEndpointContext, force_intersect_for_layout_shape, intersect_for_layout_shape,

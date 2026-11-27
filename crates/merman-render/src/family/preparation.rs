@@ -19,6 +19,49 @@ fn prepare_pair<S, L>(
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+enum FlowchartLayoutFailure {
+    Render(Error),
+    #[cfg(feature = "layout-layered")]
+    Layered(merman_render_flow::layered::FlowLayeredError),
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+impl From<Error> for FlowchartLayoutFailure {
+    fn from(error: Error) -> Self {
+        Self::Render(error)
+    }
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+impl From<FlowchartLayoutFailure> for Error {
+    fn from(error: FlowchartLayoutFailure) -> Self {
+        match error {
+            FlowchartLayoutFailure::Render(error) => error,
+            #[cfg(feature = "layout-layered")]
+            FlowchartLayoutFailure::Layered(
+                merman_render_flow::layered::FlowLayeredError::Host(error),
+            ) => error,
+            #[cfg(feature = "layout-layered")]
+            FlowchartLayoutFailure::Layered(error) => Self::InvalidModel {
+                message: error.to_string(),
+            },
+        }
+    }
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 #[allow(
     clippy::too_many_arguments,
     reason = "Family preparation forwards the operation-owned environment, layout, and diagnostics."
@@ -31,68 +74,91 @@ fn prepare_flowchart_artifact<'parsed, L>(
     swimlane: bool,
     preparation: FamilyPreparation,
     layout_view: impl for<'a> Fn(&'a L) -> crate::svg::FlowchartNodeLayoutView<'a>,
-    layout: impl FnOnce(
+    layout: impl Fn(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderContext,
         &crate::flowchart::FlowchartClassDefinitions<'_>,
         Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
         &crate::svg::FlowchartEdgeStylePlan,
-    ) -> Result<L>,
+        bool,
+    ) -> std::result::Result<L, FlowchartLayoutFailure>,
 ) -> Result<Box<FlowchartFamilyArtifact<'parsed, L>>> {
     let native = execution.native_family_theme();
     let work_meter = execution.work_meter();
     let class_defs = crate::flowchart::FlowchartClassDefinitions::new(&semantic.class_defs);
     let grid = execution.layout_backend() == GraphLayoutBackend::Grid;
     let label_rect = swimlane || grid;
-    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_with_class_definitions(
-        &semantic,
-        effective_config,
-        label_rect,
-        &class_defs,
-        work_meter.as_ref(),
-    )?;
-    let prepared_theme = {
-        #[cfg(feature = "benchmark-stages")]
-        let _stage = merman_model::benchmark_stages::enter(
-            merman_model::benchmark_stages::Stage::ThemePrepare,
-        );
-        crate::flowchart::FlowchartPreparedTheme::resolve(
-            effective_config,
-            native,
-            execution.family.session().canvas_background(),
-        )
-    };
-    let edge_style_plan = edge_style_plan
-        .with_typography_work_meter(Arc::clone(&work_meter))
-        .with_resolved_stroke_widths(
-            &semantic,
-            &prepared_theme.compatibility,
-            work_meter.as_ref(),
-        )?;
-    let base_typography = native.map_or_else(
-        || crate::flowchart::FlowchartBaseTypographyPlan::resolve(effective_config),
-        |theme| crate::flowchart::FlowchartBaseTypographyPlan::native(&theme.typography),
-    );
     let prepare_svg_labels = match preparation {
         FamilyPreparation::Layout | FamilyPreparation::Render => true,
         #[cfg(all(test, feature = "all-diagrams"))]
         FamilyPreparation::RenderWithoutFlowchartSvgLabels => false,
     };
-    let svg_label_sidecar = prepare_svg_labels.then(|| {
-        crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(
-            &work_meter,
-        ))
-        .with_base_typography(base_typography)
-        .with_native_density(native.map(|theme| theme.form.density))
-        .with_prepared_math_backend(execution.math_backend(), &prepared_theme.compatibility)
-    });
-    let layout = layout(
-        &semantic,
-        &render_context,
-        &class_defs,
-        svg_label_sidecar.as_ref(),
-        &edge_style_plan,
-    )?;
+    // Each layout attempt owns its retained labels and typography. Discarding a failed attempt
+    // releases those leases while leaving all consumed work on the same operation meter.
+    let attempt = |dagre_fallback| {
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_with_class_definitions(
+            &semantic,
+            effective_config,
+            label_rect,
+            &class_defs,
+            work_meter.as_ref(),
+        )?;
+        let prepared_theme = {
+            #[cfg(feature = "benchmark-stages")]
+            let _stage = merman_model::benchmark_stages::enter(
+                merman_model::benchmark_stages::Stage::ThemePrepare,
+            );
+            crate::flowchart::FlowchartPreparedTheme::resolve(
+                effective_config,
+                native,
+                execution.family.session().canvas_background(),
+            )
+        };
+        let edge_style_plan = edge_style_plan
+            .with_typography_work_meter(Arc::clone(&work_meter))
+            .with_resolved_stroke_widths(
+                &semantic,
+                &prepared_theme.compatibility,
+                work_meter.as_ref(),
+            )?;
+        let base_typography = native.map_or_else(
+            || crate::flowchart::FlowchartBaseTypographyPlan::resolve(effective_config),
+            |theme| crate::flowchart::FlowchartBaseTypographyPlan::native(&theme.typography),
+        );
+        let labels = prepare_svg_labels.then(|| {
+            crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(Arc::clone(
+                &work_meter,
+            ))
+            .with_base_typography(base_typography)
+            .with_native_density(native.map(|theme| theme.form.density))
+            .with_prepared_math_backend(execution.math_backend(), &prepared_theme.compatibility)
+        });
+        let layout = layout(
+            &semantic,
+            &render_context,
+            &class_defs,
+            labels.as_ref(),
+            &edge_style_plan,
+            dagre_fallback,
+        )?;
+        Ok::<_, FlowchartLayoutFailure>((layout, edge_style_plan, prepared_theme, labels))
+    };
+    let prepared = attempt(false);
+    #[cfg(feature = "layout-layered")]
+    let prepared = match prepared {
+        Err(FlowchartLayoutFailure::Layered(error)) if error.is_recoverable() => {
+            let session = execution.family.session();
+            session.checkpoint(OperationPhase::Layout)?;
+            if !session.supports_capability(crate::RenderCapability::LayoutDagre) {
+                return Err(
+                    GraphLayoutBackend::Dagre.unavailable_for(execution.family_id().as_str())
+                );
+            }
+            attempt(true)
+        }
+        result => result,
+    };
+    let (layout, edge_style_plan, prepared_theme, svg_label_sidecar) = prepared?;
     let svg_label_sidecar = svg_label_sidecar
         .map(crate::flowchart::FlowchartSvgLabelSidecarBuilder::finish)
         .unwrap_or_default();
@@ -142,6 +208,65 @@ fn prepare_flowchart_artifact<'parsed, L>(
         render_config,
         svg_label_sidecar,
     }))
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+fn prepare_projected_flowchart<'parsed>(
+    model: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartModel>,
+    render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &LayoutExecution<'_>,
+    preparation: FamilyPreparation,
+) -> Result<Box<FlowchartFamilyArtifact<'parsed, crate::model::FlowchartLayout>>> {
+    prepare_flowchart_artifact(
+        model,
+        render_context,
+        execution,
+        config,
+        false,
+        preparation,
+        crate::model::FlowchartLayout::node_layout_view,
+        |model, context, classes, labels, styles, _dagre_fallback| {
+            #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+            if _dagre_fallback {
+                let mut layout = crate::flowchart::dagre::layout(
+                    model,
+                    context,
+                    classes,
+                    config,
+                    execution.text_measurer(),
+                    execution.math_renderer(),
+                    labels,
+                    styles,
+                    execution.work_meter(),
+                )?;
+                layout.route_contract = crate::graph_layout::RouteContract::LayeredDagreFallback;
+                return Ok(layout);
+            }
+            #[cfg(feature = "layout-layered")]
+            if execution.layout_backend() == GraphLayoutBackend::Layered {
+                return crate::flowchart::layered_layout(
+                    model, context, classes, config, execution, labels, styles,
+                )
+                .map_err(FlowchartLayoutFailure::Layered);
+            }
+            crate::layout_flowchart_typed_with_render_labels_by_engine(
+                model,
+                context,
+                classes,
+                config,
+                execution,
+                labels,
+                styles,
+                preparation != FamilyPreparation::Layout,
+            )
+            .map_err(FlowchartLayoutFailure::Render)
+        },
+    )
 }
 
 #[inline(never)]
@@ -364,32 +489,26 @@ fn prepare_flowchart_family<'parsed>(
     preparation: FamilyPreparation,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let prepare_flow_layout = |render_context| {
-        prepare_flowchart_artifact(
+        prepare_projected_flowchart(
             std::borrow::Cow::Borrowed(model),
             render_context,
-            execution,
             &meta.effective_config,
-            false,
+            execution,
             preparation,
-            crate::model::FlowchartLayout::node_layout_view,
-            |model, render_context, class_defs, svg_label_sidecar, edge_style_plan| {
-                crate::layout_flowchart_typed_with_render_labels_by_engine(
-                    model,
-                    render_context,
-                    class_defs,
-                    &meta.effective_config,
-                    execution,
-                    svg_label_sidecar,
-                    edge_style_plan,
-                    preparation != FamilyPreparation::Layout,
-                )
-            },
         )
     };
     match execution.family_id() {
-        #[cfg(all(feature = "diagram-swimlane", feature = "layout-grid"))]
-        DiagramFamilyId::SWIMLANE if execution.layout_backend() == GraphLayoutBackend::Grid => {
-            prepare_flow_layout(render_context).map(BuiltinFamilyArtifact::SwimlaneGrid)
+        #[cfg(all(
+            feature = "diagram-swimlane",
+            any(feature = "layout-grid", feature = "layout-layered")
+        ))]
+        DiagramFamilyId::SWIMLANE
+            if matches!(
+                execution.layout_backend(),
+                GraphLayoutBackend::Grid | GraphLayoutBackend::Layered
+            ) =>
+        {
+            prepare_flow_layout(render_context).map(BuiltinFamilyArtifact::SwimlaneFlowchart)
         }
         DiagramFamilyId::SWIMLANE => {
             Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
@@ -400,7 +519,7 @@ fn prepare_flowchart_family<'parsed>(
                 true,
                 preparation,
                 crate::model::SwimlaneLayout::node_layout_view,
-                |model, render_context, _, svg_label_sidecar, edge_style_plan| {
+                |model, render_context, _, svg_label_sidecar, edge_style_plan, _| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
                         render_context,
@@ -409,6 +528,7 @@ fn prepare_flowchart_family<'parsed>(
                         svg_label_sidecar,
                         edge_style_plan,
                     )
+                    .map_err(FlowchartLayoutFailure::Render)
                 },
             )?))
         }
@@ -1211,26 +1331,12 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 execution.work_meter_ref().control(),
             )?;
             let config = &projected_metadata.effective_config;
-            let flow = prepare_flowchart_artifact(
+            let flow = prepare_projected_flowchart(
                 std::borrow::Cow::Owned(flowchart),
                 std::borrow::Cow::Owned(render_context),
-                &execution,
                 config,
-                false,
+                &execution,
                 preparation,
-                crate::model::FlowchartLayout::node_layout_view,
-                |model, render_context, class_defs, sidecar, edge_style_plan| {
-                    crate::layout_flowchart_typed_with_render_labels_by_engine(
-                        model,
-                        render_context,
-                        class_defs,
-                        config,
-                        &execution,
-                        sidecar,
-                        edge_style_plan,
-                        preparation != FamilyPreparation::Layout,
-                    )
-                },
             )?;
             BuiltinFamilyArtifact::Agentflow {
                 semantic: model,

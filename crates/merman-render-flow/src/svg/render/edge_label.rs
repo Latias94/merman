@@ -410,8 +410,10 @@ mod tests {
             data_points: points.clone(),
             pre_hop_dash_mask_length: None,
             line_hop_applied: false,
-            #[cfg(feature = "layout-grid")]
-            grid_hopped_d: None,
+            #[cfg(feature = "layout-layered")]
+            axes: None,
+            #[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+            after_paint_d: None,
             original_label_path_points: points.clone(),
             label_path_points: points,
             label_anchor: None,

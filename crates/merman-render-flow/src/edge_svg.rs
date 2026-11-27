@@ -90,9 +90,24 @@ struct FlowchartEdgeDataPoints {
 }
 
 impl FlowchartEdgeDataPoints {
-    fn encode(&mut self, points: &[LayoutPoint]) -> &str {
+    fn encode(
+        &mut self,
+        points: &[LayoutPoint],
+        #[cfg(feature = "layout-layered")] axes: Option<&[merman_render_core::route_types::Axis]>,
+    ) -> &str {
         self.json.clear();
-        json_stringify_points_into(&mut self.json, points, &mut self.number);
+        #[cfg(feature = "layout-layered")]
+        if let Some(axes) = axes {
+            merman_render_core::svg_edge_parity::path_numbers::json_stringify_axis_points_into(
+                &mut self.json,
+                points,
+                axes,
+                &mut self.number,
+            );
+        }
+        if self.json.is_empty() {
+            json_stringify_points_into(&mut self.json, points, &mut self.number);
+        }
         self.base64.clear();
         base64::engine::general_purpose::STANDARD
             .encode_string(self.json.as_bytes(), &mut self.base64);

@@ -104,3 +104,39 @@ pub(crate) fn grid_layout(
         uses_elk_adapter_dom: false,
     })
 }
+
+#[cfg(feature = "layout-layered")]
+pub(crate) fn layered_layout(
+    model: &FlowchartModel,
+    context: &FlowchartRenderContext,
+    classes: &FlowchartClassDefinitions<'_>,
+    config: &merman_model::presentation::PresentationConfig,
+    execution: &crate::LayoutExecution<'_>,
+    labels: Option<&FlowchartSvgLabelSidecarBuilder>,
+    styles: &style::FlowchartEdgeStylePlan,
+) -> std::result::Result<crate::model::FlowchartLayout, merman_render_flow::layered::FlowLayeredError>
+{
+    let layout = merman_render_flow::layered::layout(
+        FlowchartRenderModelRef::new(model, context),
+        classes,
+        config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        labels,
+        styles,
+        execution.work_meter_ref(),
+    )?;
+    Ok(crate::model::FlowchartLayout {
+        nodes: layout.nodes,
+        edges: layout.edges,
+        edge_owners: layout.edge_owners,
+        clusters: layout.clusters,
+        bounds: layout.bounds,
+        dom_node_order_by_root: layout.dom_node_order_by_root,
+        route_contract: crate::graph_layout::RouteContract::Layered(std::sync::Arc::new(
+            layout.routes,
+        )),
+        placement: Default::default(),
+        uses_elk_adapter_dom: false,
+    })
+}

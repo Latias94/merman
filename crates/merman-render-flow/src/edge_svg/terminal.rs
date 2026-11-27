@@ -101,21 +101,33 @@ impl FlowchartEdgeTerminal<'_> {
         geometry: FlowchartEdgeSvgGeometry<'_>,
         scratch: &mut FlowchartEdgeSvgScratch,
     ) -> Result<()> {
-        self.append_with_grid_hop(out, geometry, None, scratch)
+        self.append_with_route_overrides(
+            out,
+            geometry,
+            None,
+            #[cfg(feature = "layout-layered")]
+            None,
+            scratch,
+        )
     }
 
-    pub(crate) fn append_with_grid_hop(
+    pub(crate) fn append_with_route_overrides(
         self,
         out: &mut impl SvgOutput,
         geometry: FlowchartEdgeSvgGeometry<'_>,
-        grid_hopped_d: Option<&str>,
+        after_paint_d: Option<&str>,
+        #[cfg(feature = "layout-layered")] axes: Option<&[merman_render_core::route_types::Axis]>,
         scratch: &mut FlowchartEdgeSvgScratch,
     ) -> Result<()> {
         let ctx = &self.context;
         let FlowchartRenderEdgeRef { key, edge } = self.edge_ref;
         let data_look = ctx.compatibility.look;
         let hand_drawn = data_look.is_hand_drawn();
-        let data_points_b64 = scratch.data_points.encode(geometry.data_points);
+        let data_points_b64 = scratch.data_points.encode(
+            geometry.data_points,
+            #[cfg(feature = "layout-layered")]
+            axes,
+        );
         let neo_edge_mask = if data_look.is_neo()
             && !self.animation.is_active()
             && let Some(path_length) = geometry.neo_edge_path_length(edge)
@@ -129,7 +141,7 @@ impl FlowchartEdgeTerminal<'_> {
         } else {
             None
         };
-        let d = grid_hopped_d
+        let d = after_paint_d
             .or(geometry.emitted_d_for_label)
             .unwrap_or(geometry.d);
 
@@ -171,7 +183,7 @@ impl FlowchartEdgeTerminal<'_> {
             repeat_inline,
             adaptive_ink: ctx.adaptive_ink,
             neo_edge_mask,
-            line_hop_phase: if grid_hopped_d.is_some() {
+            line_hop_phase: if after_paint_d.is_some() {
                 Some(OperationPhase::Emit)
             } else {
                 geometry.line_hop_applied.then_some(OperationPhase::Layout)

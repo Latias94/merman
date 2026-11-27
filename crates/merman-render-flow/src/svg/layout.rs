@@ -32,11 +32,15 @@ pub struct FlowchartSvgLayout<'a> {
 #[derive(Clone, Copy)]
 pub enum FlowchartSvgRoute<'a> {
     DagreParity,
+    #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+    LayeredDagreFallback,
     ElkParity,
     Swimlane,
     /// Original Grid points and label anchors, in materialized layout edges keyed by occurrence.
     #[cfg(feature = "layout-grid")]
     Grid(FlowchartGridPaint),
+    #[cfg(feature = "layout-layered")]
+    Layered(&'a crate::layered::FlowLayeredRoutes),
     CanonicalAxis(&'a AxisRoutes),
     Legacy,
 }
@@ -48,6 +52,8 @@ pub enum FlowchartLayoutDom {
     Elk,
     #[cfg(feature = "layout-grid")]
     Grid,
+    #[cfg(feature = "layout-layered")]
+    Layered,
 }
 
 impl FlowchartLayoutDom {
@@ -66,6 +72,8 @@ impl<'a> FlowchartSvgRoute<'a> {
             Self::ElkParity => FlowchartLayoutDom::Elk,
             #[cfg(feature = "layout-grid")]
             Self::Grid(_) => FlowchartLayoutDom::Grid,
+            #[cfg(feature = "layout-layered")]
+            Self::Layered(_) => FlowchartLayoutDom::Layered,
             _ => FlowchartLayoutDom::Nested,
         }
     }
@@ -76,6 +84,21 @@ impl<'a> FlowchartSvgRoute<'a> {
 
     pub const fn is_elk_parity(self) -> bool {
         matches!(self, Self::ElkParity)
+    }
+
+    pub const fn is_layered(self) -> bool {
+        #[cfg(feature = "layout-layered")]
+        return matches!(self, Self::Layered(_));
+        #[cfg(not(feature = "layout-layered"))]
+        false
+    }
+
+    pub const fn layout_fallback(self) -> Option<&'static str> {
+        match self {
+            #[cfg(all(feature = "layout-layered", feature = "layout-dagre"))]
+            Self::LayeredDagreFallback => Some("dagre"),
+            _ => None,
+        }
     }
 
     /// Identifies Grid's materialized edges and returns their shared paint settings.
@@ -95,7 +118,7 @@ impl<'a> FlowchartSvgRoute<'a> {
         if self.grid_paint().is_some() {
             return true;
         }
-        self.is_elk_parity() || self.is_canonical_axis()
+        self.is_elk_parity() || self.is_layered() || self.is_canonical_axis()
     }
 
     pub fn group_parents(self) -> Option<&'a [Option<u32>]> {

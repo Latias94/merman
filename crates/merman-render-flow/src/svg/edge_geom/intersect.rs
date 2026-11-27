@@ -1,7 +1,7 @@
 //! Bind the facade's route-local node facts to Flow's endpoint geometry.
 
 use crate::edge_geometry::FlowchartEndpointContext;
-#[cfg(feature = "layout-grid")]
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
 use crate::edge_geometry::{EndpointQuery, intersect_for_layout_shape_with_query};
 
 use super::{BoundaryNode, FlowchartRenderCtx};
@@ -24,13 +24,14 @@ pub(in crate::svg) fn intersect_for_layout_shape(
     )
 }
 
-#[cfg(feature = "layout-grid")]
-pub(super) fn intersect_grid_node_outline(
+#[cfg(any(feature = "layout-grid", feature = "layout-layered"))]
+pub(super) fn intersect_node_outline(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
     node: &BoundaryNode,
-    query: merman_render_core::graph_layout::mermaid_grid::routing::outline::GridOutlineQuery,
-) -> merman_render_core::LayoutPoint {
+    adjacent: kurbo::Point,
+    line_origin: Option<kurbo::Point>,
+) -> kurbo::Point {
     let layout_shape = if ctx.is_subgraph_collapsed(node_id) {
         Some("collapsedGroup")
     } else {
@@ -47,13 +48,11 @@ pub(super) fn intersect_grid_node_outline(
         })
     });
     let adjacent = merman_render_core::LayoutPoint {
-        x: query.adjacent.x,
-        y: query.adjacent.y,
+        x: adjacent.x,
+        y: adjacent.y,
     };
-    let origin = query
-        .line_origin
-        .map(|p| merman_render_core::LayoutPoint { x: p.x, y: p.y });
-    intersect_for_layout_shape_with_query(
+    let origin = line_origin.map(|p| merman_render_core::LayoutPoint { x: p.x, y: p.y });
+    let point = intersect_for_layout_shape_with_query(
         &endpoint_context(ctx),
         node_id,
         node,
@@ -63,7 +62,8 @@ pub(super) fn intersect_grid_node_outline(
             line_origin: origin.as_ref(),
             label_metrics,
         },
-    )
+    );
+    kurbo::Point::new(point.x, point.y)
 }
 
 fn endpoint_context<'a>(ctx: &'a FlowchartRenderCtx<'a>) -> FlowchartEndpointContext<'a> {

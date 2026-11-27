@@ -11,6 +11,7 @@ pub(crate) enum GraphLayoutBackend {
     Dagre,
     Elk(ElkRootAlgorithm),
     Grid,
+    Layered,
     CoseBilkent,
     Shoal,
     Swimlane,
@@ -34,6 +35,7 @@ impl GraphLayoutBackend {
             },
             Self::CoseBilkent => "cytoscape",
             Self::Grid => "grid",
+            Self::Layered => "layered",
             Self::Shoal => "shoal",
             Self::Swimlane => "swimlane",
             Self::TidyTree => "tidy-tree",
@@ -46,6 +48,7 @@ impl GraphLayoutBackend {
             Self::Dagre => Some(RenderCapability::LayoutDagre),
             Self::Elk(_) => Some(RenderCapability::LayoutElk),
             Self::Grid => Some(RenderCapability::LayoutGrid),
+            Self::Layered => Some(RenderCapability::LayoutLayered),
             Self::CoseBilkent => Some(RenderCapability::LayoutCytoscape),
             Self::Shoal => Some(RenderCapability::LayoutShoal),
         }
@@ -189,6 +192,15 @@ pub(crate) fn resolve(
     use GraphLayoutBackend as Backend;
 
     let requested = requested_layout(config);
+    if requested == "layered"
+        && crate::layout_layered_available()
+        && matches!(
+            family,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW | DiagramFamilyId::SWIMLANE
+        )
+    {
+        return Ok(Backend::Layered);
+    }
     if requested == "grid"
         && crate::layout_grid_available()
         && matches!(
@@ -362,8 +374,12 @@ mod tests {
                 (DiagramFamilyId::SWIMLANE, "swimlane"),
                 (DiagramFamilyId::USECASE, "usecase"),
             ] {
-                if requested == "grid"
-                    && crate::layout_grid_available()
+                let available = match requested {
+                    "grid" if crate::layout_grid_available() => Some(Backend::Grid),
+                    "layered" if crate::layout_layered_available() => Some(Backend::Layered),
+                    _ => None,
+                };
+                if let Some(backend) = available
                     && matches!(
                         family,
                         DiagramFamilyId::FLOWCHART
@@ -371,10 +387,7 @@ mod tests {
                             | DiagramFamilyId::SWIMLANE
                     )
                 {
-                    assert_eq!(
-                        resolve(family, diagram_type, &config).unwrap(),
-                        Backend::Grid
-                    );
+                    assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);
                     continue;
                 }
                 assert!(matches!(

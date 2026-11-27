@@ -219,11 +219,9 @@ impl<'a> FlowGridInput<'a> {
                     line_count: 0,
                 }
             } else {
-                measure.check_grid_measurement(measure.grid_subgraph_title(
-                    group,
-                    slot,
-                    |units| Ok(work.charge(units)?),
-                ))?
+                measure.check_measurement(
+                    measure.grid_subgraph_title(group, slot, |units| Ok(work.charge(units)?)),
+                )?
             };
             let size = Size {
                 width: title_metrics.width,
@@ -269,7 +267,7 @@ impl<'a> FlowGridInput<'a> {
             }
             validate_flowchart_node_asset_dimensions(node)?;
             let direction = visible.direction(id, &source.subgraphs, root_direction, work)?;
-            let measured = measure.check_grid_measurement(measure.node(
+            let measured = measure.check_measurement(measure.node(
                 node,
                 FlowchartSvgLabelOwner::Node(slot),
                 direction,
@@ -305,7 +303,7 @@ impl<'a> FlowGridInput<'a> {
                 arrow_types_for_edge(edge.semantic.edge_type.as_deref());
             let visible_edge = edge.semantic.stroke.as_deref() != Some("invisible");
             let label = measure
-                .check_grid_measurement(measure.grid_edge_label(edge.semantic, key))?
+                .check_measurement(measure.grid_edge_label(edge.semantic, key))?
                 .map(|label| GridEdgeLabel {
                     size: Size {
                         width: label.width,
