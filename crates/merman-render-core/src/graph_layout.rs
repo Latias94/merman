@@ -9,6 +9,9 @@ pub mod contour;
 pub mod elk_geometry;
 #[cfg(any(feature = "layout-elk", feature = "svg-output"))]
 pub mod elk_terminal_jogs;
+#[cfg(feature = "layout-grid")]
+#[doc(hidden)]
+pub mod mermaid_grid;
 #[cfg(feature = "shoal-bridge")]
 pub mod shoal;
 

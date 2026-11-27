@@ -9,9 +9,10 @@ use std::sync::Arc;
 pub struct GridCoordinate(i64);
 
 impl GridCoordinate {
+    pub const MAX: Self = Self(9_007_199_254_740_991);
+
     pub const fn new(value: i64) -> Option<Self> {
-        const MAX_SAFE_COORDINATE: i64 = 9_007_199_254_740_991;
-        if value >= -MAX_SAFE_COORDINATE && value <= MAX_SAFE_COORDINATE {
+        if value >= -Self::MAX.0 && value <= Self::MAX.0 {
             Some(Self(value))
         } else {
             None
