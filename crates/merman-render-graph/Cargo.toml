@@ -86,6 +86,7 @@ layout-cytoscape = ["dep:indexmap", "dep:manatee", "merman-render-core?/layout-c
 layout-dagre = ["dep:dugong", "merman-render-core?/layout-dagre"]
 layout-elk = ["dep:merman-layout-elk", "merman-render-core?/layout-elk"]
 layout-grid = ["dep:kurbo", "merman-render-core?/layout-grid"]
+layout-layered = ["dep:kurbo", "merman-render-core?/layout-layered"]
 benchmark-stages = ["merman-model?/benchmark-stages"]
 
 [dependencies]

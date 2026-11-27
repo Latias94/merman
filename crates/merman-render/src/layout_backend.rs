@@ -196,7 +196,10 @@ pub(crate) fn resolve(
         && crate::layout_layered_available()
         && matches!(
             family,
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW | DiagramFamilyId::SWIMLANE
+            DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::MINDMAP
         )
     {
         return Ok(Backend::Layered);
@@ -392,12 +395,11 @@ mod tests {
                 );
                 if let Some(backend) = available
                     && (flow_family
+                        || family == DiagramFamilyId::MINDMAP
                         || (backend == Backend::Grid
                             && matches!(
                                 family,
-                                DiagramFamilyId::ER
-                                    | DiagramFamilyId::MINDMAP
-                                    | DiagramFamilyId::REQUIREMENT
+                                DiagramFamilyId::ER | DiagramFamilyId::REQUIREMENT
                             )))
                 {
                     assert_eq!(resolve(family, diagram_type, &config).unwrap(), backend);

@@ -845,7 +845,7 @@ pub fn render_mindmap_diagram_svg(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let backend = *routing;
+    let backend = routing;
     #[cfg(feature = "layout-grid")]
     let (mut grid_edges, grid_dom) = match backend {
         MindmapEdgeRouting::Grid(settings) => (
@@ -853,7 +853,7 @@ pub fn render_mindmap_diagram_svg(
                 &layout.edges,
                 &node_by_id,
                 &source_node_by_id,
-                settings,
+                *settings,
                 context.work_meter,
             )?
             .into_iter(),
@@ -863,6 +863,18 @@ pub fn render_mindmap_diagram_svg(
     };
     #[cfg(not(feature = "layout-grid"))]
     let grid_dom = false;
+    #[cfg(feature = "layout-layered")]
+    let mut layered_edges = match backend {
+        MindmapEdgeRouting::Layered(paint) => Some(
+            paint
+                .edges(model, layout, config, context.work_meter)?
+                .into_iter(),
+        ),
+        _ => None,
+    };
+    let common_dom = grid_dom;
+    #[cfg(feature = "layout-layered")]
+    let common_dom = common_dom || layered_edges.is_some();
 
     drop(_g_build_ctx);
 
@@ -898,11 +910,15 @@ pub fn render_mindmap_diagram_svg(
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let mut out = BoundedSvgOutput::new(context.work_meter);
+    let fallback = backend
+        .layout_fallback()
+        .map(|name| ("data-layout-fallback", name));
     let root_document = context.viewport.write_open(
         &mut out,
         root_spec,
         root_svg::RootChrome {
             class: Some("mindmapDiagram"),
+            extra_attrs: fallback.as_slice(),
             dom: root_svg::RootDomProfile {
                 trailing_newline: false,
                 ..Default::default()
@@ -951,7 +967,7 @@ pub fn render_mindmap_diagram_svg(
     );
     out.checkpoint()?;
 
-    if grid_dom {
+    if common_dom {
         out.push_str(r#"<g class="root"><g class="clusters"/>"#);
     } else if layout.swimlane_lanes.is_empty() {
         out.push_str(r#"<g class="subgraphs"/>"#);
@@ -983,20 +999,32 @@ pub fn render_mindmap_diagram_svg(
         out.push_str("</g>");
     }
 
-    out.push_str(if grid_dom {
+    out.push_str(if common_dom {
         r#"<g class="edges edgePaths">"#
     } else {
         r#"<g class="edgePaths">"#
     });
     out.checkpoint()?;
     for e in &model.edges {
-        let (d, points_for_data_points) = match backend {
+        let (d, data_points) = match backend {
+            #[cfg(feature = "layout-layered")]
+            MindmapEdgeRouting::Layered(_) => {
+                let geometry = layered_edges
+                    .as_mut()
+                    .and_then(Iterator::next)
+                    .ok_or_else(|| super::layered::invalid_projection("missing painted edge"))?;
+                (geometry.path, geometry.data_points)
+            }
             #[cfg(feature = "layout-grid")]
             MindmapEdgeRouting::Grid(_) => {
                 let geometry = grid_edges
                     .next()
                     .ok_or_else(|| super::grid::invalid_projection("missing painted edge"))?;
-                (geometry.path, geometry.points)
+                (
+                    geometry.path,
+                    base64::engine::general_purpose::STANDARD
+                        .encode(json_stringify_points(&geometry.points)),
+                )
             }
             _ => {
                 let start = node_by_id.get(&e.start).copied();
@@ -1079,11 +1107,13 @@ pub fn render_mindmap_diagram_svg(
                 } else {
                     curve::curve_linear_path_d(&points_for_data_points)
                 };
-                (d, points_for_data_points)
+                (
+                    d,
+                    base64::engine::general_purpose::STANDARD
+                        .encode(json_stringify_points(&points_for_data_points)),
+                )
             }
         };
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(json_stringify_points(&points_for_data_points));
         let class = format!(
             "edge-thickness-{} edge-pattern-solid {}",
             e.thickness.trim(),
@@ -1129,7 +1159,7 @@ pub fn render_mindmap_diagram_svg(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
-    if !grid_dom {
+    if !common_dom {
         for e in &model.edges {
             write_mindmap_edge_label(&mut out, &e.id, config)?;
         }
@@ -1501,7 +1531,7 @@ pub fn render_mindmap_diagram_svg(
     }
     out.push_str("</g>");
 
-    if grid_dom {
+    if common_dom {
         out.push_str("</g>");
     }
     out.push_str("</g>");

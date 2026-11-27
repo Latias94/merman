@@ -294,13 +294,14 @@ pub const fn layout_grid_available() -> bool {
     ))
 }
 
-/// Reports whether a compiled Flow-family renderer includes Mermaid Layered.
+/// Reports whether any compiled family renderer includes Mermaid Layered.
 pub const fn layout_layered_available() -> bool {
     cfg!(all(
         feature = "layout-layered",
         any(
             feature = "diagram-flowchart",
             feature = "diagram-agentflow",
+            feature = "diagram-mindmap",
             feature = "diagram-swimlane"
         )
     ))

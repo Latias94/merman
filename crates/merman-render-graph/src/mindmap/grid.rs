@@ -1,6 +1,8 @@
 //! The MindmapDB flat graph at the measured Grid boundary.
 
-use super::{MindmapDiagramLayout, MindmapModel, MindmapNodeModel, compute_bounds, registered};
+use super::{
+    MindmapDiagramLayout, MindmapModel, MindmapNodeModel, compute_bounds, outline, registered,
+};
 use kurbo::Point;
 use merman_model::{OperationPhase, presentation::PresentationConfig};
 use merman_render_core::{
@@ -196,9 +198,7 @@ fn outline<'a>(
     model: &MindmapNodeModel,
     intersect: &'a dyn Fn(GridOutlineQuery) -> Result<Option<Point>>,
 ) -> Option<GridOutline<'a>> {
-    // Mindmap's other shape handlers intersect their bounding rectangle, which already owns
-    // the router port. Even the rounded, cloud and bang handlers use that rectangular outline.
-    matches!(model.shape.as_str(), "mindmapCircle" | "hexagon").then_some(GridOutline {
+    outline::needs_clip(model).then_some(GridOutline {
         center: Some(Point::new(node.x, node.y)),
         size: Some(Size {
             width: node.width,
@@ -213,43 +213,7 @@ fn intersect(
     model: &MindmapNodeModel,
     query: GridOutlineQuery,
 ) -> Option<Point> {
-    let origin = query.line_origin?;
-    let toward = query.adjacent;
-    let center = Point::new(node.x, node.y);
-    let offset = origin - center;
-    let delta = toward - origin;
-    if model.shape == "mindmapCircle" {
-        // The circle handler intersects the directed terminal segment with the visible circle.
-        let radius = (node.width.max(node.height) / 2.0).max(1.0);
-        let squared = radius * radius;
-        let a = delta.x * delta.x / squared + delta.y * delta.y / squared;
-        let b = 2.0 * offset.x * delta.x / squared + 2.0 * offset.y * delta.y / squared;
-        let c = offset.x * offset.x / squared + offset.y * offset.y / squared - 1.0;
-        let discriminant = b * b - 4.0 * a * c;
-        if a <= 0.0 || discriminant < 0.0 {
-            return None;
-        }
-        let root = discriminant.sqrt();
-        return [(-b + root) / (2.0 * a), (-b - root) / (2.0 * a)]
-            .into_iter()
-            .find(|parameter| (0.0..=1.0).contains(parameter))
-            .map(|parameter| origin + delta * parameter);
-    }
-
-    // Hexagon's fixed taper is one quarter of the painted height. Intersect the shared
-    // terminal axis with its symmetric outline and choose the side nearest the adjacent point.
-    let half_width = node.width / 2.0;
-    let half_height = node.height / 2.0;
-    let taper = half_height / 2.0;
-    if delta.x == 0.0 && offset.x.abs() <= half_width {
-        let extent = half_height * ((half_width - offset.x.abs()) / taper).min(1.0);
-        Some(Point::new(toward.x, center.y + extent.copysign(delta.y)))
-    } else if delta.y == 0.0 && offset.y.abs() <= half_height {
-        let extent = half_width - taper * offset.y.abs() / half_height;
-        Some(Point::new(center.x + extent.copysign(delta.x), toward.y))
-    } else {
-        None
-    }
+    outline::intersect_segment(node, model, query.line_origin?, query.adjacent)
 }
 
 fn layout_point(point: Point) -> LayoutPoint {
