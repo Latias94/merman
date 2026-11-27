@@ -150,5 +150,5 @@ serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["all-diagrams", "presentation", "compat-json", "test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
-merman-render-core = { workspace = true, features = ["route-paint", "test-support"] }
+merman-render-core = { workspace = true, features = ["graph-layout", "route-paint", "test-support"] }
 regex.workspace = true

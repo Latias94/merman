@@ -1,14 +1,11 @@
 //! Mermaid 12 missing-section geometry shared by Class/ER label placement and SVG paint.
 
-use crate::model::{LayoutNode, LayoutPoint};
+use crate::{LayoutNode, LayoutPoint};
 
 /// Mirrors the two-center path through `sanitizeElkEdgePoints` in the pinned ELK renderer.
 /// This derived geometry must not replace the raw provider route: empty sections differ
 /// from two real points and select different curve and label behavior in the renderer.
-pub(crate) fn missing_rect_section_points(
-    start: &LayoutNode,
-    end: &LayoutNode,
-) -> Vec<LayoutPoint> {
+pub fn missing_rect_section_points(start: &LayoutNode, end: &LayoutNode) -> Vec<LayoutPoint> {
     fn intersect(node: &LayoutNode, point: &LayoutPoint) -> LayoutPoint {
         let dx = point.x - node.x;
         let dy = point.y - node.y;
@@ -57,7 +54,7 @@ pub(crate) fn missing_rect_section_points(
 #[cfg(test)]
 mod tests {
     use super::missing_rect_section_points;
-    use crate::model::LayoutNode;
+    use crate::LayoutNode;
 
     #[test]
     fn overlapping_nodes_keep_a_drawable_end_intersection() {

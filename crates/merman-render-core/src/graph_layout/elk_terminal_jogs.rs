@@ -3,10 +3,10 @@
 //! Source: packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts,
 //! straightenTerminalJogs, label-aware moved-run projection and pair separation (mermaid@12.2.0).
 
-use crate::model::{LayoutLabel, LayoutPoint};
+use crate::{LayoutLabel, LayoutPoint};
 
 /// Paint routes may retain coordinates relative to separate parent groups.
-pub(crate) trait TerminalRoute {
+pub trait TerminalRoute {
     fn points(&self) -> &[LayoutPoint];
 
     fn origin(&self) -> (f64, f64) {
@@ -33,7 +33,7 @@ impl TerminalRoute for Vec<LayoutPoint> {
     }
 }
 
-impl TerminalRoute for crate::model::LayoutEdge {
+impl TerminalRoute for crate::LayoutEdge {
     fn points(&self) -> &[LayoutPoint] {
         &self.points
     }
@@ -54,9 +54,9 @@ impl TerminalRoute for crate::model::LayoutEdge {
 }
 
 /// Borrow separate paint-route and main-label caches for the shared graph pass.
-pub(crate) struct LabeledTerminalRoute<'a> {
-    pub(crate) points: &'a mut Vec<LayoutPoint>,
-    pub(crate) label: Option<&'a mut LayoutLabel>,
+pub struct LabeledTerminalRoute<'a> {
+    pub points: &'a mut Vec<LayoutPoint>,
+    pub label: Option<&'a mut LayoutLabel>,
 }
 
 impl TerminalRoute for LabeledTerminalRoute<'_> {
@@ -81,15 +81,15 @@ impl TerminalRoute for LabeledTerminalRoute<'_> {
 
 /// A displaced run in its original route coordinate system, including for a reversed end pass.
 #[derive(Debug, Clone)]
-pub(crate) struct StraightenedRun {
-    pub(crate) old: StraightenedSegment,
-    pub(crate) new: StraightenedSegment,
+pub struct StraightenedRun {
+    old: StraightenedSegment,
+    new: StraightenedSegment,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StraightenedSegment {
-    pub(crate) a: LayoutPoint,
-    pub(crate) b: LayoutPoint,
+struct StraightenedSegment {
+    a: LayoutPoint,
+    b: LayoutPoint,
 }
 
 struct StraightenedCandidate {
@@ -99,7 +99,7 @@ struct StraightenedCandidate {
 
 /// Follow the nearest ORIGINAL moved run at the same clamped segment parameter. An unchanged
 /// return leg may now lie closer, but it never owns the label whose original run moved.
-pub(crate) fn project_label_onto_straightened_run(
+fn project_label_onto_straightened_run(
     label: &LayoutPoint,
     runs: &[StraightenedRun],
 ) -> Option<LayoutPoint> {
@@ -133,7 +133,7 @@ pub(crate) fn project_label_onto_straightened_run(
     best.map(|(_, point)| point)
 }
 
-pub(crate) fn reproject_label(label: &mut crate::model::LayoutLabel, runs: &[StraightenedRun]) {
+pub fn reproject_label(label: &mut crate::LayoutLabel, runs: &[StraightenedRun]) {
     if let Some(projected) = project_label_onto_straightened_run(
         &LayoutPoint {
             x: label.x,
@@ -148,11 +148,11 @@ pub(crate) fn reproject_label(label: &mut crate::model::LayoutLabel, runs: &[Str
 
 /// Source's two-label pair correction. Supply None for absent/empty semantic label text.
 /// This runs after terminal straightening even when that optional pass is disabled.
-pub(crate) fn separate_opposite_edge_labels<'a>(
-    edges: impl Iterator<Item = (&'a str, &'a str, Option<&'a mut crate::model::LayoutLabel>)>,
+pub fn separate_opposite_edge_labels<'a>(
+    edges: impl Iterator<Item = (&'a str, &'a str, Option<&'a mut crate::LayoutLabel>)>,
     mut charge: impl FnMut(usize) -> crate::Result<()>,
 ) -> crate::Result<()> {
-    let mut pairs: std::collections::HashMap<_, Vec<&mut crate::model::LayoutLabel>> =
+    let mut pairs: std::collections::HashMap<_, Vec<&mut crate::LayoutLabel>> =
         std::collections::HashMap::new();
     for (source, target, label) in edges {
         charge(1)?;
@@ -385,7 +385,7 @@ fn covers_label(
 
 /// Accept each candidate against the current routes, in source edge order. Ports never move.
 /// Origin offsets put routes in the same coordinate frame without rewriting their stored points.
-pub(crate) fn straighten_edge_terminals<R: TerminalRoute>(
+pub fn straighten_edge_terminals<R: TerminalRoute>(
     routes: &mut [R],
     mut charge: impl FnMut(usize) -> crate::Result<()>,
 ) -> crate::Result<()> {
@@ -471,8 +471,7 @@ pub(crate) fn straighten_edge_terminals<R: TerminalRoute>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::OperationWorkMeter;
-    use crate::{RenderResourcePolicy, ResourceLimitId};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     struct Route {
         points: Vec<LayoutPoint>,
@@ -677,9 +676,9 @@ mod tests {
         from: &str,
         to: &str,
         points: Vec<LayoutPoint>,
-        label: Option<crate::model::LayoutLabel>,
-    ) -> crate::model::LayoutEdge {
-        crate::model::LayoutEdge {
+        label: Option<crate::LayoutLabel>,
+    ) -> crate::LayoutEdge {
+        crate::LayoutEdge {
             id: id.to_owned(),
             from: from.to_owned(),
             to: to.to_owned(),
@@ -697,8 +696,8 @@ mod tests {
         }
     }
 
-    fn label(x: f64, y: f64, width: f64, height: f64) -> crate::model::LayoutLabel {
-        crate::model::LayoutLabel {
+    fn label(x: f64, y: f64, width: f64, height: f64) -> crate::LayoutLabel {
+        crate::LayoutLabel {
             x,
             y,
             width,
@@ -717,7 +716,7 @@ mod tests {
         ])
     }
 
-    fn review_edges(reverse: bool) -> Vec<crate::model::LayoutEdge> {
+    fn review_edges(reverse: bool) -> Vec<crate::LayoutEdge> {
         // Mermaid 12.2 render.spec.ts (#8368), before terminal straightening.
         let forward = layout_edge(
             "L_A_B_0",
@@ -758,7 +757,7 @@ mod tests {
     }
 
     /// Independent overlap oracle for the orthogonal source fixture.
-    fn other_edge_under_label(edges: &[crate::model::LayoutEdge], labelled: usize) -> bool {
+    fn other_edge_under_label(edges: &[crate::LayoutEdge], labelled: usize) -> bool {
         let label = edges[labelled].label.as_ref().unwrap();
         let (x1, x2) = (label.x - label.width / 2.0, label.x + label.width / 2.0);
         let (y1, y2) = (label.y - label.height / 2.0, label.y + label.height / 2.0);
@@ -1075,7 +1074,7 @@ mod tests {
         assert_eq!(edges[0].label.as_ref().unwrap().y, 5.0);
     }
 
-    fn separate(labels: &mut [crate::model::LayoutLabel]) {
+    fn separate(labels: &mut [crate::LayoutLabel]) {
         let work = meter();
         separate_opposite_edge_labels(
             labels.iter_mut().enumerate().map(|(index, label)| {

@@ -1,7 +1,8 @@
 use super::super::*;
 use merman_render_graph::er::{
-    ErMarkerDefs, er_color_indices, er_redux_color_id, er_unified_marker_id,
-    write_er_marker_definitions, write_er_stylesheet,
+    ErMarkerDefs, ErSvgGeometry, ErSvgLayoutView, ErSvgRouteKind, er_color_indices,
+    er_redux_color_id, er_rel_idx_from_edge_id, er_unified_marker_id, write_er_marker_definitions,
+    write_er_stylesheet,
 };
 #[cfg(feature = "layout-shoal")]
 mod canonical;
@@ -304,19 +305,6 @@ fn render_er_subgraph_clusters(
     Ok(())
 }
 
-fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
-    let rest = edge_id.strip_prefix("er-rel-")?;
-    let digits_len = rest
-        .chars()
-        .take_while(|ch| ch.is_ascii_digit())
-        .map(char::len_utf8)
-        .sum::<usize>();
-    if digits_len == 0 {
-        return None;
-    }
-    rest[..digits_len].parse::<usize>().ok()
-}
-
 fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
     let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
         return edge_id.to_string();
@@ -362,6 +350,15 @@ pub(crate) fn render_er_diagram_svg_model(
     let is_elk_layout = route_contract.is_elk_parity();
     let is_swimlane_layout = matches!(route_contract, crate::graph_layout::RouteContract::Swimlane);
     let rounded_layout = is_elk_layout || is_swimlane_layout;
+    let route_kind = if uses_canonical_routes {
+        ErSvgRouteKind::Canonical
+    } else if is_elk_layout {
+        ErSvgRouteKind::Elk
+    } else if is_swimlane_layout {
+        ErSvgRouteKind::Swimlane
+    } else {
+        ErSvgRouteKind::Dagre
+    };
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
     let color_indices = er_color_indices(model);
@@ -378,110 +375,20 @@ pub(crate) fn render_er_diagram_svg_model(
     let hand_drawn_seed =
         options.rough_randomness(er_render_settings.hand_drawn_seed, "render.er.roughjs");
     let insert_title_top_margin = er_render_settings.insert_title_top_margin;
-    fn parse_trailing_index(id: &str) -> Option<i64> {
-        let (_, tail) = id.rsplit_once('-')?;
-        tail.parse::<i64>().ok()
-    }
-    fn er_node_sort_key(id: &str) -> (i64, i64) {
-        if id.contains("---") {
-            return (1, parse_trailing_index(id).unwrap_or(i64::MAX));
-        }
-        (0, parse_trailing_index(id).unwrap_or(i64::MAX))
-    }
-
-    let mut nodes = layout.nodes.clone();
-    nodes.sort_by_key(|n| er_node_sort_key(&n.id));
-
-    // Layout keeps Dagre's helper segments for reproducible layout artifacts. The family
-    // preparation path also carries Mermaid's SVG-facing projection, where self-loops are
-    // already merged into one visible edge. Fall back to the canonical edges for hand-built
-    // layouts used by unit tests and older callers.
-    let mut edges = if uses_canonical_routes || layout.render_edges.is_empty() {
-        layout.edges.clone()
-    } else {
-        layout.render_edges.clone()
-    };
-    fn er_edge_sort_key(edge: &crate::model::LayoutEdge) -> (i64, i64, i64) {
-        // Mermaid's getEdgesToRender() appends merged self-loops after ordinary graph edges.
-        let self_loop = i64::from(edge.from == edge.to);
-        let id = edge.id.as_str();
-        let Some(rest) = id.strip_prefix("er-rel-") else {
-            return (self_loop, i64::MAX, i64::MAX);
-        };
-        let mut digits_len = 0usize;
-        for ch in rest.chars() {
-            if !ch.is_ascii_digit() {
-                break;
-            }
-            digits_len += ch.len_utf8();
-        }
-        if digits_len == 0 {
-            return (self_loop, i64::MAX, i64::MAX);
-        }
-        let Ok(idx) = rest[..digits_len].parse::<i64>() else {
-            return (self_loop, i64::MAX, i64::MAX);
-        };
-        (self_loop, idx, 0)
-    }
-    edges.sort_by_key(|edge| {
-        let (self_loop, index, secondary) = er_edge_sort_key(edge);
-        (if rounded_layout { 0 } else { self_loop }, index, secondary)
-    });
-
-    // Box and Rectpacking intentionally leave sections empty. Resolve their paint geometry
-    // before measuring bounds, while retaining provenance to select a linear curve below.
-    let mut missing_sections = rustc_hash::FxHashSet::default();
-    if is_elk_layout {
-        let nodes_by_id: rustc_hash::FxHashMap<_, _> =
-            nodes.iter().map(|node| (node.id.as_str(), node)).collect();
-        for edge in &mut edges {
-            if edge.points.is_empty()
-                && let (Some(start), Some(end)) = (
-                    nodes_by_id.get(edge.from.as_str()),
-                    nodes_by_id.get(edge.to.as_str()),
-                )
-            {
-                edge.points = crate::elk_geometry::missing_rect_section_points(start, end);
-                if let Some(label) = &mut edge.label {
-                    let first = &edge.points[0];
-                    let last = &edge.points[edge.points.len() - 1];
-                    label.x = (first.x + last.x) / 2.0;
-                    label.y = (first.y + last.y) / 2.0;
-                }
-                missing_sections.insert(edge.id.clone());
-            }
-        }
-    }
-
-    if is_elk_layout {
-        for edge in &edges {
-            options
-                .work_meter()
-                .charge(edge.points.len().saturating_add(2))?;
-        }
-        if effective_config
-            .pointer("/elk/straightenEdges")
-            .and_then(serde_json::Value::as_bool)
-            != Some(false)
-        {
-            crate::elk_terminal_jogs::straighten_edge_terminals(&mut edges, |units| {
-                options.work_meter().charge(units).map_err(Into::into)
-            })?;
-        }
-        crate::elk_terminal_jogs::separate_opposite_edge_labels(
-            edges.iter_mut().map(|edge| {
-                let has_label = er_rel_idx_from_edge_id(&edge.id)
-                    .and_then(|index| model.relationships.get(index))
-                    .is_some_and(|relation| !relation.role_a.is_empty());
-                (
-                    edge.from.as_str(),
-                    edge.to.as_str(),
-                    if has_label { edge.label.as_mut() } else { None },
-                )
-            }),
-            |units| options.work_meter().charge(units).map_err(Into::into),
-        )?;
-    }
+    let geometry = ErSvgGeometry::prepare(
+        ErSvgLayoutView {
+            clusters: &layout.clusters,
+            nodes: &layout.nodes,
+            edges: &layout.edges,
+            render_edges: &layout.render_edges,
+        },
+        route_kind,
+        &model.relationships,
+        effective_config,
+        options.work_meter(),
+    )?;
+    let nodes = geometry.nodes();
+    let edges = geometry.edges();
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -496,7 +403,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
     let is_empty_diagram = nodes.is_empty() && edges.is_empty() && diagram_title.is_none();
 
-    let bounds = compute_layout_bounds(&layout.clusters, &nodes, &edges).unwrap_or({
+    let bounds = geometry.bounds().unwrap_or({
         if is_empty_diagram {
             Bounds {
                 min_x: 0.0,
@@ -709,7 +616,7 @@ pub(crate) fn render_er_diagram_svg_model(
             .map(|(edge, points)| super::super::line_hops::LineHopEdge {
                 id: edge.id.as_str(),
                 points,
-                curve: Some(if missing_sections.contains(&edge.id) {
+                curve: Some(if geometry.is_missing_section(&edge.id) {
                     "linear"
                 } else {
                     "rounded"
@@ -732,8 +639,8 @@ pub(crate) fn render_er_diagram_svg_model(
     };
     out.checkpoint()?;
     if options.debug.include_edges {
-        for e in &edges {
-            let missing_section = missing_sections.contains(&e.id);
+        for e in edges {
+            let missing_section = geometry.is_missing_section(&e.id);
             if !uses_canonical_routes
                 && (e.points.is_empty() || (!missing_section && e.points.len() < 2))
             {
@@ -850,7 +757,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
     if options.debug.include_edges {
-        for e in &edges {
+        for e in edges {
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
 
@@ -905,7 +812,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 (0.0, 0.0, x, y)
             };
 
-            if !uses_canonical_routes && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
+            if !uses_canonical_routes && w > 0.0 && h > 0.0 && !geometry.is_missing_section(&e.id) {
                 // Mermaid 12.1 preserves the layout anchor and adds only the midpoint delta
                 // from paint-time clipping. ER has no additional clipping here: curve and marker
                 // projection change `d`, while both label polylines remain the layout route.
@@ -1065,7 +972,7 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str(r#"<g class="nodes">"#);
     }
     out.checkpoint()?;
-    for n in &nodes {
+    for n in nodes {
         if n.is_cluster {
             continue;
         }

@@ -1260,6 +1260,7 @@ dependencies = [
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "rustc-hash",
  "serde_json",
 ]
 

@@ -19,7 +19,7 @@ third-party-bundle = true
 default = []
 diagram-er = [
     "dep:indexmap", "dep:merman-markup", "dep:merman-model", "dep:merman-render-core",
-    "dep:merman-theme-contract", "dep:serde_json", "merman-model/diagram-er",
+    "dep:merman-theme-contract", "dep:rustc-hash", "dep:serde_json", "merman-model/diagram-er",
     "merman-render-core/css-style", "merman-render-core/graph-layout",
     "merman-render-core/theme-svg",
 ]
@@ -32,4 +32,5 @@ merman-markup = { workspace = true, features = ["color"], optional = true }
 merman-model = { workspace = true, features = ["presentation-data"], optional = true }
 merman-render-core = { workspace = true, optional = true }
 merman-theme-contract = { workspace = true, optional = true }
+rustc-hash = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

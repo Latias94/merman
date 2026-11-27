@@ -161,15 +161,6 @@ use merman_render_core::text::svg_label as label;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
-mod layout_debug;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
 mod line_hops;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -1599,21 +1590,6 @@ fn apply_theme_css(
 )]
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_basis_path_d(points)
-}
-
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-fn compute_layout_bounds(
-    clusters: &[LayoutCluster],
-    nodes: &[LayoutNode],
-    edges: &[crate::model::LayoutEdge],
-) -> Option<Bounds> {
-    layout_debug::compute_layout_bounds(clusters, nodes, edges)
 }
 
 #[cfg(test)]
