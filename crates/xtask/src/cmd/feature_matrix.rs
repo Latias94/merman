@@ -1321,6 +1321,17 @@ impl FeatureGraph {
                 "facade-cargo-aggregate",
             ));
         }
+        for layout in ["layout-dagre", "layout-shoal"] {
+            cases.insert(BuildCase::new(
+                "merman",
+                ["core-diagrams", "svg", layout]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+                None,
+                "facade-core-svg",
+            ));
+        }
         for package in ["merman", "merman-rustdoc"] {
             for feature in ["complete-svg", "complete-svg-elk"] {
                 cases.insert(BuildCase::new(
