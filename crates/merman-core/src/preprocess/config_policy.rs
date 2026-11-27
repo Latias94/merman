@@ -1,21 +1,31 @@
 //! Core policy for decoded frontmatter and directives.
 
+mod grid;
 mod sanitize;
 
+use super::PreprocessedSource;
 #[cfg(feature = "editor-facts")]
 use super::rewrite_order::FrontmatterInsertOrder;
 #[cfg(feature = "editor-facts")]
 use super::source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
 #[cfg(feature = "editor-facts")]
 use super::{
-    FrontmatterSourceEvidence, LocalConfigKeyEvidence, PreprocessedSource, SourceConfigCaptureMode,
+    FrontmatterSourceEvidence, LocalConfigKeyEvidence, SourceConfigCaptureMode,
     SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin, SourceDirectiveEvidence,
 };
-#[cfg(feature = "editor-facts")]
-use crate::SourceSpan;
 use crate::{
-    Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
+    Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan,
+    diagram::CapturedPanic,
 };
+pub(super) use grid::GridSource;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub(crate) use grid::validate_configured_grid;
+pub(crate) use grid::validate_grid_for_parser;
+pub(super) use grid::{merge_source_grid, sanitize_section as sanitize_grid_section};
 #[cfg(feature = "editor-facts")]
 use merman_core_preprocess::directives::decode_directive_with_evidence_controlled;
 use merman_core_preprocess::directives::{
@@ -26,6 +36,7 @@ use merman_core_preprocess::frontmatter::decode_frontmatter_with_evidence_contro
 use merman_core_preprocess::frontmatter::{
     FrontmatterByteSpan, decode_frontmatter_controlled, frontmatter_config_routes,
 };
+use merman_core_preprocess::yaml::GridPlacementsSource;
 #[cfg(feature = "editor-facts")]
 use merman_core_preprocess::yaml::YamlConfigKeyEvidence;
 #[cfg(test)]
@@ -34,10 +45,17 @@ pub(super) use sanitize::sanitize_directive;
 pub(super) use sanitize::sanitize_directive_controlled;
 #[cfg(not(feature = "editor-facts"))]
 use sanitize::sanitize_directive_controlled;
+pub(super) use sanitize::sanitize_grid_config_controlled;
 use serde_json::Value;
 
 pub(super) type DiagramTypeDetector<'a> =
     dyn Fn(&str, &OperationControl) -> OperationControlResult<Result<&'static str>> + 'a;
+
+#[derive(Clone, Copy)]
+pub(super) enum GridInitDetection {
+    KnownType,
+    Detect { frontmatter_has_placements: bool },
+}
 
 #[cfg(feature = "editor-facts")]
 pub(super) fn append_directive_evidence(
@@ -93,6 +111,7 @@ pub(super) fn append_directive_evidence(
 
 pub(super) struct ProcessedDirectives {
     pub(super) config: MermaidConfig,
+    pub(super) grid_source: GridSource,
     pub(super) removals: Vec<std::ops::Range<usize>>,
     #[cfg(feature = "editor-facts")]
     pub(super) editor_prefixes: Vec<String>,
@@ -121,14 +140,16 @@ struct LocalDirectiveEvidence {
 }
 
 pub(super) fn process_directives_controlled(
-    input: &str,
+    source: &PreprocessedSource,
     detector: &DiagramTypeDetector<'_>,
     blocks: Vec<DirectiveBlock>,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     evaluate_config: bool,
+    grid_detection: GridInitDetection,
     control: &OperationControl,
 ) -> OperationControlResult<ProcessedDirectives> {
     control.checkpoint()?;
+    let input = source.text();
     #[cfg(feature = "editor-facts")]
     let mut appearance_capture = SourceAppearanceCapture::default();
     #[cfg(feature = "editor-facts")]
@@ -138,6 +159,7 @@ pub(super) fn process_directives_controlled(
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
+            grid_source: GridSource::default(),
             removals: Vec::new(),
             #[cfg(feature = "editor-facts")]
             editor_prefixes: Vec::new(),
@@ -230,6 +252,13 @@ pub(super) fn process_directives_controlled(
                 directives.push(Directive {
                     ty: directive.ty,
                     args: directive.args,
+                    grid_source: GridSource::capture(
+                        source,
+                        directive.grid_placements,
+                        block.raw.start,
+                        SourceSpan::new(block.range.start, block.range.end),
+                        control,
+                    )?,
                     #[cfg(feature = "editor-facts")]
                     appearance_owner,
                 });
@@ -247,6 +276,7 @@ pub(super) fn process_directives_controlled(
             }
             return Ok(ProcessedDirectives {
                 config: MermaidConfig::empty_object(),
+                grid_source: GridSource::default(),
                 removals: Vec::new(),
                 #[cfg(feature = "editor-facts")]
                 editor_prefixes: Vec::new(),
@@ -285,13 +315,14 @@ pub(super) fn process_directives_controlled(
     }
 
     let detected_init = if !evaluate_config || first_error.is_some() {
-        Ok(MermaidConfig::empty_object())
+        Ok((MermaidConfig::empty_object(), GridSource::default()))
     } else {
         let detect_init = || {
             detect_init_controlled(
-                &directives,
+                directives,
                 input_without_directives.as_ref(),
                 detector,
+                grid_detection,
                 #[cfg(feature = "editor-facts")]
                 &mut appearance_capture,
                 #[cfg(feature = "editor-facts")]
@@ -300,8 +331,6 @@ pub(super) fn process_directives_controlled(
             )
         };
         #[cfg(feature = "editor-facts")]
-        let mut detect_init = detect_init;
-        #[cfg(feature = "editor-facts")]
         {
             if capture_mode.collects() {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(detect_init)) {
@@ -309,6 +338,7 @@ pub(super) fn process_directives_controlled(
                     Err(payload) => {
                         return Ok(ProcessedDirectives {
                             config: MermaidConfig::empty_object(),
+                            grid_source: GridSource::default(),
                             removals: blocks.into_iter().map(|block| block.range).collect(),
                             #[cfg(feature = "editor-facts")]
                             editor_prefixes,
@@ -336,16 +366,15 @@ pub(super) fn process_directives_controlled(
             detect_init()?
         }
     };
-    let init = match detected_init {
+    let (mut merged, grid_source) = match detected_init {
         Ok(init) => init,
         Err(error) => {
             if first_error.is_none() {
                 first_error = Some(error);
             }
-            MermaidConfig::empty_object()
+            (MermaidConfig::empty_object(), GridSource::default())
         }
     };
-    let mut merged = init;
     if wrap {
         merged.set_value("wrap", Value::Bool(true));
     }
@@ -353,6 +382,7 @@ pub(super) fn process_directives_controlled(
     control.checkpoint()?;
     Ok(ProcessedDirectives {
         config: merged,
+        grid_source,
         removals: blocks.into_iter().map(|block| block.range).collect(),
         #[cfg(feature = "editor-facts")]
         editor_prefixes,
@@ -372,23 +402,32 @@ pub(super) fn process_directives_controlled(
 }
 
 fn detect_init_controlled(
-    directives: &[Directive],
+    directives: Vec<Directive>,
     input: &str,
     detector: &DiagramTypeDetector<'_>,
+    grid_detection: GridInitDetection,
     #[cfg(feature = "editor-facts")] appearance_capture: &mut SourceAppearanceCapture,
     #[cfg(feature = "editor-facts")] legacy_init_namespace: &mut Option<&'static str>,
     control: &OperationControl,
-) -> OperationControlResult<Result<MermaidConfig>> {
+) -> OperationControlResult<Result<(MermaidConfig, GridSource)>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
+    let mut grid_source = GridSource::default();
     let multiple_inits = directives
         .iter()
         .filter(|directive| matches!(directive.ty.as_str(), "init" | "initialize"))
         .take(2)
         .count()
         > 1;
+    let detect_grid = matches!(grid_detection, GridInitDetection::Detect { .. });
+    let mut has_grid_placements = matches!(
+        grid_detection,
+        GridInitDetection::Detect {
+            frontmatter_has_placements: true
+        }
+    );
 
-    for (index, d) in directives.iter().enumerate() {
+    for (index, d) in directives.into_iter().enumerate() {
         if index % 16 == 0 {
             control.checkpoint()?;
         }
@@ -396,9 +435,19 @@ fn detect_init_controlled(
             continue;
         }
 
-        let mut args = match &d.args {
-            Some(v) => crate::json_value::clone_value_nonrecursive(v),
-            None => Value::Object(Default::default()),
+        let has_arguments = d.args.as_ref().is_some_and(|args| !args.is_null());
+        let mut args = d.args.unwrap_or_else(|| Value::Object(Default::default()));
+        has_grid_placements |= args.pointer("/grid/placements").is_some();
+        let remaps_legacy = !multiple_inits && args.get("config").is_some();
+        let detect_for_grid = detect_grid && has_grid_placements && has_arguments;
+        let diagram_type = if !multiple_inits && (remaps_legacy || detect_for_grid) {
+            match detector(input, control)? {
+                Ok(ty) => Some(ty),
+                Err(error) if detect_for_grid => return Ok(Err(error)),
+                Err(_) => None,
+            }
+        } else {
+            None
         };
         // Mermaid sanitizes multiple init arguments before merging, so their legacy `config`
         // key is filtered out. A single init remaps that key before source sanitization.
@@ -409,7 +458,7 @@ fn detect_init_controlled(
         {
             // Legacy init uses the source detector ID, even when a parser type was supplied.
             // Mermaid only remaps flowchart-v2; other IDs still pass through source admission.
-            if let Ok(ty) = detector(input, control)? {
+            if let Some(ty) = diagram_type {
                 let key = if ty == "flowchart-v2" {
                     "flowchart"
                 } else {
@@ -428,7 +477,22 @@ fn detect_init_controlled(
                 crate::json_value::drop_value_nonrecursive(diagram_specific_value);
             }
         }
+        // A single init's Grid section is sanitized after its merge with frontmatter. Keep
+        // its explicit nulls through that merge, where they remove old option values.
+        let single_grid = if multiple_inits {
+            None
+        } else {
+            args.as_object_mut().and_then(|args| args.remove("grid"))
+        };
         sanitize_directive_controlled(&mut args, control)?;
+        if multiple_inits {
+            if let Err(error) = sanitize_grid_section(&mut args, &d.grid_source, control)? {
+                return Ok(Err(error));
+            }
+            grid_source.replace_init_entries(&args, d.grid_source, control)?;
+        } else {
+            grid_source = d.grid_source;
+        }
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
         #[cfg(feature = "editor-facts")]
@@ -439,15 +503,26 @@ fn detect_init_controlled(
         });
         #[cfg(not(feature = "editor-facts"))]
         merged.deep_merge(&args);
+        if let Some(grid) = single_grid {
+            merged.set_value("grid", grid);
+        }
     }
 
     control.checkpoint()?;
-    Ok(Ok(merged))
+    if multiple_inits
+        && detect_grid
+        && has_grid_placements
+        && let Err(error) = detector(input, control)?
+    {
+        return Ok(Err(error));
+    }
+    Ok(Ok((merged, grid_source)))
 }
 
 struct Directive {
     ty: String,
     args: Option<Value>,
+    grid_source: GridSource,
     #[cfg(feature = "editor-facts")]
     appearance_owner: Option<SourceAppearanceOwner>,
 }
@@ -510,6 +585,7 @@ pub(super) fn append_frontmatter_evidence(
 pub(super) struct ProcessedFrontmatter {
     pub(super) title: Option<String>,
     pub(super) config: MermaidConfig,
+    pub(super) grid_placements: Option<GridPlacementsSource>,
 }
 
 pub(super) struct FrontmatterCapture {
@@ -549,6 +625,7 @@ pub(super) fn process_frontmatter_controlled(
             result: Ok(ProcessedFrontmatter {
                 title: None,
                 config: MermaidConfig::empty_object(),
+                grid_placements: None,
             }),
             full: None,
             #[cfg(feature = "editor-facts")]
@@ -624,6 +701,7 @@ pub(super) fn process_frontmatter_controlled(
         result: Ok(ProcessedFrontmatter {
             title: parsed.title,
             config,
+            grid_placements: decoded.grid_placements,
         }),
         full: Some(decoded.full),
         #[cfg(feature = "editor-facts")]

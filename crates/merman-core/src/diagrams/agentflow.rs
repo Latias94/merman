@@ -143,9 +143,11 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
             control,
         )?,
         &meta.diagram_type,
+        meta.effective_config.as_config(),
         #[cfg(feature = "editor-facts")]
         None,
-    )
+        control,
+    )?
     .map(|construction| AgentflowDiagramRenderModel {
         model: construction.model,
         visuals: AgentflowVisuals::from_node_dom_indices(
@@ -228,27 +230,43 @@ fn construct_source(
     }?;
     #[cfg(not(feature = "editor-facts"))]
     let result = parse_agentflow_source_controlled(code, config, title, control)?;
-    Ok(finish_construction(
+    finish_construction(
         result,
         diagram_type,
+        config,
         #[cfg(feature = "editor-facts")]
         editor_demand.finish_facts(editor.map(|editor| editor.facts)),
-    ))
+        control,
+    )
 }
 
 fn finish_construction(
     result: std::result::Result<ParsedAgentflow, AgentflowSyntaxIssue>,
     diagram_type: &str,
+    config: &crate::MermaidConfig,
     #[cfg(feature = "editor-facts")] mut facts: Option<EditorSemanticFacts>,
-) -> std::result::Result<Construction, family::CombinedSemanticFailure> {
-    match result {
-        Ok(parsed) => Ok(Construction {
-            model: parsed.model,
-            #[cfg(feature = "presentation")]
-            visuals: parsed.node_dom_indices,
-            #[cfg(feature = "editor-facts")]
-            editor_facts: facts,
-        }),
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
+    Ok(match result {
+        Ok(parsed) => match super::grid::validate_inline_grid(
+            config,
+            diagram_type,
+            &parsed.grid_coordinates,
+            control,
+        )? {
+            Ok(()) => Ok(Construction {
+                model: parsed.model,
+                #[cfg(feature = "presentation")]
+                visuals: parsed.node_dom_indices,
+                #[cfg(feature = "editor-facts")]
+                editor_facts: facts,
+            }),
+            Err(error) => Err(family::CombinedSemanticFailure::new(
+                error,
+                #[cfg(feature = "editor-facts")]
+                facts,
+            )),
+        },
         Err(AgentflowSyntaxIssue { message, span }) => {
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = &mut facts {
@@ -260,7 +278,7 @@ fn finish_construction(
                 facts,
             ))
         }
-    }
+    })
 }
 
 #[cfg(feature = "editor-facts")]

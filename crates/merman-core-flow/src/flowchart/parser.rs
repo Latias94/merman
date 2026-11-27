@@ -401,7 +401,7 @@ impl<I: Iterator<Item = FlowchartLexicalEvent>> Parser<'_, I> {
             _ if first.label.is_none() && first.shape_data.is_some() => Ok(Stmt::ShapeData {
                 target: first.id,
                 target_span: first.id_span,
-                yaml: first.shape_data.expect("shape data checked above"),
+                data: first.shape_data.expect("shape data checked above"),
             }),
             _ => Ok(Stmt::Node(Box::new(first))),
         }
@@ -437,11 +437,14 @@ impl<I: Iterator<Item = FlowchartLexicalEvent>> Parser<'_, I> {
             None
         };
         let shape_data = if next == Some(ShapeData) {
-            let (_, Tok::ShapeData(data), _) = self.require(Expected::one(ShapeData))? else {
+            let (start, Tok::ShapeData(yaml), end) = self.require(Expected::one(ShapeData))? else {
                 unreachable!();
             };
             next = self.peek()?;
-            Some(data)
+            Some(super::ShapeData {
+                yaml,
+                span: SourceSpan::new(start, end),
+            })
         } else {
             None
         };

@@ -198,19 +198,19 @@ pub(super) fn prepare_flowchart_shape_data(
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
-                    if let Some(source) = node.shape_data.as_deref() {
-                        prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                    if let Some(data) = &node.shape_data {
+                        prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
                     }
                 }
             }
             Stmt::Node(node) => {
-                if let Some(source) = node.shape_data.as_deref() {
-                    prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                if let Some(data) = &node.shape_data {
+                    prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
                 }
             }
             Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
-            Stmt::ShapeData { yaml, .. } => {
-                prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
+            Stmt::ShapeData { data, .. } => {
+                prepare_flowchart_shape_data_document(&data.yaml, control, &mut documents)?;
             }
             Stmt::Direction(_)
             | Stmt::Style(_)

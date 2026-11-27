@@ -18,7 +18,7 @@ use crate::preprocess::SourceConfigEvidence;
 use crate::preprocess::preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled;
 use crate::preprocess::{
     DirectiveRecoveryMode, PreprocessedSource,
-    preprocess_diagram_with_known_type_and_directive_recovery_controlled,
+    preprocess_diagram_with_known_type_and_directive_recovery_controlled, validate_grid_for_parser,
 };
 use crate::{
     Error, MermaidConfig, MermaidEngine, OperationControl, OperationControlResult, ParseOptions,
@@ -347,14 +347,21 @@ impl<'a> ParsePipeline<'a> {
                 diagram_type: meta.diagram_type.clone(),
             }));
         };
-        match parser {
-            ResolvedSemanticParser::BuiltIn(parser) => Ok(parser
+        let parsed = match parser {
+            ResolvedSemanticParser::BuiltIn(parser) => parser
                 .parse_controlled(code, meta, control)?
-                .map(CompatibilitySemanticParse::BuiltIn)),
-            ResolvedSemanticParser::Custom(parser) => Ok(parser(code, meta, control)?
+                .map(CompatibilitySemanticParse::BuiltIn),
+            ResolvedSemanticParser::Custom(parser) => parser(code, meta, control)?
                 .map(ManagedSemanticJson::from)
-                .map(CompatibilitySemanticParse::Custom)),
-        }
+                .map(CompatibilitySemanticParse::Custom),
+        };
+        validate_grid_for_parser(
+            parsed,
+            meta.effective_config.as_config(),
+            &meta.diagram_type,
+            matches!(parser, ResolvedSemanticParser::BuiltIn(_)),
+            control,
+        )
     }
 
     #[cfg(feature = "compat-json")]
@@ -488,11 +495,13 @@ impl<'a> ParsePipeline<'a> {
                         None,
                     ),
                 };
-                let mut model = match model {
+                let builtin = matches!(resolved, Some(ResolvedSemanticParser::BuiltIn(_)));
+                let mut model = match validate_grid_for_parser(model, meta.effective_config.as_config(),
+                    &meta.diagram_type, builtin, control)? {
                     Ok(model) => model,
                     Err(error) => return Ok((Err(error), editor_facts, Vec::new())),
                 };
-                if matches!(resolved, Some(ResolvedSemanticParser::BuiltIn(_))) {
+                if builtin {
                     let (line_offset, column_offset) = code.parser_position_offset();
                     model.offset_diagnostic_positions(line_offset, column_offset);
                     code.remap_warning_facts_controlled(model.warning_facts_mut(), control)?;
@@ -976,18 +985,20 @@ impl<'a> ParsePipeline<'a> {
             .engine
             .render_diagram_registry
             .resolve(&meta.diagram_type);
+        let config = meta.effective_config.as_config();
 
         if let Some(ResolvedRenderParser::Custom(parser)) = render {
             let parsed = parser(code, meta, control);
             control.checkpoint()?;
-            return Ok(parsed?
+            let parsed = parsed?
                 .map(RenderSemanticModel::CustomJson)
-                .map(RenderSemanticParseOutput::new));
+                .map(RenderSemanticParseOutput::new);
+            return validate_grid_for_parser(parsed, config, &meta.diagram_type, false, control);
         }
 
         #[cfg(feature = "compat-json")]
         if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
-            return Ok(diagram::parse_or_unsupported_controlled(
+            let parsed = diagram::parse_or_unsupported_controlled(
                 &self.engine.diagram_registry,
                 &meta.diagram_type,
                 code,
@@ -1001,13 +1012,14 @@ impl<'a> ParsePipeline<'a> {
                     merman_model::presentation::CustomJsonProvenance::SemanticRegistryOverlay,
                 ))
             })
-            .map(RenderSemanticParseOutput::new));
+            .map(RenderSemanticParseOutput::new);
+            return validate_grid_for_parser(parsed, config, &meta.diagram_type, false, control);
         }
 
         if let Some(ResolvedRenderParser::BuiltIn(parser)) = render {
             let parsed = parser(code, meta, control);
             control.checkpoint()?;
-            return parsed;
+            return validate_grid_for_parser(parsed?, config, &meta.diagram_type, true, control);
         }
 
         #[cfg(feature = "compat-json")]

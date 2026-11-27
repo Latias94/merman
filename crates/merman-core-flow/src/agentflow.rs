@@ -3,6 +3,7 @@
 //! Agentflow shares presentation tokens with Flowchart and replays its own shapes,
 //! containers, metadata, and edge operators.
 
+use crate::grid::{InlineGridCoordinates, InlineGridReplay};
 use merman_core_preprocess::yaml::parse_mermaid_inline_yaml_controlled;
 use merman_model::families::agentflow::{
     ALLOWED_SHAPES, AgentflowAuthoredStyles, AgentflowConnector, AgentflowDiagnostic,
@@ -22,6 +23,7 @@ mod presentation;
 
 pub struct ParsedAgentflow {
     pub model: AgentflowDiagramModel,
+    pub grid_coordinates: InlineGridCoordinates,
     #[cfg(feature = "presentation")]
     pub node_dom_indices: Option<HashMap<String, usize>>,
 }
@@ -161,8 +163,9 @@ fn parse_source(
     let result = parser.parse()?;
     control.checkpoint()?;
     match result {
-        Ok(model) => Ok(Ok(ParsedAgentflow {
+        Ok((model, grid_coordinates)) => Ok(Ok(ParsedAgentflow {
             model,
+            grid_coordinates,
             #[cfg(feature = "presentation")]
             node_dom_indices: parser.visuals,
         })),
@@ -179,6 +182,7 @@ struct Context {
     title: Option<String>,
     label_type: Option<&'static str>,
     metadata: Map<String, Value>,
+    metadata_span: Option<SourceSpan>,
     nodes: Vec<String>,
     direction: Option<String>,
     global: bool,
@@ -198,6 +202,7 @@ struct Parser<'a> {
     #[cfg(feature = "presentation")]
     vertex_counter: usize,
     diagnostic_spans: HashMap<String, SourceSpan>,
+    grid_replay: Option<InlineGridReplay>,
     direction: String,
     nodes: Vec<AgentflowNode>,
     node_index: HashMap<String, usize>,
@@ -239,6 +244,7 @@ impl<'a> Parser<'a> {
             #[cfg(feature = "presentation")]
             vertex_counter: 0,
             diagnostic_spans: HashMap::new(),
+            grid_replay: (config.get_str("layout") == Some("grid")).then(InlineGridReplay::default),
             direction: "TB".to_string(),
             nodes: Vec::new(),
             node_index: HashMap::new(),
@@ -259,7 +265,8 @@ impl<'a> Parser<'a> {
 
     fn parse(
         &mut self,
-    ) -> OperationControlResult<std::result::Result<AgentflowDiagramModel, ParseFailure>> {
+    ) -> OperationControlResult<Result<(AgentflowDiagramModel, InlineGridCoordinates), ParseFailure>>
+    {
         let Some((header_statement_start, header_statement)) = first_content_statement(self.source)
         else {
             return Ok(Err(self.failure(
@@ -418,8 +425,8 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("flow")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, title, label_type, metadata) = if rest.trim().is_empty() {
-                    (None, None, Some("markdown"), Map::new())
+                let (id, title, label_type, metadata, metadata_span) = if rest.trim().is_empty() {
+                    (None, None, Some("markdown"), Map::new(), None)
                 } else {
                     match parse_declaration(
                         rest,
@@ -434,6 +441,7 @@ impl<'a> Parser<'a> {
                             label: title,
                             label_type,
                             metadata,
+                            metadata_span,
                             ..
                         }) => {
                             #[cfg(feature = "editor-facts")]
@@ -442,7 +450,13 @@ impl<'a> Parser<'a> {
                                 AgentflowIdentifierKind::ContainerDeclaration,
                                 id_span,
                             );
-                            (Some(id), title, label_type.or(Some("text")), metadata)
+                            (
+                                Some(id),
+                                title,
+                                label_type.or(Some("text")),
+                                metadata,
+                                metadata_span,
+                            )
                         }
                         Err(error) => return Ok(Err(error)),
                     }
@@ -453,6 +467,7 @@ impl<'a> Parser<'a> {
                     title,
                     label_type,
                     metadata,
+                    metadata_span,
                     declaration_span,
                     ..Default::default()
                 });
@@ -476,6 +491,9 @@ impl<'a> Parser<'a> {
                 if first {
                     // addConnector replaces a pre-existing ordinary vertex, preserving map order.
                     if let Some(&index) = self.node_index.get(&id) {
+                        if let Some(replay) = &mut self.grid_replay {
+                            replay.vertices.clear(index);
+                        }
                         self.nodes[index] = AgentflowNode {
                             id: id.clone(),
                             label: Some(id.clone()),
@@ -494,6 +512,7 @@ impl<'a> Parser<'a> {
                 }
                 let title = declaration.label.filter(|title| !title.is_empty());
                 let metadata = declaration.metadata;
+                let metadata_span = declaration.metadata_span;
                 self.upsert_connector(id.clone(), title.clone(), Map::new());
                 let node_index = self.upsert_node(Declaration {
                     id: id.clone(),
@@ -508,9 +527,15 @@ impl<'a> Parser<'a> {
                 });
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
                 if let Some(&index) = self.sub_graph_index.get(&id) {
+                    if let Some(replay) = &mut self.grid_replay {
+                        replay.subgraphs.update(index, &metadata, metadata_span);
+                    }
                     self.sub_graphs[index].metadata.extend(metadata);
                 } else {
                     let index = self.connector_index[&id];
+                    if let Some(replay) = &mut self.grid_replay {
+                        replay.vertices.update(node_index, &metadata, metadata_span);
+                    }
                     self.connectors[index].metadata.extend(metadata);
                 }
                 self.record_members(std::iter::once(id.clone()));
@@ -543,6 +568,16 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(0, self.source.len()),
             )));
         }
+        // Both ordinary vertices shadowed by flows and connectors remain in the upstream DB.
+        // The canonical model below projects the connector and flow collections separately.
+        let grid_coordinates = match self.grid_replay.take() {
+            Some(replay) => replay.finish(
+                |slot| &self.nodes[slot].id,
+                |slot| &self.sub_graphs[slot].id,
+                self.control,
+            )?,
+            None => InlineGridCoordinates::default(),
+        };
         for graph in &self.sub_graphs {
             for child in &graph.nodes {
                 if let Some(&index) = self.node_index.get(child) {
@@ -592,7 +627,7 @@ impl<'a> Parser<'a> {
                 fact
             })
             .collect();
-        Ok(Ok(model))
+        Ok(Ok((model, grid_coordinates)))
     }
 
     fn parse_node_statement(
@@ -662,12 +697,24 @@ impl<'a> Parser<'a> {
         if declaration.metadata_span.is_some()
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
+            if let Some(replay) = &mut self.grid_replay {
+                replay
+                    .subgraphs
+                    .update(index, &declaration.metadata, declaration.metadata_span);
+            }
             self.sub_graphs[index].metadata.extend(declaration.metadata);
             #[cfg(feature = "editor-facts")]
             self.observe_identifier(&id, AgentflowIdentifierKind::ContainerReference, id_span);
         } else if declaration.metadata_span.is_some()
             && let Some(&index) = self.connector_index.get(&id)
         {
+            if let Some(replay) = &mut self.grid_replay {
+                replay.vertices.update(
+                    self.node_index[&id],
+                    &declaration.metadata,
+                    declaration.metadata_span,
+                );
+            }
             self.connectors[index].metadata.extend(declaration.metadata);
             #[cfg(feature = "editor-facts")]
             self.observe_identifier(&id, AgentflowIdentifierKind::NodeReference, id_span);
@@ -865,6 +912,7 @@ impl<'a> Parser<'a> {
             label_type,
             syntax_shape,
             metadata,
+            metadata_span,
             ..
         } = declaration;
         let presentation = self.authored.nodes.entry(id.clone()).or_default();
@@ -891,7 +939,17 @@ impl<'a> Parser<'a> {
             .map(resolve_shape)
             .or(syntax_shape);
         let kind = vertex_kind(shape.as_deref());
-        let index = if let Some(index) = self.node_index.get(&id).copied() {
+        let existing = self.node_index.get(&id).copied();
+        if let Some(replay) = &mut self.grid_replay
+            && id != "connectors"
+        {
+            replay.vertices.update(
+                existing.unwrap_or(self.nodes.len()),
+                &metadata,
+                metadata_span,
+            );
+        }
+        let index = if let Some(index) = existing {
             let node = &mut self.nodes[index];
             if label.is_some() {
                 node.label = label;
@@ -976,7 +1034,15 @@ impl<'a> Parser<'a> {
             .subgraph_label_types
             .entry(id.clone())
             .or_insert_with(|| context.label_type.unwrap_or("text").to_string());
-        if let Some(&index) = self.sub_graph_index.get(&id) {
+        let existing = self.sub_graph_index.get(&id).copied();
+        if let Some(replay) = &mut self.grid_replay {
+            replay.subgraphs.update(
+                existing.unwrap_or(self.sub_graphs.len()),
+                &context.metadata,
+                context.metadata_span,
+            );
+        }
+        if let Some(index) = existing {
             let graph = &mut self.sub_graphs[index];
             graph.nodes.extend(nodes);
             if !title.is_empty() {
@@ -1501,6 +1567,7 @@ fn parse_declaration(
             span: span_of(line_start, line, statement),
         });
     }
+    let statement_start = line_start + line.find(statement).unwrap_or(0);
     let metadata_start = find_metadata_start(statement);
     let mut metadata_span = None;
     let (head, mut metadata) = if let Some(start) = metadata_start {
@@ -1514,15 +1581,13 @@ fn parse_declaration(
                 span: span_of(line_start, line, &statement[end..]),
             });
         }
-        metadata_span = Some(span_of(line_start, line, &statement[start..end]));
+        let span = SourceSpan::new(statement_start + start, statement_start + end);
+        metadata_span = Some(span);
         (
             &statement[..start],
             parse_metadata(&statement[start + 2..end - 1], control)
                 .map_err(ParseFailure::Cancelled)?
-                .map_err(|message| ParseFailure::Syntax {
-                    message,
-                    span: span_of(line_start, line, &statement[start..end]),
-                })?,
+                .map_err(|message| ParseFailure::Syntax { message, span })?,
         )
     } else {
         (statement, Map::new())
@@ -1567,8 +1632,7 @@ fn parse_declaration(
     if let Some(Value::String(shape)) = metadata.get_mut("shape") {
         *shape = resolve_shape(shape);
     }
-    let id_start = line_start + line.find(statement).unwrap_or(0);
-    let id_span = SourceSpan::new(id_start, id_start + id.len());
+    let id_span = SourceSpan::new(statement_start, statement_start + id.len());
     Ok(Declaration {
         id,
         id_span,
@@ -2005,6 +2069,136 @@ fn unquote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core_preprocess::grid_coordinate::{GridCoordinateField, GridCoordinateValue};
+    use serde_json::json;
+
+    fn parse_grid(source: &str, control: &OperationControl) -> ParsedAgentflow {
+        let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+        match parse_agentflow_source_controlled(source, &config, None, control).unwrap() {
+            Ok(parsed) => parsed,
+            Err(issue) => panic!("{} at {:?}", issue.message, issue.span),
+        }
+    }
+
+    #[test]
+    fn inline_grid_preserves_the_connector_vertex_slot_and_clears_replaced_metadata() {
+        let source = concat!(
+            "agentflow LR\n",
+            "Dock@{ row: false }\n",
+            "Z\n",
+            "connector Dock\n",
+            "A Dock@--> B\n",
+            "B onlyEdge@--> C\n",
+            "onlyEdge@{ row: null }\n",
+            "connectors@{ row: false }\n",
+            "Z@{ row: true }\n",
+            "Dock@{ column: 1.25 }\n",
+        );
+        let control = OperationControl::new();
+        let parsed = parse_grid(source, &control);
+        assert_eq!(parsed.model.connectors[0].metadata["column"], 1.25);
+        let fields: Vec<_> = parsed.grid_coordinates.iter().collect();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(
+            fields.iter().map(|field| field.id).collect::<Vec<_>>(),
+            ["Dock", "Z"]
+        );
+        let (error, span) = parsed
+            .grid_coordinates
+            .validate_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            (error.placement_id, error.field, error.received),
+            (
+                "Dock",
+                GridCoordinateField::Column,
+                GridCoordinateValue::Number(1.25)
+            )
+        );
+        assert_eq!(&source[span.start..span.end], "@{ column: 1.25 }");
+    }
+
+    #[test]
+    fn inline_grid_keeps_vertex_and_subgraph_slots_separate_after_model_projection() {
+        let source = concat!(
+            "agentflow LR\n",
+            "G@{ row: null }\n",
+            "flow G@{ column: 1.25 }\n  A\nend\n",
+            "flow G@{ row: 2 }\n  B\nend\n",
+            "G@{ row: false }\n",
+        );
+        let control = OperationControl::new();
+        let parsed = parse_grid(source, &control);
+        assert!(parsed.model.vertices.iter().all(|node| node.id != "G"));
+        assert_eq!(parsed.model.sub_graphs.len(), 1);
+        assert_eq!(parsed.model.sub_graphs[0].metadata["row"], false);
+        let fields: Vec<_> = parsed.grid_coordinates.iter().collect();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(
+            fields.iter().map(|field| field.value).collect::<Vec<_>>(),
+            [
+                GridCoordinateValue::Null,
+                GridCoordinateValue::Boolean(false),
+                GridCoordinateValue::Number(1.25),
+            ]
+        );
+        for (field, token) in
+            fields
+                .iter()
+                .zip(["@{ row: null }", "@{ row: false }", "@{ column: 1.25 }"])
+        {
+            assert_eq!(field.id, "G");
+            assert_eq!(&source[field.span.start..field.span.end], token);
+        }
+        let (error, span) = parsed
+            .grid_coordinates
+            .validate_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.received, GridCoordinateValue::Null);
+        assert_eq!(span, fields[0].span);
+    }
+
+    #[test]
+    fn inline_grid_uses_the_metadata_token_after_an_identical_label_fragment() {
+        let source = "agentflow LR\nA[\"服务 @{ row: 0.5 }\"]@{ row: 0.5 }\n";
+        let control = OperationControl::new();
+        #[cfg(not(feature = "editor-facts"))]
+        let parsed = parse_grid(source, &control);
+        #[cfg(feature = "editor-facts")]
+        let parsed = {
+            let config = MermaidConfig::from_value(json!({"layout": "grid"}));
+            let mut nodes = Vec::new();
+            let parsed = parse_agentflow_source_with_observer_controlled(
+                source,
+                &config,
+                None,
+                &mut |observation| {
+                    if let AgentflowObservation::Identifier {
+                        name,
+                        kind: AgentflowIdentifierKind::NodeDeclaration,
+                        ..
+                    } = observation
+                    {
+                        nodes.push(name.to_string());
+                    }
+                },
+                &control,
+            )
+            .unwrap()
+            .unwrap_or_else(|issue| panic!("{} at {:?}", issue.message, issue.span));
+            assert_eq!(nodes, ["A"]);
+            parsed
+        };
+        let (_, span) = parsed
+            .grid_coordinates
+            .validate_controlled(&control)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(span.start, source.rfind("@{ row: 0.5 }").unwrap());
+        assert_eq!(&source[span.start..span.end], "@{ row: 0.5 }");
+    }
 
     #[test]
     fn agentflow_quoted_markdown_preserves_percent_signs() {

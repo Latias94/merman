@@ -1,9 +1,11 @@
 //! Replays a parsed Flowchart or Swimlane and projects its canonical model.
 
 use super::{
-    ClickAction, EdgeAction, FlowchartAst, LinkStylePos, LinkToken, NodeAction, StatementEvent,
-    Stmt, SubgraphBlock, TitleKind, is_ecmascript_trim_char, link, trim_flowdb_label_text,
+    ClickAction, EdgeAction, FlowchartAst, LinkStylePos, LinkToken, NodeAction, ShapeData,
+    StatementEvent, Stmt, SubgraphBlock, TitleKind, is_ecmascript_trim_char, link,
+    trim_flowdb_label_text,
 };
+use crate::grid::{InlineGridCoordinates, InlineGridReplay};
 use indexmap::IndexMap;
 use merman_markup::sanitize::{sanitize_text, sanitize_text_as_html_fragment};
 #[cfg(feature = "presentation")]
@@ -64,6 +66,7 @@ struct FlowchartSemanticSource {
     subgraph_vertex_styles: FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     collapsed_subgraphs: Option<rustc_hash::FxHashSet<String>>,
+    grid_coordinates: InlineGridCoordinates,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -82,8 +85,23 @@ impl FlowchartAst {
         control: &OperationControl,
     ) -> OperationControlResult<Result<FlowchartModel>> {
         Ok(self
+            .into_model_with_grid_coordinates(diagram_type, config, acc_title, acc_descr, control)?
+            .map(|(model, _)| model))
+    }
+
+    /// Retains the final inline Grid coordinates for post-parse admission in Core.
+    #[doc(hidden)]
+    pub fn into_model_with_grid_coordinates(
+        self,
+        diagram_type: &str,
+        config: &MermaidConfig,
+        acc_title: Option<String>,
+        acc_descr: Option<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(FlowchartModel, InlineGridCoordinates)>> {
+        Ok(self
             .build_model(diagram_type, config, acc_title, acc_descr, false, control)?
-            .map(|projection| projection.model))
+            .map(|projection| (projection.model, projection.grid_coordinates)))
     }
 
     /// Consumes the same parsed statements and collects render-only context during replay.
@@ -98,6 +116,34 @@ impl FlowchartAst {
         control: &OperationControl,
     ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
         Ok(self
+            .into_model_with_render_context_and_grid_coordinates(
+                diagram_type,
+                config,
+                acc_title,
+                acc_descr,
+                control,
+            )?
+            .map(|(model, render_context, _)| (model, render_context)))
+    }
+
+    /// Collects render context and inline Grid coordinates during the same replay.
+    #[cfg(feature = "presentation")]
+    #[doc(hidden)]
+    pub fn into_model_with_render_context_and_grid_coordinates(
+        self,
+        diagram_type: &str,
+        config: &MermaidConfig,
+        acc_title: Option<String>,
+        acc_descr: Option<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<
+        Result<(
+            FlowchartModel,
+            FlowchartRenderContext,
+            InlineGridCoordinates,
+        )>,
+    > {
+        Ok(self
             .build_model(diagram_type, config, acc_title, acc_descr, true, control)?
             .map(|projection| {
                 (
@@ -105,6 +151,7 @@ impl FlowchartAst {
                     projection
                         .render_context
                         .expect("render context is collected for render-model consumers"),
+                    projection.grid_coordinates,
                 )
             }))
     }
@@ -171,6 +218,8 @@ fn build_flowchart_source(
     let mut collapsed_subgraphs = _collect_render_context.then(rustc_hash::FxHashSet::default);
     let mut vertex_calls = Vec::new();
     let mut warning_facts = Vec::new();
+    let mut grid_replay =
+        (config.get_str("layout") == Some("grid")).then(InlineGridReplay::default);
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),
@@ -192,6 +241,7 @@ fn build_flowchart_source(
             subgraph_vertex_styles: &mut subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs: collapsed_subgraphs.as_mut(),
+            grid_replay: grid_replay.as_mut(),
             vertex_calls: &mut vertex_calls,
             warning_facts: &mut warning_facts,
             class_defs: &mut class_defs,
@@ -207,6 +257,14 @@ fn build_flowchart_source(
         }
     }
 
+    let grid_coordinates = match grid_replay {
+        Some(replay) => replay.finish(
+            |slot| &nodes[slot].id,
+            |slot| &builder.subgraphs[slot].id,
+            control,
+        )?,
+        None => InlineGridCoordinates::default(),
+    };
     let direction = ast.direction;
     warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
     control.checkpoint()?;
@@ -226,6 +284,7 @@ fn build_flowchart_source(
         subgraph_vertex_styles,
         #[cfg(feature = "presentation")]
         collapsed_subgraphs,
+        grid_coordinates,
         warning_facts,
     }))
 }
@@ -250,6 +309,7 @@ fn flowchart_warning_facts(
 
 struct FlowchartModelProjection {
     model: FlowchartModel,
+    grid_coordinates: InlineGridCoordinates,
     #[cfg(feature = "presentation")]
     render_context: Option<FlowchartRenderContext>,
 }
@@ -276,6 +336,7 @@ impl FlowchartSemanticSource {
             subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs,
+            grid_coordinates,
             warning_facts,
             tooltips,
             keyword,
@@ -369,6 +430,7 @@ impl FlowchartSemanticSource {
         };
         Ok(Ok(FlowchartModelProjection {
             model,
+            grid_coordinates,
             #[cfg(feature = "presentation")]
             render_context,
         }))

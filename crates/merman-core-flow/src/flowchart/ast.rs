@@ -165,6 +165,13 @@ pub struct SubgraphBlock {
     pub(super) statements: StatementList,
 }
 
+#[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub struct ShapeData {
+    pub yaml: String,
+    pub span: SourceSpan,
+}
+
 /// An authored node occurrence. Database defaults and mutations are applied during replay.
 #[derive(Debug, Clone)]
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -173,7 +180,7 @@ pub struct NodeAction {
     pub id_span: Option<SourceSpan>,
     pub label: Option<LabeledText>,
     pub shape: Option<String>,
-    pub shape_data: Option<String>,
+    pub shape_data: Option<ShapeData>,
     pub classes: Vec<String>,
 }
 
@@ -214,7 +221,7 @@ pub enum Stmt {
     ShapeData {
         target: String,
         target_span: Option<SourceSpan>,
-        yaml: String,
+        data: ShapeData,
     },
 }
 

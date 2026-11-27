@@ -18,4 +18,12 @@ pub mod flowchart;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+#[doc(hidden)]
+pub mod grid;
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod metadata;

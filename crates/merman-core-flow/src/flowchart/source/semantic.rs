@@ -6,10 +6,11 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowSubGraph, FlowchartAst, LinkStylePos,
-    Node, NodeAction, Result, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
+    Node, NodeAction, Result, ShapeData, ShapeDataDocument, StatementEvent, Stmt, TitleKind,
     apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 use super::{FlowSubgraphVertexStyle, FlowchartSubgraphStyles};
+use crate::grid::InlineGridReplay;
 
 pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) nodes: &'a mut Vec<Node>,
@@ -20,6 +21,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) subgraph_vertex_styles: &'a mut FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     pub(super) collapsed_subgraphs: Option<&'a mut rustc_hash::FxHashSet<String>>,
+    pub(super) grid_replay: Option<&'a mut InlineGridReplay>,
     pub(super) vertex_calls: &'a mut Vec<String>,
     pub(super) warning_facts: &'a mut Vec<DiagramWarningFact>,
     pub(super) class_defs: &'a mut IndexMap<String, Vec<String>>,
@@ -228,7 +230,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         }
                     }
                 }
-                Stmt::ShapeData { target, yaml, .. } => {
+                Stmt::ShapeData { target, data, .. } => {
                     // The grammar first adds the bare vertex, then applies its metadata.
                     if !seen_edge_indices.contains_key(target) {
                         self.vertex_calls.push(target.clone());
@@ -238,7 +240,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         }
                     }
                     if let Err(error) =
-                        self.apply_shape_data(target, yaml, &active_subgraphs, &seen_edge_indices)?
+                        self.apply_shape_data(target, data, &active_subgraphs, &seen_edge_indices)?
                     {
                         return Ok(Err(error));
                     }
@@ -326,7 +328,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
-        let mut pending_shape_data: Option<(&str, &str)> = None;
+        let mut pending_shape_data: Option<(&str, &ShapeData)> = None;
         for (index, node) in nodes.iter().enumerate() {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
@@ -367,20 +369,20 @@ impl<'a> FlowchartSemanticContext<'a> {
 
             // Jison reduces `node shapeData & styledVertex` after adding styledVertex.
             // Keep only that pending metadata call, including when both IDs are the same.
-            if let Some((target, yaml)) = pending_shape_data
+            if let Some((target, data)) = pending_shape_data
                 && let Err(error) =
-                    self.apply_shape_data(target, yaml, active_subgraphs, seen_edge_indices)?
+                    self.apply_shape_data(target, data, active_subgraphs, seen_edge_indices)?
             {
                 return Ok(Err(error));
             }
             pending_shape_data = node
                 .shape_data
-                .as_deref()
-                .map(|yaml| (node.id.as_str(), yaml));
+                .as_ref()
+                .map(|data| (node.id.as_str(), data));
         }
-        if let Some((target, yaml)) = pending_shape_data
+        if let Some((target, data)) = pending_shape_data
             && let Err(error) =
-                self.apply_shape_data(target, yaml, active_subgraphs, seen_edge_indices)?
+                self.apply_shape_data(target, data, active_subgraphs, seen_edge_indices)?
         {
             return Ok(Err(error));
         }
@@ -390,19 +392,24 @@ impl<'a> FlowchartSemanticContext<'a> {
     fn apply_shape_data(
         &mut self,
         target: &str,
-        yaml: &str,
+        data: &ShapeData,
         active_subgraphs: &HashMap<String, usize>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
-        let document = match Self::shape_data_document(self.shape_data_documents, yaml) {
+        let document = match Self::shape_data_document(self.shape_data_documents, &data.yaml) {
             Ok(document) => document,
             Err(error) => return Ok(Err(error)),
         };
         let value = &document.value;
         // FlowDB routes metadata to an already declared subgraph before checking edge IDs.
-        if active_subgraphs.get(target).is_some_and(|&subgraph_index| {
-            self.apply_shape_data_to_subgraph(subgraph_index, target, value)
-        }) {
+        if let Some(&slot) = active_subgraphs.get(target)
+            && self.apply_shape_data_to_subgraph(slot, target, value)
+        {
+            if let Some(replay) = &mut self.grid_replay
+                && let Some(metadata) = value.as_object()
+            {
+                replay.subgraphs.update(slot, metadata, Some(data.span));
+            }
             return Ok(Ok(()));
         }
         if let Some(&edge_index) = seen_edge_indices.get(target) {
@@ -413,10 +420,15 @@ impl<'a> FlowchartSemanticContext<'a> {
 
         self.vertex_calls.push(target.to_string());
         let idx = self.ensure_authored_node(target);
-        Ok(apply_shape_data_value_to_node(
-            &mut self.nodes[idx],
-            document,
-        ))
+        if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], document) {
+            return Ok(Err(error));
+        }
+        if let Some(replay) = &mut self.grid_replay
+            && let Some(metadata) = value.as_object()
+        {
+            replay.vertices.update(idx, metadata, Some(data.span));
+        }
+        Ok(Ok(()))
     }
 
     fn add_class_to_target(
@@ -671,6 +683,7 @@ mod tests {
                 subgraph_vertex_styles: &mut subgraph_vertex_styles,
                 #[cfg(feature = "presentation")]
                 collapsed_subgraphs: None,
+                grid_replay: None,
                 vertex_calls: &mut vertex_calls,
                 warning_facts: &mut warning_facts,
                 class_defs: &mut class_defs,
